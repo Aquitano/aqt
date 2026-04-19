@@ -29,7 +29,7 @@ class IngestionService(
 ) {
     suspend fun ingestBatch(request: IngestionBatchRequest, now: java.time.Instant): IngestionSummaryResponse {
         val validated = derivationService.validateAndMap(request)
-        return newSuspendedTransaction(Dispatchers.IO, db = database) {
+        val transactionResult = newSuspendedTransaction(Dispatchers.IO, db = database) {
             val sourceInstance = supportRepository.resolveOrCreateSourceInstanceInTransaction(
                 provider = validated.provider,
                 providerInstanceId = validated.providerInstanceId,
@@ -39,15 +39,17 @@ class IngestionService(
             val existingBatch = validated.batchExternalId
                 ?.let { ingestionRepository.findBatchByExternalId(sourceInstance.id, it) }
             if (existingBatch != null) {
-                return@newSuspendedTransaction IngestionSummaryResponse(
-                    batchId = existingBatch.id,
-                    status = existingBatch.status,
-                    duplicateBatch = true,
-                    recordsReceived = validated.records.size,
-                    rawRecordsStored = 0,
-                    canonicalRecordsCreated = CanonicalCreatedCountsResponse(0, 0, 0, 0, 0),
-                    canonicalRecordsSkipped = CanonicalSkippedCountsResponse(duplicates = 0),
-                    affectedStepSummaryDates = emptyList(),
+                return@newSuspendedTransaction IngestionTransactionResult.Success(
+                    IngestionSummaryResponse(
+                        batchId = existingBatch.id,
+                        status = existingBatch.status,
+                        duplicateBatch = true,
+                        recordsReceived = validated.records.size,
+                        rawRecordsStored = 0,
+                        canonicalRecordsCreated = CanonicalCreatedCountsResponse(0, 0, 0, 0, 0),
+                        canonicalRecordsSkipped = CanonicalSkippedCountsResponse(duplicates = 0),
+                        affectedStepSummaryDates = emptyList(),
+                    ),
                 )
             }
 
@@ -107,25 +109,37 @@ class IngestionService(
                 ingestionRepository.markProcessed(batchId, now)
             } catch (throwable: Throwable) {
                 ingestionRepository.markFailed(batchId, now, throwable.message ?: "Unknown ingestion error")
-                throw throwable
+                return@newSuspendedTransaction IngestionTransactionResult.Failure(throwable)
             }
 
-            IngestionSummaryResponse(
-                batchId = batchId,
-                status = "processed",
-                duplicateBatch = false,
-                recordsReceived = validated.records.size,
-                rawRecordsStored = rawRecords.size,
-                canonicalRecordsCreated = CanonicalCreatedCountsResponse(
-                    stepSamples = created.stepSamples,
-                    sleepSessions = created.sleepSessions,
-                    sleepStages = created.sleepStages,
-                    bodyMeasurements = created.bodyMeasurements,
-                    heartRateSamples = created.heartRateSamples,
+            IngestionTransactionResult.Success(
+                IngestionSummaryResponse(
+                    batchId = batchId,
+                    status = "processed",
+                    duplicateBatch = false,
+                    recordsReceived = validated.records.size,
+                    rawRecordsStored = rawRecords.size,
+                    canonicalRecordsCreated = CanonicalCreatedCountsResponse(
+                        stepSamples = created.stepSamples,
+                        sleepSessions = created.sleepSessions,
+                        sleepStages = created.sleepStages,
+                        bodyMeasurements = created.bodyMeasurements,
+                        heartRateSamples = created.heartRateSamples,
+                    ),
+                    canonicalRecordsSkipped = CanonicalSkippedCountsResponse(duplicates = duplicateSkipped),
+                    affectedStepSummaryDates = affectedDates.map { it.toString() },
                 ),
-                canonicalRecordsSkipped = CanonicalSkippedCountsResponse(duplicates = duplicateSkipped),
-                affectedStepSummaryDates = affectedDates.map { it.toString() },
             )
         }
+
+        return when (transactionResult) {
+            is IngestionTransactionResult.Success -> transactionResult.response
+            is IngestionTransactionResult.Failure -> throw transactionResult.throwable
+        }
     }
+}
+
+private sealed interface IngestionTransactionResult {
+    data class Success(val response: IngestionSummaryResponse) : IngestionTransactionResult
+    data class Failure(val throwable: Throwable) : IngestionTransactionResult
 }
