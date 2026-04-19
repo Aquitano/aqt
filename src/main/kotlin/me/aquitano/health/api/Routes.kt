@@ -1,18 +1,21 @@
 package me.aquitano.health.api
 
-import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.Application
-import io.ktor.server.request.receive
-import io.ktor.server.response.respond
-import io.ktor.server.routing.get
-import io.ktor.server.routing.post
-import io.ktor.server.routing.routing
+import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.plugins.openapi.*
+import io.ktor.server.plugins.swagger.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.application.QueryParams
 
 fun Application.configureRoutes(services: ApplicationServices) {
     routing {
+        openAPI(path = "openapi", swaggerFile = "openapi/aqt-health.yaml")
+        swaggerUI(path = "swagger", swaggerFile = "openapi/aqt-health.yaml")
+
         get("/api/v1/admin/health") {
             call.respond(HealthResponse(status = "ok", service = "aqt-health", time = services.clock.now().toString()))
         }

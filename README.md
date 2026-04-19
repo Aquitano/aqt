@@ -33,6 +33,15 @@ Useful tasks:
 .\gradlew.bat run
 ```
 
+## OpenAPI
+
+The OpenAPI spec is stored at `src/main/resources/openapi/aqt-health.yaml` and is served by Ktor.
+
+After starting the app, open:
+
+- `http://localhost:8080/openapi`
+- `http://localhost:8080/swagger`
+
 ## Configuration
 
 Runtime config is read from `src/main/resources/application.yaml`.
