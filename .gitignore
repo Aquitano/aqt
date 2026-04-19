@@ -38,6 +38,7 @@ docs/index.html
 docs/.swagger-codegen/
 docs/.swagger-codegen-ignore
 aqt-health.yaml
+src/main/resources/openapi/aqt-health.yaml
 
 ### NetBeans ###
 /nbproject/private/

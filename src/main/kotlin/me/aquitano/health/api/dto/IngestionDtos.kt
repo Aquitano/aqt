@@ -10,7 +10,7 @@ data class IngestionBatchRequest(
     val providerInstanceId: String? = null,
     val batchExternalId: String? = null,
     val ingestedAt: String? = null,
-    val rawPayload: JsonElement? = null,
+    val sourcePayload: JsonElement? = null,
     val records: List<JsonObject>? = null,
 )
 
@@ -20,14 +20,14 @@ data class IngestionSummaryResponse(
     val status: String,
     val duplicateBatch: Boolean,
     val recordsReceived: Int,
-    val rawRecordsStored: Int,
-    val canonicalRecordsCreated: CanonicalCreatedCountsResponse,
-    val canonicalRecordsSkipped: CanonicalSkippedCountsResponse,
+    val ingestionRecordsStored: Int,
+    val metricsCreated: MetricCreatedCountsResponse,
+    val metricsSkipped: MetricSkippedCountsResponse,
     val affectedStepSummaryDates: List<String>,
 )
 
 @Serializable
-data class CanonicalCreatedCountsResponse(
+data class MetricCreatedCountsResponse(
     val stepSamples: Int,
     val sleepSessions: Int,
     val sleepStages: Int,
@@ -36,6 +36,6 @@ data class CanonicalCreatedCountsResponse(
 )
 
 @Serializable
-data class CanonicalSkippedCountsResponse(
+data class MetricSkippedCountsResponse(
     val duplicates: Int,
 )

@@ -27,7 +27,7 @@ class IngestionRouteTest {
         }
 
         assertEquals(HttpStatusCode.Unauthorized, response.status)
-        assertEquals(0, countRows(dbPath, "raw_ingestion_batches"))
+        assertEquals(0, countRows(dbPath, "ingestion_batches"))
     }
 
     @Test
@@ -43,7 +43,7 @@ class IngestionRouteTest {
                   "provider": "",
                   "providerInstanceId": "pixel",
                   "ingestedAt": "2026-04-19T10:00:00Z",
-                  "rawPayload": {},
+                  "sourcePayload": {},
                   "records": []
                 }
                 """.trimIndent(),
@@ -55,7 +55,7 @@ class IngestionRouteTest {
     }
 
     @Test
-    fun mixedBatchPersistsRawAndCanonicalRecords() = testApplication {
+    fun mixedBatchPersistsIngestionAndMetricRecords() = testApplication {
         val dbPath = configureTestApplication()
 
         val response = client.post("/api/v1/ingestion/batches") {
@@ -67,30 +67,30 @@ class IngestionRouteTest {
         assertEquals(HttpStatusCode.Created, response.status)
         val body = response.jsonBody()
         assertEquals(4, body["recordsReceived"]!!.jsonPrimitive.int)
-        assertEquals(4, body["rawRecordsStored"]!!.jsonPrimitive.int)
+        assertEquals(4, body["ingestionRecordsStored"]!!.jsonPrimitive.int)
         assertEquals(
             1,
-            body["canonicalRecordsCreated"]!!.jsonObject["stepSamples"]!!.jsonPrimitive.int
+            body["metricsCreated"]!!.jsonObject["stepSamples"]!!.jsonPrimitive.int
         )
         assertEquals(
             1,
-            body["canonicalRecordsCreated"]!!.jsonObject["sleepSessions"]!!.jsonPrimitive.int
+            body["metricsCreated"]!!.jsonObject["sleepSessions"]!!.jsonPrimitive.int
         )
         assertEquals(
             2,
-            body["canonicalRecordsCreated"]!!.jsonObject["sleepStages"]!!.jsonPrimitive.int
+            body["metricsCreated"]!!.jsonObject["sleepStages"]!!.jsonPrimitive.int
         )
         assertEquals(
             5,
-            body["canonicalRecordsCreated"]!!.jsonObject["bodyMeasurements"]!!.jsonPrimitive.int
+            body["metricsCreated"]!!.jsonObject["bodyMeasurements"]!!.jsonPrimitive.int
         )
         assertEquals(
             1,
-            body["canonicalRecordsCreated"]!!.jsonObject["heartRateSamples"]!!.jsonPrimitive.int
+            body["metricsCreated"]!!.jsonObject["heartRateSamples"]!!.jsonPrimitive.int
         )
 
-        assertEquals(1, countRows(dbPath, "raw_ingestion_batches"))
-        assertEquals(4, countRows(dbPath, "raw_ingestion_records"))
+        assertEquals(1, countRows(dbPath, "ingestion_batches"))
+        assertEquals(4, countRows(dbPath, "ingestion_records"))
         assertEquals(1, countRows(dbPath, "step_samples"))
         assertEquals(1, countRows(dbPath, "step_daily_summaries"))
         assertEquals(
@@ -103,7 +103,7 @@ class IngestionRouteTest {
         assertEquals(1, countRows(dbPath, "heart_rate_samples"))
         assertEquals(
             "processed",
-            singleString(dbPath, "SELECT status FROM raw_ingestion_batches")
+            singleString(dbPath, "SELECT status FROM ingestion_batches")
         )
         assertEquals(
             "unknown",
@@ -132,8 +132,8 @@ class IngestionRouteTest {
             true,
             second.jsonBody()["duplicateBatch"]!!.jsonPrimitive.content == "true"
         )
-        assertEquals(1, countRows(dbPath, "raw_ingestion_batches"))
-        assertEquals(1, countRows(dbPath, "raw_ingestion_records"))
+        assertEquals(1, countRows(dbPath, "ingestion_batches"))
+        assertEquals(1, countRows(dbPath, "ingestion_records"))
         assertEquals(1, countRows(dbPath, "step_samples"))
         assertEquals(
             1200,
@@ -142,7 +142,7 @@ class IngestionRouteTest {
     }
 
     @Test
-    fun providerRecordDuplicatesDoNotInflateCanonicalTables() =
+    fun providerRecordDuplicatesDoNotInflateMetricTables() =
         testApplication {
             val dbPath = configureTestApplication()
 
@@ -155,8 +155,8 @@ class IngestionRouteTest {
                 assertEquals(HttpStatusCode.Created, response.status)
             }
 
-            assertEquals(2, countRows(dbPath, "raw_ingestion_batches"))
-            assertEquals(2, countRows(dbPath, "raw_ingestion_records"))
+            assertEquals(2, countRows(dbPath, "ingestion_batches"))
+            assertEquals(2, countRows(dbPath, "ingestion_records"))
             assertEquals(1, countRows(dbPath, "step_samples"))
             assertEquals(
                 1200,
@@ -221,7 +221,7 @@ class IngestionRouteTest {
               "providerInstanceId": "pixel-8-health-connect",
               $batch
               "ingestedAt": "2026-04-19T10:00:00Z",
-              "rawPayload": {
+                "sourcePayload": {
                 "exportId": "steps"
               },
               "records": [
@@ -244,7 +244,7 @@ class IngestionRouteTest {
           "providerInstanceId": "pixel-8-health-connect",
           "batchExternalId": "$batchExternalId",
           "ingestedAt": "2026-04-19T10:00:00Z",
-          "rawPayload": {
+          "sourcePayload": {
             "exportId": "$batchExternalId"
           },
           "records": [

@@ -127,7 +127,7 @@ class ReadApiRouteTest {
           "providerInstanceId": "pixel-8-health-connect",
           "batchExternalId": "read-batch-1",
           "ingestedAt": "2026-04-19T10:00:00Z",
-          "rawPayload": {
+          "sourcePayload": {
             "exportId": "read-batch-1"
           },
           "records": [

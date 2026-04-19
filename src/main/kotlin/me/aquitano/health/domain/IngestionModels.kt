@@ -9,20 +9,20 @@ data class ValidatedIngestionBatch(
     val providerInstanceId: String,
     val batchExternalId: String?,
     val ingestedAt: Instant,
-    val rawPayload: JsonElement,
-    val mappedPayloadJson: String,
-    val records: List<CanonicalRecord>,
+    val sourcePayload: JsonElement,
+    val normalizedPayloadJson: String,
+    val records: List<HealthRecord>,
 )
 
-data class CanonicalCreatedCounts(
+data class MetricCreatedCounts(
     val stepSamples: Int = 0,
     val sleepSessions: Int = 0,
     val sleepStages: Int = 0,
     val bodyMeasurements: Int = 0,
     val heartRateSamples: Int = 0,
 ) {
-    operator fun plus(other: CanonicalCreatedCounts): CanonicalCreatedCounts =
-        CanonicalCreatedCounts(
+    operator fun plus(other: MetricCreatedCounts): MetricCreatedCounts =
+        MetricCreatedCounts(
             stepSamples = stepSamples + other.stepSamples,
             sleepSessions = sleepSessions + other.sleepSessions,
             sleepStages = sleepStages + other.sleepStages,
@@ -36,8 +36,8 @@ data class IngestionSummary(
     val status: String,
     val duplicateBatch: Boolean,
     val recordsReceived: Int,
-    val rawRecordsStored: Int,
-    val canonicalRecordsCreated: CanonicalCreatedCounts,
-    val duplicateCanonicalRecordsSkipped: Int,
+    val ingestionRecordsStored: Int,
+    val metricsCreated: MetricCreatedCounts,
+    val duplicateMetricsSkipped: Int,
     val affectedStepSummaryDates: List<LocalDate>,
 )

@@ -1,8 +1,8 @@
 package me.aquitano.health.infrastructure.repositories
 
-import me.aquitano.health.domain.CanonicalRecord
-import me.aquitano.health.infrastructure.database.tables.RawIngestionBatchesTable
-import me.aquitano.health.infrastructure.database.tables.RawIngestionRecordsTable
+import me.aquitano.health.domain.HealthRecord
+import me.aquitano.health.infrastructure.database.tables.IngestionBatchesTable
+import me.aquitano.health.infrastructure.database.tables.IngestionRecordsTable
 import me.aquitano.health.infrastructure.database.tables.SourceInstancesTable
 import me.aquitano.health.infrastructure.database.tables.SourcesTable
 import me.aquitano.health.shared.AppJson
@@ -17,9 +17,9 @@ data class ExistingBatch(
     val status: String,
 )
 
-data class RawRecordRef(
+data class IngestionRecordRef(
     val id: Int,
-    val record: CanonicalRecord,
+    val record: HealthRecord,
 )
 
 data class AdminBatchRow(
@@ -40,11 +40,11 @@ class IngestionRepository {
         sourceInstanceId: Int,
         batchExternalId: String
     ): ExistingBatch? =
-        RawIngestionBatchesTable
+        IngestionBatchesTable
             .selectAll()
             .where {
-                (RawIngestionBatchesTable.sourceInstanceId eq sourceInstanceId) and
-                        (RawIngestionBatchesTable.batchExternalId eq batchExternalId)
+                (IngestionBatchesTable.sourceInstanceId eq sourceInstanceId) and
+                        (IngestionBatchesTable.batchExternalId eq batchExternalId)
             }
             .limit(1)
             .map(::toExistingBatch)
@@ -53,16 +53,16 @@ class IngestionRepository {
     fun insertBatch(
         sourceInstanceId: Int,
         batchExternalId: String?,
-        rawPayloadJson: String,
-        mappedPayloadJson: String,
+        sourcePayloadJson: String,
+        normalizedPayloadJson: String,
         ingestedAt: Instant,
         receivedAt: Instant,
     ): Int =
-        RawIngestionBatchesTable.insertAndGetId {
+        IngestionBatchesTable.insertAndGetId {
             it[this.sourceInstanceId] = sourceInstanceId
             it[this.batchExternalId] = batchExternalId
-            it[this.rawPayloadJson] = rawPayloadJson
-            it[this.mappedPayloadJson] = mappedPayloadJson
+            it[this.sourcePayloadJson] = sourcePayloadJson
+            it[this.normalizedPayloadJson] = normalizedPayloadJson
             it[status] = "received"
             it[this.ingestedAt] = ingestedAt.toString()
             it[this.receivedAt] = receivedAt.toString()
@@ -72,26 +72,26 @@ class IngestionRepository {
             it[updatedAt] = receivedAt.toString()
         }.value
 
-    fun insertRawRecords(
+    fun insertRecords(
         batchId: Int,
-        records: List<CanonicalRecord>,
+        records: List<HealthRecord>,
         now: Instant
-    ): List<RawRecordRef> =
+    ): List<IngestionRecordRef> =
         records.map { record ->
-            val id = RawIngestionRecordsTable.insertAndGetId {
+            val id = IngestionRecordsTable.insertAndGetId {
                 it[this.batchId] = batchId
                 it[recordType] = record.recordType
                 it[providerRecordId] = record.providerRecordId
-                it[recordJson] = AppJson.encodeToString(record.recordJson)
+                it[normalizedRecordJson] = AppJson.encodeToString(record.normalizedRecordJson)
                 it[recordStartAt] = record.recordStartAt?.toString()
                 it[recordEndAt] = record.recordEndAt?.toString()
                 it[createdAt] = now.toString()
             }.value
-            RawRecordRef(id = id, record = record)
+            IngestionRecordRef(id = id, record = record)
         }
 
     fun markProcessed(batchId: Int, processedAt: Instant) {
-        RawIngestionBatchesTable.update({ RawIngestionBatchesTable.id eq batchId }) {
+        IngestionBatchesTable.update({ IngestionBatchesTable.id eq batchId }) {
             it[status] = "processed"
             it[this.processedAt] = processedAt.toString()
             it[updatedAt] = processedAt.toString()
@@ -100,7 +100,7 @@ class IngestionRepository {
     }
 
     fun markFailed(batchId: Int, failedAt: Instant, error: String) {
-        RawIngestionBatchesTable.update({ RawIngestionBatchesTable.id eq batchId }) {
+        IngestionBatchesTable.update({ IngestionBatchesTable.id eq batchId }) {
             it[status] = "failed"
             it[processedAt] = null
             it[updatedAt] = failedAt.toString()
@@ -115,33 +115,33 @@ class IngestionRepository {
         limit: Int
     ): List<AdminBatchRow> {
         val conditions = mutableListOf<Op<Boolean>>()
-        status?.let { conditions.add(RawIngestionBatchesTable.status eq it) }
-        from?.let { conditions.add(RawIngestionBatchesTable.receivedAt greaterEq it.toString()) }
-        to?.let { conditions.add(RawIngestionBatchesTable.receivedAt less it.toString()) }
+        status?.let { conditions.add(IngestionBatchesTable.status eq it) }
+        from?.let { conditions.add(IngestionBatchesTable.receivedAt greaterEq it.toString()) }
+        to?.let { conditions.add(IngestionBatchesTable.receivedAt less it.toString()) }
 
-        val batches = RawIngestionBatchesTable
+        val batches = IngestionBatchesTable
             .innerJoin(SourceInstancesTable)
             .innerJoin(SourcesTable)
             .selectAll()
             .where(combineConditions(conditions))
-            .orderBy(RawIngestionBatchesTable.receivedAt to SortOrder.DESC)
+            .orderBy(IngestionBatchesTable.receivedAt to SortOrder.DESC)
             .limit(limit)
             .toList()
 
         val recordCounts =
-            recordCounts(batches.map { it[RawIngestionBatchesTable.id].value })
+            recordCounts(batches.map { it[IngestionBatchesTable.id].value })
         return batches.map {
             AdminBatchRow(
-                id = it[RawIngestionBatchesTable.id].value,
+                id = it[IngestionBatchesTable.id].value,
                 provider = it[SourcesTable.code],
                 providerInstanceId = it[SourceInstancesTable.providerInstanceId],
-                batchExternalId = it[RawIngestionBatchesTable.batchExternalId],
-                status = it[RawIngestionBatchesTable.status],
-                ingestedAt = it[RawIngestionBatchesTable.ingestedAt],
-                receivedAt = it[RawIngestionBatchesTable.receivedAt],
-                processedAt = it[RawIngestionBatchesTable.processedAt],
-                errorMessage = it[RawIngestionBatchesTable.errorMessage],
-                recordCount = recordCounts[it[RawIngestionBatchesTable.id].value]
+                batchExternalId = it[IngestionBatchesTable.batchExternalId],
+                status = it[IngestionBatchesTable.status],
+                ingestedAt = it[IngestionBatchesTable.ingestedAt],
+                receivedAt = it[IngestionBatchesTable.receivedAt],
+                processedAt = it[IngestionBatchesTable.processedAt],
+                errorMessage = it[IngestionBatchesTable.errorMessage],
+                recordCount = recordCounts[it[IngestionBatchesTable.id].value]
                     ?: 0,
             )
         }
@@ -149,12 +149,12 @@ class IngestionRepository {
 
     private fun recordCounts(batchIds: List<Int>): Map<Int, Int> {
         if (batchIds.isEmpty()) return emptyMap()
-        val countExpression = RawIngestionRecordsTable.id.count()
-        return RawIngestionRecordsTable
-            .select(RawIngestionRecordsTable.batchId, countExpression)
-            .where { RawIngestionRecordsTable.batchId inList batchIds }
-            .groupBy(RawIngestionRecordsTable.batchId)
-            .associate { it[RawIngestionRecordsTable.batchId] to it[countExpression].toInt() }
+        val countExpression = IngestionRecordsTable.id.count()
+        return IngestionRecordsTable
+            .select(IngestionRecordsTable.batchId, countExpression)
+            .where { IngestionRecordsTable.batchId inList batchIds }
+            .groupBy(IngestionRecordsTable.batchId)
+            .associate { it[IngestionRecordsTable.batchId] to it[countExpression].toInt() }
     }
 
     private fun combineConditions(conditions: List<Op<Boolean>>): Op<Boolean> =
@@ -162,7 +162,7 @@ class IngestionRepository {
 
     private fun toExistingBatch(row: ResultRow): ExistingBatch =
         ExistingBatch(
-            id = row[RawIngestionBatchesTable.id].value,
-            status = row[RawIngestionBatchesTable.status],
+            id = row[IngestionBatchesTable.id].value,
+            status = row[IngestionBatchesTable.status],
         )
 }

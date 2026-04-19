@@ -2,7 +2,7 @@
 
 Personal, single-user health data hub built with Ktor, Kotlin, SQLite, Exposed, and Flyway.
 
-The service accepts canonical health batches from trusted scripts or provider adapters, stores the original provider JSON alongside the mapped canonical JSON, derives normalized metric tables, and exposes read endpoints for local tools.
+The service accepts normalized health batches from trusted scripts or provider adapters, stores the original source JSON for audit/reprocessing, writes structured metric tables, and exposes read endpoints for local tools.
 
 ## Stack
 
@@ -10,7 +10,7 @@ The service accepts canonical health batches from trusted scripts or provider ad
 - Ktor 3.4
 - SQLite via `org.xerial:sqlite-jdbc`
 - Exposed DAO for support entities only
-- Exposed DSL for ingestion and canonical reads/writes
+- Exposed DSL for ingestion and metric reads/writes
 - Flyway versioned migrations
 - API-key authentication with `Authorization: Bearer <api-key>`
 
@@ -74,7 +74,7 @@ curl -X POST http://localhost:8080/api/v1/ingestion/batches \
     "providerInstanceId": "pixel-8-health-connect",
     "batchExternalId": "demo-2026-04-19",
     "ingestedAt": "2026-04-19T10:00:00Z",
-    "rawPayload": {
+    "sourcePayload": {
       "exportId": "demo-2026-04-19"
     },
     "records": [
@@ -103,7 +103,7 @@ Supported record types:
 - `body_measurement`
 - `heart_rate`
 
-`batchExternalId` is idempotent per source instance. Provider record IDs are also used to skip duplicate canonical rows where available.
+`batchExternalId` is idempotent per source instance. Provider record IDs are also used to skip duplicate metric rows where available.
 
 ## Read Data
 
@@ -147,12 +147,12 @@ Common read filters:
 
 ## Storage Model
 
-Raw ingestion tables:
+Ingestion tables:
 
-- `raw_ingestion_batches`
-- `raw_ingestion_records`
+- `ingestion_batches`
+- `ingestion_records`
 
-Canonical tables:
+Metric tables:
 
 - `step_samples`
 - `step_daily_summaries`

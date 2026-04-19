@@ -11,10 +11,10 @@ import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 
-class CanonicalWriteRepository {
+class MetricsWriteRepository {
     fun insertStepSample(
         sourceInstanceId: Int,
-        rawRecordId: Int,
+        ingestionRecordId: Int,
         record: StepIntervalRecord,
         now: Instant,
     ): Boolean {
@@ -25,7 +25,7 @@ class CanonicalWriteRepository {
         ) return false
         StepSamplesTable.insert {
             it[this.sourceInstanceId] = sourceInstanceId
-            it[this.rawRecordId] = rawRecordId
+            it[this.ingestionRecordId] = ingestionRecordId
             it[providerRecordId] = record.providerRecordId
             it[startAt] = record.startAt.toString()
             it[endAt] = record.endAt.toString()
@@ -37,7 +37,7 @@ class CanonicalWriteRepository {
 
     fun insertSleepSession(
         sourceInstanceId: Int,
-        rawRecordId: Int,
+        ingestionRecordId: Int,
         record: SleepSessionRecord,
         now: Instant,
     ): Int? {
@@ -48,7 +48,7 @@ class CanonicalWriteRepository {
         ) return null
         val sessionId = SleepSessionsTable.insertAndGetId {
             it[this.sourceInstanceId] = sourceInstanceId
-            it[this.rawRecordId] = rawRecordId
+            it[this.ingestionRecordId] = ingestionRecordId
             it[providerRecordId] = record.providerRecordId
             it[startAt] = record.startAt.toString()
             it[endAt] = record.endAt.toString()
@@ -71,7 +71,7 @@ class CanonicalWriteRepository {
 
     fun insertBodyMeasurements(
         sourceInstanceId: Int,
-        rawRecordId: Int,
+        ingestionRecordId: Int,
         record: BodyMeasurementRecord,
         now: Instant,
     ): Int {
@@ -89,7 +89,7 @@ class CanonicalWriteRepository {
             }
             BodyMeasurementsTable.insert {
                 it[this.sourceInstanceId] = sourceInstanceId
-                it[this.rawRecordId] = rawRecordId
+                it[this.ingestionRecordId] = ingestionRecordId
                 it[providerRecordId] = record.providerRecordId
                 it[measuredAt] = record.measuredAt.toString()
                 it[metricType] = measurement.metricType
@@ -104,7 +104,7 @@ class CanonicalWriteRepository {
 
     fun insertHeartRateSample(
         sourceInstanceId: Int,
-        rawRecordId: Int,
+        ingestionRecordId: Int,
         record: HeartRateRecord,
         now: Instant,
     ): Boolean {
@@ -115,7 +115,7 @@ class CanonicalWriteRepository {
         ) return false
         HeartRateSamplesTable.insert {
             it[this.sourceInstanceId] = sourceInstanceId
-            it[this.rawRecordId] = rawRecordId
+            it[this.ingestionRecordId] = ingestionRecordId
             it[providerRecordId] = record.providerRecordId
             it[measuredAt] = record.measuredAt.toString()
             it[bpm] = record.bpm

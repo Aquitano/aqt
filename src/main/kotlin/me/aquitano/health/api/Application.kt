@@ -4,7 +4,7 @@ import io.ktor.server.application.*
 import me.aquitano.health.application.*
 import me.aquitano.health.infrastructure.config.toAppConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
-import me.aquitano.health.infrastructure.repositories.CanonicalWriteRepository
+import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
@@ -22,7 +22,7 @@ fun Application.module() {
     val database = DatabaseFactory().initialize(appConfig.database)
     val apiKeyHasher = ApiKeyHasher()
     val supportRepository = SupportRepository(database)
-    val canonicalWriteRepository = CanonicalWriteRepository()
+    val metricsWriteRepository = MetricsWriteRepository()
     val ingestionRepository = IngestionRepository()
     val services = ApplicationServices(
         database = database,
@@ -31,11 +31,11 @@ fun Application.module() {
         clock = clock,
         ingestionService = IngestionService(
             database = database,
-            derivationService = CanonicalDerivationService(),
+            mappingService = IngestionMappingService(),
             supportRepository = supportRepository,
             ingestionRepository = ingestionRepository,
-            canonicalWriteRepository = canonicalWriteRepository,
-            stepSummaryService = StepSummaryService(canonicalWriteRepository),
+            metricsWriteRepository = metricsWriteRepository,
+            stepSummaryService = StepSummaryService(metricsWriteRepository),
         ),
         metricsQueryService = MetricsQueryService(
             database = database,

@@ -1,12 +1,12 @@
 package me.aquitano.health.application
 
 import kotlinx.coroutines.Dispatchers
-import me.aquitano.health.api.dto.CanonicalCreatedCountsResponse
-import me.aquitano.health.api.dto.CanonicalSkippedCountsResponse
+import me.aquitano.health.api.dto.MetricCreatedCountsResponse
+import me.aquitano.health.api.dto.MetricSkippedCountsResponse
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
 import me.aquitano.health.domain.*
-import me.aquitano.health.infrastructure.repositories.CanonicalWriteRepository
+import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.shared.AppJson
@@ -16,17 +16,17 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 
 class IngestionService(
     private val database: Database,
-    private val derivationService: CanonicalDerivationService,
+    private val mappingService: IngestionMappingService,
     private val supportRepository: SupportRepository,
     private val ingestionRepository: IngestionRepository,
-    private val canonicalWriteRepository: CanonicalWriteRepository,
+    private val metricsWriteRepository: MetricsWriteRepository,
     private val stepSummaryService: StepSummaryService,
 ) {
     suspend fun ingestBatch(
         request: IngestionBatchRequest,
         now: java.time.Instant
     ): IngestionSummaryResponse {
-        val validated = derivationService.validateAndMap(request)
+        val validated = mappingService.validateAndMap(request)
         val transactionResult =
             newSuspendedTransaction(Dispatchers.IO, db = database) {
                 val sourceInstance =
@@ -50,15 +50,15 @@ class IngestionService(
                             status = existingBatch.status,
                             duplicateBatch = true,
                             recordsReceived = validated.records.size,
-                            rawRecordsStored = 0,
-                            canonicalRecordsCreated = CanonicalCreatedCountsResponse(
+                            ingestionRecordsStored = 0,
+                            metricsCreated = MetricCreatedCountsResponse(
                                 0,
                                 0,
                                 0,
                                 0,
                                 0
                             ),
-                            canonicalRecordsSkipped = CanonicalSkippedCountsResponse(
+                            metricsSkipped = MetricSkippedCountsResponse(
                                 duplicates = 0
                             ),
                             affectedStepSummaryDates = emptyList(),
@@ -69,29 +69,29 @@ class IngestionService(
                 val batchId = ingestionRepository.insertBatch(
                     sourceInstanceId = sourceInstance.id,
                     batchExternalId = validated.batchExternalId,
-                    rawPayloadJson = AppJson.encodeToString(validated.rawPayload),
-                    mappedPayloadJson = validated.mappedPayloadJson,
+                    sourcePayloadJson = AppJson.encodeToString(validated.sourcePayload),
+                    normalizedPayloadJson = validated.normalizedPayloadJson,
                     ingestedAt = validated.ingestedAt,
                     receivedAt = now,
                 )
-                val rawRecords = ingestionRepository.insertRawRecords(
+                val ingestionRecords = ingestionRepository.insertRecords(
                     batchId,
                     validated.records,
                     now
                 )
 
-                var created = CanonicalCreatedCounts()
+                var created = MetricCreatedCounts()
                 var duplicateSkipped = 0
                 val affectedDates = linkedSetOf<java.time.LocalDate>()
 
                 try {
-                    rawRecords.forEach { rawRecord ->
-                        when (val record = rawRecord.record) {
+                    ingestionRecords.forEach { ingestionRecord ->
+                        when (val record = ingestionRecord.record) {
                             is StepIntervalRecord -> {
                                 val inserted =
-                                    canonicalWriteRepository.insertStepSample(
+                                    metricsWriteRepository.insertStepSample(
                                         sourceInstance.id,
-                                        rawRecord.id,
+                                        ingestionRecord.id,
                                         record,
                                         now
                                     )
@@ -106,9 +106,9 @@ class IngestionService(
 
                             is SleepSessionRecord -> {
                                 val sessionId =
-                                    canonicalWriteRepository.insertSleepSession(
+                                    metricsWriteRepository.insertSleepSession(
                                         sourceInstance.id,
-                                        rawRecord.id,
+                                        ingestionRecord.id,
                                         record,
                                         now
                                     )
@@ -124,9 +124,9 @@ class IngestionService(
 
                             is BodyMeasurementRecord -> {
                                 val inserted =
-                                    canonicalWriteRepository.insertBodyMeasurements(
+                                    metricsWriteRepository.insertBodyMeasurements(
                                         sourceInstance.id,
-                                        rawRecord.id,
+                                        ingestionRecord.id,
                                         record,
                                         now
                                     )
@@ -137,9 +137,9 @@ class IngestionService(
 
                             is HeartRateRecord -> {
                                 val inserted =
-                                    canonicalWriteRepository.insertHeartRateSample(
+                                    metricsWriteRepository.insertHeartRateSample(
                                         sourceInstance.id,
-                                        rawRecord.id,
+                                        ingestionRecord.id,
                                         record,
                                         now
                                     )
@@ -175,15 +175,15 @@ class IngestionService(
                         status = "processed",
                         duplicateBatch = false,
                         recordsReceived = validated.records.size,
-                        rawRecordsStored = rawRecords.size,
-                        canonicalRecordsCreated = CanonicalCreatedCountsResponse(
+                        ingestionRecordsStored = ingestionRecords.size,
+                        metricsCreated = MetricCreatedCountsResponse(
                             stepSamples = created.stepSamples,
                             sleepSessions = created.sleepSessions,
                             sleepStages = created.sleepStages,
                             bodyMeasurements = created.bodyMeasurements,
                             heartRateSamples = created.heartRateSamples,
                         ),
-                        canonicalRecordsSkipped = CanonicalSkippedCountsResponse(
+                        metricsSkipped = MetricSkippedCountsResponse(
                             duplicates = duplicateSkipped
                         ),
                         affectedStepSummaryDates = affectedDates.map { it.toString() },

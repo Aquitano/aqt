@@ -7,7 +7,7 @@ import me.aquitano.health.shared.AppJson
 import java.time.Instant
 import java.util.*
 
-class CanonicalDerivationService {
+class IngestionMappingService {
     fun validateAndMap(request: IngestionBatchRequest): ValidatedIngestionBatch {
         val issues = mutableListOf<ValidationIssue>()
         val provider = normalizeProvider(request.provider, issues)
@@ -19,8 +19,8 @@ class CanonicalDerivationService {
         val batchExternalId =
             optionalNonBlank(request.batchExternalId, "batchExternalId", issues)
         val ingestedAt = parseInstant(request.ingestedAt, "ingestedAt", issues)
-        val rawPayload = request.rawPayload ?: JsonNull.also {
-            issues.add(ValidationIssue("rawPayload", "is required"))
+        val sourcePayload = request.sourcePayload ?: JsonNull.also {
+            issues.add(ValidationIssue("sourcePayload", "is required"))
         }
         val inputRecords = request.records
         if (inputRecords == null) {
@@ -50,13 +50,13 @@ class CanonicalDerivationService {
 
         if (issues.isNotEmpty()) throw RequestValidationException(issues)
 
-        val mappedPayloadJson = AppJson.encodeToString(
+        val normalizedPayloadJson = AppJson.encodeToString(
             buildJsonObject {
                 put("provider", provider)
                 put("providerInstanceId", providerInstanceId)
                 batchExternalId?.let { put("batchExternalId", it) }
                 put("ingestedAt", ingestedAt!!.toString())
-                put("records", JsonArray(records.map { it.recordJson }))
+                put("records", JsonArray(records.map { it.normalizedRecordJson }))
             },
         )
 
@@ -65,8 +65,8 @@ class CanonicalDerivationService {
             providerInstanceId = providerInstanceId!!,
             batchExternalId = batchExternalId,
             ingestedAt = ingestedAt!!,
-            rawPayload = rawPayload,
-            mappedPayloadJson = mappedPayloadJson,
+            sourcePayload = sourcePayload,
+            normalizedPayloadJson = normalizedPayloadJson,
             records = records,
         )
     }
@@ -75,7 +75,7 @@ class CanonicalDerivationService {
         index: Int,
         record: JsonObject,
         issues: MutableList<ValidationIssue>
-    ): CanonicalRecord? {
+    ): HealthRecord? {
         val field = "records[$index]"
         val type = string(record, "type", "$field.type", issues) ?: return null
         return when (type) {

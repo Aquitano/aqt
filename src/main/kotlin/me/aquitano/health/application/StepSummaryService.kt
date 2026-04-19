@@ -1,11 +1,11 @@
 package me.aquitano.health.application
 
-import me.aquitano.health.infrastructure.repositories.CanonicalWriteRepository
+import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
 import java.time.Instant
 import java.time.LocalDate
 
 class StepSummaryService(
-    private val canonicalWriteRepository: CanonicalWriteRepository,
+    private val metricsWriteRepository: MetricsWriteRepository,
 ) {
     fun recompute(
         sourceInstanceId: Int,
@@ -13,7 +13,7 @@ class StepSummaryService(
         computedAt: Instant
     ) {
         dates.forEach { date ->
-            canonicalWriteRepository.recomputeStepDailySummary(
+            metricsWriteRepository.recomputeStepDailySummary(
                 sourceInstanceId,
                 date,
                 computedAt

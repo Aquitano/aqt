@@ -5,8 +5,8 @@ import org.jetbrains.exposed.dao.id.IntIdTable
 object StepSamplesTable : IntIdTable("step_samples") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)
-    val rawRecordId =
-        integer("raw_record_id").references(RawIngestionRecordsTable.id)
+    val ingestionRecordId =
+        integer("ingestion_record_id").references(IngestionRecordsTable.id)
             .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val startAt = text("start_at")
@@ -31,8 +31,8 @@ object StepDailySummariesTable : IntIdTable("step_daily_summaries") {
 object SleepSessionsTable : IntIdTable("sleep_sessions") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)
-    val rawRecordId =
-        integer("raw_record_id").references(RawIngestionRecordsTable.id)
+    val ingestionRecordId =
+        integer("ingestion_record_id").references(IngestionRecordsTable.id)
             .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val startAt = text("start_at")
@@ -53,8 +53,8 @@ object SleepStagesTable : IntIdTable("sleep_stages") {
 object BodyMeasurementsTable : IntIdTable("body_measurements") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)
-    val rawRecordId =
-        integer("raw_record_id").references(RawIngestionRecordsTable.id)
+    val ingestionRecordId =
+        integer("ingestion_record_id").references(IngestionRecordsTable.id)
             .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val measuredAt = text("measured_at")
@@ -67,8 +67,8 @@ object BodyMeasurementsTable : IntIdTable("body_measurements") {
 object HeartRateSamplesTable : IntIdTable("heart_rate_samples") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)
-    val rawRecordId =
-        integer("raw_record_id").references(RawIngestionRecordsTable.id)
+    val ingestionRecordId =
+        integer("ingestion_record_id").references(IngestionRecordsTable.id)
             .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val measuredAt = text("measured_at")
