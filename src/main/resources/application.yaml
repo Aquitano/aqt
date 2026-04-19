@@ -1,6 +1,14 @@
 ktor:
   application:
     modules:
-      - me.aquitano.ApplicationKt.module
+      - me.aquitano.health.api.ApplicationKt.module
   deployment:
-    port: 8080
+    port: "$PORT:8080"
+
+aqtHealth:
+  database:
+    jdbcUrl: "$AQT_HEALTH_JDBC_URL:jdbc:sqlite:./data/aqt-health.db"
+    driver: "org.sqlite.JDBC"
+  auth:
+    bootstrapClientName: "$AQT_HEALTH_BOOTSTRAP_CLIENT_NAME:local-admin"
+    bootstrapApiKey: "$AQT_HEALTH_BOOTSTRAP_API_KEY:"
