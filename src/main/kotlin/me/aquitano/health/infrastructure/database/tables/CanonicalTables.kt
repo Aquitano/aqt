@@ -3,8 +3,11 @@ package me.aquitano.health.infrastructure.database.tables
 import org.jetbrains.exposed.dao.id.IntIdTable
 
 object StepSamplesTable : IntIdTable("step_samples") {
-    val sourceInstanceId = integer("source_instance_id").references(SourceInstancesTable.id)
-    val rawRecordId = integer("raw_record_id").references(RawIngestionRecordsTable.id).nullable()
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
+    val rawRecordId =
+        integer("raw_record_id").references(RawIngestionRecordsTable.id)
+            .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val startAt = text("start_at")
     val endAt = text("end_at")
@@ -14,7 +17,8 @@ object StepSamplesTable : IntIdTable("step_samples") {
 
 object StepDailySummariesTable : IntIdTable("step_daily_summaries") {
     val date = text("date")
-    val sourceInstanceId = integer("source_instance_id").references(SourceInstancesTable.id)
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
     val steps = integer("steps")
     val sampleCount = integer("sample_count")
     val computedAt = text("computed_at")
@@ -25,8 +29,11 @@ object StepDailySummariesTable : IntIdTable("step_daily_summaries") {
 }
 
 object SleepSessionsTable : IntIdTable("sleep_sessions") {
-    val sourceInstanceId = integer("source_instance_id").references(SourceInstancesTable.id)
-    val rawRecordId = integer("raw_record_id").references(RawIngestionRecordsTable.id).nullable()
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
+    val rawRecordId =
+        integer("raw_record_id").references(RawIngestionRecordsTable.id)
+            .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val startAt = text("start_at")
     val endAt = text("end_at")
@@ -35,7 +42,8 @@ object SleepSessionsTable : IntIdTable("sleep_sessions") {
 }
 
 object SleepStagesTable : IntIdTable("sleep_stages") {
-    val sleepSessionId = integer("sleep_session_id").references(SleepSessionsTable.id)
+    val sleepSessionId =
+        integer("sleep_session_id").references(SleepSessionsTable.id)
     val stage = text("stage")
     val startAt = text("start_at")
     val endAt = text("end_at")
@@ -43,8 +51,11 @@ object SleepStagesTable : IntIdTable("sleep_stages") {
 }
 
 object BodyMeasurementsTable : IntIdTable("body_measurements") {
-    val sourceInstanceId = integer("source_instance_id").references(SourceInstancesTable.id)
-    val rawRecordId = integer("raw_record_id").references(RawIngestionRecordsTable.id).nullable()
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
+    val rawRecordId =
+        integer("raw_record_id").references(RawIngestionRecordsTable.id)
+            .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val measuredAt = text("measured_at")
     val metricType = text("metric_type")
@@ -54,8 +65,11 @@ object BodyMeasurementsTable : IntIdTable("body_measurements") {
 }
 
 object HeartRateSamplesTable : IntIdTable("heart_rate_samples") {
-    val sourceInstanceId = integer("source_instance_id").references(SourceInstancesTable.id)
-    val rawRecordId = integer("raw_record_id").references(RawIngestionRecordsTable.id).nullable()
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
+    val rawRecordId =
+        integer("raw_record_id").references(RawIngestionRecordsTable.id)
+            .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val measuredAt = text("measured_at")
     val bpm = integer("bpm")

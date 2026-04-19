@@ -20,7 +20,10 @@ class DatabaseFactory(
         if (!jdbcUrl.startsWith(prefix)) return
 
         val location = jdbcUrl.removePrefix(prefix)
-        if (location.isBlank() || location == ":memory:" || location.startsWith("file:")) return
+        if (location.isBlank() || location == ":memory:" || location.startsWith(
+                "file:"
+            )
+        ) return
 
         val parent = Path.of(location).toAbsolutePath().parent ?: return
         Files.createDirectories(parent)

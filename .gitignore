@@ -30,6 +30,14 @@ data/
 *.db
 *.db-shm
 *.db-wal
+.env
+.env.*
+!.env.example
+application-local.yaml
+docs/index.html
+docs/.swagger-codegen/
+docs/.swagger-codegen-ignore
+aqt-health.yaml
 
 ### NetBeans ###
 /nbproject/private/

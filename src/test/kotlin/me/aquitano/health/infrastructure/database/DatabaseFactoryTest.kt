@@ -46,7 +46,10 @@ class DatabaseFactoryTest {
         val database = DatabaseFactory().initialize(tempDatabaseConfig())
         val hasher = ApiKeyHasher()
         ApiClientBootstrapService(
-            authConfig = AuthConfig(bootstrapClientName = "test-client", bootstrapApiKey = "plain-test-key"),
+            authConfig = AuthConfig(
+                bootstrapClientName = "test-client",
+                bootstrapApiKey = "plain-test-key"
+            ),
             supportRepository = SupportRepository(database),
             apiKeyHasher = hasher,
             clock = UtcClock.fixed(Instant.parse("2026-04-19T10:00:00Z")),

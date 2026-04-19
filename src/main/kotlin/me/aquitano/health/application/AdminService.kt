@@ -15,8 +15,20 @@ class AdminService(
 ) {
     suspend fun listBatches(params: QueryParams): IngestionBatchesResponse {
         val status = params.optional("status")
-        if (status != null && status !in setOf("received", "processed", "failed")) {
-            throw RequestValidationException(listOf(ValidationIssue("status", "unsupported batch status")))
+        if (status != null && status !in setOf(
+                "received",
+                "processed",
+                "failed"
+            )
+        ) {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        "status",
+                        "unsupported batch status"
+                    )
+                )
+            )
         }
         val from = params.instant("from")
         val to = params.instant("to")
@@ -24,20 +36,21 @@ class AdminService(
         val limit = params.limit(default = 100, max = 1000)
         return dbQuery {
             IngestionBatchesResponse(
-                items = ingestionRepository.listBatches(status, from, to, limit).map {
-                    IngestionBatchAdminResponse(
-                        id = it.id,
-                        provider = it.provider,
-                        providerInstanceId = it.providerInstanceId,
-                        batchExternalId = it.batchExternalId,
-                        status = it.status,
-                        ingestedAt = it.ingestedAt,
-                        receivedAt = it.receivedAt,
-                        processedAt = it.processedAt,
-                        errorMessage = it.errorMessage,
-                        recordCount = it.recordCount,
-                    )
-                },
+                items = ingestionRepository.listBatches(status, from, to, limit)
+                    .map {
+                        IngestionBatchAdminResponse(
+                            id = it.id,
+                            provider = it.provider,
+                            providerInstanceId = it.providerInstanceId,
+                            batchExternalId = it.batchExternalId,
+                            status = it.status,
+                            ingestedAt = it.ingestedAt,
+                            receivedAt = it.receivedAt,
+                            processedAt = it.processedAt,
+                            errorMessage = it.errorMessage,
+                            recordCount = it.recordCount,
+                        )
+                    },
             )
         }
     }

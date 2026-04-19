@@ -10,6 +10,7 @@ class UtcClock(
     fun now(): Instant = Instant.now(clock)
 
     companion object {
-        fun fixed(instant: Instant): UtcClock = UtcClock(Clock.fixed(instant, ZoneOffset.UTC))
+        fun fixed(instant: Instant): UtcClock =
+            UtcClock(Clock.fixed(instant, ZoneOffset.UTC))
     }
 }

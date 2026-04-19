@@ -1,16 +1,10 @@
 package me.aquitano.health.api
 
-import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.contentType
-import io.ktor.server.config.MapApplicationConfig
-import io.ktor.server.testing.ApplicationTestBuilder
-import io.ktor.server.testing.testApplication
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import io.ktor.server.config.*
+import io.ktor.server.testing.*
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
@@ -74,23 +68,47 @@ class IngestionRouteTest {
         val body = response.jsonBody()
         assertEquals(4, body["recordsReceived"]!!.jsonPrimitive.int)
         assertEquals(4, body["rawRecordsStored"]!!.jsonPrimitive.int)
-        assertEquals(1, body["canonicalRecordsCreated"]!!.jsonObject["stepSamples"]!!.jsonPrimitive.int)
-        assertEquals(1, body["canonicalRecordsCreated"]!!.jsonObject["sleepSessions"]!!.jsonPrimitive.int)
-        assertEquals(2, body["canonicalRecordsCreated"]!!.jsonObject["sleepStages"]!!.jsonPrimitive.int)
-        assertEquals(5, body["canonicalRecordsCreated"]!!.jsonObject["bodyMeasurements"]!!.jsonPrimitive.int)
-        assertEquals(1, body["canonicalRecordsCreated"]!!.jsonObject["heartRateSamples"]!!.jsonPrimitive.int)
+        assertEquals(
+            1,
+            body["canonicalRecordsCreated"]!!.jsonObject["stepSamples"]!!.jsonPrimitive.int
+        )
+        assertEquals(
+            1,
+            body["canonicalRecordsCreated"]!!.jsonObject["sleepSessions"]!!.jsonPrimitive.int
+        )
+        assertEquals(
+            2,
+            body["canonicalRecordsCreated"]!!.jsonObject["sleepStages"]!!.jsonPrimitive.int
+        )
+        assertEquals(
+            5,
+            body["canonicalRecordsCreated"]!!.jsonObject["bodyMeasurements"]!!.jsonPrimitive.int
+        )
+        assertEquals(
+            1,
+            body["canonicalRecordsCreated"]!!.jsonObject["heartRateSamples"]!!.jsonPrimitive.int
+        )
 
         assertEquals(1, countRows(dbPath, "raw_ingestion_batches"))
         assertEquals(4, countRows(dbPath, "raw_ingestion_records"))
         assertEquals(1, countRows(dbPath, "step_samples"))
         assertEquals(1, countRows(dbPath, "step_daily_summaries"))
-        assertEquals(1200, singleInt(dbPath, "SELECT steps FROM step_daily_summaries"))
+        assertEquals(
+            1200,
+            singleInt(dbPath, "SELECT steps FROM step_daily_summaries")
+        )
         assertEquals(1, countRows(dbPath, "sleep_sessions"))
         assertEquals(2, countRows(dbPath, "sleep_stages"))
         assertEquals(5, countRows(dbPath, "body_measurements"))
         assertEquals(1, countRows(dbPath, "heart_rate_samples"))
-        assertEquals("processed", singleString(dbPath, "SELECT status FROM raw_ingestion_batches"))
-        assertEquals("unknown", singleString(dbPath, "SELECT context FROM heart_rate_samples"))
+        assertEquals(
+            "processed",
+            singleString(dbPath, "SELECT status FROM raw_ingestion_batches")
+        )
+        assertEquals(
+            "unknown",
+            singleString(dbPath, "SELECT context FROM heart_rate_samples")
+        )
     }
 
     @Test
@@ -110,31 +128,41 @@ class IngestionRouteTest {
 
         assertEquals(HttpStatusCode.Created, first.status)
         assertEquals(HttpStatusCode.OK, second.status)
-        assertEquals(true, second.jsonBody()["duplicateBatch"]!!.jsonPrimitive.content == "true")
+        assertEquals(
+            true,
+            second.jsonBody()["duplicateBatch"]!!.jsonPrimitive.content == "true"
+        )
         assertEquals(1, countRows(dbPath, "raw_ingestion_batches"))
         assertEquals(1, countRows(dbPath, "raw_ingestion_records"))
         assertEquals(1, countRows(dbPath, "step_samples"))
-        assertEquals(1200, singleInt(dbPath, "SELECT steps FROM step_daily_summaries"))
+        assertEquals(
+            1200,
+            singleInt(dbPath, "SELECT steps FROM step_daily_summaries")
+        )
     }
 
     @Test
-    fun providerRecordDuplicatesDoNotInflateCanonicalTables() = testApplication {
-        val dbPath = configureTestApplication()
+    fun providerRecordDuplicatesDoNotInflateCanonicalTables() =
+        testApplication {
+            val dbPath = configureTestApplication()
 
-        repeat(2) {
-            val response = client.post("/api/v1/ingestion/batches") {
-                authorized()
-                contentType(ContentType.Application.Json)
-                setBody(minimalStepPayload(batchExternalId = null))
+            repeat(2) {
+                val response = client.post("/api/v1/ingestion/batches") {
+                    authorized()
+                    contentType(ContentType.Application.Json)
+                    setBody(minimalStepPayload(batchExternalId = null))
+                }
+                assertEquals(HttpStatusCode.Created, response.status)
             }
-            assertEquals(HttpStatusCode.Created, response.status)
-        }
 
-        assertEquals(2, countRows(dbPath, "raw_ingestion_batches"))
-        assertEquals(2, countRows(dbPath, "raw_ingestion_records"))
-        assertEquals(1, countRows(dbPath, "step_samples"))
-        assertEquals(1200, singleInt(dbPath, "SELECT steps FROM step_daily_summaries"))
-    }
+            assertEquals(2, countRows(dbPath, "raw_ingestion_batches"))
+            assertEquals(2, countRows(dbPath, "raw_ingestion_records"))
+            assertEquals(1, countRows(dbPath, "step_samples"))
+            assertEquals(
+                1200,
+                singleInt(dbPath, "SELECT steps FROM step_daily_summaries")
+            )
+        }
 
     private fun ApplicationTestBuilder.configureTestApplication(): Path {
         val dbPath = Files.createTempFile("aqt-health-ingestion-test", ".db")
@@ -151,14 +179,14 @@ class IngestionRouteTest {
         return dbPath
     }
 
-    private fun io.ktor.client.request.HttpRequestBuilder.authorized() {
+    private fun HttpRequestBuilder.authorized() {
         header(HttpHeaders.Authorization, "Bearer test-key")
     }
 
-    private suspend fun io.ktor.client.statement.HttpResponse.jsonBody(): JsonObject =
+    private suspend fun HttpResponse.jsonBody(): JsonObject =
         AppJson.parseToJsonElement(bodyAsText()).jsonObject
 
-    private suspend fun io.ktor.client.statement.HttpResponse.errorCode(): String =
+    private suspend fun HttpResponse.errorCode(): String =
         jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
 
     private fun countRows(dbPath: Path, tableName: String): Int =
@@ -185,7 +213,8 @@ class IngestionRouteTest {
         }
 
     private fun minimalStepPayload(batchExternalId: String? = "steps-1-batch"): String {
-        val batch = batchExternalId?.let { """"batchExternalId": "$it",""" } ?: ""
+        val batch =
+            batchExternalId?.let { """"batchExternalId": "$it",""" } ?: ""
         return """
             {
               "provider": "health_connect",

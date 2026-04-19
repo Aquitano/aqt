@@ -1,18 +1,7 @@
 package me.aquitano.health.infrastructure.repositories
 
-import me.aquitano.health.infrastructure.database.tables.BodyMeasurementsTable
-import me.aquitano.health.infrastructure.database.tables.HeartRateSamplesTable
-import me.aquitano.health.infrastructure.database.tables.SleepSessionsTable
-import me.aquitano.health.infrastructure.database.tables.SleepStagesTable
-import me.aquitano.health.infrastructure.database.tables.SourceInstancesTable
-import me.aquitano.health.infrastructure.database.tables.SourcesTable
-import me.aquitano.health.infrastructure.database.tables.StepDailySummariesTable
-import me.aquitano.health.infrastructure.database.tables.StepSamplesTable
-import org.jetbrains.exposed.sql.Op
-import org.jetbrains.exposed.sql.ResultRow
-import org.jetbrains.exposed.sql.SortOrder
-import org.jetbrains.exposed.sql.and
-import org.jetbrains.exposed.sql.selectAll
+import me.aquitano.health.infrastructure.database.tables.*
+import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
@@ -44,10 +33,36 @@ data class DailyReadFilters(
     val limit: Int,
 )
 
-data class StepSampleRow(val id: Int, val sourceInstanceId: Int, val startAt: String, val endAt: String, val steps: Int)
-data class StepDailySummaryRow(val sourceInstanceId: Int, val date: String, val steps: Int, val sampleCount: Int)
-data class SleepSessionRow(val id: Int, val sourceInstanceId: Int, val startAt: String, val endAt: String, val durationSeconds: Long)
-data class SleepStageRow(val stage: String, val startAt: String, val endAt: String, val durationSeconds: Long)
+data class StepSampleRow(
+    val id: Int,
+    val sourceInstanceId: Int,
+    val startAt: String,
+    val endAt: String,
+    val steps: Int
+)
+
+data class StepDailySummaryRow(
+    val sourceInstanceId: Int,
+    val date: String,
+    val steps: Int,
+    val sampleCount: Int
+)
+
+data class SleepSessionRow(
+    val id: Int,
+    val sourceInstanceId: Int,
+    val startAt: String,
+    val endAt: String,
+    val durationSeconds: Long
+)
+
+data class SleepStageRow(
+    val stage: String,
+    val startAt: String,
+    val endAt: String,
+    val durationSeconds: Long
+)
+
 data class BodyMeasurementRow(
     val id: Int,
     val sourceInstanceId: Int,
@@ -56,6 +71,7 @@ data class BodyMeasurementRow(
     val value: Double,
     val unit: String,
 )
+
 data class HeartRateSampleRow(
     val id: Int,
     val sourceInstanceId: Int,
@@ -66,7 +82,8 @@ data class HeartRateSampleRow(
 
 class MetricsReadRepository {
     fun listStepSamples(filters: ReadFilters): Pair<List<StepSampleRow>, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        val sourceIds =
+            sourceInstanceIds(filters.provider, filters.providerInstanceId)
         if (sourceIds != null && sourceIds.isEmpty()) return emptyList<StepSampleRow>() to emptyMap()
         val conditions = mutableListOf<Op<Boolean>>()
         filters.from?.let { conditions.add(StepSamplesTable.startAt greaterEq it.toString()) }
@@ -85,11 +102,15 @@ class MetricsReadRepository {
                     steps = it[StepSamplesTable.steps],
                 )
             }
-        return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
+        return rows to sourceMetadata(
+            rows.map { it.sourceInstanceId }.toSet(),
+            filters.includeSource
+        )
     }
 
     fun listStepDailySummaries(filters: DailyReadFilters): Pair<List<StepDailySummaryRow>, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        val sourceIds =
+            sourceInstanceIds(filters.provider, filters.providerInstanceId)
         if (sourceIds != null && sourceIds.isEmpty()) return emptyList<StepDailySummaryRow>() to emptyMap()
         val conditions = mutableListOf<Op<Boolean>>()
         filters.fromDate?.let { conditions.add(StepDailySummariesTable.date greaterEq it.toString()) }
@@ -107,12 +128,20 @@ class MetricsReadRepository {
                     sampleCount = it[StepDailySummariesTable.sampleCount],
                 )
             }
-        return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
+        return rows to sourceMetadata(
+            rows.map { it.sourceInstanceId }.toSet(),
+            filters.includeSource
+        )
     }
 
     fun listSleepSessions(filters: ReadFilters): Triple<List<SleepSessionRow>, Map<Int, List<SleepStageRow>>, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return Triple(emptyList(), emptyMap(), emptyMap())
+        val sourceIds =
+            sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        if (sourceIds != null && sourceIds.isEmpty()) return Triple(
+            emptyList(),
+            emptyMap(),
+            emptyMap()
+        )
         val conditions = mutableListOf<Op<Boolean>>()
         filters.from?.let { conditions.add(SleepSessionsTable.startAt greaterEq it.toString()) }
         filters.to?.let { conditions.add(SleepSessionsTable.startAt less it.toString()) }
@@ -131,12 +160,19 @@ class MetricsReadRepository {
                 )
             }
         val stagesBySession = sleepStagesBySession(sessions.map { it.id })
-        val metadata = sourceMetadata(sessions.map { it.sourceInstanceId }.toSet(), filters.includeSource)
+        val metadata = sourceMetadata(
+            sessions.map { it.sourceInstanceId }.toSet(),
+            filters.includeSource
+        )
         return Triple(sessions, stagesBySession, metadata)
     }
 
-    fun listBodyMeasurements(filters: ReadFilters, metricType: String?): Pair<List<BodyMeasurementRow>, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
+    fun listBodyMeasurements(
+        filters: ReadFilters,
+        metricType: String?
+    ): Pair<List<BodyMeasurementRow>, Map<Int, SourceMetadata>> {
+        val sourceIds =
+            sourceInstanceIds(filters.provider, filters.providerInstanceId)
         if (sourceIds != null && sourceIds.isEmpty()) return emptyList<BodyMeasurementRow>() to emptyMap()
         val conditions = mutableListOf<Op<Boolean>>()
         filters.from?.let { conditions.add(BodyMeasurementsTable.measuredAt greaterEq it.toString()) }
@@ -157,11 +193,15 @@ class MetricsReadRepository {
                     unit = it[BodyMeasurementsTable.unit],
                 )
             }
-        return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
+        return rows to sourceMetadata(
+            rows.map { it.sourceInstanceId }.toSet(),
+            filters.includeSource
+        )
     }
 
     fun listHeartRateSamples(filters: ReadFilters): Pair<List<HeartRateSampleRow>, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        val sourceIds =
+            sourceInstanceIds(filters.provider, filters.providerInstanceId)
         if (sourceIds != null && sourceIds.isEmpty()) return emptyList<HeartRateSampleRow>() to emptyMap()
         val conditions = mutableListOf<Op<Boolean>>()
         filters.from?.let { conditions.add(HeartRateSamplesTable.measuredAt greaterEq it.toString()) }
@@ -180,10 +220,16 @@ class MetricsReadRepository {
                     context = it[HeartRateSamplesTable.context] ?: "unknown",
                 )
             }
-        return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
+        return rows to sourceMetadata(
+            rows.map { it.sourceInstanceId }.toSet(),
+            filters.includeSource
+        )
     }
 
-    private fun sourceInstanceIds(provider: String?, providerInstanceId: String?): List<Int>? {
+    private fun sourceInstanceIds(
+        provider: String?,
+        providerInstanceId: String?
+    ): List<Int>? {
         if (provider == null && providerInstanceId == null) return null
         val join = SourceInstancesTable.innerJoin(SourcesTable)
         val conditions = mutableListOf<Op<Boolean>>()
@@ -194,7 +240,10 @@ class MetricsReadRepository {
             .map { it[SourceInstancesTable.id].value }
     }
 
-    private fun sourceMetadata(sourceInstanceIds: Set<Int>, includeSource: Boolean): Map<Int, SourceMetadata> {
+    private fun sourceMetadata(
+        sourceInstanceIds: Set<Int>,
+        includeSource: Boolean
+    ): Map<Int, SourceMetadata> {
         if (!includeSource || sourceInstanceIds.isEmpty()) return emptyMap()
         return SourceInstancesTable.innerJoin(SourcesTable)
             .selectAll()

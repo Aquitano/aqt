@@ -1,6 +1,6 @@
 package me.aquitano.health.infrastructure.config
 
-import io.ktor.server.config.ApplicationConfig
+import io.ktor.server.config.*
 
 data class AppConfig(
     val database: DatabaseConfig,

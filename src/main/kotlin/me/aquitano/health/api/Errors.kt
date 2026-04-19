@@ -1,11 +1,10 @@
 package me.aquitano.health.api
 
-import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.Application
-import io.ktor.server.application.install
-import io.ktor.server.plugins.BadRequestException
-import io.ktor.server.plugins.statuspages.StatusPages
-import io.ktor.server.response.respond
+import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.plugins.*
+import io.ktor.server.plugins.statuspages.*
+import io.ktor.server.response.*
 import kotlinx.serialization.Serializable
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.UnauthorizedException
@@ -15,7 +14,12 @@ fun Application.configureErrorHandling() {
         exception<UnauthorizedException> { call, _ ->
             call.respond(
                 HttpStatusCode.Unauthorized,
-                ErrorResponse(ErrorBody(code = "unauthorized", message = "Missing or invalid API key")),
+                ErrorResponse(
+                    ErrorBody(
+                        code = "unauthorized",
+                        message = "Missing or invalid API key"
+                    )
+                ),
             )
         }
         exception<RequestValidationException> { call, cause ->
@@ -25,7 +29,12 @@ fun Application.configureErrorHandling() {
                     ErrorBody(
                         code = "validation_failed",
                         message = "Request validation failed",
-                        details = cause.issues.map { ErrorDetail(field = it.field, message = it.message) },
+                        details = cause.issues.map {
+                            ErrorDetail(
+                                field = it.field,
+                                message = it.message
+                            )
+                        },
                     ),
                 ),
             )
@@ -33,13 +42,23 @@ fun Application.configureErrorHandling() {
         exception<BadRequestException> { call, _ ->
             call.respond(
                 HttpStatusCode.BadRequest,
-                ErrorResponse(ErrorBody(code = "validation_failed", message = "Request validation failed")),
+                ErrorResponse(
+                    ErrorBody(
+                        code = "validation_failed",
+                        message = "Request validation failed"
+                    )
+                ),
             )
         }
         exception<Throwable> { call, _ ->
             call.respond(
                 HttpStatusCode.InternalServerError,
-                ErrorResponse(ErrorBody(code = "internal_error", message = "Unexpected server error")),
+                ErrorResponse(
+                    ErrorBody(
+                        code = "internal_error",
+                        message = "Unexpected server error"
+                    )
+                ),
             )
         }
     }

@@ -17,7 +17,13 @@ fun Application.configureRoutes(services: ApplicationServices) {
         swaggerUI(path = "swagger", swaggerFile = "openapi/aqt-health.yaml")
 
         get("/api/v1/admin/health") {
-            call.respond(HealthResponse(status = "ok", service = "aqt-health", time = services.clock.now().toString()))
+            call.respond(
+                HealthResponse(
+                    status = "ok",
+                    service = "aqt-health",
+                    time = services.clock.now().toString()
+                )
+            )
         }
         post("/api/v1/ingestion/batches") {
             call.requireApiClient(
@@ -29,7 +35,8 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 request = call.receive<IngestionBatchRequest>(),
                 now = services.clock.now(),
             )
-            val status = if (response.duplicateBatch) HttpStatusCode.OK else HttpStatusCode.Created
+            val status =
+                if (response.duplicateBatch) HttpStatusCode.OK else HttpStatusCode.Created
             call.respond(status, response)
         }
         get("/api/v1/metrics/steps") {
@@ -38,7 +45,11 @@ fun Application.configureRoutes(services: ApplicationServices) {
         }
         get("/api/v1/metrics/steps/daily") {
             call.authenticateProtected(services)
-            call.respond(services.metricsQueryService.listStepDailySummaries(call.queryParams()))
+            call.respond(
+                services.metricsQueryService.listStepDailySummaries(
+                    call.queryParams()
+                )
+            )
         }
         get("/api/v1/sleep/sessions") {
             call.authenticateProtected(services)
@@ -70,7 +81,9 @@ data class HealthResponse(
     val time: String,
 )
 
-private suspend fun io.ktor.server.application.ApplicationCall.authenticateProtected(services: ApplicationServices) {
+private suspend fun ApplicationCall.authenticateProtected(
+    services: ApplicationServices
+) {
     requireApiClient(
         supportRepository = services.supportRepository,
         apiKeyHasher = services.apiKeyHasher,
@@ -78,5 +91,7 @@ private suspend fun io.ktor.server.application.ApplicationCall.authenticateProte
     )
 }
 
-private fun io.ktor.server.application.ApplicationCall.queryParams(): QueryParams =
-    QueryParams(request.queryParameters.entries().associate { it.key to it.value.firstOrNull() })
+private fun ApplicationCall.queryParams(): QueryParams =
+    QueryParams(
+        request.queryParameters.entries()
+            .associate { it.key to it.value.firstOrNull() })

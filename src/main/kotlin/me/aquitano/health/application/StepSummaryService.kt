@@ -7,9 +7,17 @@ import java.time.LocalDate
 class StepSummaryService(
     private val canonicalWriteRepository: CanonicalWriteRepository,
 ) {
-    fun recompute(sourceInstanceId: Int, dates: Set<LocalDate>, computedAt: Instant) {
+    fun recompute(
+        sourceInstanceId: Int,
+        dates: Set<LocalDate>,
+        computedAt: Instant
+    ) {
         dates.forEach { date ->
-            canonicalWriteRepository.recomputeStepDailySummary(sourceInstanceId, date, computedAt)
+            canonicalWriteRepository.recomputeStepDailySummary(
+                sourceInstanceId,
+                date,
+                computedAt
+            )
         }
     }
 }

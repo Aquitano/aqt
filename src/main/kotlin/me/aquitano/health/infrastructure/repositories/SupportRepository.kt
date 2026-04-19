@@ -8,7 +8,6 @@ import me.aquitano.health.infrastructure.database.tables.ApiClientsTable
 import me.aquitano.health.infrastructure.database.tables.SourceInstancesTable
 import me.aquitano.health.infrastructure.database.tables.SourcesTable
 import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -28,9 +27,14 @@ data class ApiClientRef(
 class SupportRepository(
     private val database: Database,
 ) {
-    fun createBootstrapApiClientIfMissing(name: String, apiKeyHash: String, now: Instant) {
+    fun createBootstrapApiClientIfMissing(
+        name: String,
+        apiKeyHash: String,
+        now: Instant
+    ) {
         transaction(database) {
-            val existing = ApiClientDao.find { ApiClientsTable.name eq name }.firstOrNull()
+            val existing =
+                ApiClientDao.find { ApiClientsTable.name eq name }.firstOrNull()
             if (existing == null) {
                 ApiClientDao.new {
                     this.name = name
@@ -43,7 +47,10 @@ class SupportRepository(
         }
     }
 
-    suspend fun findEnabledApiClientByHash(apiKeyHash: String, now: Instant): ApiClientRef? =
+    suspend fun findEnabledApiClientByHash(
+        apiKeyHash: String,
+        now: Instant
+    ): ApiClientRef? =
         dbQuery {
             val client = ApiClientDao
                 .find { (ApiClientsTable.apiKeyHash eq apiKeyHash) and (ApiClientsTable.enabled eq true) }
@@ -53,23 +60,36 @@ class SupportRepository(
             ApiClientRef(id = client.id.value, name = client.name)
         }
 
-    suspend fun resolveOrCreateSourceInstance(provider: String, providerInstanceId: String, now: Instant): SourceInstanceRef =
+    suspend fun resolveOrCreateSourceInstance(
+        provider: String,
+        providerInstanceId: String,
+        now: Instant
+    ): SourceInstanceRef =
         dbQuery {
-            resolveOrCreateSourceInstanceInTransaction(provider, providerInstanceId, now)
+            resolveOrCreateSourceInstanceInTransaction(
+                provider,
+                providerInstanceId,
+                now
+            )
         }
 
-    fun resolveOrCreateSourceInstanceInTransaction(provider: String, providerInstanceId: String, now: Instant): SourceInstanceRef {
-        val source = SourceDao.find { SourcesTable.code eq provider }.firstOrNull()
-            ?: SourceDao.new {
-                code = provider
-                displayName = null
-                createdAt = now.toString()
-            }
+    fun resolveOrCreateSourceInstanceInTransaction(
+        provider: String,
+        providerInstanceId: String,
+        now: Instant
+    ): SourceInstanceRef {
+        val source =
+            SourceDao.find { SourcesTable.code eq provider }.firstOrNull()
+                ?: SourceDao.new {
+                    code = provider
+                    displayName = null
+                    createdAt = now.toString()
+                }
 
         val instance = SourceInstanceDao
             .find {
                 (SourceInstancesTable.sourceId eq source.id) and
-                    (SourceInstancesTable.providerInstanceId eq providerInstanceId)
+                        (SourceInstancesTable.providerInstanceId eq providerInstanceId)
             }
             .firstOrNull()
             ?: SourceInstanceDao.new {

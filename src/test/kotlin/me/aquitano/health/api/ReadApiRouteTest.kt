@@ -1,23 +1,11 @@
 package me.aquitano.health.api
 
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.contentType
-import io.ktor.server.config.MapApplicationConfig
-import io.ktor.server.testing.ApplicationTestBuilder
-import io.ktor.server.testing.testApplication
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import io.ktor.server.config.*
+import io.ktor.server.testing.*
+import kotlinx.serialization.json.*
 import me.aquitano.health.shared.AppJson
 import java.nio.file.Files
 import kotlin.test.Test
@@ -29,14 +17,25 @@ class ReadApiRouteTest {
         configureTestApplication()
         ingestMixedBatch()
 
-        val steps = authorizedGet("/api/v1/metrics/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z&includeSource=true")
+        val steps =
+            authorizedGet("/api/v1/metrics/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z&includeSource=true")
         assertEquals(HttpStatusCode.OK, steps.status)
         assertEquals(1, steps.items().size)
-        assertEquals(1200, steps.items()[0].jsonObject["steps"]!!.jsonPrimitive.int)
-        assertEquals("health_connect", steps.items()[0].jsonObject["source"]!!.jsonObject["provider"]!!.jsonPrimitive.content)
+        assertEquals(
+            1200,
+            steps.items()[0].jsonObject["steps"]!!.jsonPrimitive.int
+        )
+        assertEquals(
+            "health_connect",
+            steps.items()[0].jsonObject["source"]!!.jsonObject["provider"]!!.jsonPrimitive.content
+        )
 
-        val daily = authorizedGet("/api/v1/metrics/steps/daily?fromDate=2026-04-19&toDate=2026-04-19")
-        assertEquals(1200, daily.items()[0].jsonObject["steps"]!!.jsonPrimitive.int)
+        val daily =
+            authorizedGet("/api/v1/metrics/steps/daily?fromDate=2026-04-19&toDate=2026-04-19")
+        assertEquals(
+            1200,
+            daily.items()[0].jsonObject["steps"]!!.jsonPrimitive.int
+        )
 
         val sleep = authorizedGet("/api/v1/sleep/sessions")
         assertEquals(1, sleep.items().size)
@@ -44,15 +43,24 @@ class ReadApiRouteTest {
 
         val body = authorizedGet("/api/v1/body/measurements?metricType=weight")
         assertEquals(1, body.items().size)
-        assertEquals("weight", body.items()[0].jsonObject["metricType"]!!.jsonPrimitive.content)
+        assertEquals(
+            "weight",
+            body.items()[0].jsonObject["metricType"]!!.jsonPrimitive.content
+        )
 
         val heartRate = authorizedGet("/api/v1/metrics/heart-rate")
         assertEquals(1, heartRate.items().size)
-        assertEquals("unknown", heartRate.items()[0].jsonObject["context"]!!.jsonPrimitive.content)
+        assertEquals(
+            "unknown",
+            heartRate.items()[0].jsonObject["context"]!!.jsonPrimitive.content
+        )
 
         val batches = authorizedGet("/api/v1/admin/ingestion/batches")
         assertEquals(1, batches.items().size)
-        assertEquals(4, batches.items()[0].jsonObject["recordCount"]!!.jsonPrimitive.int)
+        assertEquals(
+            4,
+            batches.items()[0].jsonObject["recordCount"]!!.jsonPrimitive.int
+        )
 
         val failures = authorizedGet("/api/v1/admin/ingestion/failures")
         assertEquals(0, failures.items().size)
@@ -65,9 +73,13 @@ class ReadApiRouteTest {
         val unauthorized = client.get("/api/v1/metrics/steps")
         assertEquals(HttpStatusCode.Unauthorized, unauthorized.status)
 
-        val invalidRange = authorizedGet("/api/v1/metrics/steps?from=2026-04-20T00:00:00Z&to=2026-04-19T00:00:00Z")
+        val invalidRange =
+            authorizedGet("/api/v1/metrics/steps?from=2026-04-20T00:00:00Z&to=2026-04-19T00:00:00Z")
         assertEquals(HttpStatusCode.BadRequest, invalidRange.status)
-        assertEquals("validation_failed", invalidRange.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content)
+        assertEquals(
+            "validation_failed",
+            invalidRange.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
+        )
     }
 
     private fun ApplicationTestBuilder.configureTestApplication() {
@@ -98,14 +110,14 @@ class ReadApiRouteTest {
             authorized()
         }
 
-    private fun io.ktor.client.request.HttpRequestBuilder.authorized() {
+    private fun HttpRequestBuilder.authorized() {
         header(HttpHeaders.Authorization, "Bearer test-key")
     }
 
-    private suspend fun io.ktor.client.statement.HttpResponse.jsonBody(): JsonObject =
+    private suspend fun HttpResponse.jsonBody(): JsonObject =
         AppJson.parseToJsonElement(bodyAsText()).jsonObject
 
-    private suspend fun io.ktor.client.statement.HttpResponse.items(): JsonArray =
+    private suspend fun HttpResponse.items(): JsonArray =
         jsonBody()["items"]!!.jsonArray
 
     private fun mixedPayload(): String =

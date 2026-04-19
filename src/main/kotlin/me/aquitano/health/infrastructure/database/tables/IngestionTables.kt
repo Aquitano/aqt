@@ -3,7 +3,8 @@ package me.aquitano.health.infrastructure.database.tables
 import org.jetbrains.exposed.dao.id.IntIdTable
 
 object RawIngestionBatchesTable : IntIdTable("raw_ingestion_batches") {
-    val sourceInstanceId = integer("source_instance_id").references(SourceInstancesTable.id)
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
     val batchExternalId = text("batch_external_id").nullable()
     val rawPayloadJson = text("raw_payload_json")
     val mappedPayloadJson = text("mapped_payload_json")

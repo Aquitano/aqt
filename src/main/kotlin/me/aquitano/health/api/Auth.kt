@@ -1,7 +1,7 @@
 package me.aquitano.health.api
 
-import io.ktor.http.HttpHeaders
-import io.ktor.server.application.ApplicationCall
+import io.ktor.http.*
+import io.ktor.server.application.*
 import me.aquitano.health.domain.UnauthorizedException
 import me.aquitano.health.infrastructure.repositories.ApiClientRef
 import me.aquitano.health.infrastructure.repositories.SupportRepository
@@ -13,7 +13,8 @@ suspend fun ApplicationCall.requireApiClient(
     apiKeyHasher: ApiKeyHasher,
     clock: UtcClock,
 ): ApiClientRef {
-    val header = request.headers[HttpHeaders.Authorization] ?: throw UnauthorizedException()
+    val header = request.headers[HttpHeaders.Authorization]
+        ?: throw UnauthorizedException()
     val apiKey = header.removePrefix("Bearer ").takeIf { it != header }?.trim()
         ?: throw UnauthorizedException()
     if (apiKey.isBlank()) throw UnauthorizedException()
