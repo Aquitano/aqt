@@ -25,6 +25,12 @@ out/
 !**/src/main/**/out/
 !**/src/test/**/out/
 
+### aqt-health ###
+data/
+*.db
+*.db-shm
+*.db-wal
+
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/

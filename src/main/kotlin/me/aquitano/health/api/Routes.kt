@@ -5,12 +5,12 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import kotlinx.serialization.Serializable
-import java.time.Instant
+import me.aquitano.health.infrastructure.time.UtcClock
 
-fun Application.configureRoutes() {
+fun Application.configureRoutes(clock: UtcClock) {
     routing {
         get("/api/v1/admin/health") {
-            call.respond(HealthResponse(status = "ok", service = "aqt-health", time = Instant.now().toString()))
+            call.respond(HealthResponse(status = "ok", service = "aqt-health", time = clock.now().toString()))
         }
     }
 }

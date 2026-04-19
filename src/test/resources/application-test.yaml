@@ -1,0 +1,14 @@
+ktor:
+  application:
+    modules:
+      - me.aquitano.health.api.ApplicationKt.module
+  deployment:
+    port: 0
+
+aqtHealth:
+  database:
+    jdbcUrl: "jdbc:sqlite::memory:"
+    driver: "org.sqlite.JDBC"
+  auth:
+    bootstrapClientName: "test-client"
+    bootstrapApiKey: "test-key"
