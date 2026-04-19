@@ -55,33 +55,37 @@ class SupportRepository(
 
     suspend fun resolveOrCreateSourceInstance(provider: String, providerInstanceId: String, now: Instant): SourceInstanceRef =
         dbQuery {
-            val source = SourceDao.find { SourcesTable.code eq provider }.firstOrNull()
-                ?: SourceDao.new {
-                    code = provider
-                    displayName = null
-                    createdAt = now.toString()
-                }
-
-            val instance = SourceInstanceDao
-                .find {
-                    (SourceInstancesTable.sourceId eq source.id) and
-                        (SourceInstancesTable.providerInstanceId eq providerInstanceId)
-                }
-                .firstOrNull()
-                ?: SourceInstanceDao.new {
-                    this.source = source
-                    this.providerInstanceId = providerInstanceId
-                    displayName = null
-                    createdAt = now.toString()
-                    updatedAt = now.toString()
-                }
-
-            SourceInstanceRef(
-                id = instance.id.value,
-                provider = source.code,
-                providerInstanceId = instance.providerInstanceId,
-            )
+            resolveOrCreateSourceInstanceInTransaction(provider, providerInstanceId, now)
         }
+
+    fun resolveOrCreateSourceInstanceInTransaction(provider: String, providerInstanceId: String, now: Instant): SourceInstanceRef {
+        val source = SourceDao.find { SourcesTable.code eq provider }.firstOrNull()
+            ?: SourceDao.new {
+                code = provider
+                displayName = null
+                createdAt = now.toString()
+            }
+
+        val instance = SourceInstanceDao
+            .find {
+                (SourceInstancesTable.sourceId eq source.id) and
+                    (SourceInstancesTable.providerInstanceId eq providerInstanceId)
+            }
+            .firstOrNull()
+            ?: SourceInstanceDao.new {
+                this.source = source
+                this.providerInstanceId = providerInstanceId
+                displayName = null
+                createdAt = now.toString()
+                updatedAt = now.toString()
+            }
+
+        return SourceInstanceRef(
+            id = instance.id.value,
+            provider = source.code,
+            providerInstanceId = instance.providerInstanceId,
+        )
+    }
 
     private suspend fun <T> dbQuery(block: () -> T): T =
         newSuspendedTransaction(Dispatchers.IO, db = database) {
