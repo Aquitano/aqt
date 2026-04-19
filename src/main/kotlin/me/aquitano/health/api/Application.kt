@@ -1,14 +1,17 @@
 package me.aquitano.health.api
 
 import io.ktor.server.application.Application
+import me.aquitano.health.application.AdminService
 import me.aquitano.health.application.ApiClientBootstrapService
 import me.aquitano.health.application.CanonicalDerivationService
 import me.aquitano.health.application.IngestionService
+import me.aquitano.health.application.MetricsQueryService
 import me.aquitano.health.application.StepSummaryService
 import me.aquitano.health.infrastructure.config.toAppConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
 import me.aquitano.health.infrastructure.repositories.CanonicalWriteRepository
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
+import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.ApiKeyHasher
 import me.aquitano.health.infrastructure.time.UtcClock
@@ -25,6 +28,7 @@ fun Application.module() {
     val apiKeyHasher = ApiKeyHasher()
     val supportRepository = SupportRepository(database)
     val canonicalWriteRepository = CanonicalWriteRepository()
+    val ingestionRepository = IngestionRepository()
     val services = ApplicationServices(
         database = database,
         supportRepository = supportRepository,
@@ -34,9 +38,17 @@ fun Application.module() {
             database = database,
             derivationService = CanonicalDerivationService(),
             supportRepository = supportRepository,
-            ingestionRepository = IngestionRepository(),
+            ingestionRepository = ingestionRepository,
             canonicalWriteRepository = canonicalWriteRepository,
             stepSummaryService = StepSummaryService(canonicalWriteRepository),
+        ),
+        metricsQueryService = MetricsQueryService(
+            database = database,
+            metricsReadRepository = MetricsReadRepository(),
+        ),
+        adminService = AdminService(
+            database = database,
+            ingestionRepository = ingestionRepository,
         ),
     )
 
@@ -57,4 +69,6 @@ data class ApplicationServices(
     val apiKeyHasher: ApiKeyHasher,
     val clock: UtcClock,
     val ingestionService: IngestionService,
+    val metricsQueryService: MetricsQueryService,
+    val adminService: AdminService,
 )
