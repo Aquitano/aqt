@@ -52,6 +52,13 @@ Environment variables:
 - `AQT_HEALTH_JDBC_URL`: SQLite JDBC URL, default `jdbc:sqlite:./data/aqt-health.db`
 - `AQT_HEALTH_BOOTSTRAP_CLIENT_NAME`: initial API client name, default `local-admin`
 - `AQT_HEALTH_BOOTSTRAP_API_KEY`: optional plaintext bootstrap key
+- `AQT_HEALTH_GOOGLE_CLIENT_ID`: Google OAuth web client ID for Google Health
+- `AQT_HEALTH_GOOGLE_CLIENT_SECRET`: Google OAuth web client secret
+- `AQT_HEALTH_GOOGLE_REDIRECT_URI`: OAuth callback URL, default `http://localhost:8080/api/v1/providers/google-health/oauth/callback`
+- `AQT_HEALTH_GOOGLE_TOKEN_ENCRYPTION_KEY`: required before connecting Google Health; used to encrypt stored OAuth tokens
+- `AQT_HEALTH_GOOGLE_API_BASE_URL`: Google Health API base URL, default `https://health.googleapis.com`
+- `AQT_HEALTH_GOOGLE_OAUTH_TOKEN_URL`: Google OAuth token URL, default `https://oauth2.googleapis.com/token`
+- `AQT_HEALTH_GOOGLE_OAUTH_AUTH_URL`: Google OAuth authorization URL, default `https://accounts.google.com/o/oauth2/v2/auth`
 
 If `AQT_HEALTH_BOOTSTRAP_API_KEY` is set, the app hashes it with SHA-256 and stores only `sha256:<hex>` in `api_clients`. If it is blank, startup still succeeds, but protected endpoints require a client row to exist in SQLite.
 
@@ -123,6 +130,51 @@ Supported record types:
 
 `batchExternalId` is idempotent per source instance. Provider record IDs are also used to skip duplicate metric rows where available.
 
+## Google Health Provider
+
+The Google Health provider is a server-owned OAuth integration. It reads Google Health data, normalizes it into the same ingestion batch contract shown above, stores the original Google response pages in `sourcePayload`, and writes the existing metric tables through the normal ingestion service.
+
+Google's Google Health API docs currently recommend waiting until the end of May 2026 for an official launch and warn that breaking changes may occur before then. This integration uses a small REST client rather than a generated client so the request/response handling stays easy to adjust.
+
+Google Cloud setup:
+
+1. Create or choose a Google Cloud project.
+2. Configure an OAuth consent screen.
+3. Create an OAuth web client.
+4. Add this authorized redirect URI: `http://localhost:8080/api/v1/providers/google-health/oauth/callback`
+5. Put the client ID, client secret, redirect URI, and token encryption key in `.env`.
+
+Required Google Health OAuth scopes:
+
+- `https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly`
+- `https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly`
+- `https://www.googleapis.com/auth/googlehealth.sleep.readonly`
+
+Start the OAuth flow:
+
+```bash
+curl "http://localhost:8080/api/v1/providers/google-health/oauth/start" \
+  -H "Authorization: Bearer local-dev-key"
+```
+
+Open the returned `authorizationUrl` in a browser. Google redirects back to `/api/v1/providers/google-health/oauth/callback`, which stores encrypted tokens for future syncs.
+
+Sync Google Health data:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/providers/google-health/sync \
+  -H "Authorization: Bearer local-dev-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "2026-04-01T00:00:00Z",
+    "to": "2026-04-20T00:00:00Z",
+    "dataTypes": ["steps", "sleep", "heart-rate", "weight", "body-fat"],
+    "pageSize": 1000
+  }'
+```
+
+If `dataTypes` is omitted, the sync reads `steps`, `sleep`, `heart-rate`, `weight`, and `body-fat`. If both `from` and `to` are omitted, the sync defaults to the last seven days. Explicit ranges must be no longer than 31 days.
+
 ## Read Data
 
 All read endpoints require `Authorization: Bearer <api-key>`.
@@ -184,6 +236,9 @@ Support tables:
 - `sources`
 - `source_instances`
 - `api_clients`
+- `provider_oauth_accounts`
+- `provider_oauth_states`
+- `provider_sync_runs`
 
 Timestamps are stored as UTC ISO-8601 text. Daily step summaries use UTC dates and assign each interval to the date of `startAt`.
 

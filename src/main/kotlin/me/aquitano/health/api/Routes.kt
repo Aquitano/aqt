@@ -7,6 +7,7 @@ import io.ktor.server.plugins.swagger.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import me.aquitano.health.api.dto.GoogleHealthSyncRequest
 import kotlinx.serialization.Serializable
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.application.QueryParams
@@ -38,6 +39,29 @@ fun Application.configureRoutes(services: ApplicationServices) {
             val status =
                 if (response.duplicateBatch) HttpStatusCode.OK else HttpStatusCode.Created
             call.respond(status, response)
+        }
+        get("/api/v1/providers/google-health/oauth/start") {
+            call.authenticateProtected(services)
+            call.respond(services.googleHealthOAuthService.start(services.clock.now()))
+        }
+        get("/api/v1/providers/google-health/oauth/callback") {
+            call.respond(
+                services.googleHealthOAuthService.callback(
+                    code = call.request.queryParameters["code"],
+                    state = call.request.queryParameters["state"],
+                    error = call.request.queryParameters["error"],
+                    now = services.clock.now(),
+                )
+            )
+        }
+        post("/api/v1/providers/google-health/sync") {
+            call.authenticateProtected(services)
+            call.respond(
+                services.googleHealthSyncService.sync(
+                    request = call.receive<GoogleHealthSyncRequest>(),
+                    now = services.clock.now(),
+                )
+            )
         }
         get("/api/v1/metrics/steps") {
             call.authenticateProtected(services)

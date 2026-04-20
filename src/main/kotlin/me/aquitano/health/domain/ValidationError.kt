@@ -12,3 +12,14 @@ class RequestValidationException(
 class NotFoundException(message: String) : RuntimeException(message)
 
 class UnauthorizedException : RuntimeException("Missing or invalid API key")
+
+class ConflictException(
+    val code: String,
+    message: String,
+) : RuntimeException(message)
+
+class UpstreamProviderException(
+    val code: String,
+    message: String,
+    val statusCode: Int = 502,
+) : RuntimeException(message)

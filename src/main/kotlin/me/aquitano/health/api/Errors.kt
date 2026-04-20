@@ -6,9 +6,11 @@ import io.ktor.server.plugins.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.response.*
 import kotlinx.serialization.Serializable
+import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.UnauthorizedException
+import me.aquitano.health.domain.UpstreamProviderException
 
 fun Application.configureErrorHandling() {
     install(StatusPages) {
@@ -47,6 +49,28 @@ fun Application.configureErrorHandling() {
                     ErrorBody(
                         code = "not_found",
                         message = cause.message ?: "Resource not found"
+                    )
+                ),
+            )
+        }
+        exception<ConflictException> { call, cause ->
+            call.respond(
+                HttpStatusCode.Conflict,
+                ErrorResponse(
+                    ErrorBody(
+                        code = cause.code,
+                        message = cause.message ?: "Request conflicts with current state"
+                    )
+                ),
+            )
+        }
+        exception<UpstreamProviderException> { call, cause ->
+            call.respond(
+                HttpStatusCode.fromValue(cause.statusCode),
+                ErrorResponse(
+                    ErrorBody(
+                        code = cause.code,
+                        message = cause.message ?: "Provider request failed"
                     )
                 ),
             )

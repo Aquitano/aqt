@@ -8,7 +8,7 @@ object RecordTypes {
 }
 
 object SleepStages {
-    val supported = setOf("awake", "light", "deep", "rem", "unknown")
+    val supported = setOf("awake", "restless", "asleep", "light", "deep", "rem", "unknown")
 }
 
 object BodyMetricTypes {
@@ -22,5 +22,5 @@ object BodyMetricTypes {
 }
 
 object HeartRateContexts {
-    val supported = setOf("resting", "workout", "sleep", "general", "unknown")
+    val supported = setOf("resting", "active", "workout", "sleep", "general", "unknown")
 }
