@@ -55,6 +55,24 @@ Environment variables:
 
 If `AQT_HEALTH_BOOTSTRAP_API_KEY` is set, the app hashes it with SHA-256 and stores only `sha256:<hex>` in `api_clients`. If it is blank, startup still succeeds, but protected endpoints require a client row to exist in SQLite.
 
+For local secrets, copy `.env.example` to `.env` and put real values only in `.env`. The `.env` file is ignored by git.
+
+PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+
+Get-Content .env | Where-Object { $_ -and $_ -notmatch '^\s*#' } | ForEach-Object {
+  $name, $value = $_ -split '=', 2
+  [Environment]::SetEnvironmentVariable($name.Trim(), $value.Trim(), 'Process')
+}
+
+.\gradlew.bat run
+```
+
+Never commit `.env`, real API keys, database passwords, or production URLs. Commit only `.env.example` with placeholders.
+
 ## Health Check
 
 Unauthenticated:
