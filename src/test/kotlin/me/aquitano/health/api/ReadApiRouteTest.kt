@@ -10,6 +10,7 @@ import me.aquitano.health.shared.AppJson
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class ReadApiRouteTest {
     @Test
@@ -82,6 +83,148 @@ class ReadApiRouteTest {
         )
     }
 
+    @Test
+    fun queryModeEndpointsReturnLatestAndDateSpecificData() = testApplication {
+        configureTestApplication()
+        ingestMixedBatch()
+        ingestLaterBatch()
+
+        val latestWeight =
+            authorizedGet("/api/v1/body/measurements?metricType=weight&latest=true")
+        assertEquals(HttpStatusCode.OK, latestWeight.status)
+        assertEquals(1, latestWeight.items().size)
+        assertEquals(
+            "weight",
+            latestWeight.items()[0].jsonObject["metricType"]!!.jsonPrimitive.content
+        )
+        assertEquals(
+            83.1,
+            latestWeight.items()[0].jsonObject["value"]!!.jsonPrimitive.double
+        )
+
+        val latestHeartRate =
+            authorizedGet("/api/v1/metrics/heart-rate?latest=true")
+        assertEquals(1, latestHeartRate.items().size)
+        assertEquals(
+            67,
+            latestHeartRate.items()[0].jsonObject["bpm"]!!.jsonPrimitive.int
+        )
+
+        val datedSteps =
+            authorizedGet("/api/v1/metrics/steps/daily?date=2026-04-19")
+        assertEquals(1, datedSteps.items().size)
+        assertEquals(
+            "2026-04-19",
+            datedSteps.items()[0].jsonObject["date"]!!.jsonPrimitive.content
+        )
+        assertEquals(
+            1600,
+            datedSteps.items()[0].jsonObject["steps"]!!.jsonPrimitive.int
+        )
+
+        val invalidDateCombination =
+            authorizedGet("/api/v1/metrics/steps/daily?date=2026-04-19&fromDate=2026-04-19")
+        assertEquals(HttpStatusCode.BadRequest, invalidDateCombination.status)
+        assertEquals(
+            "validation_failed",
+            invalidDateCombination.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
+        )
+
+        val latestSleep = authorizedGet("/api/v1/sleep/sessions?latest=true")
+        assertEquals(1, latestSleep.items().size)
+        assertEquals(
+            "2026-04-19T22:00:00Z",
+            latestSleep.items()[0].jsonObject["startAt"]!!.jsonPrimitive.content
+        )
+        assertEquals(1, latestSleep.items()[0].jsonObject["stages"]!!.jsonArray.size)
+    }
+
+    @Test
+    fun dashboardSummaryReturnsCompactRangeData() = testApplication {
+        configureTestApplication()
+        ingestMixedBatch()
+        ingestLaterBatch()
+
+        val response =
+            authorizedGet("/api/v1/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19")
+        assertEquals(HttpStatusCode.OK, response.status)
+        val body = response.jsonBody()
+        assertEquals(
+            1600,
+            body["steps"]!!.jsonObject["steps"]!!.jsonPrimitive.int
+        )
+        assertEquals(
+            2,
+            body["steps"]!!.jsonObject["sampleCount"]!!.jsonPrimitive.int
+        )
+        assertEquals(
+            83.1,
+            body["latestWeight"]!!.jsonObject["value"]!!.jsonPrimitive.double
+        )
+        assertEquals(
+            67,
+            body["latestHeartRate"]!!.jsonObject["bpm"]!!.jsonPrimitive.int
+        )
+        assertEquals(
+            "2026-04-19T22:00:00Z",
+            body["lastSleepSession"]!!.jsonObject["startAt"]!!.jsonPrimitive.content
+        )
+
+        val unauthorized = client.get("/api/v1/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19")
+        assertEquals(HttpStatusCode.Unauthorized, unauthorized.status)
+    }
+
+    @Test
+    fun adminBatchDetailReturnsRecordsAndOptionalPayloads() = testApplication {
+        configureTestApplication()
+        val batchId = ingestMixedBatch()
+
+        val detail =
+            authorizedGet("/api/v1/admin/ingestion/batches/$batchId")
+        assertEquals(HttpStatusCode.OK, detail.status)
+        val body = detail.jsonBody()
+        assertEquals(batchId, body["id"]!!.jsonPrimitive.int)
+        assertEquals(4, body["recordCount"]!!.jsonPrimitive.int)
+        assertEquals(4, body["records"]!!.jsonArray.size)
+        assertFalse(body.containsKey("sourcePayload"))
+        assertFalse(body.containsKey("normalizedPayload"))
+        assertFalse(
+            body["records"]!!.jsonArray[0].jsonObject.containsKey("normalizedRecord")
+        )
+
+        val withSource =
+            authorizedGet("/api/v1/admin/ingestion/batches/$batchId?includeSourcePayload=true")
+        assertEquals(
+            "read-batch-1",
+            withSource.jsonBody()["sourcePayload"]!!.jsonObject["exportId"]!!.jsonPrimitive.content
+        )
+
+        val withNormalized =
+            authorizedGet("/api/v1/admin/ingestion/batches/$batchId?includeNormalizedPayload=true")
+        assertEquals(
+            "health_connect",
+            withNormalized.jsonBody()["normalizedPayload"]!!.jsonObject["provider"]!!.jsonPrimitive.content
+        )
+        assertEquals(
+            "step_interval",
+            withNormalized.jsonBody()["records"]!!.jsonArray[0].jsonObject["normalizedRecord"]!!.jsonObject["type"]!!.jsonPrimitive.content
+        )
+
+        val missing = authorizedGet("/api/v1/admin/ingestion/batches/999999")
+        assertEquals(HttpStatusCode.NotFound, missing.status)
+        assertEquals(
+            "not_found",
+            missing.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
+        )
+
+        val invalid = authorizedGet("/api/v1/admin/ingestion/batches/not-an-int")
+        assertEquals(HttpStatusCode.BadRequest, invalid.status)
+        assertEquals(
+            "validation_failed",
+            invalid.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
+        )
+    }
+
     private fun ApplicationTestBuilder.configureTestApplication() {
         val dbPath = Files.createTempFile("aqt-health-read-test", ".db")
         environment {
@@ -96,13 +239,24 @@ class ReadApiRouteTest {
         }
     }
 
-    private suspend fun ApplicationTestBuilder.ingestMixedBatch() {
+    private suspend fun ApplicationTestBuilder.ingestMixedBatch(): Int {
         val response = client.post("/api/v1/ingestion/batches") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody(mixedPayload())
         }
         assertEquals(HttpStatusCode.Created, response.status)
+        return response.jsonBody()["batchId"]!!.jsonPrimitive.int
+    }
+
+    private suspend fun ApplicationTestBuilder.ingestLaterBatch(): Int {
+        val response = client.post("/api/v1/ingestion/batches") {
+            authorized()
+            contentType(ContentType.Application.Json)
+            setBody(laterPayload())
+        }
+        assertEquals(HttpStatusCode.Created, response.status)
+        return response.jsonBody()["batchId"]!!.jsonPrimitive.int
     }
 
     private suspend fun ApplicationTestBuilder.authorizedGet(path: String) =
@@ -171,6 +325,54 @@ class ReadApiRouteTest {
               "providerRecordId": "hr-read-1",
               "measuredAt": "2026-04-19T08:30:00Z",
               "bpm": 62
+            }
+          ]
+        }
+        """.trimIndent()
+
+    private fun laterPayload(): String =
+        """
+        {
+          "provider": "health-connect",
+          "providerInstanceId": "pixel-8-health-connect",
+          "batchExternalId": "read-batch-2",
+          "ingestedAt": "2026-04-19T23:00:00Z",
+          "sourcePayload": {
+            "exportId": "read-batch-2"
+          },
+          "records": [
+            {
+              "type": "step_interval",
+              "providerRecordId": "steps-read-2",
+              "startAt": "2026-04-19T20:00:00Z",
+              "endAt": "2026-04-19T21:00:00Z",
+              "steps": 400
+            },
+            {
+              "type": "sleep_session",
+              "providerRecordId": "sleep-read-2",
+              "startAt": "2026-04-19T22:00:00Z",
+              "endAt": "2026-04-20T06:00:00Z",
+              "stages": [
+                {
+                  "stage": "light",
+                  "startAt": "2026-04-19T22:00:00Z",
+                  "endAt": "2026-04-20T06:00:00Z"
+                }
+              ]
+            },
+            {
+              "type": "body_measurement",
+              "providerRecordId": "body-read-2",
+              "measuredAt": "2026-04-19T21:30:00Z",
+              "weightKg": 83.1
+            },
+            {
+              "type": "heart_rate",
+              "providerRecordId": "hr-read-2",
+              "measuredAt": "2026-04-19T21:45:00Z",
+              "bpm": 67,
+              "context": "resting"
             }
           ]
         }

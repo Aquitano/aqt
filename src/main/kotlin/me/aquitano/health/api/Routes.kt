@@ -47,7 +47,8 @@ fun Application.configureRoutes(services: ApplicationServices) {
             call.authenticateProtected(services)
             call.respond(
                 services.metricsQueryService.listStepDailySummaries(
-                    call.queryParams()
+                    call.queryParams(),
+                    services.clock.now()
                 )
             )
         }
@@ -63,9 +64,27 @@ fun Application.configureRoutes(services: ApplicationServices) {
             call.authenticateProtected(services)
             call.respond(services.metricsQueryService.listHeartRateSamples(call.queryParams()))
         }
+        get("/api/v1/dashboard/summary") {
+            call.authenticateProtected(services)
+            call.respond(
+                services.metricsQueryService.dashboardSummary(
+                    call.queryParams(),
+                    services.clock.now()
+                )
+            )
+        }
         get("/api/v1/admin/ingestion/batches") {
             call.authenticateProtected(services)
             call.respond(services.adminService.listBatches(call.queryParams()))
+        }
+        get("/api/v1/admin/ingestion/batches/{id}") {
+            call.authenticateProtected(services)
+            call.respond(
+                services.adminService.getBatchDetail(
+                    call.parameters["id"],
+                    call.queryParams()
+                )
+            )
         }
         get("/api/v1/admin/ingestion/failures") {
             call.authenticateProtected(services)

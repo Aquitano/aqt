@@ -5,14 +5,20 @@ import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.BodyMetricTypes
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
+import me.aquitano.health.shared.utcDate
+import me.aquitano.health.infrastructure.repositories.BodyMeasurementRow
 import me.aquitano.health.infrastructure.repositories.DailyReadFilters
+import me.aquitano.health.infrastructure.repositories.HeartRateSampleRow
 import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
 import me.aquitano.health.infrastructure.repositories.ReadFilters
+import me.aquitano.health.infrastructure.repositories.SleepSessionRow
+import me.aquitano.health.infrastructure.repositories.SleepStageRow
 import me.aquitano.health.infrastructure.repositories.SourceMetadata
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 class MetricsQueryService(
     private val database: Database,
@@ -36,10 +42,14 @@ class MetricsQueryService(
             )
         }
 
-    suspend fun listStepDailySummaries(params: QueryParams): StepDailySummariesResponse =
+    suspend fun listStepDailySummaries(
+        params: QueryParams,
+        now: Instant
+    ): StepDailySummariesResponse =
         dbQuery {
+            val filters = params.dailyReadFilters(now)
             val (rows, sourceMetadata) = metricsReadRepository.listStepDailySummaries(
-                params.dailyReadFilters()
+                filters
             )
             StepDailySummariesResponse(
                 items = rows.map {
@@ -55,26 +65,18 @@ class MetricsQueryService(
 
     suspend fun listSleepSessions(params: QueryParams): SleepSessionsResponse =
         dbQuery {
-            val (sessions, stagesBySession, sourceMetadata) = metricsReadRepository.listSleepSessions(
-                params.readFilters()
-            )
+            val latest = params.boolean("latest", default = false)
+            val (sessions, stagesBySession, sourceMetadata) = if (latest) {
+                val (session, stages, metadata) = metricsReadRepository.latestSleepSession(
+                    params.readFilters(limitOverride = 1)
+                )
+                Triple(listOfNotNull(session), stages, metadata)
+            } else {
+                metricsReadRepository.listSleepSessions(params.readFilters())
+            }
             SleepSessionsResponse(
                 items = sessions.map { session ->
-                    SleepSessionResponse(
-                        id = session.id,
-                        startAt = session.startAt,
-                        endAt = session.endAt,
-                        durationSeconds = session.durationSeconds,
-                        stages = stagesBySession[session.id].orEmpty().map {
-                            SleepStageResponse(
-                                stage = it.stage,
-                                startAt = it.startAt,
-                                endAt = it.endAt,
-                                durationSeconds = it.durationSeconds,
-                            )
-                        },
-                        source = sourceMetadata[session.sourceInstanceId].toResponse(),
-                    )
+                    session.toResponse(stagesBySession, sourceMetadata)
                 },
             )
         }
@@ -92,44 +94,104 @@ class MetricsQueryService(
             )
         }
         return dbQuery {
-            val (rows, sourceMetadata) = metricsReadRepository.listBodyMeasurements(
-                params.readFilters(),
-                metricType
-            )
+            val latest = params.boolean("latest", default = false)
+            val (rows, sourceMetadata) = if (latest) {
+                val (row, metadata) = metricsReadRepository.latestBodyMeasurement(
+                    params.readFilters(limitOverride = 1),
+                    metricType
+                )
+                listOfNotNull(row) to metadata
+            } else {
+                metricsReadRepository.listBodyMeasurements(
+                    params.readFilters(),
+                    metricType
+                )
+            }
             BodyMeasurementsResponse(
-                items = rows.map {
-                    BodyMeasurementResponse(
-                        id = it.id,
-                        measuredAt = it.measuredAt,
-                        metricType = it.metricType,
-                        value = it.value,
-                        unit = it.unit,
-                        source = sourceMetadata[it.sourceInstanceId].toResponse(),
-                    )
-                },
+                items = rows.map { it.toResponse(sourceMetadata) },
             )
         }
     }
 
     suspend fun listHeartRateSamples(params: QueryParams): HeartRateSamplesResponse =
         dbQuery {
-            val (rows, sourceMetadata) = metricsReadRepository.listHeartRateSamples(
-                params.readFilters()
-            )
+            val latest = params.boolean("latest", default = false)
+            val (rows, sourceMetadata) = if (latest) {
+                val (row, metadata) = metricsReadRepository.latestHeartRateSample(
+                    params.readFilters(limitOverride = 1)
+                )
+                listOfNotNull(row) to metadata
+            } else {
+                metricsReadRepository.listHeartRateSamples(params.readFilters())
+            }
             HeartRateSamplesResponse(
-                items = rows.map {
-                    HeartRateSampleResponse(
-                        id = it.id,
-                        measuredAt = it.measuredAt,
-                        bpm = it.bpm,
-                        context = it.context,
-                        source = sourceMetadata[it.sourceInstanceId].toResponse(),
-                    )
-                },
+                items = rows.map { it.toResponse(sourceMetadata) },
             )
         }
 
-    private fun QueryParams.readFilters(): ReadFilters {
+    suspend fun dashboardSummary(
+        params: QueryParams,
+        now: Instant,
+    ): DashboardSummaryResponse {
+        val fromDate = params.requiredDate("fromDate")
+        val toDate = params.requiredDate("toDate")
+        if (fromDate.isAfter(toDate)) {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        "fromDate",
+                        "must be on or before toDate"
+                    )
+                )
+            )
+        }
+        val includeSource = params.boolean("includeSource", default = false)
+        val fromInstant = fromDate.atStartOfDay().toInstant(ZoneOffset.UTC)
+        val toInstant = toDate.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
+        return dbQuery {
+            val dailyFilters = DailyReadFilters(
+                fromDate = fromDate,
+                toDate = toDate,
+                provider = params.optional("provider"),
+                providerInstanceId = params.optional("providerInstanceId"),
+                includeSource = false,
+                limit = 1,
+            )
+            val instantFilters = ReadFilters(
+                from = fromInstant,
+                to = toInstant,
+                provider = params.optional("provider"),
+                providerInstanceId = params.optional("providerInstanceId"),
+                includeSource = includeSource,
+                limit = 1,
+            )
+            val steps = metricsReadRepository.sumStepDailySummaries(dailyFilters)
+            val (weight, weightSourceMetadata) = metricsReadRepository.latestBodyMeasurement(
+                instantFilters,
+                BodyMetricTypes.WEIGHT
+            )
+            val (heartRate, heartRateSourceMetadata) =
+                metricsReadRepository.latestHeartRateSample(instantFilters)
+            val (sleep, sleepStagesBySession, sleepSourceMetadata) =
+                metricsReadRepository.latestSleepSession(instantFilters)
+            DashboardSummaryResponse(
+                fromDate = fromDate.toString(),
+                toDate = toDate.toString(),
+                steps = DashboardStepsSummaryResponse(
+                    steps = steps.steps,
+                    sampleCount = steps.sampleCount,
+                ),
+                latestWeight = weight?.toResponse(weightSourceMetadata),
+                latestHeartRate = heartRate?.toResponse(heartRateSourceMetadata),
+                lastSleepSession = sleep?.toResponse(
+                    sleepStagesBySession,
+                    sleepSourceMetadata
+                ),
+            )
+        }
+    }
+
+    private fun QueryParams.readFilters(limitOverride: Int? = null): ReadFilters {
         val from = instant("from")
         val to = instant("to")
         validateRange(from, to, "from", "to")
@@ -139,13 +201,24 @@ class MetricsQueryService(
             provider = optional("provider"),
             providerInstanceId = optional("providerInstanceId"),
             includeSource = boolean("includeSource", default = false),
-            limit = limit(default = 500, max = 5000),
+            limit = limitOverride ?: limit(default = 500, max = 5000),
         )
     }
 
-    private fun QueryParams.dailyReadFilters(): DailyReadFilters {
-        val fromDate = date("fromDate")
-        val toDate = date("toDate")
+    private fun QueryParams.dailyReadFilters(now: Instant): DailyReadFilters {
+        val exactDate = dateOrToday("date", now)
+        if (exactDate != null && (optional("fromDate") != null || optional("toDate") != null)) {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        "date",
+                        "cannot be combined with fromDate or toDate"
+                    )
+                )
+            )
+        }
+        val fromDate = exactDate ?: date("fromDate")
+        val toDate = exactDate ?: date("toDate")
         if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
             throw RequestValidationException(
                 listOf(
@@ -162,7 +235,7 @@ class MetricsQueryService(
             provider = optional("provider"),
             providerInstanceId = optional("providerInstanceId"),
             includeSource = boolean("includeSource", default = false),
-            limit = limit(default = 500, max = 5000),
+            limit = if (exactDate != null) 1 else limit(default = 500, max = 5000),
         )
     }
 
@@ -205,6 +278,31 @@ class QueryParams(
             )
         }
     }
+
+    fun dateOrToday(name: String, now: Instant): LocalDate? {
+        val value = optional(name) ?: return null
+        if (value == "today") return now.utcDate()
+        return runCatching { LocalDate.parse(value) }.getOrElse {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        name,
+                        "must be an ISO-8601 date or today"
+                    )
+                )
+            )
+        }
+    }
+
+    fun requiredDate(name: String): LocalDate =
+        date(name) ?: throw RequestValidationException(
+            listOf(
+                ValidationIssue(
+                    name,
+                    "is required"
+                )
+            )
+        )
 
     fun boolean(name: String, default: Boolean): Boolean {
         val value = optional(name) ?: return default
@@ -272,3 +370,46 @@ private fun SourceMetadata?.toResponse(): SourceMetadataResponse? =
             providerInstanceId = it.providerInstanceId
         )
     }
+
+private fun BodyMeasurementRow.toResponse(
+    sourceMetadata: Map<Int, SourceMetadata>
+): BodyMeasurementResponse =
+    BodyMeasurementResponse(
+        id = id,
+        measuredAt = measuredAt,
+        metricType = metricType,
+        value = value,
+        unit = unit,
+        source = sourceMetadata[sourceInstanceId].toResponse(),
+    )
+
+private fun HeartRateSampleRow.toResponse(
+    sourceMetadata: Map<Int, SourceMetadata>
+): HeartRateSampleResponse =
+    HeartRateSampleResponse(
+        id = id,
+        measuredAt = measuredAt,
+        bpm = bpm,
+        context = context,
+        source = sourceMetadata[sourceInstanceId].toResponse(),
+    )
+
+private fun SleepSessionRow.toResponse(
+    stagesBySession: Map<Int, List<SleepStageRow>>,
+    sourceMetadata: Map<Int, SourceMetadata>
+): SleepSessionResponse =
+    SleepSessionResponse(
+        id = id,
+        startAt = startAt,
+        endAt = endAt,
+        durationSeconds = durationSeconds,
+        stages = stagesBySession[id].orEmpty().map {
+            SleepStageResponse(
+                stage = it.stage,
+                startAt = it.startAt,
+                endAt = it.endAt,
+                durationSeconds = it.durationSeconds,
+            )
+        },
+        source = sourceMetadata[sourceInstanceId].toResponse(),
+    )

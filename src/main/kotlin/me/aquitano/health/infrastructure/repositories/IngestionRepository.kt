@@ -35,6 +35,30 @@ data class AdminBatchRow(
     val recordCount: Int,
 )
 
+data class AdminBatchDetailRow(
+    val id: Int,
+    val provider: String,
+    val providerInstanceId: String,
+    val batchExternalId: String?,
+    val status: String,
+    val ingestedAt: String,
+    val receivedAt: String,
+    val processedAt: String?,
+    val errorMessage: String?,
+    val sourcePayloadJson: String,
+    val normalizedPayloadJson: String,
+)
+
+data class AdminIngestionRecordRow(
+    val id: Int,
+    val recordType: String,
+    val providerRecordId: String?,
+    val normalizedRecordJson: String,
+    val recordStartAt: String?,
+    val recordEndAt: String?,
+    val createdAt: String,
+)
+
 class IngestionRepository {
     fun findBatchByExternalId(
         sourceInstanceId: Int,
@@ -146,6 +170,47 @@ class IngestionRepository {
             )
         }
     }
+
+    fun findBatchDetail(batchId: Int): AdminBatchDetailRow? =
+        IngestionBatchesTable
+            .innerJoin(SourceInstancesTable)
+            .innerJoin(SourcesTable)
+            .selectAll()
+            .where { IngestionBatchesTable.id eq batchId }
+            .limit(1)
+            .map {
+                AdminBatchDetailRow(
+                    id = it[IngestionBatchesTable.id].value,
+                    provider = it[SourcesTable.code],
+                    providerInstanceId = it[SourceInstancesTable.providerInstanceId],
+                    batchExternalId = it[IngestionBatchesTable.batchExternalId],
+                    status = it[IngestionBatchesTable.status],
+                    ingestedAt = it[IngestionBatchesTable.ingestedAt],
+                    receivedAt = it[IngestionBatchesTable.receivedAt],
+                    processedAt = it[IngestionBatchesTable.processedAt],
+                    errorMessage = it[IngestionBatchesTable.errorMessage],
+                    sourcePayloadJson = it[IngestionBatchesTable.sourcePayloadJson],
+                    normalizedPayloadJson = it[IngestionBatchesTable.normalizedPayloadJson],
+                )
+            }
+            .singleOrNull()
+
+    fun listRecordsForBatch(batchId: Int): List<AdminIngestionRecordRow> =
+        IngestionRecordsTable
+            .selectAll()
+            .where { IngestionRecordsTable.batchId eq batchId }
+            .orderBy(IngestionRecordsTable.id to SortOrder.ASC)
+            .map {
+                AdminIngestionRecordRow(
+                    id = it[IngestionRecordsTable.id].value,
+                    recordType = it[IngestionRecordsTable.recordType],
+                    providerRecordId = it[IngestionRecordsTable.providerRecordId],
+                    normalizedRecordJson = it[IngestionRecordsTable.normalizedRecordJson],
+                    recordStartAt = it[IngestionRecordsTable.recordStartAt],
+                    recordEndAt = it[IngestionRecordsTable.recordEndAt],
+                    createdAt = it[IngestionRecordsTable.createdAt],
+                )
+            }
 
     private fun recordCounts(batchIds: List<Int>): Map<Int, Int> {
         if (batchIds.isEmpty()) return emptyMap()

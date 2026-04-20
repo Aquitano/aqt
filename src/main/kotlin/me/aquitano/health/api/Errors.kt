@@ -6,6 +6,7 @@ import io.ktor.server.plugins.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.response.*
 import kotlinx.serialization.Serializable
+import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.UnauthorizedException
 
@@ -36,6 +37,17 @@ fun Application.configureErrorHandling() {
                             )
                         },
                     ),
+                ),
+            )
+        }
+        exception<NotFoundException> { call, cause ->
+            call.respond(
+                HttpStatusCode.NotFound,
+                ErrorResponse(
+                    ErrorBody(
+                        code = "not_found",
+                        message = cause.message ?: "Resource not found"
+                    )
                 ),
             )
         }

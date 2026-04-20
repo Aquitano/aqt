@@ -86,3 +86,19 @@ data class HeartRateSampleResponse(
     val context: String,
     val source: SourceMetadataResponse? = null,
 )
+
+@Serializable
+data class DashboardSummaryResponse(
+    val fromDate: String,
+    val toDate: String,
+    val steps: DashboardStepsSummaryResponse,
+    val latestWeight: BodyMeasurementResponse?,
+    val latestHeartRate: HeartRateSampleResponse?,
+    val lastSleepSession: SleepSessionResponse?,
+)
+
+@Serializable
+data class DashboardStepsSummaryResponse(
+    val steps: Int,
+    val sampleCount: Int,
+)

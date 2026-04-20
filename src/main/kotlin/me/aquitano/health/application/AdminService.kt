@@ -1,11 +1,15 @@
 package me.aquitano.health.application
 
 import kotlinx.coroutines.Dispatchers
+import me.aquitano.health.api.dto.IngestionBatchDetailResponse
 import me.aquitano.health.api.dto.IngestionBatchAdminResponse
 import me.aquitano.health.api.dto.IngestionBatchesResponse
+import me.aquitano.health.api.dto.IngestionRecordAdminResponse
+import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
+import me.aquitano.health.shared.AppJson
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 
@@ -57,6 +61,69 @@ class AdminService(
 
     suspend fun listFailures(params: QueryParams): IngestionBatchesResponse =
         listBatches(QueryParams(params.asMap() + ("status" to "failed")))
+
+    suspend fun getBatchDetail(
+        batchIdValue: String?,
+        params: QueryParams
+    ): IngestionBatchDetailResponse {
+        val batchId = batchIdValue?.toIntOrNull()
+        if (batchId == null || batchId <= 0) {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        "id",
+                        "must be a positive integer"
+                    )
+                )
+            )
+        }
+        val includeSourcePayload =
+            params.boolean("includeSourcePayload", default = false)
+        val includeNormalizedPayload =
+            params.boolean("includeNormalizedPayload", default = false)
+        return dbQuery {
+            val batch = ingestionRepository.findBatchDetail(batchId)
+                ?: throw NotFoundException("Ingestion batch not found")
+            val records = ingestionRepository.listRecordsForBatch(batchId)
+            IngestionBatchDetailResponse(
+                id = batch.id,
+                provider = batch.provider,
+                providerInstanceId = batch.providerInstanceId,
+                batchExternalId = batch.batchExternalId,
+                status = batch.status,
+                ingestedAt = batch.ingestedAt,
+                receivedAt = batch.receivedAt,
+                processedAt = batch.processedAt,
+                errorMessage = batch.errorMessage,
+                recordCount = records.size,
+                records = records.map {
+                    IngestionRecordAdminResponse(
+                        id = it.id,
+                        recordType = it.recordType,
+                        providerRecordId = it.providerRecordId,
+                        recordStartAt = it.recordStartAt,
+                        recordEndAt = it.recordEndAt,
+                        createdAt = it.createdAt,
+                        normalizedRecord = if (includeNormalizedPayload) {
+                            AppJson.parseToJsonElement(it.normalizedRecordJson)
+                        } else {
+                            null
+                        },
+                    )
+                },
+                sourcePayload = if (includeSourcePayload) {
+                    AppJson.parseToJsonElement(batch.sourcePayloadJson)
+                } else {
+                    null
+                },
+                normalizedPayload = if (includeNormalizedPayload) {
+                    AppJson.parseToJsonElement(batch.normalizedPayloadJson)
+                } else {
+                    null
+                },
+            )
+        }
+    }
 
     private suspend fun <T> dbQuery(block: () -> T): T =
         newSuspendedTransaction(Dispatchers.IO, db = database) {
