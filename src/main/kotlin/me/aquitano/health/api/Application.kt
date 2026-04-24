@@ -3,6 +3,7 @@ package me.aquitano.health.api
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import me.aquitano.health.application.*
@@ -20,7 +21,11 @@ import me.aquitano.health.infrastructure.providers.googlehealth.KtorGoogleHealth
 import me.aquitano.health.infrastructure.security.ApiKeyHasher
 import me.aquitano.health.infrastructure.time.UtcClock
 import me.aquitano.health.shared.AppJson
+import net.logstash.logback.argument.StructuredArguments.kv
 import org.jetbrains.exposed.sql.Database
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger("me.aquitano.health.api.Application")
 
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)
@@ -29,6 +34,10 @@ fun main(args: Array<String>) {
 fun Application.module() {
     val clock = UtcClock()
     val appConfig = environment.config.toAppConfig()
+    logger.info(
+        "app_starting {}",
+        kv("databaseDriver", appConfig.database.driver),
+    )
     val database = DatabaseFactory().initialize(appConfig.database)
     val apiKeyHasher = ApiKeyHasher()
     val supportRepository = SupportRepository(database)
@@ -39,8 +48,22 @@ fun Application.module() {
         install(ContentNegotiation) {
             json(AppJson)
         }
+        install(HttpTimeout) {
+            connectTimeoutMillis = 10_000
+            socketTimeoutMillis = 60_000
+            requestTimeoutMillis = 120_000
+        }
     }
     val googleHealthClient = KtorGoogleHealthClient(httpClient, appConfig.googleHealth)
+    logger.info(
+        "app_configured {}",
+        kv(
+            "googleHealthConfigured",
+            appConfig.googleHealth.clientId.isNotBlank() &&
+                    appConfig.googleHealth.clientSecret.isNotBlank() &&
+                    appConfig.googleHealth.tokenEncryptionKey.isNotBlank(),
+        ),
+    )
     val ingestionService = IngestionService(
         database = database,
         mappingService = IngestionMappingService(),

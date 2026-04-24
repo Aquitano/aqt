@@ -11,10 +11,18 @@ import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.UnauthorizedException
 import me.aquitano.health.domain.UpstreamProviderException
+import net.logstash.logback.argument.StructuredArguments.kv
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger("me.aquitano.health.api.Errors")
 
 fun Application.configureErrorHandling() {
     install(StatusPages) {
         exception<UnauthorizedException> { call, _ ->
+            logger.info(
+                "request_unauthorized {}",
+                kv("errorCode", "unauthorized"),
+            )
             call.respond(
                 HttpStatusCode.Unauthorized,
                 ErrorResponse(
@@ -26,6 +34,11 @@ fun Application.configureErrorHandling() {
             )
         }
         exception<RequestValidationException> { call, cause ->
+            logger.info(
+                "request_validation_failed {} {}",
+                kv("errorCode", "validation_failed"),
+                kv("fields", cause.issues.map { it.field }),
+            )
             call.respond(
                 HttpStatusCode.BadRequest,
                 ErrorResponse(
@@ -43,6 +56,10 @@ fun Application.configureErrorHandling() {
             )
         }
         exception<NotFoundException> { call, cause ->
+            logger.info(
+                "request_not_found {}",
+                kv("errorCode", "not_found"),
+            )
             call.respond(
                 HttpStatusCode.NotFound,
                 ErrorResponse(
@@ -54,6 +71,10 @@ fun Application.configureErrorHandling() {
             )
         }
         exception<ConflictException> { call, cause ->
+            logger.warn(
+                "request_conflict {}",
+                kv("errorCode", cause.code),
+            )
             call.respond(
                 HttpStatusCode.Conflict,
                 ErrorResponse(
@@ -65,6 +86,20 @@ fun Application.configureErrorHandling() {
             )
         }
         exception<UpstreamProviderException> { call, cause ->
+            if (cause.cause != null) {
+                logger.warn(
+                    "upstream_provider_failed {} {}",
+                    kv("errorCode", cause.code),
+                    kv("status", cause.statusCode),
+                    cause,
+                )
+            } else {
+                logger.warn(
+                    "upstream_provider_failed {} {}",
+                    kv("errorCode", cause.code),
+                    kv("status", cause.statusCode),
+                )
+            }
             call.respond(
                 HttpStatusCode.fromValue(cause.statusCode),
                 ErrorResponse(
@@ -76,6 +111,10 @@ fun Application.configureErrorHandling() {
             )
         }
         exception<BadRequestException> { call, _ ->
+            logger.info(
+                "request_bad_request {}",
+                kv("errorCode", "validation_failed"),
+            )
             call.respond(
                 HttpStatusCode.BadRequest,
                 ErrorResponse(
@@ -86,7 +125,12 @@ fun Application.configureErrorHandling() {
                 ),
             )
         }
-        exception<Throwable> { call, _ ->
+        exception<Throwable> { call, cause ->
+            logger.error(
+                "request_unexpected_error {}",
+                kv("errorCode", "internal_error"),
+                cause,
+            )
             call.respond(
                 HttpStatusCode.InternalServerError,
                 ErrorResponse(

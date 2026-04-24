@@ -9,10 +9,14 @@ import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.infrastructure.config.GoogleHealthConfig
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
+import net.logstash.logback.argument.StructuredArguments.kv
+import org.slf4j.LoggerFactory
 import java.security.SecureRandom
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
+
+private val logger = LoggerFactory.getLogger(GoogleHealthOAuthService::class.java)
 
 class GoogleHealthOAuthService(
     private val config: GoogleHealthConfig,
@@ -26,6 +30,11 @@ class GoogleHealthOAuthService(
         val state = randomState()
         val expiresAt = now.plus(Duration.ofMinutes(10))
         repository.insertState(state, GOOGLE_HEALTH_PROVIDER_CODE, now, expiresAt)
+        logger.info(
+            "google_health_oauth_start_created {} {}",
+            kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
+            kv("expiresAt", expiresAt.toString()),
+        )
         val url = URLBuilder(config.oauthAuthUrl).apply {
             parameters.append("client_id", config.clientId)
             parameters.append("redirect_uri", config.redirectUri)
@@ -41,11 +50,20 @@ class GoogleHealthOAuthService(
     suspend fun callback(code: String?, state: String?, error: String?, now: Instant): GoogleHealthOAuthCallbackResponse {
         requireConfigured()
         if (!error.isNullOrBlank()) {
+            logger.warn(
+                "google_health_oauth_callback_rejected {} {}",
+                kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
+                kv("error", error),
+            )
             throw RequestValidationException(listOf(ValidationIssue("error", error)))
         }
         val authCode = code?.takeIf { it.isNotBlank() }
         val authState = state?.takeIf { it.isNotBlank() }
         if (authCode == null || authState == null) {
+            logger.warn(
+                "google_health_oauth_state_invalid {}",
+                kv("reason", "missing_code_or_state"),
+            )
             throw RequestValidationException(
                 listOf(
                     ValidationIssue("code", "is required"),
@@ -54,11 +72,25 @@ class GoogleHealthOAuthService(
             )
         }
         val storedState = repository.consumeState(authState, GOOGLE_HEALTH_PROVIDER_CODE, now)
-            ?: throw RequestValidationException(listOf(ValidationIssue("state", "is invalid")))
+            ?: run {
+                logger.warn(
+                    "google_health_oauth_state_invalid {}",
+                    kv("reason", "invalid"),
+                )
+                throw RequestValidationException(listOf(ValidationIssue("state", "is invalid")))
+            }
         if (storedState.consumedAt != null) {
+            logger.warn(
+                "google_health_oauth_state_invalid {}",
+                kv("reason", "already_used"),
+            )
             throw RequestValidationException(listOf(ValidationIssue("state", "was already used")))
         }
         if (!now.isBefore(storedState.expiresAt)) {
+            logger.warn(
+                "google_health_oauth_state_invalid {}",
+                kv("reason", "expired"),
+            )
             throw RequestValidationException(listOf(ValidationIssue("state", "has expired")))
         }
 
@@ -83,6 +115,13 @@ class GoogleHealthOAuthService(
             expiresAt = tokens.expiresAt,
             scope = tokens.scope,
             now = now,
+        )
+        logger.info(
+            "google_health_oauth_connected {} {} {} {}",
+            kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
+            kv("providerInstanceId", providerInstanceId),
+            kv("expiresAt", tokens.expiresAt.toString()),
+            kv("scopeCount", tokens.scope.split(" ").count { it.isNotBlank() }),
         )
         return GoogleHealthOAuthCallbackResponse(
             provider = GOOGLE_HEALTH_PROVIDER_CODE,
@@ -115,12 +154,20 @@ class GoogleHealthOAuthService(
         try {
             block()
         } catch (throwable: GoogleHealthHttpException) {
+            logger.warn(
+                "google_health_token_exchange_failed {}",
+                kv("errorCode", throwable.code),
+            )
             throw UpstreamProviderException(
                 throwable.code,
                 throwable.message ?: fallbackMessage,
                 502,
             )
         } catch (throwable: GoogleHealthUnauthorizedException) {
+            logger.warn(
+                "google_health_token_exchange_failed {}",
+                kv("errorCode", fallbackCode),
+            )
             throw UpstreamProviderException(
                 fallbackCode,
                 throwable.message ?: fallbackMessage,

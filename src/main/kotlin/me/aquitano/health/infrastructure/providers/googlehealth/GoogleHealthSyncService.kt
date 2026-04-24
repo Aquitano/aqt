@@ -13,8 +13,12 @@ import me.aquitano.health.infrastructure.config.GoogleHealthConfig
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthAccount
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
+import net.logstash.logback.argument.StructuredArguments.kv
+import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.time.Instant
+
+private val logger = LoggerFactory.getLogger(GoogleHealthSyncService::class.java)
 
 class GoogleHealthSyncService(
     private val config: GoogleHealthConfig,
@@ -39,6 +43,14 @@ class GoogleHealthSyncService(
             requestedTo = validated.to,
             startedAt = now,
         )
+        logger.info(
+            "google_health_sync_started {} {} {} {} {}",
+            kv("providerInstanceId", account.providerInstanceId),
+            kv("from", validated.from.toString()),
+            kv("to", validated.to.toString()),
+            kv("dataTypes", validated.dataTypes),
+            kv("pageSize", validated.pageSize),
+        )
 
         val batches = mutableListOf<GoogleHealthSyncBatchResponse>()
         val errors = mutableListOf<GoogleHealthSyncErrorResponse>()
@@ -55,7 +67,16 @@ class GoogleHealthSyncService(
                     now,
                 )
                 val normalized = normalizer.normalize(fetchResult)
-                if (normalized.records.isEmpty()) continue
+                if (normalized.records.isEmpty()) {
+                    logger.info(
+                        "google_health_data_type_synced {} {} {} {}",
+                        kv("dataType", dataType),
+                        kv("pages", fetchResult.pages.size),
+                        kv("dataPoints", fetchResult.dataPoints.size),
+                        kv("records", 0),
+                    )
+                    continue
+                }
                 val summary = ingestionService.ingestBatch(
                     IngestionBatchRequest(
                         provider = GOOGLE_HEALTH_PROVIDER_CODE,
@@ -91,11 +112,26 @@ class GoogleHealthSyncService(
                         affectedStepSummaryDates = summary.affectedStepSummaryDates,
                     )
                 )
+                logger.info(
+                    "google_health_data_type_synced {} {} {} {} {} {}",
+                    kv("dataType", dataType),
+                    kv("pages", fetchResult.pages.size),
+                    kv("dataPoints", fetchResult.dataPoints.size),
+                    kv("records", normalized.records.size),
+                    kv("batchId", summary.batchId),
+                    kv("duplicateBatch", summary.duplicateBatch),
+                )
             } catch (throwable: Throwable) {
+                val code = errorCode(throwable)
+                logger.warn(
+                    "google_health_data_type_failed {} {}",
+                    kv("dataType", dataType),
+                    kv("errorCode", code),
+                )
                 errors.add(
                     GoogleHealthSyncErrorResponse(
                         dataType = dataType,
-                        code = errorCode(throwable),
+                        code = code,
                         message = throwable.message ?: "Google Health sync failed",
                     )
                 )
@@ -113,6 +149,18 @@ class GoogleHealthSyncService(
             finishedAt = now,
             errorMessage = errors.joinToString("; ") { "${it.dataType}: ${it.message}" }.ifBlank { null },
         )
+        val completionLevelMessage = "google_health_sync_completed {} {} {} {}"
+        val completionArgs = arrayOf(
+            kv("syncRunId", runId),
+            kv("status", status),
+            kv("batchCount", batches.size),
+            kv("errorCount", errors.size),
+        )
+        when (status) {
+            "processed" -> logger.info(completionLevelMessage, *completionArgs)
+            "partial_failed" -> logger.warn(completionLevelMessage, *completionArgs)
+            else -> logger.error(completionLevelMessage, *completionArgs)
+        }
         if (batches.isEmpty() && errors.isNotEmpty()) {
             val first = errors.first()
             throw UpstreamProviderException(first.code, first.message, 502)
@@ -156,6 +204,10 @@ class GoogleHealthSyncService(
         try {
             client.fetchDataPoints(tokenState.accessToken, dataType, from, to, pageSize)
         } catch (_: GoogleHealthUnauthorizedException) {
+            logger.warn(
+                "google_health_fetch_unauthorized_retrying {}",
+                kv("dataType", dataType),
+            )
             val refreshed = refreshAccessToken(account, tokenState.refreshToken, cipher, now)
             client.fetchDataPoints(refreshed.accessToken, dataType, from, to, pageSize)
         }
@@ -169,6 +221,10 @@ class GoogleHealthSyncService(
         val tokens = try {
             client.refreshToken(refreshToken, now)
         } catch (throwable: Throwable) {
+            logger.warn(
+                "google_health_token_exchange_failed {}",
+                kv("errorCode", "google_health_token_refresh_failed"),
+            )
             throw UpstreamProviderException(
                 "google_health_token_refresh_failed",
                 throwable.message ?: "Google OAuth token refresh failed",
@@ -184,6 +240,11 @@ class GoogleHealthSyncService(
             expiresAt = tokens.expiresAt,
             scope = tokens.scope,
             now = now,
+        )
+        logger.info(
+            "google_health_token_refreshed {} {}",
+            kv("providerInstanceId", account.providerInstanceId),
+            kv("expiresAt", tokens.expiresAt.toString()),
         )
         return TokenState(tokens.accessToken, nextRefreshToken)
     }

@@ -59,6 +59,12 @@ Environment variables:
 - `AQT_HEALTH_GOOGLE_API_BASE_URL`: Google Health API base URL, default `https://health.googleapis.com`
 - `AQT_HEALTH_GOOGLE_OAUTH_TOKEN_URL`: Google OAuth token URL, default `https://oauth2.googleapis.com/token`
 - `AQT_HEALTH_GOOGLE_OAUTH_AUTH_URL`: Google OAuth authorization URL, default `https://accounts.google.com/o/oauth2/v2/auth`
+- `AQT_HEALTH_LOG_FORMAT`: stdout log format, `text` by default or `json` for production JSON lines
+- `AQT_HEALTH_LOG_FILE`: JSON lines log file for local inspection, default `build/logs/aqt-health.jsonl`
+- `AQT_HEALTH_LOG_FILE_ROLLOVER`: rolling JSON log archive pattern, default `build/logs/aqt-health.%d{yyyy-MM-dd}.%i.jsonl.gz`
+- `OPENOBSERVE_LOG_URL`: optional OpenObserve HTTP ingestion endpoint for direct app log delivery
+- `OPENOBSERVE_AUTHORIZATION`: optional full OpenObserve authorization header value, for example `Basic ...`
+- `AQT_HEALTH_ENV`: environment label added to forwarded logs, default `local`
 
 If `AQT_HEALTH_BOOTSTRAP_API_KEY` is set, the app hashes it with SHA-256 and stores only `sha256:<hex>` in `api_clients`. If it is blank, startup still succeeds, but protected endpoints require a client row to exist in SQLite.
 
@@ -78,7 +84,44 @@ Get-Content .env | Where-Object { $_ -and $_ -notmatch '^\s*#' } | ForEach-Objec
 .\gradlew.bat run
 ```
 
-Never commit `.env`, real API keys, database passwords, or production URLs. Commit only `.env.example` with placeholders.
+Never commit `.env`, real API keys, database passwords, production URLs, or OpenObserve credentials. Commit only `.env.example` with placeholders.
+
+## OpenObserve Logs
+
+Application logs stay on the normal Logback stdout path. The app also writes JSON lines to `AQT_HEALTH_LOG_FILE` for local inspection and posts logs directly to OpenObserve when `OPENOBSERVE_LOG_URL` and `OPENOBSERVE_AUTHORIZATION` are set.
+
+Local stdout logs default to readable text. Production can use JSON lines on stdout:
+
+```powershell
+$env:AQT_HEALTH_LOG_FORMAT = "json"
+```
+
+With the default local path, IntelliJ and Gradle runs write JSONL logs to:
+
+```text
+build/logs/aqt-health.jsonl
+```
+
+Set the OpenObserve environment variables before starting the app:
+
+```powershell
+$env:OPENOBSERVE_LOG_URL = "https://logs.aquitano.me/api/3CdQ3ffpBGmNl0nnh49QbvpHyj2/default/_json"
+$env:OPENOBSERVE_AUTHORIZATION = "Basic replace-with-rotated-openobserve-token"
+$env:AQT_HEALTH_ENV = "local"
+$env:AQT_HEALTH_LOG_FILE = "build/logs/aqt-health.jsonl"
+```
+
+Start the app from IntelliJ or Gradle:
+
+```powershell
+.\gradlew.bat run
+```
+
+The app sends each log event asynchronously as a one-record JSON batch to the OpenObserve `_json` endpoint. If either OpenObserve environment variable is blank, direct delivery is disabled and local stdout/file logging still works.
+
+Do not hardcode the `Authorization` header in committed files; rotate any OpenObserve credential that has been pasted into chat, issue trackers, shell history, or logs.
+
+For production, either keep direct OpenObserve delivery enabled with deployment secrets or route stdout/JSONL logs through a platform collector.
 
 ## Health Check
 

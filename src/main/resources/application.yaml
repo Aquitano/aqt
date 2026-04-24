@@ -10,5 +10,13 @@ aqtHealth:
     jdbcUrl: "$AQT_HEALTH_JDBC_URL:jdbc:sqlite:./data/aqt-health.db"
     driver: "org.sqlite.JDBC"
   auth:
-    bootstrapClientName: "$AQT_HEALTH_BOOTSTRAP_CLIENT_NAME:local-admin"
+    bootstrapClientName: "$AQT_HEALTH_BOOTSTRAP_CLIENT_NAME:"
     bootstrapApiKey: "$AQT_HEALTH_BOOTSTRAP_API_KEY:"
+  googleHealth:
+    clientId: "$AQT_HEALTH_GOOGLE_CLIENT_ID:"
+    clientSecret: "$AQT_HEALTH_GOOGLE_CLIENT_SECRET:"
+    redirectUri: "$AQT_HEALTH_GOOGLE_REDIRECT_URI:"
+    tokenEncryptionKey: "$AQT_HEALTH_GOOGLE_TOKEN_ENCRYPTION_KEY:"
+    apiBaseUrl: "$AQT_HEALTH_GOOGLE_API_BASE_URL:https://health.googleapis.com"
+    oauthTokenUrl: "$AQT_HEALTH_GOOGLE_OAUTH_TOKEN_URL:https://oauth2.googleapis.com/token"
+    oauthAuthUrl: "$AQT_HEALTH_GOOGLE_OAUTH_AUTH_URL:https://accounts.google.com/o/oauth2/v2/auth"

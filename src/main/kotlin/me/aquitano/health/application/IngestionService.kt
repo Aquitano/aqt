@@ -11,10 +11,14 @@ import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.shared.AppJson
 import me.aquitano.health.shared.utcDate
+import net.logstash.logback.argument.StructuredArguments.kv
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
+import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.time.LocalDate
+
+private val logger = LoggerFactory.getLogger(IngestionService::class.java)
 
 class IngestionService(
     private val database: Database,
@@ -29,6 +33,13 @@ class IngestionService(
         now: Instant
     ): IngestionSummaryResponse {
         val validated = mappingService.validateAndMap(request)
+        logger.info(
+            "ingestion_batch_received {} {} {} {}",
+            kv("provider", validated.provider),
+            kv("providerInstanceId", validated.providerInstanceId),
+            kv("recordCount", validated.records.size),
+            kv("hasExternalId", validated.batchExternalId != null),
+        )
         val transactionResult =
             newSuspendedTransaction(Dispatchers.IO, db = database) {
                 val sourceInstance =
@@ -46,6 +57,11 @@ class IngestionService(
                         )
                     }
                 if (existingBatch != null) {
+                    logger.info(
+                        "ingestion_batch_duplicate {} {}",
+                        kv("batchId", existingBatch.id),
+                        kv("recordCount", validated.records.size),
+                    )
                     return@newSuspendedTransaction IngestionTransactionResult.Success(
                         IngestionSummaryResponse(
                             batchId = existingBatch.id,
@@ -133,6 +149,11 @@ class IngestionService(
                         now,
                         throwable.message ?: "Unknown ingestion error"
                     )
+                    logger.error(
+                        "ingestion_batch_failed {}",
+                        kv("batchId", batchId),
+                        throwable,
+                    )
                     return@newSuspendedTransaction IngestionTransactionResult.Failure(
                         throwable
                     )
@@ -161,7 +182,23 @@ class IngestionService(
             }
 
         return when (transactionResult) {
-            is IngestionTransactionResult.Success -> transactionResult.response
+            is IngestionTransactionResult.Success -> {
+                val response = transactionResult.response
+                if (!response.duplicateBatch) {
+                    logger.info(
+                        "ingestion_batch_processed {} {} {} {} {} {} {} {}",
+                        kv("batchId", response.batchId),
+                        kv("recordsStored", response.ingestionRecordsStored),
+                        kv("stepSamplesCreated", response.metricsCreated.stepSamples),
+                        kv("sleepSessionsCreated", response.metricsCreated.sleepSessions),
+                        kv("sleepStagesCreated", response.metricsCreated.sleepStages),
+                        kv("bodyMeasurementsCreated", response.metricsCreated.bodyMeasurements),
+                        kv("heartRateSamplesCreated", response.metricsCreated.heartRateSamples),
+                        kv("duplicateSkips", response.metricsSkipped.duplicates),
+                    )
+                }
+                response
+            }
             is IngestionTransactionResult.Failure -> throw transactionResult.throwable
         }
     }

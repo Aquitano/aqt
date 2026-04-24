@@ -31,11 +31,13 @@ class SupportRepository(
         name: String,
         apiKeyHash: String,
         now: Instant
-    ) {
+    ): Boolean =
         transaction(database) {
             val existing =
                 ApiClientDao.find { ApiClientsTable.name eq name }.firstOrNull()
-            if (existing == null) {
+            if (existing != null) {
+                false
+            } else {
                 ApiClientDao.new {
                     this.name = name
                     this.apiKeyHash = apiKeyHash
@@ -43,9 +45,9 @@ class SupportRepository(
                     createdAt = now.toString()
                     lastUsedAt = null
                 }
+                true
             }
         }
-    }
 
     suspend fun findEnabledApiClientByHash(
         apiKeyHash: String,

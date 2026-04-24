@@ -8,7 +8,13 @@ import io.ktor.http.*
 import kotlinx.serialization.json.*
 import me.aquitano.health.infrastructure.config.GoogleHealthConfig
 import me.aquitano.health.shared.AppJson
+import net.logstash.logback.argument.StructuredArguments.kv
+import org.slf4j.LoggerFactory
 import java.time.Instant
+
+private const val MAX_GOOGLE_HEALTH_PAGES = 500
+private const val GOOGLE_HEALTH_PAGE_PROGRESS_INTERVAL = 25
+private val logger = LoggerFactory.getLogger(KtorGoogleHealthClient::class.java)
 
 interface GoogleHealthClient {
     suspend fun exchangeCode(code: String, now: Instant): GoogleHealthTokenSet
@@ -80,9 +86,16 @@ class KtorGoogleHealthClient(
     ): GoogleHealthFetchResult {
         val pages = mutableListOf<GoogleHealthPage>()
         val dataPoints = mutableListOf<JsonObject>()
+        val seenPageTokens = mutableSetOf<String>()
         var pageToken: String? = null
         var pageIndex = 0
         do {
+            if (pageIndex >= MAX_GOOGLE_HEALTH_PAGES) {
+                throw GoogleHealthHttpException(
+                    "google_health_page_limit_exceeded",
+                    "Google Health $dataType pagination exceeded $MAX_GOOGLE_HEALTH_PAGES pages",
+                )
+            }
             val suffix = if (reconcile) "/dataPoints:reconcile" else "/dataPoints"
             val response = httpClient.get(
                 "${config.apiBaseUrl.trimEnd('/')}/v4/users/me/dataTypes/$dataType$suffix"
@@ -115,8 +128,24 @@ class KtorGoogleHealthClient(
             body["dataPoints"]?.jsonArray?.forEach { element ->
                 (element as? JsonObject)?.let(dataPoints::add)
             }
-            pageToken = body.stringOrNull("nextPageToken")?.takeIf { it.isNotBlank() }
             pageIndex += 1
+            if (pageIndex == 1 || pageIndex % GOOGLE_HEALTH_PAGE_PROGRESS_INTERVAL == 0) {
+                logger.info(
+                    "google_health_page_fetched {} {} {} {}",
+                    kv("dataType", dataType),
+                    kv("pages", pageIndex),
+                    kv("dataPoints", dataPoints.size),
+                    kv("reconcile", reconcile),
+                )
+            }
+            val nextPageToken = body.stringOrNull("nextPageToken")?.takeIf { it.isNotBlank() }
+            if (nextPageToken != null && !seenPageTokens.add(nextPageToken)) {
+                throw GoogleHealthHttpException(
+                    "google_health_pagination_loop",
+                    "Google Health $dataType returned a repeated page token after $pageIndex pages",
+                )
+            }
+            pageToken = nextPageToken
         } while (pageToken != null)
 
         return GoogleHealthFetchResult(dataType, pages, dataPoints)

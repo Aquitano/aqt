@@ -8,10 +8,57 @@ import io.ktor.server.testing.*
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class ApplicationTest {
     @Test
     fun healthEndpointResponds() = testApplication {
+        configureTestApplication()
+        val response = client.get("/api/v1/admin/health")
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        assert(response.bodyAsText().contains(""""status":"ok""""))
+    }
+
+    @Test
+    fun requestWithoutRequestIdReceivesGeneratedRequestId() = testApplication {
+        configureTestApplication()
+
+        val response = client.get("/api/v1/admin/health")
+
+        val requestId = response.headers[HttpHeaders.XRequestId]
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertNotNull(requestId)
+        assertTrue(requestId.isNotBlank())
+    }
+
+    @Test
+    fun requestWithRequestIdPreservesRequestId() = testApplication {
+        configureTestApplication()
+
+        val response = client.get("/api/v1/admin/health") {
+            header(HttpHeaders.XRequestId, "test-request-123")
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals("test-request-123", response.headers[HttpHeaders.XRequestId])
+    }
+
+    @Test
+    fun unauthorizedResponseShapeIsUnchanged() = testApplication {
+        configureTestApplication()
+
+        val response = client.get("/api/v1/admin/ingestion/batches")
+
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+        assertEquals(
+            """{"error":{"code":"unauthorized","message":"Missing or invalid API key"}}""",
+            response.bodyAsText(),
+        )
+    }
+
+    private fun ApplicationTestBuilder.configureTestApplication() {
         val dbPath = Files.createTempFile("aqt-health-app-test", ".db")
         environment {
             config = MapApplicationConfig(
@@ -23,9 +70,5 @@ class ApplicationTest {
                 "aqtHealth.auth.bootstrapApiKey" to "test-key",
             )
         }
-        val response = client.get("/api/v1/admin/health")
-
-        assertEquals(HttpStatusCode.OK, response.status)
-        assert(response.bodyAsText().contains(""""status":"ok""""))
     }
 }
