@@ -1,0 +1,3 @@
+{
+  "extends": "@aqt-gallery/config/tsconfig.base.json"
+}
