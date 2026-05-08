@@ -49,6 +49,8 @@ dependencies {
     implementation("org.xerial:sqlite-jdbc:$sqlite_jdbc_version")
     implementation("org.flywaydb:flyway-core:$flyway_version")
 
+    implementation("com.google.cloud:google-cloud-health:0.1.0")
+
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("io.ktor:ktor-client-mock")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
