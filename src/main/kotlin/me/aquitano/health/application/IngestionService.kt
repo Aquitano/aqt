@@ -28,6 +28,25 @@ class IngestionService(
     private val metricsWriteRepository: MetricsWriteRepository,
     private val stepSummaryService: StepSummaryService,
 ) {
+    suspend fun findExistingBatch(
+        provider: String,
+        providerInstanceId: String,
+        batchExternalId: String,
+        now: Instant,
+    ) =
+        newSuspendedTransaction(Dispatchers.IO, db = database) {
+            val sourceInstance =
+                supportRepository.resolveOrCreateSourceInstanceInTransaction(
+                    provider = provider,
+                    providerInstanceId = providerInstanceId,
+                    now = now,
+                )
+            ingestionRepository.findBatchByExternalId(
+                sourceInstance.id,
+                batchExternalId,
+            )
+        }
+
     suspend fun ingestBatch(
         request: IngestionBatchRequest,
         now: Instant

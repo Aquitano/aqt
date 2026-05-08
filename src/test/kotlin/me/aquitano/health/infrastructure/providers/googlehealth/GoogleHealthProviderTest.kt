@@ -94,11 +94,39 @@ class GoogleHealthProviderTest {
         assertEquals(5, first.batches.size)
         assertEquals(5, second.batches.size)
         assertTrue(second.batches.all { it.duplicateBatch })
+        assertEquals(5, fixture.client.fetchRequests.size)
         assertEquals(1, countRows(fixture.dbPath, "step_samples"))
         assertEquals(1, countRows(fixture.dbPath, "sleep_sessions"))
         assertEquals(2, countRows(fixture.dbPath, "sleep_stages"))
         assertEquals(1, countRows(fixture.dbPath, "heart_rate_samples"))
         assertEquals(2, countRows(fixture.dbPath, "body_measurements"))
+    }
+
+    @Test
+    fun syncChunksHeartRateByDayAndSkipsCachedChunks() = runBlocking {
+        val fixture = Fixture()
+        fixture.storeAccount(accessToken = "access-token", refreshToken = "refresh-token")
+        fixture.client.fetchResults += listOf(fetchResult("heart-rate", heartRatePoint()))
+        fixture.client.fetchResults += listOf(fetchResult("heart-rate", heartRatePoint()))
+
+        val request = GoogleHealthSyncRequest(
+            from = "2026-04-01T00:00:00Z",
+            to = "2026-04-03T00:00:00Z",
+            dataTypes = listOf("heart-rate"),
+        )
+        val first = fixture.syncService.sync(request, fixture.now)
+        val second = fixture.syncService.sync(request, fixture.now.plusSeconds(60))
+
+        assertEquals(2, first.batches.size)
+        assertEquals(2, second.batches.size)
+        assertTrue(second.batches.all { it.duplicateBatch })
+        assertEquals(
+            listOf(
+                FetchRequest("heart-rate", Instant.parse("2026-04-01T00:00:00Z"), Instant.parse("2026-04-02T00:00:00Z")),
+                FetchRequest("heart-rate", Instant.parse("2026-04-02T00:00:00Z"), Instant.parse("2026-04-03T00:00:00Z")),
+            ),
+            fixture.client.fetchRequests,
+        )
     }
 
     @Test
@@ -211,6 +239,7 @@ class GoogleHealthProviderTest {
     private class FakeGoogleHealthClient : GoogleHealthClient {
         val fetchResults = ArrayDeque<List<GoogleHealthFetchResult>>()
         val fetchAccessTokens = mutableListOf<String>()
+        val fetchRequests = mutableListOf<FetchRequest>()
         var refreshedAccessToken = "new-access"
         var refreshCalls = 0
         var throwUnauthorizedOnce = false
@@ -250,6 +279,7 @@ class GoogleHealthProviderTest {
             pageSize: Int,
         ): GoogleHealthFetchResult {
             fetchAccessTokens.add(accessToken)
+            fetchRequests.add(FetchRequest(dataType, from, to))
             nextFetchFailure?.let {
                 nextFetchFailure = null
                 throw it
@@ -264,6 +294,12 @@ class GoogleHealthProviderTest {
             return result
         }
     }
+
+    private data class FetchRequest(
+        val dataType: String,
+        val from: Instant,
+        val to: Instant,
+    )
 
     private fun allMetricFetchResults(): List<GoogleHealthFetchResult> =
         listOf(

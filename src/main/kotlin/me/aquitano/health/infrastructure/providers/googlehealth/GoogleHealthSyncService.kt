@@ -55,86 +55,107 @@ class GoogleHealthSyncService(
         val batches = mutableListOf<GoogleHealthSyncBatchResponse>()
         val errors = mutableListOf<GoogleHealthSyncErrorResponse>()
         for (dataType in validated.dataTypes) {
-            try {
-                val fetchResult = fetchWithOneAuthRetry(
-                    tokenState,
-                    account,
-                    cipher,
+            for (window in syncWindows(dataType, validated.from, validated.to)) {
+                val batchExternalId = batchExternalId(
+                    account.providerInstanceId,
                     dataType,
-                    validated.from,
-                    validated.to,
-                    validated.pageSizeFor(dataType),
-                    now,
+                    window.from,
+                    window.to,
                 )
-                val normalized = normalizer.normalize(fetchResult)
-                if (normalized.records.isEmpty()) {
+                val existingBatch = ingestionService.findExistingBatch(
+                    provider = GOOGLE_HEALTH_PROVIDER_CODE,
+                    providerInstanceId = account.providerInstanceId,
+                    batchExternalId = batchExternalId,
+                    now = now,
+                )
+                if (existingBatch != null) {
+                    batches.add(cachedBatchResponse(dataType, existingBatch.id))
                     logger.info(
-                        "google_health_data_type_synced {} {} {} {}",
+                        "google_health_data_type_cache_hit {} {} {} {}",
                         kv("dataType", dataType),
-                        kv("pages", fetchResult.pages.size),
-                        kv("dataPoints", fetchResult.dataPoints.size),
-                        kv("records", 0),
+                        kv("batchId", existingBatch.id),
+                        kv("from", window.from.toString()),
+                        kv("to", window.to.toString()),
                     )
                     continue
                 }
-                val summary = ingestionService.ingestBatch(
-                    IngestionBatchRequest(
-                        provider = GOOGLE_HEALTH_PROVIDER_CODE,
-                        providerInstanceId = account.providerInstanceId,
-                        batchExternalId = batchExternalId(
-                            account.providerInstanceId,
-                            dataType,
-                            validated.from,
-                            validated.to,
+
+                try {
+                    val fetchResult = fetchWithOneAuthRetry(
+                        tokenState,
+                        account,
+                        cipher,
+                        dataType,
+                        window.from,
+                        window.to,
+                        validated.pageSizeFor(dataType),
+                        now,
+                    )
+                    val normalized = normalizer.normalize(fetchResult)
+                    if (normalized.records.isEmpty()) {
+                        logger.info(
+                            "google_health_data_type_synced {} {} {} {}",
+                            kv("dataType", dataType),
+                            kv("pages", fetchResult.pages.size),
+                            kv("dataPoints", fetchResult.dataPoints.size),
+                            kv("records", 0),
+                        )
+                        continue
+                    }
+                    val summary = ingestionService.ingestBatch(
+                        IngestionBatchRequest(
+                            provider = GOOGLE_HEALTH_PROVIDER_CODE,
+                            providerInstanceId = account.providerInstanceId,
+                            batchExternalId = batchExternalId,
+                            ingestedAt = now.toString(),
+                            sourcePayload = buildJsonObject {
+                                put("provider", GOOGLE_HEALTH_PROVIDER_CODE)
+                                put("providerInstanceId", account.providerInstanceId)
+                                put("requestedFrom", window.from.toString())
+                                put("requestedTo", window.to.toString())
+                                put("dataType", dataType)
+                                put("pages", normalized.sourcePayload["pages"] ?: JsonArray(emptyList()))
+                            },
+                            records = normalized.records,
                         ),
-                        ingestedAt = now.toString(),
-                        sourcePayload = buildJsonObject {
-                            put("provider", GOOGLE_HEALTH_PROVIDER_CODE)
-                            put("providerInstanceId", account.providerInstanceId)
-                            put("requestedFrom", validated.from.toString())
-                            put("requestedTo", validated.to.toString())
-                            put("dataType", dataType)
-                            put("pages", normalized.sourcePayload["pages"] ?: JsonArray(emptyList()))
-                        },
-                        records = normalized.records,
-                    ),
-                    now = now,
-                )
-                batches.add(
-                    GoogleHealthSyncBatchResponse(
-                        dataType = dataType,
-                        batchId = summary.batchId,
-                        duplicateBatch = summary.duplicateBatch,
-                        recordsReceived = summary.recordsReceived,
-                        ingestionRecordsStored = summary.ingestionRecordsStored,
-                        metricsCreated = summary.metricsCreated,
-                        metricsSkipped = summary.metricsSkipped,
-                        affectedStepSummaryDates = summary.affectedStepSummaryDates,
+                        now = now,
                     )
-                )
-                logger.info(
-                    "google_health_data_type_synced {} {} {} {} {} {}",
-                    kv("dataType", dataType),
-                    kv("pages", fetchResult.pages.size),
-                    kv("dataPoints", fetchResult.dataPoints.size),
-                    kv("records", normalized.records.size),
-                    kv("batchId", summary.batchId),
-                    kv("duplicateBatch", summary.duplicateBatch),
-                )
-            } catch (throwable: Throwable) {
-                val code = errorCode(throwable)
-                logger.warn(
-                    "google_health_data_type_failed {} {}",
-                    kv("dataType", dataType),
-                    kv("errorCode", code),
-                )
-                errors.add(
-                    GoogleHealthSyncErrorResponse(
-                        dataType = dataType,
-                        code = code,
-                        message = throwable.message ?: "Google Health sync failed",
+                    batches.add(
+                        GoogleHealthSyncBatchResponse(
+                            dataType = dataType,
+                            batchId = summary.batchId,
+                            duplicateBatch = summary.duplicateBatch,
+                            recordsReceived = summary.recordsReceived,
+                            ingestionRecordsStored = summary.ingestionRecordsStored,
+                            metricsCreated = summary.metricsCreated,
+                            metricsSkipped = summary.metricsSkipped,
+                            affectedStepSummaryDates = summary.affectedStepSummaryDates,
+                        )
                     )
-                )
+                    logger.info(
+                        "google_health_data_type_synced {} {} {} {} {} {}",
+                        kv("dataType", dataType),
+                        kv("pages", fetchResult.pages.size),
+                        kv("dataPoints", fetchResult.dataPoints.size),
+                        kv("records", normalized.records.size),
+                        kv("batchId", summary.batchId),
+                        kv("duplicateBatch", summary.duplicateBatch),
+                    )
+                } catch (throwable: Throwable) {
+                    val code = errorCode(throwable)
+                    logger.warn(
+                        "google_health_data_type_failed {} {}",
+                        kv("dataType", dataType),
+                        kv("errorCode", code),
+                    )
+                    errors.add(
+                        GoogleHealthSyncErrorResponse(
+                            dataType = dataType,
+                            code = code,
+                            message = throwable.message ?: "Google Health sync failed",
+                        )
+                    )
+                }
             }
         }
 
@@ -281,7 +302,7 @@ class GoogleHealthSyncService(
                 issues.add(ValidationIssue("dataTypes[$index]", "unsupported Google Health data type"))
             }
         }
-        val pageSize = request.pageSize ?: 1000
+        val pageSize = request.pageSize ?: 10000
         if (pageSize <= 0) {
             issues.add(ValidationIssue("pageSize", "must be greater than 0"))
         }
@@ -303,6 +324,30 @@ class GoogleHealthSyncService(
     private fun batchExternalId(providerInstanceId: String, dataType: String, from: Instant, to: Instant): String =
         "google-health:$providerInstanceId:$dataType:$from:$to"
 
+    private fun cachedBatchResponse(dataType: String, batchId: Int): GoogleHealthSyncBatchResponse =
+        GoogleHealthSyncBatchResponse(
+            dataType = dataType,
+            batchId = batchId,
+            duplicateBatch = true,
+            recordsReceived = 0,
+            ingestionRecordsStored = 0,
+            metricsCreated = MetricCreatedCountsResponse(0, 0, 0, 0, 0),
+            metricsSkipped = MetricSkippedCountsResponse(duplicates = 0),
+            affectedStepSummaryDates = emptyList(),
+        )
+
+    private fun syncWindows(dataType: String, from: Instant, to: Instant): List<SyncWindow> {
+        val windowSize = if (dataType == "heart-rate") Duration.ofDays(1) else Duration.between(from, to)
+        val windows = mutableListOf<SyncWindow>()
+        var windowFrom = from
+        while (windowFrom.isBefore(to)) {
+            val windowTo = listOf(windowFrom.plus(windowSize), to).minOrNull()!!
+            windows.add(SyncWindow(windowFrom, windowTo))
+            windowFrom = windowTo
+        }
+        return windows
+    }
+
     private fun errorCode(throwable: Throwable): String =
         when (throwable) {
             is GoogleHealthHttpException -> throwable.code
@@ -323,5 +368,10 @@ class GoogleHealthSyncService(
     private data class TokenState(
         val accessToken: String,
         val refreshToken: String,
+    )
+
+    private data class SyncWindow(
+        val from: Instant,
+        val to: Instant,
     )
 }
