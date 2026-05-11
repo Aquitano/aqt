@@ -14,7 +14,6 @@ import okhttp3.Response;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.concurrent.TimeUnit;
 
 public final class OpenObserveHttpAppender extends UnsynchronizedAppenderBase<ILoggingEvent> {
     private static final MediaType JSON = MediaType.get("application/json");

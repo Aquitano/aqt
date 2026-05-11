@@ -28,13 +28,7 @@ class GeneratedGoogleHealthClient(
     private val oauthClient: GoogleHealthOAuthClient,
     private val dataPointsServiceFactory: GoogleHealthDataPointsServiceFactory = GoogleHealthDataPointsServiceFactory(),
     private val maxPages: Int = MAX_GOOGLE_HEALTH_PAGES,
-) : GoogleHealthClient {
-    override suspend fun exchangeCode(code: String, now: Instant): GoogleHealthTokenSet =
-        oauthClient.exchangeCode(code, now)
-
-    override suspend fun refreshToken(refreshToken: String, now: Instant): GoogleHealthTokenSet =
-        oauthClient.refreshToken(refreshToken, now)
-
+) : GoogleHealthClient, GoogleHealthOAuthClient by oauthClient {
     override suspend fun fetchDataPoints(
         accessToken: String,
         dataType: String,

@@ -2,7 +2,7 @@ package me.aquitano.health.domain
 
 data class ValidationIssue(
     val field: String,
-    val message: String,
+    val message: String = "is required"
 )
 
 class RequestValidationException(

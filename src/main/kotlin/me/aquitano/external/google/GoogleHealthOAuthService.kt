@@ -66,8 +66,8 @@ class GoogleHealthOAuthService(
             )
             throw RequestValidationException(
                 listOf(
-                    ValidationIssue("code", "is required"),
-                    ValidationIssue("state", "is required"),
+                    ValidationIssue("code"),
+                    ValidationIssue("state"),
                 )
             )
         }
@@ -132,10 +132,10 @@ class GoogleHealthOAuthService(
 
     private fun requireConfigured() {
         val issues = buildList {
-            if (config.clientId.isBlank()) add(ValidationIssue("googleHealth.clientId", "is required"))
-            if (config.clientSecret.isBlank()) add(ValidationIssue("googleHealth.clientSecret", "is required"))
-            if (config.redirectUri.isBlank()) add(ValidationIssue("googleHealth.redirectUri", "is required"))
-            if (config.tokenEncryptionKey.isBlank()) add(ValidationIssue("googleHealth.tokenEncryptionKey", "is required"))
+            if (config.clientId.isBlank()) add(ValidationIssue("googleHealth.clientId"))
+            if (config.clientSecret.isBlank()) add(ValidationIssue("googleHealth.clientSecret"))
+            if (config.redirectUri.isBlank()) add(ValidationIssue("googleHealth.redirectUri"))
+            if (config.tokenEncryptionKey.isBlank()) add(ValidationIssue("googleHealth.tokenEncryptionKey"))
         }
         if (issues.isNotEmpty()) throw RequestValidationException(issues)
     }

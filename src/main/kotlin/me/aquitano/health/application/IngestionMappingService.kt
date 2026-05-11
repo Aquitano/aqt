@@ -20,11 +20,11 @@ class IngestionMappingService {
             optionalNonBlank(request.batchExternalId, "batchExternalId", issues)
         val ingestedAt = parseInstant(request.ingestedAt, "ingestedAt", issues)
         val sourcePayload = request.sourcePayload ?: JsonNull.also {
-            issues.add(ValidationIssue("sourcePayload", "is required"))
+            issues.add(ValidationIssue("sourcePayload"))
         }
         val inputRecords = request.records
         if (inputRecords == null) {
-            issues.add(ValidationIssue("records", "is required"))
+            issues.add(ValidationIssue("records"))
         } else if (inputRecords.isEmpty()) {
             issues.add(ValidationIssue("records", "must not be empty"))
         }
@@ -439,7 +439,7 @@ class IngestionMappingService {
         issues: MutableList<ValidationIssue>
     ): String? {
         if (value == null) {
-            issues.add(ValidationIssue(field, "is required"))
+            issues.add(ValidationIssue(field))
             return null
         }
         if (value.isBlank()) {
@@ -490,7 +490,7 @@ class IngestionMappingService {
     ): String? {
         val element = record[key]
         if (element == null || element is JsonNull) {
-            issues.add(ValidationIssue(field, "is required"))
+            issues.add(ValidationIssue(field))
             return null
         }
         return runCatching { element.jsonPrimitive.contentOrNull }.getOrNull()
@@ -531,7 +531,7 @@ class IngestionMappingService {
     ): Int? {
         val element = record[key]
         if (element == null || element is JsonNull) {
-            issues.add(ValidationIssue(field, "is required"))
+            issues.add(ValidationIssue(field))
             return null
         }
         return runCatching { element.jsonPrimitive.intOrNull }.getOrNull()
