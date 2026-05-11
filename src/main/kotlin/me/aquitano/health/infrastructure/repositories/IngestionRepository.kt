@@ -15,6 +15,7 @@ import java.time.Instant
 data class ExistingBatch(
     val id: Int,
     val status: String,
+    val batchExternalId: String?,
 )
 
 data class IngestionRecordRef(
@@ -95,6 +96,20 @@ class IngestionRepository {
             it[createdAt] = receivedAt.toString()
             it[updatedAt] = receivedAt.toString()
         }.value
+
+    fun releaseFailedBatchExternalId(
+        batchId: Int,
+        batchExternalId: String,
+        releasedAt: Instant,
+    ) {
+        IngestionBatchesTable.update({
+            (IngestionBatchesTable.id eq batchId) and
+                    (IngestionBatchesTable.status eq "failed")
+        }) {
+            it[this.batchExternalId] = "$batchExternalId#failed:$batchId"
+            it[updatedAt] = releasedAt.toString()
+        }
+    }
 
     fun insertRecords(
         batchId: Int,
@@ -229,5 +244,6 @@ class IngestionRepository {
         ExistingBatch(
             id = row[IngestionBatchesTable.id].value,
             status = row[IngestionBatchesTable.status],
+            batchExternalId = row[IngestionBatchesTable.batchExternalId],
         )
 }

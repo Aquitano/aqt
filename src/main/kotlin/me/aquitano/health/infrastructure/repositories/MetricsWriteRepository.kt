@@ -7,12 +7,15 @@ import me.aquitano.health.domain.StepIntervalRecord
 import me.aquitano.health.infrastructure.database.tables.*
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.greater
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 
 class MetricsWriteRepository {
     fun insertStepSample(
+        provider: String,
         sourceInstanceId: Int,
         ingestionRecordId: Int,
         record: StepIntervalRecord,
@@ -21,6 +24,11 @@ class MetricsWriteRepository {
         if (record.providerRecordId != null && stepSampleExists(
                 sourceInstanceId,
                 record.providerRecordId
+            )
+        ) return false
+        if (provider == GOOGLE_HEALTH_PROVIDER_CODE && stepSampleOverlaps(
+                sourceInstanceId,
+                record
             )
         ) return false
         StepSamplesTable.insert {
@@ -167,6 +175,32 @@ class MetricsWriteRepository {
             .limit(1)
             .any()
 
+    private fun stepSampleOverlaps(
+        sourceInstanceId: Int,
+        record: StepIntervalRecord,
+    ): Boolean {
+        val candidateStartBefore = record.endAt.plusSeconds(1).toString()
+        val candidateEndAfter = record.startAt.minusSeconds(1).toString()
+        return StepSamplesTable.selectAll()
+            .where {
+                (StepSamplesTable.sourceInstanceId eq sourceInstanceId) and
+                        (StepSamplesTable.startAt less candidateStartBefore) and
+                        (StepSamplesTable.endAt greater candidateEndAfter)
+            }
+            .any {
+                val existingStart = runCatching {
+                    Instant.parse(it[StepSamplesTable.startAt])
+                }.getOrNull()
+                val existingEnd = runCatching {
+                    Instant.parse(it[StepSamplesTable.endAt])
+                }.getOrNull()
+                existingStart != null &&
+                        existingEnd != null &&
+                        existingStart.isBefore(record.endAt) &&
+                        record.startAt.isBefore(existingEnd)
+            }
+    }
+
     private fun sleepSessionExists(
         sourceInstanceId: Int,
         providerRecordId: String
@@ -205,3 +239,5 @@ class MetricsWriteRepository {
             .limit(1)
             .any()
 }
+
+private const val GOOGLE_HEALTH_PROVIDER_CODE = "google_health"

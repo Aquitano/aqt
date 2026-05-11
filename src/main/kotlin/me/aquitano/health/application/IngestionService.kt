@@ -17,6 +17,7 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.time.LocalDate
+import java.util.concurrent.CancellationException
 
 private val logger = LoggerFactory.getLogger(IngestionService::class.java)
 
@@ -75,7 +76,7 @@ class IngestionService(
                             it
                         )
                     }
-                if (existingBatch != null) {
+                if (existingBatch?.status == "processed") {
                     logger.info(
                         "ingestion_batch_duplicate {} {}",
                         kv("batchId", existingBatch.id),
@@ -102,6 +103,28 @@ class IngestionService(
                         ),
                     )
                 }
+                if (existingBatch?.status == "failed") {
+                    val existingBatchExternalId = existingBatch.batchExternalId
+                        ?: throw ConflictException(
+                            "ingestion_batch_invalid_state",
+                            "Failed batch '${existingBatch.id}' does not have an external ID",
+                        )
+                    ingestionRepository.releaseFailedBatchExternalId(
+                        batchId = existingBatch.id,
+                        batchExternalId = existingBatchExternalId,
+                        releasedAt = now,
+                    )
+                    logger.info(
+                        "ingestion_batch_failed_external_id_released {} {}",
+                        kv("batchId", existingBatch.id),
+                        kv("batchExternalId", existingBatchExternalId),
+                    )
+                } else if (existingBatch != null) {
+                    throw ConflictException(
+                        "ingestion_batch_in_progress",
+                        "Batch '${validated.batchExternalId}' already exists with status '${existingBatch.status}'",
+                    )
+                }
 
                 val batchId = ingestionRepository.insertBatch(
                     sourceInstanceId = sourceInstance.id,
@@ -125,6 +148,7 @@ class IngestionService(
                     ingestionRecords.forEach { ingestionRecord ->
                         val result = when (val record = ingestionRecord.record) {
                             is StepIntervalRecord -> writeStepInterval(
+                                validated.provider,
                                 sourceInstance.id,
                                 ingestionRecord.id,
                                 record,
@@ -162,19 +186,20 @@ class IngestionService(
                         now
                     )
                     ingestionRepository.markProcessed(batchId, now)
-                } catch (throwable: Throwable) {
+                } catch (exception: Exception) {
+                    if (exception is CancellationException) throw exception
                     ingestionRepository.markFailed(
                         batchId,
                         now,
-                        throwable.message ?: "Unknown ingestion error"
+                        exception.message ?: "Unknown ingestion error"
                     )
                     logger.error(
                         "ingestion_batch_failed {}",
                         kv("batchId", batchId),
-                        throwable,
+                        exception,
                     )
                     return@newSuspendedTransaction IngestionTransactionResult.Failure(
-                        throwable
+                        exception
                     )
                 }
 
@@ -223,12 +248,14 @@ class IngestionService(
     }
 
     private fun writeStepInterval(
+        provider: String,
         sourceInstanceId: Int,
         ingestionRecordId: Int,
         record: StepIntervalRecord,
         now: Instant,
     ): MetricWriteResult {
         val inserted = metricsWriteRepository.insertStepSample(
+            provider,
             sourceInstanceId,
             ingestionRecordId,
             record,

@@ -1,4 +1,4 @@
-package me.aquitano.health.infrastructure.providers.googlehealth
+package me.aquitano.external.google
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
@@ -100,6 +100,180 @@ class GoogleHealthProviderTest {
         assertEquals(2, countRows(fixture.dbPath, "sleep_stages"))
         assertEquals(1, countRows(fixture.dbPath, "heart_rate_samples"))
         assertEquals(2, countRows(fixture.dbPath, "body_measurements"))
+    }
+
+    @Test
+    fun syncRetriesFailedCachedWindow() = runBlocking {
+        val fixture = Fixture()
+        fixture.storeAccount(accessToken = "access-token", refreshToken = "refresh-token")
+        insertFailedGoogleBatch(
+            fixture.dbPath,
+            providerInstanceId = "google-user-1",
+            batchExternalId = "google-health:google-user-1:steps:2026-04-01T00:00:00Z:2026-04-02T00:00:00Z",
+        )
+        fixture.client.fetchResults += listOf(stepsFetchResult())
+
+        val response = fixture.syncService.sync(
+            GoogleHealthSyncRequest(
+                from = "2026-04-01T00:00:00Z",
+                to = "2026-04-02T00:00:00Z",
+                dataTypes = listOf("steps"),
+            ),
+            fixture.now,
+        )
+
+        assertEquals(1, fixture.client.fetchRequests.size)
+        assertEquals(false, response.batches.single().duplicateBatch)
+        assertEquals(1, response.batches.single().metricsCreated.stepSamples)
+        assertEquals(2, countRows(fixture.dbPath, "ingestion_batches"))
+        assertEquals(
+            1,
+            singleInt(
+                fixture.dbPath,
+                "SELECT COUNT(*) FROM ingestion_batches WHERE status = 'processed' AND batch_external_id = 'google-health:google-user-1:steps:2026-04-01T00:00:00Z:2026-04-02T00:00:00Z'"
+            )
+        )
+        assertEquals(
+            1,
+            singleInt(
+                fixture.dbPath,
+                "SELECT COUNT(*) FROM ingestion_batches WHERE status = 'failed' AND batch_external_id LIKE 'google-health:google-user-1:steps:2026-04-01T00:00:00Z:2026-04-02T00:00:00Z#failed:%'"
+            )
+        )
+    }
+
+    @Test
+    fun syncOverlappingRangesWithSameGoogleStepRecordDoNotCreateDuplicateRows() = runBlocking {
+        val fixture = Fixture()
+        fixture.storeAccount(accessToken = "access-token", refreshToken = "refresh-token")
+        fixture.client.fetchResults += listOf(stepsFetchResult())
+        fixture.client.fetchResults += listOf(stepsFetchResult())
+
+        val first = fixture.syncService.sync(
+            GoogleHealthSyncRequest(
+                from = "2026-04-01T00:00:00Z",
+                to = "2026-04-02T00:00:00Z",
+                dataTypes = listOf("steps"),
+            ),
+            fixture.now,
+        )
+        val second = fixture.syncService.sync(
+            GoogleHealthSyncRequest(
+                from = "2026-04-01T06:00:00Z",
+                to = "2026-04-02T00:00:00Z",
+                dataTypes = listOf("steps"),
+            ),
+            fixture.now.plusSeconds(60),
+        )
+
+        assertEquals(1, first.batches.single().metricsCreated.stepSamples)
+        assertEquals(0, second.batches.single().metricsCreated.stepSamples)
+        assertEquals(1, second.batches.single().metricsSkipped.duplicates)
+        assertEquals(2, fixture.client.fetchRequests.size)
+        assertEquals(1, countRows(fixture.dbPath, "step_samples"))
+        assertEquals(1200, singleInt(fixture.dbPath, "SELECT steps FROM step_daily_summaries"))
+    }
+
+    @Test
+    fun syncSkipsOverlappingGoogleStepIntervalsWithDifferentProviderIds() = runBlocking {
+        val fixture = Fixture()
+        fixture.storeAccount(accessToken = "access-token", refreshToken = "refresh-token")
+        fixture.client.fetchResults += listOf(
+            fetchResult(
+                "steps",
+                stepsPoint(
+                    name = "google-steps-minute",
+                    startAt = "2026-04-01T08:00:00Z",
+                    endAt = "2026-04-01T08:01:00Z",
+                    count = 20,
+                ),
+            )
+        )
+        fixture.client.fetchResults += listOf(
+            fetchResult(
+                "steps",
+                stepsPoint(
+                    name = "google-steps-short",
+                    startAt = "2026-04-01T08:00:30Z",
+                    endAt = "2026-04-01T08:01:30Z",
+                    count = 15,
+                ),
+            )
+        )
+
+        val first = fixture.syncService.sync(
+            GoogleHealthSyncRequest(
+                from = "2026-04-01T00:00:00Z",
+                to = "2026-04-02T00:00:00Z",
+                dataTypes = listOf("steps"),
+            ),
+            fixture.now,
+        )
+        val second = fixture.syncService.sync(
+            GoogleHealthSyncRequest(
+                from = "2026-04-01T08:00:30Z",
+                to = "2026-04-02T00:00:00Z",
+                dataTypes = listOf("steps"),
+            ),
+            fixture.now.plusSeconds(60),
+        )
+
+        assertEquals(1, first.batches.single().metricsCreated.stepSamples)
+        assertEquals(0, second.batches.single().metricsCreated.stepSamples)
+        assertEquals(1, second.batches.single().metricsSkipped.duplicates)
+        assertEquals(1, countRows(fixture.dbPath, "step_samples"))
+        assertEquals(20, singleInt(fixture.dbPath, "SELECT steps FROM step_daily_summaries"))
+    }
+
+    @Test
+    fun syncStoresNonOverlappingGoogleStepIntervalsAndSumsDailySummary() = runBlocking {
+        val fixture = Fixture()
+        fixture.storeAccount(accessToken = "access-token", refreshToken = "refresh-token")
+        fixture.client.fetchResults += listOf(
+            fetchResult(
+                "steps",
+                stepsPoint(
+                    name = "google-steps-1",
+                    startAt = "2026-04-01T08:00:00Z",
+                    endAt = "2026-04-01T09:00:00Z",
+                    count = 1200,
+                ),
+            )
+        )
+        fixture.client.fetchResults += listOf(
+            fetchResult(
+                "steps",
+                stepsPoint(
+                    name = "google-steps-2",
+                    startAt = "2026-04-01T10:00:00Z",
+                    endAt = "2026-04-01T11:00:00Z",
+                    count = 800,
+                ),
+            )
+        )
+
+        val first = fixture.syncService.sync(
+            GoogleHealthSyncRequest(
+                from = "2026-04-01T00:00:00Z",
+                to = "2026-04-01T09:30:00Z",
+                dataTypes = listOf("steps"),
+            ),
+            fixture.now,
+        )
+        val second = fixture.syncService.sync(
+            GoogleHealthSyncRequest(
+                from = "2026-04-01T09:30:00Z",
+                to = "2026-04-02T00:00:00Z",
+                dataTypes = listOf("steps"),
+            ),
+            fixture.now.plusSeconds(60),
+        )
+
+        assertEquals(1, first.batches.single().metricsCreated.stepSamples)
+        assertEquals(1, second.batches.single().metricsCreated.stepSamples)
+        assertEquals(0, second.batches.single().metricsSkipped.duplicates)
+        assertEquals(2, countRows(fixture.dbPath, "step_samples"))
+        assertEquals(2000, singleInt(fixture.dbPath, "SELECT steps FROM step_daily_summaries"))
     }
 
     @Test
@@ -324,14 +498,19 @@ class GoogleHealthProviderTest {
         )
     }
 
-    private fun stepsPoint(): JsonObject = buildJsonObject {
-        put("name", "google-steps-1")
+    private fun stepsPoint(
+        name: String = "google-steps-1",
+        startAt: String = "2026-04-01T08:00:00Z",
+        endAt: String = "2026-04-01T09:00:00Z",
+        count: Int = 1200,
+    ): JsonObject = buildJsonObject {
+        put("name", name)
         putJsonObject("steps") {
             putJsonObject("interval") {
-                put("startTime", "2026-04-01T08:00:00Z")
-                put("endTime", "2026-04-01T09:00:00Z")
+                put("startTime", startAt)
+                put("endTime", endAt)
             }
-            put("count", "1200")
+            put("count", count.toString())
         }
     }
 
@@ -412,4 +591,57 @@ class GoogleHealthProviderTest {
                 }
             }
         }
+
+    private fun insertFailedGoogleBatch(
+        dbPath: Path,
+        providerInstanceId: String,
+        batchExternalId: String,
+    ) {
+        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeUpdate(
+                    """
+                    INSERT INTO sources (code, display_name, created_at)
+                    VALUES ('$GOOGLE_HEALTH_PROVIDER_CODE', NULL, '2026-04-19T09:00:00Z')
+                    """.trimIndent()
+                )
+                statement.executeUpdate(
+                    """
+                    INSERT INTO source_instances (source_id, provider_instance_id, display_name, created_at, updated_at)
+                    VALUES (1, '$providerInstanceId', NULL, '2026-04-19T09:00:00Z', '2026-04-19T09:00:00Z')
+                    """.trimIndent()
+                )
+                statement.executeUpdate(
+                    """
+                    INSERT INTO ingestion_batches (
+                        source_instance_id,
+                        batch_external_id,
+                        source_payload_json,
+                        normalized_payload_json,
+                        status,
+                        ingested_at,
+                        received_at,
+                        processed_at,
+                        error_message,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (
+                        1,
+                        '$batchExternalId',
+                        '{}',
+                        '{}',
+                        'failed',
+                        '2026-04-19T09:00:00Z',
+                        '2026-04-19T09:00:00Z',
+                        NULL,
+                        'previous failure',
+                        '2026-04-19T09:00:00Z',
+                        '2026-04-19T09:00:00Z'
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+    }
 }

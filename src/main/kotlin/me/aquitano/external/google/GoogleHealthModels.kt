@@ -1,4 +1,4 @@
-package me.aquitano.health.infrastructure.providers.googlehealth
+package me.aquitano.external.google
 
 import kotlinx.serialization.json.JsonObject
 import java.time.Instant

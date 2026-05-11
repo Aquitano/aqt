@@ -1,4 +1,4 @@
-package me.aquitano.health.infrastructure.providers.googlehealth
+package me.aquitano.external.google
 
 import io.ktor.http.*
 import me.aquitano.health.api.dto.GoogleHealthOAuthCallbackResponse
@@ -21,7 +21,7 @@ private val logger = LoggerFactory.getLogger(GoogleHealthOAuthService::class.jav
 class GoogleHealthOAuthService(
     private val config: GoogleHealthConfig,
     private val repository: ProviderOAuthRepository,
-    private val client: GoogleHealthClient,
+    private val client: GoogleHealthOAuthClient,
 ) {
     private val random = SecureRandom()
 

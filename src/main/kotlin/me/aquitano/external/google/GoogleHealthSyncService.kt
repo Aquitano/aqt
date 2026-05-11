@@ -1,4 +1,4 @@
-package me.aquitano.health.infrastructure.providers.googlehealth
+package me.aquitano.external.google
 
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -17,6 +17,7 @@ import net.logstash.logback.argument.StructuredArguments.kv
 import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.CancellationException
 
 private val logger = LoggerFactory.getLogger(GoogleHealthSyncService::class.java)
 
@@ -68,7 +69,7 @@ class GoogleHealthSyncService(
                     batchExternalId = batchExternalId,
                     now = now,
                 )
-                if (existingBatch != null) {
+                if (existingBatch?.status == "processed") {
                     batches.add(cachedBatchResponse(dataType, existingBatch.id))
                     logger.info(
                         "google_health_data_type_cache_hit {} {} {} {}",
@@ -141,8 +142,9 @@ class GoogleHealthSyncService(
                         kv("batchId", summary.batchId),
                         kv("duplicateBatch", summary.duplicateBatch),
                     )
-                } catch (throwable: Throwable) {
-                    val code = errorCode(throwable)
+                } catch (exception: Exception) {
+                    if (exception is CancellationException) throw exception
+                    val code = errorCode(exception)
                     logger.warn(
                         "google_health_data_type_failed {} {}",
                         kv("dataType", dataType),
@@ -152,7 +154,7 @@ class GoogleHealthSyncService(
                         GoogleHealthSyncErrorResponse(
                             dataType = dataType,
                             code = code,
-                            message = throwable.message ?: "Google Health sync failed",
+                            message = exception.message ?: "Google Health sync failed",
                         )
                     )
                 }
@@ -241,14 +243,15 @@ class GoogleHealthSyncService(
     ): TokenState {
         val tokens = try {
             client.refreshToken(refreshToken, now)
-        } catch (throwable: Throwable) {
+        } catch (exception: Exception) {
+            if (exception is CancellationException) throw exception
             logger.warn(
                 "google_health_token_exchange_failed {}",
                 kv("errorCode", "google_health_token_refresh_failed"),
             )
             throw UpstreamProviderException(
                 "google_health_token_refresh_failed",
-                throwable.message ?: "Google OAuth token refresh failed",
+                exception.message ?: "Google OAuth token refresh failed",
                 502,
             )
         }

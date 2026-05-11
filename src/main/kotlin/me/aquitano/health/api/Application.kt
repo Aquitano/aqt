@@ -14,10 +14,12 @@ import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
-import me.aquitano.health.infrastructure.providers.googlehealth.GoogleHealthNormalizer
-import me.aquitano.health.infrastructure.providers.googlehealth.GoogleHealthOAuthService
-import me.aquitano.health.infrastructure.providers.googlehealth.GoogleHealthSyncService
-import me.aquitano.health.infrastructure.providers.googlehealth.KtorGoogleHealthClient
+import me.aquitano.external.google.GeneratedGoogleHealthClient
+import me.aquitano.external.google.GoogleHealthDataPointsServiceFactory
+import me.aquitano.external.google.GoogleHealthNormalizer
+import me.aquitano.external.google.GoogleHealthOAuthService
+import me.aquitano.external.google.GoogleHealthSyncService
+import me.aquitano.external.google.KtorGoogleHealthOAuthClient
 import me.aquitano.health.infrastructure.security.ApiKeyHasher
 import me.aquitano.health.infrastructure.time.UtcClock
 import me.aquitano.health.shared.AppJson
@@ -54,7 +56,11 @@ fun Application.module() {
             requestTimeoutMillis = 120_000
         }
     }
-    val googleHealthClient = KtorGoogleHealthClient(httpClient, appConfig.googleHealth)
+    val googleHealthOAuthClient = KtorGoogleHealthOAuthClient(httpClient, appConfig.googleHealth)
+    val googleHealthClient = GeneratedGoogleHealthClient(
+        oauthClient = googleHealthOAuthClient,
+        dataPointsServiceFactory = GoogleHealthDataPointsServiceFactory(appConfig.googleHealth.apiBaseUrl),
+    )
     logger.info(
         "app_configured {}",
         kv(

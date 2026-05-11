@@ -142,6 +142,42 @@ class IngestionRouteTest {
     }
 
     @Test
+    fun failedBatchExternalIdCanBeRetried() = testApplication {
+        val dbPath = configureTestApplication()
+        client.get("/api/v1/admin/health")
+        insertFailedBatch(
+            dbPath = dbPath,
+            provider = "health_connect",
+            providerInstanceId = "pixel-8-health-connect",
+            batchExternalId = "retry-batch",
+        )
+
+        val response = client.post("/api/v1/ingestion/batches") {
+            authorized()
+            contentType(ContentType.Application.Json)
+            setBody(minimalStepPayload(batchExternalId = "retry-batch"))
+        }
+
+        assertEquals(HttpStatusCode.Created, response.status)
+        assertEquals(2, countRows(dbPath, "ingestion_batches"))
+        assertEquals(
+            1,
+            singleInt(
+                dbPath,
+                "SELECT COUNT(*) FROM ingestion_batches WHERE status = 'processed' AND batch_external_id = 'retry-batch'"
+            )
+        )
+        assertEquals(
+            1,
+            singleInt(
+                dbPath,
+                "SELECT COUNT(*) FROM ingestion_batches WHERE status = 'failed' AND batch_external_id LIKE 'retry-batch#failed:%'"
+            )
+        )
+        assertEquals(1, countRows(dbPath, "step_samples"))
+    }
+
+    @Test
     fun providerRecordDuplicatesDoNotInflateMetricTables() =
         testApplication {
             val dbPath = configureTestApplication()
@@ -160,6 +196,49 @@ class IngestionRouteTest {
             assertEquals(1, countRows(dbPath, "step_samples"))
             assertEquals(
                 1200,
+                singleInt(dbPath, "SELECT steps FROM step_daily_summaries")
+            )
+        }
+
+    @Test
+    fun nonGoogleProvidersCanStoreOverlappingStepIntervals() =
+        testApplication {
+            val dbPath = configureTestApplication()
+
+            val first = client.post("/api/v1/ingestion/batches") {
+                authorized()
+                contentType(ContentType.Application.Json)
+                setBody(
+                    stepPayload(
+                        provider = "health_connect",
+                        batchExternalId = "overlap-1",
+                        providerRecordId = "steps-1",
+                        startAt = "2026-04-19T08:00:00Z",
+                        endAt = "2026-04-19T09:00:00Z",
+                        steps = 1200,
+                    )
+                )
+            }
+            val second = client.post("/api/v1/ingestion/batches") {
+                authorized()
+                contentType(ContentType.Application.Json)
+                setBody(
+                    stepPayload(
+                        provider = "health_connect",
+                        batchExternalId = "overlap-2",
+                        providerRecordId = "steps-2",
+                        startAt = "2026-04-19T08:30:00Z",
+                        endAt = "2026-04-19T09:30:00Z",
+                        steps = 800,
+                    )
+                )
+            }
+
+            assertEquals(HttpStatusCode.Created, first.status)
+            assertEquals(HttpStatusCode.Created, second.status)
+            assertEquals(2, countRows(dbPath, "step_samples"))
+            assertEquals(
+                2000,
                 singleInt(dbPath, "SELECT steps FROM step_daily_summaries")
             )
         }
@@ -212,12 +291,84 @@ class IngestionRouteTest {
             }
         }
 
+    private fun insertFailedBatch(
+        dbPath: Path,
+        provider: String,
+        providerInstanceId: String,
+        batchExternalId: String,
+    ) {
+        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeUpdate(
+                    """
+                    INSERT INTO sources (code, display_name, created_at)
+                    VALUES ('$provider', NULL, '2026-04-19T09:00:00Z')
+                    """.trimIndent()
+                )
+                statement.executeUpdate(
+                    """
+                    INSERT INTO source_instances (source_id, provider_instance_id, display_name, created_at, updated_at)
+                    VALUES (1, '$providerInstanceId', NULL, '2026-04-19T09:00:00Z', '2026-04-19T09:00:00Z')
+                    """.trimIndent()
+                )
+                statement.executeUpdate(
+                    """
+                    INSERT INTO ingestion_batches (
+                        source_instance_id,
+                        batch_external_id,
+                        source_payload_json,
+                        normalized_payload_json,
+                        status,
+                        ingested_at,
+                        received_at,
+                        processed_at,
+                        error_message,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (
+                        1,
+                        '$batchExternalId',
+                        '{}',
+                        '{}',
+                        'failed',
+                        '2026-04-19T09:00:00Z',
+                        '2026-04-19T09:00:00Z',
+                        NULL,
+                        'previous failure',
+                        '2026-04-19T09:00:00Z',
+                        '2026-04-19T09:00:00Z'
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+    }
+
     private fun minimalStepPayload(batchExternalId: String? = "steps-1-batch"): String {
+        return stepPayload(
+            provider = "health_connect",
+            batchExternalId = batchExternalId,
+            providerRecordId = "steps-1",
+            startAt = "2026-04-19T08:00:00Z",
+            endAt = "2026-04-19T09:00:00Z",
+            steps = 1200,
+        )
+    }
+
+    private fun stepPayload(
+        provider: String,
+        batchExternalId: String?,
+        providerRecordId: String,
+        startAt: String,
+        endAt: String,
+        steps: Int,
+    ): String {
         val batch =
             batchExternalId?.let { """"batchExternalId": "$it",""" } ?: ""
         return """
             {
-              "provider": "health_connect",
+              "provider": "$provider",
               "providerInstanceId": "pixel-8-health-connect",
               $batch
               "ingestedAt": "2026-04-19T10:00:00Z",
@@ -227,10 +378,10 @@ class IngestionRouteTest {
               "records": [
                 {
                   "type": "step_interval",
-                  "providerRecordId": "steps-1",
-                  "startAt": "2026-04-19T08:00:00Z",
-                  "endAt": "2026-04-19T09:00:00Z",
-                  "steps": 1200
+                  "providerRecordId": "$providerRecordId",
+                  "startAt": "$startAt",
+                  "endAt": "$endAt",
+                  "steps": $steps
                 }
               ]
             }
