@@ -10,7 +10,7 @@ aqtHealth:
     jdbcUrl: "$AQT_HEALTH_JDBC_URL:jdbc:sqlite:./data/aqt-health.db"
     driver: "org.sqlite.JDBC"
   auth:
-    bootstrapClientName: "$AQT_HEALTH_BOOTSTRAP_CLIENT_NAME:"
+    bootstrapClientName: "$AQT_HEALTH_BOOTSTRAP_CLIENT_NAME:local-admin"
     bootstrapApiKey: "$AQT_HEALTH_BOOTSTRAP_API_KEY:"
   googleHealth:
     clientId: "$AQT_HEALTH_GOOGLE_CLIENT_ID:"
