@@ -94,10 +94,7 @@ function SyncResult({ result }: { result: ApiResult<GoogleHealthSyncResponse> })
   const created = result.data.batches.reduce(
     (sum, batch) =>
       sum +
-      batch.metricsCreated.stepSamples +
-      batch.metricsCreated.sleepSessions +
-      batch.metricsCreated.bodyMeasurements +
-      batch.metricsCreated.heartRateSamples,
+      Object.values(batch.metricsCreated).reduce((batchSum, count) => batchSum + count, 0),
     0,
   );
 

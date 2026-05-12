@@ -17,7 +17,7 @@ export function formatNumber(value?: number): string {
 export function formatDuration(seconds?: number): string {
   if (seconds === undefined || seconds === null) return "n/a";
   const hours = Math.floor(seconds / 3600);
-  const minutes = Math.round((seconds % 3600) / 60);
+  const minutes = Math.floor((seconds % 3600) / 60);
   if (hours === 0) return `${minutes}m`;
   return `${hours}h ${minutes}m`;
 }

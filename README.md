@@ -105,7 +105,7 @@ build/logs/aqt-health.jsonl
 Set the OpenObserve environment variables before starting the app:
 
 ```powershell
-$env:OPENOBSERVE_LOG_URL = "https://logs.aquitano.me/api/3CdQ3ffpBGmNl0nnh49QbvpHyj2/default/_json"
+$env:OPENOBSERVE_LOG_URL = "https://openobserve.example.com/api/<organization>/<stream>/_json"
 $env:OPENOBSERVE_AUTHORIZATION = "Basic replace-with-rotated-openobserve-token"
 $env:AQT_HEALTH_ENV = "local"
 $env:AQT_HEALTH_LOG_FILE = "build/logs/aqt-health.jsonl"
