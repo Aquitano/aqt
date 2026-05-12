@@ -1,5 +1,6 @@
 package me.aquitano.external.google
 
+import me.aquitano.health.api.dto.IngestionRecordDto
 import kotlinx.serialization.json.JsonObject
 import java.time.Instant
 
@@ -41,7 +42,7 @@ data class GoogleHealthFetchResult(
 
 data class GoogleHealthNormalizedBatch(
     val sourcePayload: JsonObject,
-    val records: List<JsonObject>,
+    val records: List<IngestionRecordDto>,
 )
 
 class GoogleHealthUnauthorizedException(message: String) : RuntimeException(message)

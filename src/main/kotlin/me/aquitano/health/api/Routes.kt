@@ -9,13 +9,14 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import me.aquitano.health.api.dto.GoogleHealthSyncRequest
 import kotlinx.serialization.Serializable
+import java.time.Instant
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.application.QueryParams
 
 fun Application.configureRoutes(services: ApplicationServices) {
     routing {
-        openAPI(path = "openapi", swaggerFile = "openapi/aqt-health.yaml")
-        swaggerUI(path = "swagger", swaggerFile = "openapi/aqt-health.yaml")
+        // openAPI(path = "openapi", swaggerFile = "openapi/aqt-health.yaml")
+        // swaggerUI(path = "swagger", swaggerFile = "openapi/aqt-health.yaml")
 
         get("/api/v1/admin/health") {
             call.respond(
@@ -62,6 +63,19 @@ fun Application.configureRoutes(services: ApplicationServices) {
                     now = services.clock.now(),
                 )
             )
+        }
+        post("/api/v1/providers/{code}/sync") {
+            call.authenticateProtected(services)
+            val code = call.parameters["code"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+            val provider = services.providerRegistry.getProvider(code)
+                ?: return@post call.respond(HttpStatusCode.NotFound, "Provider $code not found")
+            
+            val queryParams = call.queryParams()
+            val from = queryParams.instant("from") ?: services.clock.now().minus(java.time.Duration.ofDays(7))
+            val to = queryParams.instant("to") ?: services.clock.now()
+            val providerInstanceId = queryParams.optional("providerInstanceId") ?: "default"
+
+            call.respond(provider.sync(providerInstanceId, from, to, services.clock.now()))
         }
         get("/api/v1/metrics/steps") {
             call.authenticateProtected(services)

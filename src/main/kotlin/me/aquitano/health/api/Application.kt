@@ -14,6 +14,8 @@ import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
+import me.aquitano.external.google.GoogleHealthProvider
+import me.aquitano.health.application.HealthProviderRegistry
 import me.aquitano.external.google.GeneratedGoogleHealthClient
 import me.aquitano.external.google.GoogleHealthDataPointsServiceFactory
 import me.aquitano.external.google.GoogleHealthNormalizer
@@ -78,6 +80,15 @@ fun Application.module() {
         metricsWriteRepository = metricsWriteRepository,
         stepSummaryService = StepSummaryService(metricsWriteRepository),
     )
+    val googleHealthProvider = GoogleHealthProvider(
+        config = appConfig.googleHealth,
+        repository = providerOAuthRepository,
+        client = googleHealthClient,
+        normalizer = GoogleHealthNormalizer(),
+        ingestionService = ingestionService,
+    )
+    val providerRegistry = HealthProviderRegistry(listOf(googleHealthProvider))
+
     val services = ApplicationServices(
         database = database,
         supportRepository = supportRepository,
@@ -104,6 +115,7 @@ fun Application.module() {
             normalizer = GoogleHealthNormalizer(),
             ingestionService = ingestionService,
         ),
+        providerRegistry = providerRegistry,
     )
 
     ApiClientBootstrapService(
@@ -127,4 +139,5 @@ data class ApplicationServices(
     val adminService: AdminService,
     val googleHealthOAuthService: GoogleHealthOAuthService,
     val googleHealthSyncService: GoogleHealthSyncService,
+    val providerRegistry: HealthProviderRegistry,
 )

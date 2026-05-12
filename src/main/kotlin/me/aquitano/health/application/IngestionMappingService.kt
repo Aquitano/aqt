@@ -1,7 +1,7 @@
 package me.aquitano.health.application
 
 import kotlinx.serialization.json.*
-import me.aquitano.health.api.dto.IngestionBatchRequest
+import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.*
 import me.aquitano.health.shared.AppJson
 import java.time.Instant
@@ -29,8 +29,8 @@ class IngestionMappingService {
             issues.add(ValidationIssue("records", "must not be empty"))
         }
 
-        val records = inputRecords?.mapIndexedNotNull { index, record ->
-            parseRecord(index, record, issues)
+        val records = inputRecords?.mapIndexedNotNull { index, dto ->
+            mapRecord(index, dto, issues)
         }.orEmpty()
 
         val duplicateProviderIds = records
@@ -71,345 +71,177 @@ class IngestionMappingService {
         )
     }
 
-    private fun parseRecord(
+    private fun mapRecord(
         index: Int,
-        record: JsonObject,
+        dto: IngestionRecordDto,
         issues: MutableList<ValidationIssue>
     ): HealthRecord? {
         val field = "records[$index]"
-        val type = string(record, "type", "$field.type", issues) ?: return null
-        return when (type) {
-            RecordTypes.STEP_INTERVAL -> parseStepInterval(
-                field,
-                record,
-                issues
-            )
-
-            RecordTypes.SLEEP_SESSION -> parseSleepSession(
-                field,
-                record,
-                issues
-            )
-
-            RecordTypes.BODY_MEASUREMENT -> parseBodyMeasurement(
-                field,
-                record,
-                issues
-            )
-
-            RecordTypes.HEART_RATE -> parseHeartRate(field, record, issues)
-            else -> {
-                issues.add(
-                    ValidationIssue(
-                        "$field.type",
-                        "unsupported record type"
-                    )
-                )
-                null
-            }
+        return when (dto) {
+            is StepIntervalDto -> mapStepInterval(field, dto, issues)
+            is SleepSessionDto -> mapSleepSession(field, dto, issues)
+            is BodyMeasurementDto -> mapBodyMeasurement(field, dto, issues)
+            is HeartRateDto -> mapHeartRate(field, dto, issues)
         }
     }
 
-    private fun parseStepInterval(
+    private fun mapStepInterval(
         field: String,
-        record: JsonObject,
+        dto: StepIntervalDto,
         issues: MutableList<ValidationIssue>
     ): StepIntervalRecord? {
-        rejectUnknownFields(
-            field,
-            record,
-            setOf("type", "providerRecordId", "startAt", "endAt", "steps"),
-            issues
-        )
-        val providerRecordId = optionalString(
-            record,
-            "providerRecordId",
-            "$field.providerRecordId",
-            issues
-        )
-        val startAt = instant(record, "startAt", "$field.startAt", issues)
-        val endAt = instant(record, "endAt", "$field.endAt", issues)
-        val steps = int(record, "steps", "$field.steps", issues)
+        val startAt = parseInstant(dto.startAt, "$field.startAt", issues)
+        val endAt = parseInstant(dto.endAt, "$field.endAt", issues)
+        val steps = dto.steps
+
         if (startAt != null && endAt != null && !startAt.isBefore(endAt)) {
-            issues.add(
-                ValidationIssue(
-                    "$field.startAt",
-                    "must be before endAt"
-                )
-            )
+            issues.add(ValidationIssue("$field.startAt", "must be before endAt"))
         }
-        if (steps != null && steps <= 0) {
-            issues.add(
-                ValidationIssue(
-                    "$field.steps",
-                    "must be greater than 0"
-                )
-            )
+        if (steps <= 0) {
+            issues.add(ValidationIssue("$field.steps", "must be greater than 0"))
         }
-        return if (startAt != null && endAt != null && steps != null && steps > 0 && startAt.isBefore(
-                endAt
+
+        return if (startAt != null && endAt != null && steps > 0 && startAt.isBefore(endAt)) {
+            StepIntervalRecord(
+                providerRecordId = dto.providerRecordId,
+                normalizedRecordJson = AppJson.encodeToJsonElement(IngestionRecordDto.serializer(), dto).jsonObject,
+                startAt = startAt,
+                endAt = endAt,
+                steps = steps
             )
-        ) {
-            StepIntervalRecord(providerRecordId, record, startAt, endAt, steps)
         } else {
             null
         }
     }
 
-    private fun parseSleepSession(
+    private fun mapSleepSession(
         field: String,
-        record: JsonObject,
+        dto: SleepSessionDto,
         issues: MutableList<ValidationIssue>
     ): SleepSessionRecord? {
-        rejectUnknownFields(
-            field,
-            record,
-            setOf("type", "providerRecordId", "startAt", "endAt", "stages"),
-            issues
-        )
-        val providerRecordId = optionalString(
-            record,
-            "providerRecordId",
-            "$field.providerRecordId",
-            issues
-        )
-        val startAt = instant(record, "startAt", "$field.startAt", issues)
-        val endAt = instant(record, "endAt", "$field.endAt", issues)
+        val startAt = parseInstant(dto.startAt, "$field.startAt", issues)
+        val endAt = parseInstant(dto.endAt, "$field.endAt", issues)
+
         if (startAt != null && endAt != null && !startAt.isBefore(endAt)) {
-            issues.add(
-                ValidationIssue(
-                    "$field.startAt",
-                    "must be before endAt"
-                )
-            )
+            issues.add(ValidationIssue("$field.startAt", "must be before endAt"))
         }
 
-        val stages = mutableListOf<SleepStageRecord>()
-        val stagesElement = record["stages"]
-        if (stagesElement != null && stagesElement !is JsonNull) {
-            val array = runCatching { stagesElement.jsonArray }.getOrNull()
-            if (array == null) {
-                issues.add(ValidationIssue("$field.stages", "must be an array"))
-            } else {
-                array.forEachIndexed { stageIndex, stageElement ->
-                    val stageObject = stageElement as? JsonObject
-                    if (stageObject == null) {
-                        issues.add(
-                            ValidationIssue(
-                                "$field.stages[$stageIndex]",
-                                "must be an object"
-                            )
-                        )
-                    } else {
-                        parseSleepStage(
-                            "$field.stages[$stageIndex]",
-                            stageObject,
-                            startAt,
-                            endAt,
-                            issues
-                        )?.let(stages::add)
-                    }
-                }
-            }
+        val stages = dto.stages.mapIndexedNotNull { stageIndex, stageDto ->
+            mapSleepStage("$field.stages[$stageIndex]", stageDto, startAt, endAt, issues)
         }
 
         return if (startAt != null && endAt != null && startAt.isBefore(endAt)) {
-            SleepSessionRecord(providerRecordId, record, startAt, endAt, stages)
+            SleepSessionRecord(
+                providerRecordId = dto.providerRecordId,
+                normalizedRecordJson = AppJson.encodeToJsonElement(IngestionRecordDto.serializer(), dto).jsonObject,
+                startAt = startAt,
+                endAt = endAt,
+                stages = stages
+            )
         } else {
             null
         }
     }
 
-    private fun parseSleepStage(
+    private fun mapSleepStage(
         field: String,
-        record: JsonObject,
+        dto: SleepStageDto,
         sessionStart: Instant?,
         sessionEnd: Instant?,
         issues: MutableList<ValidationIssue>,
     ): SleepStageRecord? {
-        rejectUnknownFields(
-            field,
-            record,
-            setOf("stage", "startAt", "endAt"),
-            issues
-        )
-        val stage = string(record, "stage", "$field.stage", issues)
-        val startAt = instant(record, "startAt", "$field.startAt", issues)
-        val endAt = instant(record, "endAt", "$field.endAt", issues)
-        if (stage != null && stage !in SleepStages.supported) {
-            issues.add(
-                ValidationIssue(
-                    "$field.stage",
-                    "unsupported sleep stage"
-                )
-            )
+        val stage = dto.stage
+        val startAt = parseInstant(dto.startAt, "$field.startAt", issues)
+        val endAt = parseInstant(dto.endAt, "$field.endAt", issues)
+
+        if (stage !in SleepStages.supported) {
+            issues.add(ValidationIssue("$field.stage", "unsupported sleep stage"))
         }
         if (startAt != null && endAt != null && !startAt.isBefore(endAt)) {
-            issues.add(
-                ValidationIssue(
-                    "$field.startAt",
-                    "must be before endAt"
-                )
-            )
+            issues.add(ValidationIssue("$field.startAt", "must be before endAt"))
         }
         if (startAt != null && endAt != null && sessionStart != null && sessionEnd != null) {
             if (startAt.isBefore(sessionStart) || endAt.isAfter(sessionEnd)) {
-                issues.add(
-                    ValidationIssue(
-                        field,
-                        "must be within the sleep session"
-                    )
-                )
+                issues.add(ValidationIssue(field, "must be within the sleep session"))
             }
         }
-        return if (stage != null && stage in SleepStages.supported && startAt != null && endAt != null && startAt.isBefore(
-                endAt
-            )
-        ) {
+
+        return if (stage in SleepStages.supported && startAt != null && endAt != null && startAt.isBefore(endAt)) {
             SleepStageRecord(stage, startAt, endAt)
         } else {
             null
         }
     }
 
-    private fun parseBodyMeasurement(
+    private fun mapBodyMeasurement(
         field: String,
-        record: JsonObject,
+        dto: BodyMeasurementDto,
         issues: MutableList<ValidationIssue>
     ): BodyMeasurementRecord? {
-        rejectUnknownFields(
-            field,
-            record,
-            setOf(
-                "type",
-                "providerRecordId",
-                "measuredAt",
-                "weightKg",
-                "bodyFatPercent",
-                "muscleKg",
-                "waterPercent",
-                "visceralFatRating",
-            ),
-            issues,
-        )
-        val providerRecordId = optionalString(
-            record,
-            "providerRecordId",
-            "$field.providerRecordId",
-            issues
-        )
-        val measuredAt =
-            instant(record, "measuredAt", "$field.measuredAt", issues)
+        val measuredAt = parseInstant(dto.measuredAt, "$field.measuredAt", issues)
         val values = buildList {
-            optionalPositiveDouble(
-                record,
-                "weightKg",
-                "$field.weightKg",
-                issues
-            )?.let {
-                add(BodyMeasurementValue(BodyMetricTypes.WEIGHT, it, "kg"))
+            dto.weightKg?.let {
+                if (it <= 0) issues.add(ValidationIssue("$field.weightKg", "must be greater than 0"))
+                else add(BodyMeasurementValue(BodyMetricTypes.WEIGHT, it, "kg"))
             }
-            optionalPercent(
-                record,
-                "bodyFatPercent",
-                "$field.bodyFatPercent",
-                issues
-            )?.let {
-                add(
-                    BodyMeasurementValue(
-                        BodyMetricTypes.BODY_FAT,
-                        it,
-                        "percent"
-                    )
-                )
+            dto.bodyFatPercent?.let {
+                if (it !in 0.0..100.0) issues.add(ValidationIssue("$field.bodyFatPercent", "must be between 0 and 100"))
+                else add(BodyMeasurementValue(BodyMetricTypes.BODY_FAT, it, "percent"))
             }
-            optionalPositiveDouble(
-                record,
-                "muscleKg",
-                "$field.muscleKg",
-                issues
-            )?.let {
-                add(BodyMeasurementValue(BodyMetricTypes.MUSCLE, it, "kg"))
+            dto.muscleKg?.let {
+                if (it <= 0) issues.add(ValidationIssue("$field.muscleKg", "must be greater than 0"))
+                else add(BodyMeasurementValue(BodyMetricTypes.MUSCLE, it, "kg"))
             }
-            optionalPercent(
-                record,
-                "waterPercent",
-                "$field.waterPercent",
-                issues
-            )?.let {
-                add(BodyMeasurementValue(BodyMetricTypes.WATER, it, "percent"))
+            dto.waterPercent?.let {
+                if (it !in 0.0..100.0) issues.add(ValidationIssue("$field.waterPercent", "must be between 0 and 100"))
+                else add(BodyMeasurementValue(BodyMetricTypes.WATER, it, "percent"))
             }
-            optionalPositiveDouble(
-                record,
-                "visceralFatRating",
-                "$field.visceralFatRating",
-                issues
-            )?.let {
-                add(
-                    BodyMeasurementValue(
-                        BodyMetricTypes.VISCERAL_FAT,
-                        it,
-                        "rating"
-                    )
-                )
+            dto.visceralFatRating?.let {
+                if (it <= 0) issues.add(ValidationIssue("$field.visceralFatRating", "must be greater than 0"))
+                else add(BodyMeasurementValue(BodyMetricTypes.VISCERAL_FAT, it, "rating"))
             }
         }
+
         if (values.isEmpty()) {
-            issues.add(
-                ValidationIssue(
-                    field,
-                    "at least one body metric value is required"
-                )
-            )
+            issues.add(ValidationIssue(field, "at least one body metric value is required"))
         }
+
         return if (measuredAt != null && values.isNotEmpty()) {
-            BodyMeasurementRecord(providerRecordId, record, measuredAt, values)
+            BodyMeasurementRecord(
+                providerRecordId = dto.providerRecordId,
+                normalizedRecordJson = AppJson.encodeToJsonElement(IngestionRecordDto.serializer(), dto).jsonObject,
+                measuredAt = measuredAt,
+                measurements = values
+            )
         } else {
             null
         }
     }
 
-    private fun parseHeartRate(
+    private fun mapHeartRate(
         field: String,
-        record: JsonObject,
+        dto: HeartRateDto,
         issues: MutableList<ValidationIssue>
     ): HeartRateRecord? {
-        rejectUnknownFields(
-            field,
-            record,
-            setOf("type", "providerRecordId", "measuredAt", "bpm", "context"),
-            issues
-        )
-        val providerRecordId = optionalString(
-            record,
-            "providerRecordId",
-            "$field.providerRecordId",
-            issues
-        )
-        val measuredAt =
-            instant(record, "measuredAt", "$field.measuredAt", issues)
-        val bpm = int(record, "bpm", "$field.bpm", issues)
-        val context =
-            optionalString(record, "context", "$field.context", issues)
-                ?: "unknown"
-        if (bpm != null && bpm !in 25..250) {
-            issues.add(
-                ValidationIssue(
-                    "$field.bpm",
-                    "must be between 25 and 250"
-                )
-            )
+        val measuredAt = parseInstant(dto.measuredAt, "$field.measuredAt", issues)
+        val bpm = dto.bpm
+        val context = dto.context ?: "unknown"
+
+        if (bpm !in 25..250) {
+            issues.add(ValidationIssue("$field.bpm", "must be between 25 and 250"))
         }
         if (context !in HeartRateContexts.supported) {
-            issues.add(
-                ValidationIssue(
-                    "$field.context",
-                    "unsupported heart-rate context"
-                )
-            )
+            issues.add(ValidationIssue("$field.context", "unsupported heart-rate context"))
         }
-        return if (measuredAt != null && bpm != null && bpm in 25..250 && context in HeartRateContexts.supported) {
-            HeartRateRecord(providerRecordId, record, measuredAt, bpm, context)
+
+        return if (measuredAt != null && bpm in 25..250 && context in HeartRateContexts.supported) {
+            HeartRateRecord(
+                providerRecordId = dto.providerRecordId,
+                normalizedRecordJson = AppJson.encodeToJsonElement(IngestionRecordDto.serializer(), dto).jsonObject,
+                measuredAt = measuredAt,
+                bpm = bpm,
+                context = context
+            )
         } else {
             null
         }
@@ -467,131 +299,13 @@ class IngestionMappingService {
         field: String,
         issues: MutableList<ValidationIssue>
     ): Instant? {
-        val raw = requiredNonBlank(value, field, issues) ?: return null
-        return runCatching { Instant.parse(raw) }.getOrElse {
+        if (value == null) {
+            issues.add(ValidationIssue(field))
+            return null
+        }
+        return runCatching { Instant.parse(value) }.getOrElse {
             issues.add(ValidationIssue(field, "must be an ISO-8601 instant"))
             null
-        }
-    }
-
-    private fun instant(
-        record: JsonObject,
-        key: String,
-        field: String,
-        issues: MutableList<ValidationIssue>
-    ): Instant? =
-        parseInstant(string(record, key, field, issues), field, issues)
-
-    private fun string(
-        record: JsonObject,
-        key: String,
-        field: String,
-        issues: MutableList<ValidationIssue>
-    ): String? {
-        val element = record[key]
-        if (element == null || element is JsonNull) {
-            issues.add(ValidationIssue(field))
-            return null
-        }
-        return runCatching { element.jsonPrimitive.contentOrNull }.getOrNull()
-            ?.takeIf { it.isNotBlank() }
-            ?: run {
-                issues.add(ValidationIssue(field, "must be a non-blank string"))
-                null
-            }
-    }
-
-    private fun optionalString(
-        record: JsonObject,
-        key: String,
-        field: String,
-        issues: MutableList<ValidationIssue>
-    ): String? {
-        val element = record[key] ?: return null
-        if (element is JsonNull) return null
-        val value =
-            runCatching { element.jsonPrimitive.contentOrNull }.getOrNull()
-        if (value == null || value.isBlank()) {
-            issues.add(
-                ValidationIssue(
-                    field,
-                    "must be a non-blank string when present"
-                )
-            )
-            return null
-        }
-        return value
-    }
-
-    private fun int(
-        record: JsonObject,
-        key: String,
-        field: String,
-        issues: MutableList<ValidationIssue>
-    ): Int? {
-        val element = record[key]
-        if (element == null || element is JsonNull) {
-            issues.add(ValidationIssue(field))
-            return null
-        }
-        return runCatching { element.jsonPrimitive.intOrNull }.getOrNull()
-            ?: run {
-                issues.add(ValidationIssue(field, "must be an integer"))
-                null
-            }
-    }
-
-    private fun optionalPositiveDouble(
-        record: JsonObject,
-        key: String,
-        field: String,
-        issues: MutableList<ValidationIssue>
-    ): Double? {
-        val value = optionalDouble(record, key, field, issues) ?: return null
-        if (value <= 0.0) {
-            issues.add(ValidationIssue(field, "must be greater than 0"))
-            return null
-        }
-        return value
-    }
-
-    private fun optionalPercent(
-        record: JsonObject,
-        key: String,
-        field: String,
-        issues: MutableList<ValidationIssue>
-    ): Double? {
-        val value = optionalDouble(record, key, field, issues) ?: return null
-        if (value !in 0.0..100.0) {
-            issues.add(ValidationIssue(field, "must be between 0 and 100"))
-            return null
-        }
-        return value
-    }
-
-    private fun optionalDouble(
-        record: JsonObject,
-        key: String,
-        field: String,
-        issues: MutableList<ValidationIssue>
-    ): Double? {
-        val element = record[key] ?: return null
-        if (element is JsonNull) return null
-        return runCatching { element.jsonPrimitive.doubleOrNull }.getOrNull()
-            ?: run {
-                issues.add(ValidationIssue(field, "must be a number"))
-                null
-            }
-    }
-
-    private fun rejectUnknownFields(
-        field: String,
-        record: JsonObject,
-        allowed: Set<String>,
-        issues: MutableList<ValidationIssue>,
-    ) {
-        (record.keys - allowed).forEach {
-            issues.add(ValidationIssue("$field.$it", "is not allowed"))
         }
     }
 }
