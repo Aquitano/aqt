@@ -7,10 +7,9 @@ import io.ktor.server.plugins.swagger.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import me.aquitano.health.api.dto.GoogleHealthSyncRequest
 import kotlinx.serialization.Serializable
-import java.time.Instant
 import me.aquitano.health.api.dto.IngestionBatchRequest
+import me.aquitano.health.api.dto.ProviderSyncRequestDto
 import me.aquitano.health.application.QueryParams
 
 fun Application.configureRoutes(services: ApplicationServices) {
@@ -41,13 +40,16 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 if (response.duplicateBatch) HttpStatusCode.OK else HttpStatusCode.Created
             call.respond(status, response)
         }
-        get("/api/v1/providers/google-health/oauth/start") {
+        get("/api/v1/providers/{code}/oauth/start") {
             call.authenticateProtected(services)
-            call.respond(services.googleHealthOAuthService.start(services.clock.now()))
+            val code = call.providerCode() ?: return@get
+            call.respond(services.providerWorkflowService.startOAuth(code, services.clock.now()))
         }
-        get("/api/v1/providers/google-health/oauth/callback") {
+        get("/api/v1/providers/{code}/oauth/callback") {
+            val code = call.providerCode() ?: return@get
             call.respond(
-                services.googleHealthOAuthService.callback(
+                services.providerWorkflowService.completeOAuth(
+                    providerCode = code,
                     code = call.request.queryParameters["code"],
                     state = call.request.queryParameters["state"],
                     error = call.request.queryParameters["error"],
@@ -55,27 +57,16 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 )
             )
         }
-        post("/api/v1/providers/google-health/sync") {
+        post("/api/v1/providers/{code}/sync") {
             call.authenticateProtected(services)
+            val code = call.providerCode() ?: return@post
             call.respond(
-                services.googleHealthSyncService.sync(
-                    request = call.receive<GoogleHealthSyncRequest>(),
+                services.providerWorkflowService.sync(
+                    providerCode = code,
+                    request = call.receive<ProviderSyncRequestDto>(),
                     now = services.clock.now(),
                 )
             )
-        }
-        post("/api/v1/providers/{code}/sync") {
-            call.authenticateProtected(services)
-            val code = call.parameters["code"] ?: return@post call.respond(HttpStatusCode.BadRequest)
-            val provider = services.providerRegistry.getProvider(code)
-                ?: return@post call.respond(HttpStatusCode.NotFound, "Provider $code not found")
-            
-            val queryParams = call.queryParams()
-            val from = queryParams.instant("from") ?: services.clock.now().minus(java.time.Duration.ofDays(7))
-            val to = queryParams.instant("to") ?: services.clock.now()
-            val providerInstanceId = queryParams.optional("providerInstanceId") ?: "default"
-
-            call.respond(provider.sync(providerInstanceId, from, to, services.clock.now()))
         }
         get("/api/v1/metrics/steps") {
             call.authenticateProtected(services)
@@ -152,3 +143,12 @@ private fun ApplicationCall.queryParams(): QueryParams =
     QueryParams(
         request.queryParameters.entries()
             .associate { it.key to it.value.firstOrNull() })
+
+private suspend fun ApplicationCall.providerCode(): String? {
+    val code = parameters["code"]
+    if (code.isNullOrBlank()) {
+        respond(HttpStatusCode.BadRequest)
+        return null
+    }
+    return code
+}

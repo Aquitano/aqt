@@ -2,10 +2,12 @@ package me.aquitano.external.google
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
+import me.aquitano.health.application.HealthProviderRegistry
 import me.aquitano.health.application.IngestionMappingService
 import me.aquitano.health.application.IngestionService
+import me.aquitano.health.application.ProviderWorkflowService
 import me.aquitano.health.application.StepSummaryService
-import me.aquitano.health.api.dto.GoogleHealthSyncRequest
+import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.domain.UpstreamProviderException
 import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.infrastructure.config.GoogleHealthConfig
@@ -27,10 +29,11 @@ class GoogleHealthProviderTest {
     fun oauthCallbackStoresEncryptedTokens() = runBlocking {
         val fixture = Fixture()
         val now = Instant.parse("2026-04-20T10:00:00Z")
-        val start = fixture.oauthService.start(now)
+        val start = fixture.providerWorkflowService.startOAuth("google-health", now)
 
         val state = Regex("state=([^&]+)").find(start.authorizationUrl)!!.groupValues[1]
-        val response = fixture.oauthService.callback(
+        val response = fixture.providerWorkflowService.completeOAuth(
+            providerCode = "google-health",
             code = "auth-code",
             state = state,
             error = null,
@@ -57,7 +60,7 @@ class GoogleHealthProviderTest {
     fun oauthCallbackMapsTokenExchangeFailureToUpstreamProviderError() = runBlocking {
         val fixture = Fixture()
         val now = Instant.parse("2026-04-20T10:00:00Z")
-        val start = fixture.oauthService.start(now)
+        val start = fixture.providerWorkflowService.startOAuth("google-health", now)
         val state = Regex("state=([^&]+)").find(start.authorizationUrl)!!.groupValues[1]
         fixture.client.nextExchangeFailure = GoogleHealthHttpException(
             "google_health_token_exchange_failed",
@@ -65,7 +68,8 @@ class GoogleHealthProviderTest {
         )
 
         val error = assertFailsWith<UpstreamProviderException> {
-            fixture.oauthService.callback(
+            fixture.providerWorkflowService.completeOAuth(
+                providerCode = "google-health",
                 code = "auth-code",
                 state = state,
                 error = null,
@@ -83,13 +87,13 @@ class GoogleHealthProviderTest {
         fixture.storeAccount(accessToken = "access-token", refreshToken = "refresh-token")
         fixture.client.fetchResults += allMetricFetchResults()
 
-        val request = GoogleHealthSyncRequest(
-            from = "2026-04-01T00:00:00Z",
-            to = "2026-04-02T00:00:00Z",
+        val request = ProviderSyncRequest(
+            from = Instant.parse("2026-04-01T00:00:00Z"),
+            to = Instant.parse("2026-04-02T00:00:00Z"),
         )
-        val first = fixture.syncService.sync(request, fixture.now)
+        val first = fixture.provider.sync(request, fixture.now)
         fixture.client.fetchResults += allMetricFetchResults()
-        val second = fixture.syncService.sync(request, fixture.now.plusSeconds(60))
+        val second = fixture.provider.sync(request, fixture.now.plusSeconds(60))
 
         assertEquals(5, first.batches.size)
         assertEquals(5, second.batches.size)
@@ -113,10 +117,10 @@ class GoogleHealthProviderTest {
         )
         fixture.client.fetchResults += listOf(stepsFetchResult())
 
-        val response = fixture.syncService.sync(
-            GoogleHealthSyncRequest(
-                from = "2026-04-01T00:00:00Z",
-                to = "2026-04-02T00:00:00Z",
+        val response = fixture.provider.sync(
+            ProviderSyncRequest(
+                from = Instant.parse("2026-04-01T00:00:00Z"),
+                to = Instant.parse("2026-04-02T00:00:00Z"),
                 dataTypes = listOf("steps"),
             ),
             fixture.now,
@@ -149,18 +153,18 @@ class GoogleHealthProviderTest {
         fixture.client.fetchResults += listOf(stepsFetchResult())
         fixture.client.fetchResults += listOf(stepsFetchResult())
 
-        val first = fixture.syncService.sync(
-            GoogleHealthSyncRequest(
-                from = "2026-04-01T00:00:00Z",
-                to = "2026-04-02T00:00:00Z",
+        val first = fixture.provider.sync(
+            ProviderSyncRequest(
+                from = Instant.parse("2026-04-01T00:00:00Z"),
+                to = Instant.parse("2026-04-02T00:00:00Z"),
                 dataTypes = listOf("steps"),
             ),
             fixture.now,
         )
-        val second = fixture.syncService.sync(
-            GoogleHealthSyncRequest(
-                from = "2026-04-01T06:00:00Z",
-                to = "2026-04-02T00:00:00Z",
+        val second = fixture.provider.sync(
+            ProviderSyncRequest(
+                from = Instant.parse("2026-04-01T06:00:00Z"),
+                to = Instant.parse("2026-04-02T00:00:00Z"),
                 dataTypes = listOf("steps"),
             ),
             fixture.now.plusSeconds(60),
@@ -168,7 +172,7 @@ class GoogleHealthProviderTest {
 
         assertEquals(1, first.batches.single().metricsCreated.stepSamples)
         assertEquals(0, second.batches.single().metricsCreated.stepSamples)
-        assertEquals(1, second.batches.single().metricsSkipped.duplicates)
+        assertEquals(1, second.batches.single().duplicateMetricsSkipped)
         assertEquals(2, fixture.client.fetchRequests.size)
         assertEquals(1, countRows(fixture.dbPath, "step_samples"))
         assertEquals(1200, singleInt(fixture.dbPath, "SELECT steps FROM step_daily_summaries"))
@@ -201,18 +205,18 @@ class GoogleHealthProviderTest {
             )
         )
 
-        val first = fixture.syncService.sync(
-            GoogleHealthSyncRequest(
-                from = "2026-04-01T00:00:00Z",
-                to = "2026-04-02T00:00:00Z",
+        val first = fixture.provider.sync(
+            ProviderSyncRequest(
+                from = Instant.parse("2026-04-01T00:00:00Z"),
+                to = Instant.parse("2026-04-02T00:00:00Z"),
                 dataTypes = listOf("steps"),
             ),
             fixture.now,
         )
-        val second = fixture.syncService.sync(
-            GoogleHealthSyncRequest(
-                from = "2026-04-01T08:00:30Z",
-                to = "2026-04-02T00:00:00Z",
+        val second = fixture.provider.sync(
+            ProviderSyncRequest(
+                from = Instant.parse("2026-04-01T08:00:30Z"),
+                to = Instant.parse("2026-04-02T00:00:00Z"),
                 dataTypes = listOf("steps"),
             ),
             fixture.now.plusSeconds(60),
@@ -220,7 +224,7 @@ class GoogleHealthProviderTest {
 
         assertEquals(1, first.batches.single().metricsCreated.stepSamples)
         assertEquals(0, second.batches.single().metricsCreated.stepSamples)
-        assertEquals(1, second.batches.single().metricsSkipped.duplicates)
+        assertEquals(1, second.batches.single().duplicateMetricsSkipped)
         assertEquals(1, countRows(fixture.dbPath, "step_samples"))
         assertEquals(20, singleInt(fixture.dbPath, "SELECT steps FROM step_daily_summaries"))
     }
@@ -252,18 +256,18 @@ class GoogleHealthProviderTest {
             )
         )
 
-        val first = fixture.syncService.sync(
-            GoogleHealthSyncRequest(
-                from = "2026-04-01T00:00:00Z",
-                to = "2026-04-01T09:30:00Z",
+        val first = fixture.provider.sync(
+            ProviderSyncRequest(
+                from = Instant.parse("2026-04-01T00:00:00Z"),
+                to = Instant.parse("2026-04-01T09:30:00Z"),
                 dataTypes = listOf("steps"),
             ),
             fixture.now,
         )
-        val second = fixture.syncService.sync(
-            GoogleHealthSyncRequest(
-                from = "2026-04-01T09:30:00Z",
-                to = "2026-04-02T00:00:00Z",
+        val second = fixture.provider.sync(
+            ProviderSyncRequest(
+                from = Instant.parse("2026-04-01T09:30:00Z"),
+                to = Instant.parse("2026-04-02T00:00:00Z"),
                 dataTypes = listOf("steps"),
             ),
             fixture.now.plusSeconds(60),
@@ -271,7 +275,7 @@ class GoogleHealthProviderTest {
 
         assertEquals(1, first.batches.single().metricsCreated.stepSamples)
         assertEquals(1, second.batches.single().metricsCreated.stepSamples)
-        assertEquals(0, second.batches.single().metricsSkipped.duplicates)
+        assertEquals(0, second.batches.single().duplicateMetricsSkipped)
         assertEquals(2, countRows(fixture.dbPath, "step_samples"))
         assertEquals(2000, singleInt(fixture.dbPath, "SELECT steps FROM step_daily_summaries"))
     }
@@ -283,13 +287,13 @@ class GoogleHealthProviderTest {
         fixture.client.fetchResults += listOf(fetchResult("heart-rate", heartRatePoint()))
         fixture.client.fetchResults += listOf(fetchResult("heart-rate", heartRatePoint()))
 
-        val request = GoogleHealthSyncRequest(
-            from = "2026-04-01T00:00:00Z",
-            to = "2026-04-03T00:00:00Z",
+        val request = ProviderSyncRequest(
+            from = Instant.parse("2026-04-01T00:00:00Z"),
+            to = Instant.parse("2026-04-03T00:00:00Z"),
             dataTypes = listOf("heart-rate"),
         )
-        val first = fixture.syncService.sync(request, fixture.now)
-        val second = fixture.syncService.sync(request, fixture.now.plusSeconds(60))
+        val first = fixture.provider.sync(request, fixture.now)
+        val second = fixture.provider.sync(request, fixture.now.plusSeconds(60))
 
         assertEquals(2, first.batches.size)
         assertEquals(2, second.batches.size)
@@ -315,10 +319,10 @@ class GoogleHealthProviderTest {
         fixture.client.throwUnauthorizedOnce = true
         fixture.client.fetchResults += listOf(stepsFetchResult())
 
-        val response = fixture.syncService.sync(
-            GoogleHealthSyncRequest(
-                from = "2026-04-01T00:00:00Z",
-                to = "2026-04-02T00:00:00Z",
+        val response = fixture.provider.sync(
+            ProviderSyncRequest(
+                from = Instant.parse("2026-04-01T00:00:00Z"),
+                to = Instant.parse("2026-04-02T00:00:00Z"),
                 dataTypes = listOf("steps"),
             ),
             fixture.now,
@@ -344,10 +348,10 @@ class GoogleHealthProviderTest {
         )
 
         assertFailsWith<UpstreamProviderException> {
-            fixture.syncService.sync(
-                GoogleHealthSyncRequest(
-                    from = "2026-04-01T00:00:00Z",
-                    to = "2026-04-02T00:00:00Z",
+            fixture.provider.sync(
+                ProviderSyncRequest(
+                    from = Instant.parse("2026-04-01T00:00:00Z"),
+                    to = Instant.parse("2026-04-02T00:00:00Z"),
                     dataTypes = listOf("steps"),
                 ),
                 fixture.now,
@@ -381,13 +385,16 @@ class GoogleHealthProviderTest {
             metricsWriteRepository = MetricsWriteRepository(),
             stepSummaryService = StepSummaryService(MetricsWriteRepository()),
         )
-        val oauthService = GoogleHealthOAuthService(config, providerRepository, client)
-        val syncService = GoogleHealthSyncService(
+        val provider = GoogleHealthProvider(
             config = config,
             repository = providerRepository,
             client = client,
             normalizer = GoogleHealthNormalizer(),
             ingestionService = ingestionService,
+        )
+        val providerWorkflowService = ProviderWorkflowService(
+            providerRegistry = HealthProviderRegistry(listOf(provider)),
+            providerOAuthRepository = providerRepository,
         )
 
         suspend fun storeAccount(

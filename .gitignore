@@ -49,3 +49,4 @@ src/main/resources/openapi/aqt-health.yaml
 
 ### VS Code ###
 .vscode/
+.codex/config.toml
