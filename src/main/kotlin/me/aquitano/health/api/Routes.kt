@@ -147,8 +147,9 @@ private fun ApplicationCall.queryParams(): QueryParams =
 private suspend fun ApplicationCall.providerCode(): String? {
     val code = parameters["code"]
     if (code.isNullOrBlank()) {
-        respond(HttpStatusCode.BadRequest)
-        return null
+        throw RequestValidationException(
+            listOf(ValidationIssue("code", "must not be blank"))
+        )
     }
     return code
 }
