@@ -14,11 +14,10 @@ import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
+import me.aquitano.external.google.GoogleHealthProvider
 import me.aquitano.external.google.GeneratedGoogleHealthClient
 import me.aquitano.external.google.GoogleHealthDataPointsServiceFactory
 import me.aquitano.external.google.GoogleHealthNormalizer
-import me.aquitano.external.google.GoogleHealthOAuthService
-import me.aquitano.external.google.GoogleHealthSyncService
 import me.aquitano.external.google.KtorGoogleHealthOAuthClient
 import me.aquitano.health.infrastructure.security.ApiKeyHasher
 import me.aquitano.health.infrastructure.time.UtcClock
@@ -78,6 +77,15 @@ fun Application.module() {
         metricsWriteRepository = metricsWriteRepository,
         stepSummaryService = StepSummaryService(metricsWriteRepository),
     )
+    val googleHealthProvider = GoogleHealthProvider(
+        config = appConfig.googleHealth,
+        repository = providerOAuthRepository,
+        client = googleHealthClient,
+        normalizer = GoogleHealthNormalizer(),
+        ingestionService = ingestionService,
+    )
+    val providerRegistry = HealthProviderRegistry(listOf(googleHealthProvider))
+
     val services = ApplicationServices(
         database = database,
         supportRepository = supportRepository,
@@ -92,17 +100,10 @@ fun Application.module() {
             database = database,
             ingestionRepository = ingestionRepository,
         ),
-        googleHealthOAuthService = GoogleHealthOAuthService(
-            config = appConfig.googleHealth,
-            repository = providerOAuthRepository,
-            client = googleHealthClient,
-        ),
-        googleHealthSyncService = GoogleHealthSyncService(
-            config = appConfig.googleHealth,
-            repository = providerOAuthRepository,
-            client = googleHealthClient,
-            normalizer = GoogleHealthNormalizer(),
-            ingestionService = ingestionService,
+        providerRegistry = providerRegistry,
+        providerWorkflowService = ProviderWorkflowService(
+            providerRegistry = providerRegistry,
+            providerOAuthRepository = providerOAuthRepository,
         ),
     )
 
@@ -125,6 +126,6 @@ data class ApplicationServices(
     val ingestionService: IngestionService,
     val metricsQueryService: MetricsQueryService,
     val adminService: AdminService,
-    val googleHealthOAuthService: GoogleHealthOAuthService,
-    val googleHealthSyncService: GoogleHealthSyncService,
+    val providerRegistry: HealthProviderRegistry,
+    val providerWorkflowService: ProviderWorkflowService,
 )

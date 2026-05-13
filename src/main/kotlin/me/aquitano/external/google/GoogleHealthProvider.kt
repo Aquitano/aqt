@@ -1,11 +1,19 @@
 package me.aquitano.external.google
 
+import io.ktor.http.URLBuilder
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import me.aquitano.health.api.dto.*
+import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.domain.ConflictException
+import me.aquitano.health.domain.HealthProvider
+import me.aquitano.health.domain.MetricCreatedCounts
+import me.aquitano.health.domain.ProviderConnection
+import me.aquitano.health.domain.ProviderSyncBatch
+import me.aquitano.health.domain.ProviderSyncError
+import me.aquitano.health.domain.ProviderSyncRequest
+import me.aquitano.health.domain.ProviderSyncSummary
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.UpstreamProviderException
 import me.aquitano.health.domain.ValidationIssue
@@ -19,64 +27,122 @@ import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.CancellationException
 
-private val logger = LoggerFactory.getLogger(GoogleHealthSyncService::class.java)
+private val logger = LoggerFactory.getLogger(GoogleHealthProvider::class.java)
 
-class GoogleHealthSyncService(
+class GoogleHealthProvider(
     private val config: GoogleHealthConfig,
     private val repository: ProviderOAuthRepository,
     private val client: GoogleHealthClient,
     private val normalizer: GoogleHealthNormalizer,
     private val ingestionService: IngestionService,
-) {
-    suspend fun sync(request: GoogleHealthSyncRequest, now: Instant): GoogleHealthSyncResponse {
-        val validated = validate(request, now)
+) : HealthProvider {
+
+    override val providerCode: String = GOOGLE_HEALTH_PROVIDER_CODE
+    override val defaultProviderInstanceId: String = "google-health-me"
+
+    override fun getAuthUrl(state: String): String {
+        requireConfigured()
+        return URLBuilder(config.oauthAuthUrl).apply {
+            parameters.append("client_id", config.clientId)
+            parameters.append("redirect_uri", config.redirectUri)
+            parameters.append("response_type", "code")
+            parameters.append("scope", GOOGLE_HEALTH_SCOPES.joinToString(" "))
+            parameters.append("state", state)
+            parameters.append("access_type", "offline")
+            parameters.append("prompt", "consent")
+        }.buildString()
+    }
+
+    override suspend fun connect(code: String, now: Instant): ProviderConnection {
+        requireConfigured()
+        val tokens = providerCall(
+            fallbackCode = "google_health_token_exchange_failed",
+            fallbackMessage = "Google OAuth token exchange failed",
+        ) {
+            client.exchangeCode(code, now)
+        }
+        val refreshToken = tokens.refreshToken
+            ?: throw UpstreamProviderException(
+                "google_health_missing_refresh_token",
+                "Google OAuth response did not include a refresh token; start OAuth again with prompt=consent",
+                502,
+            )
+        val cipher = TokenCipher(config.tokenEncryptionKey)
+        repository.upsertAccount(
+            providerCode = GOOGLE_HEALTH_PROVIDER_CODE,
+            providerUserId = defaultProviderInstanceId,
+            providerInstanceId = defaultProviderInstanceId,
+            accessTokenCiphertext = cipher.encrypt(tokens.accessToken),
+            refreshTokenCiphertext = cipher.encrypt(refreshToken),
+            tokenType = tokens.tokenType,
+            expiresAt = tokens.expiresAt,
+            scope = tokens.scope,
+            now = now,
+        )
+        logger.info(
+            "provider_oauth_connected {} {} {} {}",
+            kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
+            kv("providerInstanceId", defaultProviderInstanceId),
+            kv("expiresAt", tokens.expiresAt.toString()),
+            kv("scopeCount", tokens.scope.split(" ").count { it.isNotBlank() }),
+        )
+        return ProviderConnection(
+            providerCode = GOOGLE_HEALTH_PROVIDER_CODE,
+            providerInstanceId = defaultProviderInstanceId,
+            connected = true,
+        )
+    }
+
+    override suspend fun sync(
+        request: ProviderSyncRequest,
+        now: Instant,
+    ): ProviderSyncSummary {
+        val validated = validate(request)
         val account = repository.latestAccount(GOOGLE_HEALTH_PROVIDER_CODE)
             ?: throw ConflictException(
                 "google_health_not_connected",
                 "Google Health is not connected",
             )
+        val providerInstanceId = validated.providerInstanceId ?: account.providerInstanceId
         val cipher = TokenCipher(config.tokenEncryptionKey)
         val tokenState = freshAccessToken(account, cipher, now)
+
         val runId = repository.startSyncRun(
             providerCode = GOOGLE_HEALTH_PROVIDER_CODE,
-            providerInstanceId = account.providerInstanceId,
+            providerInstanceId = providerInstanceId,
             requestedFrom = validated.from,
             requestedTo = validated.to,
             startedAt = now,
         )
         logger.info(
-            "google_health_sync_started {} {} {} {} {}",
-            kv("providerInstanceId", account.providerInstanceId),
+            "provider_sync_started {} {} {} {} {} {}",
+            kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
+            kv("providerInstanceId", providerInstanceId),
             kv("from", validated.from.toString()),
             kv("to", validated.to.toString()),
             kv("dataTypes", validated.dataTypes),
             kv("pageSize", validated.pageSize),
         )
 
-        val batches = mutableListOf<GoogleHealthSyncBatchResponse>()
-        val errors = mutableListOf<GoogleHealthSyncErrorResponse>()
+        val batches = mutableListOf<ProviderSyncBatch>()
+        val errors = mutableListOf<ProviderSyncError>()
         for (dataType in validated.dataTypes) {
             for (window in syncWindows(dataType, validated.from, validated.to)) {
-                val batchExternalId = batchExternalId(
-                    account.providerInstanceId,
-                    dataType,
-                    window.from,
-                    window.to,
-                )
+                val batchExternalId = batchExternalId(providerInstanceId, dataType, window.from, window.to)
                 val existingBatch = ingestionService.findExistingBatch(
                     provider = GOOGLE_HEALTH_PROVIDER_CODE,
-                    providerInstanceId = account.providerInstanceId,
+                    providerInstanceId = providerInstanceId,
                     batchExternalId = batchExternalId,
                     now = now,
                 )
                 if (existingBatch?.status == "processed") {
                     batches.add(cachedBatchResponse(dataType, existingBatch.id))
                     logger.info(
-                        "google_health_data_type_cache_hit {} {} {} {}",
+                        "provider_sync_cache_hit {} {} {} {}",
+                        kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
                         kv("dataType", dataType),
                         kv("batchId", existingBatch.id),
                         kv("from", window.from.toString()),
-                        kv("to", window.to.toString()),
                     )
                     continue
                 }
@@ -95,10 +161,10 @@ class GoogleHealthSyncService(
                     val normalized = normalizer.normalize(fetchResult)
                     if (normalized.records.isEmpty()) {
                         logger.info(
-                            "google_health_data_type_synced {} {} {} {}",
+                            "provider_data_type_synced {} {} {} {}",
+                            kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
                             kv("dataType", dataType),
                             kv("pages", fetchResult.pages.size),
-                            kv("dataPoints", fetchResult.dataPoints.size),
                             kv("records", 0),
                         )
                         continue
@@ -106,12 +172,12 @@ class GoogleHealthSyncService(
                     val summary = ingestionService.ingestBatch(
                         IngestionBatchRequest(
                             provider = GOOGLE_HEALTH_PROVIDER_CODE,
-                            providerInstanceId = account.providerInstanceId,
+                            providerInstanceId = providerInstanceId,
                             batchExternalId = batchExternalId,
                             ingestedAt = now.toString(),
                             sourcePayload = buildJsonObject {
                                 put("provider", GOOGLE_HEALTH_PROVIDER_CODE)
-                                put("providerInstanceId", account.providerInstanceId)
+                                put("providerInstanceId", providerInstanceId)
                                 put("requestedFrom", window.from.toString())
                                 put("requestedTo", window.to.toString())
                                 put("dataType", dataType)
@@ -122,22 +188,28 @@ class GoogleHealthSyncService(
                         now = now,
                     )
                     batches.add(
-                        GoogleHealthSyncBatchResponse(
+                        ProviderSyncBatch(
                             dataType = dataType,
                             batchId = summary.batchId,
                             duplicateBatch = summary.duplicateBatch,
                             recordsReceived = summary.recordsReceived,
                             ingestionRecordsStored = summary.ingestionRecordsStored,
-                            metricsCreated = summary.metricsCreated,
-                            metricsSkipped = summary.metricsSkipped,
+                            metricsCreated = MetricCreatedCounts(
+                                stepSamples = summary.metricsCreated.stepSamples,
+                                sleepSessions = summary.metricsCreated.sleepSessions,
+                                sleepStages = summary.metricsCreated.sleepStages,
+                                bodyMeasurements = summary.metricsCreated.bodyMeasurements,
+                                heartRateSamples = summary.metricsCreated.heartRateSamples,
+                            ),
+                            duplicateMetricsSkipped = summary.metricsSkipped.duplicates,
                             affectedStepSummaryDates = summary.affectedStepSummaryDates,
                         )
                     )
                     logger.info(
-                        "google_health_data_type_synced {} {} {} {} {} {}",
+                        "provider_data_type_synced {} {} {} {} {} {}",
+                        kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
                         kv("dataType", dataType),
                         kv("pages", fetchResult.pages.size),
-                        kv("dataPoints", fetchResult.dataPoints.size),
                         kv("records", normalized.records.size),
                         kv("batchId", summary.batchId),
                         kv("duplicateBatch", summary.duplicateBatch),
@@ -146,12 +218,13 @@ class GoogleHealthSyncService(
                     if (exception is CancellationException) throw exception
                     val code = errorCode(exception)
                     logger.warn(
-                        "google_health_data_type_failed {} {}",
+                        "provider_data_type_failed {} {} {}",
+                        kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
                         kv("dataType", dataType),
                         kv("errorCode", code),
                     )
                     errors.add(
-                        GoogleHealthSyncErrorResponse(
+                        ProviderSyncError(
                             dataType = dataType,
                             code = code,
                             message = exception.message ?: "Google Health sync failed",
@@ -172,32 +245,51 @@ class GoogleHealthSyncService(
             finishedAt = now,
             errorMessage = errors.joinToString("; ") { "${it.dataType}: ${it.message}" }.ifBlank { null },
         )
-        val completionLevelMessage = "google_health_sync_completed {} {} {} {}"
+        val completionMessage = "provider_sync_completed {} {} {} {} {}"
         val completionArgs = arrayOf(
+            kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
             kv("syncRunId", runId),
             kv("status", status),
             kv("batchCount", batches.size),
             kv("errorCount", errors.size),
         )
         when (status) {
-            "processed" -> logger.info(completionLevelMessage, *completionArgs)
-            "partial_failed" -> logger.warn(completionLevelMessage, *completionArgs)
-            else -> logger.error(completionLevelMessage, *completionArgs)
+            "processed" -> logger.info(completionMessage, *completionArgs)
+            "partial_failed" -> logger.warn(completionMessage, *completionArgs)
+            else -> logger.error(completionMessage, *completionArgs)
         }
         if (batches.isEmpty() && errors.isNotEmpty()) {
             val first = errors.first()
             throw UpstreamProviderException(first.code, first.message, 502)
         }
 
-        return GoogleHealthSyncResponse(
-            provider = GOOGLE_HEALTH_PROVIDER_CODE,
-            providerInstanceId = account.providerInstanceId,
-            requestedRange = GoogleHealthRequestedRangeResponse(
-                from = validated.from.toString(),
-                to = validated.to.toString(),
-            ),
+        return ProviderSyncSummary(
+            providerCode = GOOGLE_HEALTH_PROVIDER_CODE,
+            providerInstanceId = providerInstanceId,
+            requestedFrom = validated.from,
+            requestedTo = validated.to,
+            status = status,
             batches = batches,
             errors = errors,
+        )
+    }
+
+    private fun validate(request: ProviderSyncRequest): ValidatedSyncRequest {
+        val issues = mutableListOf<ValidationIssue>()
+        val dataTypes = request.dataTypes?.takeIf { it.isNotEmpty() } ?: GOOGLE_HEALTH_DEFAULT_DATA_TYPES
+        dataTypes.forEachIndexed { index, dataType ->
+            if (dataType !in GOOGLE_HEALTH_DEFAULT_DATA_TYPES) {
+                issues.add(ValidationIssue("dataTypes[$index]", "unsupported Google Health data type"))
+            }
+        }
+        val pageSize = request.pageSize ?: 10000
+        if (issues.isNotEmpty()) throw RequestValidationException(issues)
+        return ValidatedSyncRequest(
+            providerInstanceId = request.providerInstanceId,
+            from = request.from,
+            to = request.to,
+            dataTypes = dataTypes.distinct(),
+            pageSize = pageSize,
         )
     }
 
@@ -214,27 +306,6 @@ class GoogleHealthSyncService(
         return refreshAccessToken(account, refreshToken, cipher, now)
     }
 
-    private suspend fun fetchWithOneAuthRetry(
-        tokenState: TokenState,
-        account: ProviderOAuthAccount,
-        cipher: TokenCipher,
-        dataType: String,
-        from: Instant,
-        to: Instant,
-        pageSize: Int,
-        now: Instant,
-    ): GoogleHealthFetchResult =
-        try {
-            client.fetchDataPoints(tokenState.accessToken, dataType, from, to, pageSize)
-        } catch (_: GoogleHealthUnauthorizedException) {
-            logger.warn(
-                "google_health_fetch_unauthorized_retrying {}",
-                kv("dataType", dataType),
-            )
-            val refreshed = refreshAccessToken(account, tokenState.refreshToken, cipher, now)
-            client.fetchDataPoints(refreshed.accessToken, dataType, from, to, pageSize)
-        }
-
     private suspend fun refreshAccessToken(
         account: ProviderOAuthAccount,
         refreshToken: String,
@@ -246,7 +317,8 @@ class GoogleHealthSyncService(
         } catch (exception: Exception) {
             if (exception is CancellationException) throw exception
             logger.warn(
-                "google_health_token_exchange_failed {}",
+                "provider_token_refresh_failed {} {}",
+                kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
                 kv("errorCode", "google_health_token_refresh_failed"),
             )
             throw UpstreamProviderException(
@@ -266,76 +338,89 @@ class GoogleHealthSyncService(
             now = now,
         )
         logger.info(
-            "google_health_token_refreshed {} {}",
+            "provider_token_refreshed {} {} {}",
+            kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
             kv("providerInstanceId", account.providerInstanceId),
             kv("expiresAt", tokens.expiresAt.toString()),
         )
         return TokenState(tokens.accessToken, nextRefreshToken)
     }
 
-    private fun validate(request: GoogleHealthSyncRequest, now: Instant): ValidatedSyncRequest {
-        val issues = mutableListOf<ValidationIssue>()
-        val from = request.from?.let { parseInstant("from", it, issues) }
-        val to = request.to?.let { parseInstant("to", it, issues) }
-        val resolvedFrom: Instant
-        val resolvedTo: Instant
-        if (from == null && to == null && issues.isEmpty()) {
-            resolvedTo = now
-            resolvedFrom = now.minus(Duration.ofDays(7))
-        } else {
-            resolvedFrom = from ?: run {
-                issues.add(ValidationIssue("from", "is required when to is provided"))
-                now
-            }
-            resolvedTo = to ?: run {
-                issues.add(ValidationIssue("to", "is required when from is provided"))
-                now
-            }
-        }
-        if (!resolvedFrom.isBefore(resolvedTo)) {
-            issues.add(ValidationIssue("from", "must be before to"))
-        }
-        if (Duration.between(resolvedFrom, resolvedTo) > Duration.ofDays(31)) {
-            issues.add(ValidationIssue("to", "range must not exceed 31 days"))
+    private suspend fun fetchWithOneAuthRetry(
+        tokenState: TokenState,
+        account: ProviderOAuthAccount,
+        cipher: TokenCipher,
+        dataType: String,
+        from: Instant,
+        to: Instant,
+        pageSize: Int,
+        now: Instant,
+    ): GoogleHealthFetchResult =
+        try {
+            client.fetchDataPoints(tokenState.accessToken, dataType, from, to, pageSize)
+        } catch (_: GoogleHealthUnauthorizedException) {
+            logger.warn(
+                "provider_fetch_unauthorized_retrying {} {}",
+                kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
+                kv("dataType", dataType),
+            )
+            val refreshed = refreshAccessToken(account, tokenState.refreshToken, cipher, now)
+            client.fetchDataPoints(refreshed.accessToken, dataType, from, to, pageSize)
         }
 
-        val dataTypes = request.dataTypes?.takeIf { it.isNotEmpty() } ?: GOOGLE_HEALTH_DEFAULT_DATA_TYPES
-        dataTypes.forEachIndexed { index, dataType ->
-            if (dataType !in GOOGLE_HEALTH_DEFAULT_DATA_TYPES) {
-                issues.add(ValidationIssue("dataTypes[$index]", "unsupported Google Health data type"))
-            }
-        }
-        val pageSize = request.pageSize ?: 10000
-        if (pageSize <= 0) {
-            issues.add(ValidationIssue("pageSize", "must be greater than 0"))
+    private fun requireConfigured() {
+        val issues = buildList {
+            if (config.clientId.isBlank()) add(ValidationIssue("googleHealth.clientId"))
+            if (config.clientSecret.isBlank()) add(ValidationIssue("googleHealth.clientSecret"))
+            if (config.redirectUri.isBlank()) add(ValidationIssue("googleHealth.redirectUri"))
+            if (config.tokenEncryptionKey.isBlank()) add(ValidationIssue("googleHealth.tokenEncryptionKey"))
         }
         if (issues.isNotEmpty()) throw RequestValidationException(issues)
-        return ValidatedSyncRequest(
-            from = resolvedFrom,
-            to = resolvedTo,
-            dataTypes = dataTypes.distinct(),
-            pageSize = pageSize,
-        )
     }
 
-    private fun parseInstant(field: String, value: String, issues: MutableList<ValidationIssue>): Instant? =
-        runCatching { Instant.parse(value) }.getOrElse {
-            issues.add(ValidationIssue(field, "must be an ISO-8601 instant"))
-            null
+    private suspend fun <T> providerCall(
+        fallbackCode: String,
+        fallbackMessage: String,
+        block: suspend () -> T,
+    ): T =
+        try {
+            block()
+        } catch (throwable: GoogleHealthHttpException) {
+            logger.warn(
+                "provider_token_exchange_failed {} {}",
+                kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
+                kv("errorCode", throwable.code),
+            )
+            throw UpstreamProviderException(
+                throwable.code,
+                throwable.message ?: fallbackMessage,
+                502,
+            )
+        } catch (throwable: GoogleHealthUnauthorizedException) {
+            logger.warn(
+                "provider_token_exchange_failed {} {}",
+                kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
+                kv("errorCode", fallbackCode),
+            )
+            throw UpstreamProviderException(
+                fallbackCode,
+                throwable.message ?: fallbackMessage,
+                502,
+            )
         }
 
     private fun batchExternalId(providerInstanceId: String, dataType: String, from: Instant, to: Instant): String =
         "google-health:$providerInstanceId:$dataType:$from:$to"
 
-    private fun cachedBatchResponse(dataType: String, batchId: Int): GoogleHealthSyncBatchResponse =
-        GoogleHealthSyncBatchResponse(
+    private fun cachedBatchResponse(dataType: String, batchId: Int): ProviderSyncBatch =
+        ProviderSyncBatch(
             dataType = dataType,
             batchId = batchId,
             duplicateBatch = true,
             recordsReceived = 0,
             ingestionRecordsStored = 0,
-            metricsCreated = MetricCreatedCountsResponse(0, 0, 0, 0, 0),
-            metricsSkipped = MetricSkippedCountsResponse(duplicates = 0),
+            metricsCreated = MetricCreatedCounts(),
+            duplicateMetricsSkipped = 0,
             affectedStepSummaryDates = emptyList(),
         )
 
@@ -359,6 +444,7 @@ class GoogleHealthSyncService(
         }
 
     private data class ValidatedSyncRequest(
+        val providerInstanceId: String?,
         val from: Instant,
         val to: Instant,
         val dataTypes: List<String>,
