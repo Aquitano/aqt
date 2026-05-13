@@ -35,12 +35,12 @@ Useful tasks:
 
 ## OpenAPI
 
-The OpenAPI spec is stored at `src/main/resources/openapi/aqt-health.yaml` and is served by Ktor.
+The OpenAPI spec is generated from routing at runtime and served by Ktor.
 
 After starting the app, open:
 
-- `http://localhost:8080/openapi`
-- `http://localhost:8080/swagger`
+- `http://localhost:8080/openapi` (raw OpenAPI document)
+- `http://localhost:8080/swagger` (Swagger UI)
 
 ## Configuration
 

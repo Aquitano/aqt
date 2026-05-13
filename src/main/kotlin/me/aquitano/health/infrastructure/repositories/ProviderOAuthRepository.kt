@@ -28,6 +28,13 @@ data class ProviderOAuthState(
     val consumedAt: Instant?,
 )
 
+sealed class ProviderOAuthStateConsumeResult {
+    data class Consumed(val state: ProviderOAuthState) : ProviderOAuthStateConsumeResult()
+    data class AlreadyUsed(val state: ProviderOAuthState) : ProviderOAuthStateConsumeResult()
+    data class Expired(val state: ProviderOAuthState) : ProviderOAuthStateConsumeResult()
+    data object NotFound : ProviderOAuthStateConsumeResult()
+}
+
 class ProviderOAuthRepository(private val database: Database) {
     suspend fun insertState(
         state: String,
@@ -50,9 +57,32 @@ class ProviderOAuthRepository(private val database: Database) {
         state: String,
         providerCode: String,
         now: Instant,
-    ): ProviderOAuthState? =
+    ): ProviderOAuthStateConsumeResult =
         newSuspendedTransaction(Dispatchers.IO, db = database) {
-            val row = ProviderOAuthStatesTable
+            val nowString = now.toString()
+            val updated = ProviderOAuthStatesTable.update({
+                (ProviderOAuthStatesTable.state eq state) and
+                        (ProviderOAuthStatesTable.providerCode eq providerCode) and
+                        ProviderOAuthStatesTable.consumedAt.isNull() and
+                        (ProviderOAuthStatesTable.expiresAt greater nowString)
+            }) {
+                it[consumedAt] = nowString
+            }
+
+            if (updated == 1) {
+                val consumedRow = ProviderOAuthStatesTable
+                    .selectAll()
+                    .where {
+                        (ProviderOAuthStatesTable.state eq state) and
+                                (ProviderOAuthStatesTable.providerCode eq providerCode)
+                    }
+                    .limit(1)
+                    .singleOrNull()
+                    ?: return@newSuspendedTransaction ProviderOAuthStateConsumeResult.NotFound
+                return@newSuspendedTransaction ProviderOAuthStateConsumeResult.Consumed(consumedRow.toOAuthState())
+            }
+
+            val existingRow = ProviderOAuthStatesTable
                 .selectAll()
                 .where {
                     (ProviderOAuthStatesTable.state eq state) and
@@ -60,15 +90,14 @@ class ProviderOAuthRepository(private val database: Database) {
                 }
                 .limit(1)
                 .singleOrNull()
-                ?: return@newSuspendedTransaction null
+                ?: return@newSuspendedTransaction ProviderOAuthStateConsumeResult.NotFound
 
-            val existing = row.toOAuthState()
-            if (existing.consumedAt == null && now.isBefore(existing.expiresAt)) {
-                ProviderOAuthStatesTable.update({ ProviderOAuthStatesTable.state eq state }) {
-                    it[consumedAt] = now.toString()
-                }
+            val existing = existingRow.toOAuthState()
+            return@newSuspendedTransaction when {
+                existing.consumedAt != null -> ProviderOAuthStateConsumeResult.AlreadyUsed(existing)
+                !now.isBefore(existing.expiresAt) -> ProviderOAuthStateConsumeResult.Expired(existing)
+                else -> ProviderOAuthStateConsumeResult.AlreadyUsed(existing)
             }
-            existing
         }
 
     suspend fun upsertAccount(

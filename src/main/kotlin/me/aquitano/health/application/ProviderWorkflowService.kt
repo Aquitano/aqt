@@ -1,13 +1,22 @@
 package me.aquitano.health.application
 
+import me.aquitano.health.api.dto.MetricCreatedCountsResponse
 import me.aquitano.health.api.dto.ProviderOAuthCallbackResponse
 import me.aquitano.health.api.dto.ProviderOAuthStartResponse
+import me.aquitano.health.api.dto.ProviderSyncBatchResponseDto
+import me.aquitano.health.api.dto.ProviderSyncErrorResponseDto
 import me.aquitano.health.api.dto.ProviderSyncRequestDto
+import me.aquitano.health.api.dto.ProviderSyncResponseDto
+import me.aquitano.health.domain.MetricCreatedCounts
 import me.aquitano.health.domain.NotFoundException
+import me.aquitano.health.domain.ProviderSyncBatch
+import me.aquitano.health.domain.ProviderSyncError
 import me.aquitano.health.domain.ProviderSyncRequest
+import me.aquitano.health.domain.ProviderSyncSummary
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
+import me.aquitano.health.infrastructure.repositories.ProviderOAuthStateConsumeResult
 import net.logstash.logback.argument.StructuredArguments.kv
 import org.slf4j.LoggerFactory
 import java.security.SecureRandom
@@ -73,13 +82,14 @@ class ProviderWorkflowService(
             )
         }
 
-        val storedState = providerOAuthRepository.consumeState(authState, provider.providerCode, now)
-            ?: throw RequestValidationException(listOf(ValidationIssue("state", "is invalid")))
-        if (storedState.consumedAt != null) {
-            throw RequestValidationException(listOf(ValidationIssue("state", "was already used")))
-        }
-        if (!now.isBefore(storedState.expiresAt)) {
-            throw RequestValidationException(listOf(ValidationIssue("state", "has expired")))
+        when (providerOAuthRepository.consumeState(authState, provider.providerCode, now)) {
+            is ProviderOAuthStateConsumeResult.Consumed -> Unit
+            is ProviderOAuthStateConsumeResult.AlreadyUsed ->
+                throw RequestValidationException(listOf(ValidationIssue("state", "was already used")))
+            is ProviderOAuthStateConsumeResult.Expired ->
+                throw RequestValidationException(listOf(ValidationIssue("state", "has expired")))
+            ProviderOAuthStateConsumeResult.NotFound ->
+                throw RequestValidationException(listOf(ValidationIssue("state", "is invalid")))
         }
 
         val connection = provider.connect(authCode, now)
@@ -90,9 +100,10 @@ class ProviderWorkflowService(
         )
     }
 
-    suspend fun sync(providerCode: String, request: ProviderSyncRequestDto, now: Instant) =
+    suspend fun sync(providerCode: String, request: ProviderSyncRequestDto, now: Instant): ProviderSyncResponseDto =
         providerRegistry.getProvider(providerCode)
             ?.sync(request.toDomain(now), now)
+            ?.toDto()
             ?: throw NotFoundException("Provider '$providerCode' not found")
 
     private fun ProviderSyncRequestDto.toDomain(now: Instant): ProviderSyncRequest {
@@ -150,4 +161,43 @@ class ProviderWorkflowService(
         random.nextBytes(bytes)
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
+
+    private fun ProviderSyncSummary.toDto(): ProviderSyncResponseDto =
+        ProviderSyncResponseDto(
+            providerCode = providerCode,
+            providerInstanceId = providerInstanceId,
+            requestedFrom = requestedFrom.toString(),
+            requestedTo = requestedTo.toString(),
+            status = status,
+            batches = batches.map { it.toDto() },
+            errors = errors.map { it.toDto() },
+        )
+
+    private fun ProviderSyncBatch.toDto(): ProviderSyncBatchResponseDto =
+        ProviderSyncBatchResponseDto(
+            dataType = dataType,
+            batchId = batchId,
+            duplicateBatch = duplicateBatch,
+            recordsReceived = recordsReceived,
+            ingestionRecordsStored = ingestionRecordsStored,
+            metricsCreated = metricsCreated.toDto(),
+            duplicateMetricsSkipped = duplicateMetricsSkipped,
+            affectedStepSummaryDates = affectedStepSummaryDates,
+        )
+
+    private fun ProviderSyncError.toDto(): ProviderSyncErrorResponseDto =
+        ProviderSyncErrorResponseDto(
+            dataType = dataType,
+            code = code,
+            message = message,
+        )
+
+    private fun MetricCreatedCounts.toDto(): MetricCreatedCountsResponse =
+        MetricCreatedCountsResponse(
+            stepSamples = stepSamples,
+            sleepSessions = sleepSessions,
+            sleepStages = sleepStages,
+            bodyMeasurements = bodyMeasurements,
+            heartRateSamples = heartRateSamples,
+        )
 }
