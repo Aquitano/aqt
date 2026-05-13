@@ -11,11 +11,13 @@ import kotlinx.serialization.Serializable
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.ProviderSyncRequestDto
 import me.aquitano.health.application.QueryParams
+import me.aquitano.health.domain.RequestValidationException
+import me.aquitano.health.domain.ValidationIssue
 
 fun Application.configureRoutes(services: ApplicationServices) {
     routing {
-        // openAPI(path = "openapi", swaggerFile = "openapi/aqt-health.yaml")
-        // swaggerUI(path = "swagger", swaggerFile = "openapi/aqt-health.yaml")
+        openAPI(path = "openapi", swaggerFile = "openapi/aqt-health.yaml")
+        swaggerUI(path = "swagger", swaggerFile = "openapi/aqt-health.yaml")
 
         get("/api/v1/admin/health") {
             call.respond(
