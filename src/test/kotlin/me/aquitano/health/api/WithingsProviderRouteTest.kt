@@ -74,6 +74,19 @@ class WithingsProviderRouteTest {
         assertTrue(response.bodyAsText().contains("withings_not_connected"))
     }
 
+    @Test
+    fun oauthCallbackUsesProviderPathCodeNotAuthorizationCode() = testApplication {
+        configureTestApplication()
+
+        val response = client.get(
+            "/api/v1/providers/withings/oauth/callback?code=authorization-code&state=missing-state"
+        )
+
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertTrue(response.bodyAsText().contains("state"))
+        assertTrue(!response.bodyAsText().contains("Provider 'authorization-code' not found"))
+    }
+
     private fun ApplicationTestBuilder.configureTestApplication() {
         val dbPath = Files.createTempFile("aqt-health-withings-provider-route-test", ".db")
         environment {

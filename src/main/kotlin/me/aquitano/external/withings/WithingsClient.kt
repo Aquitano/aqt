@@ -25,6 +25,8 @@ import me.aquitano.health.shared.formParameters
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 interface WithingsOAuthClient {
     suspend fun exchangeCode(code: String, now: Instant): WithingsTokenSet
@@ -70,15 +72,24 @@ class KtorWithingsClient(
     private val config: WithingsConfig,
 ) : WithingsClient {
     override suspend fun exchangeCode(code: String, now: Instant): WithingsTokenSet {
+        val nonce = getNonce(now)
+        val action = "requesttoken"
         val response = httpClient.submitForm(
             url = config.oauthTokenUrl,
             formParameters = formParameters(
-                "action" to "requesttoken",
+                "action" to action,
                 "grant_type" to "authorization_code",
                 "client_id" to config.clientId,
-                "client_secret" to config.clientSecret,
                 "code" to code,
                 "redirect_uri" to config.redirectUri,
+                "nonce" to nonce,
+                "signature" to sign(
+                    mapOf(
+                        "action" to action,
+                        "client_id" to config.clientId,
+                        "nonce" to nonce,
+                    )
+                ),
             ),
         )
         return parseTokenResponse(
@@ -91,14 +102,23 @@ class KtorWithingsClient(
     }
 
     override suspend fun refreshToken(refreshToken: String, now: Instant): WithingsTokenSet {
+        val nonce = getNonce(now)
+        val action = "requesttoken"
         val response = httpClient.submitForm(
             url = config.oauthTokenUrl,
             formParameters = formParameters(
-                "action" to "requesttoken",
+                "action" to action,
                 "grant_type" to "refresh_token",
                 "client_id" to config.clientId,
-                "client_secret" to config.clientSecret,
                 "refresh_token" to refreshToken,
+                "nonce" to nonce,
+                "signature" to sign(
+                    mapOf(
+                        "action" to action,
+                        "client_id" to config.clientId,
+                        "nonce" to nonce,
+                    )
+                ),
             ),
         )
         return parseTokenResponse(
@@ -108,6 +128,43 @@ class KtorWithingsClient(
             existingRefreshToken = refreshToken,
             requireUserId = false,
         )
+    }
+
+    private suspend fun getNonce(now: Instant): String {
+        val action = "getnonce"
+        val timestamp = now.epochSecond.toString()
+        val response = httpClient.submitForm(
+            url = signatureEndpoint(),
+            formParameters = formParameters(
+                "action" to action,
+                "client_id" to config.clientId,
+                "timestamp" to timestamp,
+                "signature" to sign(
+                    mapOf(
+                        "action" to action,
+                        "client_id" to config.clientId,
+                        "timestamp" to timestamp,
+                    )
+                ),
+            ),
+        )
+        if (!response.status.isSuccess()) {
+            throw WithingsHttpException(
+                "withings_nonce_request_failed",
+                "Withings nonce request failed with ${response.status.value}",
+            )
+        }
+
+        val payload = AppJson.parseToJsonElement(response.body<String>()).jsonObject
+        val withingsStatus = payload["status"]?.jsonPrimitive?.intOrNull
+        if (withingsStatus != 0) {
+            throw WithingsHttpException(
+                "withings_nonce_request_failed",
+                "Withings nonce request failed with status ${withingsStatus ?: "missing"}",
+            )
+        }
+        return payload["body"]?.jsonObject?.stringOrNull("nonce")
+            ?: throw WithingsHttpException("withings_nonce_request_failed", "Withings nonce response did not include nonce")
     }
 
     override suspend fun fetchMeasures(
@@ -359,8 +416,18 @@ class KtorWithingsClient(
 
     private fun measureEndpoint(): String = "${config.apiBaseUrl.trimEnd('/')}/v2/measure"
 
+    private fun signatureEndpoint(): String = "${config.apiBaseUrl.trimEnd('/')}/v2/signature"
+
     private fun sleepEndpoint(): String = "${config.apiBaseUrl.trimEnd('/')}/v2/sleep"
 
     private fun JsonObject.stringOrNull(key: String): String? =
         this[key]?.jsonPrimitive?.contentOrNull
+
+    private fun sign(parameters: Map<String, String>): String {
+        val payload = parameters.toSortedMap().values.joinToString(",")
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(config.clientSecret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+        return mac.doFinal(payload.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
 }
