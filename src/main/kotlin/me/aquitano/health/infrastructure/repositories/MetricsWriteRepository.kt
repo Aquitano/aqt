@@ -5,6 +5,7 @@ import me.aquitano.health.domain.HeartRateRecord
 import me.aquitano.health.domain.SleepSessionRecord
 import me.aquitano.health.domain.StepIntervalRecord
 import me.aquitano.health.infrastructure.database.tables.*
+import org.jetbrains.exposed.exceptions.ExposedSQLException
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greater
@@ -21,26 +22,23 @@ class MetricsWriteRepository {
         record: StepIntervalRecord,
         now: Instant,
     ): Boolean {
-        if (record.providerRecordId != null && stepSampleExists(
-                sourceInstanceId,
-                record.providerRecordId
-            )
-        ) return false
         if (provider == GOOGLE_HEALTH_PROVIDER_CODE && stepSampleOverlaps(
                 sourceInstanceId,
                 record
             )
         ) return false
-        StepSamplesTable.insert {
-            it[this.sourceInstanceId] = sourceInstanceId
-            it[this.ingestionRecordId] = ingestionRecordId
-            it[providerRecordId] = record.providerRecordId
-            it[startAt] = record.startAt.toString()
-            it[endAt] = record.endAt.toString()
-            it[steps] = record.steps
-            it[createdAt] = now.toString()
+        return insertOrSkipDuplicateUnit {
+            StepSamplesTable.insert {
+                it[this.sourceInstanceId] = sourceInstanceId
+                it[this.ingestionRecordId] = ingestionRecordId
+                it[providerRecordId] = record.providerRecordId
+                it[startAt] = record.startAt.toString()
+                it[endAt] = record.endAt.toString()
+                it[steps] = record.steps
+                it[createdAt] = now.toString()
+            }
+            Unit
         }
-        return true
     }
 
     fun insertSleepSession(
@@ -49,21 +47,18 @@ class MetricsWriteRepository {
         record: SleepSessionRecord,
         now: Instant,
     ): Int? {
-        if (record.providerRecordId != null && sleepSessionExists(
-                sourceInstanceId,
-                record.providerRecordId
-            )
-        ) return null
-        val sessionId = SleepSessionsTable.insertAndGetId {
-            it[this.sourceInstanceId] = sourceInstanceId
-            it[this.ingestionRecordId] = ingestionRecordId
-            it[providerRecordId] = record.providerRecordId
-            it[startAt] = record.startAt.toString()
-            it[endAt] = record.endAt.toString()
-            it[durationSeconds] =
-                Duration.between(record.startAt, record.endAt).seconds
-            it[createdAt] = now.toString()
-        }.value
+        val sessionId = insertOrNullOnDuplicate {
+            SleepSessionsTable.insertAndGetId {
+                it[this.sourceInstanceId] = sourceInstanceId
+                it[this.ingestionRecordId] = ingestionRecordId
+                it[providerRecordId] = record.providerRecordId
+                it[startAt] = record.startAt.toString()
+                it[endAt] = record.endAt.toString()
+                it[durationSeconds] =
+                    Duration.between(record.startAt, record.endAt).seconds
+                it[createdAt] = now.toString()
+            }.value
+        } ?: return null
         record.stages.forEach { stage ->
             SleepStagesTable.insert {
                 it[sleepSessionId] = sessionId
@@ -85,27 +80,20 @@ class MetricsWriteRepository {
     ): Int {
         var created = 0
         record.measurements.forEach { measurement ->
-            if (
-                record.providerRecordId != null &&
-                bodyMeasurementExists(
-                    sourceInstanceId,
-                    record.providerRecordId,
-                    measurement.metricType
-                )
-            ) {
-                return@forEach
+            val inserted = insertOrSkipDuplicateUnit {
+                BodyMeasurementsTable.insert {
+                    it[this.sourceInstanceId] = sourceInstanceId
+                    it[this.ingestionRecordId] = ingestionRecordId
+                    it[providerRecordId] = record.providerRecordId
+                    it[measuredAt] = record.measuredAt.toString()
+                    it[metricType] = measurement.metricType
+                    it[value] = measurement.value
+                    it[unit] = measurement.unit
+                    it[createdAt] = now.toString()
+                }
+                Unit
             }
-            BodyMeasurementsTable.insert {
-                it[this.sourceInstanceId] = sourceInstanceId
-                it[this.ingestionRecordId] = ingestionRecordId
-                it[providerRecordId] = record.providerRecordId
-                it[measuredAt] = record.measuredAt.toString()
-                it[metricType] = measurement.metricType
-                it[value] = measurement.value
-                it[unit] = measurement.unit
-                it[createdAt] = now.toString()
-            }
-            created += 1
+            if (inserted) created += 1
         }
         return created
     }
@@ -116,21 +104,18 @@ class MetricsWriteRepository {
         record: HeartRateRecord,
         now: Instant,
     ): Boolean {
-        if (record.providerRecordId != null && heartRateSampleExists(
-                sourceInstanceId,
-                record.providerRecordId
-            )
-        ) return false
-        HeartRateSamplesTable.insert {
-            it[this.sourceInstanceId] = sourceInstanceId
-            it[this.ingestionRecordId] = ingestionRecordId
-            it[providerRecordId] = record.providerRecordId
-            it[measuredAt] = record.measuredAt.toString()
-            it[bpm] = record.bpm
-            it[context] = record.context
-            it[createdAt] = now.toString()
+        return insertOrSkipDuplicateUnit {
+            HeartRateSamplesTable.insert {
+                it[this.sourceInstanceId] = sourceInstanceId
+                it[this.ingestionRecordId] = ingestionRecordId
+                it[providerRecordId] = record.providerRecordId
+                it[measuredAt] = record.measuredAt.toString()
+                it[bpm] = record.bpm
+                it[context] = record.context
+                it[createdAt] = now.toString()
+            }
+            Unit
         }
-        return true
     }
 
     fun recomputeStepDailySummary(
@@ -163,18 +148,6 @@ class MetricsWriteRepository {
         }
     }
 
-    private fun stepSampleExists(
-        sourceInstanceId: Int,
-        providerRecordId: String
-    ): Boolean =
-        StepSamplesTable.selectAll()
-            .where {
-                (StepSamplesTable.sourceInstanceId eq sourceInstanceId) and
-                        (StepSamplesTable.providerRecordId eq providerRecordId)
-            }
-            .limit(1)
-            .any()
-
     private fun stepSampleOverlaps(
         sourceInstanceId: Int,
         record: StepIntervalRecord,
@@ -201,43 +174,26 @@ class MetricsWriteRepository {
             }
     }
 
-    private fun sleepSessionExists(
-        sourceInstanceId: Int,
-        providerRecordId: String
-    ): Boolean =
-        SleepSessionsTable.selectAll()
-            .where {
-                (SleepSessionsTable.sourceInstanceId eq sourceInstanceId) and
-                        (SleepSessionsTable.providerRecordId eq providerRecordId)
-            }
-            .limit(1)
-            .any()
+    private fun insertOrSkipDuplicateUnit(block: () -> Unit): Boolean =
+        try {
+            block()
+            true
+        } catch (exception: ExposedSQLException) {
+            if (exception.isUniqueConstraintViolation()) false else throw exception
+        }
 
-    private fun bodyMeasurementExists(
-        sourceInstanceId: Int,
-        providerRecordId: String,
-        metricType: String
-    ): Boolean =
-        BodyMeasurementsTable.selectAll()
-            .where {
-                (BodyMeasurementsTable.sourceInstanceId eq sourceInstanceId) and
-                        (BodyMeasurementsTable.providerRecordId eq providerRecordId) and
-                        (BodyMeasurementsTable.metricType eq metricType)
-            }
-            .limit(1)
-            .any()
-
-    private fun heartRateSampleExists(
-        sourceInstanceId: Int,
-        providerRecordId: String
-    ): Boolean =
-        HeartRateSamplesTable.selectAll()
-            .where {
-                (HeartRateSamplesTable.sourceInstanceId eq sourceInstanceId) and
-                        (HeartRateSamplesTable.providerRecordId eq providerRecordId)
-            }
-            .limit(1)
-            .any()
+    private fun <T : Any> insertOrNullOnDuplicate(block: () -> T): T? =
+        try {
+            block()
+        } catch (exception: ExposedSQLException) {
+            if (exception.isUniqueConstraintViolation()) null else throw exception
+        }
 }
 
 private const val GOOGLE_HEALTH_PROVIDER_CODE = "google_health"
+
+private fun ExposedSQLException.isUniqueConstraintViolation(): Boolean {
+    val text = listOfNotNull(message, cause?.message).joinToString("\n")
+    return text.contains("UNIQUE constraint failed", ignoreCase = true) ||
+            text.contains("SQLITE_CONSTRAINT_UNIQUE", ignoreCase = true)
+}
