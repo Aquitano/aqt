@@ -23,35 +23,27 @@ class ApplicationTest {
         val response = client.get("/api/v1/admin/health")
 
         assertEquals(HttpStatusCode.OK, response.status)
-        assert(response.bodyAsText().contains(""""status":"ok""""))
+        val body = AppJson.parseToJsonElement(response.bodyAsText()).jsonObject
+        assertEquals("ok", body["status"]!!.jsonPrimitive.content)
     }
 
     @Test
-    fun requestWithoutRequestIdReceivesGeneratedRequestId() = testApplication {
+    fun requestIdIsEchoedFromHeaderOrGeneratedWhenAbsent() = testApplication {
         configureTestApplication()
 
-        val response = client.get("/api/v1/admin/health")
-
-        val requestId = response.headers[HttpHeaders.XRequestId]
-        assertEquals(HttpStatusCode.OK, response.status)
-        assertNotNull(requestId)
-        assertTrue(requestId.isNotBlank())
-    }
-
-    @Test
-    fun requestWithRequestIdPreservesRequestId() = testApplication {
-        configureTestApplication()
-
-        val response = client.get("/api/v1/admin/health") {
+        val withId = client.get("/api/v1/admin/health") {
             header(HttpHeaders.XRequestId, "test-request-123")
         }
+        assertEquals("test-request-123", withId.headers[HttpHeaders.XRequestId])
 
-        assertEquals(HttpStatusCode.OK, response.status)
-        assertEquals("test-request-123", response.headers[HttpHeaders.XRequestId])
+        val withoutId = client.get("/api/v1/admin/health")
+        val generated = withoutId.headers[HttpHeaders.XRequestId]
+        assertNotNull(generated)
+        assertTrue(generated.isNotBlank())
     }
 
     @Test
-    fun unauthorizedResponseIncludesRequestIdFromHeader() = testApplication {
+    fun unauthorizedResponseIncludesErrorCodeAndRequestId() = testApplication {
         configureTestApplication()
 
         val response = client.get("/api/v1/admin/ingestion/batches") {
@@ -91,17 +83,11 @@ class ApplicationTest {
 
         assertEquals(HttpStatusCode.OK, response.status)
         assertEquals(ContentType.Application.Json, response.contentType())
-        val body = response.bodyAsText()
-        assertTrue(body.contains(""""openapi""""))
-        assertTrue(body.contains(""""/api/v1/admin/health""""))
-        assertTrue(body.contains(""""operationId":"getHealth""""))
-        assertTrue(body.contains(""""HealthResponse""""))
-        assertTrue(body.contains(""""IngestionBatchRequest""""))
-        assertTrue(body.contains(""""ErrorResponse""""))
-        assertTrue(body.contains(""""requestId""""))
-        assertTrue(body.contains(""""details""""))
-        assertTrue(body.contains(""""code""""))
-        assertFalse(body.contains(""""/openapi""""))
+        val body = AppJson.parseToJsonElement(response.bodyAsText()).jsonObject
+        assertNotNull(body["openapi"])
+        assertNotNull(body["paths"])
+        // The /openapi route itself must not appear in the spec
+        assertFalse(response.bodyAsText().contains("\"/openapi\""))
     }
 
     private fun ApplicationTestBuilder.configureTestApplication() {

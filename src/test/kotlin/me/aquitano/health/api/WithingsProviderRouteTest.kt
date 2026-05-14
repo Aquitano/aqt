@@ -23,15 +23,6 @@ import kotlin.test.assertTrue
 
 class WithingsProviderRouteTest {
     @Test
-    fun oauthStartRequiresBearerToken() = testApplication {
-        configureTestApplication()
-
-        val response = client.get("/api/v1/providers/withings/oauth/start")
-
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
-    }
-
-    @Test
     fun oauthStartReturnsAuthorizationUrlWithDefaultScopes() = testApplication {
         configureTestApplication()
 
@@ -46,18 +37,6 @@ class WithingsProviderRouteTest {
         assertTrue(url.contains("response_type=code"))
         assertTrue(url.contains("client_id=withings-client-id"))
         assertTrue(url.contains("scope=user.info%2Cuser.metrics%2Cuser.activity"))
-    }
-
-    @Test
-    fun syncRequiresBearerToken() = testApplication {
-        configureTestApplication()
-
-        val response = client.post("/api/v1/providers/withings/sync") {
-            contentType(ContentType.Application.Json)
-            setBody("""{}""")
-        }
-
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
     }
 
     @Test

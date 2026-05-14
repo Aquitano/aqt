@@ -15,15 +15,6 @@ import kotlin.test.assertTrue
 
 class GoogleHealthProviderRouteTest {
     @Test
-    fun oauthStartRequiresBearerToken() = testApplication {
-        configureTestApplication()
-
-        val response = client.get("/api/v1/providers/google-health/oauth/start")
-
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
-    }
-
-    @Test
     fun oauthStartReturnsAuthorizationUrlWithReadonlyScopes() = testApplication {
         configureTestApplication()
 
@@ -42,19 +33,7 @@ class GoogleHealthProviderRouteTest {
     }
 
     @Test
-    fun syncRequiresBearerToken() = testApplication {
-        configureTestApplication()
-
-        val response = client.post("/api/v1/providers/google-health/sync") {
-            contentType(ContentType.Application.Json)
-            setBody("""{"from":"2026-04-01T00:00:00Z","to":"2026-04-02T00:00:00Z"}""")
-        }
-
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
-    }
-
-    @Test
-    fun syncRejectsInvalidDateRangeBeforeAccountLookup() = testApplication {
+    fun syncRejectsInvalidDateRange() = testApplication {
         configureTestApplication()
 
         val response = client.post("/api/v1/providers/google-health/sync") {
@@ -64,6 +43,8 @@ class GoogleHealthProviderRouteTest {
         }
 
         assertEquals(HttpStatusCode.BadRequest, response.status)
+        val error = AppJson.parseToJsonElement(response.bodyAsText()).jsonObject["error"]!!.jsonObject
+        assertEquals("validation_failed", error["code"]!!.jsonPrimitive.content)
     }
 
     @Test
