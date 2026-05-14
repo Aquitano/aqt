@@ -11,6 +11,7 @@ import me.aquitano.health.domain.HealthProvider
 import me.aquitano.health.domain.MetricCreatedCounts
 import me.aquitano.health.domain.ProviderConnection
 import me.aquitano.health.domain.ProviderSyncBatch
+import me.aquitano.health.domain.ProviderSyncEmptyDataType
 import me.aquitano.health.domain.ProviderSyncError
 import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.domain.ProviderSyncSummary
@@ -118,6 +119,7 @@ class WithingsProvider(
 
         val batches = mutableListOf<ProviderSyncBatch>()
         val errors = mutableListOf<ProviderSyncError>()
+        val emptyDataTypes = mutableListOf<ProviderSyncEmptyDataType>()
         for (dataType in validated.dataTypes) {
             val batchExternalId = batchExternalId(providerInstanceId, dataType, validated.from, validated.to)
             val existingBatch = ingestionService.findExistingBatch(
@@ -146,11 +148,20 @@ class WithingsProvider(
                 val normalized = normalizer.normalize(fetchResult)
                 if (normalized.records.isEmpty()) {
                     logger.info(
-                        "provider_data_type_synced {} {} {} {}",
+                        "provider_data_type_synced {} {} {} {} {}",
                         kv("provider", WITHINGS_PROVIDER_CODE),
                         kv("dataType", dataType),
                         kv("pages", fetchResult.pages.size),
-                        kv("records", 0),
+                        kv("sourceRecords", fetchResult.records.size),
+                        kv("normalizedRecords", 0),
+                    )
+                    emptyDataTypes.add(
+                        ProviderSyncEmptyDataType(
+                            dataType = dataType,
+                            pagesFetched = fetchResult.pages.size,
+                            sourceRecordsReceived = fetchResult.records.size,
+                            normalizedRecords = 0,
+                        )
                     )
                     continue
                 }
@@ -234,6 +245,7 @@ class WithingsProvider(
             status = status,
             batches = batches,
             errors = errors,
+            emptyDataTypes = emptyDataTypes,
         )
     }
 
@@ -350,7 +362,7 @@ class WithingsProvider(
             "activity" -> client.fetchActivity(accessToken, from, to, WITHINGS_ACTIVITY_FIELDS_ALL_LISTED)
             "measures" -> client.fetchMeasures(accessToken, from, to, WITHINGS_MEASURE_TYPES_ALL_LISTED, 1)
             "sleep-summary" -> client.fetchSleepSummary(accessToken, from, to, WITHINGS_SLEEP_SUMMARY_FIELDS_ALL_LISTED)
-            "sleep" -> client.fetchSleep(accessToken, from, to, WITHINGS_SLEEP_FIELDS_ALL_LISTED, WITHINGS_MEASURE_TYPES_ALL_LISTED)
+            "sleep" -> client.fetchSleep(accessToken, from, to, WITHINGS_SLEEP_FIELDS_ALL_LISTED)
             else -> throw WithingsHttpException("withings_unsupported_data_type", "Unsupported Withings data type: $dataType")
         }
 

@@ -51,11 +51,6 @@ val WITHINGS_SLEEP_FIELDS_ALL_LISTED = listOf(
     "snoring",
     "sdnn_1",
     "rmssd",
-    "hrv_quality",
-    "mvt_score",
-    "chest_movement_rate",
-    "withings_index",
-    "breathing_sounds",
 )
 
 val WITHINGS_SLEEP_SUMMARY_FIELDS_ALL_LISTED = listOf(

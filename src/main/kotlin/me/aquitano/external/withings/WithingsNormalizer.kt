@@ -133,13 +133,20 @@ class WithingsNormalizer {
         }
 
     private fun normalizeSleep(records: List<JsonObject>): List<IngestionRecordDto> {
-        val sorted = records.mapNotNull { record ->
-            val instant = record.instant("timestamp") ?: return@mapNotNull null
-            instant to record
-        }.sortedBy { it.first }
-        val heartRates = sorted.mapNotNull { (instant, record) ->
-            val bpm = record.int("hr") ?: return@mapNotNull null
+        val segments = records.mapNotNull { record ->
+            val start = record.sleepInstant("startdate") ?: return@mapNotNull null
+            val end = record.sleepInstant("enddate") ?: return@mapNotNull null
+            val stage = mapSleepStage(record.sleepState()) ?: return@mapNotNull null
+            if (!start.isBefore(end)) return@mapNotNull null
+            SleepSegment(start = start, end = end, stage = stage)
+        }.sortedBy { it.start }
+
+        val heartRates = records.mapNotNull { record ->
+            val bpm = record.sleepHeartRate() ?: return@mapNotNull null
             if (bpm !in 25..250) return@mapNotNull null
+            val instant = record.sleepInstant("timestamp")
+                ?: record.sleepInstant("startdate")
+                ?: return@mapNotNull null
             HeartRateDto(
                 providerRecordId = "withings:sleep:hr:${instant.epochSecond}",
                 measuredAt = instant.toString(),
@@ -147,9 +154,37 @@ class WithingsNormalizer {
                 context = "sleep",
             )
         }
+
+        if (segments.isNotEmpty()) {
+            val sessions = splitSleepSegments(segments).mapNotNull { sessionSegments ->
+                val start = sessionSegments.first().start
+                val end = sessionSegments.last().end
+                if (!start.isBefore(end)) return@mapNotNull null
+                SleepSessionDto(
+                    providerRecordId = "withings:sleep:${start.epochSecond}:${end.epochSecond}",
+                    startAt = start.toString(),
+                    endAt = end.toString(),
+                    stages = sessionSegments.map { segment ->
+                        SleepStageDto(
+                            stage = segment.stage,
+                            startAt = segment.start.toString(),
+                            endAt = segment.end.toString(),
+                        )
+                    },
+                )
+            }
+            return sessions + heartRates
+        }
+
+        val sorted = records.mapNotNull { record ->
+            val instant = record.sleepInstant("timestamp")
+                ?: record.sleepInstant("startdate")
+                ?: return@mapNotNull null
+            instant to record
+        }.sortedBy { it.first }
         val sessions = splitSleepSessions(sorted).mapNotNull { sessionRecords ->
             val stages = sessionRecords.zipWithNext().mapNotNull { (current, next) ->
-                val stage = mapSleepStage(current.second.int("state")) ?: return@mapNotNull null
+                val stage = mapSleepStage(current.second.sleepState()) ?: return@mapNotNull null
                 if (!current.first.isBefore(next.first)) return@mapNotNull null
                 SleepStageDto(
                     stage = stage,
@@ -170,6 +205,26 @@ class WithingsNormalizer {
         }
         return sessions + heartRates
     }
+
+    private fun splitSleepSegments(segments: List<SleepSegment>): List<List<SleepSegment>> =
+        buildList {
+            var current = mutableListOf<SleepSegment>()
+            segments.forEach { segment ->
+                val previous = current.lastOrNull()
+                if (previous != null && Duration.between(previous.end, segment.start) > sleepSessionGap) {
+                    add(current)
+                    current = mutableListOf()
+                }
+                current.add(segment)
+            }
+            if (current.isNotEmpty()) add(current)
+        }
+
+    private data class SleepSegment(
+        val start: Instant,
+        val end: Instant,
+        val stage: String,
+    )
 
     private fun splitSleepSessions(
         sorted: List<Pair<Instant, JsonObject>>,
@@ -200,8 +255,11 @@ class WithingsNormalizer {
     private fun JsonObject.string(key: String): String? =
         this[key]?.jsonPrimitive?.contentOrNull
 
-    private fun JsonObject.int(key: String): Int? =
-        this[key]?.jsonPrimitive?.intOrNull
+    private fun JsonObject.int(key: String): Int? {
+        val primitive = this[key]?.jsonPrimitive ?: return null
+        primitive.intOrNull?.let { return it }
+        return primitive.contentOrNull?.toIntOrNull()
+    }
 
     private fun JsonObject.long(key: String): Long? =
         this[key]?.jsonPrimitive?.longOrNull
@@ -217,4 +275,16 @@ class WithingsNormalizer {
                 ?: runCatching { Instant.parse(value) }.getOrNull()
         }
     }
+
+    private fun JsonObject.sleepState(): Int? =
+        int("state")
+            ?: int("value")
+            ?: (this["data"] as? JsonObject)?.int("state")
+            ?: (this["data"] as? JsonObject)?.int("value")
+
+    private fun JsonObject.sleepHeartRate(): Int? =
+        int("hr") ?: (this["data"] as? JsonObject)?.int("hr")
+
+    private fun JsonObject.sleepInstant(key: String): Instant? =
+        instant(key) ?: (this["data"] as? JsonObject)?.instant(key)
 }

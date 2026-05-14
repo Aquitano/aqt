@@ -184,7 +184,7 @@ Supported record types:
 
 The Google Health provider is a server-owned OAuth integration. It reads Google Health data, normalizes it into the same ingestion batch contract shown above, stores the original Google response pages in `sourcePayload`, and writes the existing metric tables through the normal ingestion service.
 
-Google's Google Health API docs currently recommend waiting until the end of May 2026 for an official launch and warn that breaking changes may occur before then. This integration uses a small REST client rather than a generated client so the request/response handling stays easy to adjust.
+Google's Google Health API docs currently recommend waiting until the end of May 2026 for an official launch and warn that breaking changes may occur before then. Sync uses Google's official generated Health client library for datapoint reads; the remaining Ktor Google client code is OAuth-only.
 
 Google Cloud setup:
 
@@ -219,11 +219,13 @@ curl -X POST http://localhost:8080/api/v1/providers/google-health/sync \
     "from": "2026-04-01T00:00:00Z",
     "to": "2026-04-20T00:00:00Z",
     "dataTypes": ["steps", "sleep", "heart-rate", "weight", "body-fat"],
-    "pageSize": 1000
+    "pageSize": 10000
   }'
 ```
 
-If `dataTypes` is omitted, the sync reads `steps`, `sleep`, `heart-rate`, `weight`, and `body-fat`. If both `from` and `to` are omitted, the sync defaults to the last seven days. Explicit ranges must be no longer than 31 days.
+If `dataTypes` is omitted, the sync reads `steps`, `sleep`, `heart-rate`, `weight`, and `body-fat`. If both `from` and `to` are omitted, the sync defaults to the last seven days. Explicit ranges must be no longer than 31 days. Completed windows are skipped on repeated syncs over the same range, and heart-rate syncs are fetched in one-day windows.
+
+Google Health may return overlapping step intervals with different provider record IDs. To avoid inflated future totals, overlapping Google Health step intervals for the same account are skipped as duplicate metrics during ingestion. This guard is forward-looking only; it does not repair or remove historical rows that were ingested before the guard existed.
 
 ## Withings Provider
 

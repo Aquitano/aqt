@@ -21,6 +21,7 @@ import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class WithingsOAuthClientTest {
@@ -263,20 +264,18 @@ class WithingsOAuthClientTest {
         }
 
         client.fetchSleep(
-            accessToken = "access",
+            accessToken = "token",
             from = Instant.parse("2026-04-01T00:00:00Z"),
-            to = Instant.parse("2026-04-03T01:00:00Z"),
-            dataFields = listOf("hr", "rr"),
-            measureTypes = listOf(1, 4),
+            to = Instant.parse("2026-04-03T00:00:00Z"),
+            dataFields = listOf("state"),
         )
 
-        assertEquals(3, forms.size)
+        assertEquals(2, forms.size)
         assertEquals(listOf("1775001600"), forms[0]["startdate"])
         assertEquals(listOf("1775088000"), forms[0]["enddate"])
         assertEquals(listOf("1775088000"), forms[1]["startdate"])
         assertEquals(listOf("1775174400"), forms[1]["enddate"])
-        assertEquals(listOf("1775174400"), forms[2]["startdate"])
-        assertEquals(listOf("1775178000"), forms[2]["enddate"])
+        assertNull(forms[0]["meastypes"])
     }
 
     @Test

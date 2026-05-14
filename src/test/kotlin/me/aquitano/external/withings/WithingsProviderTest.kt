@@ -137,6 +137,30 @@ class WithingsProviderTest {
     }
 
     @Test
+    fun syncReportsDataTypesWithNoNormalizedRecords() = runBlocking {
+        val fixture = Fixture()
+        fixture.seedAccount()
+        fixture.client.emptyDataTypes += setOf("activity", "sleep")
+
+        val summary = fixture.provider.sync(
+            ProviderSyncRequest(
+                from = Instant.parse("2026-05-01T00:00:00Z"),
+                to = Instant.parse("2026-05-11T00:00:00Z"),
+                dataTypes = listOf("activity", "sleep"),
+            ),
+            fixture.now,
+        )
+
+        assertEquals("processed", summary.status)
+        assertTrue(summary.batches.isEmpty())
+        assertTrue(summary.errors.isEmpty())
+        assertEquals(listOf("activity", "sleep"), summary.emptyDataTypes.map { it.dataType })
+        assertEquals(1, summary.emptyDataTypes.first().pagesFetched)
+        assertEquals(0, summary.emptyDataTypes.first().sourceRecordsReceived)
+        assertEquals(0, summary.emptyDataTypes.first().normalizedRecords)
+    }
+
+    @Test
     fun syncUsesRequestedProviderInstanceAccount() = runBlocking {
         val fixture = Fixture()
         fixture.seedAccount(
@@ -333,6 +357,7 @@ class WithingsProviderTest {
         var refreshCalls = 0
         var failDataRequestsWithAccessToken: String? = null
         var failuresRemaining = 0
+        val emptyDataTypes = mutableSetOf<String>()
         val accessTokensUsed = mutableListOf<String>()
 
         override suspend fun exchangeCode(code: String, now: Instant): WithingsTokenSet {
@@ -368,6 +393,7 @@ class WithingsProviderTest {
         ): WithingsFetchResult {
             accessTokensUsed.add(accessToken)
             failDataRequestIfConfigured(accessToken)
+            if ("measures" in emptyDataTypes) return emptyFetchResult("measures")
             return WithingsFetchResult(
                 dataType = "measures",
                 pages = page("measures"),
@@ -395,6 +421,7 @@ class WithingsProviderTest {
         ): WithingsFetchResult {
             accessTokensUsed.add(accessToken)
             failDataRequestIfConfigured(accessToken)
+            if ("activity" in emptyDataTypes) return emptyFetchResult("activity")
             return WithingsFetchResult(
                 dataType = "activity",
                 pages = page("activity"),
@@ -412,10 +439,10 @@ class WithingsProviderTest {
             from: Instant,
             to: Instant,
             dataFields: List<String>,
-            measureTypes: List<Int>,
         ): WithingsFetchResult {
             accessTokensUsed.add(accessToken)
             failDataRequestIfConfigured(accessToken)
+            if ("sleep" in emptyDataTypes) return emptyFetchResult("sleep")
             return WithingsFetchResult(
                 dataType = "sleep",
                 pages = page("sleep"),
@@ -442,6 +469,7 @@ class WithingsProviderTest {
         ): WithingsFetchResult {
             accessTokensUsed.add(accessToken)
             failDataRequestIfConfigured(accessToken)
+            if ("sleep-summary" in emptyDataTypes) return emptyFetchResult("sleep-summary")
             return WithingsFetchResult(
                 dataType = "sleep-summary",
                 pages = page("sleep-summary"),
@@ -464,6 +492,9 @@ class WithingsProviderTest {
                 )
             }
         }
+
+        private fun emptyFetchResult(dataType: String): WithingsFetchResult =
+            WithingsFetchResult(dataType, page(dataType), emptyList())
 
         private fun page(dataType: String): List<WithingsPage> =
             listOf(

@@ -58,6 +58,7 @@ data class ProviderSyncSummary(
     val status: String, // "processed", "failed", "partial_failed"
     val batches: List<ProviderSyncBatch>,
     val errors: List<ProviderSyncError>,
+    val emptyDataTypes: List<ProviderSyncEmptyDataType> = emptyList(),
 )
 
 data class ProviderSyncBatch(
@@ -75,4 +76,11 @@ data class ProviderSyncError(
     val dataType: String,
     val code: String,
     val message: String,
+)
+
+data class ProviderSyncEmptyDataType(
+    val dataType: String,
+    val pagesFetched: Int,
+    val sourceRecordsReceived: Int,
+    val normalizedRecords: Int,
 )

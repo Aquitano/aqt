@@ -4,12 +4,14 @@ import me.aquitano.health.api.dto.MetricCreatedCountsResponse
 import me.aquitano.health.api.dto.ProviderOAuthCallbackResponse
 import me.aquitano.health.api.dto.ProviderOAuthStartResponse
 import me.aquitano.health.api.dto.ProviderSyncBatchResponseDto
+import me.aquitano.health.api.dto.ProviderSyncEmptyDataTypeResponseDto
 import me.aquitano.health.api.dto.ProviderSyncErrorResponseDto
 import me.aquitano.health.api.dto.ProviderSyncRequestDto
 import me.aquitano.health.api.dto.ProviderSyncResponseDto
 import me.aquitano.health.domain.MetricCreatedCounts
 import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.domain.ProviderSyncBatch
+import me.aquitano.health.domain.ProviderSyncEmptyDataType
 import me.aquitano.health.domain.ProviderSyncError
 import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.domain.ProviderSyncSummary
@@ -245,6 +247,7 @@ class ProviderWorkflowService(
             requestedTo = requestedTo.toString(),
             status = status,
             batches = batches.map { it.toDto() },
+            emptyDataTypes = emptyDataTypes.map { it.toDto() },
             errors = errors.map { it.toDto() },
         )
 
@@ -265,6 +268,14 @@ class ProviderWorkflowService(
             dataType = dataType,
             code = code,
             message = message,
+        )
+
+    private fun ProviderSyncEmptyDataType.toDto(): ProviderSyncEmptyDataTypeResponseDto =
+        ProviderSyncEmptyDataTypeResponseDto(
+            dataType = dataType,
+            pagesFetched = pagesFetched,
+            sourceRecordsReceived = sourceRecordsReceived,
+            normalizedRecords = normalizedRecords,
         )
 
     private fun MetricCreatedCounts.toDto(): MetricCreatedCountsResponse =

@@ -156,6 +156,77 @@ class WithingsNormalizerTest {
     }
 
     @Test
+    fun sleepSeriesValueUsesValueAsState() {
+        val result = normalizer.normalize(
+            fetchResult(
+                "sleep",
+                buildJsonObject {
+                    put("timestamp", 1775001600)
+                    put("value", 1)
+                },
+                buildJsonObject {
+                    put("timestamp", 1775005200)
+                    put("value", 2)
+                },
+            )
+        )
+
+        val sessions = result.records.filterIsInstance<SleepSessionDto>()
+        assertEquals(1, sessions.size)
+        assertEquals(1, sessions.first().stages.size)
+        assertEquals("light", sessions.first().stages.first().stage)
+    }
+
+    @Test
+    fun sleepSeriesUsesStartDateAsTimestampWhenEndDateMissing() {
+        val result = normalizer.normalize(
+            fetchResult(
+                "sleep",
+                buildJsonObject {
+                    put("startdate", 1775001600)
+                    put("state", 1)
+                },
+                buildJsonObject {
+                    put("startdate", 1775005200)
+                    put("state", 2)
+                },
+            )
+        )
+
+        val sessions = result.records.filterIsInstance<SleepSessionDto>()
+        assertEquals(1, sessions.size)
+        assertEquals(1, sessions.first().stages.size)
+        assertEquals("light", sessions.first().stages.first().stage)
+    }
+
+    @Test
+    fun sleepSegmentsCreateSessionsFromStartAndEndDates() {
+        val result = normalizer.normalize(
+            fetchResult(
+                "sleep",
+                buildJsonObject {
+                    put("startdate", 1775001600)
+                    put("enddate", 1775005200)
+                    put("state", 1)
+                },
+                buildJsonObject {
+                    put("startdate", 1775005200)
+                    put("enddate", 1775008800)
+                    put("state", 2)
+                },
+            )
+        )
+
+        val sessions = result.records.filterIsInstance<SleepSessionDto>()
+        assertEquals(1, sessions.size)
+        assertEquals("2026-04-01T00:00:00Z", sessions.first().startAt)
+        assertEquals("2026-04-01T02:00:00Z", sessions.first().endAt)
+        assertEquals(2, sessions.first().stages.size)
+        assertEquals("light", sessions.first().stages[0].stage)
+        assertEquals("deep", sessions.first().stages[1].stage)
+    }
+
+    @Test
     fun highFrequencySleepSplitsSessionsAcrossLargeGaps() {
         val result = normalizer.normalize(
             fetchResult(

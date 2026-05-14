@@ -54,7 +54,6 @@ interface WithingsClient : WithingsOAuthClient {
         from: Instant,
         to: Instant,
         dataFields: List<String>,
-        measureTypes: List<Int>,
     ): WithingsFetchResult
 
     suspend fun fetchSleepSummary(
@@ -214,7 +213,6 @@ class KtorWithingsClient(
         from: Instant,
         to: Instant,
         dataFields: List<String>,
-        measureTypes: List<Int>,
     ): WithingsFetchResult {
         val results = sleepWindows(from, to).map { window ->
             fetchPaged(
@@ -227,7 +225,6 @@ class KtorWithingsClient(
                     add("startdate" to window.first.epochSecond.toString())
                     add("enddate" to window.second.epochSecond.toString())
                     add("data_fields" to dataFields.joinToString(","))
-                    if (measureTypes.isNotEmpty()) add("meastypes" to measureTypes.joinToString(","))
                 },
             )
         }
@@ -339,6 +336,7 @@ class KtorWithingsClient(
             ) {
                 header(HttpHeaders.Authorization, "Bearer $accessToken")
             }
+
             val payload = parseDataResponse(action, response.status, response.body())
             val body = payload["body"]?.jsonObject
                 ?: throw WithingsHttpException("withings_malformed_response", "Withings $action response did not include body")
@@ -373,13 +371,19 @@ class KtorWithingsClient(
         val payload = AppJson.parseToJsonElement(text).jsonObject
         val withingsStatus = payload["status"]?.jsonPrimitive?.intOrNull
         if (withingsStatus != 0) {
+            val detail = payload.withingsErrorDetail()
             throw WithingsHttpException(
                 "withings_data_request_failed",
-                "Withings $action request failed with status ${withingsStatus ?: "missing"}",
+                "Withings $action request failed with status ${withingsStatus ?: "missing"}${detail?.let { ": $it" }.orEmpty()}",
             )
         }
         return payload
     }
+
+    private fun JsonObject.withingsErrorDetail(): String? =
+        stringOrNull("error")
+            ?: (this["body"] as? JsonObject)?.stringOrNull("error")
+            ?: (this["body"] as? JsonObject)?.stringOrNull("message")
 
     private fun JsonObject.records(key: String): List<JsonObject> =
         when (val element = this[key]) {

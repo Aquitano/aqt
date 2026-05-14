@@ -33,6 +33,7 @@ data class ProviderSyncResponseDto(
     val requestedTo: String,
     val status: String,
     val batches: List<ProviderSyncBatchResponseDto>,
+    val emptyDataTypes: List<ProviderSyncEmptyDataTypeResponseDto>,
     val errors: List<ProviderSyncErrorResponseDto>,
 )
 
@@ -53,4 +54,12 @@ data class ProviderSyncErrorResponseDto(
     val dataType: String,
     val code: String,
     val message: String,
+)
+
+@Serializable
+data class ProviderSyncEmptyDataTypeResponseDto(
+    val dataType: String,
+    val pagesFetched: Int,
+    val sourceRecordsReceived: Int,
+    val normalizedRecords: Int,
 )
