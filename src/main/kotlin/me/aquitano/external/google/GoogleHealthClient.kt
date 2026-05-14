@@ -5,7 +5,6 @@ import io.ktor.client.call.body
 import io.ktor.client.request.forms.submitForm
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
-import io.ktor.http.parameters
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -13,6 +12,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import me.aquitano.health.infrastructure.config.GoogleHealthConfig
 import me.aquitano.health.shared.AppJson
+import me.aquitano.health.shared.formParameters
 import java.time.Instant
 
 internal const val MAX_GOOGLE_HEALTH_PAGES = 500
@@ -39,13 +39,13 @@ class KtorGoogleHealthOAuthClient(
     override suspend fun exchangeCode(code: String, now: Instant): GoogleHealthTokenSet {
         val response = httpClient.submitForm(
             url = config.oauthTokenUrl,
-            formParameters = parameters {
-                append("client_id", config.clientId)
-                append("client_secret", config.clientSecret)
-                append("code", code)
-                append("grant_type", "authorization_code")
-                append("redirect_uri", config.redirectUri)
-            },
+            formParameters = formParameters(
+                "client_id" to config.clientId,
+                "client_secret" to config.clientSecret,
+                "code" to code,
+                "grant_type" to "authorization_code",
+                "redirect_uri" to config.redirectUri,
+            ),
         )
         return parseTokenResponse(response.status, response.body(), now, existingRefreshToken = null)
     }
@@ -53,12 +53,12 @@ class KtorGoogleHealthOAuthClient(
     override suspend fun refreshToken(refreshToken: String, now: Instant): GoogleHealthTokenSet {
         val response = httpClient.submitForm(
             url = config.oauthTokenUrl,
-            formParameters = parameters {
-                append("client_id", config.clientId)
-                append("client_secret", config.clientSecret)
-                append("refresh_token", refreshToken)
-                append("grant_type", "refresh_token")
-            },
+            formParameters = formParameters(
+                "client_id" to config.clientId,
+                "client_secret" to config.clientSecret,
+                "refresh_token" to refreshToken,
+                "grant_type" to "refresh_token",
+            ),
         )
         return parseTokenResponse(response.status, response.body(), now, existingRefreshToken = refreshToken)
     }

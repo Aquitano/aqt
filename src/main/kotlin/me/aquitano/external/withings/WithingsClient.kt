@@ -7,7 +7,6 @@ import io.ktor.client.request.forms.submitForm
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
-import io.ktor.http.parameters
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -22,6 +21,7 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import me.aquitano.health.infrastructure.config.WithingsConfig
 import me.aquitano.health.shared.AppJson
+import me.aquitano.health.shared.formParameters
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -72,14 +72,14 @@ class KtorWithingsClient(
     override suspend fun exchangeCode(code: String, now: Instant): WithingsTokenSet {
         val response = httpClient.submitForm(
             url = config.oauthTokenUrl,
-            formParameters = parameters {
-                append("action", "requesttoken")
-                append("grant_type", "authorization_code")
-                append("client_id", config.clientId)
-                append("client_secret", config.clientSecret)
-                append("code", code)
-                append("redirect_uri", config.redirectUri)
-            },
+            formParameters = formParameters(
+                "action" to "requesttoken",
+                "grant_type" to "authorization_code",
+                "client_id" to config.clientId,
+                "client_secret" to config.clientSecret,
+                "code" to code,
+                "redirect_uri" to config.redirectUri,
+            ),
         )
         return parseTokenResponse(
             status = response.status,
@@ -93,13 +93,13 @@ class KtorWithingsClient(
     override suspend fun refreshToken(refreshToken: String, now: Instant): WithingsTokenSet {
         val response = httpClient.submitForm(
             url = config.oauthTokenUrl,
-            formParameters = parameters {
-                append("action", "requesttoken")
-                append("grant_type", "refresh_token")
-                append("client_id", config.clientId)
-                append("client_secret", config.clientSecret)
-                append("refresh_token", refreshToken)
-            },
+            formParameters = formParameters(
+                "action" to "requesttoken",
+                "grant_type" to "refresh_token",
+                "client_id" to config.clientId,
+                "client_secret" to config.clientSecret,
+                "refresh_token" to refreshToken,
+            ),
         )
         return parseTokenResponse(
             status = response.status,
@@ -272,11 +272,13 @@ class KtorWithingsClient(
             }
             val response = httpClient.submitForm(
                 url = endpoint,
-                formParameters = parameters {
-                    append("action", action)
-                    baseParameters.forEach { (key, value) -> append(key, value) }
-                    offset?.let { append("offset", it) }
-                },
+                formParameters = formParameters(
+                    buildList {
+                        add("action" to action)
+                        addAll(baseParameters)
+                        offset?.let { add("offset" to it) }
+                    },
+                ),
             ) {
                 header(HttpHeaders.Authorization, "Bearer $accessToken")
             }
