@@ -181,6 +181,22 @@ class ProviderOAuthRepository(private val database: Database) {
                 .singleOrNull()
         }
 
+    suspend fun accountByProviderInstance(
+        providerCode: String,
+        providerInstanceId: String,
+    ): ProviderOAuthAccount? =
+        newSuspendedTransaction(Dispatchers.IO, db = database) {
+            ProviderOAuthAccountsTable
+                .selectAll()
+                .where {
+                    (ProviderOAuthAccountsTable.providerCode eq providerCode) and
+                            (ProviderOAuthAccountsTable.providerInstanceId eq providerInstanceId)
+                }
+                .limit(1)
+                .map { it.toOAuthAccount() }
+                .singleOrNull()
+        }
+
     suspend fun startSyncRun(
         providerCode: String,
         providerInstanceId: String,
