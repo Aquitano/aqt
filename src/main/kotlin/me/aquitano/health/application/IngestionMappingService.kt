@@ -26,7 +26,13 @@ class IngestionMappingService {
         if (inputRecords == null) {
             issues.add(ValidationIssue("records"))
         } else if (inputRecords.isEmpty()) {
-            issues.add(ValidationIssue("records", "must not be empty"))
+            issues.add(
+                ValidationIssue(
+                    field = "records",
+                    code = ValidationIssueCodes.InvalidState,
+                    message = "must not be empty",
+                )
+            )
         }
 
         val records = inputRecords?.mapIndexedNotNull { index, dto ->
@@ -42,8 +48,9 @@ class IngestionMappingService {
         duplicateProviderIds.forEach {
             issues.add(
                 ValidationIssue(
-                    "records",
-                    "providerRecordId '$it' is duplicated in this batch"
+                    field = "records",
+                    code = ValidationIssueCodes.InvalidState,
+                    message = "providerRecordId '$it' is duplicated in this batch",
                 )
             )
         }
@@ -95,10 +102,22 @@ class IngestionMappingService {
         val steps = dto.steps
 
         if (startAt != null && endAt != null && !startAt.isBefore(endAt)) {
-            issues.add(ValidationIssue("$field.startAt", "must be before endAt"))
+            issues.add(
+                ValidationIssue(
+                    field = "$field.startAt",
+                    code = ValidationIssueCodes.InvalidRange,
+                    message = "must be before endAt",
+                )
+            )
         }
         if (steps <= 0) {
-            issues.add(ValidationIssue("$field.steps", "must be greater than 0"))
+            issues.add(
+                ValidationIssue(
+                    field = "$field.steps",
+                    code = ValidationIssueCodes.OutOfRange,
+                    message = "must be greater than 0",
+                )
+            )
         }
 
         return if (startAt != null && endAt != null && steps > 0 && startAt.isBefore(endAt)) {
@@ -123,7 +142,13 @@ class IngestionMappingService {
         val endAt = parseInstant(dto.endAt, "$field.endAt", issues)
 
         if (startAt != null && endAt != null && !startAt.isBefore(endAt)) {
-            issues.add(ValidationIssue("$field.startAt", "must be before endAt"))
+            issues.add(
+                ValidationIssue(
+                    field = "$field.startAt",
+                    code = ValidationIssueCodes.InvalidRange,
+                    message = "must be before endAt",
+                )
+            )
         }
 
         val stages = dto.stages.mapIndexedNotNull { stageIndex, stageDto ->
@@ -155,14 +180,32 @@ class IngestionMappingService {
         val endAt = parseInstant(dto.endAt, "$field.endAt", issues)
 
         if (stage !in SleepStages.supported) {
-            issues.add(ValidationIssue("$field.stage", "unsupported sleep stage"))
+            issues.add(
+                ValidationIssue(
+                    field = "$field.stage",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "unsupported sleep stage",
+                )
+            )
         }
         if (startAt != null && endAt != null && !startAt.isBefore(endAt)) {
-            issues.add(ValidationIssue("$field.startAt", "must be before endAt"))
+            issues.add(
+                ValidationIssue(
+                    field = "$field.startAt",
+                    code = ValidationIssueCodes.InvalidRange,
+                    message = "must be before endAt",
+                )
+            )
         }
         if (startAt != null && endAt != null && sessionStart != null && sessionEnd != null) {
             if (startAt.isBefore(sessionStart) || endAt.isAfter(sessionEnd)) {
-                issues.add(ValidationIssue(field, "must be within the sleep session"))
+                issues.add(
+                    ValidationIssue(
+                        field = field,
+                        code = ValidationIssueCodes.InvalidRange,
+                        message = "must be within the sleep session",
+                    )
+                )
             }
         }
 
@@ -181,29 +224,65 @@ class IngestionMappingService {
         val measuredAt = parseInstant(dto.measuredAt, "$field.measuredAt", issues)
         val values = buildList {
             dto.weightKg?.let {
-                if (it <= 0) issues.add(ValidationIssue("$field.weightKg", "must be greater than 0"))
+                if (it <= 0) issues.add(
+                    ValidationIssue(
+                        field = "$field.weightKg",
+                        code = ValidationIssueCodes.OutOfRange,
+                        message = "must be greater than 0",
+                    )
+                )
                 else add(BodyMeasurementValue(BodyMetricTypes.WEIGHT, it, "kg"))
             }
             dto.bodyFatPercent?.let {
-                if (it !in 0.0..100.0) issues.add(ValidationIssue("$field.bodyFatPercent", "must be between 0 and 100"))
+                if (it !in 0.0..100.0) issues.add(
+                    ValidationIssue(
+                        field = "$field.bodyFatPercent",
+                        code = ValidationIssueCodes.OutOfRange,
+                        message = "must be between 0 and 100",
+                    )
+                )
                 else add(BodyMeasurementValue(BodyMetricTypes.BODY_FAT, it, "percent"))
             }
             dto.muscleKg?.let {
-                if (it <= 0) issues.add(ValidationIssue("$field.muscleKg", "must be greater than 0"))
+                if (it <= 0) issues.add(
+                    ValidationIssue(
+                        field = "$field.muscleKg",
+                        code = ValidationIssueCodes.OutOfRange,
+                        message = "must be greater than 0",
+                    )
+                )
                 else add(BodyMeasurementValue(BodyMetricTypes.MUSCLE, it, "kg"))
             }
             dto.waterPercent?.let {
-                if (it !in 0.0..100.0) issues.add(ValidationIssue("$field.waterPercent", "must be between 0 and 100"))
+                if (it !in 0.0..100.0) issues.add(
+                    ValidationIssue(
+                        field = "$field.waterPercent",
+                        code = ValidationIssueCodes.OutOfRange,
+                        message = "must be between 0 and 100",
+                    )
+                )
                 else add(BodyMeasurementValue(BodyMetricTypes.WATER, it, "percent"))
             }
             dto.visceralFatRating?.let {
-                if (it <= 0) issues.add(ValidationIssue("$field.visceralFatRating", "must be greater than 0"))
+                if (it <= 0) issues.add(
+                    ValidationIssue(
+                        field = "$field.visceralFatRating",
+                        code = ValidationIssueCodes.OutOfRange,
+                        message = "must be greater than 0",
+                    )
+                )
                 else add(BodyMeasurementValue(BodyMetricTypes.VISCERAL_FAT, it, "rating"))
             }
         }
 
         if (values.isEmpty()) {
-            issues.add(ValidationIssue(field, "at least one body metric value is required"))
+            issues.add(
+                ValidationIssue(
+                    field = field,
+                    code = ValidationIssueCodes.Required,
+                    message = "at least one body metric value is required",
+                )
+            )
         }
 
         return if (measuredAt != null && values.isNotEmpty()) {
@@ -228,10 +307,22 @@ class IngestionMappingService {
         val context = dto.context ?: "unknown"
 
         if (bpm !in 25..250) {
-            issues.add(ValidationIssue("$field.bpm", "must be between 25 and 250"))
+            issues.add(
+                ValidationIssue(
+                    field = "$field.bpm",
+                    code = ValidationIssueCodes.OutOfRange,
+                    message = "must be between 25 and 250",
+                )
+            )
         }
         if (context !in HeartRateContexts.supported) {
-            issues.add(ValidationIssue("$field.context", "unsupported heart-rate context"))
+            issues.add(
+                ValidationIssue(
+                    field = "$field.context",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "unsupported heart-rate context",
+                )
+            )
         }
 
         return if (measuredAt != null && bpm in 25..250 && context in HeartRateContexts.supported) {
@@ -257,8 +348,9 @@ class IngestionMappingService {
         if (normalized != null && !normalized.matches(Regex("[a-z0-9_]+"))) {
             issues.add(
                 ValidationIssue(
-                    "provider",
-                    "must contain only lowercase letters, numbers, or underscores"
+                    field = "provider",
+                    code = ValidationIssueCodes.InvalidFormat,
+                    message = "must contain only lowercase letters, numbers, or underscores",
                 )
             )
         }
@@ -275,7 +367,13 @@ class IngestionMappingService {
             return null
         }
         if (value.isBlank()) {
-            issues.add(ValidationIssue(field, "must not be blank"))
+            issues.add(
+                ValidationIssue(
+                    field = field,
+                    code = ValidationIssueCodes.InvalidFormat,
+                    message = "must not be blank",
+                )
+            )
             return null
         }
         return value.trim()
@@ -288,7 +386,13 @@ class IngestionMappingService {
     ): String? {
         if (value == null) return null
         if (value.isBlank()) {
-            issues.add(ValidationIssue(field, "must not be blank when present"))
+            issues.add(
+                ValidationIssue(
+                    field = field,
+                    code = ValidationIssueCodes.InvalidFormat,
+                    message = "must not be blank when present",
+                )
+            )
             return null
         }
         return value.trim()
@@ -304,7 +408,13 @@ class IngestionMappingService {
             return null
         }
         return runCatching { Instant.parse(value) }.getOrElse {
-            issues.add(ValidationIssue(field, "must be an ISO-8601 instant"))
+            issues.add(
+                ValidationIssue(
+                    field = field,
+                    code = ValidationIssueCodes.InvalidFormat,
+                    message = "must be an ISO-8601 instant",
+                )
+            )
             null
         }
     }

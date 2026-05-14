@@ -2,24 +2,49 @@ package me.aquitano.health.domain
 
 data class ValidationIssue(
     val field: String,
+    val code: String = ValidationIssueCodes.Required,
     val message: String = "is required"
 )
 
+object ValidationIssueCodes {
+    const val Required = "required"
+    const val InvalidFormat = "invalid_format"
+    const val UnsupportedValue = "unsupported_value"
+    const val OutOfRange = "out_of_range"
+    const val InvalidRange = "invalid_range"
+    const val InvalidState = "invalid_state"
+}
+
 class RequestValidationException(
     val issues: List<ValidationIssue>,
-) : RuntimeException("Request validation failed")
+    cause: Throwable? = null,
+) : RuntimeException("Request validation failed", cause)
 
-class NotFoundException(message: String) : RuntimeException(message)
+class NotFoundException(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
 
-class UnauthorizedException : RuntimeException("Missing or invalid API key")
+class UnauthorizedException(
+    cause: Throwable? = null,
+) : RuntimeException("Missing or invalid API key", cause)
 
 class ConflictException(
     val code: String,
     message: String,
-) : RuntimeException(message)
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
 
 class UpstreamProviderException(
     val code: String,
     message: String,
     val statusCode: Int = 502,
-) : RuntimeException(message)
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
+
+class ServerConfigurationException(
+    val code: String,
+    val publicMessage: String,
+    val details: List<ValidationIssue> = emptyList(),
+    cause: Throwable? = null,
+) : RuntimeException(publicMessage, cause)

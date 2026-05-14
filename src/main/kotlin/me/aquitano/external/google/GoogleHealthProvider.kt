@@ -15,8 +15,10 @@ import me.aquitano.health.domain.ProviderSyncError
 import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.domain.ProviderSyncSummary
 import me.aquitano.health.domain.RequestValidationException
+import me.aquitano.health.domain.ServerConfigurationException
 import me.aquitano.health.domain.UpstreamProviderException
 import me.aquitano.health.domain.ValidationIssue
+import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.config.GoogleHealthConfig
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthAccount
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
@@ -63,9 +65,9 @@ class GoogleHealthProvider(
         }
         val refreshToken = tokens.refreshToken
             ?: throw UpstreamProviderException(
-                "google_health_missing_refresh_token",
-                "Google OAuth response did not include a refresh token; start OAuth again with prompt=consent",
-                502,
+                code = "google_health_missing_refresh_token",
+                message = "Google OAuth response did not include a refresh token; start OAuth again with prompt=consent",
+                statusCode = 502,
             )
         val cipher = TokenCipher(config.tokenEncryptionKey)
         repository.upsertAccount(
@@ -279,7 +281,13 @@ class GoogleHealthProvider(
         val dataTypes = request.dataTypes?.takeIf { it.isNotEmpty() } ?: GOOGLE_HEALTH_DEFAULT_DATA_TYPES
         dataTypes.forEachIndexed { index, dataType ->
             if (dataType !in GOOGLE_HEALTH_DEFAULT_DATA_TYPES) {
-                issues.add(ValidationIssue("dataTypes[$index]", "unsupported Google Health data type"))
+                issues.add(
+                    ValidationIssue(
+                        field = "dataTypes[$index]",
+                        code = ValidationIssueCodes.UnsupportedValue,
+                        message = "unsupported Google Health data type",
+                    )
+                )
             }
         }
         val pageSize = request.pageSize ?: 10000
@@ -322,9 +330,10 @@ class GoogleHealthProvider(
                 kv("errorCode", "google_health_token_refresh_failed"),
             )
             throw UpstreamProviderException(
-                "google_health_token_refresh_failed",
-                exception.message ?: "Google OAuth token refresh failed",
-                502,
+                code = "google_health_token_refresh_failed",
+                message = exception.message ?: "Google OAuth token refresh failed",
+                statusCode = 502,
+                cause = exception,
             )
         }
         val nextRefreshToken = tokens.refreshToken ?: refreshToken
@@ -375,7 +384,13 @@ class GoogleHealthProvider(
             if (config.redirectUri.isBlank()) add(ValidationIssue("googleHealth.redirectUri"))
             if (config.tokenEncryptionKey.isBlank()) add(ValidationIssue("googleHealth.tokenEncryptionKey"))
         }
-        if (issues.isNotEmpty()) throw RequestValidationException(issues)
+        if (issues.isNotEmpty()) {
+            throw ServerConfigurationException(
+                code = "google_health_not_configured",
+                publicMessage = "Provider is not configured",
+                details = issues,
+            )
+        }
     }
 
     private suspend fun <T> providerCall(
@@ -392,9 +407,10 @@ class GoogleHealthProvider(
                 kv("errorCode", throwable.code),
             )
             throw UpstreamProviderException(
-                throwable.code,
-                throwable.message ?: fallbackMessage,
-                502,
+                code = throwable.code,
+                message = throwable.message ?: fallbackMessage,
+                statusCode = 502,
+                cause = throwable,
             )
         } catch (throwable: GoogleHealthUnauthorizedException) {
             logger.warn(
@@ -403,9 +419,10 @@ class GoogleHealthProvider(
                 kv("errorCode", fallbackCode),
             )
             throw UpstreamProviderException(
-                fallbackCode,
-                throwable.message ?: fallbackMessage,
-                502,
+                code = fallbackCode,
+                message = throwable.message ?: fallbackMessage,
+                statusCode = 502,
+                cause = throwable,
             )
         }
 

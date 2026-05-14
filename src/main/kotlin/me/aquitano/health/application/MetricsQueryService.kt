@@ -5,6 +5,7 @@ import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.BodyMetricTypes
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
+import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.shared.utcDate
 import me.aquitano.health.infrastructure.repositories.BodyMeasurementRow
 import me.aquitano.health.infrastructure.repositories.DailyReadFilters
@@ -87,8 +88,9 @@ class MetricsQueryService(
             throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        "metricType",
-                        "unsupported body metric type"
+                        field = "metricType",
+                        code = ValidationIssueCodes.UnsupportedValue,
+                        message = "unsupported body metric type",
                     )
                 )
             )
@@ -139,8 +141,9 @@ class MetricsQueryService(
             throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        "fromDate",
-                        "must be on or before toDate"
+                        field = "fromDate",
+                        code = ValidationIssueCodes.InvalidRange,
+                        message = "must be on or before toDate",
                     )
                 )
             )
@@ -211,8 +214,9 @@ class MetricsQueryService(
             throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        "date",
-                        "cannot be combined with fromDate or toDate"
+                        field = "date",
+                        code = ValidationIssueCodes.InvalidState,
+                        message = "cannot be combined with fromDate or toDate",
                     )
                 )
             )
@@ -223,8 +227,9 @@ class MetricsQueryService(
             throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        "fromDate",
-                        "must be on or before toDate"
+                        field = "fromDate",
+                        code = ValidationIssueCodes.InvalidRange,
+                        message = "must be on or before toDate",
                     )
                 )
             )
@@ -257,8 +262,9 @@ class QueryParams(
             throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        name,
-                        "must be an ISO-8601 instant"
+                        field = name,
+                        code = ValidationIssueCodes.InvalidFormat,
+                        message = "must be an ISO-8601 instant",
                     )
                 )
             )
@@ -271,8 +277,9 @@ class QueryParams(
             throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        name,
-                        "must be an ISO-8601 date"
+                        field = name,
+                        code = ValidationIssueCodes.InvalidFormat,
+                        message = "must be an ISO-8601 date",
                     )
                 )
             )
@@ -286,8 +293,9 @@ class QueryParams(
             throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        name,
-                        "must be an ISO-8601 date or today"
+                        field = name,
+                        code = ValidationIssueCodes.InvalidFormat,
+                        message = "must be an ISO-8601 date or today",
                     )
                 )
             )
@@ -298,8 +306,9 @@ class QueryParams(
         date(name) ?: throw RequestValidationException(
             listOf(
                 ValidationIssue(
-                    name,
-                    "is required"
+                    field = name,
+                    code = ValidationIssueCodes.Required,
+                    message = "is required",
                 )
             )
         )
@@ -312,8 +321,9 @@ class QueryParams(
             else -> throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        name,
-                        "must be true or false"
+                        field = name,
+                        code = ValidationIssueCodes.InvalidFormat,
+                        message = "must be true or false",
                     )
                 )
             )
@@ -326,8 +336,9 @@ class QueryParams(
             ?: throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        "limit",
-                        "must be an integer"
+                        field = "limit",
+                        code = ValidationIssueCodes.InvalidFormat,
+                        message = "must be an integer",
                     )
                 )
             )
@@ -335,8 +346,9 @@ class QueryParams(
             throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        "limit",
-                        "must be between 1 and $max"
+                        field = "limit",
+                        code = ValidationIssueCodes.OutOfRange,
+                        message = "must be between 1 and $max",
                     )
                 )
             )
@@ -355,8 +367,9 @@ fun validateRange(
         throw RequestValidationException(
             listOf(
                 ValidationIssue(
-                    fromField,
-                    "must be before $toField"
+                    field = fromField,
+                    code = ValidationIssueCodes.InvalidRange,
+                    message = "must be before $toField",
                 )
             )
         )

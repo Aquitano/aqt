@@ -15,8 +15,10 @@ import me.aquitano.health.domain.ProviderSyncError
 import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.domain.ProviderSyncSummary
 import me.aquitano.health.domain.RequestValidationException
+import me.aquitano.health.domain.ServerConfigurationException
 import me.aquitano.health.domain.UpstreamProviderException
 import me.aquitano.health.domain.ValidationIssue
+import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.config.WithingsConfig
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthAccount
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
@@ -60,17 +62,18 @@ class WithingsProvider(
                 kv("errorCode", exception.code),
             )
             throw UpstreamProviderException(
-                exception.code,
-                exception.message ?: "Withings OAuth token exchange failed",
-                502,
+                code = exception.code,
+                message = exception.message ?: "Withings OAuth token exchange failed",
+                statusCode = 502,
+                cause = exception,
             )
         }
 
         val providerUserId = tokens.providerUserId.takeIf { it.isNotBlank() }
             ?: throw UpstreamProviderException(
-                "withings_missing_userid",
-                "Withings OAuth token response did not include userid",
-                502,
+                code = "withings_missing_userid",
+                message = "Withings OAuth token response did not include userid",
+                statusCode = 502,
             )
         val providerInstanceId = providerInstanceId(providerUserId)
         val cipher = TokenCipher(config.tokenEncryptionKey)
@@ -254,7 +257,13 @@ class WithingsProvider(
         val dataTypes = request.dataTypes?.takeIf { it.isNotEmpty() } ?: WITHINGS_DEFAULT_DATA_TYPES
         dataTypes.forEachIndexed { index, dataType ->
             if (dataType !in WITHINGS_DEFAULT_DATA_TYPES) {
-                issues.add(ValidationIssue("dataTypes[$index]", "unsupported Withings data type"))
+                issues.add(
+                    ValidationIssue(
+                        field = "dataTypes[$index]",
+                        code = ValidationIssueCodes.UnsupportedValue,
+                        message = "unsupported Withings data type",
+                    )
+                )
             }
         }
         if (issues.isNotEmpty()) throw RequestValidationException(issues)
@@ -290,9 +299,10 @@ class WithingsProvider(
         } catch (exception: Exception) {
             if (exception is CancellationException) throw exception
             throw UpstreamProviderException(
-                "withings_token_refresh_failed",
-                exception.message ?: "Withings OAuth token refresh failed",
-                502,
+                code = "withings_token_refresh_failed",
+                message = exception.message ?: "Withings OAuth token refresh failed",
+                statusCode = 502,
+                cause = exception,
             )
         }
         repository.updateAccessToken(
@@ -352,7 +362,13 @@ class WithingsProvider(
             if (config.tokenEncryptionKey.isBlank()) add(ValidationIssue("withings.tokenEncryptionKey"))
             if (config.apiBaseUrl.isBlank()) add(ValidationIssue("withings.apiBaseUrl"))
         }
-        if (issues.isNotEmpty()) throw RequestValidationException(issues)
+        if (issues.isNotEmpty()) {
+            throw ServerConfigurationException(
+                code = "withings_not_configured",
+                publicMessage = "Provider is not configured",
+                details = issues,
+            )
+        }
     }
 
     private fun providerInstanceId(providerUserId: String): String = "withings-$providerUserId"

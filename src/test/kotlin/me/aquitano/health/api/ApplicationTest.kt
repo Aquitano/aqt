@@ -5,6 +5,10 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.server.config.*
 import io.ktor.server.testing.*
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import me.aquitano.health.shared.AppJson
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,16 +51,36 @@ class ApplicationTest {
     }
 
     @Test
-    fun unauthorizedResponseShapeIsUnchanged() = testApplication {
+    fun unauthorizedResponseIncludesRequestIdFromHeader() = testApplication {
         configureTestApplication()
 
-        val response = client.get("/api/v1/admin/ingestion/batches")
+        val response = client.get("/api/v1/admin/ingestion/batches") {
+            header(HttpHeaders.XRequestId, "test-request-123")
+        }
 
         assertEquals(HttpStatusCode.Unauthorized, response.status)
-        assertEquals(
-            """{"error":{"code":"unauthorized","message":"Missing or invalid API key"}}""",
-            response.bodyAsText(),
-        )
+        assertEquals("test-request-123", response.headers[HttpHeaders.XRequestId])
+        val error = response.jsonBody()["error"]!!.jsonObject
+        assertEquals("unauthorized", error["code"]!!.jsonPrimitive.content)
+        assertEquals("Missing or invalid API key", error["message"]!!.jsonPrimitive.content)
+        assertEquals("test-request-123", error["requestId"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun validationErrorDetailsIncludeMachineReadableCodes() = testApplication {
+        configureTestApplication()
+
+        val response = client.get("/api/v1/dashboard/summary?fromDate=not-a-date&toDate=2026-04-02") {
+            header(HttpHeaders.Authorization, "Bearer test-key")
+        }
+
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        val error = response.jsonBody()["error"]!!.jsonObject
+        val detail = error["details"]!!.jsonArray.first().jsonObject
+        assertEquals("validation_failed", error["code"]!!.jsonPrimitive.content)
+        assertEquals("invalid_format", detail["code"]!!.jsonPrimitive.content)
+        assertEquals("fromDate", detail["field"]!!.jsonPrimitive.content)
+        assertNotNull(error["requestId"]!!.jsonPrimitive.content)
     }
 
     @Test
@@ -73,6 +97,10 @@ class ApplicationTest {
         assertTrue(body.contains(""""operationId":"getHealth""""))
         assertTrue(body.contains(""""HealthResponse""""))
         assertTrue(body.contains(""""IngestionBatchRequest""""))
+        assertTrue(body.contains(""""ErrorResponse""""))
+        assertTrue(body.contains(""""requestId""""))
+        assertTrue(body.contains(""""details""""))
+        assertTrue(body.contains(""""code""""))
         assertFalse(body.contains(""""/openapi""""))
     }
 
@@ -89,4 +117,7 @@ class ApplicationTest {
             )
         }
     }
+
+    private suspend fun HttpResponse.jsonBody() =
+        AppJson.parseToJsonElement(bodyAsText()).jsonObject
 }

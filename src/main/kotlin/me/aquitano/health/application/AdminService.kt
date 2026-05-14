@@ -8,6 +8,7 @@ import me.aquitano.health.api.dto.IngestionRecordAdminResponse
 import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
+import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.shared.AppJson
 import org.jetbrains.exposed.sql.Database
@@ -28,8 +29,9 @@ class AdminService(
             throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        "status",
-                        "unsupported batch status"
+                        field = "status",
+                        code = ValidationIssueCodes.UnsupportedValue,
+                        message = "unsupported batch status",
                     )
                 )
             )
@@ -71,8 +73,9 @@ class AdminService(
             throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        "id",
-                        "must be a positive integer"
+                        field = "id",
+                        code = ValidationIssueCodes.InvalidFormat,
+                        message = "must be a positive integer",
                     )
                 )
             )

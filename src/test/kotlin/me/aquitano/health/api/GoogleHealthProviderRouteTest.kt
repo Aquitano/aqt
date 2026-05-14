@@ -66,24 +66,47 @@ class GoogleHealthProviderRouteTest {
         assertEquals(HttpStatusCode.BadRequest, response.status)
     }
 
-    private fun ApplicationTestBuilder.configureTestApplication() {
+    @Test
+    fun missingProviderConfigReturnsInternalServerErrorWithoutLeakingConfigFields() = testApplication {
+        configureTestApplication(withClientSecret = false)
+
+        val response = client.get("/api/v1/providers/google-health/oauth/start") {
+            authorized()
+            header(HttpHeaders.XRequestId, "google-config-test")
+        }
+
+        assertEquals(HttpStatusCode.InternalServerError, response.status)
+        val bodyText = response.bodyAsText()
+        val error = AppJson.parseToJsonElement(bodyText).jsonObject["error"]!!.jsonObject
+        assertEquals("google_health_not_configured", error["code"]!!.jsonPrimitive.content)
+        assertEquals("Provider is not configured", error["message"]!!.jsonPrimitive.content)
+        assertEquals("google-config-test", error["requestId"]!!.jsonPrimitive.content)
+        assertTrue(!bodyText.contains("googleHealth.clientSecret"))
+    }
+
+    private fun ApplicationTestBuilder.configureTestApplication(
+        withClientSecret: Boolean = true,
+    ) {
         val dbPath = Files.createTempFile("aqt-health-google-provider-route-test", ".db")
+        val configValues = mutableMapOf(
+            "ktor.application.modules.size" to "1",
+            "ktor.application.modules.0" to "me.aquitano.health.api.ApplicationKt.module",
+            "aqtHealth.database.jdbcUrl" to "jdbc:sqlite:$dbPath",
+            "aqtHealth.database.driver" to "org.sqlite.JDBC",
+            "aqtHealth.auth.bootstrapClientName" to "test-client",
+            "aqtHealth.auth.bootstrapApiKey" to "test-key",
+            "aqtHealth.googleHealth.clientId" to "client-id",
+            "aqtHealth.googleHealth.redirectUri" to "http://localhost:8080/api/v1/providers/google-health/oauth/callback",
+            "aqtHealth.googleHealth.tokenEncryptionKey" to "test-token-encryption-key-with-32-bytes",
+            "aqtHealth.googleHealth.apiBaseUrl" to "https://health.googleapis.com",
+            "aqtHealth.googleHealth.oauthTokenUrl" to "https://oauth2.googleapis.com/token",
+            "aqtHealth.googleHealth.oauthAuthUrl" to "https://accounts.google.com/o/oauth2/v2/auth",
+        )
+        if (withClientSecret) {
+            configValues["aqtHealth.googleHealth.clientSecret"] = "client-secret"
+        }
         environment {
-            config = MapApplicationConfig(
-                "ktor.application.modules.size" to "1",
-                "ktor.application.modules.0" to "me.aquitano.health.api.ApplicationKt.module",
-                "aqtHealth.database.jdbcUrl" to "jdbc:sqlite:$dbPath",
-                "aqtHealth.database.driver" to "org.sqlite.JDBC",
-                "aqtHealth.auth.bootstrapClientName" to "test-client",
-                "aqtHealth.auth.bootstrapApiKey" to "test-key",
-                "aqtHealth.googleHealth.clientId" to "client-id",
-                "aqtHealth.googleHealth.clientSecret" to "client-secret",
-                "aqtHealth.googleHealth.redirectUri" to "http://localhost:8080/api/v1/providers/google-health/oauth/callback",
-                "aqtHealth.googleHealth.tokenEncryptionKey" to "test-token-encryption-key-with-32-bytes",
-                "aqtHealth.googleHealth.apiBaseUrl" to "https://health.googleapis.com",
-                "aqtHealth.googleHealth.oauthTokenUrl" to "https://oauth2.googleapis.com/token",
-                "aqtHealth.googleHealth.oauthAuthUrl" to "https://accounts.google.com/o/oauth2/v2/auth",
-            )
+            config = MapApplicationConfig(*configValues.map { it.key to it.value }.toTypedArray())
         }
     }
 

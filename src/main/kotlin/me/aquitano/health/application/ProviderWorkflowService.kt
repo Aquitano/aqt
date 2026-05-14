@@ -15,6 +15,7 @@ import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.domain.ProviderSyncSummary
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
+import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthStateConsumeResult
 import net.logstash.logback.argument.StructuredArguments.kv
@@ -68,7 +69,15 @@ class ProviderWorkflowService(
                 kv("provider", provider.providerCode),
                 kv("error", error),
             )
-            throw RequestValidationException(listOf(ValidationIssue("error", error)))
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        field = "error",
+                        code = ValidationIssueCodes.InvalidState,
+                        message = error,
+                    )
+                )
+            )
         }
 
         val authCode = code?.takeIf { it.isNotBlank() }
@@ -85,11 +94,35 @@ class ProviderWorkflowService(
         when (providerOAuthRepository.consumeState(authState, provider.providerCode, now)) {
             is ProviderOAuthStateConsumeResult.Consumed -> Unit
             is ProviderOAuthStateConsumeResult.AlreadyUsed ->
-                throw RequestValidationException(listOf(ValidationIssue("state", "was already used")))
+                throw RequestValidationException(
+                    listOf(
+                        ValidationIssue(
+                            field = "state",
+                            code = ValidationIssueCodes.InvalidState,
+                            message = "was already used",
+                        )
+                    )
+                )
             is ProviderOAuthStateConsumeResult.Expired ->
-                throw RequestValidationException(listOf(ValidationIssue("state", "has expired")))
+                throw RequestValidationException(
+                    listOf(
+                        ValidationIssue(
+                            field = "state",
+                            code = ValidationIssueCodes.InvalidState,
+                            message = "has expired",
+                        )
+                    )
+                )
             ProviderOAuthStateConsumeResult.NotFound ->
-                throw RequestValidationException(listOf(ValidationIssue("state", "is invalid")))
+                throw RequestValidationException(
+                    listOf(
+                        ValidationIssue(
+                            field = "state",
+                            code = ValidationIssueCodes.InvalidState,
+                            message = "is invalid",
+                        )
+                    )
+                )
         }
 
         val connection = provider.connect(authCode, now)
@@ -118,26 +151,62 @@ class ProviderWorkflowService(
             resolvedFrom = now.minus(Duration.ofDays(7))
         } else {
             resolvedFrom = parsedFrom ?: run {
-                issues.add(ValidationIssue("from", "is required when to is provided"))
+                issues.add(
+                    ValidationIssue(
+                        field = "from",
+                        code = ValidationIssueCodes.Required,
+                        message = "is required when to is provided",
+                    )
+                )
                 now
             }
             resolvedTo = parsedTo ?: run {
-                issues.add(ValidationIssue("to", "is required when from is provided"))
+                issues.add(
+                    ValidationIssue(
+                        field = "to",
+                        code = ValidationIssueCodes.Required,
+                        message = "is required when from is provided",
+                    )
+                )
                 now
             }
         }
 
         if (!resolvedFrom.isBefore(resolvedTo)) {
-            issues.add(ValidationIssue("from", "must be before to"))
+            issues.add(
+                ValidationIssue(
+                    field = "from",
+                    code = ValidationIssueCodes.InvalidRange,
+                    message = "must be before to",
+                )
+            )
         }
         if (Duration.between(resolvedFrom, resolvedTo) > Duration.ofDays(31)) {
-            issues.add(ValidationIssue("to", "range must not exceed 31 days"))
+            issues.add(
+                ValidationIssue(
+                    field = "to",
+                    code = ValidationIssueCodes.OutOfRange,
+                    message = "range must not exceed 31 days",
+                )
+            )
         }
         if (pageSize != null && pageSize <= 0) {
-            issues.add(ValidationIssue("pageSize", "must be greater than 0"))
+            issues.add(
+                ValidationIssue(
+                    field = "pageSize",
+                    code = ValidationIssueCodes.OutOfRange,
+                    message = "must be greater than 0",
+                )
+            )
         }
         if (providerInstanceId != null && providerInstanceId.isNotBlank() && providerInstanceId.trim() != providerInstanceId) {
-            issues.add(ValidationIssue("providerInstanceId", "must not have leading or trailing whitespace"))
+            issues.add(
+                ValidationIssue(
+                    field = "providerInstanceId",
+                    code = ValidationIssueCodes.InvalidFormat,
+                    message = "must not have leading or trailing whitespace",
+                )
+            )
         }
 
         if (issues.isNotEmpty()) throw RequestValidationException(issues)
@@ -152,7 +221,13 @@ class ProviderWorkflowService(
 
     private fun parseInstant(field: String, value: String, issues: MutableList<ValidationIssue>): Instant? =
         runCatching { Instant.parse(value) }.getOrElse {
-            issues.add(ValidationIssue(field, "must be an ISO-8601 instant"))
+            issues.add(
+                ValidationIssue(
+                    field = field,
+                    code = ValidationIssueCodes.InvalidFormat,
+                    message = "must be an ISO-8601 instant",
+                )
+            )
             null
         }
 

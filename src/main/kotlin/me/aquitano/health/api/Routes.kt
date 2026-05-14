@@ -20,6 +20,7 @@ import me.aquitano.health.api.dto.*
 import me.aquitano.health.application.QueryParams
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
+import me.aquitano.health.domain.ValidationIssueCodes
 import kotlin.reflect.typeOf
 
 fun Application.configureRoutes(services: ApplicationServices) {
@@ -65,7 +66,18 @@ fun Application.configureRoutes(services: ApplicationServices) {
             operationId = "getHealth"
             tag("Admin")
             summary = "Health check"
-            jsonResponse<HealthResponse>(HttpStatusCode.OK, "Service health status")
+            responses {
+                HttpStatusCode.OK {
+                    description = "Service health status"
+                    schema = buildSchema(typeOf<HealthResponse>())
+                }
+                commonErrors(
+                    unauthorized = false,
+                    validation = false,
+                    internal = true,
+                )
+                defaultError()
+            }
         }
         post("/api/v1/ingestion/batches") {
             call.requireApiClient(
@@ -95,7 +107,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
                     description = "Duplicate batch accepted without creating a new batch"
                     schema = buildSchema(typeOf<IngestionSummaryResponse>())
                 }
-                defaultError()
+                commonErrors(conflict = true)
             }
         }
         get("/api/v1/providers/{providerCode}/oauth/start") {
@@ -109,7 +121,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             bearerApiKey()
             providerCodePath()
             jsonResponse<ProviderOAuthStartResponse>(HttpStatusCode.OK, "Provider OAuth authorization URL")
-            errorResponses()
+            errorResponses(notFound = true)
         }
         get("/api/v1/providers/{providerCode}/oauth/callback") {
             val code = call.providerCode() ?: return@get
@@ -142,7 +154,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 }
             }
             jsonResponse<ProviderOAuthCallbackResponse>(HttpStatusCode.OK, "Provider connection result")
-            errorResponses()
+            errorResponses(unauthorized = false, notFound = true, upstream = true)
         }
         post("/api/v1/providers/{providerCode}/sync") {
             call.authenticateProtected(services)
@@ -162,7 +174,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             providerCodePath()
             jsonRequest<ProviderSyncRequestDto>("Provider sync request")
             jsonResponse<ProviderSyncResponseDto>(HttpStatusCode.OK, "Provider sync result")
-            errorResponses()
+            errorResponses(notFound = true, conflict = true, upstream = true)
         }
         get("/api/v1/metrics/steps") {
             call.authenticateProtected(services)
@@ -248,7 +260,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 }
             }
             jsonResponse<IngestionBatchDetailResponse>(HttpStatusCode.OK, "Ingestion batch detail")
-            errorResponses()
+            errorResponses(notFound = true)
         }
         get("/api/v1/admin/ingestion/failures") {
             call.authenticateProtected(services)
@@ -291,7 +303,13 @@ private suspend fun ApplicationCall.providerCode(): String? {
     val code = parameters["providerCode"]
     if (code.isNullOrBlank()) {
         throw RequestValidationException(
-            listOf(ValidationIssue("providerCode", "must not be blank"))
+            listOf(
+                ValidationIssue(
+                    field = "providerCode",
+                    code = ValidationIssueCodes.InvalidFormat,
+                    message = "must not be blank",
+                )
+            )
         )
     }
     return code
@@ -317,8 +335,23 @@ private inline fun <reified T : Any> Operation.Builder.jsonResponse(
     }
 }
 
-private fun Operation.Builder.errorResponses() {
+private fun Operation.Builder.errorResponses(
+    unauthorized: Boolean = true,
+    validation: Boolean = true,
+    notFound: Boolean = false,
+    conflict: Boolean = false,
+    upstream: Boolean = false,
+    internal: Boolean = true,
+) {
     responses {
+        commonErrors(
+            unauthorized = unauthorized,
+            validation = validation,
+            notFound = notFound,
+            conflict = conflict,
+            upstream = upstream,
+            internal = internal,
+        )
         defaultError()
     }
 }
@@ -326,6 +359,53 @@ private fun Operation.Builder.errorResponses() {
 private fun io.ktor.openapi.Responses.Builder.defaultError() {
     default {
         description = "Error response"
+        schema = buildSchema(typeOf<ErrorResponse>())
+    }
+}
+
+private fun io.ktor.openapi.Responses.Builder.commonErrors(
+    unauthorized: Boolean = true,
+    validation: Boolean = true,
+    notFound: Boolean = false,
+    conflict: Boolean = false,
+    upstream: Boolean = false,
+    internal: Boolean = true,
+) {
+    if (validation) {
+        HttpStatusCode.BadRequest {
+            description = "Request validation failed"
+            schema = buildSchema(typeOf<ErrorResponse>())
+        }
+    }
+    if (unauthorized) {
+        HttpStatusCode.Unauthorized {
+            description = "Missing or invalid API key"
+            schema = buildSchema(typeOf<ErrorResponse>())
+        }
+    }
+    if (notFound) {
+        HttpStatusCode.NotFound {
+            description = "Resource not found"
+            schema = buildSchema(typeOf<ErrorResponse>())
+        }
+    }
+    if (conflict) {
+        HttpStatusCode.Conflict {
+            description = "Request conflicts with current state"
+            schema = buildSchema(typeOf<ErrorResponse>())
+        }
+    }
+    if (upstream) {
+        HttpStatusCode.BadGateway {
+            description = "Upstream provider request failed"
+            schema = buildSchema(typeOf<ErrorResponse>())
+        }
+    }
+    if (internal) {
+        HttpStatusCode.InternalServerError {
+            description = "Unexpected server error"
+            schema = buildSchema(typeOf<ErrorResponse>())
+        }
     }
 }
 

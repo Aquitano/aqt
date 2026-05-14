@@ -87,24 +87,47 @@ class WithingsProviderRouteTest {
         assertTrue(!response.bodyAsText().contains("Provider 'authorization-code' not found"))
     }
 
-    private fun ApplicationTestBuilder.configureTestApplication() {
+    @Test
+    fun missingProviderConfigReturnsInternalServerErrorWithoutLeakingConfigFields() = testApplication {
+        configureTestApplication(withClientSecret = false)
+
+        val response = client.get("/api/v1/providers/withings/oauth/start") {
+            authorized()
+            header(HttpHeaders.XRequestId, "withings-config-test")
+        }
+
+        assertEquals(HttpStatusCode.InternalServerError, response.status)
+        val bodyText = response.bodyAsText()
+        val error = AppJson.parseToJsonElement(bodyText).jsonObject["error"]!!.jsonObject
+        assertEquals("withings_not_configured", error["code"]!!.jsonPrimitive.content)
+        assertEquals("Provider is not configured", error["message"]!!.jsonPrimitive.content)
+        assertEquals("withings-config-test", error["requestId"]!!.jsonPrimitive.content)
+        assertTrue(!bodyText.contains("withings.clientSecret"))
+    }
+
+    private fun ApplicationTestBuilder.configureTestApplication(
+        withClientSecret: Boolean = true,
+    ) {
         val dbPath = Files.createTempFile("aqt-health-withings-provider-route-test", ".db")
+        val configValues = mutableMapOf(
+            "ktor.application.modules.size" to "1",
+            "ktor.application.modules.0" to "me.aquitano.health.api.ApplicationKt.module",
+            "aqtHealth.database.jdbcUrl" to "jdbc:sqlite:$dbPath",
+            "aqtHealth.database.driver" to "org.sqlite.JDBC",
+            "aqtHealth.auth.bootstrapClientName" to "test-client",
+            "aqtHealth.auth.bootstrapApiKey" to "test-key",
+            "aqtHealth.withings.clientId" to "withings-client-id",
+            "aqtHealth.withings.redirectUri" to "http://localhost:8080/api/v1/providers/withings/oauth/callback",
+            "aqtHealth.withings.tokenEncryptionKey" to "test-token-encryption-key-with-32-bytes",
+            "aqtHealth.withings.apiBaseUrl" to "https://wbsapi.withings.net",
+            "aqtHealth.withings.oauthTokenUrl" to "https://wbsapi.withings.net/v2/oauth2",
+            "aqtHealth.withings.oauthAuthUrl" to "https://account.withings.com/oauth2_user/authorize2",
+        )
+        if (withClientSecret) {
+            configValues["aqtHealth.withings.clientSecret"] = "withings-client-secret"
+        }
         environment {
-            config = MapApplicationConfig(
-                "ktor.application.modules.size" to "1",
-                "ktor.application.modules.0" to "me.aquitano.health.api.ApplicationKt.module",
-                "aqtHealth.database.jdbcUrl" to "jdbc:sqlite:$dbPath",
-                "aqtHealth.database.driver" to "org.sqlite.JDBC",
-                "aqtHealth.auth.bootstrapClientName" to "test-client",
-                "aqtHealth.auth.bootstrapApiKey" to "test-key",
-                "aqtHealth.withings.clientId" to "withings-client-id",
-                "aqtHealth.withings.clientSecret" to "withings-client-secret",
-                "aqtHealth.withings.redirectUri" to "http://localhost:8080/api/v1/providers/withings/oauth/callback",
-                "aqtHealth.withings.tokenEncryptionKey" to "test-token-encryption-key-with-32-bytes",
-                "aqtHealth.withings.apiBaseUrl" to "https://wbsapi.withings.net",
-                "aqtHealth.withings.oauthTokenUrl" to "https://wbsapi.withings.net/v2/oauth2",
-                "aqtHealth.withings.oauthAuthUrl" to "https://account.withings.com/oauth2_user/authorize2",
-            )
+            config = MapApplicationConfig(*configValues.map { it.key to it.value }.toTypedArray())
         }
     }
 
