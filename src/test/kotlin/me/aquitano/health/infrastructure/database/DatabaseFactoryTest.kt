@@ -44,6 +44,28 @@ class DatabaseFactoryTest {
     }
 
     @Test
+    fun migrationsCreateReadPathIndexes() {
+        val database = DatabaseFactory().initialize(tempDatabaseConfig())
+
+        val indexNames = transaction(database) {
+            val names = mutableSetOf<String>()
+            exec("SELECT name FROM sqlite_master WHERE type = 'index'") { resultSet ->
+                while (resultSet.next()) {
+                    names.add(resultSet.getString("name"))
+                }
+            }
+            names
+        }
+
+        assertContains(indexNames, "step_samples_source_instance_start_idx")
+        assertContains(indexNames, "sleep_sessions_source_instance_start_idx")
+        assertContains(indexNames, "body_measurements_source_instance_metric_measured_idx")
+        assertContains(indexNames, "heart_rate_samples_source_instance_measured_idx")
+        assertContains(indexNames, "ingestion_batches_status_received_idx")
+        assertContains(indexNames, "provider_sync_runs_provider_instance_started_idx")
+    }
+
+    @Test
     fun bootstrapStoresOnlyHashedApiKey() {
         val database = DatabaseFactory().initialize(tempDatabaseConfig())
         val hasher = ApiKeyHasher()
@@ -179,6 +201,98 @@ class DatabaseFactoryTest {
         }
     }
 
+    @Test
+    fun integrityTriggersRejectInvalidMetricRows() {
+        val database = DatabaseFactory().initialize(tempDatabaseConfig())
+
+        transaction(database) {
+            insertSourceInstance()
+
+            assertFailsWith<Exception> {
+                exec(
+                    """
+                    INSERT INTO ingestion_batches (
+                        source_instance_id,
+                        batch_external_id,
+                        source_payload_json,
+                        normalized_payload_json,
+                        status,
+                        ingested_at,
+                        received_at,
+                        processed_at,
+                        error_message,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (
+                        1,
+                        'bad-status',
+                        '{}',
+                        '{}',
+                        'done',
+                        '2026-04-19T10:00:00Z',
+                        '2026-04-19T10:00:00Z',
+                        NULL,
+                        NULL,
+                        '2026-04-19T10:00:00Z',
+                        '2026-04-19T10:00:00Z'
+                    )
+                    """.trimIndent()
+                )
+            }
+
+            assertFailsWith<Exception> {
+                exec(
+                    """
+                    INSERT INTO step_samples (
+                        source_instance_id,
+                        ingestion_record_id,
+                        provider_record_id,
+                        start_at,
+                        end_at,
+                        steps,
+                        created_at
+                    )
+                    VALUES (
+                        1,
+                        NULL,
+                        'steps-invalid',
+                        '2026-04-19T09:00:00Z',
+                        '2026-04-19T08:00:00Z',
+                        1200,
+                        '2026-04-19T10:00:00Z'
+                    )
+                    """.trimIndent()
+                )
+            }
+
+            assertFailsWith<Exception> {
+                exec(
+                    """
+                    INSERT INTO heart_rate_samples (
+                        source_instance_id,
+                        ingestion_record_id,
+                        provider_record_id,
+                        measured_at,
+                        bpm,
+                        context,
+                        created_at
+                    )
+                    VALUES (
+                        1,
+                        NULL,
+                        'hr-invalid',
+                        '2026-04-19T10:00:00Z',
+                        400,
+                        'resting',
+                        '2026-04-19T10:00:00Z'
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+    }
+
     private fun tempDatabaseConfig(): DatabaseConfig {
         val dbPath = Files.createTempFile("aqt-health-db-test", ".db")
         return DatabaseConfig(
@@ -194,5 +308,34 @@ class DatabaseFactoryTest {
             value = resultSet.getInt(1)
         }
         return value
+    }
+
+    private fun insertSourceInstance() {
+        TransactionManager.current().exec(
+            """
+            INSERT INTO sources (id, code, display_name, created_at)
+            VALUES (1, 'health_connect', NULL, '2026-04-19T10:00:00Z')
+            """.trimIndent()
+        )
+        TransactionManager.current().exec(
+            """
+            INSERT INTO source_instances (
+                id,
+                source_id,
+                provider_instance_id,
+                display_name,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                1,
+                1,
+                'pixel-8-health-connect',
+                NULL,
+                '2026-04-19T10:00:00Z',
+                '2026-04-19T10:00:00Z'
+            )
+            """.trimIndent()
+        )
     }
 }
