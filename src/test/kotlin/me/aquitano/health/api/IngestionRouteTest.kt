@@ -6,6 +6,7 @@ import io.ktor.http.*
 import io.ktor.server.config.*
 import io.ktor.server.testing.*
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -240,6 +241,48 @@ class IngestionRouteTest {
             assertEquals(
                 2000,
                 singleInt(dbPath, "SELECT steps FROM step_daily_summaries")
+            )
+        }
+
+    @Test
+    fun crossMidnightStepIntervalsAreSplitAcrossDailySummaries() =
+        testApplication {
+            val dbPath = configureTestApplication()
+
+            val response = client.post("/api/v1/ingestion/batches") {
+                authorized()
+                contentType(ContentType.Application.Json)
+                setBody(
+                    stepPayload(
+                        provider = "health_connect",
+                        batchExternalId = "cross-midnight",
+                        providerRecordId = "steps-cross-midnight",
+                        startAt = "2026-04-19T23:00:00Z",
+                        endAt = "2026-04-20T01:00:00Z",
+                        steps = 120,
+                    )
+                )
+            }
+
+            assertEquals(HttpStatusCode.Created, response.status)
+            assertEquals(
+                2,
+                response.jsonBody()["affectedStepSummaryDates"]!!.jsonArray.size
+            )
+            assertEquals(2, countRows(dbPath, "step_daily_summaries"))
+            assertEquals(
+                60,
+                singleInt(
+                    dbPath,
+                    "SELECT steps FROM step_daily_summaries WHERE date = '2026-04-19'"
+                )
+            )
+            assertEquals(
+                60,
+                singleInt(
+                    dbPath,
+                    "SELECT steps FROM step_daily_summaries WHERE date = '2026-04-20'"
+                )
             )
         }
 

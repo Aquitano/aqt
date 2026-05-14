@@ -264,7 +264,10 @@ class IngestionService(
         return if (inserted) {
             MetricWriteResult(
                 created = MetricCreatedCounts(stepSamples = 1),
-                affectedStepSummaryDates = setOf(record.startAt.utcDate()),
+                affectedStepSummaryDates = affectedUtcDates(
+                    record.startAt,
+                    record.endAt
+                ),
             )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
@@ -344,4 +347,15 @@ private sealed interface IngestionTransactionResult {
         IngestionTransactionResult
 
     data class Failure(val throwable: Throwable) : IngestionTransactionResult
+}
+
+private fun affectedUtcDates(start: Instant, exclusiveEnd: Instant): Set<LocalDate> {
+    val lastIncludedDate = exclusiveEnd.minusNanos(1).utcDate()
+    val dates = linkedSetOf<LocalDate>()
+    var cursor = start.utcDate()
+    while (!cursor.isAfter(lastIncludedDate)) {
+        dates.add(cursor)
+        cursor = cursor.plusDays(1)
+    }
+    return dates
 }

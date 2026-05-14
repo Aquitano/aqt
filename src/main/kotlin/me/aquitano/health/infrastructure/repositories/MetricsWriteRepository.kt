@@ -13,6 +13,8 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
+import kotlin.math.roundToInt
 
 class MetricsWriteRepository {
     fun insertStepSample(
@@ -123,14 +125,19 @@ class MetricsWriteRepository {
         date: LocalDate,
         computedAt: Instant
     ) {
+        val dayStart = date.atStartOfDay().toInstant(ZoneOffset.UTC)
+        val dayEnd = date.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
         val rows = StepSamplesTable
             .selectAll()
             .where {
                 (StepSamplesTable.sourceInstanceId eq sourceInstanceId) and
-                        (StepSamplesTable.startAt like "${date}%")
+                        (StepSamplesTable.startAt less dayEnd.toString()) and
+                        (StepSamplesTable.endAt greater dayStart.toString())
             }
             .toList()
-        val steps = rows.sumOf { it[StepSamplesTable.steps] }
+        val steps = rows.sumOf {
+            allocatedStepsForDay(it, dayStart, dayEnd)
+        }
         val sampleCount = rows.size
 
         StepDailySummariesTable.deleteWhere {
@@ -172,6 +179,25 @@ class MetricsWriteRepository {
                         existingStart.isBefore(record.endAt) &&
                         record.startAt.isBefore(existingEnd)
             }
+    }
+
+    private fun allocatedStepsForDay(
+        row: ResultRow,
+        dayStart: Instant,
+        dayEnd: Instant,
+    ): Int {
+        val sampleStart = Instant.parse(row[StepSamplesTable.startAt])
+        val sampleEnd = Instant.parse(row[StepSamplesTable.endAt])
+        val totalSeconds = Duration.between(sampleStart, sampleEnd).seconds
+        if (totalSeconds <= 0) return 0
+
+        val overlapStart = maxOf(sampleStart, dayStart)
+        val overlapEnd = minOf(sampleEnd, dayEnd)
+        val overlapSeconds = Duration.between(overlapStart, overlapEnd).seconds
+        if (overlapSeconds <= 0) return 0
+
+        val steps = row[StepSamplesTable.steps]
+        return (steps.toDouble() * overlapSeconds / totalSeconds).roundToInt()
     }
 
     private fun insertOrSkipDuplicateUnit(block: () -> Unit): Boolean =
