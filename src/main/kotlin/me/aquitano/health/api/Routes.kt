@@ -98,7 +98,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 defaultError()
             }
         }
-        get("/api/v1/providers/{code}/oauth/start") {
+        get("/api/v1/providers/{providerCode}/oauth/start") {
             call.authenticateProtected(services)
             val code = call.providerCode() ?: return@get
             call.respond(services.providerWorkflowService.startOAuth(code, services.clock.now()))
@@ -111,7 +111,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             jsonResponse<ProviderOAuthStartResponse>(HttpStatusCode.OK, "Provider OAuth authorization URL")
             errorResponses()
         }
-        get("/api/v1/providers/{code}/oauth/callback") {
+        get("/api/v1/providers/{providerCode}/oauth/callback") {
             val code = call.providerCode() ?: return@get
             call.respond(
                 services.providerWorkflowService.completeOAuth(
@@ -144,7 +144,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             jsonResponse<ProviderOAuthCallbackResponse>(HttpStatusCode.OK, "Provider connection result")
             errorResponses()
         }
-        post("/api/v1/providers/{code}/sync") {
+        post("/api/v1/providers/{providerCode}/sync") {
             call.authenticateProtected(services)
             val code = call.providerCode() ?: return@post
             call.respond(
@@ -288,10 +288,10 @@ private fun ApplicationCall.queryParams(): QueryParams =
             .associate { it.key to it.value.firstOrNull() })
 
 private suspend fun ApplicationCall.providerCode(): String? {
-    val code = parameters["code"]
+    val code = parameters["providerCode"]
     if (code.isNullOrBlank()) {
         throw RequestValidationException(
-            listOf(ValidationIssue("code", "must not be blank"))
+            listOf(ValidationIssue("providerCode", "must not be blank"))
         )
     }
     return code
@@ -341,7 +341,7 @@ private fun Operation.Builder.bearerApiKey() {
 
 private fun Operation.Builder.providerCodePath() {
     parameters {
-        path("code") {
+        path("providerCode") {
             description = "Provider code"
             schema = buildSchema(typeOf<String>())
         }
