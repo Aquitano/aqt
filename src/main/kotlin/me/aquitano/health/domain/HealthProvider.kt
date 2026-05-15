@@ -23,6 +23,11 @@ interface HealthProvider {
     val defaultProviderInstanceId: String
 
     /**
+     * True when required provider credentials and encryption settings are available.
+     */
+    fun isConfigured(): Boolean
+
+    /**
      * Generates the URL to redirect the user to for authentication.
      */
     fun getAuthUrl(state: String): String

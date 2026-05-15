@@ -19,6 +19,8 @@ data class ProviderOAuthAccount(
     val tokenType: String,
     val expiresAt: Instant,
     val scope: String,
+    val createdAt: Instant,
+    val updatedAt: Instant,
 )
 
 data class ProviderOAuthState(
@@ -181,6 +183,15 @@ class ProviderOAuthRepository(private val database: Database) {
                 .singleOrNull()
         }
 
+    suspend fun accountsByProvider(providerCode: String): List<ProviderOAuthAccount> =
+        newSuspendedTransaction(Dispatchers.IO, db = database) {
+            ProviderOAuthAccountsTable
+                .selectAll()
+                .where { ProviderOAuthAccountsTable.providerCode eq providerCode }
+                .orderBy(ProviderOAuthAccountsTable.updatedAt to SortOrder.DESC)
+                .map { it.toOAuthAccount() }
+        }
+
     suspend fun accountByProviderInstance(
         providerCode: String,
         providerInstanceId: String,
@@ -195,6 +206,22 @@ class ProviderOAuthRepository(private val database: Database) {
                 .limit(1)
                 .map { it.toOAuthAccount() }
                 .singleOrNull()
+        }
+
+    suspend fun latestFinishedSyncAt(providerCode: String, providerInstanceId: String): Instant? =
+        newSuspendedTransaction(Dispatchers.IO, db = database) {
+            ProviderSyncRunsTable
+                .select(ProviderSyncRunsTable.finishedAt)
+                .where {
+                    (ProviderSyncRunsTable.providerCode eq providerCode) and
+                            (ProviderSyncRunsTable.providerInstanceId eq providerInstanceId) and
+                            ProviderSyncRunsTable.finishedAt.isNotNull()
+                }
+                .orderBy(ProviderSyncRunsTable.finishedAt to SortOrder.DESC)
+                .limit(1)
+                .singleOrNull()
+                ?.get(ProviderSyncRunsTable.finishedAt)
+                ?.let(Instant::parse)
         }
 
     suspend fun startSyncRun(
@@ -251,5 +278,7 @@ class ProviderOAuthRepository(private val database: Database) {
             tokenType = this[ProviderOAuthAccountsTable.tokenType],
             expiresAt = Instant.parse(this[ProviderOAuthAccountsTable.expiresAt]),
             scope = this[ProviderOAuthAccountsTable.scope],
+            createdAt = Instant.parse(this[ProviderOAuthAccountsTable.createdAt]),
+            updatedAt = Instant.parse(this[ProviderOAuthAccountsTable.updatedAt]),
         )
 }

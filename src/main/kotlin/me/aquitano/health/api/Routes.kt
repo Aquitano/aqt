@@ -121,6 +121,17 @@ fun Application.configureRoutes(services: ApplicationServices) {
             jsonResponse<ProviderCatalogResponseDto>(HttpStatusCode.OK, "Provider catalog")
             errorResponses()
         }
+        get("/api/v1/providers/status") {
+            call.authenticateProtected(services)
+            call.respond(services.providerStatusService.listProviderStatuses(services.clock.now()))
+        }.describe {
+            operationId = "listProviderStatuses"
+            tag("Providers")
+            summary = "List provider authentication and account status"
+            bearerApiKey()
+            jsonResponse<ProviderStatusCatalogResponseDto>(HttpStatusCode.OK, "Provider status catalog")
+            errorResponses()
+        }
         get("/api/v1/providers/{providerCode}") {
             call.authenticateProtected(services)
             val code = call.providerCode() ?: return@get
@@ -132,6 +143,19 @@ fun Application.configureRoutes(services: ApplicationServices) {
             bearerApiKey()
             providerCodePath()
             jsonResponse<ProviderDescriptorResponseDto>(HttpStatusCode.OK, "Provider metadata")
+            errorResponses(notFound = true)
+        }
+        get("/api/v1/providers/{providerCode}/status") {
+            call.authenticateProtected(services)
+            val code = call.providerCode() ?: return@get
+            call.respond(services.providerStatusService.getProviderStatus(code, services.clock.now()))
+        }.describe {
+            operationId = "getProviderStatus"
+            tag("Providers")
+            summary = "Get provider authentication and account status"
+            bearerApiKey()
+            providerCodePath()
+            jsonResponse<ProviderStatusResponseDto>(HttpStatusCode.OK, "Provider status")
             errorResponses(notFound = true)
         }
         get("/api/v1/providers/{providerCode}/oauth/start") {

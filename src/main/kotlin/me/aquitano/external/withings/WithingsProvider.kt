@@ -59,6 +59,8 @@ class WithingsProvider(
     )
     override val defaultProviderInstanceId: String = "withings-me"
 
+    override fun isConfigured(): Boolean = configurationIssues().isEmpty()
+
     override fun getAuthUrl(state: String): String {
         requireConfigured()
         return URLBuilder(config.oauthAuthUrl).apply {
@@ -385,13 +387,7 @@ class WithingsProvider(
         }
 
     private fun requireConfigured() {
-        val issues = buildList {
-            if (config.clientId.isBlank()) add(ValidationIssue("withings.clientId"))
-            if (config.clientSecret.isBlank()) add(ValidationIssue("withings.clientSecret"))
-            if (config.redirectUri.isBlank()) add(ValidationIssue("withings.redirectUri"))
-            if (config.tokenEncryptionKey.isBlank()) add(ValidationIssue("withings.tokenEncryptionKey"))
-            if (config.apiBaseUrl.isBlank()) add(ValidationIssue("withings.apiBaseUrl"))
-        }
+        val issues = configurationIssues()
         if (issues.isNotEmpty()) {
             throw ServerConfigurationException(
                 code = "withings_not_configured",
@@ -400,6 +396,15 @@ class WithingsProvider(
             )
         }
     }
+
+    private fun configurationIssues(): List<ValidationIssue> =
+        buildList {
+            if (config.clientId.isBlank()) add(ValidationIssue("withings.clientId"))
+            if (config.clientSecret.isBlank()) add(ValidationIssue("withings.clientSecret"))
+            if (config.redirectUri.isBlank()) add(ValidationIssue("withings.redirectUri"))
+            if (config.tokenEncryptionKey.isBlank()) add(ValidationIssue("withings.tokenEncryptionKey"))
+            if (config.apiBaseUrl.isBlank()) add(ValidationIssue("withings.apiBaseUrl"))
+        }
 
     private fun providerInstanceId(providerUserId: String): String = "withings-$providerUserId"
 

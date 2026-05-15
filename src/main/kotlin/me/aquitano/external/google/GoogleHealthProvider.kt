@@ -61,6 +61,8 @@ class GoogleHealthProvider(
     )
     override val defaultProviderInstanceId: String = "google-health-me"
 
+    override fun isConfigured(): Boolean = configurationIssues().isEmpty()
+
     override fun getAuthUrl(state: String): String {
         requireConfigured()
         return URLBuilder(config.oauthAuthUrl).apply {
@@ -397,12 +399,7 @@ class GoogleHealthProvider(
         }
 
     private fun requireConfigured() {
-        val issues = buildList {
-            if (config.clientId.isBlank()) add(ValidationIssue("googleHealth.clientId"))
-            if (config.clientSecret.isBlank()) add(ValidationIssue("googleHealth.clientSecret"))
-            if (config.redirectUri.isBlank()) add(ValidationIssue("googleHealth.redirectUri"))
-            if (config.tokenEncryptionKey.isBlank()) add(ValidationIssue("googleHealth.tokenEncryptionKey"))
-        }
+        val issues = configurationIssues()
         if (issues.isNotEmpty()) {
             throw ServerConfigurationException(
                 code = "google_health_not_configured",
@@ -411,6 +408,14 @@ class GoogleHealthProvider(
             )
         }
     }
+
+    private fun configurationIssues(): List<ValidationIssue> =
+        buildList {
+            if (config.clientId.isBlank()) add(ValidationIssue("googleHealth.clientId"))
+            if (config.clientSecret.isBlank()) add(ValidationIssue("googleHealth.clientSecret"))
+            if (config.redirectUri.isBlank()) add(ValidationIssue("googleHealth.redirectUri"))
+            if (config.tokenEncryptionKey.isBlank()) add(ValidationIssue("googleHealth.tokenEncryptionKey"))
+        }
 
     private suspend fun <T> providerCall(
         fallbackCode: String,

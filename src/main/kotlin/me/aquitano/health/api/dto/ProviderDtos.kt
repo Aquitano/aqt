@@ -29,6 +29,32 @@ data class ProviderWorkflowEndpointsResponseDto(
 )
 
 @Serializable
+data class ProviderStatusCatalogResponseDto(
+    val providers: List<ProviderStatusResponseDto>,
+)
+
+@Serializable
+data class ProviderStatusResponseDto(
+    val providerCode: String,
+    val displayName: String,
+    val configured: Boolean,
+    val connected: Boolean,
+    val needsAuthentication: Boolean,
+    val canSync: Boolean,
+    val nextAction: String,
+    val accounts: List<ProviderAccountStatusResponseDto>,
+)
+
+@Serializable
+data class ProviderAccountStatusResponseDto(
+    val providerInstanceId: String,
+    val connectedAt: String,
+    val lastSyncAt: String? = null,
+    val tokenStatus: String,
+    val expiresAt: String? = null,
+)
+
+@Serializable
 data class ProviderOAuthStartResponse(
     val provider: String,
     val authorizationUrl: String,
