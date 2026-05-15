@@ -110,6 +110,30 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 commonErrors(conflict = true)
             }
         }
+        get("/api/v1/providers") {
+            call.authenticateProtected(services)
+            call.respond(services.providerDiscoveryService.listProviders())
+        }.describe {
+            operationId = "listProviders"
+            tag("Providers")
+            summary = "List provider discovery metadata"
+            bearerApiKey()
+            jsonResponse<ProviderCatalogResponseDto>(HttpStatusCode.OK, "Provider catalog")
+            errorResponses()
+        }
+        get("/api/v1/providers/{providerCode}") {
+            call.authenticateProtected(services)
+            val code = call.providerCode() ?: return@get
+            call.respond(services.providerDiscoveryService.getProvider(code))
+        }.describe {
+            operationId = "getProvider"
+            tag("Providers")
+            summary = "Get provider discovery metadata"
+            bearerApiKey()
+            providerCodePath()
+            jsonResponse<ProviderDescriptorResponseDto>(HttpStatusCode.OK, "Provider metadata")
+            errorResponses(notFound = true)
+        }
         get("/api/v1/providers/{providerCode}/oauth/start") {
             call.authenticateProtected(services)
             val code = call.providerCode() ?: return@get

@@ -7,13 +7,16 @@ import kotlinx.serialization.json.put
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.domain.ConflictException
+import me.aquitano.health.domain.HealthProviderDescriptor
 import me.aquitano.health.domain.HealthProvider
 import me.aquitano.health.domain.MetricCreatedCounts
+import me.aquitano.health.domain.ProviderAuthType
 import me.aquitano.health.domain.ProviderConnection
 import me.aquitano.health.domain.ProviderSyncBatch
 import me.aquitano.health.domain.ProviderSyncError
 import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.domain.ProviderSyncSummary
+import me.aquitano.health.domain.ProviderWorkflowEndpoints
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ServerConfigurationException
 import me.aquitano.health.domain.UpstreamProviderException
@@ -40,6 +43,22 @@ class GoogleHealthProvider(
 ) : HealthProvider {
 
     override val providerCode: String = GOOGLE_HEALTH_PROVIDER_CODE
+    override val descriptor: HealthProviderDescriptor = HealthProviderDescriptor(
+        providerCode = "google-health",
+        displayName = "Google Health",
+        authType = ProviderAuthType.OAUTH,
+        requiresAuthentication = true,
+        supportedDataTypes = GOOGLE_HEALTH_DEFAULT_DATA_TYPES,
+        defaultDataTypes = GOOGLE_HEALTH_DEFAULT_DATA_TYPES,
+        maxSyncRangeDays = 31,
+        supportsPageSize = true,
+        workflowEndpoints = ProviderWorkflowEndpoints(
+            oauthStart = "/api/v1/providers/google-health/oauth/start",
+            oauthCallback = "/api/v1/providers/google-health/oauth/callback",
+            sync = "/api/v1/providers/google-health/sync",
+        ),
+        aliases = listOf(GOOGLE_HEALTH_PROVIDER_CODE),
+    )
     override val defaultProviderInstanceId: String = "google-health-me"
 
     override fun getAuthUrl(state: String): String {

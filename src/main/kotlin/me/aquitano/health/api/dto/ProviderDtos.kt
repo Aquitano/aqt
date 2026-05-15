@@ -3,6 +3,32 @@ package me.aquitano.health.api.dto
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class ProviderCatalogResponseDto(
+    val providers: List<ProviderDescriptorResponseDto>,
+)
+
+@Serializable
+data class ProviderDescriptorResponseDto(
+    val providerCode: String,
+    val displayName: String,
+    val authType: String,
+    val requiresAuthentication: Boolean,
+    val supportedDataTypes: List<String>,
+    val defaultDataTypes: List<String>,
+    val maxSyncRangeDays: Int,
+    val supportsPageSize: Boolean,
+    val workflowEndpoints: ProviderWorkflowEndpointsResponseDto,
+    val aliases: List<String> = emptyList(),
+)
+
+@Serializable
+data class ProviderWorkflowEndpointsResponseDto(
+    val oauthStart: String? = null,
+    val oauthCallback: String? = null,
+    val sync: String,
+)
+
+@Serializable
 data class ProviderOAuthStartResponse(
     val provider: String,
     val authorizationUrl: String,

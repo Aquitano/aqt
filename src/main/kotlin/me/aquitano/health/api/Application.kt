@@ -118,6 +118,9 @@ fun Application.module() {
             ingestionRepository = ingestionRepository,
         ),
         providerRegistry = providerRegistry,
+        providerDiscoveryService = ProviderDiscoveryService(
+            providerRegistry = providerRegistry,
+        ),
         providerWorkflowService = ProviderWorkflowService(
             providerRegistry = providerRegistry,
             providerOAuthRepository = providerOAuthRepository,
@@ -144,5 +147,6 @@ data class ApplicationServices(
     val metricsQueryService: MetricsQueryService,
     val adminService: AdminService,
     val providerRegistry: HealthProviderRegistry,
+    val providerDiscoveryService: ProviderDiscoveryService,
     val providerWorkflowService: ProviderWorkflowService,
 )

@@ -180,6 +180,26 @@ Supported record types:
 
 `batchExternalId` is idempotent per source instance. Provider record IDs are also used to skip duplicate metric rows where available.
 
+## Provider Discovery
+
+All provider discovery endpoints require `Authorization: Bearer <api-key>`.
+
+List registered providers and their sync capabilities:
+
+```bash
+curl "http://localhost:8080/api/v1/providers" \
+  -H "Authorization: Bearer local-dev-key"
+```
+
+Get metadata for one provider:
+
+```bash
+curl "http://localhost:8080/api/v1/providers/google-health" \
+  -H "Authorization: Bearer local-dev-key"
+```
+
+Discovery responses return canonical route provider codes. Google Health is returned as `google-health`; `google_health` is accepted as an alias for compatibility with internal source naming and older clients. Each provider descriptor includes OAuth requirements, supported and default `dataTypes`, max sync range, page-size support, and workflow endpoint paths for OAuth and sync.
+
 ## Google Health Provider
 
 The Google Health provider is a server-owned OAuth integration. It reads Google Health data, normalizes it into the same ingestion batch contract shown above, stores the original Google response pages in `sourcePayload`, and writes the existing metric tables through the normal ingestion service.

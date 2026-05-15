@@ -13,6 +13,11 @@ interface HealthProvider {
     val providerCode: String
 
     /**
+     * Public provider discovery metadata.
+     */
+    val descriptor: HealthProviderDescriptor
+
+    /**
      * Stable instance ID used until the provider can return an account-specific identifier.
      */
     val defaultProviderInstanceId: String
@@ -35,6 +40,30 @@ interface HealthProvider {
         now: Instant
     ): ProviderSyncSummary
 }
+
+data class HealthProviderDescriptor(
+    val providerCode: String,
+    val displayName: String,
+    val authType: ProviderAuthType,
+    val requiresAuthentication: Boolean,
+    val supportedDataTypes: List<String>,
+    val defaultDataTypes: List<String>,
+    val maxSyncRangeDays: Int,
+    val supportsPageSize: Boolean,
+    val workflowEndpoints: ProviderWorkflowEndpoints,
+    val aliases: List<String> = emptyList(),
+)
+
+enum class ProviderAuthType {
+    OAUTH,
+    NONE,
+}
+
+data class ProviderWorkflowEndpoints(
+    val oauthStart: String? = null,
+    val oauthCallback: String? = null,
+    val sync: String,
+)
 
 data class ProviderConnection(
     val providerCode: String,

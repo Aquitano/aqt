@@ -8,13 +8,16 @@ import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.HealthProvider
+import me.aquitano.health.domain.HealthProviderDescriptor
 import me.aquitano.health.domain.MetricCreatedCounts
+import me.aquitano.health.domain.ProviderAuthType
 import me.aquitano.health.domain.ProviderConnection
 import me.aquitano.health.domain.ProviderSyncBatch
 import me.aquitano.health.domain.ProviderSyncEmptyDataType
 import me.aquitano.health.domain.ProviderSyncError
 import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.domain.ProviderSyncSummary
+import me.aquitano.health.domain.ProviderWorkflowEndpoints
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ServerConfigurationException
 import me.aquitano.health.domain.UpstreamProviderException
@@ -39,6 +42,21 @@ class WithingsProvider(
     private val ingestionService: IngestionService,
 ) : HealthProvider {
     override val providerCode: String = WITHINGS_PROVIDER_CODE
+    override val descriptor: HealthProviderDescriptor = HealthProviderDescriptor(
+        providerCode = WITHINGS_PROVIDER_CODE,
+        displayName = "Withings",
+        authType = ProviderAuthType.OAUTH,
+        requiresAuthentication = true,
+        supportedDataTypes = WITHINGS_DEFAULT_DATA_TYPES,
+        defaultDataTypes = WITHINGS_DEFAULT_DATA_TYPES,
+        maxSyncRangeDays = 31,
+        supportsPageSize = false,
+        workflowEndpoints = ProviderWorkflowEndpoints(
+            oauthStart = "/api/v1/providers/withings/oauth/start",
+            oauthCallback = "/api/v1/providers/withings/oauth/callback",
+            sync = "/api/v1/providers/withings/sync",
+        ),
+    )
     override val defaultProviderInstanceId: String = "withings-me"
 
     override fun getAuthUrl(state: String): String {
