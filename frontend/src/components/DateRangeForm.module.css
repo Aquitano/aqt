@@ -1,0 +1,95 @@
+.form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-2);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.fieldLabel {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.input {
+  height: 36px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  color: var(--fg);
+  font-size: 0.82rem;
+  transition: border-color var(--ease);
+  color-scheme: dark;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+.submit {
+  height: 36px;
+  padding: 0 var(--s-4);
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--ease);
+  white-space: nowrap;
+}
+
+.submit:hover {
+  background: var(--accent-hover);
+}
+
+.presets {
+  display: flex;
+  gap: var(--s-1);
+}
+
+.preset {
+  height: 36px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--ease), color var(--ease), border-color var(--ease);
+  white-space: nowrap;
+}
+
+.preset:hover {
+  background: var(--bg-panel-hover);
+  color: var(--fg);
+  border-color: var(--fg-dim);
+}
+
+@media (max-width: 700px) {
+  .form {
+    flex-wrap: wrap;
+  }
+
+  .field {
+    flex: 1;
+    min-width: 130px;
+  }
+
+  .presets {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+}

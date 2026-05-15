@@ -1,0 +1,30 @@
+.section {
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: box-shadow var(--ease);
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.heading h2 {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.count {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--fg-dim);
+  background: var(--bg-inset);
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+}

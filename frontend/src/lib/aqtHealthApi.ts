@@ -85,6 +85,10 @@ export async function syncGoogleHealth(
   });
 }
 
+function apiBaseUrlFromEnv(): string {
+  return process.env.AQT_HEALTH_API_BASE_URL ?? defaultBaseUrl;
+}
+
 async function request<T>(path: string, options: FetchOptions = {}): Promise<ApiResult<T>> {
   const apiBaseUrl = apiBaseUrlFromEnv();
   const headers: HeadersInit = {};
@@ -109,7 +113,7 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<Api
       headers,
       method: options.method ?? "GET",
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      cache: "no-store",
+      next: { revalidate: 0 },
     });
     const text = await response.text();
     const body = parseJson(text);
@@ -132,10 +136,6 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<Api
       message: error instanceof Error ? error.message : "Backend request failed.",
     };
   }
-}
-
-function apiBaseUrlFromEnv(): string {
-  return process.env.AQT_HEALTH_API_BASE_URL ?? defaultBaseUrl;
 }
 
 function params(values: Record<string, string>): string {

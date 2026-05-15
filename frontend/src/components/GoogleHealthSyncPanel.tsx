@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useState, useTransition } from "react";
 import type { ApiResult, GoogleHealthSyncResponse } from "@/lib/types";
+import styles from "./GoogleHealthSyncPanel.module.css";
 
 const dataTypeOptions = [
   { label: "Steps", value: "steps" },
@@ -32,9 +33,7 @@ export function GoogleHealthSyncPanel() {
     startTransition(async () => {
       const response = await fetch("/api/google-health/sync", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const body = (await response.json()) as ApiResult<GoogleHealthSyncResponse>;
@@ -44,36 +43,50 @@ export function GoogleHealthSyncPanel() {
   }
 
   return (
-    <section className="data-section sync-panel">
-      <div className="section-heading">
+    <section className={styles.panel}>
+      <div className={styles.heading}>
         <h2>Google Health sync</h2>
       </div>
-      <form className="sync-form" onSubmit={onSubmit}>
-        <label>
-          <span>From</span>
-          <input name="from" type="datetime-local" />
-        </label>
-        <label>
-          <span>To</span>
-          <input name="to" type="datetime-local" />
-        </label>
-        <label>
-          <span>Page size</span>
-          <input name="pageSize" type="number" min="1" max="5000" placeholder="default" />
-        </label>
-        <fieldset>
-          <legend>Data types</legend>
-          <div className="checkbox-row">
+      <form className={styles.form} onSubmit={onSubmit}>
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>From</span>
+          <input className={styles.input} name="from" type="datetime-local" />
+        </div>
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>To</span>
+          <input className={styles.input} name="to" type="datetime-local" />
+        </div>
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>Page size</span>
+          <input
+            className={styles.input}
+            name="pageSize"
+            type="number"
+            min="1"
+            max="5000"
+            placeholder="default"
+          />
+        </div>
+        <fieldset className={styles.fieldset}>
+          <legend className={styles.legend}>Data types</legend>
+          <div className={styles.checkboxRow}>
             {dataTypeOptions.map((option) => (
-              <label key={option.value}>
+              <label className={styles.checkboxLabel} key={option.value}>
                 <input name="dataTypes" type="checkbox" value={option.value} defaultChecked />
                 <span>{option.label}</span>
               </label>
             ))}
           </div>
         </fieldset>
-        <button type="submit" disabled={isPending}>
-          {isPending ? "Syncing..." : "Start sync"}
+        <button className={styles.submit} type="submit" disabled={isPending}>
+          {isPending ? (
+            <>
+              <span className={styles.spinner} />
+              Syncing…
+            </>
+          ) : (
+            "Start sync"
+          )}
         </button>
       </form>
       {result ? <SyncResult result={result} /> : null}
@@ -84,7 +97,7 @@ export function GoogleHealthSyncPanel() {
 function SyncResult({ result }: { result: ApiResult<GoogleHealthSyncResponse> }) {
   if (!result.ok) {
     return (
-      <div className="notice error">
+      <div className={styles.errorNotice}>
         {result.status ? <strong>HTTP {result.status}: </strong> : null}
         {result.message}
       </div>
@@ -99,12 +112,12 @@ function SyncResult({ result }: { result: ApiResult<GoogleHealthSyncResponse> })
   );
 
   return (
-    <div className="sync-result">
+    <div className={styles.result}>
       <strong>
         Synced {result.data.batches.length} batches, created {created} metrics
       </strong>
       <span>
-        {result.data.requestedRange.from} to {result.data.requestedRange.to}
+        {result.data.requestedRange.from} → {result.data.requestedRange.to}
       </span>
       {result.data.errors.length > 0 ? (
         <ul>

@@ -1,5 +1,6 @@
 import { formatDateTime } from "@/lib/format";
 import type { ApiResult, HealthResponse } from "@/lib/types";
+import styles from "./StatusBar.module.css";
 
 type StatusBarProps = {
   apiBaseUrl: string;
@@ -13,24 +14,28 @@ export function StatusBar({ apiBaseUrl, health, fromDate, toDate }: StatusBarPro
   const serviceTime = health.ok ? formatDateTime(health.data.time) : "n/a";
 
   return (
-    <section className="status-bar" aria-label="Backend status">
-      <div>
-        <span className={`status-dot ${health.ok ? "ok" : "bad"}`} aria-hidden="true" />
-        <strong>{status}</strong>
+    <section className={styles.bar} aria-label="Backend status">
+      <div className={styles.item}>
+        <span className={styles.label}>Status</span>
+        <div className={styles.statusItem}>
+          <span
+            className={`${styles.dot} ${health.ok ? styles.ok : ""}`}
+            aria-hidden="true"
+          />
+          <span className={styles.value}>{status}</span>
+        </div>
       </div>
-      <div>
-        <span>API</span>
-        <strong>{apiBaseUrl}</strong>
+      <div className={styles.item}>
+        <span className={styles.label}>API</span>
+        <span className={styles.value}>{apiBaseUrl}</span>
       </div>
-      <div>
-        <span>Range</span>
-        <strong>
-          {fromDate} to {toDate}
-        </strong>
+      <div className={styles.item}>
+        <span className={styles.label}>Range</span>
+        <span className={styles.value}>{fromDate} → {toDate}</span>
       </div>
-      <div>
-        <span>Backend time</span>
-        <strong>{serviceTime}</strong>
+      <div className={styles.item}>
+        <span className={styles.label}>Backend time</span>
+        <span className={styles.value}>{serviceTime}</span>
       </div>
     </section>
   );

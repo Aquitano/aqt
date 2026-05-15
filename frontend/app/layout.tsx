@@ -1,9 +1,16 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
   title: "aqt-health",
-  description: "Local dashboard for aqt-health backend data",
+  description: "Personal health data dashboard",
 };
 
 export default function RootLayout({
@@ -12,7 +19,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable}>
+      <head>
+        <meta name="theme-color" content="#0f1117" />
+      </head>
       <body>{children}</body>
     </html>
   );

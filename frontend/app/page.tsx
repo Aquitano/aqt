@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { DashboardCards } from "@/components/DashboardCards";
 import { DataSection } from "@/components/DataSection";
 import { DateRangeForm } from "@/components/DateRangeForm";
@@ -5,13 +6,11 @@ import { ErrorNotice } from "@/components/ErrorNotice";
 import { JsonDetails } from "@/components/JsonDetails";
 import { GoogleHealthSyncPanel } from "@/components/GoogleHealthSyncPanel";
 import { StatusBar } from "@/components/StatusBar";
-import {
-  BodyMeasurementsTable,
-  DailyStepsTable,
-  HeartRateTable,
-  IngestionBatchesTable,
-  SleepSessionsTable,
-} from "@/components/Tables";
+import { BodyMeasurementsTable } from "@/components/tables/BodyMeasurementsTable";
+import { DailyStepsTable } from "@/components/tables/DailyStepsTable";
+import { HeartRateTable } from "@/components/tables/HeartRateTable";
+import { IngestionBatchesTable } from "@/components/tables/IngestionBatchesTable";
+import { SleepSessionsTable } from "@/components/tables/SleepSessionsTable";
 import { getDashboardData } from "@/lib/aqtHealthApi";
 import { parseDateRange } from "@/lib/dates";
 
@@ -35,7 +34,9 @@ export default async function Home({ searchParams }: PageProps) {
           <p className="eyebrow">Local health hub</p>
           <h1>aqt-health</h1>
         </div>
-        <DateRangeForm fromDate={range.fromDate} toDate={range.toDate} />
+        <Suspense>
+          <DateRangeForm fromDate={range.fromDate} toDate={range.toDate} />
+        </Suspense>
       </header>
 
       <StatusBar
