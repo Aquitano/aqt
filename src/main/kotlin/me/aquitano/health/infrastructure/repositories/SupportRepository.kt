@@ -24,6 +24,8 @@ data class ApiClientRef(
     val name: String,
 )
 
+private const val API_CLIENT_LAST_USED_UPDATE_INTERVAL_SECONDS = 60L
+
 class SupportRepository(
     private val database: Database,
 ) {
@@ -58,7 +60,9 @@ class SupportRepository(
                 .find { (ApiClientsTable.apiKeyHash eq apiKeyHash) and (ApiClientsTable.enabled eq true) }
                 .firstOrNull()
                 ?: return@dbQuery null
-            client.lastUsedAt = now.toString()
+            if (shouldUpdateLastUsedAt(client.lastUsedAt, now)) {
+                client.lastUsedAt = now.toString()
+            }
             ApiClientRef(id = client.id.value, name = client.name)
         }
 
@@ -113,4 +117,10 @@ class SupportRepository(
         newSuspendedTransaction(Dispatchers.IO, db = database) {
             block()
         }
+
+    private fun shouldUpdateLastUsedAt(current: String?, now: Instant): Boolean {
+        if (current == null) return true
+        val parsed = runCatching { Instant.parse(current) }.getOrNull() ?: return true
+        return parsed <= now.minusSeconds(API_CLIENT_LAST_USED_UPDATE_INTERVAL_SECONDS)
+    }
 }

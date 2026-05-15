@@ -5,12 +5,18 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.server.config.*
 import io.ktor.server.testing.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.*
 import me.aquitano.health.shared.AppJson
+import java.sql.DriverManager
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 
 class ReadApiRouteTest {
     @Test
@@ -175,6 +181,34 @@ class ReadApiRouteTest {
     }
 
     @Test
+    fun dashboardRelatedProtectedReadsCanRunConcurrently() = testApplication {
+        val dbPath = configureTestApplication()
+        ingestMixedBatch()
+        ingestLaterBatch()
+
+        val paths = listOf(
+            "/api/v1/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19",
+            "/api/v1/metrics/steps/daily?fromDate=2026-04-19&toDate=2026-04-19&includeSource=true",
+            "/api/v1/body/measurements?metricType=weight&latest=true&includeSource=true",
+            "/api/v1/metrics/heart-rate?latest=true&includeSource=true",
+            "/api/v1/sleep/sessions?latest=true&includeSource=true",
+            "/api/v1/admin/ingestion/batches?limit=10",
+            "/api/v1/admin/ingestion/failures?limit=10",
+        )
+
+        val responses = coroutineScope {
+            paths.map { path ->
+                async { authorizedGet(path) }
+            }.awaitAll()
+        }
+
+        responses.forEach { response ->
+            assertEquals(HttpStatusCode.OK, response.status)
+        }
+        assertNotNull(lastUsedAt(dbPath))
+    }
+
+    @Test
     fun adminBatchDetailReturnsRecordsAndOptionalPayloads() = testApplication {
         configureTestApplication()
         val batchId = ingestMixedBatch()
@@ -225,7 +259,7 @@ class ReadApiRouteTest {
         )
     }
 
-    private fun ApplicationTestBuilder.configureTestApplication() {
+    private fun ApplicationTestBuilder.configureTestApplication(): Path {
         val dbPath = Files.createTempFile("aqt-health-read-test", ".db")
         environment {
             config = MapApplicationConfig(
@@ -237,6 +271,7 @@ class ReadApiRouteTest {
                 "aqtHealth.auth.bootstrapApiKey" to "test-key",
             )
         }
+        return dbPath
     }
 
     private suspend fun ApplicationTestBuilder.ingestMixedBatch(): Int {
@@ -267,6 +302,15 @@ class ReadApiRouteTest {
     private fun HttpRequestBuilder.authorized() {
         header(HttpHeaders.Authorization, "Bearer test-key")
     }
+
+    private fun lastUsedAt(dbPath: Path): String? =
+        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeQuery("SELECT last_used_at FROM api_clients WHERE name = 'test-client'").use { resultSet ->
+                    if (resultSet.next()) resultSet.getString("last_used_at") else null
+                }
+            }
+        }
 
     private suspend fun HttpResponse.jsonBody(): JsonObject =
         AppJson.parseToJsonElement(bodyAsText()).jsonObject

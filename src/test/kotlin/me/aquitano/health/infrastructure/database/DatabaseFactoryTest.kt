@@ -122,6 +122,32 @@ class DatabaseFactoryTest {
     }
 
     @Test
+    fun sqliteFileConnectionsUseBusyTimeoutAndWal() {
+        val database = DatabaseFactory().initialize(tempDatabaseConfig())
+
+        transaction(database) {
+            assertEquals(1, singleInt("PRAGMA foreign_keys"))
+            assertEquals(5000, singleInt("PRAGMA busy_timeout"))
+            assertEquals("wal", singleString("PRAGMA journal_mode"))
+        }
+    }
+
+    @Test
+    fun sqliteMemoryConnectionsUseBusyTimeoutWithoutWalSetup() {
+        val database = DatabaseFactory().initialize(
+            DatabaseConfig(
+                jdbcUrl = "jdbc:sqlite::memory:",
+                driver = "org.sqlite.JDBC",
+            )
+        )
+
+        transaction(database) {
+            assertEquals(1, singleInt("PRAGMA foreign_keys"))
+            assertEquals(5000, singleInt("PRAGMA busy_timeout"))
+        }
+    }
+
+    @Test
     fun sleepStagesCascadeWhenSessionIsDeleted() {
         val database = DatabaseFactory().initialize(tempDatabaseConfig())
 
@@ -306,6 +332,15 @@ class DatabaseFactoryTest {
         TransactionManager.current().exec(sql) { resultSet ->
             resultSet.next()
             value = resultSet.getInt(1)
+        }
+        return value
+    }
+
+    private fun singleString(sql: String): String {
+        var value = ""
+        TransactionManager.current().exec(sql) { resultSet ->
+            resultSet.next()
+            value = resultSet.getString(1)
         }
         return value
     }

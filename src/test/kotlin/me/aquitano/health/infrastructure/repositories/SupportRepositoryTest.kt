@@ -1,0 +1,86 @@
+package me.aquitano.health.infrastructure.repositories
+
+import kotlinx.coroutines.runBlocking
+import me.aquitano.health.infrastructure.database.DatabaseFactory
+import me.aquitano.health.infrastructure.config.DatabaseConfig
+import me.aquitano.health.infrastructure.security.ApiKeyHasher
+import org.jetbrains.exposed.sql.transactions.transaction
+import java.nio.file.Files
+import java.time.Instant
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+
+class SupportRepositoryTest {
+    @Test
+    fun apiClientLastUsedAtIsThrottled() = runBlocking {
+        val database = DatabaseFactory().initialize(tempDatabaseConfig())
+        val repository = SupportRepository(database)
+        val hasher = ApiKeyHasher()
+        val apiKeyHash = hasher.hash("test-key")
+        repository.createBootstrapApiClientIfMissing(
+            name = "test-client",
+            apiKeyHash = apiKeyHash,
+            now = Instant.parse("2026-05-15T09:00:00Z"),
+        )
+
+        val first = repository.findEnabledApiClientByHash(
+            apiKeyHash = apiKeyHash,
+            now = Instant.parse("2026-05-15T10:00:00Z"),
+        )
+        assertNotNull(first)
+        assertEquals("2026-05-15T10:00:00Z", lastUsedAt(database))
+
+        repository.findEnabledApiClientByHash(
+            apiKeyHash = apiKeyHash,
+            now = Instant.parse("2026-05-15T10:00:30Z"),
+        )
+        assertEquals("2026-05-15T10:00:00Z", lastUsedAt(database))
+
+        repository.findEnabledApiClientByHash(
+            apiKeyHash = apiKeyHash,
+            now = Instant.parse("2026-05-15T10:01:01Z"),
+        )
+        assertEquals("2026-05-15T10:01:01Z", lastUsedAt(database))
+    }
+
+    @Test
+    fun invalidApiClientLastUsedAtIsReplaced() = runBlocking {
+        val database = DatabaseFactory().initialize(tempDatabaseConfig())
+        val repository = SupportRepository(database)
+        val hasher = ApiKeyHasher()
+        val apiKeyHash = hasher.hash("test-key")
+        repository.createBootstrapApiClientIfMissing(
+            name = "test-client",
+            apiKeyHash = apiKeyHash,
+            now = Instant.parse("2026-05-15T09:00:00Z"),
+        )
+        transaction(database) {
+            exec("UPDATE api_clients SET last_used_at = 'not-an-instant'")
+        }
+
+        repository.findEnabledApiClientByHash(
+            apiKeyHash = apiKeyHash,
+            now = Instant.parse("2026-05-15T10:00:00Z"),
+        )
+
+        assertEquals("2026-05-15T10:00:00Z", lastUsedAt(database))
+    }
+
+    private fun tempDatabaseConfig(): DatabaseConfig {
+        val dbPath = Files.createTempFile("aqt-health-support-test", ".db")
+        return DatabaseConfig(
+            jdbcUrl = "jdbc:sqlite:$dbPath",
+            driver = "org.sqlite.JDBC",
+        )
+    }
+
+    private fun lastUsedAt(database: org.jetbrains.exposed.sql.Database): String? =
+        transaction(database) {
+            var value: String? = null
+            exec("SELECT last_used_at FROM api_clients WHERE name = 'test-client'") { resultSet ->
+                if (resultSet.next()) value = resultSet.getString("last_used_at")
+            }
+            value
+        }
+}
