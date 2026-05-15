@@ -1,22 +1,20 @@
 import { NextResponse } from "next/server";
-import { syncGoogleHealth } from "@/lib/aqtHealthApi";
-import type { GoogleHealthSyncRequest } from "@/lib/types";
-
-const supportedDataTypes = new Set(["steps", "sleep", "heart-rate", "weight", "body-fat"]);
+import { syncProvider } from "@/lib/aqtHealthApi";
+import type { ProviderSyncRequest } from "@/lib/types";
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as GoogleHealthSyncRequest;
+  const body = (await request.json().catch(() => ({}))) as ProviderSyncRequest;
   const payload = normalizePayload(body);
-  const result = await syncGoogleHealth(payload);
+  const result = await syncProvider("google-health", payload);
 
   return NextResponse.json(result, {
     status: result.ok ? 200 : result.status ?? 500,
   });
 }
 
-function normalizePayload(body: GoogleHealthSyncRequest): GoogleHealthSyncRequest {
+function normalizePayload(body: ProviderSyncRequest): ProviderSyncRequest {
   const dataTypes = Array.isArray(body.dataTypes)
-    ? body.dataTypes.filter((dataType) => supportedDataTypes.has(dataType))
+    ? body.dataTypes.filter((dataType) => typeof dataType === "string" && dataType.trim())
     : undefined;
   const pageSize =
     typeof body.pageSize === "number" && Number.isInteger(body.pageSize) && body.pageSize > 0

@@ -3,11 +3,14 @@ import type {
   BodyMeasurementsResponse,
   DashboardData,
   DashboardSummaryResponse,
-  GoogleHealthSyncRequest,
-  GoogleHealthSyncResponse,
   HealthResponse,
   HeartRateSamplesResponse,
   IngestionBatchesResponse,
+  ProviderCatalogResponse,
+  ProviderOAuthStartResponse,
+  ProviderStatusCatalogResponse,
+  ProviderSyncRequest,
+  ProviderSyncResponse,
   SleepSessionsResponse,
   StepDailySummariesResponse,
 } from "./types";
@@ -32,6 +35,8 @@ export async function getDashboardData(fromDate: string, toDate: string): Promis
     latestSleep,
     batches,
     failures,
+    providerCatalog,
+    providerStatuses,
   ] = await Promise.all([
     request<HealthResponse>("/api/v1/admin/health"),
     request<DashboardSummaryResponse>(
@@ -60,6 +65,8 @@ export async function getDashboardData(fromDate: string, toDate: string): Promis
     request<IngestionBatchesResponse>("/api/v1/admin/ingestion/failures?limit=10", {
       protected: true,
     }),
+    getProviderCatalog(),
+    getProviderStatuses(),
   ]);
 
   return {
@@ -72,13 +79,39 @@ export async function getDashboardData(fromDate: string, toDate: string): Promis
     latestSleep,
     batches,
     failures,
+    providerCatalog,
+    providerStatuses,
   };
 }
 
-export async function syncGoogleHealth(
-  payload: GoogleHealthSyncRequest,
-): Promise<ApiResult<GoogleHealthSyncResponse>> {
-  return request<GoogleHealthSyncResponse>("/api/v1/providers/google-health/sync", {
+export async function getProviderCatalog(): Promise<ApiResult<ProviderCatalogResponse>> {
+  return request<ProviderCatalogResponse>("/api/v1/providers", {
+    protected: true,
+  });
+}
+
+export async function getProviderStatuses(): Promise<ApiResult<ProviderStatusCatalogResponse>> {
+  return request<ProviderStatusCatalogResponse>("/api/v1/providers/status", {
+    protected: true,
+  });
+}
+
+export async function startProviderOAuth(
+  providerCode: string,
+): Promise<ApiResult<ProviderOAuthStartResponse>> {
+  return request<ProviderOAuthStartResponse>(
+    `/api/v1/providers/${encodeURIComponent(providerCode)}/oauth/start`,
+    {
+      protected: true,
+    },
+  );
+}
+
+export async function syncProvider(
+  providerCode: string,
+  payload: ProviderSyncRequest,
+): Promise<ApiResult<ProviderSyncResponse>> {
+  return request<ProviderSyncResponse>(`/api/v1/providers/${encodeURIComponent(providerCode)}/sync`, {
     protected: true,
     method: "POST",
     body: payload,

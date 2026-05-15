@@ -98,25 +98,54 @@ export type IngestionBatchesResponse = {
   items: IngestionBatch[];
 };
 
-export type GoogleHealthSyncRequest = {
+export type ProviderCatalogResponse = {
+  providers: ProviderDescriptor[];
+};
+
+export type ProviderDescriptor = {
+  providerCode: string;
+  displayName: string;
+  authType: string;
+  requiresAuthentication: boolean;
+  supportedDataTypes: string[];
+  defaultDataTypes: string[];
+  maxSyncRangeDays: number;
+  supportsPageSize: boolean;
+  workflowEndpoints: ProviderWorkflowEndpoints;
+  aliases: string[];
+};
+
+export type ProviderWorkflowEndpoints = {
+  oauthStart?: string;
+  oauthCallback?: string;
+  sync: string;
+};
+
+export type ProviderOAuthStartResponse = {
+  provider: string;
+  authorizationUrl: string;
+  expiresAt: string;
+};
+
+export type ProviderSyncRequest = {
   from?: string;
   to?: string;
   dataTypes?: string[];
   pageSize?: number;
 };
 
-export type GoogleHealthSyncResponse = {
-  provider: string;
+export type ProviderSyncResponse = {
+  providerCode: string;
   providerInstanceId: string;
-  requestedRange: {
-    from: string;
-    to: string;
-  };
-  batches: GoogleHealthSyncBatch[];
-  errors: GoogleHealthSyncError[];
+  requestedFrom: string;
+  requestedTo: string;
+  status: string;
+  batches: ProviderSyncBatch[];
+  emptyDataTypes: ProviderSyncEmptyDataType[];
+  errors: ProviderSyncError[];
 };
 
-export type GoogleHealthSyncBatch = {
+export type ProviderSyncBatch = {
   dataType: string;
   batchId: number;
   duplicateBatch: boolean;
@@ -129,16 +158,44 @@ export type GoogleHealthSyncBatch = {
     bodyMeasurements: number;
     heartRateSamples: number;
   };
-  metricsSkipped: {
-    duplicates: number;
-  };
+  duplicateMetricsSkipped: number;
   affectedStepSummaryDates: string[];
 };
 
-export type GoogleHealthSyncError = {
+export type ProviderSyncError = {
   dataType: string;
   code: string;
   message: string;
+};
+
+export type ProviderSyncEmptyDataType = {
+  dataType: string;
+  pagesFetched: number;
+  sourceRecordsReceived: number;
+  normalizedRecords: number;
+};
+
+export type ProviderStatusCatalogResponse = {
+  providers: ProviderStatus[];
+};
+
+export type ProviderStatus = {
+  providerCode: string;
+  displayName: string;
+  configured: boolean;
+  connected: boolean;
+  needsAuthentication: boolean;
+  canSync: boolean;
+  nextAction: "configure" | "connect" | "reconnect" | "sync";
+  accounts: ProviderAccountStatus[];
+};
+
+export type ProviderAccountStatus = {
+  providerInstanceId: string;
+  connectedAt: string;
+  lastSyncAt?: string;
+  tokenStatus: "valid" | "expired" | "missing" | "unknown";
+  expiresAt?: string;
 };
 
 export type DashboardData = {
@@ -151,4 +208,6 @@ export type DashboardData = {
   latestSleep: ApiResult<SleepSessionsResponse>;
   batches: ApiResult<IngestionBatchesResponse>;
   failures: ApiResult<IngestionBatchesResponse>;
+  providerCatalog: ApiResult<ProviderCatalogResponse>;
+  providerStatuses: ApiResult<ProviderStatusCatalogResponse>;
 };

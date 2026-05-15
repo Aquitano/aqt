@@ -4,7 +4,7 @@ import { DataSection } from "@/components/DataSection";
 import { DateRangeForm } from "@/components/DateRangeForm";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { JsonDetails } from "@/components/JsonDetails";
-import { GoogleHealthSyncPanel } from "@/components/GoogleHealthSyncPanel";
+import { ProviderSyncPanel } from "@/components/ProviderSyncPanel";
 import { StatusBar } from "@/components/StatusBar";
 import { BodyMeasurementsTable } from "@/components/tables/BodyMeasurementsTable";
 import { DailyStepsTable } from "@/components/tables/DailyStepsTable";
@@ -51,7 +51,7 @@ export default async function Home({ searchParams }: PageProps) {
 
       <DashboardCards summary={summary} />
 
-      <GoogleHealthSyncPanel />
+      <ProviderSyncPanel catalog={data.providerCatalog} statuses={data.providerStatuses} />
 
       <div className="grid">
         <DataSection title="Daily steps" result={data.dailySteps}>
