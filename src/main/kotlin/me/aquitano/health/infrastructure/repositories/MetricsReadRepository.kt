@@ -9,6 +9,7 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 
 data class SourceMetadata(
     val provider: String,
@@ -27,6 +28,16 @@ data class ReadFilters(
 data class DailyReadFilters(
     val fromDate: LocalDate?,
     val toDate: LocalDate?,
+    val provider: String?,
+    val providerInstanceId: String?,
+    val includeSource: Boolean,
+    val limit: Int,
+)
+
+data class SleepNightReadFilters(
+    val fromDate: LocalDate?,
+    val toDate: LocalDate?,
+    val timezone: ZoneId,
     val provider: String?,
     val providerInstanceId: String?,
     val includeSource: Boolean,
@@ -54,6 +65,12 @@ data class SleepSessionRow(
     val startAt: String,
     val endAt: String,
     val durationSeconds: Long
+)
+
+data class SleepNightRow(
+    val date: String,
+    val timezone: String,
+    val session: SleepSessionRow,
 )
 
 data class SleepStageRow(
@@ -170,6 +187,51 @@ class MetricsReadRepository {
             filters.includeSource
         )
         return Triple(sessions, stagesBySession, metadata)
+    }
+
+    fun listSleepNights(filters: SleepNightReadFilters): Triple<List<SleepNightRow>, Map<Int, List<SleepStageRow>>, Map<Int, SourceMetadata>> {
+        val sourceIds =
+            sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        if (sourceIds != null && sourceIds.isEmpty()) return Triple(
+            emptyList(),
+            emptyMap(),
+            emptyMap()
+        )
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.fromDate?.let {
+            conditions.add(SleepSessionsTable.endAt greaterEq it.atStartOfDay(filters.timezone).toInstant().toString())
+        }
+        filters.toDate?.let {
+            conditions.add(SleepSessionsTable.endAt less it.plusDays(1).atStartOfDay(filters.timezone).toInstant().toString())
+        }
+        sourceIds?.let { conditions.add(SleepSessionsTable.sourceInstanceId inList it) }
+        val nights = SleepSessionsTable.selectAll()
+            .where(combineConditions(conditions))
+            .orderBy(
+                SleepSessionsTable.endAt to SortOrder.ASC,
+                SleepSessionsTable.id to SortOrder.ASC,
+            )
+            .limit(filters.limit)
+            .map {
+                val session = SleepSessionRow(
+                    id = it[SleepSessionsTable.id].value,
+                    sourceInstanceId = it[SleepSessionsTable.sourceInstanceId],
+                    startAt = it[SleepSessionsTable.startAt],
+                    endAt = it[SleepSessionsTable.endAt],
+                    durationSeconds = it[SleepSessionsTable.durationSeconds],
+                )
+                SleepNightRow(
+                    date = Instant.parse(session.endAt).atZone(filters.timezone).toLocalDate().toString(),
+                    timezone = filters.timezone.id,
+                    session = session,
+                )
+            }
+        val stagesBySession = sleepStagesBySession(nights.map { it.session.id })
+        val metadata = sourceMetadata(
+            nights.map { it.session.sourceInstanceId }.toSet(),
+            filters.includeSource
+        )
+        return Triple(nights, stagesBySession, metadata)
     }
 
     fun latestSleepSession(filters: ReadFilters): Triple<SleepSessionRow?, Map<Int, List<SleepStageRow>>, Map<Int, SourceMetadata>> {

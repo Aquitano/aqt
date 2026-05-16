@@ -67,7 +67,7 @@ export default async function Home({ searchParams }: PageProps) {
         </DataSection>
 
         <DataSection title="Latest sleep" result={data.latestSleep}>
-          {(response) => <SleepSessionsTable items={response.items} />}
+          {(response) => <SleepSessionsTable items={response.items.map((night) => night.session)} />}
         </DataSection>
 
         <DataSection title="Recent ingestion batches" result={data.batches}>

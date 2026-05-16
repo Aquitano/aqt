@@ -131,7 +131,12 @@ class ReadApiRouteTest {
         val nightMode = sleep["aggregationModes"]!!.jsonArray
             .map { it.jsonObject }
             .single { it["name"]!!.jsonPrimitive.content == "night" }
-        assertEquals(false, nightMode["available"]!!.jsonPrimitive.boolean)
+        assertEquals(true, nightMode["available"]!!.jsonPrimitive.boolean)
+        assertContains(sleep.endpointPaths(), "/api/v1/sleep/nights")
+        assertContains(sleep.queryParameterNames(), "date")
+        assertContains(sleep.queryParameterNames(), "fromDate")
+        assertContains(sleep.queryParameterNames(), "toDate")
+        assertContains(sleep.queryParameterNames(), "timezone")
 
         val heartRate = families.family("heart_rate")
         assertContains(heartRate.endpointPaths(), "/api/v1/metrics/heart-rate")
@@ -195,6 +200,81 @@ class ReadApiRouteTest {
     }
 
     @Test
+    fun sleepNightsReturnCompleteSessionsByLocalizedEndDate() = testApplication {
+        configureTestApplication()
+        ingestSleepNightBatch()
+
+        val april20 =
+            authorizedGet("/api/v1/sleep/nights?date=2026-04-20&timezone=Europe/Berlin")
+        assertEquals(HttpStatusCode.OK, april20.status)
+        assertEquals(1, april20.items().size)
+        val april20Night = april20.items()[0].jsonObject
+        assertEquals("2026-04-20", april20Night["date"]!!.jsonPrimitive.content)
+        assertEquals("Europe/Berlin", april20Night["timezone"]!!.jsonPrimitive.content)
+        val april20Session = april20Night["session"]!!.jsonObject
+        assertEquals(
+            "2026-04-19T22:00:00Z",
+            april20Session["startAt"]!!.jsonPrimitive.content
+        )
+        assertEquals(
+            "2026-04-20T06:00:00Z",
+            april20Session["endAt"]!!.jsonPrimitive.content
+        )
+        assertEquals(1, april20Session["stages"]!!.jsonArray.size)
+
+        val april21 =
+            authorizedGet("/api/v1/sleep/nights?date=2026-04-21&timezone=Europe/Berlin")
+        assertEquals(HttpStatusCode.OK, april21.status)
+        assertEquals(1, april21.items().size)
+        val april21Session = april21.items()[0].jsonObject["session"]!!.jsonObject
+        assertEquals(
+            "2026-04-20T22:00:00Z",
+            april21Session["startAt"]!!.jsonPrimitive.content
+        )
+        assertEquals(
+            "2026-04-21T06:00:00Z",
+            april21Session["endAt"]!!.jsonPrimitive.content
+        )
+
+        val rawApril20 =
+            authorizedGet("/api/v1/sleep/sessions?from=2026-04-20T00:00:00Z&to=2026-04-21T00:00:00Z")
+        assertEquals(HttpStatusCode.OK, rawApril20.status)
+        assertEquals(1, rawApril20.items().size)
+        assertEquals(
+            "2026-04-20T22:00:00Z",
+            rawApril20.items()[0].jsonObject["startAt"]!!.jsonPrimitive.content
+        )
+    }
+
+    @Test
+    fun sleepNightReadsValidateDateAndTimezoneParameters() = testApplication {
+        configureTestApplication()
+
+        val invalidTimezone = authorizedGet("/api/v1/sleep/nights?date=2026-04-20&timezone=Not/AZone")
+        assertEquals(HttpStatusCode.BadRequest, invalidTimezone.status)
+        assertEquals(
+            "validation_failed",
+            invalidTimezone.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
+        )
+
+        val invalidCombination =
+            authorizedGet("/api/v1/sleep/nights?date=2026-04-20&fromDate=2026-04-20")
+        assertEquals(HttpStatusCode.BadRequest, invalidCombination.status)
+        assertEquals(
+            "validation_failed",
+            invalidCombination.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
+        )
+
+        val invalidRange =
+            authorizedGet("/api/v1/sleep/nights?fromDate=2026-04-21&toDate=2026-04-20")
+        assertEquals(HttpStatusCode.BadRequest, invalidRange.status)
+        assertEquals(
+            "validation_failed",
+            invalidRange.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
+        )
+    }
+
+    @Test
     fun dashboardSummaryReturnsCompactRangeData() = testApplication {
         configureTestApplication()
         ingestMixedBatch()
@@ -221,12 +301,31 @@ class ReadApiRouteTest {
             body["latestHeartRate"]!!.jsonObject["bpm"]!!.jsonPrimitive.int
         )
         assertEquals(
-            "2026-04-19T22:00:00Z",
+            "2026-04-18T22:30:00Z",
             body["lastSleepSession"]!!.jsonObject["startAt"]!!.jsonPrimitive.content
         )
 
         val unauthorized = client.get("/api/v1/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19")
         assertEquals(HttpStatusCode.Unauthorized, unauthorized.status)
+    }
+
+    @Test
+    fun dashboardSummaryUsesSelectedSleepNight() = testApplication {
+        configureTestApplication()
+        ingestSleepNightBatch()
+
+        val april20 =
+            authorizedGet("/api/v1/dashboard/summary?fromDate=2026-04-20&toDate=2026-04-20&timezone=Europe/Berlin")
+        assertEquals(HttpStatusCode.OK, april20.status)
+        assertEquals(
+            "2026-04-19T22:00:00Z",
+            april20.jsonBody()["lastSleepSession"]!!.jsonObject["startAt"]!!.jsonPrimitive.content
+        )
+
+        val april19 =
+            authorizedGet("/api/v1/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19&timezone=Europe/Berlin")
+        assertEquals(HttpStatusCode.OK, april19.status)
+        assertFalse(april19.jsonBody().containsKey("lastSleepSession"))
     }
 
     @Test
@@ -328,6 +427,16 @@ class ReadApiRouteTest {
             authorized()
             contentType(ContentType.Application.Json)
             setBody(mixedPayload())
+        }
+        assertEquals(HttpStatusCode.Created, response.status)
+        return response.jsonBody()["batchId"]!!.jsonPrimitive.int
+    }
+
+    private suspend fun ApplicationTestBuilder.ingestSleepNightBatch(): Int {
+        val response = client.post("/api/v1/ingestion/batches") {
+            authorized()
+            contentType(ContentType.Application.Json)
+            setBody(sleepNightPayload())
         }
         assertEquals(HttpStatusCode.Created, response.status)
         return response.jsonBody()["batchId"]!!.jsonPrimitive.int
@@ -490,6 +599,47 @@ class ReadApiRouteTest {
               "measuredAt": "2026-04-19T21:45:00Z",
               "bpm": 67,
               "context": "resting"
+            }
+          ]
+        }
+        """.trimIndent()
+
+    private fun sleepNightPayload(): String =
+        """
+        {
+          "provider": "health-connect",
+          "providerInstanceId": "pixel-8-health-connect",
+          "batchExternalId": "sleep-night-read-batch",
+          "ingestedAt": "2026-04-21T08:00:00Z",
+          "sourcePayload": {
+            "exportId": "sleep-night-read-batch"
+          },
+          "records": [
+            {
+              "type": "sleep_session",
+              "providerRecordId": "sleep-night-2026-04-20",
+              "startAt": "2026-04-19T22:00:00Z",
+              "endAt": "2026-04-20T06:00:00Z",
+              "stages": [
+                {
+                  "stage": "light",
+                  "startAt": "2026-04-19T22:00:00Z",
+                  "endAt": "2026-04-20T06:00:00Z"
+                }
+              ]
+            },
+            {
+              "type": "sleep_session",
+              "providerRecordId": "sleep-night-2026-04-21",
+              "startAt": "2026-04-20T22:00:00Z",
+              "endAt": "2026-04-21T06:00:00Z",
+              "stages": [
+                {
+                  "stage": "deep",
+                  "startAt": "2026-04-20T22:00:00Z",
+                  "endAt": "2026-04-21T06:00:00Z"
+                }
+              ]
             }
           ]
         }

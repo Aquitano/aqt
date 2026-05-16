@@ -69,6 +69,16 @@ export type SleepSessionsResponse = {
   items: SleepSession[];
 };
 
+export type SleepNight = {
+  date: string;
+  timezone: string;
+  session: SleepSession;
+};
+
+export type SleepNightsResponse = {
+  items: SleepNight[];
+};
+
 export type DashboardSummaryResponse = {
   fromDate: string;
   toDate: string;
@@ -247,7 +257,7 @@ export type DashboardData = {
   dailySteps: ApiResult<StepDailySummariesResponse>;
   latestWeight: ApiResult<BodyMeasurementsResponse>;
   latestHeartRate: ApiResult<HeartRateSamplesResponse>;
-  latestSleep: ApiResult<SleepSessionsResponse>;
+  latestSleep: ApiResult<SleepNightsResponse>;
   batches: ApiResult<IngestionBatchesResponse>;
   failures: ApiResult<IngestionBatchesResponse>;
   providerCatalog: ApiResult<ProviderCatalogResponse>;

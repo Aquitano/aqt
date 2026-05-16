@@ -55,24 +55,19 @@ class MetricCatalogService(
             readEndpoints = listOf(
                 endpoint("raw", "/api/v1/sleep/sessions", "SleepSessionsResponse"),
                 endpoint("latest", "/api/v1/sleep/sessions", "SleepSessionsResponse"),
+                endpoint("night", "/api/v1/sleep/nights", "SleepNightsResponse"),
                 endpoint("summary", "/api/v1/dashboard/summary", "DashboardSummaryResponse"),
-                MetricReadEndpointDto(
-                    mode = "night",
-                    method = "GET",
-                    path = null,
-                    available = false,
-                    responseDto = null,
-                ),
             ),
-            queryParameters = instantReadParameters() + latestParameter() + dashboardParameters(),
+            queryParameters = instantReadParameters() + latestParameter() + sleepNightParameters() + dashboardParameters(),
             aggregationModes = listOf(
                 mode("raw", "/api/v1/sleep/sessions"),
                 mode("latest", "/api/v1/sleep/sessions"),
+                mode("night", "/api/v1/sleep/nights"),
                 mode("summary", "/api/v1/dashboard/summary"),
-                MetricAggregationModeDto(name = "night", available = false),
             ),
             responseDtos = listOf(
                 "SleepSessionsResponse",
+                "SleepNightsResponse",
                 "DashboardSummaryResponse.lastSleepSession",
             ),
             providerDataTypes = providerDataTypes(
@@ -81,7 +76,7 @@ class MetricCatalogService(
                     "withings" to listOf("sleep", "sleep-summary"),
                 )
             ),
-            schemaHint = "items contain sleep sessions with nested stages. Night aggregation is not available yet.",
+            schemaHint = "raw items contain sleep sessions with nested stages. Sleep nights classify complete sessions by the localized endAt date.",
         )
 
     private fun bodyMeasurementsCatalog(): MetricFamilyCatalogDto =
@@ -180,6 +175,14 @@ class MetricCatalogService(
             MetricQueryParameterDto("date", "date | today", description = "Exact UTC date. Cannot be combined with fromDate or toDate."),
             MetricQueryParameterDto("fromDate", "date", description = "Inclusive UTC start date."),
             MetricQueryParameterDto("toDate", "date", description = "Inclusive UTC end date."),
+        )
+
+    private fun sleepNightParameters(): List<MetricQueryParameterDto> =
+        listOf(
+            MetricQueryParameterDto("date", "date | today", description = "Exact local sleep night date based on session endAt. Cannot be combined with fromDate or toDate."),
+            MetricQueryParameterDto("fromDate", "date", description = "Inclusive local sleep-night start date based on session endAt."),
+            MetricQueryParameterDto("toDate", "date", description = "Inclusive local sleep-night end date based on session endAt."),
+            MetricQueryParameterDto("timezone", "IANA timezone", description = "Timezone used to classify sleep endAt dates. Default UTC."),
         )
 
     private fun dashboardParameters(): List<MetricQueryParameterDto> =

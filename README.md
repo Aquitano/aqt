@@ -298,7 +298,7 @@ curl "http://localhost:8080/api/v1/metrics/catalog" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
-The catalog lists the supported metric families, read endpoint paths, common query parameters, aggregation modes, body measurement `metricType` values, response DTO names, and related provider data types. OpenAPI remains the formal schema contract for request and response shapes; the catalog is intentionally smaller and is meant for clients that need workflow decisions without hardcoding every metric surface. Sleep night aggregation is reported as unavailable until a night endpoint exists.
+The catalog lists the supported metric families, read endpoint paths, common query parameters, aggregation modes, body measurement `metricType` values, response DTO names, and related provider data types. OpenAPI remains the formal schema contract for request and response shapes; the catalog is intentionally smaller and is meant for clients that need workflow decisions without hardcoding every metric surface.
 
 ```bash
 curl "http://localhost:8080/api/v1/metrics/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z" \
@@ -308,6 +308,9 @@ curl "http://localhost:8080/api/v1/metrics/steps/daily?fromDate=2026-04-19&toDat
   -H "Authorization: Bearer local-dev-key"
 
 curl "http://localhost:8080/api/v1/sleep/sessions?includeSource=true" \
+  -H "Authorization: Bearer local-dev-key"
+
+curl "http://localhost:8080/api/v1/sleep/nights?date=2026-04-20&timezone=Europe/Berlin&includeSource=true" \
   -H "Authorization: Bearer local-dev-key"
 
 curl "http://localhost:8080/api/v1/body/measurements?metricType=weight" \
@@ -335,6 +338,11 @@ Common read filters:
 - `providerInstanceId`: concrete provider/device/account instance
 - `includeSource`: `true` or `false`
 - `limit`: default `500`, max `5000`
+
+Sleep reads have two modes:
+
+- `/api/v1/sleep/sessions` is the raw instant-based read. Its `from` and `to` filters apply to session `startAt`, so it is useful for inspecting stored sessions by timestamp.
+- `/api/v1/sleep/nights` is the calendar sleep-night read. It returns complete sessions, including all stages, and classifies each session by the localized date of `endAt`. `timezone` is an IANA timezone and defaults to `UTC`; pass it when clients need local calendar behavior. For example, `date=2026-04-20&timezone=Europe/Berlin` returns a session that starts at `2026-04-19T22:00:00Z` and ends at `2026-04-20T06:00:00Z` as the `2026-04-20` sleep night in `Europe/Berlin`. A session from the evening of April 20 to the morning of April 21 is returned for `date=2026-04-21`, not April 20, under those semantics.
 
 ## Storage Model
 

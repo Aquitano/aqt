@@ -41,6 +41,18 @@ data class SleepSessionsResponse(
 )
 
 @Serializable
+data class SleepNightsResponse(
+    val items: List<SleepNightResponse>,
+)
+
+@Serializable
+data class SleepNightResponse(
+    val date: String,
+    val timezone: String,
+    val session: SleepSessionResponse,
+)
+
+@Serializable
 data class SleepSessionResponse(
     val id: Int,
     val startAt: String,

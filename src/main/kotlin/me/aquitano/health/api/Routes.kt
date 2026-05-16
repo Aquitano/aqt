@@ -261,6 +261,18 @@ fun Application.configureRoutes(services: ApplicationServices) {
             operationId = "listSleepSessions",
             summary = "List sleep sessions",
         )
+        get("/api/v1/sleep/nights") {
+            call.authenticateProtected(services)
+            call.respond(
+                services.metricsQueryService.listSleepNights(
+                    call.queryParams(),
+                    services.clock.now()
+                )
+            )
+        }.describeSleepNightReadOperation(
+            operationId = "listSleepNights",
+            summary = "List sleep nights",
+        )
         get("/api/v1/body/measurements") {
             call.authenticateProtected(services)
             call.respond(services.metricsQueryService.listBodyMeasurements(call.queryParams()))
@@ -500,6 +512,19 @@ private inline fun <reified T : Any> Route.describeReadOperation(
     errorResponses()
 }
 
+private fun Route.describeSleepNightReadOperation(
+    operationId: String,
+    summary: String,
+): Route = describe {
+    this.operationId = operationId
+    tag("Read")
+    this.summary = summary
+    bearerApiKey()
+    sleepNightQueryParameters()
+    jsonResponse<SleepNightsResponse>(HttpStatusCode.OK, summary)
+    errorResponses()
+}
+
 private fun Operation.Builder.readQueryParameters() {
     parameters {
         query("from") {
@@ -518,8 +543,49 @@ private fun Operation.Builder.readQueryParameters() {
             description = "Source provider instance filter"
             schema = buildSchema(typeOf<String>())
         }
+        query("includeSource") {
+            description = "Include source provider metadata"
+            schema = buildSchema(typeOf<Boolean>())
+        }
         query("limit") {
             description = "Maximum number of items"
+            schema = buildSchema(typeOf<Int>())
+        }
+    }
+}
+
+private fun Operation.Builder.sleepNightQueryParameters() {
+    parameters {
+        query("date") {
+            description = "Exact sleep night date or today. Matches the localized date of session endAt and cannot be combined with fromDate or toDate."
+            schema = buildSchema(typeOf<String>())
+        }
+        query("fromDate") {
+            description = "Inclusive local sleep-night start date based on session endAt"
+            schema = buildSchema(typeOf<String>())
+        }
+        query("toDate") {
+            description = "Inclusive local sleep-night end date based on session endAt"
+            schema = buildSchema(typeOf<String>())
+        }
+        query("timezone") {
+            description = "IANA timezone used to classify endAt dates. Defaults to UTC."
+            schema = buildSchema(typeOf<String>())
+        }
+        query("provider") {
+            description = "Source provider filter"
+            schema = buildSchema(typeOf<String>())
+        }
+        query("providerInstanceId") {
+            description = "Source provider instance filter"
+            schema = buildSchema(typeOf<String>())
+        }
+        query("includeSource") {
+            description = "Include source provider metadata"
+            schema = buildSchema(typeOf<Boolean>())
+        }
+        query("limit") {
+            description = "Maximum number of items. Ignored as 1 when date is provided."
             schema = buildSchema(typeOf<Int>())
         }
     }

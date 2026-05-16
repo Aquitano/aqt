@@ -12,7 +12,7 @@ import type {
   ProviderStatusCatalogResponse,
   ProviderSyncRequest,
   ProviderSyncResponse,
-  SleepSessionsResponse,
+  SleepNightsResponse,
   StepDailySummariesResponse,
 } from "./types";
 
@@ -45,6 +45,7 @@ export async function getDashboardData(fromDate: string, toDate: string): Promis
       `${catalogReadPath(metricCatalog, "steps", "summary", "/api/v1/dashboard/summary")}?${params({
         fromDate,
         toDate,
+        timezone: "UTC",
       })}`,
       { protected: true },
     ),
@@ -74,13 +75,17 @@ export async function getDashboardData(fromDate: string, toDate: string): Promis
       )}?latest=true&includeSource=true`,
       { protected: true },
     ),
-    request<SleepSessionsResponse>(
+    request<SleepNightsResponse>(
       `${catalogReadPath(
         metricCatalog,
         "sleep",
-        "latest",
-        "/api/v1/sleep/sessions",
-      )}?latest=true&includeSource=true`,
+        "night",
+        "/api/v1/sleep/nights",
+      )}?${params({
+        date: toDate,
+        timezone: "UTC",
+        includeSource: "true",
+      })}`,
       { protected: true },
     ),
     request<IngestionBatchesResponse>("/api/v1/admin/ingestion/batches?limit=10", {

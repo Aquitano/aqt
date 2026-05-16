@@ -12,6 +12,8 @@ import me.aquitano.health.infrastructure.repositories.DailyReadFilters
 import me.aquitano.health.infrastructure.repositories.HeartRateSampleRow
 import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
 import me.aquitano.health.infrastructure.repositories.ReadFilters
+import me.aquitano.health.infrastructure.repositories.SleepNightReadFilters
+import me.aquitano.health.infrastructure.repositories.SleepNightRow
 import me.aquitano.health.infrastructure.repositories.SleepSessionRow
 import me.aquitano.health.infrastructure.repositories.SleepStageRow
 import me.aquitano.health.infrastructure.repositories.SourceMetadata
@@ -19,6 +21,7 @@ import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 
 class MetricsQueryService(
@@ -78,6 +81,20 @@ class MetricsQueryService(
             SleepSessionsResponse(
                 items = sessions.map { session ->
                     session.toResponse(stagesBySession, sourceMetadata)
+                },
+            )
+        }
+
+    suspend fun listSleepNights(
+        params: QueryParams,
+        now: Instant,
+    ): SleepNightsResponse =
+        dbQuery {
+            val (nights, stagesBySession, sourceMetadata) =
+                metricsReadRepository.listSleepNights(params.sleepNightReadFilters(now))
+            SleepNightsResponse(
+                items = nights.map { night ->
+                    night.toResponse(stagesBySession, sourceMetadata)
                 },
             )
         }
@@ -168,6 +185,15 @@ class MetricsQueryService(
                 includeSource = includeSource,
                 limit = 1,
             )
+            val sleepNightFilters = SleepNightReadFilters(
+                fromDate = toDate,
+                toDate = toDate,
+                timezone = params.timezone(),
+                provider = params.optional("provider"),
+                providerInstanceId = params.optional("providerInstanceId"),
+                includeSource = includeSource,
+                limit = 1,
+            )
             val steps = metricsReadRepository.sumStepDailySummaries(dailyFilters)
             val (weight, weightSourceMetadata) = metricsReadRepository.latestBodyMeasurement(
                 instantFilters,
@@ -175,8 +201,9 @@ class MetricsQueryService(
             )
             val (heartRate, heartRateSourceMetadata) =
                 metricsReadRepository.latestHeartRateSample(instantFilters)
-            val (sleep, sleepStagesBySession, sleepSourceMetadata) =
-                metricsReadRepository.latestSleepSession(instantFilters)
+            val (sleepNights, sleepStagesBySession, sleepSourceMetadata) =
+                metricsReadRepository.listSleepNights(sleepNightFilters)
+            val sleep = sleepNights.firstOrNull()?.session
             DashboardSummaryResponse(
                 fromDate = fromDate.toString(),
                 toDate = toDate.toString(),
@@ -205,6 +232,44 @@ class MetricsQueryService(
             providerInstanceId = optional("providerInstanceId"),
             includeSource = boolean("includeSource", default = false),
             limit = limitOverride ?: limit(default = 500, max = 5000),
+        )
+    }
+
+    private fun QueryParams.sleepNightReadFilters(now: Instant): SleepNightReadFilters {
+        val timezone = timezone()
+        val exactDate = dateOrToday("date", now, timezone)
+        if (exactDate != null && (optional("fromDate") != null || optional("toDate") != null)) {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        field = "date",
+                        code = ValidationIssueCodes.InvalidState,
+                        message = "cannot be combined with fromDate or toDate",
+                    )
+                )
+            )
+        }
+        val fromDate = exactDate ?: date("fromDate")
+        val toDate = exactDate ?: date("toDate")
+        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        field = "fromDate",
+                        code = ValidationIssueCodes.InvalidRange,
+                        message = "must be on or before toDate",
+                    )
+                )
+            )
+        }
+        return SleepNightReadFilters(
+            fromDate = fromDate,
+            toDate = toDate,
+            timezone = timezone,
+            provider = optional("provider"),
+            providerInstanceId = optional("providerInstanceId"),
+            includeSource = boolean("includeSource", default = false),
+            limit = if (exactDate != null) 1 else limit(default = 500, max = 5000),
         )
     }
 
@@ -296,6 +361,37 @@ class QueryParams(
                         field = name,
                         code = ValidationIssueCodes.InvalidFormat,
                         message = "must be an ISO-8601 date or today",
+                    )
+                )
+            )
+        }
+    }
+
+    fun dateOrToday(name: String, now: Instant, timezone: ZoneId): LocalDate? {
+        val value = optional(name) ?: return null
+        if (value == "today") return now.atZone(timezone).toLocalDate()
+        return runCatching { LocalDate.parse(value) }.getOrElse {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        field = name,
+                        code = ValidationIssueCodes.InvalidFormat,
+                        message = "must be an ISO-8601 date or today",
+                    )
+                )
+            )
+        }
+    }
+
+    fun timezone(name: String = "timezone"): ZoneId {
+        val value = optional(name) ?: return ZoneOffset.UTC
+        return runCatching { ZoneId.of(value) }.getOrElse {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        field = name,
+                        code = ValidationIssueCodes.InvalidFormat,
+                        message = "must be an IANA timezone",
                     )
                 )
             )
@@ -425,4 +521,14 @@ private fun SleepSessionRow.toResponse(
             )
         },
         source = sourceMetadata[sourceInstanceId].toResponse(),
+    )
+
+private fun SleepNightRow.toResponse(
+    stagesBySession: Map<Int, List<SleepStageRow>>,
+    sourceMetadata: Map<Int, SourceMetadata>
+): SleepNightResponse =
+    SleepNightResponse(
+        date = date,
+        timezone = timezone,
+        session = session.toResponse(stagesBySession, sourceMetadata),
     )
