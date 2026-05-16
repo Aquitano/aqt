@@ -14,9 +14,11 @@ import java.sql.DriverManager
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import me.aquitano.health.domain.BodyMetricTypes
 
 class ReadApiRouteTest {
     @Test
@@ -87,6 +89,53 @@ class ReadApiRouteTest {
             "validation_failed",
             invalidRange.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
         )
+    }
+
+    @Test
+    fun metricCatalogDescribesCurrentReadSurfaces() = testApplication {
+        configureTestApplication()
+
+        val unauthorized = client.get("/api/v1/metrics/catalog")
+        assertEquals(HttpStatusCode.Unauthorized, unauthorized.status)
+
+        val response = authorizedGet("/api/v1/metrics/catalog")
+        assertEquals(HttpStatusCode.OK, response.status)
+        val families = response.jsonBody()["families"]!!.jsonArray
+        assertEquals(
+            setOf("steps", "sleep", "body_measurements", "heart_rate"),
+            families.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet(),
+        )
+
+        val steps = families.family("steps")
+        assertContains(steps.endpointPaths(), "/api/v1/metrics/steps")
+        assertContains(steps.endpointPaths(), "/api/v1/metrics/steps/daily")
+        assertContains(steps.queryParameterNames(), "from")
+        assertContains(steps.queryParameterNames(), "to")
+        assertContains(steps.queryParameterNames(), "includeSource")
+        assertContains(steps.modeNames(), "raw")
+        assertContains(steps.modeNames(), "daily")
+        assertContains(steps.modeNames(), "summary")
+
+        val body = families.family("body_measurements")
+        assertEquals(
+            BodyMetricTypes.supported.sorted(),
+            body["metricTypes"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertEquals(
+            BodyMetricTypes.supported.sorted(),
+            body.queryParameterValues("metricType"),
+        )
+        assertContains(body.endpointPaths(), "/api/v1/body/measurements")
+
+        val sleep = families.family("sleep")
+        val nightMode = sleep["aggregationModes"]!!.jsonArray
+            .map { it.jsonObject }
+            .single { it["name"]!!.jsonPrimitive.content == "night" }
+        assertEquals(false, nightMode["available"]!!.jsonPrimitive.boolean)
+
+        val heartRate = families.family("heart_rate")
+        assertContains(heartRate.endpointPaths(), "/api/v1/metrics/heart-rate")
+        assertContains(heartRate.modeNames(), "latest")
     }
 
     @Test
@@ -317,6 +366,30 @@ class ReadApiRouteTest {
 
     private suspend fun HttpResponse.items(): JsonArray =
         jsonBody()["items"]!!.jsonArray
+
+    private fun JsonArray.family(name: String): JsonObject =
+        map { it.jsonObject }
+            .single { it["name"]!!.jsonPrimitive.content == name }
+
+    private fun JsonObject.endpointPaths(): List<String> =
+        this["readEndpoints"]!!.jsonArray
+            .mapNotNull { it.jsonObject["path"]?.jsonPrimitive?.content }
+
+    private fun JsonObject.queryParameterNames(): List<String> =
+        this["queryParameters"]!!.jsonArray
+            .map { it.jsonObject["name"]!!.jsonPrimitive.content }
+
+    private fun JsonObject.queryParameterValues(name: String): List<String> =
+        this["queryParameters"]!!.jsonArray
+            .map { it.jsonObject }
+            .single { it["name"]!!.jsonPrimitive.content == name }
+            .getValue("values")
+            .jsonArray
+            .map { it.jsonPrimitive.content }
+
+    private fun JsonObject.modeNames(): List<String> =
+        this["aggregationModes"]!!.jsonArray
+            .map { it.jsonObject["name"]!!.jsonPrimitive.content }
 
     private fun mixedPayload(): String =
         """

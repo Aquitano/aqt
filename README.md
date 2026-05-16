@@ -291,6 +291,15 @@ If `dataTypes` is omitted, the sync reads `activity`, `measures`, `sleep-summary
 
 All read endpoints require `Authorization: Bearer <api-key>`.
 
+Clients that need runtime discovery can call the compact metric catalog:
+
+```bash
+curl "http://localhost:8080/api/v1/metrics/catalog" \
+  -H "Authorization: Bearer local-dev-key"
+```
+
+The catalog lists the supported metric families, read endpoint paths, common query parameters, aggregation modes, body measurement `metricType` values, response DTO names, and related provider data types. OpenAPI remains the formal schema contract for request and response shapes; the catalog is intentionally smaller and is meant for clients that need workflow decisions without hardcoding every metric surface. Sleep night aggregation is reported as unavailable until a night endpoint exists.
+
 ```bash
 curl "http://localhost:8080/api/v1/metrics/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z" \
   -H "Authorization: Bearer local-dev-key"

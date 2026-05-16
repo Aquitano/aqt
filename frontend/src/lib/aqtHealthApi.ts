@@ -6,6 +6,7 @@ import type {
   HealthResponse,
   HeartRateSamplesResponse,
   IngestionBatchesResponse,
+  MetricCatalogResponse,
   ProviderCatalogResponse,
   ProviderOAuthStartResponse,
   ProviderStatusCatalogResponse,
@@ -25,6 +26,7 @@ const defaultBaseUrl = "http://localhost:8080";
 
 export async function getDashboardData(fromDate: string, toDate: string): Promise<DashboardData> {
   const apiBaseUrl = apiBaseUrlFromEnv();
+  const metricCatalog = await getMetricCatalog();
 
   const [
     health,
@@ -40,23 +42,45 @@ export async function getDashboardData(fromDate: string, toDate: string): Promis
   ] = await Promise.all([
     request<HealthResponse>("/api/v1/admin/health"),
     request<DashboardSummaryResponse>(
-      `/api/v1/dashboard/summary?${params({ fromDate, toDate })}`,
+      `${catalogReadPath(metricCatalog, "steps", "summary", "/api/v1/dashboard/summary")}?${params({
+        fromDate,
+        toDate,
+      })}`,
       { protected: true },
     ),
     request<StepDailySummariesResponse>(
-      `/api/v1/metrics/steps/daily?${params({ fromDate, toDate, includeSource: "true" })}`,
+      `${catalogReadPath(metricCatalog, "steps", "daily", "/api/v1/metrics/steps/daily")}?${params({
+        fromDate,
+        toDate,
+        includeSource: "true",
+      })}`,
       { protected: true },
     ),
     request<BodyMeasurementsResponse>(
-      "/api/v1/body/measurements?metricType=weight&latest=true&includeSource=true",
+      `${catalogReadPath(
+        metricCatalog,
+        "body_measurements",
+        "latest",
+        "/api/v1/body/measurements",
+      )}?metricType=weight&latest=true&includeSource=true`,
       { protected: true },
     ),
     request<HeartRateSamplesResponse>(
-      "/api/v1/metrics/heart-rate?latest=true&includeSource=true",
+      `${catalogReadPath(
+        metricCatalog,
+        "heart_rate",
+        "latest",
+        "/api/v1/metrics/heart-rate",
+      )}?latest=true&includeSource=true`,
       { protected: true },
     ),
     request<SleepSessionsResponse>(
-      "/api/v1/sleep/sessions?latest=true&includeSource=true",
+      `${catalogReadPath(
+        metricCatalog,
+        "sleep",
+        "latest",
+        "/api/v1/sleep/sessions",
+      )}?latest=true&includeSource=true`,
       { protected: true },
     ),
     request<IngestionBatchesResponse>("/api/v1/admin/ingestion/batches?limit=10", {
@@ -81,7 +105,14 @@ export async function getDashboardData(fromDate: string, toDate: string): Promis
     failures,
     providerCatalog,
     providerStatuses,
+    metricCatalog,
   };
+}
+
+export async function getMetricCatalog(): Promise<ApiResult<MetricCatalogResponse>> {
+  return request<MetricCatalogResponse>("/api/v1/metrics/catalog", {
+    protected: true,
+  });
 }
 
 export async function getProviderCatalog(): Promise<ApiResult<ProviderCatalogResponse>> {
@@ -120,6 +151,21 @@ export async function syncProvider(
 
 function apiBaseUrlFromEnv(): string {
   return process.env.AQT_HEALTH_API_BASE_URL ?? defaultBaseUrl;
+}
+
+function catalogReadPath(
+  catalog: ApiResult<MetricCatalogResponse>,
+  familyName: string,
+  mode: string,
+  fallback: string,
+): string {
+  if (!catalog.ok) return fallback;
+
+  const path = catalog.data.families
+    .find((family) => family.name === familyName)
+    ?.readEndpoints.find((endpoint) => endpoint.mode === mode && endpoint.available)?.path;
+
+  return path ?? fallback;
 }
 
 async function request<T>(path: string, options: FetchOptions = {}): Promise<ApiResult<T>> {

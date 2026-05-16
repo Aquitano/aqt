@@ -121,6 +121,9 @@ fun Application.module() {
         providerDiscoveryService = ProviderDiscoveryService(
             providerRegistry = providerRegistry,
         ),
+        metricCatalogService = MetricCatalogService(
+            providerRegistry = providerRegistry,
+        ),
         providerStatusService = ProviderStatusService(
             providerRegistry = providerRegistry,
             providerOAuthRepository = providerOAuthRepository,
@@ -152,6 +155,7 @@ data class ApplicationServices(
     val adminService: AdminService,
     val providerRegistry: HealthProviderRegistry,
     val providerDiscoveryService: ProviderDiscoveryService,
+    val metricCatalogService: MetricCatalogService,
     val providerStatusService: ProviderStatusService,
     val providerWorkflowService: ProviderWorkflowService,
 )

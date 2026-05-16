@@ -179,6 +179,48 @@ export type ProviderStatusCatalogResponse = {
   providers: ProviderStatus[];
 };
 
+export type MetricCatalogResponse = {
+  families: MetricFamilyCatalog[];
+};
+
+export type MetricFamilyCatalog = {
+  name: string;
+  readEndpoints: MetricReadEndpoint[];
+  queryParameters: MetricQueryParameter[];
+  aggregationModes: MetricAggregationMode[];
+  metricTypes: string[];
+  responseDtos: string[];
+  providerDataTypes: MetricProviderDataTypes[];
+  schemaHint: string;
+};
+
+export type MetricReadEndpoint = {
+  mode: string;
+  method: "GET";
+  path?: string;
+  available: boolean;
+  responseDto?: string;
+};
+
+export type MetricQueryParameter = {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+  values: string[];
+};
+
+export type MetricAggregationMode = {
+  name: string;
+  available: boolean;
+  endpoint?: string;
+};
+
+export type MetricProviderDataTypes = {
+  providerCode: string;
+  dataTypes: string[];
+};
+
 export type ProviderStatus = {
   providerCode: string;
   displayName: string;
@@ -210,4 +252,5 @@ export type DashboardData = {
   failures: ApiResult<IngestionBatchesResponse>;
   providerCatalog: ApiResult<ProviderCatalogResponse>;
   providerStatuses: ApiResult<ProviderStatusCatalogResponse>;
+  metricCatalog: ApiResult<MetricCatalogResponse>;
 };

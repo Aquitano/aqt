@@ -224,6 +224,17 @@ fun Application.configureRoutes(services: ApplicationServices) {
             jsonResponse<ProviderSyncResponseDto>(HttpStatusCode.OK, "Provider sync result")
             errorResponses(notFound = true, conflict = true, upstream = true)
         }
+        get("/api/v1/metrics/catalog") {
+            call.authenticateProtected(services)
+            call.respond(services.metricCatalogService.catalog())
+        }.describe {
+            operationId = "getMetricCatalog"
+            tag("Read")
+            summary = "Get metric read catalog"
+            bearerApiKey()
+            jsonResponse<MetricCatalogResponseDto>(HttpStatusCode.OK, "Metric read catalog")
+            errorResponses()
+        }
         get("/api/v1/metrics/steps") {
             call.authenticateProtected(services)
             call.respond(services.metricsQueryService.listStepSamples(call.queryParams()))
