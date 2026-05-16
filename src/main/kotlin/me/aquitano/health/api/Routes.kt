@@ -33,7 +33,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             info = openApiInfo
             components = openApiBaseDoc.components
             source = openApiSource
-            remotePath = "openapi"
+            remotePath = "../openapi"
         }
 
         get("/api/v1/admin/health") {
@@ -53,7 +53,10 @@ fun Application.configureRoutes(services: ApplicationServices) {
             responses {
                 HttpStatusCode.OK {
                     description = "Service health status"
-                    schema = buildSchema(typeOf<HealthResponse>())
+                    content {
+                        schema = buildSchema(typeOf<HealthResponse>())
+                        example("health", healthResponseExample())
+                    }
                 }
                 commonErrors(
                     unauthorized = false,
@@ -103,32 +106,30 @@ fun Application.configureRoutes(services: ApplicationServices) {
         }
         get("/api/v1/providers") {
             call.authenticateProtected(services)
-            call.respond(services.providerDiscoveryService.listProviders())
+            call.respond<ProviderCatalogResponseDto>(services.providerDiscoveryService.listProviders())
         }.describe {
             operationId = "listProviders"
             tag("Providers")
             summary = "List provider discovery metadata"
             description = "Returns provider capabilities, supported data types, default sync selections, and workflow endpoint paths for client discovery."
             requiresBearerAuth()
-            jsonResponse<ProviderCatalogResponseDto>(HttpStatusCode.OK, "Provider catalog", "providers", providerCatalogExample())
             errorResponses()
         }
         get("/api/v1/providers/status") {
             call.authenticateProtected(services)
-            call.respond(services.providerStatusService.listProviderStatuses(services.clock.now()))
+            call.respond<ProviderStatusCatalogResponseDto>(services.providerStatusService.listProviderStatuses(services.clock.now()))
         }.describe {
             operationId = "listProviderStatuses"
             tag("Providers")
             summary = "List provider authentication and account status"
             description = "Returns provider configuration, OAuth connection state, available accounts, token status, and the next suggested workflow action."
             requiresBearerAuth()
-            jsonResponse<ProviderStatusCatalogResponseDto>(HttpStatusCode.OK, "Provider status catalog", "statuses", providerStatusExample())
             errorResponses()
         }
         get("/api/v1/providers/{providerCode}") {
             call.authenticateProtected(services)
-            val code = call.providerCode() ?: return@get
-            call.respond(services.providerDiscoveryService.getProvider(code))
+            val code = call.providerCode()
+            call.respond<ProviderDescriptorResponseDto>(services.providerDiscoveryService.getProvider(code))
         }.describe {
             operationId = "getProvider"
             tag("Providers")
@@ -136,13 +137,12 @@ fun Application.configureRoutes(services: ApplicationServices) {
             description = "Returns discovery metadata for one provider code."
             requiresBearerAuth()
             providerCodePath()
-            jsonResponse<ProviderDescriptorResponseDto>(HttpStatusCode.OK, "Provider metadata")
             errorResponses(notFound = true)
         }
         get("/api/v1/providers/{providerCode}/status") {
             call.authenticateProtected(services)
-            val code = call.providerCode() ?: return@get
-            call.respond(services.providerStatusService.getProviderStatus(code, services.clock.now()))
+            val code = call.providerCode()
+            call.respond<ProviderStatusResponseDto>(services.providerStatusService.getProviderStatus(code, services.clock.now()))
         }.describe {
             operationId = "getProviderStatus"
             tag("Providers")
@@ -150,13 +150,12 @@ fun Application.configureRoutes(services: ApplicationServices) {
             description = "Returns configuration, connection, account, and token status for one provider code."
             requiresBearerAuth()
             providerCodePath()
-            jsonResponse<ProviderStatusResponseDto>(HttpStatusCode.OK, "Provider status")
             errorResponses(notFound = true)
         }
         get("/api/v1/providers/{providerCode}/oauth/start") {
             call.authenticateProtected(services)
-            val code = call.providerCode() ?: return@get
-            call.respond(services.providerWorkflowService.startOAuth(code, services.clock.now()))
+            val code = call.providerCode()
+            call.respond<ProviderOAuthStartResponse>(services.providerWorkflowService.startOAuth(code, services.clock.now()))
         }.describe {
             operationId = "startProviderOAuth"
             tag("Providers")
@@ -164,12 +163,12 @@ fun Application.configureRoutes(services: ApplicationServices) {
             description = "Creates provider OAuth state and returns the authorization URL clients should open to connect an account. The state expires at the returned `expiresAt` timestamp."
             requiresBearerAuth()
             providerCodePath()
-            jsonResponse<ProviderOAuthStartResponse>(HttpStatusCode.OK, "Provider OAuth authorization URL", "oauthStart", oauthStartExample())
             errorResponses(notFound = true)
         }
         get("/api/v1/providers/{providerCode}/oauth/callback") {
-            val code = call.providerCode() ?: return@get
+            val code = call.providerCode()
             call.respond(
+                HttpStatusCode.OK,
                 services.providerWorkflowService.completeOAuth(
                     providerCode = code,
                     code = call.request.queryParameters["code"],
@@ -199,13 +198,13 @@ fun Application.configureRoutes(services: ApplicationServices) {
                     schema = buildSchema(typeOf<String>())
                 }
             }
-            jsonResponse<ProviderOAuthCallbackResponse>(HttpStatusCode.OK, "Provider connection result", "connected", oauthCallbackExample())
             errorResponses(unauthorized = false, notFound = true, upstream = true)
         }
         post("/api/v1/providers/{providerCode}/sync") {
             call.authenticateProtected(services)
-            val code = call.providerCode() ?: return@post
-            call.respond(
+            val code = call.providerCode()
+            call.respond<ProviderSyncResponseDto>(
+                HttpStatusCode.OK,
                 services.providerWorkflowService.sync(
                     providerCode = code,
                     request = call.receive<ProviderSyncRequestDto>(),
@@ -220,32 +219,31 @@ fun Application.configureRoutes(services: ApplicationServices) {
             requiresBearerAuth()
             providerCodePath()
             jsonRequest<ProviderSyncRequestDto>("Provider sync request. Provider adapters may enforce max range and page-size constraints advertised by the provider catalog.", "syncRequest", providerSyncRequestExample())
-            jsonResponse<ProviderSyncResponseDto>(HttpStatusCode.OK, "Provider sync result", "syncResponse", providerSyncResponseExample())
             errorResponses(notFound = true, conflict = true, upstream = true)
         }
         get("/api/v1/metrics/catalog") {
             call.authenticateProtected(services)
-            call.respond(services.metricCatalogService.catalog())
+            call.respond<MetricCatalogResponseDto>(services.metricCatalogService.catalog())
         }.describe {
             operationId = "getMetricCatalog"
             tag("Read")
             summary = "Get metric read catalog"
             description = "Discovery endpoint for metric families, supported query parameters, response DTO names, aggregation modes, and provider data-type mappings. OpenAPI remains the formal schema contract; this endpoint helps clients decide which workflow to use."
             requiresBearerAuth()
-            jsonResponse<MetricCatalogResponseDto>(HttpStatusCode.OK, "Metric read catalog")
             errorResponses()
         }
         get("/api/v1/metrics/steps") {
             call.authenticateProtected(services)
-            call.respond(services.metricsQueryService.listStepSamples(call.queryParams()))
-        }.describeReadOperation<StepSamplesResponse>(
+            call.respond<StepSamplesResponse>(services.metricsQueryService.listStepSamples(call.queryParams()))
+        }.describeReadOperation(
             operationId = "listStepSamples",
             summary = "List step samples",
             descriptionText = "Returns raw step samples filtered by timestamp range, source provider, provider instance, source metadata inclusion, and item limit.",
         )
         get("/api/v1/metrics/steps/daily") {
             call.authenticateProtected(services)
-            call.respond(
+            call.respond<StepDailySummariesResponse>(
+                HttpStatusCode.OK,
                 services.metricsQueryService.listStepDailySummaries(
                     call.queryParams(),
                     services.clock.now()
@@ -254,8 +252,8 @@ fun Application.configureRoutes(services: ApplicationServices) {
         }.describeDailyStepReadOperation()
         get("/api/v1/sleep/sessions") {
             call.authenticateProtected(services)
-            call.respond(services.metricsQueryService.listSleepSessions(call.queryParams()))
-        }.describeReadOperation<SleepSessionsResponse>(
+            call.respond<SleepSessionsResponse>(services.metricsQueryService.listSleepSessions(call.queryParams()))
+        }.describeReadOperation(
             operationId = "listSleepSessions",
             summary = "List sleep sessions",
             descriptionText = "Returns sleep sessions with nested stages. Use `latest=true` to return the latest matching session only.",
@@ -263,7 +261,8 @@ fun Application.configureRoutes(services: ApplicationServices) {
         )
         get("/api/v1/sleep/nights") {
             call.authenticateProtected(services)
-            call.respond(
+            call.respond<SleepNightsResponse>(
+                HttpStatusCode.OK,
                 services.metricsQueryService.listSleepNights(
                     call.queryParams(),
                     services.clock.now()
@@ -272,7 +271,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
         }.describeSleepNightReadOperation()
         get("/api/v1/body/measurements") {
             call.authenticateProtected(services)
-            call.respond(services.metricsQueryService.listBodyMeasurements(call.queryParams()))
+            call.respond<BodyMeasurementsResponse>(services.metricsQueryService.listBodyMeasurements(call.queryParams()))
         }.describe {
             operationId = "listBodyMeasurements"
             tag("Read")
@@ -280,13 +279,12 @@ fun Application.configureRoutes(services: ApplicationServices) {
             description = "Returns body measurements filtered by timestamp, source, and optional `metricType`. Use `latest=true` to return the latest matching measurement only."
             requiresBearerAuth()
             bodyMeasurementQueryParameters()
-            jsonResponse<BodyMeasurementsResponse>(HttpStatusCode.OK, "List body measurements", "example", bodyMeasurementsExample())
             errorResponses()
         }
         get("/api/v1/metrics/heart-rate") {
             call.authenticateProtected(services)
-            call.respond(services.metricsQueryService.listHeartRateSamples(call.queryParams()))
-        }.describeReadOperation<HeartRateSamplesResponse>(
+            call.respond<HeartRateSamplesResponse>(services.metricsQueryService.listHeartRateSamples(call.queryParams()))
+        }.describeReadOperation(
             operationId = "listHeartRateSamples",
             summary = "List heart rate samples",
             descriptionText = "Returns heart-rate samples filtered by timestamp and source. Use `latest=true` to return the latest matching sample only.",
@@ -294,7 +292,8 @@ fun Application.configureRoutes(services: ApplicationServices) {
         )
         get("/api/v1/dashboard/summary") {
             call.authenticateProtected(services)
-            call.respond(
+            call.respond<DashboardSummaryResponse>(
+                HttpStatusCode.OK,
                 services.metricsQueryService.dashboardSummary(
                     call.queryParams(),
                     services.clock.now()
@@ -307,12 +306,11 @@ fun Application.configureRoutes(services: ApplicationServices) {
             description = "Returns aggregate dashboard data for an inclusive UTC date range, including total steps and latest matching weight, heart-rate, and sleep values."
             requiresBearerAuth()
             dashboardQueryParameters()
-            jsonResponse<DashboardSummaryResponse>(HttpStatusCode.OK, "Dashboard summary", "summary", dashboardSummaryExample())
             errorResponses()
         }
         get("/api/v1/admin/ingestion/batches") {
             call.authenticateProtected(services)
-            call.respond(services.adminService.listBatches(call.queryParams()))
+            call.respond<IngestionBatchesResponse>(services.adminService.listBatches(call.queryParams()))
         }.describe {
             operationId = "listIngestionBatches"
             tag("Admin")
@@ -320,12 +318,12 @@ fun Application.configureRoutes(services: ApplicationServices) {
             description = "Lists ingestion batches by received timestamp and optional status for administrative inspection."
             requiresBearerAuth()
             adminQueryParameters()
-            jsonResponse<IngestionBatchesResponse>(HttpStatusCode.OK, "Ingestion batches")
             errorResponses()
         }
         get("/api/v1/admin/ingestion/batches/{id}") {
             call.authenticateProtected(services)
-            call.respond(
+            call.respond<IngestionBatchDetailResponse>(
+                HttpStatusCode.OK,
                 services.adminService.getBatchDetail(
                     call.parameters["id"],
                     call.queryParams()
@@ -343,12 +341,11 @@ fun Application.configureRoutes(services: ApplicationServices) {
                     schema = integerSchema(minimum = 1.0, example = 42)
                 }
             }
-            jsonResponse<IngestionBatchDetailResponse>(HttpStatusCode.OK, "Ingestion batch detail")
             errorResponses(notFound = true)
         }
         get("/api/v1/admin/ingestion/failures") {
             call.authenticateProtected(services)
-            call.respond(services.adminService.listFailures(call.queryParams()))
+            call.respond<IngestionBatchesResponse>(services.adminService.listFailures(call.queryParams()))
         }.describe {
             operationId = "listIngestionFailures"
             tag("Admin")
@@ -356,7 +353,6 @@ fun Application.configureRoutes(services: ApplicationServices) {
             description = "Lists ingestion batches with failure status for administrative inspection."
             requiresBearerAuth()
             adminQueryParameters()
-            jsonResponse<IngestionBatchesResponse>(HttpStatusCode.OK, "Failed ingestion batches")
             errorResponses()
         }
     }
@@ -384,7 +380,7 @@ private fun ApplicationCall.queryParams(): QueryParams =
         request.queryParameters.entries()
             .associate { it.key to it.value.firstOrNull() })
 
-private suspend fun ApplicationCall.providerCode(): String? {
+private fun ApplicationCall.providerCode(): String {
     val code = parameters["providerCode"]
     if (code.isNullOrBlank()) {
         throw RequestValidationException(

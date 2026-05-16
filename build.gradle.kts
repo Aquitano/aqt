@@ -8,7 +8,7 @@ val sqlite_jdbc_version: String by project
 
 plugins {
     kotlin("jvm") version "2.3.0"
-    id("io.ktor.plugin") version "3.4.2"
+    id("io.ktor.plugin") version "3.5.0"
     id("org.jetbrains.kotlin.plugin.serialization") version "2.3.0"
 }
 
@@ -21,6 +21,14 @@ application {
 
 kotlin {
     jvmToolchain(21)
+}
+
+ktor {
+    openApi {
+        enabled = true
+        codeInferenceEnabled = true
+        onlyCommented = false
+    }
 }
 
 dependencies {

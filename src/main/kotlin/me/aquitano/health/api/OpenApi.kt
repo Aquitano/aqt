@@ -1,4 +1,4 @@
-@file:OptIn(io.ktor.utils.io.ExperimentalKtorApi::class)
+@file:OptIn(ExperimentalKtorApi::class)
 
 package me.aquitano.health.api
 
@@ -6,7 +6,6 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.openapi.Components
 import io.ktor.openapi.ExampleObject
 import io.ktor.openapi.GenericElement
-import io.ktor.openapi.GenericElementString
 import io.ktor.openapi.HttpSecurityScheme
 import io.ktor.openapi.JsonSchema
 import io.ktor.openapi.JsonSchemaDiscriminator
@@ -15,34 +14,63 @@ import io.ktor.openapi.OpenApiDoc
 import io.ktor.openapi.OpenApiInfo
 import io.ktor.openapi.Operation
 import io.ktor.openapi.ReferenceOr
+import io.ktor.openapi.Responses
 import io.ktor.openapi.SecurityScheme
 import io.ktor.openapi.Server
 import io.ktor.openapi.Tag
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.openapi.describe
+import io.ktor.utils.io.ExperimentalKtorApi
+import kotlinx.serialization.serializer
 import kotlinx.serialization.builtins.serializer
-import me.aquitano.health.api.dto.BodyMeasurementsResponse
-import me.aquitano.health.api.dto.DashboardSummaryResponse
-import me.aquitano.health.api.dto.HeartRateSamplesResponse
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import me.aquitano.external.google.GOOGLE_HEALTH_PROVIDER_CODE
+import me.aquitano.external.withings.WITHINGS_PROVIDER_CODE
+import me.aquitano.health.api.dto.BodyMeasurementDto
+import me.aquitano.health.api.dto.HeartRateDto
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
-import me.aquitano.health.api.dto.MetricCatalogResponseDto
-import me.aquitano.health.api.dto.ProviderCatalogResponseDto
-import me.aquitano.health.api.dto.ProviderDescriptorResponseDto
-import me.aquitano.health.api.dto.ProviderOAuthCallbackResponse
-import me.aquitano.health.api.dto.ProviderOAuthStartResponse
-import me.aquitano.health.api.dto.ProviderStatusCatalogResponseDto
-import me.aquitano.health.api.dto.ProviderStatusResponseDto
+import me.aquitano.health.api.dto.MetricCreatedCountsResponse
+import me.aquitano.health.api.dto.MetricSkippedCountsResponse
 import me.aquitano.health.api.dto.ProviderSyncRequestDto
-import me.aquitano.health.api.dto.ProviderSyncResponseDto
-import me.aquitano.health.api.dto.SleepNightsResponse
-import me.aquitano.health.api.dto.SleepSessionsResponse
-import me.aquitano.health.api.dto.StepDailySummariesResponse
-import me.aquitano.health.api.dto.StepSamplesResponse
+import me.aquitano.health.api.dto.SleepSessionDto
+import me.aquitano.health.api.dto.SleepStageDto
+import me.aquitano.health.api.dto.StepIntervalDto
 import me.aquitano.health.domain.BodyMetricTypes
+import me.aquitano.health.domain.RecordTypes
+import me.aquitano.health.domain.ValidationIssueCodes
+import me.aquitano.health.shared.AppJson
 import kotlin.reflect.typeOf
 
 internal const val BearerApiKeySecurityScheme = "bearerApiKey"
+
+private const val JsonFormatDate = "date"
+private const val JsonFormatDateTime = "date-time"
+
+private const val ExampleProviderInstanceId = "$WITHINGS_PROVIDER_CODE:123456"
+private const val ExampleRequestId = "test-request-123"
+
+private const val ExampleDate = "2026-04-02"
+private const val ExampleFromDate = "2026-04-01"
+private const val ExampleToDate = "2026-04-07"
+private const val ExampleFromAt = "${ExampleFromDate}T00:00:00Z"
+private const val ExampleToAt = "${ExampleDate}T00:00:00Z"
+private const val ExampleIngestedAt = "${ExampleDate}T08:15:30Z"
+private const val ExampleBatchExternalId = "$WITHINGS_PROVIDER_CODE-$ExampleToAt"
+private const val ExampleStepStartAt = "${ExampleDate}T07:00:00Z"
+private const val ExampleStepEndAt = "${ExampleDate}T08:00:00Z"
+private const val ExampleSleepStartAt = "${ExampleFromDate}T22:30:00Z"
+private const val ExampleSleepEndAt = "${ExampleDate}T06:45:00Z"
+private const val ExampleSleepStageStartAt = "${ExampleFromDate}T23:00:00Z"
+private const val ExampleSleepStageEndAt = "${ExampleFromDate}T23:45:00Z"
+private const val ExampleBodyMeasuredAt = "${ExampleDate}T06:50:00Z"
+private const val ExampleHeartRateMeasuredAt = "${ExampleDate}T08:05:00Z"
+
+private const val StepIntervalSchemaName = "StepIntervalDto"
+private const val SleepSessionSchemaName = "SleepSessionDto"
+private const val BodyMeasurementSchemaName = "BodyMeasurementDto"
+private const val HeartRateSchemaName = "HeartRateDto"
 
 internal fun openApiInfo(): OpenApiInfo =
     OpenApiInfo(
@@ -87,25 +115,7 @@ private fun openApiComponents(): Components =
         ),
         examples = mapOf(
             "ErrorResponse" to ReferenceOr.Value(
-                jsonExample(
-                    summary = "Validation error",
-                    json = """
-                        {
-                          "error": {
-                            "code": "validation_failed",
-                            "message": "Request validation failed",
-                            "requestId": "test-request-123",
-                            "details": [
-                              {
-                                "field": "fromDate",
-                                "code": "invalid_format",
-                                "message": "must be an ISO-8601 date"
-                              }
-                            ]
-                          }
-                        }
-                    """.trimIndent(),
-                )
+                validationErrorExample()
             ),
         ),
     )
@@ -127,16 +137,19 @@ internal inline fun <reified T : Any> Operation.Builder.jsonRequest(
     exampleName: String? = null,
     example: ExampleObject? = null,
 ) {
+    require((exampleName == null) == (example == null)) {
+        "exampleName and example must either both be set or both be null."
+    }
+
     requestBody {
         description = descriptionText
         required = true
-        if (exampleName != null && example != null) {
-            content {
-                schema = buildSchema(typeOf<T>())
+        content {
+            schema = buildSchema(typeOf<T>())
+
+            if (exampleName != null && example != null) {
                 example(exampleName, example)
             }
-        } else {
-            schema = buildSchema(typeOf<T>())
         }
     }
 }
@@ -149,10 +162,10 @@ internal fun Operation.Builder.ingestionBatchJsonRequest() {
             schema = JsonSchema(
                 type = JsonType.OBJECT,
                 properties = mapOf(
-                    "provider" to ReferenceOr.Value(stringSchema(example = "withings")),
-                    "providerInstanceId" to ReferenceOr.Value(stringSchema(example = "withings:123456")),
-                    "batchExternalId" to ReferenceOr.Value(stringSchema(example = "withings-2026-04-02T00:00:00Z")),
-                    "ingestedAt" to ReferenceOr.Value(stringSchema(format = "date-time", example = "2026-04-02T08:15:30Z")),
+                    "provider" to ReferenceOr.Value(stringSchema(example = WITHINGS_PROVIDER_CODE)),
+                    "providerInstanceId" to ReferenceOr.Value(stringSchema(example = ExampleProviderInstanceId)),
+                    "batchExternalId" to ReferenceOr.Value(stringSchema(example = ExampleBatchExternalId)),
+                    "ingestedAt" to ReferenceOr.Value(stringSchema(format = JsonFormatDateTime, example = ExampleIngestedAt)),
                     "sourcePayload" to ReferenceOr.Value(JsonSchema(type = JsonType.OBJECT)),
                     "records" to ReferenceOr.Value(
                         JsonSchema(
@@ -163,27 +176,6 @@ internal fun Operation.Builder.ingestionBatchJsonRequest() {
                 ),
             )
             example("batch", ingestionBatchExample())
-        }
-    }
-}
-
-internal inline fun <reified T : Any> Operation.Builder.jsonResponse(
-    status: HttpStatusCode,
-    descriptionText: String,
-    exampleName: String? = null,
-    example: ExampleObject? = null,
-) {
-    responses {
-        status {
-            description = descriptionText
-            if (exampleName != null && example != null) {
-                content {
-                    schema = buildSchema(typeOf<T>())
-                    example(exampleName, example)
-                }
-            } else {
-                schema = buildSchema(typeOf<T>())
-            }
         }
     }
 }
@@ -209,31 +201,20 @@ internal fun Operation.Builder.errorResponses(
     }
 }
 
-internal fun io.ktor.openapi.Responses.Builder.defaultError() {
+internal fun Responses.Builder.defaultError() {
     default {
         description = "Error response"
         content {
             schema = buildSchema(typeOf<ErrorResponse>())
             example(
                 "error",
-                jsonExample(
-                    summary = "Standard error envelope",
-                    json = """
-                        {
-                          "error": {
-                            "code": "validation_failed",
-                            "message": "Request validation failed",
-                            "requestId": "test-request-123"
-                          }
-                        }
-                    """.trimIndent(),
-                )
+                internalErrorExample()
             )
         }
     }
 }
 
-internal fun io.ktor.openapi.Responses.Builder.commonErrors(
+internal fun Responses.Builder.commonErrors(
     unauthorized: Boolean = true,
     validation: Boolean = true,
     notFound: Boolean = false,
@@ -244,37 +225,55 @@ internal fun io.ktor.openapi.Responses.Builder.commonErrors(
     if (validation) {
         HttpStatusCode.BadRequest {
             description = "Request validation failed"
-            schema = buildSchema(typeOf<ErrorResponse>())
+            content {
+                schema = buildSchema(typeOf<ErrorResponse>())
+                example("validation", validationErrorExample())
+            }
         }
     }
     if (unauthorized) {
         HttpStatusCode.Unauthorized {
             description = "Missing or invalid API key"
-            schema = buildSchema(typeOf<ErrorResponse>())
+            content {
+                schema = buildSchema(typeOf<ErrorResponse>())
+                example("unauthorized", unauthorizedErrorExample())
+            }
         }
     }
     if (notFound) {
         HttpStatusCode.NotFound {
             description = "Resource not found"
-            schema = buildSchema(typeOf<ErrorResponse>())
+            content {
+                schema = buildSchema(typeOf<ErrorResponse>())
+                example("notFound", notFoundErrorExample())
+            }
         }
     }
     if (conflict) {
         HttpStatusCode.Conflict {
             description = "Request conflicts with current state"
-            schema = buildSchema(typeOf<ErrorResponse>())
+            content {
+                schema = buildSchema(typeOf<ErrorResponse>())
+                example("conflict", conflictErrorExample())
+            }
         }
     }
     if (upstream) {
         HttpStatusCode.BadGateway {
             description = "Upstream provider request failed"
-            schema = buildSchema(typeOf<ErrorResponse>())
+            content {
+                schema = buildSchema(typeOf<ErrorResponse>())
+                example("upstream", upstreamErrorExample())
+            }
         }
     }
     if (internal) {
         HttpStatusCode.InternalServerError {
             description = "Unexpected server error"
-            schema = buildSchema(typeOf<ErrorResponse>())
+            content {
+                schema = buildSchema(typeOf<ErrorResponse>())
+                example("internal", internalErrorExample())
+            }
         }
     }
 }
@@ -283,7 +282,9 @@ internal fun Operation.Builder.providerCodePath() {
     parameters {
         path("providerCode") {
             description = "Provider code. Current examples are `google-health` and `withings`."
-            schema = stringSchema(enumValues = listOf("google-health", "withings"), example = "withings")
+            schema = stringSchema(enumValues = listOf(
+                GOOGLE_HEALTH_PROVIDER_CODE,
+                WITHINGS_PROVIDER_CODE), example = WITHINGS_PROVIDER_CODE)
         }
     }
 }
@@ -292,19 +293,19 @@ internal fun Operation.Builder.readQueryParameters(includeLatest: Boolean = fals
     parameters {
         query("from") {
             description = "Inclusive start timestamp or date. Date-only values are interpreted by the endpoint's query service."
-            schema = stringSchema(format = "date-time", example = "2026-04-01T00:00:00Z")
+            schema = stringSchema(format = JsonFormatDateTime, example = ExampleFromAt)
         }
         query("to") {
             description = "Exclusive end timestamp or date. Date-only values are interpreted by the endpoint's query service."
-            schema = stringSchema(format = "date-time", example = "2026-04-02T00:00:00Z")
+            schema = stringSchema(format = JsonFormatDateTime, example = ExampleToAt)
         }
         query("provider") {
             description = "Source provider filter."
-            schema = stringSchema(example = "withings")
+            schema = stringSchema(example = WITHINGS_PROVIDER_CODE)
         }
         query("providerInstanceId") {
             description = "Source provider account or instance filter."
-            schema = stringSchema(example = "withings:123456")
+            schema = stringSchema(example = ExampleProviderInstanceId)
         }
         query("includeSource") {
             description = "Include source provider metadata in each item. Defaults to false."
@@ -332,15 +333,15 @@ internal fun Operation.Builder.sleepNightQueryParameters() {
     parameters {
         query("date") {
             description = "Exact sleep night date or `today`. Matches the localized date of session endAt and cannot be combined with fromDate or toDate."
-            schema = stringSchema(format = "date", example = "2026-04-02")
+            schema = stringSchema(format = JsonFormatDate, example = ExampleDate)
         }
         query("fromDate") {
             description = "Inclusive local sleep-night start date based on session endAt."
-            schema = stringSchema(format = "date", example = "2026-04-01")
+            schema = stringSchema(format = JsonFormatDate, example = ExampleFromDate)
         }
         query("toDate") {
             description = "Inclusive local sleep-night end date based on session endAt."
-            schema = stringSchema(format = "date", example = "2026-04-07")
+            schema = stringSchema(format = JsonFormatDate, example = ExampleToDate)
         }
         query("timezone") {
             description = "IANA timezone used to classify endAt dates. Defaults to UTC."
@@ -348,11 +349,11 @@ internal fun Operation.Builder.sleepNightQueryParameters() {
         }
         query("provider") {
             description = "Source provider filter."
-            schema = stringSchema(example = "withings")
+            schema = stringSchema(example = WITHINGS_PROVIDER_CODE)
         }
         query("providerInstanceId") {
             description = "Source provider account or instance filter."
-            schema = stringSchema(example = "withings:123456")
+            schema = stringSchema(example = ExampleProviderInstanceId)
         }
         query("includeSource") {
             description = "Include source provider metadata in each item. Defaults to false."
@@ -383,20 +384,20 @@ internal fun Operation.Builder.dashboardQueryParameters() {
         query("fromDate") {
             description = "Inclusive UTC start date for dashboard summaries."
             required = true
-            schema = stringSchema(format = "date", example = "2026-04-01")
+            schema = stringSchema(format = JsonFormatDate, example = ExampleFromDate)
         }
         query("toDate") {
             description = "Inclusive UTC end date for dashboard summaries."
             required = true
-            schema = stringSchema(format = "date", example = "2026-04-07")
+            schema = stringSchema(format = JsonFormatDate, example = ExampleToDate)
         }
         query("provider") {
             description = "Source provider filter applied to summary metric lookups."
-            schema = stringSchema(example = "withings")
+            schema = stringSchema(example = WITHINGS_PROVIDER_CODE)
         }
         query("providerInstanceId") {
             description = "Source provider account or instance filter applied to summary metric lookups."
-            schema = stringSchema(example = "withings:123456")
+            schema = stringSchema(example = ExampleProviderInstanceId)
         }
         query("includeSource") {
             description = "Include source provider metadata for nested latest items. Defaults to false."
@@ -413,11 +414,11 @@ internal fun Operation.Builder.adminQueryParameters() {
         }
         query("from") {
             description = "Inclusive received-at start timestamp."
-            schema = stringSchema(format = "date-time", example = "2026-04-01T00:00:00Z")
+            schema = stringSchema(format = JsonFormatDateTime, example = ExampleFromAt)
         }
         query("to") {
             description = "Exclusive received-at end timestamp."
-            schema = stringSchema(format = "date-time", example = "2026-04-02T00:00:00Z")
+            schema = stringSchema(format = JsonFormatDateTime, example = ExampleToAt)
         }
         query("limit") {
             description = "Maximum number of items. Defaults to 100 and cannot exceed 1000 for admin list endpoints."
@@ -430,20 +431,20 @@ private fun Operation.Builder.dateRangeQueryParameters(label: String) {
     parameters {
         query("date") {
             description = "Exact $label or `today`. Cannot be combined with fromDate or toDate."
-            schema = stringSchema(format = "date", example = "2026-04-02")
+            schema = stringSchema(format = JsonFormatDate, example = ExampleDate)
         }
         query("fromDate") {
             description = "Inclusive $label start date."
-            schema = stringSchema(format = "date", example = "2026-04-01")
+            schema = stringSchema(format = JsonFormatDate, example = ExampleFromDate)
         }
         query("toDate") {
             description = "Inclusive $label end date."
-            schema = stringSchema(format = "date", example = "2026-04-07")
+            schema = stringSchema(format = JsonFormatDate, example = ExampleToDate)
         }
     }
 }
 
-internal inline fun <reified T : Any> Route.describeReadOperation(
+internal fun Route.describeReadOperation(
     operationId: String,
     summary: String,
     descriptionText: String,
@@ -455,7 +456,6 @@ internal inline fun <reified T : Any> Route.describeReadOperation(
     description = descriptionText
     requiresBearerAuth()
     readQueryParameters(includeLatest = includeLatest)
-    jsonResponse<T>(HttpStatusCode.OK, summary, "example", metricListExample<T>())
     errorResponses()
 }
 
@@ -466,7 +466,6 @@ internal fun Route.describeDailyStepReadOperation(): Route = describe {
     description = "Returns daily UTC step totals. Use `date` for one day, or `fromDate` and `toDate` for an inclusive date range. `from` and `to` are also accepted by the shared query parser for timestamp-style filters."
     requiresBearerAuth()
     dailyStepQueryParameters()
-    jsonResponse<StepDailySummariesResponse>(HttpStatusCode.OK, "Daily step summaries", "dailySteps", stepDailySummariesExample())
     errorResponses()
 }
 
@@ -477,7 +476,6 @@ internal fun Route.describeSleepNightReadOperation(): Route = describe {
     description = "Returns sleep sessions classified by the localized date of `endAt`. Use `timezone` to control night boundaries."
     requiresBearerAuth()
     sleepNightQueryParameters()
-    jsonResponse<SleepNightsResponse>(HttpStatusCode.OK, "Sleep nights", "sleepNights", sleepNightsExample())
     errorResponses()
 }
 
@@ -519,251 +517,181 @@ internal fun booleanSchema(default: Boolean? = null, example: Boolean? = null): 
 internal fun ingestionBatchExample(): ExampleObject =
     jsonExample(
         summary = "Batch with normalized records",
-        json = """
-            {
-              "provider": "withings",
-              "providerInstanceId": "withings:123456",
-              "batchExternalId": "withings-2026-04-02T00:00:00Z",
-              "ingestedAt": "2026-04-02T08:15:30Z",
-              "sourcePayload": {
-                "job": "daily-sync"
-              },
-              "records": [
-                {
-                  "type": "step_interval",
-                  "providerRecordId": "steps-1",
-                  "startAt": "2026-04-02T07:00:00Z",
-                  "endAt": "2026-04-02T08:00:00Z",
-                  "steps": 1200
-                },
-                {
-                  "type": "sleep_session",
-                  "providerRecordId": "sleep-1",
-                  "startAt": "2026-04-01T22:30:00Z",
-                  "endAt": "2026-04-02T06:45:00Z",
-                  "stages": [
-                    {
-                      "stage": "deep",
-                      "startAt": "2026-04-01T23:00:00Z",
-                      "endAt": "2026-04-01T23:45:00Z"
-                    }
-                  ]
-                },
-                {
-                  "type": "body_measurement",
-                  "providerRecordId": "weight-1",
-                  "measuredAt": "2026-04-02T06:50:00Z",
-                  "weightKg": 78.4
-                },
-                {
-                  "type": "heart_rate",
-                  "providerRecordId": "hr-1",
-                  "measuredAt": "2026-04-02T08:05:00Z",
-                  "bpm": 62,
-                  "context": "resting"
-                }
-              ]
-            }
-        """.trimIndent(),
+        value = IngestionBatchRequest(
+            provider = WITHINGS_PROVIDER_CODE,
+            providerInstanceId = ExampleProviderInstanceId,
+            batchExternalId = ExampleBatchExternalId,
+            ingestedAt = ExampleIngestedAt,
+            sourcePayload = buildJsonObject {
+                put("job", JsonPrimitive("daily-sync"))
+            },
+            records = listOf(
+                StepIntervalDto(
+                    providerRecordId = "steps-1",
+                    startAt = ExampleStepStartAt,
+                    endAt = ExampleStepEndAt,
+                    steps = 1200,
+                ),
+                SleepSessionDto(
+                    providerRecordId = "sleep-1",
+                    startAt = ExampleSleepStartAt,
+                    endAt = ExampleSleepEndAt,
+                    stages = listOf(
+                        SleepStageDto(
+                            stage = "deep",
+                            startAt = ExampleSleepStageStartAt,
+                            endAt = ExampleSleepStageEndAt,
+                        )
+                    ),
+                ),
+                BodyMeasurementDto(
+                    providerRecordId = "weight-1",
+                    measuredAt = ExampleBodyMeasuredAt,
+                    weightKg = 78.4,
+                ),
+                HeartRateDto(
+                    providerRecordId = "hr-1",
+                    measuredAt = ExampleHeartRateMeasuredAt,
+                    bpm = 62,
+                    context = "resting",
+                ),
+            ),
+        ),
     )
 
 internal fun ingestionSummaryExample(duplicate: Boolean = false): ExampleObject =
     jsonExample(
         summary = if (duplicate) "Duplicate batch" else "Created batch",
-        json = """
-            {
-              "batchId": 42,
-              "status": "accepted",
-              "duplicateBatch": $duplicate,
-              "recordsReceived": 4,
-              "ingestionRecordsStored": ${if (duplicate) 0 else 4},
-              "metricsCreated": {
-                "stepSamples": ${if (duplicate) 0 else 1},
-                "sleepSessions": ${if (duplicate) 0 else 1},
-                "sleepStages": ${if (duplicate) 0 else 1},
-                "bodyMeasurements": ${if (duplicate) 0 else 1},
-                "heartRateSamples": ${if (duplicate) 0 else 1}
-              },
-              "metricsSkipped": {
-                "duplicates": ${if (duplicate) 4 else 0}
-              },
-              "affectedStepSummaryDates": [
-                "2026-04-02"
-              ]
-            }
-        """.trimIndent(),
-    )
-
-internal fun providerCatalogExample(): ExampleObject =
-    jsonExample(
-        summary = "Provider catalog",
-        json = """
-            {
-              "providers": [
-                {
-                  "providerCode": "withings",
-                  "displayName": "Withings",
-                  "authType": "oauth2",
-                  "requiresAuthentication": true,
-                  "supportedDataTypes": ["activity", "measures", "sleep", "sleep-summary"],
-                  "defaultDataTypes": ["activity", "measures", "sleep"],
-                  "maxSyncRangeDays": 30,
-                  "supportsPageSize": true,
-                  "workflowEndpoints": {
-                    "oauthStart": "/api/v1/providers/withings/oauth/start",
-                    "oauthCallback": "/api/v1/providers/withings/oauth/callback",
-                    "sync": "/api/v1/providers/withings/sync"
-                  },
-                  "aliases": []
-                }
-              ]
-            }
-        """.trimIndent(),
-    )
-
-internal fun providerStatusExample(): ExampleObject =
-    jsonExample(
-        summary = "Provider statuses",
-        json = """
-            {
-              "providers": [
-                {
-                  "providerCode": "withings",
-                  "displayName": "Withings",
-                  "configured": true,
-                  "connected": true,
-                  "needsAuthentication": false,
-                  "canSync": true,
-                  "nextAction": "sync",
-                  "accounts": [
-                    {
-                      "providerInstanceId": "withings:123456",
-                      "connectedAt": "2026-04-01T10:00:00Z",
-                      "lastSyncAt": "2026-04-02T08:00:00Z",
-                      "tokenStatus": "valid",
-                      "expiresAt": "2026-05-01T10:00:00Z"
-                    }
-                  ]
-                }
-              ]
-            }
-        """.trimIndent(),
-    )
-
-internal fun oauthStartExample(): ExampleObject =
-    jsonExample(
-        summary = "OAuth authorization URL",
-        json = """
-            {
-              "provider": "withings",
-              "authorizationUrl": "https://account.withings.com/oauth2_user/authorize2?...",
-              "expiresAt": "2026-04-02T08:20:30Z"
-            }
-        """.trimIndent(),
-    )
-
-internal fun oauthCallbackExample(): ExampleObject =
-    jsonExample(
-        summary = "OAuth callback success",
-        json = """
-            {
-              "provider": "withings",
-              "providerInstanceId": "withings:123456",
-              "connected": true
-            }
-        """.trimIndent(),
+        value = IngestionSummaryResponse(
+            batchId = 42,
+            status = "accepted",
+            duplicateBatch = duplicate,
+            recordsReceived = 4,
+            ingestionRecordsStored = if (duplicate) 0 else 4,
+            metricsCreated = MetricCreatedCountsResponse(
+                stepSamples = if (duplicate) 0 else 1,
+                sleepSessions = if (duplicate) 0 else 1,
+                sleepStages = if (duplicate) 0 else 1,
+                bodyMeasurements = if (duplicate) 0 else 1,
+                heartRateSamples = if (duplicate) 0 else 1,
+            ),
+            metricsSkipped = MetricSkippedCountsResponse(
+                duplicates = if (duplicate) 4 else 0,
+            ),
+            affectedStepSummaryDates = listOf(ExampleDate),
+        ),
     )
 
 internal fun providerSyncRequestExample(): ExampleObject =
     jsonExample(
         summary = "Provider sync request",
-        json = """
-            {
-              "providerInstanceId": "withings:123456",
-              "from": "2026-04-01T00:00:00Z",
-              "to": "2026-04-02T00:00:00Z",
-              "dataTypes": ["activity", "measures"],
-              "pageSize": 100
-            }
-        """.trimIndent(),
+        value = ProviderSyncRequestDto(
+            providerInstanceId = ExampleProviderInstanceId,
+            from = ExampleFromAt,
+            to = ExampleToAt,
+            dataTypes = listOf("activity", "measures"),
+            pageSize = 100,
+        ),
     )
 
-internal fun providerSyncResponseExample(): ExampleObject =
+internal fun healthResponseExample(): ExampleObject =
     jsonExample(
-        summary = "Provider sync result with partial errors",
-        json = """
-            {
-              "providerCode": "withings",
-              "providerInstanceId": "withings:123456",
-              "requestedFrom": "2026-04-01T00:00:00Z",
-              "requestedTo": "2026-04-02T00:00:00Z",
-              "status": "partial_success",
-              "batches": [
-                {
-                  "dataType": "activity",
-                  "batchId": 42,
-                  "duplicateBatch": false,
-                  "recordsReceived": 12,
-                  "ingestionRecordsStored": 12,
-                  "metricsCreated": {
-                    "stepSamples": 12,
-                    "sleepSessions": 0,
-                    "sleepStages": 0,
-                    "bodyMeasurements": 0,
-                    "heartRateSamples": 0
-                  },
-                  "duplicateMetricsSkipped": 0,
-                  "affectedStepSummaryDates": ["2026-04-01", "2026-04-02"]
-                }
-              ],
-              "emptyDataTypes": [],
-              "errors": [
-                {
-                  "dataType": "measures",
-                  "code": "upstream_unavailable",
-                  "message": "Provider request failed"
-                }
-              ]
-            }
-        """.trimIndent(),
+        summary = "Health status",
+        value = HealthResponse(
+            status = "ok",
+            service = "aqt-health",
+            time = ExampleIngestedAt,
+        ),
     )
 
-private inline fun <reified T : Any> metricListExample(): ExampleObject =
-    when (T::class) {
-        StepSamplesResponse::class -> stepSamplesExample()
-        SleepSessionsResponse::class -> sleepSessionsExample()
-        BodyMeasurementsResponse::class -> bodyMeasurementsExample()
-        HeartRateSamplesResponse::class -> heartRateSamplesExample()
-        DashboardSummaryResponse::class -> dashboardSummaryExample()
-        else -> jsonExample("Metric response", """{"items": []}""")
-    }
+private fun validationErrorExample(): ExampleObject =
+    jsonExample(
+        summary = "Validation failed",
+        value = ErrorResponse(
+            ErrorBody(
+                code = "validation_failed",
+                message = "Request validation failed",
+                requestId = ExampleRequestId,
+                details = listOf(
+                    ErrorDetail(
+                        field = "fromDate",
+                        code = ValidationIssueCodes.InvalidFormat,
+                        message = "must be an ISO-8601 date",
+                    ),
+                    ErrorDetail(
+                        field = "toDate",
+                        code = ValidationIssueCodes.InvalidRange,
+                        message = "must be on or after fromDate",
+                    ),
+                ),
+            )
+        ),
+    )
 
-private fun stepSamplesExample(): ExampleObject =
-    jsonExample("Step samples", """{"items":[{"id":1,"startAt":"2026-04-02T07:00:00Z","endAt":"2026-04-02T08:00:00Z","steps":1200,"source":{"provider":"withings","providerInstanceId":"withings:123456"}}]}""")
+private fun unauthorizedErrorExample(): ExampleObject =
+    jsonExample(
+        summary = "Unauthorized",
+        value = ErrorResponse(
+            ErrorBody(
+                code = "unauthorized",
+                message = "Missing or invalid API key",
+                requestId = ExampleRequestId,
+            )
+        ),
+    )
 
-private fun stepDailySummariesExample(): ExampleObject =
-    jsonExample("Daily step summaries", """{"items":[{"date":"2026-04-02","steps":8200,"sampleCount":12,"source":{"provider":"withings","providerInstanceId":"withings:123456"}}]}""")
+private fun notFoundErrorExample(): ExampleObject =
+    jsonExample(
+        summary = "Not found",
+        value = ErrorResponse(
+            ErrorBody(
+                code = "not_found",
+                message = "Provider '$WITHINGS_PROVIDER_CODE' not found",
+                requestId = ExampleRequestId,
+            )
+        ),
+    )
 
-private fun sleepSessionsExample(): ExampleObject =
-    jsonExample("Sleep sessions", """{"items":[{"id":2,"startAt":"2026-04-01T22:30:00Z","endAt":"2026-04-02T06:45:00Z","durationSeconds":29700,"stages":[{"stage":"deep","startAt":"2026-04-01T23:00:00Z","endAt":"2026-04-01T23:45:00Z","durationSeconds":2700}],"source":{"provider":"withings","providerInstanceId":"withings:123456"}}]}""")
+private fun conflictErrorExample(): ExampleObject =
+    jsonExample(
+        summary = "Conflict",
+        value = ErrorResponse(
+            ErrorBody(
+                code = "ingestion_batch_in_progress",
+                message = "Batch '$ExampleBatchExternalId' already exists with status 'accepted'",
+                requestId = ExampleRequestId,
+            )
+        ),
+    )
 
-private fun sleepNightsExample(): ExampleObject =
-    jsonExample("Sleep nights", """{"items":[{"date":"2026-04-02","timezone":"Europe/Berlin","session":{"id":2,"startAt":"2026-04-01T22:30:00Z","endAt":"2026-04-02T06:45:00Z","durationSeconds":29700,"stages":[],"source":{"provider":"withings","providerInstanceId":"withings:123456"}}}]}""")
+private fun upstreamErrorExample(): ExampleObject =
+    jsonExample(
+        summary = "Upstream provider failure",
+        value = ErrorResponse(
+            ErrorBody(
+                code = "upstream_unavailable",
+                message = "Provider request failed",
+                requestId = ExampleRequestId,
+            )
+        ),
+    )
 
-internal fun bodyMeasurementsExample(): ExampleObject =
-    jsonExample("Body measurements", """{"items":[{"id":3,"measuredAt":"2026-04-02T06:50:00Z","metricType":"weight_kg","value":78.4,"unit":"kg","source":{"provider":"withings","providerInstanceId":"withings:123456"}}]}""")
+private fun internalErrorExample(): ExampleObject =
+    jsonExample(
+        summary = "Internal server error",
+        value = ErrorResponse(
+            ErrorBody(
+                code = "internal_error",
+                message = "Unexpected server error",
+                requestId = ExampleRequestId,
+            )
+        ),
+    )
 
-private fun heartRateSamplesExample(): ExampleObject =
-    jsonExample("Heart-rate samples", """{"items":[{"id":4,"measuredAt":"2026-04-02T08:05:00Z","bpm":62,"context":"resting","source":{"provider":"withings","providerInstanceId":"withings:123456"}}]}""")
-
-internal fun dashboardSummaryExample(): ExampleObject =
-    jsonExample("Dashboard summary", """{"fromDate":"2026-04-01","toDate":"2026-04-07","steps":{"steps":45200,"sampleCount":84},"latestWeight":{"id":3,"measuredAt":"2026-04-02T06:50:00Z","metricType":"weight_kg","value":78.4,"unit":"kg"},"latestHeartRate":{"id":4,"measuredAt":"2026-04-02T08:05:00Z","bpm":62,"context":"resting"},"lastSleepSession":null}""")
-
-private fun jsonExample(summary: String, json: String): ExampleObject =
+private inline fun <reified T> jsonExample(summary: String, value: T): ExampleObject =
     ExampleObject(
         summary = summary,
-        description = "JSON example payload.",
-        value = GenericElementString(json),
+        value = GenericElement(AppJson.encodeToJsonElement(serializer<T>(), value)),
     )
 
 private fun stringElement(value: String): GenericElement =
@@ -772,18 +700,21 @@ private fun stringElement(value: String): GenericElement =
 internal fun ingestionRecordSchema(): JsonSchema =
     JsonSchema(
         oneOf = listOf(
-            ReferenceOr.schema("StepIntervalDto"),
-            ReferenceOr.schema("SleepSessionDto"),
-            ReferenceOr.schema("BodyMeasurementDto"),
-            ReferenceOr.schema("HeartRateDto"),
+            ReferenceOr.schema(StepIntervalSchemaName),
+            ReferenceOr.schema(SleepSessionSchemaName),
+            ReferenceOr.schema(BodyMeasurementSchemaName),
+            ReferenceOr.schema(HeartRateSchemaName),
         ),
         discriminator = JsonSchemaDiscriminator(
             propertyName = "type",
             mapping = mapOf(
-                "step_interval" to "#/components/schemas/StepIntervalDto",
-                "sleep_session" to "#/components/schemas/SleepSessionDto",
-                "body_measurement" to "#/components/schemas/BodyMeasurementDto",
-                "heart_rate" to "#/components/schemas/HeartRateDto",
+                RecordTypes.STEP_INTERVAL to componentSchemaRef(StepIntervalSchemaName),
+                RecordTypes.SLEEP_SESSION to componentSchemaRef(SleepSessionSchemaName),
+                RecordTypes.BODY_MEASUREMENT to componentSchemaRef(BodyMeasurementSchemaName),
+                RecordTypes.HEART_RATE to componentSchemaRef(HeartRateSchemaName),
             )
         ),
     )
+
+private fun componentSchemaRef(schemaName: String): String =
+    "#/components/schemas/$schemaName"

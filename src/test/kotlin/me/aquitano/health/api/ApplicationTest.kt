@@ -5,7 +5,9 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.server.config.*
 import io.ktor.server.testing.*
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.double
@@ -147,6 +149,7 @@ class ApplicationTest {
         val publicCallbackOperation =
             paths["/api/v1/providers/{providerCode}/oauth/callback"]!!.jsonObject["get"]!!.jsonObject
 
+        assertNotNull(body["components"]!!.jsonObject["securitySchemes"]!!.jsonObject["bearerApiKey"])
         assertEquals("bearerApiKey", protectedOperation["security"]!!.jsonArray.first().jsonObject.keys.first())
         assertTrue(publicHealthOperation["security"]!!.jsonArray.first().jsonObject.isEmpty())
         assertTrue(publicCallbackOperation["security"]!!.jsonArray.first().jsonObject.isEmpty())
