@@ -8,8 +8,6 @@ import me.aquitano.health.infrastructure.database.tables.*
 import org.jetbrains.exposed.exceptions.ExposedSQLException
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.greater
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate

@@ -93,5 +93,8 @@ fun ApplicationConfig.toAppConfig(): AppConfig =
         ),
     )
 
-private fun ApplicationConfig.optional(path: String, default: String = ""): String =
+private fun ApplicationConfig.optional(
+    path: String,
+    default: String = ""
+): String =
     propertyOrNull(path)?.getString() ?: default

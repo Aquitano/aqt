@@ -6,17 +6,8 @@ import me.aquitano.health.domain.BodyMetricTypes
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
+import me.aquitano.health.infrastructure.repositories.*
 import me.aquitano.health.shared.utcDate
-import me.aquitano.health.infrastructure.repositories.BodyMeasurementRow
-import me.aquitano.health.infrastructure.repositories.DailyReadFilters
-import me.aquitano.health.infrastructure.repositories.HeartRateSampleRow
-import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
-import me.aquitano.health.infrastructure.repositories.ReadFilters
-import me.aquitano.health.infrastructure.repositories.SleepNightReadFilters
-import me.aquitano.health.infrastructure.repositories.SleepNightRow
-import me.aquitano.health.infrastructure.repositories.SleepSessionRow
-import me.aquitano.health.infrastructure.repositories.SleepStageRow
-import me.aquitano.health.infrastructure.repositories.SourceMetadata
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.time.Instant
@@ -91,7 +82,11 @@ class MetricsQueryService(
     ): SleepNightsResponse =
         dbQuery {
             val (nights, stagesBySession, sourceMetadata) =
-                metricsReadRepository.listSleepNights(params.sleepNightReadFilters(now))
+                metricsReadRepository.listSleepNights(
+                    params.sleepNightReadFilters(
+                        now
+                    )
+                )
             SleepNightsResponse(
                 items = nights.map { night ->
                     night.toResponse(stagesBySession, sourceMetadata)
@@ -167,7 +162,8 @@ class MetricsQueryService(
         }
         val includeSource = params.boolean("includeSource", default = false)
         val fromInstant = fromDate.atStartOfDay().toInstant(ZoneOffset.UTC)
-        val toInstant = toDate.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
+        val toInstant =
+            toDate.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
         return dbQuery {
             val dailyFilters = DailyReadFilters(
                 fromDate = fromDate,
@@ -194,7 +190,8 @@ class MetricsQueryService(
                 includeSource = includeSource,
                 limit = 1,
             )
-            val steps = metricsReadRepository.sumStepDailySummaries(dailyFilters)
+            val steps =
+                metricsReadRepository.sumStepDailySummaries(dailyFilters)
             val (weight, weightSourceMetadata) = metricsReadRepository.latestBodyMeasurement(
                 instantFilters,
                 BodyMetricTypes.WEIGHT
@@ -269,7 +266,10 @@ class MetricsQueryService(
             provider = optional("provider"),
             providerInstanceId = optional("providerInstanceId"),
             includeSource = boolean("includeSource", default = false),
-            limit = if (exactDate != null) 1 else limit(default = 500, max = 5000),
+            limit = if (exactDate != null) 1 else limit(
+                default = 500,
+                max = 5000
+            ),
         )
     }
 
@@ -305,7 +305,10 @@ class MetricsQueryService(
             provider = optional("provider"),
             providerInstanceId = optional("providerInstanceId"),
             includeSource = boolean("includeSource", default = false),
-            limit = if (exactDate != null) 1 else limit(default = 500, max = 5000),
+            limit = if (exactDate != null) 1 else limit(
+                default = 500,
+                max = 5000
+            ),
         )
     }
 

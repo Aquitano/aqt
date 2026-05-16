@@ -7,7 +7,7 @@ import io.ktor.server.plugins.calllogging.*
 import io.ktor.server.request.*
 import io.ktor.util.*
 import org.slf4j.event.Level
-import java.util.UUID
+import java.util.*
 
 private val RequestStartedAtKey = AttributeKey<Long>("RequestStartedAt")
 
@@ -28,7 +28,9 @@ fun Application.configureRequestLogging() {
         mdc("requestId") { call -> call.callId.orEmpty() }
         mdc("method") { call -> call.request.httpMethod.value }
         mdc("path") { call -> call.request.path() }
-        mdc("status") { call -> call.response.status()?.value?.toString().orEmpty() }
+        mdc("status") { call ->
+            call.response.status()?.value?.toString().orEmpty()
+        }
         mdc("durationMs") { call -> call.durationMs()?.toString().orEmpty() }
     }
 }

@@ -7,7 +7,8 @@ import me.aquitano.health.infrastructure.time.UtcClock
 import net.logstash.logback.argument.StructuredArguments.kv
 import org.slf4j.LoggerFactory
 
-private val logger = LoggerFactory.getLogger(ApiClientBootstrapService::class.java)
+private val logger =
+    LoggerFactory.getLogger(ApiClientBootstrapService::class.java)
 
 class ApiClientBootstrapService(
     private val authConfig: AuthConfig,

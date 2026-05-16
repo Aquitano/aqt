@@ -1,7 +1,6 @@
 package me.aquitano.health.shared
 
-import io.ktor.http.Parameters
-import io.ktor.http.parameters
+import io.ktor.http.*
 
 fun formParameters(vararg pairs: Pair<String, String?>): Parameters =
     formParameters(pairs.asIterable())

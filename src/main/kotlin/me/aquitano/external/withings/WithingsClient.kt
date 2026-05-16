@@ -1,24 +1,11 @@
 package me.aquitano.external.withings
 
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.request.header
-import io.ktor.client.request.forms.submitForm
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.isSuccess
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.longOrNull
-import kotlinx.serialization.json.put
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.request.*
+import io.ktor.client.request.forms.*
+import io.ktor.http.*
+import kotlinx.serialization.json.*
 import me.aquitano.health.infrastructure.config.WithingsConfig
 import me.aquitano.health.shared.AppJson
 import me.aquitano.health.shared.formParameters
@@ -30,7 +17,10 @@ import javax.crypto.spec.SecretKeySpec
 
 interface WithingsOAuthClient {
     suspend fun exchangeCode(code: String, now: Instant): WithingsTokenSet
-    suspend fun refreshToken(refreshToken: String, now: Instant): WithingsTokenSet
+    suspend fun refreshToken(
+        refreshToken: String,
+        now: Instant
+    ): WithingsTokenSet
 }
 
 interface WithingsClient : WithingsOAuthClient {
@@ -70,7 +60,10 @@ class KtorWithingsClient(
     private val httpClient: HttpClient,
     private val config: WithingsConfig,
 ) : WithingsClient {
-    override suspend fun exchangeCode(code: String, now: Instant): WithingsTokenSet {
+    override suspend fun exchangeCode(
+        code: String,
+        now: Instant
+    ): WithingsTokenSet {
         val nonce = getNonce(now)
         val action = "requesttoken"
         val response = httpClient.submitForm(
@@ -100,7 +93,10 @@ class KtorWithingsClient(
         )
     }
 
-    override suspend fun refreshToken(refreshToken: String, now: Instant): WithingsTokenSet {
+    override suspend fun refreshToken(
+        refreshToken: String,
+        now: Instant
+    ): WithingsTokenSet {
         val nonce = getNonce(now)
         val action = "requesttoken"
         val response = httpClient.submitForm(
@@ -154,7 +150,8 @@ class KtorWithingsClient(
             )
         }
 
-        val payload = AppJson.parseToJsonElement(response.body<String>()).jsonObject
+        val payload =
+            AppJson.parseToJsonElement(response.body<String>()).jsonObject
         val withingsStatus = payload["status"]?.jsonPrimitive?.intOrNull
         if (withingsStatus != 0) {
             throw WithingsHttpException(
@@ -163,7 +160,10 @@ class KtorWithingsClient(
             )
         }
         return payload["body"]?.jsonObject?.stringOrNull("nonce")
-            ?: throw WithingsHttpException("withings_nonce_request_failed", "Withings nonce response did not include nonce")
+            ?: throw WithingsHttpException(
+                "withings_nonce_request_failed",
+                "Withings nonce response did not include nonce"
+            )
     }
 
     override suspend fun fetchMeasures(
@@ -280,18 +280,33 @@ class KtorWithingsClient(
         }
 
         val body = payload["body"]?.jsonObject
-            ?: throw WithingsHttpException("withings_token_request_failed", "Withings OAuth token response did not include body")
+            ?: throw WithingsHttpException(
+                "withings_token_request_failed",
+                "Withings OAuth token response did not include body"
+            )
         val accessToken = body.stringOrNull("access_token")
-            ?: throw WithingsHttpException("withings_missing_access_token", "Withings OAuth token response did not include access_token")
-        val refreshToken = body.stringOrNull("refresh_token") ?: existingRefreshToken
-            ?: throw WithingsHttpException("withings_missing_refresh_token", "Withings OAuth token response did not include refresh_token")
-        val providerUserId = body["userid"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            ?: throw WithingsHttpException(
+                "withings_missing_access_token",
+                "Withings OAuth token response did not include access_token"
+            )
+        val refreshToken =
+            body.stringOrNull("refresh_token") ?: existingRefreshToken
+            ?: throw WithingsHttpException(
+                "withings_missing_refresh_token",
+                "Withings OAuth token response did not include refresh_token"
+            )
+        val providerUserId =
+            body["userid"]?.jsonPrimitive?.contentOrNull.orEmpty()
         if (requireUserId && providerUserId.isBlank()) {
-            throw WithingsHttpException("withings_missing_userid", "Withings OAuth token response did not include userid")
+            throw WithingsHttpException(
+                "withings_missing_userid",
+                "Withings OAuth token response did not include userid"
+            )
         }
         val tokenType = body.stringOrNull("token_type") ?: "Bearer"
         val expiresIn = body["expires_in"]?.jsonPrimitive?.longOrNull ?: 10800L
-        val scope = body.stringOrNull("scope") ?: WITHINGS_SCOPES.joinToString(",")
+        val scope =
+            body.stringOrNull("scope") ?: WITHINGS_SCOPES.joinToString(",")
 
         return WithingsTokenSet(
             providerUserId = providerUserId,
@@ -337,9 +352,13 @@ class KtorWithingsClient(
                 header(HttpHeaders.Authorization, "Bearer $accessToken")
             }
 
-            val payload = parseDataResponse(action, response.status, response.body())
+            val payload =
+                parseDataResponse(action, response.status, response.body())
             val body = payload["body"]?.jsonObject
-                ?: throw WithingsHttpException("withings_malformed_response", "Withings $action response did not include body")
+                ?: throw WithingsHttpException(
+                    "withings_malformed_response",
+                    "Withings $action response did not include body"
+                )
             pages.add(WithingsPage(endpoint, action, pageIndex, payload))
             records.addAll(body.records(recordsKey))
 
@@ -349,10 +368,16 @@ class KtorWithingsClient(
                 ?: body["more"]?.jsonPrimitive?.intOrNull?.let { it == 1 }
                 ?: false
             if (hasMore && nextOffset.isNullOrBlank()) {
-                throw WithingsHttpException("withings_malformed_response", "Withings $action response did not include next offset")
+                throw WithingsHttpException(
+                    "withings_malformed_response",
+                    "Withings $action response did not include next offset"
+                )
             }
             if (hasMore && !seenOffsets.add(nextOffset!!)) {
-                throw WithingsHttpException("withings_pagination_loop", "Withings $action returned a repeated offset")
+                throw WithingsHttpException(
+                    "withings_pagination_loop",
+                    "Withings $action returned a repeated offset"
+                )
             }
             offset = nextOffset.takeIf { hasMore }
             pageIndex += 1
@@ -361,7 +386,11 @@ class KtorWithingsClient(
         return WithingsFetchResult(dataType, pages, records)
     }
 
-    private fun parseDataResponse(action: String, status: HttpStatusCode, text: String): JsonObject {
+    private fun parseDataResponse(
+        action: String,
+        status: HttpStatusCode,
+        text: String
+    ): JsonObject {
         if (!status.isSuccess()) {
             throw WithingsHttpException(
                 "withings_data_request_failed",
@@ -374,7 +403,9 @@ class KtorWithingsClient(
             val detail = payload.withingsErrorDetail()
             throw WithingsHttpException(
                 "withings_data_request_failed",
-                "Withings $action request failed with status ${withingsStatus ?: "missing"}${detail?.let { ": $it" }.orEmpty()}",
+                "Withings $action request failed with status ${withingsStatus ?: "missing"}${
+                    detail?.let { ": $it" }.orEmpty()
+                }",
             )
         }
         return payload
@@ -392,7 +423,12 @@ class KtorWithingsClient(
                 if (value is JsonObject) {
                     buildJsonObject {
                         put("timestamp", recordKey)
-                        value.entries.forEach { (key, entryValue) -> put(key, entryValue) }
+                        value.entries.forEach { (key, entryValue) ->
+                            put(
+                                key,
+                                entryValue
+                            )
+                        }
                     }
                 } else {
                     buildJsonObject {
@@ -401,28 +437,40 @@ class KtorWithingsClient(
                     }
                 }
             }
+
             else -> emptyList()
         }
 
-    private fun ymdRange(from: Instant, to: Instant): Pair<LocalDate, LocalDate> =
-        from.atZone(ZoneOffset.UTC).toLocalDate() to to.minusNanos(1).atZone(ZoneOffset.UTC).toLocalDate()
+    private fun ymdRange(
+        from: Instant,
+        to: Instant
+    ): Pair<LocalDate, LocalDate> =
+        from.atZone(ZoneOffset.UTC).toLocalDate() to to.minusNanos(1)
+            .atZone(ZoneOffset.UTC).toLocalDate()
 
-    private fun sleepWindows(from: Instant, to: Instant): List<Pair<Instant, Instant>> {
+    private fun sleepWindows(
+        from: Instant,
+        to: Instant
+    ): List<Pair<Instant, Instant>> {
         val windows = mutableListOf<Pair<Instant, Instant>>()
         var windowFrom = from
         while (windowFrom.isBefore(to)) {
-            val windowTo = listOf(windowFrom.plusSeconds(24 * 60 * 60), to).minOrNull()!!
+            val windowTo =
+                listOf(windowFrom.plusSeconds(24 * 60 * 60), to).minOrNull()!!
             windows.add(windowFrom to windowTo)
             windowFrom = windowTo
         }
         return windows
     }
 
-    private fun measureEndpoint(): String = "${config.apiBaseUrl.trimEnd('/')}/v2/measure"
+    private fun measureEndpoint(): String =
+        "${config.apiBaseUrl.trimEnd('/')}/v2/measure"
 
-    private fun signatureEndpoint(): String = "${config.apiBaseUrl.trimEnd('/')}/v2/signature"
+    private fun signatureEndpoint(): String =
+        "${config.apiBaseUrl.trimEnd('/')}/v2/signature"
 
-    private fun sleepEndpoint(): String = "${config.apiBaseUrl.trimEnd('/')}/v2/sleep"
+    private fun sleepEndpoint(): String =
+        "${config.apiBaseUrl.trimEnd('/')}/v2/sleep"
 
     private fun JsonObject.stringOrNull(key: String): String? =
         this[key]?.jsonPrimitive?.contentOrNull
@@ -430,7 +478,12 @@ class KtorWithingsClient(
     private fun sign(parameters: Map<String, String>): String {
         val payload = parameters.toSortedMap().values.joinToString(",")
         val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(config.clientSecret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+        mac.init(
+            SecretKeySpec(
+                config.clientSecret.toByteArray(Charsets.UTF_8),
+                "HmacSHA256"
+            )
+        )
         return mac.doFinal(payload.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
     }

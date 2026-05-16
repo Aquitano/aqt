@@ -8,9 +8,7 @@ import io.ktor.server.plugins.swagger.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.ktor.server.routing.openapi.describe
-import io.ktor.server.routing.openapi.hide
-import io.ktor.server.routing.openapi.OpenApiDocSource
+import io.ktor.server.routing.openapi.*
 import kotlinx.serialization.Serializable
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.application.QueryParams
@@ -48,7 +46,8 @@ fun Application.configureRoutes(services: ApplicationServices) {
             operationId = "getHealth"
             tag("Admin")
             summary = "Health check"
-            description = "Public liveness check for local process and dependency monitoring."
+            description =
+                "Public liveness check for local process and dependency monitoring."
             publicEndpoint()
             responses {
                 HttpStatusCode.OK {
@@ -83,7 +82,8 @@ fun Application.configureRoutes(services: ApplicationServices) {
             operationId = "ingestBatch"
             tag("Ingestion")
             summary = "Ingest a normalized health data batch"
-            description = "Accepts a trusted normalized health data batch, stores the source payload for audit/reprocessing, writes structured metric tables, and treats repeated provider/batch identifiers idempotently. A duplicate batch returns 200 OK with `duplicateBatch=true`; a newly processed batch returns 201 Created."
+            description =
+                "Accepts a trusted normalized health data batch, stores the source payload for audit/reprocessing, writes structured metric tables, and treats repeated provider/batch identifiers idempotently. A duplicate batch returns 200 OK with `duplicateBatch=true`; a newly processed batch returns 201 Created."
             requiresBearerAuth()
             ingestionBatchJsonRequest()
             responses {
@@ -95,10 +95,14 @@ fun Application.configureRoutes(services: ApplicationServices) {
                     }
                 }
                 HttpStatusCode.OK {
-                    description = "Duplicate batch accepted without creating a new batch"
+                    description =
+                        "Duplicate batch accepted without creating a new batch"
                     content {
                         schema = buildSchema(typeOf<IngestionSummaryResponse>())
-                        example("duplicate", ingestionSummaryExample(duplicate = true))
+                        example(
+                            "duplicate",
+                            ingestionSummaryExample(duplicate = true)
+                        )
                     }
                 }
                 commonErrors(conflict = true)
@@ -111,25 +115,35 @@ fun Application.configureRoutes(services: ApplicationServices) {
             operationId = "listProviders"
             tag("Providers")
             summary = "List provider discovery metadata"
-            description = "Returns provider capabilities, supported data types, default sync selections, and workflow endpoint paths for client discovery."
+            description =
+                "Returns provider capabilities, supported data types, default sync selections, and workflow endpoint paths for client discovery."
             requiresBearerAuth()
             errorResponses()
         }
         get("/api/v1/providers/status") {
             call.authenticateProtected(services)
-            call.respond<ProviderStatusCatalogResponseDto>(services.providerStatusService.listProviderStatuses(services.clock.now()))
+            call.respond<ProviderStatusCatalogResponseDto>(
+                services.providerStatusService.listProviderStatuses(
+                    services.clock.now()
+                )
+            )
         }.describe {
             operationId = "listProviderStatuses"
             tag("Providers")
             summary = "List provider authentication and account status"
-            description = "Returns provider configuration, OAuth connection state, available accounts, token status, and the next suggested workflow action."
+            description =
+                "Returns provider configuration, OAuth connection state, available accounts, token status, and the next suggested workflow action."
             requiresBearerAuth()
             errorResponses()
         }
         get("/api/v1/providers/{providerCode}") {
             call.authenticateProtected(services)
             val code = call.providerCode()
-            call.respond<ProviderDescriptorResponseDto>(services.providerDiscoveryService.getProvider(code))
+            call.respond<ProviderDescriptorResponseDto>(
+                services.providerDiscoveryService.getProvider(
+                    code
+                )
+            )
         }.describe {
             operationId = "getProvider"
             tag("Providers")
@@ -142,12 +156,18 @@ fun Application.configureRoutes(services: ApplicationServices) {
         get("/api/v1/providers/{providerCode}/status") {
             call.authenticateProtected(services)
             val code = call.providerCode()
-            call.respond<ProviderStatusResponseDto>(services.providerStatusService.getProviderStatus(code, services.clock.now()))
+            call.respond<ProviderStatusResponseDto>(
+                services.providerStatusService.getProviderStatus(
+                    code,
+                    services.clock.now()
+                )
+            )
         }.describe {
             operationId = "getProviderStatus"
             tag("Providers")
             summary = "Get provider authentication and account status"
-            description = "Returns configuration, connection, account, and token status for one provider code."
+            description =
+                "Returns configuration, connection, account, and token status for one provider code."
             requiresBearerAuth()
             providerCodePath()
             errorResponses(notFound = true)
@@ -155,12 +175,18 @@ fun Application.configureRoutes(services: ApplicationServices) {
         get("/api/v1/providers/{providerCode}/oauth/start") {
             call.authenticateProtected(services)
             val code = call.providerCode()
-            call.respond<ProviderOAuthStartResponse>(services.providerWorkflowService.startOAuth(code, services.clock.now()))
+            call.respond<ProviderOAuthStartResponse>(
+                services.providerWorkflowService.startOAuth(
+                    code,
+                    services.clock.now()
+                )
+            )
         }.describe {
             operationId = "startProviderOAuth"
             tag("Providers")
             summary = "Start provider OAuth flow"
-            description = "Creates provider OAuth state and returns the authorization URL clients should open to connect an account. The state expires at the returned `expiresAt` timestamp."
+            description =
+                "Creates provider OAuth state and returns the authorization URL clients should open to connect an account. The state expires at the returned `expiresAt` timestamp."
             requiresBearerAuth()
             providerCodePath()
             errorResponses(notFound = true)
@@ -181,7 +207,8 @@ fun Application.configureRoutes(services: ApplicationServices) {
             operationId = "completeProviderOAuth"
             tag("Providers")
             summary = "Complete provider OAuth flow"
-            description = "Public OAuth redirect target. Exchanges a provider authorization code for stored encrypted tokens, or returns a provider-error response when the provider redirects with `error`."
+            description =
+                "Public OAuth redirect target. Exchanges a provider authorization code for stored encrypted tokens, or returns a provider-error response when the provider redirects with `error`."
             publicEndpoint()
             providerCodePath()
             parameters {
@@ -198,7 +225,11 @@ fun Application.configureRoutes(services: ApplicationServices) {
                     schema = buildSchema(typeOf<String>())
                 }
             }
-            errorResponses(unauthorized = false, notFound = true, upstream = true)
+            errorResponses(
+                unauthorized = false,
+                notFound = true,
+                upstream = true
+            )
         }
         post("/api/v1/providers/{providerCode}/sync") {
             call.authenticateProtected(services)
@@ -215,10 +246,15 @@ fun Application.configureRoutes(services: ApplicationServices) {
             operationId = "syncProvider"
             tag("Providers")
             summary = "Synchronize provider data"
-            description = "Fetches data from the selected provider for the requested range/data types, normalizes records, ingests resulting batches, and returns per-data-type batch, empty-result, and error details. Provider sync can return partial errors while still storing successful data types."
+            description =
+                "Fetches data from the selected provider for the requested range/data types, normalizes records, ingests resulting batches, and returns per-data-type batch, empty-result, and error details. Provider sync can return partial errors while still storing successful data types."
             requiresBearerAuth()
             providerCodePath()
-            jsonRequest<ProviderSyncRequestDto>("Provider sync request. Provider adapters may enforce max range and page-size constraints advertised by the provider catalog.", "syncRequest", providerSyncRequestExample())
+            jsonRequest<ProviderSyncRequestDto>(
+                "Provider sync request. Provider adapters may enforce max range and page-size constraints advertised by the provider catalog.",
+                "syncRequest",
+                providerSyncRequestExample()
+            )
             errorResponses(notFound = true, conflict = true, upstream = true)
         }
         get("/api/v1/metrics/catalog") {
@@ -228,13 +264,18 @@ fun Application.configureRoutes(services: ApplicationServices) {
             operationId = "getMetricCatalog"
             tag("Read")
             summary = "Get metric read catalog"
-            description = "Discovery endpoint for metric families, supported query parameters, response DTO names, aggregation modes, and provider data-type mappings. OpenAPI remains the formal schema contract; this endpoint helps clients decide which workflow to use."
+            description =
+                "Discovery endpoint for metric families, supported query parameters, response DTO names, aggregation modes, and provider data-type mappings. OpenAPI remains the formal schema contract; this endpoint helps clients decide which workflow to use."
             requiresBearerAuth()
             errorResponses()
         }
         get("/api/v1/metrics/steps") {
             call.authenticateProtected(services)
-            call.respond<StepSamplesResponse>(services.metricsQueryService.listStepSamples(call.queryParams()))
+            call.respond<StepSamplesResponse>(
+                services.metricsQueryService.listStepSamples(
+                    call.queryParams()
+                )
+            )
         }.describeReadOperation(
             operationId = "listStepSamples",
             summary = "List step samples",
@@ -252,7 +293,11 @@ fun Application.configureRoutes(services: ApplicationServices) {
         }.describeDailyStepReadOperation()
         get("/api/v1/sleep/sessions") {
             call.authenticateProtected(services)
-            call.respond<SleepSessionsResponse>(services.metricsQueryService.listSleepSessions(call.queryParams()))
+            call.respond<SleepSessionsResponse>(
+                services.metricsQueryService.listSleepSessions(
+                    call.queryParams()
+                )
+            )
         }.describeReadOperation(
             operationId = "listSleepSessions",
             summary = "List sleep sessions",
@@ -271,19 +316,28 @@ fun Application.configureRoutes(services: ApplicationServices) {
         }.describeSleepNightReadOperation()
         get("/api/v1/body/measurements") {
             call.authenticateProtected(services)
-            call.respond<BodyMeasurementsResponse>(services.metricsQueryService.listBodyMeasurements(call.queryParams()))
+            call.respond<BodyMeasurementsResponse>(
+                services.metricsQueryService.listBodyMeasurements(
+                    call.queryParams()
+                )
+            )
         }.describe {
             operationId = "listBodyMeasurements"
             tag("Read")
             summary = "List body measurements"
-            description = "Returns body measurements filtered by timestamp, source, and optional `metricType`. Use `latest=true` to return the latest matching measurement only."
+            description =
+                "Returns body measurements filtered by timestamp, source, and optional `metricType`. Use `latest=true` to return the latest matching measurement only."
             requiresBearerAuth()
             bodyMeasurementQueryParameters()
             errorResponses()
         }
         get("/api/v1/metrics/heart-rate") {
             call.authenticateProtected(services)
-            call.respond<HeartRateSamplesResponse>(services.metricsQueryService.listHeartRateSamples(call.queryParams()))
+            call.respond<HeartRateSamplesResponse>(
+                services.metricsQueryService.listHeartRateSamples(
+                    call.queryParams()
+                )
+            )
         }.describeReadOperation(
             operationId = "listHeartRateSamples",
             summary = "List heart rate samples",
@@ -303,19 +357,25 @@ fun Application.configureRoutes(services: ApplicationServices) {
             operationId = "getDashboardSummary"
             tag("Read")
             summary = "Get dashboard summary"
-            description = "Returns aggregate dashboard data for an inclusive UTC date range, including total steps and latest matching weight, heart-rate, and sleep values."
+            description =
+                "Returns aggregate dashboard data for an inclusive UTC date range, including total steps and latest matching weight, heart-rate, and sleep values."
             requiresBearerAuth()
             dashboardQueryParameters()
             errorResponses()
         }
         get("/api/v1/admin/ingestion/batches") {
             call.authenticateProtected(services)
-            call.respond<IngestionBatchesResponse>(services.adminService.listBatches(call.queryParams()))
+            call.respond<IngestionBatchesResponse>(
+                services.adminService.listBatches(
+                    call.queryParams()
+                )
+            )
         }.describe {
             operationId = "listIngestionBatches"
             tag("Admin")
             summary = "List ingestion batches"
-            description = "Lists ingestion batches by received timestamp and optional status for administrative inspection."
+            description =
+                "Lists ingestion batches by received timestamp and optional status for administrative inspection."
             requiresBearerAuth()
             adminQueryParameters()
             errorResponses()
@@ -333,7 +393,8 @@ fun Application.configureRoutes(services: ApplicationServices) {
             operationId = "getIngestionBatch"
             tag("Admin")
             summary = "Get ingestion batch detail"
-            description = "Returns one ingestion batch with stored record-level detail for audit and debugging."
+            description =
+                "Returns one ingestion batch with stored record-level detail for audit and debugging."
             requiresBearerAuth()
             parameters {
                 path("id") {
@@ -345,12 +406,17 @@ fun Application.configureRoutes(services: ApplicationServices) {
         }
         get("/api/v1/admin/ingestion/failures") {
             call.authenticateProtected(services)
-            call.respond<IngestionBatchesResponse>(services.adminService.listFailures(call.queryParams()))
+            call.respond<IngestionBatchesResponse>(
+                services.adminService.listFailures(
+                    call.queryParams()
+                )
+            )
         }.describe {
             operationId = "listIngestionFailures"
             tag("Admin")
             summary = "List failed ingestion batches"
-            description = "Lists ingestion batches with failure status for administrative inspection."
+            description =
+                "Lists ingestion batches with failure status for administrative inspection."
             requiresBearerAuth()
             adminQueryParameters()
             errorResponses()

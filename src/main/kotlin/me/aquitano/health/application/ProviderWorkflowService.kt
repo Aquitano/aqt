@@ -1,23 +1,7 @@
 package me.aquitano.health.application
 
-import me.aquitano.health.api.dto.MetricCreatedCountsResponse
-import me.aquitano.health.api.dto.ProviderOAuthCallbackResponse
-import me.aquitano.health.api.dto.ProviderOAuthStartResponse
-import me.aquitano.health.api.dto.ProviderSyncBatchResponseDto
-import me.aquitano.health.api.dto.ProviderSyncEmptyDataTypeResponseDto
-import me.aquitano.health.api.dto.ProviderSyncErrorResponseDto
-import me.aquitano.health.api.dto.ProviderSyncRequestDto
-import me.aquitano.health.api.dto.ProviderSyncResponseDto
-import me.aquitano.health.domain.MetricCreatedCounts
-import me.aquitano.health.domain.NotFoundException
-import me.aquitano.health.domain.ProviderSyncBatch
-import me.aquitano.health.domain.ProviderSyncEmptyDataType
-import me.aquitano.health.domain.ProviderSyncError
-import me.aquitano.health.domain.ProviderSyncRequest
-import me.aquitano.health.domain.ProviderSyncSummary
-import me.aquitano.health.domain.RequestValidationException
-import me.aquitano.health.domain.ValidationIssue
-import me.aquitano.health.domain.ValidationIssueCodes
+import me.aquitano.health.api.dto.*
+import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthStateConsumeResult
 import net.logstash.logback.argument.StructuredArguments.kv
@@ -25,9 +9,10 @@ import org.slf4j.LoggerFactory
 import java.security.SecureRandom
 import java.time.Duration
 import java.time.Instant
-import java.util.Base64
+import java.util.*
 
-private val logger = LoggerFactory.getLogger(ProviderWorkflowService::class.java)
+private val logger =
+    LoggerFactory.getLogger(ProviderWorkflowService::class.java)
 
 class ProviderWorkflowService(
     private val providerRegistry: HealthProviderRegistry,
@@ -35,13 +20,21 @@ class ProviderWorkflowService(
 ) {
     private val random = SecureRandom()
 
-    suspend fun startOAuth(providerCode: String, now: Instant): ProviderOAuthStartResponse {
+    suspend fun startOAuth(
+        providerCode: String,
+        now: Instant
+    ): ProviderOAuthStartResponse {
         val provider = providerRegistry.getProvider(providerCode)
             ?: throw NotFoundException("Provider '$providerCode' not found")
 
         val state = randomState()
         val expiresAt = now.plus(Duration.ofMinutes(10))
-        providerOAuthRepository.insertState(state, provider.providerCode, now, expiresAt)
+        providerOAuthRepository.insertState(
+            state,
+            provider.providerCode,
+            now,
+            expiresAt
+        )
         logger.info(
             "provider_oauth_start_created {} {}",
             kv("provider", provider.providerCode),
@@ -93,7 +86,11 @@ class ProviderWorkflowService(
             )
         }
 
-        when (providerOAuthRepository.consumeState(authState, provider.providerCode, now)) {
+        when (providerOAuthRepository.consumeState(
+            authState,
+            provider.providerCode,
+            now
+        )) {
             is ProviderOAuthStateConsumeResult.Consumed -> Unit
             is ProviderOAuthStateConsumeResult.AlreadyUsed ->
                 throw RequestValidationException(
@@ -105,6 +102,7 @@ class ProviderWorkflowService(
                         )
                     )
                 )
+
             is ProviderOAuthStateConsumeResult.Expired ->
                 throw RequestValidationException(
                     listOf(
@@ -115,6 +113,7 @@ class ProviderWorkflowService(
                         )
                     )
                 )
+
             ProviderOAuthStateConsumeResult.NotFound ->
                 throw RequestValidationException(
                     listOf(
@@ -135,7 +134,11 @@ class ProviderWorkflowService(
         )
     }
 
-    suspend fun sync(providerCode: String, request: ProviderSyncRequestDto, now: Instant): ProviderSyncResponseDto =
+    suspend fun sync(
+        providerCode: String,
+        request: ProviderSyncRequestDto,
+        now: Instant
+    ): ProviderSyncResponseDto =
         providerRegistry.getProvider(providerCode)
             ?.sync(request.toDomain(now), now)
             ?.toDto()
@@ -221,7 +224,11 @@ class ProviderWorkflowService(
         )
     }
 
-    private fun parseInstant(field: String, value: String, issues: MutableList<ValidationIssue>): Instant? =
+    private fun parseInstant(
+        field: String,
+        value: String,
+        issues: MutableList<ValidationIssue>
+    ): Instant? =
         runCatching { Instant.parse(value) }.getOrElse {
             issues.add(
                 ValidationIssue(

@@ -7,12 +7,8 @@ import io.ktor.server.plugins.callid.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.response.*
 import kotlinx.serialization.Serializable
-import me.aquitano.health.domain.ConflictException
+import me.aquitano.health.domain.*
 import me.aquitano.health.domain.NotFoundException
-import me.aquitano.health.domain.RequestValidationException
-import me.aquitano.health.domain.ServerConfigurationException
-import me.aquitano.health.domain.UnauthorizedException
-import me.aquitano.health.domain.UpstreamProviderException
 import net.logstash.logback.argument.StructuredArguments.kv
 import org.slf4j.LoggerFactory
 
@@ -107,7 +103,8 @@ fun Application.configureErrorHandling() {
                 ErrorResponse(
                     ErrorBody(
                         code = cause.code,
-                        message = cause.message ?: "Request conflicts with current state",
+                        message = cause.message
+                            ?: "Request conflicts with current state",
                         requestId = call.requestId(),
                     )
                 ),

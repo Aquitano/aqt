@@ -118,9 +118,15 @@ class SupportRepository(
             block()
         }
 
-    private fun shouldUpdateLastUsedAt(current: String?, now: Instant): Boolean {
+    private fun shouldUpdateLastUsedAt(
+        current: String?,
+        now: Instant
+    ): Boolean {
         if (current == null) return true
-        val parsed = runCatching { Instant.parse(current) }.getOrNull() ?: return true
-        return parsed <= now.minusSeconds(API_CLIENT_LAST_USED_UPDATE_INTERVAL_SECONDS)
+        val parsed =
+            runCatching { Instant.parse(current) }.getOrNull() ?: return true
+        return parsed <= now.minusSeconds(
+            API_CLIENT_LAST_USED_UPDATE_INTERVAL_SECONDS
+        )
     }
 }

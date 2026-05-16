@@ -1,27 +1,12 @@
 package me.aquitano.external.google
 
-import io.ktor.http.URLBuilder
+import io.ktor.http.*
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.application.IngestionService
-import me.aquitano.health.domain.ConflictException
-import me.aquitano.health.domain.HealthProviderDescriptor
-import me.aquitano.health.domain.HealthProvider
-import me.aquitano.health.domain.MetricCreatedCounts
-import me.aquitano.health.domain.ProviderAuthType
-import me.aquitano.health.domain.ProviderConnection
-import me.aquitano.health.domain.ProviderSyncBatch
-import me.aquitano.health.domain.ProviderSyncError
-import me.aquitano.health.domain.ProviderSyncRequest
-import me.aquitano.health.domain.ProviderSyncSummary
-import me.aquitano.health.domain.ProviderWorkflowEndpoints
-import me.aquitano.health.domain.RequestValidationException
-import me.aquitano.health.domain.ServerConfigurationException
-import me.aquitano.health.domain.UpstreamProviderException
-import me.aquitano.health.domain.ValidationIssue
-import me.aquitano.health.domain.ValidationIssueCodes
+import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.config.GoogleHealthConfig
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthAccount
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
@@ -43,22 +28,23 @@ class GoogleHealthProvider(
 ) : HealthProvider {
 
     override val providerCode: String = GOOGLE_HEALTH_PROVIDER_CODE
-    override val descriptor: HealthProviderDescriptor = HealthProviderDescriptor(
-        providerCode = "google-health",
-        displayName = "Google Health",
-        authType = ProviderAuthType.OAUTH,
-        requiresAuthentication = true,
-        supportedDataTypes = GOOGLE_HEALTH_DEFAULT_DATA_TYPES,
-        defaultDataTypes = GOOGLE_HEALTH_DEFAULT_DATA_TYPES,
-        maxSyncRangeDays = 31,
-        supportsPageSize = true,
-        workflowEndpoints = ProviderWorkflowEndpoints(
-            oauthStart = "/api/v1/providers/google-health/oauth/start",
-            oauthCallback = "/api/v1/providers/google-health/oauth/callback",
-            sync = "/api/v1/providers/google-health/sync",
-        ),
-        aliases = listOf(GOOGLE_HEALTH_PROVIDER_CODE),
-    )
+    override val descriptor: HealthProviderDescriptor =
+        HealthProviderDescriptor(
+            providerCode = "google-health",
+            displayName = "Google Health",
+            authType = ProviderAuthType.OAUTH,
+            requiresAuthentication = true,
+            supportedDataTypes = GOOGLE_HEALTH_DEFAULT_DATA_TYPES,
+            defaultDataTypes = GOOGLE_HEALTH_DEFAULT_DATA_TYPES,
+            maxSyncRangeDays = 31,
+            supportsPageSize = true,
+            workflowEndpoints = ProviderWorkflowEndpoints(
+                oauthStart = "/api/v1/providers/google-health/oauth/start",
+                oauthCallback = "/api/v1/providers/google-health/oauth/callback",
+                sync = "/api/v1/providers/google-health/sync",
+            ),
+            aliases = listOf(GOOGLE_HEALTH_PROVIDER_CODE),
+        )
     override val defaultProviderInstanceId: String = "google-health-me"
 
     override fun isConfigured(): Boolean = configurationIssues().isEmpty()
@@ -76,7 +62,10 @@ class GoogleHealthProvider(
         }.buildString()
     }
 
-    override suspend fun connect(code: String, now: Instant): ProviderConnection {
+    override suspend fun connect(
+        code: String,
+        now: Instant
+    ): ProviderConnection {
         requireConfigured()
         val tokens = providerCall(
             fallbackCode = "google_health_token_exchange_failed",
@@ -126,7 +115,8 @@ class GoogleHealthProvider(
                 "google_health_not_connected",
                 "Google Health is not connected",
             )
-        val providerInstanceId = validated.providerInstanceId ?: account.providerInstanceId
+        val providerInstanceId =
+            validated.providerInstanceId ?: account.providerInstanceId
         val cipher = TokenCipher(config.tokenEncryptionKey)
         val tokenState = freshAccessToken(account, cipher, now)
 
@@ -150,8 +140,17 @@ class GoogleHealthProvider(
         val batches = mutableListOf<ProviderSyncBatch>()
         val errors = mutableListOf<ProviderSyncError>()
         for (dataType in validated.dataTypes) {
-            for (window in syncWindows(dataType, validated.from, validated.to)) {
-                val batchExternalId = batchExternalId(providerInstanceId, dataType, window.from, window.to)
+            for (window in syncWindows(
+                dataType,
+                validated.from,
+                validated.to
+            )) {
+                val batchExternalId = batchExternalId(
+                    providerInstanceId,
+                    dataType,
+                    window.from,
+                    window.to
+                )
                 val existingBatch = ingestionService.findExistingBatch(
                     provider = GOOGLE_HEALTH_PROVIDER_CODE,
                     providerInstanceId = providerInstanceId,
@@ -204,7 +203,11 @@ class GoogleHealthProvider(
                                 put("requestedFrom", window.from.toString())
                                 put("requestedTo", window.to.toString())
                                 put("dataType", dataType)
-                                put("pages", normalized.sourcePayload["pages"] ?: JsonArray(emptyList()))
+                                put(
+                                    "pages",
+                                    normalized.sourcePayload["pages"]
+                                        ?: JsonArray(emptyList())
+                                )
                             },
                             records = normalized.records,
                         ),
@@ -250,7 +253,8 @@ class GoogleHealthProvider(
                         ProviderSyncError(
                             dataType = dataType,
                             code = code,
-                            message = exception.message ?: "Google Health sync failed",
+                            message = exception.message
+                                ?: "Google Health sync failed",
                         )
                     )
                 }
@@ -266,7 +270,8 @@ class GoogleHealthProvider(
             runId = runId,
             status = status,
             finishedAt = now,
-            errorMessage = errors.joinToString("; ") { "${it.dataType}: ${it.message}" }.ifBlank { null },
+            errorMessage = errors.joinToString("; ") { "${it.dataType}: ${it.message}" }
+                .ifBlank { null },
         )
         val completionMessage = "provider_sync_completed {} {} {} {} {}"
         val completionArgs = arrayOf(
@@ -299,7 +304,8 @@ class GoogleHealthProvider(
 
     private fun validate(request: ProviderSyncRequest): ValidatedSyncRequest {
         val issues = mutableListOf<ValidationIssue>()
-        val dataTypes = request.dataTypes?.takeIf { it.isNotEmpty() } ?: GOOGLE_HEALTH_DEFAULT_DATA_TYPES
+        val dataTypes = request.dataTypes?.takeIf { it.isNotEmpty() }
+            ?: GOOGLE_HEALTH_DEFAULT_DATA_TYPES
         dataTypes.forEachIndexed { index, dataType ->
             if (dataType !in GOOGLE_HEALTH_DEFAULT_DATA_TYPES) {
                 issues.add(
@@ -352,7 +358,8 @@ class GoogleHealthProvider(
             )
             throw UpstreamProviderException(
                 code = "google_health_token_refresh_failed",
-                message = exception.message ?: "Google OAuth token refresh failed",
+                message = exception.message
+                    ?: "Google OAuth token refresh failed",
                 statusCode = 502,
                 cause = exception,
             )
@@ -387,15 +394,32 @@ class GoogleHealthProvider(
         now: Instant,
     ): GoogleHealthFetchResult =
         try {
-            client.fetchDataPoints(tokenState.accessToken, dataType, from, to, pageSize)
+            client.fetchDataPoints(
+                tokenState.accessToken,
+                dataType,
+                from,
+                to,
+                pageSize
+            )
         } catch (_: GoogleHealthUnauthorizedException) {
             logger.warn(
                 "provider_fetch_unauthorized_retrying {} {}",
                 kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
                 kv("dataType", dataType),
             )
-            val refreshed = refreshAccessToken(account, tokenState.refreshToken, cipher, now)
-            client.fetchDataPoints(refreshed.accessToken, dataType, from, to, pageSize)
+            val refreshed = refreshAccessToken(
+                account,
+                tokenState.refreshToken,
+                cipher,
+                now
+            )
+            client.fetchDataPoints(
+                refreshed.accessToken,
+                dataType,
+                from,
+                to,
+                pageSize
+            )
         }
 
     private fun requireConfigured() {
@@ -450,10 +474,18 @@ class GoogleHealthProvider(
             )
         }
 
-    private fun batchExternalId(providerInstanceId: String, dataType: String, from: Instant, to: Instant): String =
+    private fun batchExternalId(
+        providerInstanceId: String,
+        dataType: String,
+        from: Instant,
+        to: Instant
+    ): String =
         "google-health:$providerInstanceId:$dataType:$from:$to"
 
-    private fun cachedBatchResponse(dataType: String, batchId: Int): ProviderSyncBatch =
+    private fun cachedBatchResponse(
+        dataType: String,
+        batchId: Int
+    ): ProviderSyncBatch =
         ProviderSyncBatch(
             dataType = dataType,
             batchId = batchId,
@@ -465,8 +497,16 @@ class GoogleHealthProvider(
             affectedStepSummaryDates = emptyList(),
         )
 
-    private fun syncWindows(dataType: String, from: Instant, to: Instant): List<SyncWindow> {
-        val windowSize = if (dataType == "heart-rate") Duration.ofDays(1) else Duration.between(from, to)
+    private fun syncWindows(
+        dataType: String,
+        from: Instant,
+        to: Instant
+    ): List<SyncWindow> {
+        val windowSize =
+            if (dataType == "heart-rate") Duration.ofDays(1) else Duration.between(
+                from,
+                to
+            )
         val windows = mutableListOf<SyncWindow>()
         var windowFrom = from
         while (windowFrom.isBefore(to)) {
@@ -492,7 +532,9 @@ class GoogleHealthProvider(
         val pageSize: Int,
     ) {
         fun pageSizeFor(dataType: String): Int =
-            if (dataType == "sleep") pageSize.coerceAtMost(25) else pageSize.coerceAtMost(10000)
+            if (dataType == "sleep") pageSize.coerceAtMost(25) else pageSize.coerceAtMost(
+                10000
+            )
     }
 
     private data class TokenState(

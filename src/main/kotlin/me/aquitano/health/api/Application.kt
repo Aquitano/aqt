@@ -2,26 +2,18 @@ package me.aquitano.health.api
 
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.plugins.HttpTimeout
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
-import me.aquitano.health.application.*
-import me.aquitano.health.infrastructure.config.toAppConfig
-import me.aquitano.health.infrastructure.database.DatabaseFactory
-import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
-import me.aquitano.health.infrastructure.repositories.IngestionRepository
-import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
-import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
-import me.aquitano.health.infrastructure.repositories.SupportRepository
-import me.aquitano.external.google.GoogleHealthProvider
-import me.aquitano.external.google.GeneratedGoogleHealthClient
-import me.aquitano.external.google.GoogleHealthDataPointsServiceFactory
-import me.aquitano.external.google.GoogleHealthNormalizer
-import me.aquitano.external.google.KtorGoogleHealthOAuthClient
+import me.aquitano.external.google.*
 import me.aquitano.external.withings.KtorWithingsClient
 import me.aquitano.external.withings.WithingsNormalizer
 import me.aquitano.external.withings.WithingsProvider
+import me.aquitano.health.application.*
+import me.aquitano.health.infrastructure.config.toAppConfig
+import me.aquitano.health.infrastructure.database.DatabaseFactory
+import me.aquitano.health.infrastructure.repositories.*
 import me.aquitano.health.infrastructure.security.ApiKeyHasher
 import me.aquitano.health.infrastructure.time.UtcClock
 import me.aquitano.health.shared.AppJson
@@ -29,7 +21,8 @@ import net.logstash.logback.argument.StructuredArguments.kv
 import org.jetbrains.exposed.sql.Database
 import org.slf4j.LoggerFactory
 
-private val logger = LoggerFactory.getLogger("me.aquitano.health.api.Application")
+private val logger =
+    LoggerFactory.getLogger("me.aquitano.health.api.Application")
 
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)
@@ -58,10 +51,13 @@ fun Application.module() {
             requestTimeoutMillis = 120_000
         }
     }
-    val googleHealthOAuthClient = KtorGoogleHealthOAuthClient(httpClient, appConfig.googleHealth)
+    val googleHealthOAuthClient =
+        KtorGoogleHealthOAuthClient(httpClient, appConfig.googleHealth)
     val googleHealthClient = GeneratedGoogleHealthClient(
         oauthClient = googleHealthOAuthClient,
-        dataPointsServiceFactory = GoogleHealthDataPointsServiceFactory(appConfig.googleHealth.apiBaseUrl),
+        dataPointsServiceFactory = GoogleHealthDataPointsServiceFactory(
+            appConfig.googleHealth.apiBaseUrl
+        ),
     )
     val withingsClient = KtorWithingsClient(httpClient, appConfig.withings)
     logger.info(
@@ -101,7 +97,8 @@ fun Application.module() {
         normalizer = WithingsNormalizer(),
         ingestionService = ingestionService,
     )
-    val providerRegistry = HealthProviderRegistry(listOf(googleHealthProvider, withingsProvider))
+    val providerRegistry =
+        HealthProviderRegistry(listOf(googleHealthProvider, withingsProvider))
 
     val services = ApplicationServices(
         database = database,

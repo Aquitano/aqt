@@ -199,10 +199,17 @@ class MetricsReadRepository {
         )
         val conditions = mutableListOf<Op<Boolean>>()
         filters.fromDate?.let {
-            conditions.add(SleepSessionsTable.endAt greaterEq it.atStartOfDay(filters.timezone).toInstant().toString())
+            conditions.add(
+                SleepSessionsTable.endAt greaterEq it.atStartOfDay(
+                    filters.timezone
+                ).toInstant().toString()
+            )
         }
         filters.toDate?.let {
-            conditions.add(SleepSessionsTable.endAt less it.plusDays(1).atStartOfDay(filters.timezone).toInstant().toString())
+            conditions.add(
+                SleepSessionsTable.endAt less it.plusDays(1)
+                    .atStartOfDay(filters.timezone).toInstant().toString()
+            )
         }
         sourceIds?.let { conditions.add(SleepSessionsTable.sourceInstanceId inList it) }
         val nights = SleepSessionsTable.selectAll()
@@ -221,7 +228,8 @@ class MetricsReadRepository {
                     durationSeconds = it[SleepSessionsTable.durationSeconds],
                 )
                 SleepNightRow(
-                    date = Instant.parse(session.endAt).atZone(filters.timezone).toLocalDate().toString(),
+                    date = Instant.parse(session.endAt).atZone(filters.timezone)
+                        .toLocalDate().toString(),
                     timezone = filters.timezone.id,
                     session = session,
                 )

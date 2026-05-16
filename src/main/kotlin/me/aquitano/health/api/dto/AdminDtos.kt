@@ -1,6 +1,6 @@
 package me.aquitano.health.api.dto
 
-import io.ktor.openapi.JsonSchema
+import io.ktor.openapi.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 

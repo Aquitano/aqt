@@ -63,7 +63,10 @@ class IngestionMappingService {
                 put("providerInstanceId", providerInstanceId)
                 batchExternalId?.let { put("batchExternalId", it) }
                 put("ingestedAt", ingestedAt!!.toString())
-                put("records", JsonArray(records.map { it.normalizedRecordJson }))
+                put(
+                    "records",
+                    JsonArray(records.map { it.normalizedRecordJson })
+                )
             },
         )
 
@@ -120,10 +123,16 @@ class IngestionMappingService {
             )
         }
 
-        return if (startAt != null && endAt != null && steps > 0 && startAt.isBefore(endAt)) {
+        return if (startAt != null && endAt != null && steps > 0 && startAt.isBefore(
+                endAt
+            )
+        ) {
             StepIntervalRecord(
                 providerRecordId = dto.providerRecordId,
-                normalizedRecordJson = AppJson.encodeToJsonElement(IngestionRecordDto.serializer(), dto).jsonObject,
+                normalizedRecordJson = AppJson.encodeToJsonElement(
+                    IngestionRecordDto.serializer(),
+                    dto
+                ).jsonObject,
                 startAt = startAt,
                 endAt = endAt,
                 steps = steps
@@ -152,13 +161,22 @@ class IngestionMappingService {
         }
 
         val stages = dto.stages.mapIndexedNotNull { stageIndex, stageDto ->
-            mapSleepStage("$field.stages[$stageIndex]", stageDto, startAt, endAt, issues)
+            mapSleepStage(
+                "$field.stages[$stageIndex]",
+                stageDto,
+                startAt,
+                endAt,
+                issues
+            )
         }
 
         return if (startAt != null && endAt != null && startAt.isBefore(endAt)) {
             SleepSessionRecord(
                 providerRecordId = dto.providerRecordId,
-                normalizedRecordJson = AppJson.encodeToJsonElement(IngestionRecordDto.serializer(), dto).jsonObject,
+                normalizedRecordJson = AppJson.encodeToJsonElement(
+                    IngestionRecordDto.serializer(),
+                    dto
+                ).jsonObject,
                 startAt = startAt,
                 endAt = endAt,
                 stages = stages
@@ -209,7 +227,10 @@ class IngestionMappingService {
             }
         }
 
-        return if (stage in SleepStages.supported && startAt != null && endAt != null && startAt.isBefore(endAt)) {
+        return if (stage in SleepStages.supported && startAt != null && endAt != null && startAt.isBefore(
+                endAt
+            )
+        ) {
             SleepStageRecord(stage, startAt, endAt)
         } else {
             null
@@ -221,7 +242,8 @@ class IngestionMappingService {
         dto: BodyMeasurementDto,
         issues: MutableList<ValidationIssue>
     ): BodyMeasurementRecord? {
-        val measuredAt = parseInstant(dto.measuredAt, "$field.measuredAt", issues)
+        val measuredAt =
+            parseInstant(dto.measuredAt, "$field.measuredAt", issues)
         val values = buildList {
             dto.weightKg?.let {
                 if (it <= 0) issues.add(
@@ -241,7 +263,13 @@ class IngestionMappingService {
                         message = "must be between 0 and 100",
                     )
                 )
-                else add(BodyMeasurementValue(BodyMetricTypes.BODY_FAT, it, "percent"))
+                else add(
+                    BodyMeasurementValue(
+                        BodyMetricTypes.BODY_FAT,
+                        it,
+                        "percent"
+                    )
+                )
             }
             dto.muscleKg?.let {
                 if (it <= 0) issues.add(
@@ -261,7 +289,13 @@ class IngestionMappingService {
                         message = "must be between 0 and 100",
                     )
                 )
-                else add(BodyMeasurementValue(BodyMetricTypes.WATER, it, "percent"))
+                else add(
+                    BodyMeasurementValue(
+                        BodyMetricTypes.WATER,
+                        it,
+                        "percent"
+                    )
+                )
             }
             dto.visceralFatRating?.let {
                 if (it <= 0) issues.add(
@@ -271,7 +305,13 @@ class IngestionMappingService {
                         message = "must be greater than 0",
                     )
                 )
-                else add(BodyMeasurementValue(BodyMetricTypes.VISCERAL_FAT, it, "rating"))
+                else add(
+                    BodyMeasurementValue(
+                        BodyMetricTypes.VISCERAL_FAT,
+                        it,
+                        "rating"
+                    )
+                )
             }
         }
 
@@ -288,7 +328,10 @@ class IngestionMappingService {
         return if (measuredAt != null && values.isNotEmpty()) {
             BodyMeasurementRecord(
                 providerRecordId = dto.providerRecordId,
-                normalizedRecordJson = AppJson.encodeToJsonElement(IngestionRecordDto.serializer(), dto).jsonObject,
+                normalizedRecordJson = AppJson.encodeToJsonElement(
+                    IngestionRecordDto.serializer(),
+                    dto
+                ).jsonObject,
                 measuredAt = measuredAt,
                 measurements = values
             )
@@ -302,7 +345,8 @@ class IngestionMappingService {
         dto: HeartRateDto,
         issues: MutableList<ValidationIssue>
     ): HeartRateRecord? {
-        val measuredAt = parseInstant(dto.measuredAt, "$field.measuredAt", issues)
+        val measuredAt =
+            parseInstant(dto.measuredAt, "$field.measuredAt", issues)
         val bpm = dto.bpm
         val context = dto.context ?: "unknown"
 
@@ -328,7 +372,10 @@ class IngestionMappingService {
         return if (measuredAt != null && bpm in 25..250 && context in HeartRateContexts.supported) {
             HeartRateRecord(
                 providerRecordId = dto.providerRecordId,
-                normalizedRecordJson = AppJson.encodeToJsonElement(IngestionRecordDto.serializer(), dto).jsonObject,
+                normalizedRecordJson = AppJson.encodeToJsonElement(
+                    IngestionRecordDto.serializer(),
+                    dto
+                ).jsonObject,
                 measuredAt = measuredAt,
                 bpm = bpm,
                 context = context

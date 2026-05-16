@@ -1,28 +1,12 @@
 package me.aquitano.external.withings
 
-import io.ktor.http.URLBuilder
+import io.ktor.http.*
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.application.IngestionService
-import me.aquitano.health.domain.ConflictException
-import me.aquitano.health.domain.HealthProvider
-import me.aquitano.health.domain.HealthProviderDescriptor
-import me.aquitano.health.domain.MetricCreatedCounts
-import me.aquitano.health.domain.ProviderAuthType
-import me.aquitano.health.domain.ProviderConnection
-import me.aquitano.health.domain.ProviderSyncBatch
-import me.aquitano.health.domain.ProviderSyncEmptyDataType
-import me.aquitano.health.domain.ProviderSyncError
-import me.aquitano.health.domain.ProviderSyncRequest
-import me.aquitano.health.domain.ProviderSyncSummary
-import me.aquitano.health.domain.ProviderWorkflowEndpoints
-import me.aquitano.health.domain.RequestValidationException
-import me.aquitano.health.domain.ServerConfigurationException
-import me.aquitano.health.domain.UpstreamProviderException
-import me.aquitano.health.domain.ValidationIssue
-import me.aquitano.health.domain.ValidationIssueCodes
+import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.config.WithingsConfig
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthAccount
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
@@ -42,21 +26,22 @@ class WithingsProvider(
     private val ingestionService: IngestionService,
 ) : HealthProvider {
     override val providerCode: String = WITHINGS_PROVIDER_CODE
-    override val descriptor: HealthProviderDescriptor = HealthProviderDescriptor(
-        providerCode = WITHINGS_PROVIDER_CODE,
-        displayName = "Withings",
-        authType = ProviderAuthType.OAUTH,
-        requiresAuthentication = true,
-        supportedDataTypes = WITHINGS_DEFAULT_DATA_TYPES,
-        defaultDataTypes = WITHINGS_DEFAULT_DATA_TYPES,
-        maxSyncRangeDays = 31,
-        supportsPageSize = false,
-        workflowEndpoints = ProviderWorkflowEndpoints(
-            oauthStart = "/api/v1/providers/withings/oauth/start",
-            oauthCallback = "/api/v1/providers/withings/oauth/callback",
-            sync = "/api/v1/providers/withings/sync",
-        ),
-    )
+    override val descriptor: HealthProviderDescriptor =
+        HealthProviderDescriptor(
+            providerCode = WITHINGS_PROVIDER_CODE,
+            displayName = "Withings",
+            authType = ProviderAuthType.OAUTH,
+            requiresAuthentication = true,
+            supportedDataTypes = WITHINGS_DEFAULT_DATA_TYPES,
+            defaultDataTypes = WITHINGS_DEFAULT_DATA_TYPES,
+            maxSyncRangeDays = 31,
+            supportsPageSize = false,
+            workflowEndpoints = ProviderWorkflowEndpoints(
+                oauthStart = "/api/v1/providers/withings/oauth/start",
+                oauthCallback = "/api/v1/providers/withings/oauth/callback",
+                sync = "/api/v1/providers/withings/sync",
+            ),
+        )
     override val defaultProviderInstanceId: String = "withings-me"
 
     override fun isConfigured(): Boolean = configurationIssues().isEmpty()
@@ -72,7 +57,10 @@ class WithingsProvider(
         }.buildString()
     }
 
-    override suspend fun connect(code: String, now: Instant): ProviderConnection {
+    override suspend fun connect(
+        code: String,
+        now: Instant
+    ): ProviderConnection {
         requireConfigured()
         val tokens = try {
             client.exchangeCode(code, now)
@@ -84,7 +72,8 @@ class WithingsProvider(
             )
             throw UpstreamProviderException(
                 code = exception.code,
-                message = exception.message ?: "Withings OAuth token exchange failed",
+                message = exception.message
+                    ?: "Withings OAuth token exchange failed",
                 statusCode = 502,
                 cause = exception,
             )
@@ -123,7 +112,10 @@ class WithingsProvider(
         )
     }
 
-    override suspend fun sync(request: ProviderSyncRequest, now: Instant): ProviderSyncSummary {
+    override suspend fun sync(
+        request: ProviderSyncRequest,
+        now: Instant
+    ): ProviderSyncSummary {
         val validated = validate(request)
         val account = accountForSync(validated.providerInstanceId)
         val providerInstanceId = account.providerInstanceId
@@ -141,7 +133,12 @@ class WithingsProvider(
         val errors = mutableListOf<ProviderSyncError>()
         val emptyDataTypes = mutableListOf<ProviderSyncEmptyDataType>()
         for (dataType in validated.dataTypes) {
-            val batchExternalId = batchExternalId(providerInstanceId, dataType, validated.from, validated.to)
+            val batchExternalId = batchExternalId(
+                providerInstanceId,
+                dataType,
+                validated.from,
+                validated.to
+            )
             val existingBatch = ingestionService.findExistingBatch(
                 provider = WITHINGS_PROVIDER_CODE,
                 providerInstanceId = providerInstanceId,
@@ -197,8 +194,17 @@ class WithingsProvider(
                             put("requestedFrom", validated.from.toString())
                             put("requestedTo", validated.to.toString())
                             put("dataType", dataType)
-                            put("pages", normalized.sourcePayload["pages"] ?: JsonArray(emptyList()))
-                            put("records", normalized.sourcePayload["records"] ?: JsonArray(emptyList()))
+                            put(
+                                "pages",
+                                normalized.sourcePayload["pages"] ?: JsonArray(
+                                    emptyList()
+                                )
+                            )
+                            put(
+                                "records",
+                                normalized.sourcePayload["records"]
+                                    ?: JsonArray(emptyList())
+                            )
                         },
                         records = normalized.records,
                     ),
@@ -250,7 +256,8 @@ class WithingsProvider(
             runId = runId,
             status = status,
             finishedAt = now,
-            errorMessage = errors.joinToString("; ") { "${it.dataType}: ${it.message}" }.ifBlank { null },
+            errorMessage = errors.joinToString("; ") { "${it.dataType}: ${it.message}" }
+                .ifBlank { null },
         )
         if (batches.isEmpty() && errors.isNotEmpty()) {
             val first = errors.first()
@@ -277,7 +284,10 @@ class WithingsProvider(
                     "Withings is not connected",
                 )
         } else {
-            repository.accountByProviderInstance(WITHINGS_PROVIDER_CODE, providerInstanceId)
+            repository.accountByProviderInstance(
+                WITHINGS_PROVIDER_CODE,
+                providerInstanceId
+            )
                 ?: throw ConflictException(
                     "withings_account_not_found",
                     "Withings account is not connected for providerInstanceId: $providerInstanceId",
@@ -286,7 +296,8 @@ class WithingsProvider(
 
     private fun validate(request: ProviderSyncRequest): ValidatedSyncRequest {
         val issues = mutableListOf<ValidationIssue>()
-        val dataTypes = request.dataTypes?.takeIf { it.isNotEmpty() } ?: WITHINGS_DEFAULT_DATA_TYPES
+        val dataTypes = request.dataTypes?.takeIf { it.isNotEmpty() }
+            ?: WITHINGS_DEFAULT_DATA_TYPES
         dataTypes.forEachIndexed { index, dataType ->
             if (dataType !in WITHINGS_DEFAULT_DATA_TYPES) {
                 issues.add(
@@ -332,7 +343,8 @@ class WithingsProvider(
             if (exception is CancellationException) throw exception
             throw UpstreamProviderException(
                 code = "withings_token_refresh_failed",
-                message = exception.message ?: "Withings OAuth token refresh failed",
+                message = exception.message
+                    ?: "Withings OAuth token refresh failed",
                 statusCode = 502,
                 cause = exception,
             )
@@ -360,14 +372,29 @@ class WithingsProvider(
     ): FetchWithAuthResult =
         try {
             FetchWithAuthResult(
-                fetchResult = fetchDataType(tokenState.accessToken, dataType, from, to),
+                fetchResult = fetchDataType(
+                    tokenState.accessToken,
+                    dataType,
+                    from,
+                    to
+                ),
                 tokenState = tokenState,
             )
         } catch (exception: WithingsHttpException) {
             if (exception.code != "withings_data_request_failed") throw exception
-            val refreshed = refreshAccessToken(account, tokenState.refreshToken, cipher, now)
+            val refreshed = refreshAccessToken(
+                account,
+                tokenState.refreshToken,
+                cipher,
+                now
+            )
             FetchWithAuthResult(
-                fetchResult = fetchDataType(refreshed.accessToken, dataType, from, to),
+                fetchResult = fetchDataType(
+                    refreshed.accessToken,
+                    dataType,
+                    from,
+                    to
+                ),
                 tokenState = refreshed,
             )
         }
@@ -379,11 +406,39 @@ class WithingsProvider(
         to: Instant,
     ): WithingsFetchResult =
         when (dataType) {
-            "activity" -> client.fetchActivity(accessToken, from, to, WITHINGS_ACTIVITY_FIELDS_ALL_LISTED)
-            "measures" -> client.fetchMeasures(accessToken, from, to, WITHINGS_MEASURE_TYPES_ALL_LISTED, 1)
-            "sleep-summary" -> client.fetchSleepSummary(accessToken, from, to, WITHINGS_SLEEP_SUMMARY_FIELDS_ALL_LISTED)
-            "sleep" -> client.fetchSleep(accessToken, from, to, WITHINGS_SLEEP_FIELDS_ALL_LISTED)
-            else -> throw WithingsHttpException("withings_unsupported_data_type", "Unsupported Withings data type: $dataType")
+            "activity" -> client.fetchActivity(
+                accessToken,
+                from,
+                to,
+                WITHINGS_ACTIVITY_FIELDS_ALL_LISTED
+            )
+
+            "measures" -> client.fetchMeasures(
+                accessToken,
+                from,
+                to,
+                WITHINGS_MEASURE_TYPES_ALL_LISTED,
+                1
+            )
+
+            "sleep-summary" -> client.fetchSleepSummary(
+                accessToken,
+                from,
+                to,
+                WITHINGS_SLEEP_SUMMARY_FIELDS_ALL_LISTED
+            )
+
+            "sleep" -> client.fetchSleep(
+                accessToken,
+                from,
+                to,
+                WITHINGS_SLEEP_FIELDS_ALL_LISTED
+            )
+
+            else -> throw WithingsHttpException(
+                "withings_unsupported_data_type",
+                "Unsupported Withings data type: $dataType"
+            )
         }
 
     private fun requireConfigured() {
@@ -406,12 +461,21 @@ class WithingsProvider(
             if (config.apiBaseUrl.isBlank()) add(ValidationIssue("withings.apiBaseUrl"))
         }
 
-    private fun providerInstanceId(providerUserId: String): String = "withings-$providerUserId"
+    private fun providerInstanceId(providerUserId: String): String =
+        "withings-$providerUserId"
 
-    private fun batchExternalId(providerInstanceId: String, dataType: String, from: Instant, to: Instant): String =
+    private fun batchExternalId(
+        providerInstanceId: String,
+        dataType: String,
+        from: Instant,
+        to: Instant
+    ): String =
         "withings:$providerInstanceId:$dataType:$from:$to"
 
-    private fun cachedBatchResponse(dataType: String, batchId: Int): ProviderSyncBatch =
+    private fun cachedBatchResponse(
+        dataType: String,
+        batchId: Int
+    ): ProviderSyncBatch =
         ProviderSyncBatch(
             dataType = dataType,
             batchId = batchId,

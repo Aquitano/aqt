@@ -1,8 +1,8 @@
 package me.aquitano.health.application
 
 import kotlinx.coroutines.Dispatchers
-import me.aquitano.health.api.dto.IngestionBatchDetailResponse
 import me.aquitano.health.api.dto.IngestionBatchAdminResponse
+import me.aquitano.health.api.dto.IngestionBatchDetailResponse
 import me.aquitano.health.api.dto.IngestionBatchesResponse
 import me.aquitano.health.api.dto.IngestionRecordAdminResponse
 import me.aquitano.health.domain.NotFoundException

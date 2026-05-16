@@ -15,10 +15,14 @@ class ProviderStatusService(
 ) {
     suspend fun listProviderStatuses(now: Instant): ProviderStatusCatalogResponseDto =
         ProviderStatusCatalogResponseDto(
-            providers = providerRegistry.listProviders().map { it.toStatusDto(now) },
+            providers = providerRegistry.listProviders()
+                .map { it.toStatusDto(now) },
         )
 
-    suspend fun getProviderStatus(providerCode: String, now: Instant): ProviderStatusResponseDto =
+    suspend fun getProviderStatus(
+        providerCode: String,
+        now: Instant
+    ): ProviderStatusResponseDto =
         providerRegistry.getProvider(providerCode)
             ?.toStatusDto(now)
             ?: throw NotFoundException("Provider '$providerCode' not found")

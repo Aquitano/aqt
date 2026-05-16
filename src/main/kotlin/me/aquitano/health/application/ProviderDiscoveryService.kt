@@ -13,7 +13,8 @@ class ProviderDiscoveryService(
 ) {
     fun listProviders(): ProviderCatalogResponseDto =
         ProviderCatalogResponseDto(
-            providers = providerRegistry.listProviderDescriptors().map { it.toDto() },
+            providers = providerRegistry.listProviderDescriptors()
+                .map { it.toDto() },
         )
 
     fun getProvider(providerCode: String): ProviderDescriptorResponseDto =

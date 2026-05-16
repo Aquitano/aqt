@@ -1,11 +1,6 @@
 package me.aquitano.health.application
 
-import me.aquitano.health.api.dto.MetricAggregationModeDto
-import me.aquitano.health.api.dto.MetricCatalogResponseDto
-import me.aquitano.health.api.dto.MetricFamilyCatalogDto
-import me.aquitano.health.api.dto.MetricProviderDataTypesDto
-import me.aquitano.health.api.dto.MetricQueryParameterDto
-import me.aquitano.health.api.dto.MetricReadEndpointDto
+import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.BodyMetricTypes
 
 class MetricCatalogService(
@@ -26,8 +21,16 @@ class MetricCatalogService(
             name = "steps",
             readEndpoints = listOf(
                 endpoint("raw", "/api/v1/metrics/steps", "StepSamplesResponse"),
-                endpoint("daily", "/api/v1/metrics/steps/daily", "StepDailySummariesResponse"),
-                endpoint("summary", "/api/v1/dashboard/summary", "DashboardSummaryResponse"),
+                endpoint(
+                    "daily",
+                    "/api/v1/metrics/steps/daily",
+                    "StepDailySummariesResponse"
+                ),
+                endpoint(
+                    "summary",
+                    "/api/v1/dashboard/summary",
+                    "DashboardSummaryResponse"
+                ),
             ),
             queryParameters = instantReadParameters() + dailyParameters() + dashboardParameters(),
             aggregationModes = listOf(
@@ -53,10 +56,26 @@ class MetricCatalogService(
         MetricFamilyCatalogDto(
             name = "sleep",
             readEndpoints = listOf(
-                endpoint("raw", "/api/v1/sleep/sessions", "SleepSessionsResponse"),
-                endpoint("latest", "/api/v1/sleep/sessions", "SleepSessionsResponse"),
-                endpoint("night", "/api/v1/sleep/nights", "SleepNightsResponse"),
-                endpoint("summary", "/api/v1/dashboard/summary", "DashboardSummaryResponse"),
+                endpoint(
+                    "raw",
+                    "/api/v1/sleep/sessions",
+                    "SleepSessionsResponse"
+                ),
+                endpoint(
+                    "latest",
+                    "/api/v1/sleep/sessions",
+                    "SleepSessionsResponse"
+                ),
+                endpoint(
+                    "night",
+                    "/api/v1/sleep/nights",
+                    "SleepNightsResponse"
+                ),
+                endpoint(
+                    "summary",
+                    "/api/v1/dashboard/summary",
+                    "DashboardSummaryResponse"
+                ),
             ),
             queryParameters = instantReadParameters() + latestParameter() + sleepNightParameters() + dashboardParameters(),
             aggregationModes = listOf(
@@ -83,9 +102,21 @@ class MetricCatalogService(
         MetricFamilyCatalogDto(
             name = "body_measurements",
             readEndpoints = listOf(
-                endpoint("raw", "/api/v1/body/measurements", "BodyMeasurementsResponse"),
-                endpoint("latest", "/api/v1/body/measurements", "BodyMeasurementsResponse"),
-                endpoint("summary", "/api/v1/dashboard/summary", "DashboardSummaryResponse"),
+                endpoint(
+                    "raw",
+                    "/api/v1/body/measurements",
+                    "BodyMeasurementsResponse"
+                ),
+                endpoint(
+                    "latest",
+                    "/api/v1/body/measurements",
+                    "BodyMeasurementsResponse"
+                ),
+                endpoint(
+                    "summary",
+                    "/api/v1/dashboard/summary",
+                    "DashboardSummaryResponse"
+                ),
             ),
             queryParameters = instantReadParameters() + latestParameter() + listOf(
                 MetricQueryParameterDto(
@@ -118,9 +149,21 @@ class MetricCatalogService(
         MetricFamilyCatalogDto(
             name = "heart_rate",
             readEndpoints = listOf(
-                endpoint("raw", "/api/v1/metrics/heart-rate", "HeartRateSamplesResponse"),
-                endpoint("latest", "/api/v1/metrics/heart-rate", "HeartRateSamplesResponse"),
-                endpoint("summary", "/api/v1/dashboard/summary", "DashboardSummaryResponse"),
+                endpoint(
+                    "raw",
+                    "/api/v1/metrics/heart-rate",
+                    "HeartRateSamplesResponse"
+                ),
+                endpoint(
+                    "latest",
+                    "/api/v1/metrics/heart-rate",
+                    "HeartRateSamplesResponse"
+                ),
+                endpoint(
+                    "summary",
+                    "/api/v1/dashboard/summary",
+                    "DashboardSummaryResponse"
+                ),
             ),
             queryParameters = instantReadParameters() + latestParameter() + dashboardParameters(),
             aggregationModes = listOf(
@@ -162,38 +205,104 @@ class MetricCatalogService(
 
     private fun instantReadParameters(): List<MetricQueryParameterDto> =
         listOf(
-            MetricQueryParameterDto("from", "instant", description = "Inclusive start timestamp."),
-            MetricQueryParameterDto("to", "instant", description = "Exclusive end timestamp."),
-            MetricQueryParameterDto("provider", "string", description = "Source provider filter."),
-            MetricQueryParameterDto("providerInstanceId", "string", description = "Source provider instance filter."),
-            MetricQueryParameterDto("includeSource", "boolean", description = "Include source provider metadata."),
-            MetricQueryParameterDto("limit", "integer", description = "Maximum items. Default 500, max 5000."),
+            MetricQueryParameterDto(
+                "from",
+                "instant",
+                description = "Inclusive start timestamp."
+            ),
+            MetricQueryParameterDto(
+                "to",
+                "instant",
+                description = "Exclusive end timestamp."
+            ),
+            MetricQueryParameterDto(
+                "provider",
+                "string",
+                description = "Source provider filter."
+            ),
+            MetricQueryParameterDto(
+                "providerInstanceId",
+                "string",
+                description = "Source provider instance filter."
+            ),
+            MetricQueryParameterDto(
+                "includeSource",
+                "boolean",
+                description = "Include source provider metadata."
+            ),
+            MetricQueryParameterDto(
+                "limit",
+                "integer",
+                description = "Maximum items. Default 500, max 5000."
+            ),
         )
 
     private fun dailyParameters(): List<MetricQueryParameterDto> =
         listOf(
-            MetricQueryParameterDto("date", "date | today", description = "Exact UTC date. Cannot be combined with fromDate or toDate."),
-            MetricQueryParameterDto("fromDate", "date", description = "Inclusive UTC start date."),
-            MetricQueryParameterDto("toDate", "date", description = "Inclusive UTC end date."),
+            MetricQueryParameterDto(
+                "date",
+                "date | today",
+                description = "Exact UTC date. Cannot be combined with fromDate or toDate."
+            ),
+            MetricQueryParameterDto(
+                "fromDate",
+                "date",
+                description = "Inclusive UTC start date."
+            ),
+            MetricQueryParameterDto(
+                "toDate",
+                "date",
+                description = "Inclusive UTC end date."
+            ),
         )
 
     private fun sleepNightParameters(): List<MetricQueryParameterDto> =
         listOf(
-            MetricQueryParameterDto("date", "date | today", description = "Exact local sleep night date based on session endAt. Cannot be combined with fromDate or toDate."),
-            MetricQueryParameterDto("fromDate", "date", description = "Inclusive local sleep-night start date based on session endAt."),
-            MetricQueryParameterDto("toDate", "date", description = "Inclusive local sleep-night end date based on session endAt."),
-            MetricQueryParameterDto("timezone", "IANA timezone", description = "Timezone used to classify sleep endAt dates. Default UTC."),
+            MetricQueryParameterDto(
+                "date",
+                "date | today",
+                description = "Exact local sleep night date based on session endAt. Cannot be combined with fromDate or toDate."
+            ),
+            MetricQueryParameterDto(
+                "fromDate",
+                "date",
+                description = "Inclusive local sleep-night start date based on session endAt."
+            ),
+            MetricQueryParameterDto(
+                "toDate",
+                "date",
+                description = "Inclusive local sleep-night end date based on session endAt."
+            ),
+            MetricQueryParameterDto(
+                "timezone",
+                "IANA timezone",
+                description = "Timezone used to classify sleep endAt dates. Default UTC."
+            ),
         )
 
     private fun dashboardParameters(): List<MetricQueryParameterDto> =
         listOf(
-            MetricQueryParameterDto("fromDate", "date", required = true, description = "Inclusive UTC start date for dashboard summaries."),
-            MetricQueryParameterDto("toDate", "date", required = true, description = "Inclusive UTC end date for dashboard summaries."),
+            MetricQueryParameterDto(
+                "fromDate",
+                "date",
+                required = true,
+                description = "Inclusive UTC start date for dashboard summaries."
+            ),
+            MetricQueryParameterDto(
+                "toDate",
+                "date",
+                required = true,
+                description = "Inclusive UTC end date for dashboard summaries."
+            ),
         )
 
     private fun latestParameter(): List<MetricQueryParameterDto> =
         listOf(
-            MetricQueryParameterDto("latest", "boolean", description = "Return the latest matching item when true."),
+            MetricQueryParameterDto(
+                "latest",
+                "boolean",
+                description = "Return the latest matching item when true."
+            ),
         )
 
     private fun providerDataTypes(

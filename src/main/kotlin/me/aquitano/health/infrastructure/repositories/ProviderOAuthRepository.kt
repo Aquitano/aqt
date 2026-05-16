@@ -5,7 +5,6 @@ import me.aquitano.health.infrastructure.database.tables.ProviderOAuthAccountsTa
 import me.aquitano.health.infrastructure.database.tables.ProviderOAuthStatesTable
 import me.aquitano.health.infrastructure.database.tables.ProviderSyncRunsTable
 import org.jetbrains.exposed.sql.*
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.time.Instant
 
@@ -31,9 +30,15 @@ data class ProviderOAuthState(
 )
 
 sealed class ProviderOAuthStateConsumeResult {
-    data class Consumed(val state: ProviderOAuthState) : ProviderOAuthStateConsumeResult()
-    data class AlreadyUsed(val state: ProviderOAuthState) : ProviderOAuthStateConsumeResult()
-    data class Expired(val state: ProviderOAuthState) : ProviderOAuthStateConsumeResult()
+    data class Consumed(val state: ProviderOAuthState) :
+        ProviderOAuthStateConsumeResult()
+
+    data class AlreadyUsed(val state: ProviderOAuthState) :
+        ProviderOAuthStateConsumeResult()
+
+    data class Expired(val state: ProviderOAuthState) :
+        ProviderOAuthStateConsumeResult()
+
     data object NotFound : ProviderOAuthStateConsumeResult()
 }
 
@@ -81,7 +86,9 @@ class ProviderOAuthRepository(private val database: Database) {
                     .limit(1)
                     .singleOrNull()
                     ?: return@newSuspendedTransaction ProviderOAuthStateConsumeResult.NotFound
-                return@newSuspendedTransaction ProviderOAuthStateConsumeResult.Consumed(consumedRow.toOAuthState())
+                return@newSuspendedTransaction ProviderOAuthStateConsumeResult.Consumed(
+                    consumedRow.toOAuthState()
+                )
             }
 
             val existingRow = ProviderOAuthStatesTable
@@ -96,8 +103,14 @@ class ProviderOAuthRepository(private val database: Database) {
 
             val existing = existingRow.toOAuthState()
             return@newSuspendedTransaction when {
-                existing.consumedAt != null -> ProviderOAuthStateConsumeResult.AlreadyUsed(existing)
-                !now.isBefore(existing.expiresAt) -> ProviderOAuthStateConsumeResult.Expired(existing)
+                existing.consumedAt != null -> ProviderOAuthStateConsumeResult.AlreadyUsed(
+                    existing
+                )
+
+                !now.isBefore(existing.expiresAt) -> ProviderOAuthStateConsumeResult.Expired(
+                    existing
+                )
+
                 else -> ProviderOAuthStateConsumeResult.AlreadyUsed(existing)
             }
         }
@@ -163,7 +176,9 @@ class ProviderOAuthRepository(private val database: Database) {
         newSuspendedTransaction(Dispatchers.IO, db = database) {
             ProviderOAuthAccountsTable.update({ ProviderOAuthAccountsTable.id eq accountId }) {
                 it[this.accessTokenCiphertext] = accessTokenCiphertext
-                refreshTokenCiphertext?.let { value -> it[this.refreshTokenCiphertext] = value }
+                refreshTokenCiphertext?.let { value ->
+                    it[this.refreshTokenCiphertext] = value
+                }
                 it[this.tokenType] = tokenType
                 it[this.expiresAt] = expiresAt.toString()
                 scope?.let { value -> it[this.scope] = value }
@@ -208,7 +223,10 @@ class ProviderOAuthRepository(private val database: Database) {
                 .singleOrNull()
         }
 
-    suspend fun latestFinishedSyncAt(providerCode: String, providerInstanceId: String): Instant? =
+    suspend fun latestFinishedSyncAt(
+        providerCode: String,
+        providerInstanceId: String
+    ): Instant? =
         newSuspendedTransaction(Dispatchers.IO, db = database) {
             ProviderSyncRunsTable
                 .select(ProviderSyncRunsTable.finishedAt)

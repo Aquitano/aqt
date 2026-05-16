@@ -121,7 +121,8 @@ class IngestionRepository {
                 it[this.batchId] = batchId
                 it[recordType] = record.recordType
                 it[providerRecordId] = record.providerRecordId
-                it[normalizedRecordJson] = AppJson.encodeToString(record.normalizedRecordJson)
+                it[normalizedRecordJson] =
+                    AppJson.encodeToString(record.normalizedRecordJson)
                 it[recordStartAt] = record.recordStartAt?.toString()
                 it[recordEndAt] = record.recordEndAt?.toString()
                 it[createdAt] = now.toString()

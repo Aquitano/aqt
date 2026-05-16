@@ -2,41 +2,18 @@
 
 package me.aquitano.health.api
 
-import io.ktor.http.HttpStatusCode
-import io.ktor.openapi.Components
-import io.ktor.openapi.ExampleObject
-import io.ktor.openapi.GenericElement
-import io.ktor.openapi.HttpSecurityScheme
-import io.ktor.openapi.JsonSchema
-import io.ktor.openapi.JsonSchemaDiscriminator
-import io.ktor.openapi.JsonType
-import io.ktor.openapi.OpenApiDoc
-import io.ktor.openapi.OpenApiInfo
-import io.ktor.openapi.Operation
-import io.ktor.openapi.ReferenceOr
-import io.ktor.openapi.Responses
-import io.ktor.openapi.SecurityScheme
-import io.ktor.openapi.Server
-import io.ktor.openapi.Tag
-import io.ktor.server.routing.Route
-import io.ktor.server.routing.openapi.describe
-import io.ktor.utils.io.ExperimentalKtorApi
-import kotlinx.serialization.serializer
+import io.ktor.http.*
+import io.ktor.openapi.*
+import io.ktor.server.routing.*
+import io.ktor.server.routing.openapi.*
+import io.ktor.utils.io.*
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.serializer
 import me.aquitano.external.google.GOOGLE_HEALTH_PROVIDER_CODE
 import me.aquitano.external.withings.WITHINGS_PROVIDER_CODE
-import me.aquitano.health.api.dto.BodyMeasurementDto
-import me.aquitano.health.api.dto.HeartRateDto
-import me.aquitano.health.api.dto.IngestionBatchRequest
-import me.aquitano.health.api.dto.IngestionSummaryResponse
-import me.aquitano.health.api.dto.MetricCreatedCountsResponse
-import me.aquitano.health.api.dto.MetricSkippedCountsResponse
-import me.aquitano.health.api.dto.ProviderSyncRequestDto
-import me.aquitano.health.api.dto.SleepSessionDto
-import me.aquitano.health.api.dto.SleepStageDto
-import me.aquitano.health.api.dto.StepIntervalDto
+import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.BodyMetricTypes
 import me.aquitano.health.domain.RecordTypes
 import me.aquitano.health.domain.ValidationIssueCodes
@@ -57,7 +34,8 @@ private const val ExampleToDate = "2026-04-07"
 private const val ExampleFromAt = "${ExampleFromDate}T00:00:00Z"
 private const val ExampleToAt = "${ExampleDate}T00:00:00Z"
 private const val ExampleIngestedAt = "${ExampleDate}T08:15:30Z"
-private const val ExampleBatchExternalId = "$WITHINGS_PROVIDER_CODE-$ExampleToAt"
+private const val ExampleBatchExternalId =
+    "$WITHINGS_PROVIDER_CODE-$ExampleToAt"
 private const val ExampleStepStartAt = "${ExampleDate}T07:00:00Z"
 private const val ExampleStepEndAt = "${ExampleDate}T08:00:00Z"
 private const val ExampleSleepStartAt = "${ExampleFromDate}T22:30:00Z"
@@ -86,7 +64,10 @@ internal fun openApiBaseDoc(): OpenApiDoc =
         info = openApiInfo(),
         servers = listOf(
             Server(url = "/", description = "Same-origin deployment"),
-            Server(url = "http://localhost:8080", description = "Local development"),
+            Server(
+                url = "http://localhost:8080",
+                description = "Local development"
+            ),
         ),
         paths = emptyMap(),
         webhooks = emptyMap(),
@@ -94,9 +75,18 @@ internal fun openApiBaseDoc(): OpenApiDoc =
         security = listOf(mapOf(BearerApiKeySecurityScheme to emptyList())),
         tags = listOf(
             Tag("Admin", "Health checks and ingestion administration."),
-            Tag("Ingestion", "Normalized health batch ingestion for trusted clients and provider adapters."),
-            Tag("Providers", "Provider discovery, OAuth connection, status, and synchronization workflows."),
-            Tag("Read", "Metric catalog and read endpoints for health data queries."),
+            Tag(
+                "Ingestion",
+                "Normalized health batch ingestion for trusted clients and provider adapters."
+            ),
+            Tag(
+                "Providers",
+                "Provider discovery, OAuth connection, status, and synchronization workflows."
+            ),
+            Tag(
+                "Read",
+                "Metric catalog and read endpoints for health data queries."
+            ),
         ),
         externalDocs = null,
         extensions = emptyMap(),
@@ -156,16 +146,26 @@ internal inline fun <reified T : Any> Operation.Builder.jsonRequest(
 
 internal fun Operation.Builder.ingestionBatchJsonRequest() {
     requestBody {
-        description = "Normalized ingestion batch. Fields are nullable at the transport layer where provider adapters may omit them, but validation enforces provider, providerInstanceId, batch identity, and record-specific required fields."
+        description =
+            "Normalized ingestion batch. Fields are nullable at the transport layer where provider adapters may omit them, but validation enforces provider, providerInstanceId, batch identity, and record-specific required fields."
         required = true
         content {
             schema = JsonSchema(
                 type = JsonType.OBJECT,
                 properties = mapOf(
                     "provider" to ReferenceOr.Value(stringSchema(example = WITHINGS_PROVIDER_CODE)),
-                    "providerInstanceId" to ReferenceOr.Value(stringSchema(example = ExampleProviderInstanceId)),
+                    "providerInstanceId" to ReferenceOr.Value(
+                        stringSchema(
+                            example = ExampleProviderInstanceId
+                        )
+                    ),
                     "batchExternalId" to ReferenceOr.Value(stringSchema(example = ExampleBatchExternalId)),
-                    "ingestedAt" to ReferenceOr.Value(stringSchema(format = JsonFormatDateTime, example = ExampleIngestedAt)),
+                    "ingestedAt" to ReferenceOr.Value(
+                        stringSchema(
+                            format = JsonFormatDateTime,
+                            example = ExampleIngestedAt
+                        )
+                    ),
                     "sourcePayload" to ReferenceOr.Value(JsonSchema(type = JsonType.OBJECT)),
                     "records" to ReferenceOr.Value(
                         JsonSchema(
@@ -281,10 +281,14 @@ internal fun Responses.Builder.commonErrors(
 internal fun Operation.Builder.providerCodePath() {
     parameters {
         path("providerCode") {
-            description = "Provider code. Current examples are `google-health` and `withings`."
-            schema = stringSchema(enumValues = listOf(
-                GOOGLE_HEALTH_PROVIDER_CODE,
-                WITHINGS_PROVIDER_CODE), example = WITHINGS_PROVIDER_CODE)
+            description =
+                "Provider code. Current examples are `google-health` and `withings`."
+            schema = stringSchema(
+                enumValues = listOf(
+                    GOOGLE_HEALTH_PROVIDER_CODE,
+                    WITHINGS_PROVIDER_CODE
+                ), example = WITHINGS_PROVIDER_CODE
+            )
         }
     }
 }
@@ -292,12 +296,18 @@ internal fun Operation.Builder.providerCodePath() {
 internal fun Operation.Builder.readQueryParameters(includeLatest: Boolean = false) {
     parameters {
         query("from") {
-            description = "Inclusive start timestamp or date. Date-only values are interpreted by the endpoint's query service."
-            schema = stringSchema(format = JsonFormatDateTime, example = ExampleFromAt)
+            description =
+                "Inclusive start timestamp or date. Date-only values are interpreted by the endpoint's query service."
+            schema = stringSchema(
+                format = JsonFormatDateTime,
+                example = ExampleFromAt
+            )
         }
         query("to") {
-            description = "Exclusive end timestamp or date. Date-only values are interpreted by the endpoint's query service."
-            schema = stringSchema(format = JsonFormatDateTime, example = ExampleToAt)
+            description =
+                "Exclusive end timestamp or date. Date-only values are interpreted by the endpoint's query service."
+            schema =
+                stringSchema(format = JsonFormatDateTime, example = ExampleToAt)
         }
         query("provider") {
             description = "Source provider filter."
@@ -308,18 +318,26 @@ internal fun Operation.Builder.readQueryParameters(includeLatest: Boolean = fals
             schema = stringSchema(example = ExampleProviderInstanceId)
         }
         query("includeSource") {
-            description = "Include source provider metadata in each item. Defaults to false."
+            description =
+                "Include source provider metadata in each item. Defaults to false."
             schema = booleanSchema(default = false, example = false)
         }
         if (includeLatest) {
             query("latest") {
-                description = "Return the latest matching item when true. Defaults to false."
+                description =
+                    "Return the latest matching item when true. Defaults to false."
                 schema = booleanSchema(default = false, example = true)
             }
         }
         query("limit") {
-            description = "Maximum number of items. Defaults to 500 and cannot exceed 5000."
-            schema = integerSchema(default = 500, minimum = 1.0, maximum = 5000.0, example = 100)
+            description =
+                "Maximum number of items. Defaults to 500 and cannot exceed 5000."
+            schema = integerSchema(
+                default = 500,
+                minimum = 1.0,
+                maximum = 5000.0,
+                example = 100
+            )
         }
     }
 }
@@ -332,19 +350,26 @@ internal fun Operation.Builder.dailyStepQueryParameters() {
 internal fun Operation.Builder.sleepNightQueryParameters() {
     parameters {
         query("date") {
-            description = "Exact sleep night date or `today`. Matches the localized date of session endAt and cannot be combined with fromDate or toDate."
-            schema = stringSchema(format = JsonFormatDate, example = ExampleDate)
+            description =
+                "Exact sleep night date or `today`. Matches the localized date of session endAt and cannot be combined with fromDate or toDate."
+            schema =
+                stringSchema(format = JsonFormatDate, example = ExampleDate)
         }
         query("fromDate") {
-            description = "Inclusive local sleep-night start date based on session endAt."
-            schema = stringSchema(format = JsonFormatDate, example = ExampleFromDate)
+            description =
+                "Inclusive local sleep-night start date based on session endAt."
+            schema =
+                stringSchema(format = JsonFormatDate, example = ExampleFromDate)
         }
         query("toDate") {
-            description = "Inclusive local sleep-night end date based on session endAt."
-            schema = stringSchema(format = JsonFormatDate, example = ExampleToDate)
+            description =
+                "Inclusive local sleep-night end date based on session endAt."
+            schema =
+                stringSchema(format = JsonFormatDate, example = ExampleToDate)
         }
         query("timezone") {
-            description = "IANA timezone used to classify endAt dates. Defaults to UTC."
+            description =
+                "IANA timezone used to classify endAt dates. Defaults to UTC."
             schema = stringSchema(example = "Europe/Berlin")
         }
         query("provider") {
@@ -356,12 +381,19 @@ internal fun Operation.Builder.sleepNightQueryParameters() {
             schema = stringSchema(example = ExampleProviderInstanceId)
         }
         query("includeSource") {
-            description = "Include source provider metadata in each item. Defaults to false."
+            description =
+                "Include source provider metadata in each item. Defaults to false."
             schema = booleanSchema(default = false, example = false)
         }
         query("limit") {
-            description = "Maximum number of items. Defaults to 500, cannot exceed 5000, and is ignored as 1 when date is provided."
-            schema = integerSchema(default = 500, minimum = 1.0, maximum = 5000.0, example = 7)
+            description =
+                "Maximum number of items. Defaults to 500, cannot exceed 5000, and is ignored as 1 when date is provided."
+            schema = integerSchema(
+                default = 500,
+                minimum = 1.0,
+                maximum = 5000.0,
+                example = 7
+            )
         }
     }
 }
@@ -384,23 +416,28 @@ internal fun Operation.Builder.dashboardQueryParameters() {
         query("fromDate") {
             description = "Inclusive UTC start date for dashboard summaries."
             required = true
-            schema = stringSchema(format = JsonFormatDate, example = ExampleFromDate)
+            schema =
+                stringSchema(format = JsonFormatDate, example = ExampleFromDate)
         }
         query("toDate") {
             description = "Inclusive UTC end date for dashboard summaries."
             required = true
-            schema = stringSchema(format = JsonFormatDate, example = ExampleToDate)
+            schema =
+                stringSchema(format = JsonFormatDate, example = ExampleToDate)
         }
         query("provider") {
-            description = "Source provider filter applied to summary metric lookups."
+            description =
+                "Source provider filter applied to summary metric lookups."
             schema = stringSchema(example = WITHINGS_PROVIDER_CODE)
         }
         query("providerInstanceId") {
-            description = "Source provider account or instance filter applied to summary metric lookups."
+            description =
+                "Source provider account or instance filter applied to summary metric lookups."
             schema = stringSchema(example = ExampleProviderInstanceId)
         }
         query("includeSource") {
-            description = "Include source provider metadata for nested latest items. Defaults to false."
+            description =
+                "Include source provider metadata for nested latest items. Defaults to false."
             schema = booleanSchema(default = false, example = false)
         }
     }
@@ -410,19 +447,35 @@ internal fun Operation.Builder.adminQueryParameters() {
     parameters {
         query("status") {
             description = "Batch status filter."
-            schema = stringSchema(enumValues = listOf("accepted", "failed", "duplicate"), example = "failed")
+            schema = stringSchema(
+                enumValues = listOf(
+                    "accepted",
+                    "failed",
+                    "duplicate"
+                ), example = "failed"
+            )
         }
         query("from") {
             description = "Inclusive received-at start timestamp."
-            schema = stringSchema(format = JsonFormatDateTime, example = ExampleFromAt)
+            schema = stringSchema(
+                format = JsonFormatDateTime,
+                example = ExampleFromAt
+            )
         }
         query("to") {
             description = "Exclusive received-at end timestamp."
-            schema = stringSchema(format = JsonFormatDateTime, example = ExampleToAt)
+            schema =
+                stringSchema(format = JsonFormatDateTime, example = ExampleToAt)
         }
         query("limit") {
-            description = "Maximum number of items. Defaults to 100 and cannot exceed 1000 for admin list endpoints."
-            schema = integerSchema(default = 100, minimum = 1.0, maximum = 1000.0, example = 50)
+            description =
+                "Maximum number of items. Defaults to 100 and cannot exceed 1000 for admin list endpoints."
+            schema = integerSchema(
+                default = 100,
+                minimum = 1.0,
+                maximum = 1000.0,
+                example = 50
+            )
         }
     }
 }
@@ -430,16 +483,20 @@ internal fun Operation.Builder.adminQueryParameters() {
 private fun Operation.Builder.dateRangeQueryParameters(label: String) {
     parameters {
         query("date") {
-            description = "Exact $label or `today`. Cannot be combined with fromDate or toDate."
-            schema = stringSchema(format = JsonFormatDate, example = ExampleDate)
+            description =
+                "Exact $label or `today`. Cannot be combined with fromDate or toDate."
+            schema =
+                stringSchema(format = JsonFormatDate, example = ExampleDate)
         }
         query("fromDate") {
             description = "Inclusive $label start date."
-            schema = stringSchema(format = JsonFormatDate, example = ExampleFromDate)
+            schema =
+                stringSchema(format = JsonFormatDate, example = ExampleFromDate)
         }
         query("toDate") {
             description = "Inclusive $label end date."
-            schema = stringSchema(format = JsonFormatDate, example = ExampleToDate)
+            schema =
+                stringSchema(format = JsonFormatDate, example = ExampleToDate)
         }
     }
 }
@@ -463,7 +520,8 @@ internal fun Route.describeDailyStepReadOperation(): Route = describe {
     operationId = "listDailyStepSummaries"
     tag("Read")
     summary = "List daily step summaries"
-    description = "Returns daily UTC step totals. Use `date` for one day, or `fromDate` and `toDate` for an inclusive date range. `from` and `to` are also accepted by the shared query parser for timestamp-style filters."
+    description =
+        "Returns daily UTC step totals. Use `date` for one day, or `fromDate` and `toDate` for an inclusive date range. `from` and `to` are also accepted by the shared query parser for timestamp-style filters."
     requiresBearerAuth()
     dailyStepQueryParameters()
     errorResponses()
@@ -473,7 +531,8 @@ internal fun Route.describeSleepNightReadOperation(): Route = describe {
     operationId = "listSleepNights"
     tag("Read")
     summary = "List sleep nights"
-    description = "Returns sleep sessions classified by the localized date of `endAt`. Use `timezone` to control night boundaries."
+    description =
+        "Returns sleep sessions classified by the localized date of `endAt`. Use `timezone` to control night boundaries."
     requiresBearerAuth()
     sleepNightQueryParameters()
     errorResponses()
@@ -501,17 +560,40 @@ internal fun integerSchema(
 ): JsonSchema =
     JsonSchema(
         type = JsonType.INTEGER,
-        default = default?.let { GenericElement.encodeToElement(Int.serializer(), it) },
+        default = default?.let {
+            GenericElement.encodeToElement(
+                Int.serializer(),
+                it
+            )
+        },
         minimum = minimum,
         maximum = maximum,
-        example = example?.let { GenericElement.encodeToElement(Int.serializer(), it) },
+        example = example?.let {
+            GenericElement.encodeToElement(
+                Int.serializer(),
+                it
+            )
+        },
     )
 
-internal fun booleanSchema(default: Boolean? = null, example: Boolean? = null): JsonSchema =
+internal fun booleanSchema(
+    default: Boolean? = null,
+    example: Boolean? = null
+): JsonSchema =
     JsonSchema(
         type = JsonType.BOOLEAN,
-        default = default?.let { GenericElement.encodeToElement(Boolean.serializer(), it) },
-        example = example?.let { GenericElement.encodeToElement(Boolean.serializer(), it) },
+        default = default?.let {
+            GenericElement.encodeToElement(
+                Boolean.serializer(),
+                it
+            )
+        },
+        example = example?.let {
+            GenericElement.encodeToElement(
+                Boolean.serializer(),
+                it
+            )
+        },
     )
 
 internal fun ingestionBatchExample(): ExampleObject =
@@ -688,10 +770,18 @@ private fun internalErrorExample(): ExampleObject =
         ),
     )
 
-private inline fun <reified T> jsonExample(summary: String, value: T): ExampleObject =
+private inline fun <reified T> jsonExample(
+    summary: String,
+    value: T
+): ExampleObject =
     ExampleObject(
         summary = summary,
-        value = GenericElement(AppJson.encodeToJsonElement(serializer<T>(), value)),
+        value = GenericElement(
+            AppJson.encodeToJsonElement(
+                serializer<T>(),
+                value
+            )
+        ),
     )
 
 private fun stringElement(value: String): GenericElement =
@@ -708,9 +798,15 @@ internal fun ingestionRecordSchema(): JsonSchema =
         discriminator = JsonSchemaDiscriminator(
             propertyName = "type",
             mapping = mapOf(
-                RecordTypes.STEP_INTERVAL to componentSchemaRef(StepIntervalSchemaName),
-                RecordTypes.SLEEP_SESSION to componentSchemaRef(SleepSessionSchemaName),
-                RecordTypes.BODY_MEASUREMENT to componentSchemaRef(BodyMeasurementSchemaName),
+                RecordTypes.STEP_INTERVAL to componentSchemaRef(
+                    StepIntervalSchemaName
+                ),
+                RecordTypes.SLEEP_SESSION to componentSchemaRef(
+                    SleepSessionSchemaName
+                ),
+                RecordTypes.BODY_MEASUREMENT to componentSchemaRef(
+                    BodyMeasurementSchemaName
+                ),
                 RecordTypes.HEART_RATE to componentSchemaRef(HeartRateSchemaName),
             )
         ),

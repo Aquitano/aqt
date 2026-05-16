@@ -5,24 +5,16 @@ import com.google.api.gax.rpc.ApiException
 import com.google.api.gax.rpc.StatusCode
 import com.google.auth.oauth2.AccessToken
 import com.google.auth.oauth2.GoogleCredentials
-import com.google.devicesandservices.health.v4.DataPoint
-import com.google.devicesandservices.health.v4.DataPointsServiceClient
-import com.google.devicesandservices.health.v4.DataPointsServiceSettings
-import com.google.devicesandservices.health.v4.DataTypeName
-import com.google.devicesandservices.health.v4.ListDataPointsRequest
-import com.google.devicesandservices.health.v4.ListDataPointsResponse
+import com.google.devicesandservices.health.v4.*
 import com.google.protobuf.util.JsonFormat
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.put
+import kotlinx.serialization.json.*
 import me.aquitano.health.shared.AppJson
 import net.logstash.logback.argument.StructuredArguments.kv
 import org.slf4j.LoggerFactory
 import java.time.Instant
 
-private val generatedClientLogger = LoggerFactory.getLogger(GeneratedGoogleHealthClient::class.java)
+private val generatedClientLogger =
+    LoggerFactory.getLogger(GeneratedGoogleHealthClient::class.java)
 
 class GeneratedGoogleHealthClient(
     private val oauthClient: GoogleHealthOAuthClient,
@@ -74,7 +66,8 @@ class GeneratedGoogleHealthClient(
 
             val response = callListDataPoints(service, request, dataType)
             val pageDataPoints = response.dataPointsList.map(::dataPointJson)
-            val nextPageToken = response.nextPageToken.takeIf { it.isNotBlank() }
+            val nextPageToken =
+                response.nextPageToken.takeIf { it.isNotBlank() }
 
             pages.add(
                 GoogleHealthPage(
@@ -121,40 +114,64 @@ class GeneratedGoogleHealthClient(
             throw mapApiException(exception, dataType)
         }
 
-    private fun mapApiException(exception: ApiException, dataType: String): RuntimeException =
+    private fun mapApiException(
+        exception: ApiException,
+        dataType: String
+    ): RuntimeException =
         when (exception.statusCode.code) {
-            StatusCode.Code.UNAUTHENTICATED -> GoogleHealthUnauthorizedException("Google Health access token is unauthorized")
+            StatusCode.Code.UNAUTHENTICATED -> GoogleHealthUnauthorizedException(
+                "Google Health access token is unauthorized"
+            )
+
             StatusCode.Code.RESOURCE_EXHAUSTED,
             StatusCode.Code.UNAVAILABLE,
             StatusCode.Code.DEADLINE_EXCEEDED,
             StatusCode.Code.INTERNAL,
             StatusCode.Code.UNKNOWN,
-            -> GoogleHealthHttpException("google_health_upstream_failed", "Google Health $dataType request failed with ${exception.statusCode.code}")
-            else -> GoogleHealthHttpException("google_health_upstream_failed", "Google Health $dataType request failed with ${exception.statusCode.code}")
+                -> GoogleHealthHttpException(
+                "google_health_upstream_failed",
+                "Google Health $dataType request failed with ${exception.statusCode.code}"
+            )
+
+            else -> GoogleHealthHttpException(
+                "google_health_upstream_failed",
+                "Google Health $dataType request failed with ${exception.statusCode.code}"
+            )
         }
 
     private fun validateSupportedDataType(dataType: String) {
         if (dataType !in GOOGLE_HEALTH_DEFAULT_DATA_TYPES) {
-            throw GoogleHealthHttpException("google_health_unsupported_data_type", "Unsupported Google Health data type: $dataType")
+            throw GoogleHealthHttpException(
+                "google_health_unsupported_data_type",
+                "Unsupported Google Health data type: $dataType"
+            )
         }
     }
 
-    private fun filterFor(dataType: String, from: Instant, to: Instant): String =
+    private fun filterFor(
+        dataType: String,
+        from: Instant,
+        to: Instant
+    ): String =
         when (dataType) {
             "steps" -> """steps.interval.start_time >= "$from" AND steps.interval.start_time < "$to""""
             "sleep" -> """sleep.interval.end_time >= "$from" AND sleep.interval.end_time < "$to""""
             "heart-rate" -> """heart_rate.sample_time.physical_time >= "$from" AND heart_rate.sample_time.physical_time < "$to""""
             "weight" -> """weight.sample_time.physical_time >= "$from" AND weight.sample_time.physical_time < "$to""""
             "body-fat" -> """body_fat.sample_time.physical_time >= "$from" AND body_fat.sample_time.physical_time < "$to""""
-            else -> throw GoogleHealthHttpException("google_health_unsupported_data_type", "Unsupported Google Health data type: $dataType")
+            else -> throw GoogleHealthHttpException(
+                "google_health_unsupported_data_type",
+                "Unsupported Google Health data type: $dataType"
+            )
         }
 
     private fun dataPointJson(dataPoint: DataPoint): JsonObject =
         AppJson.parseToJsonElement(PROTO_JSON_PRINTER.print(dataPoint)).jsonObject
 
     companion object {
-        private val PROTO_JSON_PRINTER: JsonFormat.Printer = JsonFormat.printer()
-            .omittingInsignificantWhitespace()
+        private val PROTO_JSON_PRINTER: JsonFormat.Printer =
+            JsonFormat.printer()
+                .omittingInsignificantWhitespace()
     }
 }
 
@@ -173,7 +190,12 @@ private class GeneratedGoogleHealthDataPointsService(
     accessToken: String,
     apiBaseUrl: String?,
 ) : GoogleHealthDataPointsService {
-    private val client = DataPointsServiceClient.create(dataPointsServiceSettings(accessToken, apiBaseUrl))
+    private val client = DataPointsServiceClient.create(
+        dataPointsServiceSettings(
+            accessToken,
+            apiBaseUrl
+        )
+    )
 
     override fun listDataPoints(request: ListDataPointsRequest): ListDataPointsResponse =
         client.listDataPointsCallable().call(request)
@@ -183,7 +205,10 @@ private class GeneratedGoogleHealthDataPointsService(
     }
 }
 
-internal fun dataPointsServiceSettings(accessToken: String, apiBaseUrl: String? = null): DataPointsServiceSettings {
+internal fun dataPointsServiceSettings(
+    accessToken: String,
+    apiBaseUrl: String? = null
+): DataPointsServiceSettings {
     val builder = DataPointsServiceSettings.newHttpJsonBuilder()
         .setCredentialsProvider(
             FixedCredentialsProvider.create(

@@ -1,13 +1,13 @@
 package me.aquitano.health.application
 
 import kotlinx.coroutines.Dispatchers
-import me.aquitano.health.api.dto.MetricCreatedCountsResponse
-import me.aquitano.health.api.dto.MetricSkippedCountsResponse
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
+import me.aquitano.health.api.dto.MetricCreatedCountsResponse
+import me.aquitano.health.api.dto.MetricSkippedCountsResponse
 import me.aquitano.health.domain.*
-import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
+import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.shared.AppJson
 import me.aquitano.health.shared.utcDate
@@ -142,40 +142,41 @@ class IngestionService(
 
                 var created = MetricCreatedCounts()
                 var duplicateSkipped = 0
-                val affectedDates = linkedSetOf<java.time.LocalDate>()
+                val affectedDates = linkedSetOf<LocalDate>()
 
                 try {
                     ingestionRecords.forEach { ingestionRecord ->
-                        val result = when (val record = ingestionRecord.record) {
-                            is StepIntervalRecord -> writeStepInterval(
-                                validated.provider,
-                                sourceInstance.id,
-                                ingestionRecord.id,
-                                record,
-                                now
-                            )
+                        val result =
+                            when (val record = ingestionRecord.record) {
+                                is StepIntervalRecord -> writeStepInterval(
+                                    validated.provider,
+                                    sourceInstance.id,
+                                    ingestionRecord.id,
+                                    record,
+                                    now
+                                )
 
-                            is SleepSessionRecord -> writeSleepSession(
-                                sourceInstance.id,
-                                ingestionRecord.id,
-                                record,
-                                now
-                            )
+                                is SleepSessionRecord -> writeSleepSession(
+                                    sourceInstance.id,
+                                    ingestionRecord.id,
+                                    record,
+                                    now
+                                )
 
-                            is BodyMeasurementRecord -> writeBodyMeasurement(
-                                sourceInstance.id,
-                                ingestionRecord.id,
-                                record,
-                                now
-                            )
+                                is BodyMeasurementRecord -> writeBodyMeasurement(
+                                    sourceInstance.id,
+                                    ingestionRecord.id,
+                                    record,
+                                    now
+                                )
 
-                            is HeartRateRecord -> writeHeartRate(
-                                sourceInstance.id,
-                                ingestionRecord.id,
-                                record,
-                                now
-                            )
-                        }
+                                is HeartRateRecord -> writeHeartRate(
+                                    sourceInstance.id,
+                                    ingestionRecord.id,
+                                    record,
+                                    now
+                                )
+                            }
                         created += result.created
                         duplicateSkipped += result.duplicateSkipped
                         affectedDates.addAll(result.affectedStepSummaryDates)
@@ -233,16 +234,35 @@ class IngestionService(
                         "ingestion_batch_processed {} {} {} {} {} {} {} {}",
                         kv("batchId", response.batchId),
                         kv("recordsStored", response.ingestionRecordsStored),
-                        kv("stepSamplesCreated", response.metricsCreated.stepSamples),
-                        kv("sleepSessionsCreated", response.metricsCreated.sleepSessions),
-                        kv("sleepStagesCreated", response.metricsCreated.sleepStages),
-                        kv("bodyMeasurementsCreated", response.metricsCreated.bodyMeasurements),
-                        kv("heartRateSamplesCreated", response.metricsCreated.heartRateSamples),
-                        kv("duplicateSkips", response.metricsSkipped.duplicates),
+                        kv(
+                            "stepSamplesCreated",
+                            response.metricsCreated.stepSamples
+                        ),
+                        kv(
+                            "sleepSessionsCreated",
+                            response.metricsCreated.sleepSessions
+                        ),
+                        kv(
+                            "sleepStagesCreated",
+                            response.metricsCreated.sleepStages
+                        ),
+                        kv(
+                            "bodyMeasurementsCreated",
+                            response.metricsCreated.bodyMeasurements
+                        ),
+                        kv(
+                            "heartRateSamplesCreated",
+                            response.metricsCreated.heartRateSamples
+                        ),
+                        kv(
+                            "duplicateSkips",
+                            response.metricsSkipped.duplicates
+                        ),
                     )
                 }
                 response
             }
+
             is IngestionTransactionResult.Failure -> throw transactionResult.throwable
         }
     }
@@ -349,7 +369,10 @@ private sealed interface IngestionTransactionResult {
     data class Failure(val throwable: Throwable) : IngestionTransactionResult
 }
 
-private fun affectedUtcDates(start: Instant, exclusiveEnd: Instant): Set<LocalDate> {
+private fun affectedUtcDates(
+    start: Instant,
+    exclusiveEnd: Instant
+): Set<LocalDate> {
     val lastIncludedDate = exclusiveEnd.minusNanos(1).utcDate()
     val dates = linkedSetOf<LocalDate>()
     var cursor = start.utcDate()

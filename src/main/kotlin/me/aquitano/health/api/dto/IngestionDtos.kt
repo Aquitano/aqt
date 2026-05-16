@@ -1,6 +1,6 @@
 package me.aquitano.health.api.dto
 
-import io.ktor.openapi.JsonSchema
+import io.ktor.openapi.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -17,12 +17,20 @@ data class IngestionBatchRequest(
 )
 
 @Serializable
-@JsonSchema.OneOf(StepIntervalDto::class, SleepSessionDto::class, BodyMeasurementDto::class, HeartRateDto::class)
+@JsonSchema.OneOf(
+    StepIntervalDto::class,
+    SleepSessionDto::class,
+    BodyMeasurementDto::class,
+    HeartRateDto::class
+)
 @JsonSchema.Discriminator(
     "type",
     JsonSchema.Discriminator.Mapping("step_interval", StepIntervalDto::class),
     JsonSchema.Discriminator.Mapping("sleep_session", SleepSessionDto::class),
-    JsonSchema.Discriminator.Mapping("body_measurement", BodyMeasurementDto::class),
+    JsonSchema.Discriminator.Mapping(
+        "body_measurement",
+        BodyMeasurementDto::class
+    ),
     JsonSchema.Discriminator.Mapping("heart_rate", HeartRateDto::class),
 )
 sealed class IngestionRecordDto {
