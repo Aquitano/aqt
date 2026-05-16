@@ -21,8 +21,13 @@ class MetricsQueryService(
 ) {
     suspend fun listStepSamples(params: QueryParams): StepSamplesResponse =
         dbQuery {
+            val filters = params.readFilters(
+                defaultSort = SortFields.START_AT,
+                allowedSorts = setOf(SortFields.START_AT),
+                latestSupported = true,
+            )
             val (rows, sourceMetadata) = metricsReadRepository.listStepSamples(
-                params.readFilters()
+                filters
             )
             StepSamplesResponse(
                 items = rows.map {
@@ -34,6 +39,7 @@ class MetricsQueryService(
                         source = sourceMetadata[it.sourceInstanceId].toResponse(),
                     )
                 },
+                meta = rows.meta(filters),
             )
         }
 
@@ -42,6 +48,7 @@ class MetricsQueryService(
         now: Instant
     ): StepDailySummariesResponse =
         dbQuery {
+            params.rejectLatest()
             val filters = params.dailyReadFilters(now)
             val (rows, sourceMetadata) = metricsReadRepository.listStepDailySummaries(
                 filters
@@ -55,24 +62,24 @@ class MetricsQueryService(
                         source = sourceMetadata[it.sourceInstanceId].toResponse(),
                     )
                 },
+                meta = rows.meta(filters),
             )
         }
 
     suspend fun listSleepSessions(params: QueryParams): SleepSessionsResponse =
         dbQuery {
-            val latest = params.boolean("latest", default = false)
-            val (sessions, stagesBySession, sourceMetadata) = if (latest) {
-                val (session, stages, metadata) = metricsReadRepository.latestSleepSession(
-                    params.readFilters(limitOverride = 1)
-                )
-                Triple(listOfNotNull(session), stages, metadata)
-            } else {
-                metricsReadRepository.listSleepSessions(params.readFilters())
-            }
+            val filters = params.readFilters(
+                defaultSort = SortFields.START_AT,
+                allowedSorts = setOf(SortFields.START_AT),
+                latestSupported = true,
+            )
+            val (sessions, stagesBySession, sourceMetadata) =
+                metricsReadRepository.listSleepSessions(filters)
             SleepSessionsResponse(
                 items = sessions.map { session ->
                     session.toResponse(stagesBySession, sourceMetadata)
                 },
+                meta = sessions.meta(filters),
             )
         }
 
@@ -81,16 +88,15 @@ class MetricsQueryService(
         now: Instant,
     ): SleepNightsResponse =
         dbQuery {
+            params.rejectLatest()
+            val filters = params.sleepNightReadFilters(now)
             val (nights, stagesBySession, sourceMetadata) =
-                metricsReadRepository.listSleepNights(
-                    params.sleepNightReadFilters(
-                        now
-                    )
-                )
+                metricsReadRepository.listSleepNights(filters)
             SleepNightsResponse(
                 items = nights.map { night ->
                     night.toResponse(stagesBySession, sourceMetadata)
                 },
+                meta = nights.meta(filters),
             )
         }
 
@@ -108,38 +114,63 @@ class MetricsQueryService(
             )
         }
         return dbQuery {
-            val latest = params.boolean("latest", default = false)
-            val (rows, sourceMetadata) = if (latest) {
-                val (row, metadata) = metricsReadRepository.latestBodyMeasurement(
-                    params.readFilters(limitOverride = 1),
-                    metricType
-                )
-                listOfNotNull(row) to metadata
-            } else {
-                metricsReadRepository.listBodyMeasurements(
-                    params.readFilters(),
-                    metricType
-                )
-            }
+            val filters = params.readFilters(
+                defaultSort = SortFields.MEASURED_AT,
+                allowedSorts = setOf(SortFields.MEASURED_AT),
+                latestSupported = true,
+            )
+            val (rows, sourceMetadata) = metricsReadRepository.listBodyMeasurements(
+                filters,
+                metricType
+            )
             BodyMeasurementsResponse(
                 items = rows.map { it.toResponse(sourceMetadata) },
+                meta = rows.meta(filters),
             )
         }
     }
 
     suspend fun listHeartRateSamples(params: QueryParams): HeartRateSamplesResponse =
         dbQuery {
-            val latest = params.boolean("latest", default = false)
-            val (rows, sourceMetadata) = if (latest) {
-                val (row, metadata) = metricsReadRepository.latestHeartRateSample(
-                    params.readFilters(limitOverride = 1)
-                )
-                listOfNotNull(row) to metadata
-            } else {
-                metricsReadRepository.listHeartRateSamples(params.readFilters())
-            }
+            val filters = params.readFilters(
+                defaultSort = SortFields.MEASURED_AT,
+                allowedSorts = setOf(SortFields.MEASURED_AT),
+                latestSupported = true,
+            )
+            val (rows, sourceMetadata) =
+                metricsReadRepository.listHeartRateSamples(filters)
             HeartRateSamplesResponse(
                 items = rows.map { it.toResponse(sourceMetadata) },
+                meta = rows.meta(filters),
+            )
+        }
+
+    suspend fun latestBodyMeasurement(params: QueryParams): BodyMeasurementLatestResponse {
+        val metricType = params.required("metricType")
+        validateBodyMetricType(metricType)
+        return dbQuery {
+            val (row, sourceMetadata) = metricsReadRepository.latestBodyMeasurement(
+                params.summaryFilters(SortFields.MEASURED_AT),
+                metricType,
+            )
+            BodyMeasurementLatestResponse(
+                item = row?.toResponse(sourceMetadata),
+            )
+        }
+    }
+
+    suspend fun heartRateSummary(params: QueryParams): HeartRateSummaryResponse =
+        dbQuery {
+            val filters = params.summaryFilters(SortFields.MEASURED_AT)
+            val summary = metricsReadRepository.summarizeHeartRate(filters)
+            val (latest, sourceMetadata) =
+                metricsReadRepository.latestHeartRateSample(filters)
+            HeartRateSummaryResponse(
+                count = summary.count,
+                minBpm = summary.minBpm,
+                maxBpm = summary.maxBpm,
+                avgBpm = summary.avgBpm,
+                latest = latest?.toResponse(sourceMetadata),
             )
         }
 
@@ -172,6 +203,8 @@ class MetricsQueryService(
                 providerInstanceId = params.optional("providerInstanceId"),
                 includeSource = false,
                 limit = 1,
+                sort = SortFields.DATE,
+                order = Orders.ASC,
             )
             val instantFilters = ReadFilters(
                 from = fromInstant,
@@ -180,6 +213,8 @@ class MetricsQueryService(
                 providerInstanceId = params.optional("providerInstanceId"),
                 includeSource = includeSource,
                 limit = 1,
+                sort = SortFields.MEASURED_AT,
+                order = Orders.DESC,
             )
             val sleepNightFilters = SleepNightReadFilters(
                 fromDate = toDate,
@@ -189,6 +224,8 @@ class MetricsQueryService(
                 providerInstanceId = params.optional("providerInstanceId"),
                 includeSource = includeSource,
                 limit = 1,
+                sort = SortFields.DATE,
+                order = Orders.ASC,
             )
             val steps =
                 metricsReadRepository.sumStepDailySummaries(dailyFilters)
@@ -218,7 +255,26 @@ class MetricsQueryService(
         }
     }
 
-    private fun QueryParams.readFilters(limitOverride: Int? = null): ReadFilters {
+    private fun QueryParams.readFilters(
+        defaultSort: String,
+        allowedSorts: Set<String>,
+        latestSupported: Boolean,
+    ): ReadFilters {
+        val latest = boolean("latest", default = false)
+        if (latest && !latestSupported) {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        field = "latest",
+                        code = ValidationIssueCodes.UnsupportedValue,
+                        message = "latest is not supported for this endpoint",
+                    )
+                )
+            )
+        }
+        if (latest) {
+            validateLatestOverrides()
+        }
         val from = instant("from")
         val to = instant("to")
         validateRange(from, to, "from", "to")
@@ -228,7 +284,25 @@ class MetricsQueryService(
             provider = optional("provider"),
             providerInstanceId = optional("providerInstanceId"),
             includeSource = boolean("includeSource", default = false),
-            limit = limitOverride ?: limit(default = 500, max = 5000),
+            limit = if (latest) 1 else limit(default = 500, max = 5000),
+            sort = if (latest) defaultSort else sort(allowedSorts, defaultSort),
+            order = if (latest) Orders.DESC else order(),
+        )
+    }
+
+    private fun QueryParams.summaryFilters(defaultSort: String): ReadFilters {
+        val from = instant("from")
+        val to = instant("to")
+        validateRange(from, to, "from", "to")
+        return ReadFilters(
+            from = from,
+            to = to,
+            provider = optional("provider"),
+            providerInstanceId = optional("providerInstanceId"),
+            includeSource = boolean("includeSource", default = false),
+            limit = 1,
+            sort = defaultSort,
+            order = Orders.DESC,
         )
     }
 
@@ -270,6 +344,8 @@ class MetricsQueryService(
                 default = 500,
                 max = 5000
             ),
+            sort = sort(setOf(SortFields.DATE), SortFields.DATE),
+            order = order(),
         )
     }
 
@@ -309,6 +385,8 @@ class MetricsQueryService(
                 default = 500,
                 max = 5000
             ),
+            sort = sort(setOf(SortFields.DATE), SortFields.DATE),
+            order = order(),
         )
     }
 
@@ -323,6 +401,17 @@ class QueryParams(
 ) {
     fun optional(name: String): String? =
         values[name]?.takeIf { it.isNotBlank() }
+
+    fun required(name: String): String =
+        optional(name) ?: throw RequestValidationException(
+            listOf(
+                ValidationIssue(
+                    field = name,
+                    code = ValidationIssueCodes.Required,
+                    message = "is required",
+                )
+            )
+        )
 
     fun instant(name: String): Instant? {
         val value = optional(name) ?: return null
@@ -454,6 +543,69 @@ class QueryParams(
         }
         return parsed
     }
+
+    fun order(default: String = Orders.ASC): String {
+        val value = optional("order") ?: return default
+        val normalized = value.lowercase()
+        if (normalized != Orders.ASC && normalized != Orders.DESC) {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        field = "order",
+                        code = ValidationIssueCodes.UnsupportedValue,
+                        message = "must be asc or desc",
+                    )
+                )
+            )
+        }
+        return normalized
+    }
+
+    fun sort(allowedValues: Set<String>, default: String): String {
+        val value = optional("sort") ?: return default
+        if (value !in allowedValues) {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        field = "sort",
+                        code = ValidationIssueCodes.UnsupportedValue,
+                        message = "must be one of ${allowedValues.sorted().joinToString(", ")}",
+                    )
+                )
+            )
+        }
+        return value
+    }
+
+    fun rejectLatest() {
+        if (boolean("latest", default = false)) {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        field = "latest",
+                        code = ValidationIssueCodes.UnsupportedValue,
+                        message = "latest is not supported for this endpoint",
+                    )
+                )
+            )
+        }
+    }
+
+    fun validateLatestOverrides() {
+        val invalidFields = listOf("limit", "sort", "order")
+            .filter { optional(it) != null }
+        if (invalidFields.isNotEmpty()) {
+            throw RequestValidationException(
+                invalidFields.map {
+                    ValidationIssue(
+                        field = it,
+                        code = ValidationIssueCodes.InvalidState,
+                        message = "cannot be combined with latest=true",
+                    )
+                }
+            )
+        }
+    }
 }
 
 fun validateRange(
@@ -535,3 +687,52 @@ private fun SleepNightRow.toResponse(
         timezone = timezone,
         session = session.toResponse(stagesBySession, sourceMetadata),
     )
+
+private fun <T> List<T>.meta(filters: ReadFilters): ReadResponseMeta =
+    ReadResponseMeta(
+        count = size,
+        limit = filters.limit,
+        sort = filters.sort,
+        order = filters.order,
+    )
+
+private fun <T> List<T>.meta(filters: DailyReadFilters): ReadResponseMeta =
+    ReadResponseMeta(
+        count = size,
+        limit = filters.limit,
+        sort = filters.sort,
+        order = filters.order,
+    )
+
+private fun <T> List<T>.meta(filters: SleepNightReadFilters): ReadResponseMeta =
+    ReadResponseMeta(
+        count = size,
+        limit = filters.limit,
+        sort = filters.sort,
+        order = filters.order,
+    )
+
+private fun validateBodyMetricType(metricType: String) {
+    if (metricType !in BodyMetricTypes.supported) {
+        throw RequestValidationException(
+            listOf(
+                ValidationIssue(
+                    field = "metricType",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "unsupported body metric type",
+                )
+            )
+        )
+    }
+}
+
+private object SortFields {
+    const val START_AT = "startAt"
+    const val DATE = "date"
+    const val MEASURED_AT = "measuredAt"
+}
+
+private object Orders {
+    const val ASC = "asc"
+    const val DESC = "desc"
+}

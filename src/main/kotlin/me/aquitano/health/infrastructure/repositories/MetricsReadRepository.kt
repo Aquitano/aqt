@@ -23,6 +23,8 @@ data class ReadFilters(
     val providerInstanceId: String?,
     val includeSource: Boolean,
     val limit: Int,
+    val sort: String,
+    val order: String,
 )
 
 data class DailyReadFilters(
@@ -32,6 +34,8 @@ data class DailyReadFilters(
     val providerInstanceId: String?,
     val includeSource: Boolean,
     val limit: Int,
+    val sort: String,
+    val order: String,
 )
 
 data class SleepNightReadFilters(
@@ -42,6 +46,8 @@ data class SleepNightReadFilters(
     val providerInstanceId: String?,
     val includeSource: Boolean,
     val limit: Int,
+    val sort: String,
+    val order: String,
 )
 
 data class StepSampleRow(
@@ -102,6 +108,13 @@ data class DashboardStepsSummaryRow(
     val sampleCount: Int,
 )
 
+data class HeartRateSummaryRow(
+    val count: Int,
+    val minBpm: Int?,
+    val maxBpm: Int?,
+    val avgBpm: Double?,
+)
+
 class MetricsReadRepository {
     fun listStepSamples(filters: ReadFilters): Pair<List<StepSampleRow>, Map<Int, SourceMetadata>> {
         val sourceIds =
@@ -113,7 +126,10 @@ class MetricsReadRepository {
         sourceIds?.let { conditions.add(StepSamplesTable.sourceInstanceId inList it) }
         val rows = StepSamplesTable.selectAll()
             .where(combineConditions(conditions))
-            .orderBy(StepSamplesTable.startAt to SortOrder.ASC)
+            .orderBy(
+                StepSamplesTable.startAt to filters.sortOrder(),
+                StepSamplesTable.id to filters.sortOrder(),
+            )
             .limit(filters.limit)
             .map {
                 StepSampleRow(
@@ -140,7 +156,10 @@ class MetricsReadRepository {
         sourceIds?.let { conditions.add(StepDailySummariesTable.sourceInstanceId inList it) }
         val rows = StepDailySummariesTable.selectAll()
             .where(combineConditions(conditions))
-            .orderBy(StepDailySummariesTable.date to SortOrder.ASC)
+            .orderBy(
+                StepDailySummariesTable.date to filters.sortOrder(),
+                StepDailySummariesTable.sourceInstanceId to filters.sortOrder(),
+            )
             .limit(filters.limit)
             .map {
                 StepDailySummaryRow(
@@ -170,7 +189,10 @@ class MetricsReadRepository {
         sourceIds?.let { conditions.add(SleepSessionsTable.sourceInstanceId inList it) }
         val sessions = SleepSessionsTable.selectAll()
             .where(combineConditions(conditions))
-            .orderBy(SleepSessionsTable.startAt to SortOrder.ASC)
+            .orderBy(
+                SleepSessionsTable.startAt to filters.sortOrder(),
+                SleepSessionsTable.id to filters.sortOrder(),
+            )
             .limit(filters.limit)
             .map {
                 SleepSessionRow(
@@ -215,8 +237,8 @@ class MetricsReadRepository {
         val nights = SleepSessionsTable.selectAll()
             .where(combineConditions(conditions))
             .orderBy(
-                SleepSessionsTable.endAt to SortOrder.ASC,
-                SleepSessionsTable.id to SortOrder.ASC,
+                SleepSessionsTable.endAt to filters.sortOrder(),
+                SleepSessionsTable.id to filters.sortOrder(),
             )
             .limit(filters.limit)
             .map {
@@ -293,7 +315,10 @@ class MetricsReadRepository {
         metricType?.let { conditions.add(BodyMeasurementsTable.metricType eq it) }
         val rows = BodyMeasurementsTable.selectAll()
             .where(combineConditions(conditions))
-            .orderBy(BodyMeasurementsTable.measuredAt to SortOrder.ASC)
+            .orderBy(
+                BodyMeasurementsTable.measuredAt to filters.sortOrder(),
+                BodyMeasurementsTable.id to filters.sortOrder(),
+            )
             .limit(filters.limit)
             .map {
                 BodyMeasurementRow(
@@ -357,7 +382,10 @@ class MetricsReadRepository {
         sourceIds?.let { conditions.add(HeartRateSamplesTable.sourceInstanceId inList it) }
         val rows = HeartRateSamplesTable.selectAll()
             .where(combineConditions(conditions))
-            .orderBy(HeartRateSamplesTable.measuredAt to SortOrder.ASC)
+            .orderBy(
+                HeartRateSamplesTable.measuredAt to filters.sortOrder(),
+                HeartRateSamplesTable.id to filters.sortOrder(),
+            )
             .limit(filters.limit)
             .map {
                 HeartRateSampleRow(
@@ -403,6 +431,39 @@ class MetricsReadRepository {
             listOfNotNull(row?.sourceInstanceId).toSet(),
             filters.includeSource
         )
+    }
+
+    fun summarizeHeartRate(filters: ReadFilters): HeartRateSummaryRow {
+        val sourceIds =
+            sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        if (sourceIds != null && sourceIds.isEmpty()) return HeartRateSummaryRow(
+            count = 0,
+            minBpm = null,
+            maxBpm = null,
+            avgBpm = null,
+        )
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.from?.let { conditions.add(HeartRateSamplesTable.measuredAt greaterEq it.toString()) }
+        filters.to?.let { conditions.add(HeartRateSamplesTable.measuredAt less it.toString()) }
+        sourceIds?.let { conditions.add(HeartRateSamplesTable.sourceInstanceId inList it) }
+        val bpmValues = HeartRateSamplesTable.select(HeartRateSamplesTable.bpm)
+            .where(combineConditions(conditions))
+            .map { it[HeartRateSamplesTable.bpm] }
+        return if (bpmValues.isEmpty()) {
+            HeartRateSummaryRow(
+                count = 0,
+                minBpm = null,
+                maxBpm = null,
+                avgBpm = null,
+            )
+        } else {
+            HeartRateSummaryRow(
+                count = bpmValues.size,
+                minBpm = bpmValues.min(),
+                maxBpm = bpmValues.max(),
+                avgBpm = bpmValues.average(),
+            )
+        }
     }
 
     fun sumStepDailySummaries(filters: DailyReadFilters): DashboardStepsSummaryRow {
@@ -481,4 +542,16 @@ class MetricsReadRepository {
 
     private fun combineConditions(conditions: List<Op<Boolean>>): Op<Boolean> =
         conditions.reduceOrNull { left, right -> left and right } ?: Op.TRUE
+
+    private fun ReadFilters.sortOrder(): SortOrder =
+        order.toSortOrder()
+
+    private fun DailyReadFilters.sortOrder(): SortOrder =
+        order.toSortOrder()
+
+    private fun SleepNightReadFilters.sortOrder(): SortOrder =
+        order.toSortOrder()
+
+    private fun String.toSortOrder(): SortOrder =
+        if (equals("desc", ignoreCase = true)) SortOrder.DESC else SortOrder.ASC
 }

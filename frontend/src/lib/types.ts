@@ -13,6 +13,14 @@ export type SourceMetadata = {
   providerInstanceId: string;
 };
 
+export type ReadResponseMeta = {
+  count: number;
+  limit: number;
+  sort: string;
+  order: string;
+  nextCursor?: string;
+};
+
 export type StepDailySummary = {
   date: string;
   steps: number;
@@ -22,6 +30,7 @@ export type StepDailySummary = {
 
 export type StepDailySummariesResponse = {
   items: StepDailySummary[];
+  meta: ReadResponseMeta;
 };
 
 export type BodyMeasurement = {
@@ -35,6 +44,11 @@ export type BodyMeasurement = {
 
 export type BodyMeasurementsResponse = {
   items: BodyMeasurement[];
+  meta: ReadResponseMeta;
+};
+
+export type BodyMeasurementLatestResponse = {
+  item?: BodyMeasurement;
 };
 
 export type HeartRateSample = {
@@ -47,6 +61,15 @@ export type HeartRateSample = {
 
 export type HeartRateSamplesResponse = {
   items: HeartRateSample[];
+  meta: ReadResponseMeta;
+};
+
+export type HeartRateSummaryResponse = {
+  count: number;
+  minBpm?: number;
+  maxBpm?: number;
+  avgBpm?: number;
+  latest?: HeartRateSample;
 };
 
 export type SleepStage = {
@@ -67,6 +90,7 @@ export type SleepSession = {
 
 export type SleepSessionsResponse = {
   items: SleepSession[];
+  meta: ReadResponseMeta;
 };
 
 export type SleepNight = {
@@ -77,6 +101,7 @@ export type SleepNight = {
 
 export type SleepNightsResponse = {
   items: SleepNight[];
+  meta: ReadResponseMeta;
 };
 
 export type DashboardSummaryResponse = {

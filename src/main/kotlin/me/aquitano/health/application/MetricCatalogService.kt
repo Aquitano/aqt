@@ -49,7 +49,7 @@ class MetricCatalogService(
                     "withings" to listOf("activity"),
                 )
             ),
-            schemaHint = "items contain step samples or UTC daily step summaries; dashboard summary exposes total steps and sampleCount.",
+            schemaHint = "items contain step samples or UTC daily step summaries and list responses include meta with count, limit, sort, order, and no cursor for now; dashboard summary exposes total steps and sampleCount.",
         )
 
     private fun sleepCatalog(): MetricFamilyCatalogDto =
@@ -95,7 +95,7 @@ class MetricCatalogService(
                     "withings" to listOf("sleep", "sleep-summary"),
                 )
             ),
-            schemaHint = "raw items contain sleep sessions with nested stages. Sleep nights classify complete sessions by the localized endAt date.",
+            schemaHint = "raw items contain sleep sessions with nested stages and list responses include meta with count, limit, sort, order, and no cursor for now. Sleep nights classify complete sessions by the localized endAt date.",
         )
 
     private fun bodyMeasurementsCatalog(): MetricFamilyCatalogDto =
@@ -109,8 +109,8 @@ class MetricCatalogService(
                 ),
                 endpoint(
                     "latest",
-                    "/api/v1/body/measurements",
-                    "BodyMeasurementsResponse"
+                    "/api/v1/body/measurements/latest",
+                    "BodyMeasurementLatestResponse"
                 ),
                 endpoint(
                     "summary",
@@ -134,6 +134,7 @@ class MetricCatalogService(
             metricTypes = BodyMetricTypes.supported.sorted(),
             responseDtos = listOf(
                 "BodyMeasurementsResponse",
+                "BodyMeasurementLatestResponse",
                 "DashboardSummaryResponse.latestWeight",
             ),
             providerDataTypes = providerDataTypes(
@@ -142,7 +143,7 @@ class MetricCatalogService(
                     "withings" to listOf("measures"),
                 )
             ),
-            schemaHint = "items contain timestamped body measurements with metricType, value, and unit.",
+            schemaHint = "items contain timestamped body measurements with metricType, value, and unit, and list responses include meta with count, limit, sort, order, and no cursor for now.",
         )
 
     private fun heartRateCatalog(): MetricFamilyCatalogDto =
@@ -161,18 +162,19 @@ class MetricCatalogService(
                 ),
                 endpoint(
                     "summary",
-                    "/api/v1/dashboard/summary",
-                    "DashboardSummaryResponse"
+                    "/api/v1/metrics/heart-rate/summary",
+                    "HeartRateSummaryResponse"
                 ),
             ),
             queryParameters = instantReadParameters() + latestParameter() + dashboardParameters(),
             aggregationModes = listOf(
                 mode("raw", "/api/v1/metrics/heart-rate"),
                 mode("latest", "/api/v1/metrics/heart-rate"),
-                mode("summary", "/api/v1/dashboard/summary"),
+                mode("summary", "/api/v1/metrics/heart-rate/summary"),
             ),
             responseDtos = listOf(
                 "HeartRateSamplesResponse",
+                "HeartRateSummaryResponse",
                 "DashboardSummaryResponse.latestHeartRate",
             ),
             providerDataTypes = providerDataTypes(
@@ -181,7 +183,7 @@ class MetricCatalogService(
                     "withings" to listOf("activity", "sleep"),
                 )
             ),
-            schemaHint = "items contain timestamped heart-rate samples with bpm and context.",
+            schemaHint = "items contain timestamped heart-rate samples with bpm and context, and list responses include meta with count, limit, sort, order, and no cursor for now.",
         )
 
     private fun endpoint(
@@ -234,6 +236,16 @@ class MetricCatalogService(
                 "limit",
                 "integer",
                 description = "Maximum items. Default 500, max 5000."
+            ),
+            MetricQueryParameterDto(
+                "sort",
+                "string",
+                description = "Endpoint sort field. Supported values are the documented temporal or date field."
+            ),
+            MetricQueryParameterDto(
+                "order",
+                "asc | desc",
+                description = "Sort direction. Default asc."
             ),
         )
 

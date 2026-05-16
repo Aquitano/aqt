@@ -10,8 +10,18 @@ data class SourceMetadataResponse(
 )
 
 @Serializable
+data class ReadResponseMeta(
+    val count: Int,
+    val limit: Int,
+    val sort: String,
+    val order: String,
+    val nextCursor: String? = null,
+)
+
+@Serializable
 data class StepSamplesResponse(
     val items: List<StepSampleResponse>,
+    val meta: ReadResponseMeta,
 )
 
 @Serializable
@@ -28,6 +38,7 @@ data class StepSampleResponse(
 @Serializable
 data class StepDailySummariesResponse(
     val items: List<StepDailySummaryResponse>,
+    val meta: ReadResponseMeta,
 )
 
 @Serializable
@@ -42,11 +53,13 @@ data class StepDailySummaryResponse(
 @Serializable
 data class SleepSessionsResponse(
     val items: List<SleepSessionResponse>,
+    val meta: ReadResponseMeta,
 )
 
 @Serializable
 data class SleepNightsResponse(
     val items: List<SleepNightResponse>,
+    val meta: ReadResponseMeta,
 )
 
 @Serializable
@@ -82,6 +95,7 @@ data class SleepStageResponse(
 @Serializable
 data class BodyMeasurementsResponse(
     val items: List<BodyMeasurementResponse>,
+    val meta: ReadResponseMeta,
 )
 
 @Serializable
@@ -98,6 +112,7 @@ data class BodyMeasurementResponse(
 @Serializable
 data class HeartRateSamplesResponse(
     val items: List<HeartRateSampleResponse>,
+    val meta: ReadResponseMeta,
 )
 
 @Serializable
@@ -108,6 +123,20 @@ data class HeartRateSampleResponse(
     val bpm: Int,
     val context: String,
     val source: SourceMetadataResponse? = null,
+)
+
+@Serializable
+data class HeartRateSummaryResponse(
+    val count: Int,
+    val minBpm: Int? = null,
+    val maxBpm: Int? = null,
+    val avgBpm: Double? = null,
+    val latest: HeartRateSampleResponse? = null,
+)
+
+@Serializable
+data class BodyMeasurementLatestResponse(
+    val item: BodyMeasurementResponse? = null,
 )
 
 @Serializable

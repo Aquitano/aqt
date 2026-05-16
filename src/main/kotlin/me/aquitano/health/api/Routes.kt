@@ -25,7 +25,10 @@ fun Application.configureRoutes(services: ApplicationServices) {
     routing {
         get("/openapi") {
             val doc = openApiSource.read(application, openApiBaseDoc)
-            call.respondText(doc.content, doc.contentType)
+            call.respondText(
+                stripInferredAuthorizationParameters(doc.content),
+                doc.contentType
+            )
         }.hide()
         swaggerUI(path = "swagger") {
             info = openApiInfo
@@ -279,7 +282,8 @@ fun Application.configureRoutes(services: ApplicationServices) {
         }.describeReadOperation(
             operationId = "listStepSamples",
             summary = "List step samples",
-            descriptionText = "Returns raw step samples filtered by timestamp range, source provider, provider instance, source metadata inclusion, and item limit.",
+            descriptionText = "Returns raw step samples filtered by timestamp range, source provider, provider instance, source metadata inclusion, item limit, and sort order. Use `latest=true` to return the latest matching sample only.",
+            includeLatest = true,
         )
         get("/api/v1/metrics/steps/daily") {
             call.authenticateProtected(services)
@@ -314,6 +318,24 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 )
             )
         }.describeSleepNightReadOperation()
+        get("/api/v1/body/measurements/latest") {
+            call.authenticateProtected(services)
+            call.respond<BodyMeasurementLatestResponse>(
+                HttpStatusCode.OK,
+                services.metricsQueryService.latestBodyMeasurement(
+                    call.queryParams()
+                )
+            )
+        }.describe {
+            operationId = "getLatestBodyMeasurement"
+            tag("Read")
+            summary = "Get latest body measurement"
+            description =
+                "Returns the latest matching body measurement for a required `metricType` filter. This is a single-item alias for `latest=true` body measurement reads."
+            requiresBearerAuth()
+            bodyMeasurementLatestQueryParameters()
+            errorResponses()
+        }
         get("/api/v1/body/measurements") {
             call.authenticateProtected(services)
             call.respond<BodyMeasurementsResponse>(
@@ -329,6 +351,24 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 "Returns body measurements filtered by timestamp, source, and optional `metricType`. Use `latest=true` to return the latest matching measurement only."
             requiresBearerAuth()
             bodyMeasurementQueryParameters()
+            errorResponses()
+        }
+        get("/api/v1/metrics/heart-rate/summary") {
+            call.authenticateProtected(services)
+            call.respond<HeartRateSummaryResponse>(
+                HttpStatusCode.OK,
+                services.metricsQueryService.heartRateSummary(
+                    call.queryParams()
+                )
+            )
+        }.describe {
+            operationId = "summarizeHeartRate"
+            tag("Read")
+            summary = "Summarize heart rate samples"
+            description =
+                "Returns count, minimum, maximum, average, and latest heart-rate sample for the requested timestamp and source filters."
+            requiresBearerAuth()
+            heartRateSummaryQueryParameters()
             errorResponses()
         }
         get("/api/v1/metrics/heart-rate") {

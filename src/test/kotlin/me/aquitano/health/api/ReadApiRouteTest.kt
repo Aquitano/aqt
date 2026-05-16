@@ -112,6 +112,8 @@ class ReadApiRouteTest {
         assertContains(steps.queryParameterNames(), "from")
         assertContains(steps.queryParameterNames(), "to")
         assertContains(steps.queryParameterNames(), "includeSource")
+        assertContains(steps.queryParameterNames(), "sort")
+        assertContains(steps.queryParameterNames(), "order")
         assertContains(steps.modeNames(), "raw")
         assertContains(steps.modeNames(), "daily")
         assertContains(steps.modeNames(), "summary")
@@ -126,6 +128,7 @@ class ReadApiRouteTest {
             body.queryParameterValues("metricType"),
         )
         assertContains(body.endpointPaths(), "/api/v1/body/measurements")
+        assertContains(body.endpointPaths(), "/api/v1/body/measurements/latest")
 
         val sleep = families.family("sleep")
         val nightMode = sleep["aggregationModes"]!!.jsonArray
@@ -140,6 +143,7 @@ class ReadApiRouteTest {
 
         val heartRate = families.family("heart_rate")
         assertContains(heartRate.endpointPaths(), "/api/v1/metrics/heart-rate")
+        assertContains(heartRate.endpointPaths(), "/api/v1/metrics/heart-rate/summary")
         assertContains(heartRate.modeNames(), "latest")
     }
 
@@ -197,6 +201,119 @@ class ReadApiRouteTest {
             latestSleep.items()[0].jsonObject["startAt"]!!.jsonPrimitive.content
         )
         assertEquals(1, latestSleep.items()[0].jsonObject["stages"]!!.jsonArray.size)
+    }
+
+    @Test
+    fun metricListReadsReturnMetadataAndHonorSortOrderLimitAndLatestValidation() = testApplication {
+        configureTestApplication()
+        ingestMixedBatch()
+        ingestLaterBatch()
+
+        val descendingHeartRate =
+            authorizedGet("/api/v1/metrics/heart-rate?order=desc&limit=1")
+        assertEquals(HttpStatusCode.OK, descendingHeartRate.status)
+        assertEquals(1, descendingHeartRate.items().size)
+        assertEquals(
+            67,
+            descendingHeartRate.items()[0].jsonObject["bpm"]!!.jsonPrimitive.int
+        )
+        val meta = descendingHeartRate.meta()
+        assertEquals(1, meta["count"]!!.jsonPrimitive.int)
+        assertEquals(1, meta["limit"]!!.jsonPrimitive.int)
+        assertEquals("measuredAt", meta["sort"]!!.jsonPrimitive.content)
+        assertEquals("desc", meta["order"]!!.jsonPrimitive.content)
+        assertFalse(meta.containsKey("nextCursor"))
+
+        val ascendingHeartRate =
+            authorizedGet("/api/v1/metrics/heart-rate?order=asc&limit=1")
+        assertEquals(62, ascendingHeartRate.items()[0].jsonObject["bpm"]!!.jsonPrimitive.int)
+
+        val latestSteps = authorizedGet("/api/v1/metrics/steps?latest=true")
+        assertEquals(HttpStatusCode.OK, latestSteps.status)
+        assertEquals(1, latestSteps.items().size)
+        assertEquals(
+            400,
+            latestSteps.items()[0].jsonObject["steps"]!!.jsonPrimitive.int
+        )
+        assertEquals("desc", latestSteps.meta()["order"]!!.jsonPrimitive.content)
+        assertEquals(1, latestSteps.meta()["limit"]!!.jsonPrimitive.int)
+
+        val invalidLimit = authorizedGet("/api/v1/metrics/heart-rate?limit=0")
+        assertEquals(HttpStatusCode.BadRequest, invalidLimit.status)
+
+        val invalidOrder = authorizedGet("/api/v1/metrics/heart-rate?order=newest")
+        assertEquals(HttpStatusCode.BadRequest, invalidOrder.status)
+        assertEquals(
+            "order",
+            invalidOrder.errorDetails()[0].jsonObject["field"]!!.jsonPrimitive.content
+        )
+
+        val invalidSort = authorizedGet("/api/v1/metrics/heart-rate?sort=startAt")
+        assertEquals(HttpStatusCode.BadRequest, invalidSort.status)
+        assertEquals(
+            "sort",
+            invalidSort.errorDetails()[0].jsonObject["field"]!!.jsonPrimitive.content
+        )
+
+        val unsupportedLatest =
+            authorizedGet("/api/v1/metrics/steps/daily?latest=true")
+        assertEquals(HttpStatusCode.BadRequest, unsupportedLatest.status)
+        assertEquals(
+            "latest",
+            unsupportedLatest.errorDetails()[0].jsonObject["field"]!!.jsonPrimitive.content
+        )
+
+        val latestWithLimit =
+            authorizedGet("/api/v1/metrics/heart-rate?latest=true&limit=1")
+        assertEquals(HttpStatusCode.BadRequest, latestWithLimit.status)
+        assertEquals(
+            "limit",
+            latestWithLimit.errorDetails()[0].jsonObject["field"]!!.jsonPrimitive.content
+        )
+    }
+
+    @Test
+    fun heartRateSummaryAndBodyLatestAliasReturnFocusedMetricViews() = testApplication {
+        configureTestApplication()
+        ingestMixedBatch()
+        ingestLaterBatch()
+
+        val summary =
+            authorizedGet("/api/v1/metrics/heart-rate/summary?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z")
+        assertEquals(HttpStatusCode.OK, summary.status)
+        val summaryBody = summary.jsonBody()
+        assertEquals(2, summaryBody["count"]!!.jsonPrimitive.int)
+        assertEquals(62, summaryBody["minBpm"]!!.jsonPrimitive.int)
+        assertEquals(67, summaryBody["maxBpm"]!!.jsonPrimitive.int)
+        assertEquals(64.5, summaryBody["avgBpm"]!!.jsonPrimitive.double)
+        assertEquals(
+            67,
+            summaryBody["latest"]!!.jsonObject["bpm"]!!.jsonPrimitive.int
+        )
+
+        val emptySummary =
+            authorizedGet("/api/v1/metrics/heart-rate/summary?from=2026-04-18T00:00:00Z&to=2026-04-18T01:00:00Z")
+        val emptyBody = emptySummary.jsonBody()
+        assertEquals(0, emptyBody["count"]!!.jsonPrimitive.int)
+        assertFalse(emptyBody.containsKey("minBpm"))
+        assertFalse(emptyBody.containsKey("maxBpm"))
+        assertFalse(emptyBody.containsKey("avgBpm"))
+        assertFalse(emptyBody.containsKey("latest"))
+
+        val latestWeight =
+            authorizedGet("/api/v1/body/measurements/latest?metricType=weight")
+        assertEquals(HttpStatusCode.OK, latestWeight.status)
+        assertEquals(
+            83.1,
+            latestWeight.jsonBody()["item"]!!.jsonObject["value"]!!.jsonPrimitive.double
+        )
+
+        val missingMetricType = authorizedGet("/api/v1/body/measurements/latest")
+        assertEquals(HttpStatusCode.BadRequest, missingMetricType.status)
+        assertEquals(
+            "metricType",
+            missingMetricType.errorDetails()[0].jsonObject["field"]!!.jsonPrimitive.content
+        )
     }
 
     @Test
@@ -475,6 +592,12 @@ class ReadApiRouteTest {
 
     private suspend fun HttpResponse.items(): JsonArray =
         jsonBody()["items"]!!.jsonArray
+
+    private suspend fun HttpResponse.meta(): JsonObject =
+        jsonBody()["meta"]!!.jsonObject
+
+    private suspend fun HttpResponse.errorDetails(): JsonArray =
+        jsonBody()["error"]!!.jsonObject["details"]!!.jsonArray
 
     private fun JsonArray.family(name: String): JsonObject =
         map { it.jsonObject }

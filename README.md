@@ -304,6 +304,9 @@ The catalog lists the supported metric families, read endpoint paths, common que
 curl "http://localhost:8080/api/v1/metrics/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z" \
   -H "Authorization: Bearer local-dev-key"
 
+curl "http://localhost:8080/api/v1/metrics/steps?latest=true&includeSource=true" \
+  -H "Authorization: Bearer local-dev-key"
+
 curl "http://localhost:8080/api/v1/metrics/steps/daily?fromDate=2026-04-19&toDate=2026-04-19" \
   -H "Authorization: Bearer local-dev-key"
 
@@ -316,7 +319,16 @@ curl "http://localhost:8080/api/v1/sleep/nights?date=2026-04-20&timezone=Europe/
 curl "http://localhost:8080/api/v1/body/measurements?metricType=weight" \
   -H "Authorization: Bearer local-dev-key"
 
+curl "http://localhost:8080/api/v1/body/measurements/latest?metricType=weight&includeSource=true" \
+  -H "Authorization: Bearer local-dev-key"
+
 curl "http://localhost:8080/api/v1/metrics/heart-rate" \
+  -H "Authorization: Bearer local-dev-key"
+
+curl "http://localhost:8080/api/v1/metrics/heart-rate?order=desc&limit=100" \
+  -H "Authorization: Bearer local-dev-key"
+
+curl "http://localhost:8080/api/v1/metrics/heart-rate/summary?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
@@ -338,6 +350,26 @@ Common read filters:
 - `providerInstanceId`: concrete provider/device/account instance
 - `includeSource`: `true` or `false`
 - `limit`: default `500`, max `5000`
+- `sort`: endpoint-specific field; current metric list endpoints support `startAt`, `date`, or `measuredAt` as documented by OpenAPI and the metric catalog
+- `order`: `asc` or `desc`, default `asc`
+
+Metric list responses include an `items` array plus a `meta` object:
+
+```json
+{
+  "items": [],
+  "meta": {
+    "count": 0,
+    "limit": 500,
+    "sort": "measuredAt",
+    "order": "asc"
+  }
+}
+```
+
+Cursor pagination is intentionally not exposed yet. `nextCursor` is part of the response metadata contract but remains `null` and is omitted from JSON responses until real cursor pagination is added.
+
+`latest=true` is supported on raw step samples, sleep sessions, body measurements, and heart-rate samples. It cannot be combined with `limit`, `sort`, or `order`; unsupported combinations return `400 validation_failed` with field-level details. Daily step summaries and sleep nights do not support `latest=true`; use `date` or descending `order` where appropriate.
 
 Sleep reads have two modes:
 

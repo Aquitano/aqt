@@ -8,8 +8,14 @@ import io.ktor.server.routing.*
 import io.ktor.server.routing.openapi.*
 import io.ktor.utils.io.*
 import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.serializer
 import me.aquitano.external.google.GOOGLE_HEALTH_PROVIDER_CODE
 import me.aquitano.external.withings.WITHINGS_PROVIDER_CODE
@@ -91,6 +97,47 @@ internal fun openApiBaseDoc(): OpenApiDoc =
         externalDocs = null,
         extensions = emptyMap(),
     )
+
+internal fun stripInferredAuthorizationParameters(content: String): String {
+    val root = runCatching { AppJson.parseToJsonElement(content).jsonObject }
+        .getOrElse { return content }
+    val paths = root["paths"]?.jsonObject ?: return content
+    val sanitizedPaths = JsonObject(
+        paths.mapValues { (_, pathItem) ->
+            JsonObject(
+                pathItem.jsonObject.mapValues { (_, operation) ->
+                    sanitizeOperation(operation)
+                }
+            )
+        }
+    )
+    val sanitizedRoot = JsonObject(
+        root.toMutableMap().also { it["paths"] = sanitizedPaths }
+    )
+    return sanitizedRoot.toString()
+}
+
+private fun sanitizeOperation(operation: JsonElement): JsonElement {
+    if (operation !is JsonObject) return operation
+    val operationObject = operation.jsonObject
+    val parameters = operationObject["parameters"]?.jsonArray ?: return operation
+    val sanitizedParameters = JsonArray(
+        parameters.filterNot { parameter ->
+            val parameterObject = parameter.jsonObject
+            parameterObject["name"]?.jsonPrimitive?.content == "Authorization" &&
+                    parameterObject["in"]?.jsonPrimitive?.content == "header"
+        }
+    )
+    return JsonObject(
+        operationObject.toMutableMap().also { operation ->
+            if (sanitizedParameters.isEmpty()) {
+                operation.remove("parameters")
+            } else {
+                operation["parameters"] = sanitizedParameters
+            }
+        }
+    )
+}
 
 private fun openApiComponents(): Components =
     Components(
@@ -325,9 +372,23 @@ internal fun Operation.Builder.readQueryParameters(includeLatest: Boolean = fals
         if (includeLatest) {
             query("latest") {
                 description =
-                    "Return the latest matching item when true. Defaults to false."
+                    "Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order."
                 schema = booleanSchema(default = false, example = true)
             }
+        }
+        query("sort") {
+            description =
+                "Sort field for this endpoint. Each metric endpoint supports its documented default temporal or date field."
+            schema = stringSchema(example = "measuredAt")
+        }
+        query("order") {
+            description =
+                "Sort direction. Defaults to asc. Use desc for newest-first reads."
+            schema = stringSchema(
+                enumValues = listOf("asc", "desc"),
+                default = "asc",
+                example = "desc",
+            )
         }
         query("limit") {
             description =
@@ -395,6 +456,23 @@ internal fun Operation.Builder.sleepNightQueryParameters() {
                 example = 7
             )
         }
+        query("sort") {
+            description = "Sort field. Sleep night reads support `date`."
+            schema = stringSchema(
+                enumValues = listOf("date"),
+                default = "date",
+                example = "date",
+            )
+        }
+        query("order") {
+            description =
+                "Sort direction. Defaults to asc. Use desc for most recent sleep nights first."
+            schema = stringSchema(
+                enumValues = listOf("asc", "desc"),
+                default = "asc",
+                example = "desc",
+            )
+        }
     }
 }
 
@@ -407,6 +485,74 @@ internal fun Operation.Builder.bodyMeasurementQueryParameters() {
                 enumValues = BodyMetricTypes.supported.sorted(),
                 example = BodyMetricTypes.WEIGHT,
             )
+        }
+    }
+}
+
+internal fun Operation.Builder.bodyMeasurementLatestQueryParameters() {
+    parameters {
+        query("from") {
+            description = "Inclusive start timestamp."
+            schema = stringSchema(
+                format = JsonFormatDateTime,
+                example = ExampleFromAt
+            )
+        }
+        query("to") {
+            description = "Exclusive end timestamp."
+            schema =
+                stringSchema(format = JsonFormatDateTime, example = ExampleToAt)
+        }
+        query("provider") {
+            description = "Source provider filter."
+            schema = stringSchema(example = WITHINGS_PROVIDER_CODE)
+        }
+        query("providerInstanceId") {
+            description = "Source provider account or instance filter."
+            schema = stringSchema(example = ExampleProviderInstanceId)
+        }
+        query("includeSource") {
+            description =
+                "Include source provider metadata in the returned item. Defaults to false."
+            schema = booleanSchema(default = false, example = false)
+        }
+        query("metricType") {
+            description = "Required body measurement type filter."
+            required = true
+            schema = stringSchema(
+                enumValues = BodyMetricTypes.supported.sorted(),
+                example = BodyMetricTypes.WEIGHT,
+            )
+        }
+    }
+}
+
+internal fun Operation.Builder.heartRateSummaryQueryParameters() {
+    parameters {
+        query("from") {
+            description = "Inclusive start timestamp."
+            schema = stringSchema(
+                format = JsonFormatDateTime,
+                example = ExampleFromAt
+            )
+        }
+        query("to") {
+            description = "Exclusive end timestamp."
+            schema =
+                stringSchema(format = JsonFormatDateTime, example = ExampleToAt)
+        }
+        query("provider") {
+            description = "Source provider filter."
+            schema = stringSchema(example = WITHINGS_PROVIDER_CODE)
+        }
+        query("providerInstanceId") {
+            description = "Source provider account or instance filter."
+            schema = stringSchema(example = ExampleProviderInstanceId)
+        }
+        query("includeSource") {
+            description =
+                "Include source provider metadata in the nested latest item. Defaults to false."
+            schema = booleanSchema(default = false, example = false)
         }
     }
 }
