@@ -8,6 +8,8 @@ import io.ktor.server.testing.*
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.int
 import me.aquitano.health.shared.AppJson
 import java.nio.file.Files
 import kotlin.test.Test
@@ -86,8 +88,107 @@ class ApplicationTest {
         val body = AppJson.parseToJsonElement(response.bodyAsText()).jsonObject
         assertNotNull(body["openapi"])
         assertNotNull(body["paths"])
+        assertNotNull(body["components"]!!.jsonObject["securitySchemes"]!!.jsonObject["bearerApiKey"])
+        assertEquals(
+            "bearerApiKey",
+            body["security"]!!.jsonArray.first().jsonObject.keys.first()
+        )
         // The /openapi route itself must not appear in the spec
         assertFalse(response.bodyAsText().contains("\"/openapi\""))
+    }
+
+    @Test
+    fun openApiDocumentContainsContractMetadata() = testApplication {
+        configureTestApplication()
+
+        val body = client.get("/openapi").jsonBody()
+        val paths = body["paths"]!!.jsonObject
+
+        listOf(
+            "/api/v1/admin/health",
+            "/api/v1/ingestion/batches",
+            "/api/v1/providers",
+            "/api/v1/providers/status",
+            "/api/v1/providers/{providerCode}",
+            "/api/v1/providers/{providerCode}/status",
+            "/api/v1/providers/{providerCode}/oauth/start",
+            "/api/v1/providers/{providerCode}/oauth/callback",
+            "/api/v1/providers/{providerCode}/sync",
+            "/api/v1/metrics/catalog",
+            "/api/v1/metrics/steps",
+            "/api/v1/metrics/steps/daily",
+            "/api/v1/sleep/sessions",
+            "/api/v1/sleep/nights",
+            "/api/v1/body/measurements",
+            "/api/v1/metrics/heart-rate",
+            "/api/v1/dashboard/summary",
+            "/api/v1/admin/ingestion/batches",
+            "/api/v1/admin/ingestion/batches/{id}",
+            "/api/v1/admin/ingestion/failures",
+        ).forEach { path ->
+            assertNotNull(paths[path], "Missing OpenAPI path $path")
+        }
+
+        assertTrue(body["servers"]!!.jsonArray.isNotEmpty())
+        assertEquals(
+            setOf("Admin", "Ingestion", "Providers", "Read"),
+            body["tags"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet(),
+        )
+    }
+
+    @Test
+    fun openApiUsesSecuritySchemeInsteadOfAuthorizationParameter() = testApplication {
+        configureTestApplication()
+
+        val body = client.get("/openapi").jsonBody()
+        val paths = body["paths"]!!.jsonObject
+        val protectedOperation = paths["/api/v1/providers"]!!.jsonObject["get"]!!.jsonObject
+        val publicHealthOperation = paths["/api/v1/admin/health"]!!.jsonObject["get"]!!.jsonObject
+        val publicCallbackOperation =
+            paths["/api/v1/providers/{providerCode}/oauth/callback"]!!.jsonObject["get"]!!.jsonObject
+
+        assertEquals("bearerApiKey", protectedOperation["security"]!!.jsonArray.first().jsonObject.keys.first())
+        assertTrue(publicHealthOperation["security"]!!.jsonArray.first().jsonObject.isEmpty())
+        assertTrue(publicCallbackOperation["security"]!!.jsonArray.first().jsonObject.isEmpty())
+
+        val specText = client.get("/openapi").bodyAsText()
+        assertFalse(specText.contains("\"name\":\"Authorization\""))
+        assertFalse(specText.contains("\"name\": \"Authorization\""))
+    }
+
+    @Test
+    fun openApiDocumentsQueryConstraintsAndPolymorphicIngestion() = testApplication {
+        configureTestApplication()
+
+        val body = client.get("/openapi").jsonBody()
+        val paths = body["paths"]!!.jsonObject
+        val stepParams = paths["/api/v1/metrics/steps"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!.jsonArray
+        val limit = stepParams.first { it.jsonObject["name"]!!.jsonPrimitive.content == "limit" }
+            .jsonObject["schema"]!!.jsonObject
+        assertEquals(500, limit["default"]!!.jsonPrimitive.int)
+        assertEquals(5000.0, limit["maximum"]!!.jsonPrimitive.double)
+
+        val from = stepParams.first { it.jsonObject["name"]!!.jsonPrimitive.content == "from" }
+            .jsonObject["schema"]!!.jsonObject
+        assertEquals("date-time", from["format"]!!.jsonPrimitive.content)
+
+        val dailyStepParamNames = paths["/api/v1/metrics/steps/daily"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
+            .jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
+        assertTrue("date" in dailyStepParamNames)
+        assertTrue("fromDate" in dailyStepParamNames)
+        assertTrue("toDate" in dailyStepParamNames)
+
+        val bodyMetricParamNames = paths["/api/v1/body/measurements"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
+            .jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
+        assertTrue("metricType" in bodyMetricParamNames)
+        assertTrue("latest" in bodyMetricParamNames)
+
+        val requestSchema = paths["/api/v1/ingestion/batches"]!!.jsonObject["post"]!!.jsonObject["requestBody"]!!
+            .jsonObject["content"]!!.jsonObject["application/json"]!!.jsonObject["schema"]!!.jsonObject
+        assertTrue(
+            requestSchema.toString().contains("oneOf") || requestSchema.toString().contains("IngestionRecordDto"),
+            "Ingestion request schema should expose polymorphic records",
+        )
     }
 
     private fun ApplicationTestBuilder.configureTestApplication() {

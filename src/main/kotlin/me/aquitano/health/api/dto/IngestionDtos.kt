@@ -1,21 +1,30 @@
 package me.aquitano.health.api.dto
 
+import io.ktor.openapi.JsonSchema
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 
 @Serializable
 data class IngestionBatchRequest(
     val provider: String? = null,
     val providerInstanceId: String? = null,
     val batchExternalId: String? = null,
+    @JsonSchema.Format("date-time")
     val ingestedAt: String? = null,
     val sourcePayload: JsonElement? = null,
     val records: List<IngestionRecordDto>? = null,
 )
 
 @Serializable
+@JsonSchema.OneOf(StepIntervalDto::class, SleepSessionDto::class, BodyMeasurementDto::class, HeartRateDto::class)
+@JsonSchema.Discriminator(
+    "type",
+    JsonSchema.Discriminator.Mapping("step_interval", StepIntervalDto::class),
+    JsonSchema.Discriminator.Mapping("sleep_session", SleepSessionDto::class),
+    JsonSchema.Discriminator.Mapping("body_measurement", BodyMeasurementDto::class),
+    JsonSchema.Discriminator.Mapping("heart_rate", HeartRateDto::class),
+)
 sealed class IngestionRecordDto {
     abstract val providerRecordId: String?
 }
@@ -24,7 +33,9 @@ sealed class IngestionRecordDto {
 @SerialName("step_interval")
 data class StepIntervalDto(
     override val providerRecordId: String? = null,
+    @JsonSchema.Format("date-time")
     val startAt: String,
+    @JsonSchema.Format("date-time")
     val endAt: String,
     val steps: Int,
 ) : IngestionRecordDto()
@@ -33,7 +44,9 @@ data class StepIntervalDto(
 @SerialName("sleep_session")
 data class SleepSessionDto(
     override val providerRecordId: String? = null,
+    @JsonSchema.Format("date-time")
     val startAt: String,
+    @JsonSchema.Format("date-time")
     val endAt: String,
     val stages: List<SleepStageDto> = emptyList(),
 ) : IngestionRecordDto()
@@ -41,7 +54,9 @@ data class SleepSessionDto(
 @Serializable
 data class SleepStageDto(
     val stage: String,
+    @JsonSchema.Format("date-time")
     val startAt: String,
+    @JsonSchema.Format("date-time")
     val endAt: String,
 )
 
@@ -49,6 +64,7 @@ data class SleepStageDto(
 @SerialName("body_measurement")
 data class BodyMeasurementDto(
     override val providerRecordId: String? = null,
+    @JsonSchema.Format("date-time")
     val measuredAt: String,
     val weightKg: Double? = null,
     val bodyFatPercent: Double? = null,
@@ -61,6 +77,7 @@ data class BodyMeasurementDto(
 @SerialName("heart_rate")
 data class HeartRateDto(
     override val providerRecordId: String? = null,
+    @JsonSchema.Format("date-time")
     val measuredAt: String,
     val bpm: Int,
     val context: String? = null,
@@ -75,6 +92,7 @@ data class IngestionSummaryResponse(
     val ingestionRecordsStored: Int,
     val metricsCreated: MetricCreatedCountsResponse,
     val metricsSkipped: MetricSkippedCountsResponse,
+    @JsonSchema.ItemsRef(String::class)
     val affectedStepSummaryDates: List<String>,
 )
 

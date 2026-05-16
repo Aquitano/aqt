@@ -1,5 +1,6 @@
 package me.aquitano.health.api.dto
 
+import io.ktor.openapi.JsonSchema
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -48,9 +49,12 @@ data class ProviderStatusResponseDto(
 @Serializable
 data class ProviderAccountStatusResponseDto(
     val providerInstanceId: String,
+    @JsonSchema.Format("date-time")
     val connectedAt: String,
+    @JsonSchema.Format("date-time")
     val lastSyncAt: String? = null,
     val tokenStatus: String,
+    @JsonSchema.Format("date-time")
     val expiresAt: String? = null,
 )
 
@@ -58,6 +62,7 @@ data class ProviderAccountStatusResponseDto(
 data class ProviderOAuthStartResponse(
     val provider: String,
     val authorizationUrl: String,
+    @JsonSchema.Format("date-time")
     val expiresAt: String,
 )
 
@@ -71,9 +76,12 @@ data class ProviderOAuthCallbackResponse(
 @Serializable
 data class ProviderSyncRequestDto(
     val providerInstanceId: String? = null,
+    @JsonSchema.Format("date-time")
     val from: String? = null,
+    @JsonSchema.Format("date-time")
     val to: String? = null,
     val dataTypes: List<String>? = null,
+    @JsonSchema.Minimum(1.0)
     val pageSize: Int? = null,
 )
 
@@ -81,7 +89,9 @@ data class ProviderSyncRequestDto(
 data class ProviderSyncResponseDto(
     val providerCode: String,
     val providerInstanceId: String,
+    @JsonSchema.Format("date-time")
     val requestedFrom: String,
+    @JsonSchema.Format("date-time")
     val requestedTo: String,
     val status: String,
     val batches: List<ProviderSyncBatchResponseDto>,

@@ -1,5 +1,6 @@
 package me.aquitano.health.api.dto
 
+import io.ktor.openapi.JsonSchema
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -16,7 +17,9 @@ data class StepSamplesResponse(
 @Serializable
 data class StepSampleResponse(
     val id: Int,
+    @JsonSchema.Format("date-time")
     val startAt: String,
+    @JsonSchema.Format("date-time")
     val endAt: String,
     val steps: Int,
     val source: SourceMetadataResponse? = null,
@@ -29,6 +32,7 @@ data class StepDailySummariesResponse(
 
 @Serializable
 data class StepDailySummaryResponse(
+    @JsonSchema.Format("date")
     val date: String,
     val steps: Int,
     val sampleCount: Int,
@@ -47,6 +51,7 @@ data class SleepNightsResponse(
 
 @Serializable
 data class SleepNightResponse(
+    @JsonSchema.Format("date")
     val date: String,
     val timezone: String,
     val session: SleepSessionResponse,
@@ -55,7 +60,9 @@ data class SleepNightResponse(
 @Serializable
 data class SleepSessionResponse(
     val id: Int,
+    @JsonSchema.Format("date-time")
     val startAt: String,
+    @JsonSchema.Format("date-time")
     val endAt: String,
     val durationSeconds: Long,
     val stages: List<SleepStageResponse>,
@@ -65,7 +72,9 @@ data class SleepSessionResponse(
 @Serializable
 data class SleepStageResponse(
     val stage: String,
+    @JsonSchema.Format("date-time")
     val startAt: String,
+    @JsonSchema.Format("date-time")
     val endAt: String,
     val durationSeconds: Long,
 )
@@ -78,6 +87,7 @@ data class BodyMeasurementsResponse(
 @Serializable
 data class BodyMeasurementResponse(
     val id: Int,
+    @JsonSchema.Format("date-time")
     val measuredAt: String,
     val metricType: String,
     val value: Double,
@@ -93,6 +103,7 @@ data class HeartRateSamplesResponse(
 @Serializable
 data class HeartRateSampleResponse(
     val id: Int,
+    @JsonSchema.Format("date-time")
     val measuredAt: String,
     val bpm: Int,
     val context: String,
@@ -101,7 +112,9 @@ data class HeartRateSampleResponse(
 
 @Serializable
 data class DashboardSummaryResponse(
+    @JsonSchema.Format("date")
     val fromDate: String,
+    @JsonSchema.Format("date")
     val toDate: String,
     val steps: DashboardStepsSummaryResponse,
     val latestWeight: BodyMeasurementResponse?,

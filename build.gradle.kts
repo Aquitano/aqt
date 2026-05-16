@@ -57,3 +57,16 @@ dependencies {
     testImplementation("io.ktor:ktor-client-mock")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 }
+
+tasks.register<Test>("generateOpenApi") {
+    description = "Generates the runtime OpenAPI contract at build/openapi/openapi.json."
+    group = "documentation"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    include("**/OpenApiExportTest.class")
+    systemProperty(
+        "aqtHealth.openapi.output",
+        layout.buildDirectory.file("openapi/openapi.json").get().asFile.absolutePath,
+    )
+    outputs.file(layout.buildDirectory.file("openapi/openapi.json"))
+}
