@@ -117,6 +117,7 @@ class ApplicationTest {
             "/api/v1/providers/{providerCode}/oauth/callback",
             "/api/v1/providers/{providerCode}/sync",
             "/api/v1/metrics/catalog",
+            "/api/v1/health/day",
             "/api/v1/metrics/steps",
             "/api/v1/metrics/steps/daily",
             "/api/v1/sleep/sessions",

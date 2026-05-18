@@ -156,3 +156,77 @@ data class DashboardStepsSummaryResponse(
     val steps: Int,
     val sampleCount: Int,
 )
+
+@Serializable
+data class HealthDayResponse(
+    @JsonSchema.Format("date")
+    val date: String,
+    val timezone: String,
+    @JsonSchema.Format("date-time")
+    val from: String,
+    @JsonSchema.Format("date-time")
+    val to: String,
+    val modules: List<String>,
+    val steps: HealthDayStepsResponse? = null,
+    val heartRate: HealthDayHeartRateResponse? = null,
+    val weight: HealthDayWeightResponse? = null,
+    val sleep: HealthDaySleepResponse? = null,
+)
+
+@Serializable
+data class HealthDayBucketResponse(
+    @JsonSchema.Format("date-time")
+    val startAt: String,
+    @JsonSchema.Format("date-time")
+    val endAt: String,
+    val value: Double? = null,
+    val count: Int = 0,
+)
+
+@Serializable
+data class HealthDayStepsResponse(
+    val total: Int,
+    val sampleCount: Int,
+    val buckets: List<HealthDayBucketResponse>,
+)
+
+@Serializable
+data class HealthDayHeartRateResponse(
+    val count: Int,
+    val minBpm: Int? = null,
+    val maxBpm: Int? = null,
+    val avgBpm: Double? = null,
+    val latest: HeartRateSampleResponse? = null,
+    val buckets: List<HealthDayBucketResponse>,
+)
+
+@Serializable
+data class HealthDayWeightResponse(
+    val latest: BodyMeasurementResponse? = null,
+    val previous: BodyMeasurementResponse? = null,
+    val delta: Double? = null,
+    val points: List<BodyMeasurementResponse>,
+)
+
+@Serializable
+data class HealthDaySleepResponse(
+    val totalDurationSeconds: Long,
+    val sessions: List<SleepSessionResponse>,
+    val stageTotals: List<HealthDaySleepStageTotalResponse>,
+    val timeline: List<HealthDaySleepStageSegmentResponse>,
+)
+
+@Serializable
+data class HealthDaySleepStageTotalResponse(
+    val stage: String,
+    val durationSeconds: Long,
+)
+
+@Serializable
+data class HealthDaySleepStageSegmentResponse(
+    val stage: String,
+    @JsonSchema.Format("date-time")
+    val startAt: String,
+    @JsonSchema.Format("date-time")
+    val endAt: String,
+)

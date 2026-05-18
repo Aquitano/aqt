@@ -116,6 +116,55 @@ export type DashboardSummaryResponse = {
   lastSleepSession?: SleepSession;
 };
 
+export type HealthDayModuleName = "steps" | "heartRate" | "weight" | "sleep";
+
+export type HealthDayBucket = {
+  startAt: string;
+  endAt: string;
+  value?: number;
+  count: number;
+};
+
+export type HealthDayResponse = {
+  date: string;
+  timezone: string;
+  from: string;
+  to: string;
+  modules: HealthDayModuleName[];
+  steps?: {
+    total: number;
+    sampleCount: number;
+    buckets: HealthDayBucket[];
+  };
+  heartRate?: {
+    count: number;
+    minBpm?: number;
+    maxBpm?: number;
+    avgBpm?: number;
+    latest?: HeartRateSample;
+    buckets: HealthDayBucket[];
+  };
+  weight?: {
+    latest?: BodyMeasurement;
+    previous?: BodyMeasurement;
+    delta?: number;
+    points: BodyMeasurement[];
+  };
+  sleep?: {
+    totalDurationSeconds: number;
+    sessions: SleepSession[];
+    stageTotals: Array<{
+      stage: string;
+      durationSeconds: number;
+    }>;
+    timeline: Array<{
+      stage: string;
+      startAt: string;
+      endAt: string;
+    }>;
+  };
+};
+
 export type IngestionBatch = {
   id: number;
   provider: string;
@@ -279,8 +328,9 @@ export type DashboardData = {
   apiBaseUrl: string;
   health: ApiResult<HealthResponse>;
   summary: ApiResult<DashboardSummaryResponse>;
+  healthDay: ApiResult<HealthDayResponse>;
   dailySteps: ApiResult<StepDailySummariesResponse>;
-  latestWeight: ApiResult<BodyMeasurementsResponse>;
+  latestWeight: ApiResult<BodyMeasurementLatestResponse>;
   latestHeartRate: ApiResult<HeartRateSamplesResponse>;
   latestSleep: ApiResult<SleepNightsResponse>;
   batches: ApiResult<IngestionBatchesResponse>;

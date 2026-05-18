@@ -1,6 +1,7 @@
 export type DateRange = {
   fromDate: string;
   toDate: string;
+  timezone: string;
   warning?: string;
 };
 
@@ -14,18 +15,21 @@ export function defaultDateRange(now = new Date()): DateRange {
   return {
     fromDate: toDateInputValue(from),
     toDate,
+    timezone: "UTC",
   };
 }
 
 export function parseDateRange(values: {
   fromDate?: string | string[];
   toDate?: string | string[];
+  timezone?: string | string[];
 }): DateRange {
   const fallback = defaultDateRange();
   const fromDate = first(values.fromDate) ?? fallback.fromDate;
   const toDate = first(values.toDate) ?? fallback.toDate;
+  const timezone = first(values.timezone) ?? fallback.timezone;
 
-  if (!isDateOnly(fromDate) || !isDateOnly(toDate)) {
+  if (!isDateOnly(fromDate) || !isDateOnly(toDate) || !isTimezoneLike(timezone)) {
     return {
       ...fallback,
       warning: "Invalid date query parameters were ignored.",
@@ -39,7 +43,7 @@ export function parseDateRange(values: {
     };
   }
 
-  return { fromDate, toDate };
+  return { fromDate, toDate, timezone };
 }
 
 function first(value?: string | string[]): string | undefined {
@@ -53,4 +57,8 @@ function isDateOnly(value: string): boolean {
 
 function toDateInputValue(value: Date): string {
   return value.toISOString().slice(0, 10);
+}
+
+function isTimezoneLike(value: string): boolean {
+  return /^[A-Za-z_]+(?:\/[A-Za-z0-9_+\-]+)+$|^UTC$/.test(value);
 }

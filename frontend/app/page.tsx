@@ -1,7 +1,7 @@
 import { Suspense } from "react";
-import { DashboardCards } from "@/components/DashboardCards";
 import { DataSection } from "@/components/DataSection";
 import { DateRangeForm } from "@/components/DateRangeForm";
+import { DayOverview } from "@/components/DayOverview";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { JsonDetails } from "@/components/JsonDetails";
 import { ProviderSyncPanel } from "@/components/ProviderSyncPanel";
@@ -23,9 +23,10 @@ export default async function Home({ searchParams }: PageProps) {
   const range = parseDateRange({
     fromDate: params.fromDate,
     toDate: params.toDate,
+    timezone: params.timezone,
   });
-  const data = await getDashboardData(range.fromDate, range.toDate);
-  const summary = data.summary.ok ? data.summary.data : undefined;
+  const data = await getDashboardData(range.fromDate, range.toDate, range.timezone);
+  const healthDay = data.healthDay.ok ? data.healthDay.data : undefined;
 
   return (
     <main className="page">
@@ -48,8 +49,9 @@ export default async function Home({ searchParams }: PageProps) {
       {range.warning ? <div className="notice warning">{range.warning}</div> : null}
       <ErrorNotice result={data.health} />
       <ErrorNotice result={data.summary} />
+      <ErrorNotice result={data.healthDay} />
 
-      <DashboardCards summary={summary} />
+      <DayOverview day={healthDay} />
 
       <ProviderSyncPanel catalog={data.providerCatalog} statuses={data.providerStatuses} />
 
@@ -59,7 +61,9 @@ export default async function Home({ searchParams }: PageProps) {
         </DataSection>
 
         <DataSection title="Latest weight" result={data.latestWeight}>
-          {(response) => <BodyMeasurementsTable items={response.items} />}
+          {(response) => (
+            <BodyMeasurementsTable items={response.item === undefined ? [] : [response.item]} />
+          )}
         </DataSection>
 
         <DataSection title="Latest heart rate" result={data.latestHeartRate}>
@@ -79,7 +83,7 @@ export default async function Home({ searchParams }: PageProps) {
         </DataSection>
       </div>
 
-      <JsonDetails title="Raw dashboard response" value={data.summary} />
+      <JsonDetails title="Raw day overview response" value={data.healthDay} />
     </main>
   );
 }

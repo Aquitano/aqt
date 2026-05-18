@@ -589,6 +589,37 @@ internal fun Operation.Builder.dashboardQueryParameters() {
     }
 }
 
+internal fun Operation.Builder.healthDayQueryParameters() {
+    parameters {
+        query("date") {
+            description = "Required local date in YYYY-MM-DD format or `today`."
+            required = true
+            schema = stringSchema(format = JsonFormatDate, example = ExampleDate)
+        }
+        query("timezone") {
+            description = "IANA timezone used to convert the local day into UTC boundaries. Defaults to UTC."
+            schema = stringSchema(default = "UTC", example = "Europe/Berlin")
+        }
+        query("modules") {
+            description = "Required comma-separated module list. Supported values: steps, heartRate, weight, sleep."
+            required = true
+            schema = stringSchema(example = "steps,heartRate,weight,sleep")
+        }
+        query("provider") {
+            description = "Source provider filter."
+            schema = stringSchema(example = WITHINGS_PROVIDER_CODE)
+        }
+        query("providerInstanceId") {
+            description = "Source provider account or instance filter."
+            schema = stringSchema(example = ExampleProviderInstanceId)
+        }
+        query("includeSource") {
+            description = "Include source provider metadata on point-level objects where available. Defaults to false."
+            schema = booleanSchema(default = false, example = false)
+        }
+    }
+}
+
 internal fun Operation.Builder.adminQueryParameters() {
     parameters {
         query("status") {

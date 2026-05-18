@@ -272,6 +272,34 @@ fun Application.configureRoutes(services: ApplicationServices) {
             requiresBearerAuth()
             errorResponses()
         }
+        get("/api/v1/health/day") {
+            call.authenticateProtected(services)
+            call.respond<HealthDayResponse>(
+                HttpStatusCode.OK,
+                services.healthDayQueryService.getHealthDay(
+                    call.queryParams(),
+                    services.clock.now(),
+                )
+            )
+        }.describe {
+            operationId = "getHealthDay"
+            tag("Read")
+            summary = "Get modular one-day health data"
+            description =
+                "Returns only the requested one-day health modules for a local day. The `timezone` parameter defines the local-day UTC boundaries. Normalized data is merged across providers by default; provider and providerInstanceId narrow the source set, and includeSource attaches provider metadata to point-level objects where available."
+            requiresBearerAuth()
+            healthDayQueryParameters()
+            responses {
+                HttpStatusCode.OK {
+                    description = "Requested day modules"
+                    content {
+                        schema = buildSchema(typeOf<HealthDayResponse>())
+                    }
+                }
+                commonErrors()
+                defaultError()
+            }
+        }
         get("/api/v1/metrics/steps") {
             call.authenticateProtected(services)
             call.respond<StepSamplesResponse>(

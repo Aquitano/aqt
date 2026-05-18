@@ -75,6 +75,15 @@ fun Application.module() {
                     appConfig.withings.tokenEncryptionKey.isNotBlank(),
         ),
     )
+    val metricsReadRepository = MetricsReadRepository()
+    val healthDayModuleRegistry = HealthDayModuleRegistry(
+        listOf(
+            StepsDayModule(metricsReadRepository),
+            HeartRateDayModule(metricsReadRepository),
+            WeightDayModule(metricsReadRepository),
+            SleepDayModule(metricsReadRepository),
+        )
+    )
     val ingestionService = IngestionService(
         database = database,
         mappingService = IngestionMappingService(),
@@ -108,7 +117,11 @@ fun Application.module() {
         ingestionService = ingestionService,
         metricsQueryService = MetricsQueryService(
             database = database,
-            metricsReadRepository = MetricsReadRepository(),
+            metricsReadRepository = metricsReadRepository,
+        ),
+        healthDayQueryService = HealthDayQueryService(
+            database = database,
+            registry = healthDayModuleRegistry,
         ),
         adminService = AdminService(
             database = database,
@@ -149,6 +162,7 @@ data class ApplicationServices(
     val clock: UtcClock,
     val ingestionService: IngestionService,
     val metricsQueryService: MetricsQueryService,
+    val healthDayQueryService: HealthDayQueryService,
     val adminService: AdminService,
     val providerRegistry: HealthProviderRegistry,
     val providerDiscoveryService: ProviderDiscoveryService,

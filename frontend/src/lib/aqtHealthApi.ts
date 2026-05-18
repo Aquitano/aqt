@@ -1,9 +1,11 @@
 import type {
   ApiResult,
-  BodyMeasurementsResponse,
+  BodyMeasurementLatestResponse,
   DashboardData,
   DashboardSummaryResponse,
   HealthResponse,
+  HealthDayModuleName,
+  HealthDayResponse,
   HeartRateSamplesResponse,
   IngestionBatchesResponse,
   MetricCatalogResponse,
@@ -24,13 +26,18 @@ type FetchOptions = {
 
 const defaultBaseUrl = "http://localhost:8080";
 
-export async function getDashboardData(fromDate: string, toDate: string): Promise<DashboardData> {
+export async function getDashboardData(
+  fromDate: string,
+  toDate: string,
+  timezone: string,
+): Promise<DashboardData> {
   const apiBaseUrl = apiBaseUrlFromEnv();
   const metricCatalog = await getMetricCatalog();
 
   const [
     health,
     summary,
+    healthDay,
     dailySteps,
     latestWeight,
     latestHeartRate,
@@ -45,10 +52,16 @@ export async function getDashboardData(fromDate: string, toDate: string): Promis
       `${catalogReadPath(metricCatalog, "steps", "summary", "/api/v1/dashboard/summary")}?${params({
         fromDate,
         toDate,
-        timezone: "UTC",
+        timezone,
       })}`,
       { protected: true },
     ),
+    getHealthDay({
+      date: toDate,
+      timezone,
+      modules: ["steps", "heartRate", "weight", "sleep"],
+      includeSource: true,
+    }),
     request<StepDailySummariesResponse>(
       `${catalogReadPath(metricCatalog, "steps", "daily", "/api/v1/metrics/steps/daily")}?${params({
         fromDate,
@@ -57,13 +70,13 @@ export async function getDashboardData(fromDate: string, toDate: string): Promis
       })}`,
       { protected: true },
     ),
-    request<BodyMeasurementsResponse>(
+    request<BodyMeasurementLatestResponse>(
       `${catalogReadPath(
         metricCatalog,
         "body_measurements",
         "latest",
         "/api/v1/body/measurements",
-      )}?metricType=weight&latest=true&includeSource=true`,
+      )}?metricType=weight&includeSource=true`,
       { protected: true },
     ),
     request<HeartRateSamplesResponse>(
@@ -83,7 +96,7 @@ export async function getDashboardData(fromDate: string, toDate: string): Promis
         "/api/v1/sleep/nights",
       )}?${params({
         date: toDate,
-        timezone: "UTC",
+        timezone,
         includeSource: "true",
       })}`,
       { protected: true },
@@ -102,6 +115,7 @@ export async function getDashboardData(fromDate: string, toDate: string): Promis
     apiBaseUrl,
     health,
     summary,
+    healthDay,
     dailySteps,
     latestWeight,
     latestHeartRate,
@@ -112,6 +126,23 @@ export async function getDashboardData(fromDate: string, toDate: string): Promis
     providerStatuses,
     metricCatalog,
   };
+}
+
+export async function getHealthDay(paramsValue: {
+  date: string;
+  timezone: string;
+  modules: HealthDayModuleName[];
+  includeSource?: boolean;
+}): Promise<ApiResult<HealthDayResponse>> {
+  return request<HealthDayResponse>(
+    `/api/v1/health/day?${params({
+      date: paramsValue.date,
+      timezone: paramsValue.timezone,
+      modules: paramsValue.modules.join(","),
+      includeSource: String(paramsValue.includeSource ?? false),
+    })}`,
+    { protected: true },
+  );
 }
 
 export async function getMetricCatalog(): Promise<ApiResult<MetricCatalogResponse>> {

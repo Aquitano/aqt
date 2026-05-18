@@ -4,6 +4,7 @@ import me.aquitano.health.infrastructure.database.tables.*
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.greater
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
@@ -146,6 +147,27 @@ class MetricsReadRepository {
         )
     }
 
+    fun listStepSamplesForWindow(filters: ReadFilters): Pair<List<StepSampleRow>, Map<Int, SourceMetadata>> {
+        val sourceIds =
+            sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<StepSampleRow>() to emptyMap()
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.from?.let { conditions.add(StepSamplesTable.endAt greater it.toString()) }
+        filters.to?.let { conditions.add(StepSamplesTable.startAt less it.toString()) }
+        sourceIds?.let { conditions.add(StepSamplesTable.sourceInstanceId inList it) }
+        val rows = StepSamplesTable.selectAll()
+            .where(combineConditions(conditions))
+            .orderBy(
+                StepSamplesTable.startAt to SortOrder.ASC,
+                StepSamplesTable.id to SortOrder.ASC,
+            )
+            .map(::toStepSampleRow)
+        return rows to sourceMetadata(
+            rows.map { it.sourceInstanceId }.toSet(),
+            filters.includeSource
+        )
+    }
+
     fun listStepDailySummaries(filters: DailyReadFilters): Pair<List<StepDailySummaryRow>, Map<Int, SourceMetadata>> {
         val sourceIds =
             sourceInstanceIds(filters.provider, filters.providerInstanceId)
@@ -203,6 +225,33 @@ class MetricsReadRepository {
                     durationSeconds = it[SleepSessionsTable.durationSeconds],
                 )
             }
+        val stagesBySession = sleepStagesBySession(sessions.map { it.id })
+        val metadata = sourceMetadata(
+            sessions.map { it.sourceInstanceId }.toSet(),
+            filters.includeSource
+        )
+        return Triple(sessions, stagesBySession, metadata)
+    }
+
+    fun listSleepSessionsOverlappingWindow(filters: ReadFilters): Triple<List<SleepSessionRow>, Map<Int, List<SleepStageRow>>, Map<Int, SourceMetadata>> {
+        val sourceIds =
+            sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        if (sourceIds != null && sourceIds.isEmpty()) return Triple(
+            emptyList(),
+            emptyMap(),
+            emptyMap()
+        )
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.from?.let { conditions.add(SleepSessionsTable.endAt greater it.toString()) }
+        filters.to?.let { conditions.add(SleepSessionsTable.startAt less it.toString()) }
+        sourceIds?.let { conditions.add(SleepSessionsTable.sourceInstanceId inList it) }
+        val sessions = SleepSessionsTable.selectAll()
+            .where(combineConditions(conditions))
+            .orderBy(
+                SleepSessionsTable.startAt to SortOrder.ASC,
+                SleepSessionsTable.id to SortOrder.ASC,
+            )
+            .map(::toSleepSessionRow)
         val stagesBySession = sleepStagesBySession(sessions.map { it.id })
         val metadata = sourceMetadata(
             sessions.map { it.sourceInstanceId }.toSet(),
@@ -336,6 +385,38 @@ class MetricsReadRepository {
         )
     }
 
+    fun listBodyMeasurementsForWindow(
+        filters: ReadFilters,
+        metricType: String
+    ): Pair<List<BodyMeasurementRow>, Map<Int, SourceMetadata>> =
+        listBodyMeasurements(filters, metricType)
+
+    fun latestBodyMeasurementBefore(
+        filters: ReadFilters,
+        metricType: String
+    ): Pair<BodyMeasurementRow?, Map<Int, SourceMetadata>> {
+        val sourceIds =
+            sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        if (sourceIds != null && sourceIds.isEmpty()) return null to emptyMap()
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.from?.let { conditions.add(BodyMeasurementsTable.measuredAt less it.toString()) }
+        sourceIds?.let { conditions.add(BodyMeasurementsTable.sourceInstanceId inList it) }
+        conditions.add(BodyMeasurementsTable.metricType eq metricType)
+        val row = BodyMeasurementsTable.selectAll()
+            .where(combineConditions(conditions))
+            .orderBy(
+                BodyMeasurementsTable.measuredAt to SortOrder.DESC,
+                BodyMeasurementsTable.id to SortOrder.DESC,
+            )
+            .limit(1)
+            .map(::toBodyMeasurementRow)
+            .singleOrNull()
+        return row to sourceMetadata(
+            listOfNotNull(row?.sourceInstanceId).toSet(),
+            filters.includeSource
+        )
+    }
+
     fun latestBodyMeasurement(
         filters: ReadFilters,
         metricType: String?
@@ -402,6 +483,15 @@ class MetricsReadRepository {
         )
     }
 
+    fun listHeartRateSamplesForWindow(filters: ReadFilters): Pair<List<HeartRateSampleRow>, Map<Int, SourceMetadata>> =
+        listHeartRateSamples(
+            filters.copy(
+                limit = Int.MAX_VALUE,
+                sort = "measuredAt",
+                order = "asc",
+            )
+        )
+
     fun latestHeartRateSample(filters: ReadFilters): Pair<HeartRateSampleRow?, Map<Int, SourceMetadata>> {
         val sourceIds =
             sourceInstanceIds(filters.provider, filters.providerInstanceId)
@@ -446,25 +536,26 @@ class MetricsReadRepository {
         filters.from?.let { conditions.add(HeartRateSamplesTable.measuredAt greaterEq it.toString()) }
         filters.to?.let { conditions.add(HeartRateSamplesTable.measuredAt less it.toString()) }
         sourceIds?.let { conditions.add(HeartRateSamplesTable.sourceInstanceId inList it) }
-        val bpmValues = HeartRateSamplesTable.select(HeartRateSamplesTable.bpm)
+        val countExpression = HeartRateSamplesTable.id.count()
+        val minExpression = HeartRateSamplesTable.bpm.min()
+        val maxExpression = HeartRateSamplesTable.bpm.max()
+        val avgExpression = HeartRateSamplesTable.bpm.avg()
+        return HeartRateSamplesTable
+            .select(countExpression, minExpression, maxExpression, avgExpression)
             .where(combineConditions(conditions))
-            .map { it[HeartRateSamplesTable.bpm] }
-        return if (bpmValues.isEmpty()) {
-            HeartRateSummaryRow(
-                count = 0,
-                minBpm = null,
-                maxBpm = null,
-                avgBpm = null,
-            )
-        } else {
-            HeartRateSummaryRow(
-                count = bpmValues.size,
-                minBpm = bpmValues.min(),
-                maxBpm = bpmValues.max(),
-                avgBpm = bpmValues.average(),
-            )
-        }
+            .single()
+            .let {
+                HeartRateSummaryRow(
+                    count = it[countExpression].toInt(),
+                    minBpm = it[minExpression],
+                    maxBpm = it[maxExpression],
+                    avgBpm = it[avgExpression]?.toDouble(),
+                )
+            }
     }
+
+    fun summarizeHeartRateForWindow(filters: ReadFilters): HeartRateSummaryRow =
+        summarizeHeartRate(filters)
 
     fun sumStepDailySummaries(filters: DailyReadFilters): DashboardStepsSummaryRow {
         val sourceIds =
@@ -521,7 +612,7 @@ class MetricsReadRepository {
             }
     }
 
-    private fun sleepStagesBySession(sessionIds: List<Int>): Map<Int, List<SleepStageRow>> {
+    fun sleepStagesBySession(sessionIds: List<Int>): Map<Int, List<SleepStageRow>> {
         if (sessionIds.isEmpty()) return emptyMap()
         return SleepStagesTable.selectAll()
             .where { SleepStagesTable.sleepSessionId inList sessionIds }
@@ -538,6 +629,34 @@ class MetricsReadRepository {
             startAt = row[SleepStagesTable.startAt],
             endAt = row[SleepStagesTable.endAt],
             durationSeconds = row[SleepStagesTable.durationSeconds],
+        )
+
+    private fun toStepSampleRow(row: ResultRow): StepSampleRow =
+        StepSampleRow(
+            id = row[StepSamplesTable.id].value,
+            sourceInstanceId = row[StepSamplesTable.sourceInstanceId],
+            startAt = row[StepSamplesTable.startAt],
+            endAt = row[StepSamplesTable.endAt],
+            steps = row[StepSamplesTable.steps],
+        )
+
+    private fun toSleepSessionRow(row: ResultRow): SleepSessionRow =
+        SleepSessionRow(
+            id = row[SleepSessionsTable.id].value,
+            sourceInstanceId = row[SleepSessionsTable.sourceInstanceId],
+            startAt = row[SleepSessionsTable.startAt],
+            endAt = row[SleepSessionsTable.endAt],
+            durationSeconds = row[SleepSessionsTable.durationSeconds],
+        )
+
+    private fun toBodyMeasurementRow(row: ResultRow): BodyMeasurementRow =
+        BodyMeasurementRow(
+            id = row[BodyMeasurementsTable.id].value,
+            sourceInstanceId = row[BodyMeasurementsTable.sourceInstanceId],
+            measuredAt = row[BodyMeasurementsTable.measuredAt],
+            metricType = row[BodyMeasurementsTable.metricType],
+            value = row[BodyMeasurementsTable.value],
+            unit = row[BodyMeasurementsTable.unit],
         )
 
     private fun combineConditions(conditions: List<Op<Boolean>>): Op<Boolean> =

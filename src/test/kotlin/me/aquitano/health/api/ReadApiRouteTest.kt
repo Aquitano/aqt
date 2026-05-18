@@ -117,6 +117,8 @@ class ReadApiRouteTest {
         assertContains(steps.modeNames(), "raw")
         assertContains(steps.modeNames(), "daily")
         assertContains(steps.modeNames(), "summary")
+        assertContains(steps.modeNames(), "day")
+        assertContains(steps.endpointPaths(), "/api/v1/health/day")
 
         val body = families.family("body_measurements")
         assertEquals(
@@ -145,6 +147,64 @@ class ReadApiRouteTest {
         assertContains(heartRate.endpointPaths(), "/api/v1/metrics/heart-rate")
         assertContains(heartRate.endpointPaths(), "/api/v1/metrics/heart-rate/summary")
         assertContains(heartRate.modeNames(), "latest")
+        assertContains(heartRate.modeNames(), "day")
+    }
+
+    @Test
+    fun healthDayReturnsRequestedMergedModulesWithBucketsAndClippedSleep() = testApplication {
+        configureTestApplication()
+        ingestMixedBatch()
+        ingestLaterBatch()
+
+        val unauthorized =
+            client.get("/api/v1/health/day?date=2026-04-19&modules=steps")
+        assertEquals(HttpStatusCode.Unauthorized, unauthorized.status)
+
+        val invalid =
+            authorizedGet("/api/v1/health/day?date=bad&timezone=Not/AZone&modules=steps,nope")
+        assertEquals(HttpStatusCode.BadRequest, invalid.status)
+        assertEquals(
+            "validation_failed",
+            invalid.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
+        )
+
+        val stepsOnly =
+            authorizedGet("/api/v1/health/day?date=2026-04-19&timezone=UTC&modules=steps")
+        assertEquals(HttpStatusCode.OK, stepsOnly.status)
+        assertNotNull(stepsOnly.jsonBody()["steps"])
+        assertFalse(stepsOnly.jsonBody().containsKey("heartRate"))
+        assertFalse(stepsOnly.jsonBody().containsKey("weight"))
+        assertFalse(stepsOnly.jsonBody().containsKey("sleep"))
+
+        val response =
+            authorizedGet("/api/v1/health/day?date=2026-04-19&timezone=UTC&modules=steps,heartRate,weight,sleep&includeSource=true")
+        assertEquals(HttpStatusCode.OK, response.status)
+        val body = response.jsonBody()
+        assertEquals("2026-04-19", body["date"]!!.jsonPrimitive.content)
+        assertEquals("2026-04-19T00:00:00Z", body["from"]!!.jsonPrimitive.content)
+        assertEquals("2026-04-20T00:00:00Z", body["to"]!!.jsonPrimitive.content)
+        assertEquals(1600, body["steps"]!!.jsonObject["total"]!!.jsonPrimitive.int)
+        assertEquals(96, body["steps"]!!.jsonObject["buckets"]!!.jsonArray.size)
+        assertEquals(2, body["heartRate"]!!.jsonObject["count"]!!.jsonPrimitive.int)
+        assertEquals(62, body["heartRate"]!!.jsonObject["minBpm"]!!.jsonPrimitive.int)
+        assertEquals(67, body["heartRate"]!!.jsonObject["latest"]!!.jsonObject["bpm"]!!.jsonPrimitive.int)
+        assertEquals(
+            "health_connect",
+            body["heartRate"]!!.jsonObject["latest"]!!.jsonObject["source"]!!.jsonObject["provider"]!!.jsonPrimitive.content
+        )
+        assertEquals(83.1, body["weight"]!!.jsonObject["latest"]!!.jsonObject["value"]!!.jsonPrimitive.double)
+        assertFalse(body["weight"]!!.jsonObject.containsKey("previous"))
+        assertEquals(2, body["weight"]!!.jsonObject["points"]!!.jsonArray.size)
+        assertEquals(14400, body["sleep"]!!.jsonObject["totalDurationSeconds"]!!.jsonPrimitive.long)
+        assertEquals(
+            "2026-04-19T00:00:00Z",
+            body["sleep"]!!.jsonObject["timeline"]!!.jsonArray.first().jsonObject["startAt"]!!.jsonPrimitive.content
+        )
+
+        val berlin =
+            authorizedGet("/api/v1/health/day?date=2026-04-20&timezone=Europe/Berlin&modules=sleep")
+        assertEquals("2026-04-19T22:00:00Z", berlin.jsonBody()["from"]!!.jsonPrimitive.content)
+        assertEquals("2026-04-20T22:00:00Z", berlin.jsonBody()["to"]!!.jsonPrimitive.content)
     }
 
     @Test
