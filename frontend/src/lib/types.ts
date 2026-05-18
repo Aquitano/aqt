@@ -60,7 +60,7 @@ export type HealthDataPageData = HealthStatusData & {
   summary: ApiResult<DashboardSummaryResponse>;
   healthDay: ApiResult<HealthDayResponse>;
   dailySteps: ApiResult<StepDailySummariesResponse>;
-  latestWeight: ApiResult<BodyMeasurementLatestResponse>;
+  bodyMeasurements: ApiResult<BodyMeasurementsResponse>;
   latestHeartRate: ApiResult<HeartRateSamplesResponse>;
   latestSleep: ApiResult<SleepNightsResponse>;
   metricCatalog: ApiResult<MetricCatalogResponse>;

@@ -31,6 +31,9 @@ type SleepNightsQuery = NonNullable<paths["/api/v1/sleep/nights"]["get"]["parame
 type LatestBodyMeasurementQuery = NonNullable<
   paths["/api/v1/body/measurements/latest"]["get"]["parameters"]["query"]
 >;
+type BodyMeasurementsQuery = NonNullable<
+  paths["/api/v1/body/measurements"]["get"]["parameters"]["query"]
+>;
 type DashboardSummaryQuery = NonNullable<
   paths["/api/v1/dashboard/summary"]["get"]["parameters"]["query"]
 >;
@@ -156,6 +159,14 @@ export function createAqtHealthClient() {
     getLatestBodyMeasurement: (query: LatestBodyMeasurementQuery) =>
       call<ApiSchema<"BodyMeasurementLatestResponse">>((headers) =>
         rawClient.GET("/api/v1/body/measurements/latest", {
+          headers,
+          params: { query },
+        }),
+      ),
+
+    listBodyMeasurements: (query: BodyMeasurementsQuery) =>
+      call<ApiSchema<"BodyMeasurementsResponse">>((headers) =>
+        rawClient.GET("/api/v1/body/measurements", {
           headers,
           params: { query },
         }),

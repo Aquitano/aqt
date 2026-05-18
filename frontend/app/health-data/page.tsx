@@ -3,6 +3,7 @@ import { DataSection } from "@/components/DataSection";
 import { DateRangeForm } from "@/components/DateRangeForm";
 import { DayOverview } from "@/components/DayOverview";
 import { ErrorNotice } from "@/components/ErrorNotice";
+import { HealthDataVisualizations } from "@/components/HealthDataVisualizations";
 import { JsonDetails } from "@/components/JsonDetails";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBar } from "@/components/StatusBar";
@@ -11,7 +12,8 @@ import { DailyStepsTable } from "@/components/tables/DailyStepsTable";
 import { HeartRateTable } from "@/components/tables/HeartRateTable";
 import { SleepSessionsTable } from "@/components/tables/SleepSessionsTable";
 import { getHealthDataPageData } from "@/lib/aqtHealthApi";
-import { parseDateRange } from "@/lib/dates";
+import { addUtcDays, parseDateRange } from "@/lib/dates";
+import type { BodyMeasurement } from "@/lib/types";
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -26,6 +28,9 @@ export default async function HealthDataPage({ searchParams }: PageProps) {
   });
   const data = await getHealthDataPageData(range.fromDate, range.toDate, range.timezone);
   const healthDay = data.healthDay.ok ? data.healthDay.data : undefined;
+  const bodyMeasurements = data.bodyMeasurements.ok ? data.bodyMeasurements.data : undefined;
+  const weightTrendItems = bodyMeasurements?.items.filter((item) => isWeightTrendItem(item, range.toDate)) ?? [];
+  const weightDelta = weightChange(weightTrendItems);
 
   return (
     <>
@@ -50,18 +55,32 @@ export default async function HealthDataPage({ searchParams }: PageProps) {
       <ErrorNotice result={data.health} />
       <ErrorNotice result={data.summary} />
       <ErrorNotice result={data.healthDay} />
+      <ErrorNotice result={data.bodyMeasurements} />
 
-      <DayOverview day={healthDay} />
+      <DayOverview
+        day={healthDay}
+        weightDelta7d={weightDelta?.value}
+        weightDelta7dUnit={weightDelta?.unit}
+      />
+
+      <HealthDataVisualizations
+        bodyMeasurements={bodyMeasurements}
+        dailySteps={data.dailySteps.ok ? data.dailySteps.data : undefined}
+        healthDay={healthDay}
+        latestHeartRate={data.latestHeartRate.ok ? data.latestHeartRate.data : undefined}
+        latestSleep={data.latestSleep.ok ? data.latestSleep.data : undefined}
+        fromDate={range.fromDate}
+        toDate={range.toDate}
+        timezone={range.timezone}
+      />
 
       <div className="grid">
         <DataSection title="Daily steps" result={data.dailySteps}>
           {(response) => <DailyStepsTable items={response.items} />}
         </DataSection>
 
-        <DataSection title="Latest weight" result={data.latestWeight}>
-          {(response) => (
-            <BodyMeasurementsTable items={response.item == null ? [] : [response.item]} />
-          )}
+        <DataSection title="Body measurements" result={data.bodyMeasurements}>
+          {(response) => <BodyMeasurementsTable items={response.items} />}
         </DataSection>
 
         <DataSection title="Latest heart rate" result={data.latestHeartRate}>
@@ -76,4 +95,24 @@ export default async function HealthDataPage({ searchParams }: PageProps) {
       <JsonDetails title="Raw day overview response" value={data.healthDay} />
     </>
   );
+}
+
+function isWeightTrendItem(item: BodyMeasurement, toDate: string): boolean {
+  const from = Date.parse(`${addUtcDays(toDate, -6)}T00:00:00.000Z`);
+  const measuredAt = Date.parse(item.measuredAt);
+  return item.metricType === "weight" && !Number.isNaN(measuredAt) && measuredAt >= from;
+}
+
+function weightChange(items: BodyMeasurement[]): { value: number; unit: string } | null {
+  const sorted = [...items].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt) || b.id - a.id);
+  const latest = sorted[0];
+  const oldest = sorted[sorted.length - 1];
+  if (!latest || !oldest || latest.id === oldest.id || latest.unit !== oldest.unit) {
+    return null;
+  }
+
+  return {
+    value: latest.value - oldest.value,
+    unit: latest.unit,
+  };
 }

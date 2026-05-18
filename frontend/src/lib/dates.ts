@@ -46,6 +46,22 @@ export function parseDateRange(values: {
   return { fromDate, toDate, timezone };
 }
 
+export function dateOnlyToUtcInstant(date: string): string {
+  return `${date}T00:00:00.000Z`;
+}
+
+export function dayAfterDateOnlyToUtcInstant(date: string): string {
+  return dateOnlyToUtcInstant(addUtcDays(date, 1));
+}
+
+export function addUtcDays(date: string, days: number): string {
+  const parsed = Date.parse(`${date}T00:00:00.000Z`);
+  if (Number.isNaN(parsed)) return date;
+  const next = new Date(parsed);
+  next.setUTCDate(next.getUTCDate() + days);
+  return toDateInputValue(next);
+}
+
 function first(value?: string | string[]): string | undefined {
   if (Array.isArray(value)) return value[0];
   return value;

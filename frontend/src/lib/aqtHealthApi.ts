@@ -15,6 +15,10 @@ import type {
   HealthStatusData,
 } from "./types";
 import { createAqtHealthClient } from "./aqtHealthClient";
+import {
+  dateOnlyToUtcInstant,
+  dayAfterDateOnlyToUtcInstant,
+} from "./dates";
 
 export async function getHealthStatus(): Promise<HealthStatusData> {
   const client = createAqtHealthClient();
@@ -32,13 +36,15 @@ export async function getHealthDataPageData(
   const client = createAqtHealthClient();
   const apiBaseUrl = client.apiBaseUrl;
   const metricCatalog = await getMetricCatalog();
+  const measurementsFrom = dateOnlyToUtcInstant(fromDate);
+  const measurementsTo = dayAfterDateOnlyToUtcInstant(toDate);
 
   const [
     health,
     summary,
     healthDay,
     dailySteps,
-    latestWeight,
+    bodyMeasurements,
     latestHeartRate,
     latestSleep,
   ] = await Promise.all([
@@ -54,7 +60,14 @@ export async function getHealthDataPageData(
       includeSource: true,
     }),
     client.listDailyStepSummaries({ fromDate, toDate, includeSource: true }),
-    client.getLatestBodyMeasurement({ metricType: "weight", includeSource: true }),
+    client.listBodyMeasurements({
+      from: measurementsFrom,
+      to: measurementsTo,
+      includeSource: true,
+      sort: "measuredAt",
+      order: "desc",
+      limit: 5000,
+    }),
     client.listHeartRateSamples({ latest: true, includeSource: true }),
     client.listSleepNights({ date: toDate, timezone, includeSource: true }),
   ]);
@@ -65,7 +78,7 @@ export async function getHealthDataPageData(
     summary,
     healthDay,
     dailySteps,
-    latestWeight,
+    bodyMeasurements,
     latestHeartRate,
     latestSleep,
     metricCatalog,

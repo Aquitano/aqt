@@ -1,0 +1,180 @@
+.panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-4) var(--s-2);
+}
+
+.titleBlock {
+  min-width: 0;
+}
+
+.titleBlock h2 {
+  font-size: 0.92rem;
+  line-height: 1.2;
+}
+
+.titleBlock p {
+  margin-top: var(--s-1);
+  color: var(--fg-muted);
+  font-size: 0.78rem;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-inset);
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: background var(--ease), border-color var(--ease), color var(--ease);
+}
+
+.iconButton:hover {
+  border-color: var(--border-focus);
+  background: var(--bg-panel-hover);
+  color: var(--fg);
+}
+
+.chart {
+  min-height: 220px;
+  padding: 0 var(--s-2) var(--s-2);
+}
+
+.chartSkeleton {
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  border-radius: var(--r-sm);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 100% 25%, 16.66% 100%;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-2) 0;
+}
+
+.legendButton,
+.legendButtonActive {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 0.74rem;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--ease), border-color var(--ease), color var(--ease), opacity var(--ease);
+}
+
+.legendButtonActive {
+  background: var(--bg-inset);
+  color: var(--fg);
+}
+
+.legendButton:hover,
+.legendButtonActive:hover {
+  border-color: var(--border-focus);
+}
+
+.swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+}
+
+.tooltip {
+  max-width: 260px;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--bg-inset) 94%, black);
+  box-shadow: var(--shadow-md);
+}
+
+.tooltipTitle {
+  margin-bottom: var(--s-2);
+  color: var(--fg);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.tooltipRow {
+  display: grid;
+  grid-template-columns: 8px 1fr auto;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--fg-muted);
+  font-size: 0.75rem;
+}
+
+.tooltipRow + .tooltipRow {
+  margin-top: var(--s-1);
+}
+
+.tooltipRow strong {
+  color: var(--fg);
+  font-weight: 700;
+}
+
+.tooltipRow small {
+  grid-column: 2 / 4;
+  min-width: 0;
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tooltipSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+}
+
+.empty {
+  padding: var(--s-8) var(--s-4);
+  color: var(--fg-dim);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .header {
+    align-items: stretch;
+  }
+
+  .chart {
+    min-height: 260px;
+  }
+
+  .legend {
+    justify-content: flex-start;
+  }
+}

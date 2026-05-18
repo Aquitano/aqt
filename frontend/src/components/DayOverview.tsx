@@ -7,9 +7,11 @@ import styles from "./DayOverview.module.css";
 
 type DayOverviewProps = {
   day?: HealthDayResponse;
+  weightDelta7d?: number | null;
+  weightDelta7dUnit?: string | null;
 };
 
-export function DayOverview({ day }: DayOverviewProps) {
+export function DayOverview({ day, weightDelta7d, weightDelta7dUnit }: DayOverviewProps) {
   const emptyBuckets: HealthDayBucket[] = [];
   const weightBuckets =
     day?.weight?.points.map((point) => ({
@@ -24,7 +26,7 @@ export function DayOverview({ day }: DayOverviewProps) {
       <article className={styles.card} data-kind="weight">
         <div className={styles.head}>
           <span className={styles.label}>Weight</span>
-          <span className={styles.meta}>{formatDelta(day?.weight?.delta, day?.weight?.latest?.unit)}</span>
+          <span className={styles.meta}>{formatSevenDayDelta(weightDelta7d, weightDelta7dUnit)}</span>
         </div>
         <div className={styles.value}>
           {formatMeasurement(day?.weight?.latest?.value, day?.weight?.latest?.unit)}
@@ -90,4 +92,8 @@ function formatDelta(value?: number | null, unit?: string | null): string {
   if (value === undefined || value === null) return "n/a";
   const sign = value > 0 ? "+" : "";
   return `${sign}${new Intl.NumberFormat("en", { maximumFractionDigits: 1 }).format(value)} ${unit ?? ""}`.trim();
+}
+
+function formatSevenDayDelta(value?: number | null, unit?: string | null): string {
+  return `7d ${formatDelta(value, unit)}`;
 }
