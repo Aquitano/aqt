@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import type { IngestionBatch } from "@/lib/types";
 import { EmptyState } from "./shared";
@@ -5,6 +6,7 @@ import styles from "./tables.module.css";
 
 type Props = {
   items: IngestionBatch[];
+  getHref?: (item: IngestionBatch) => string;
 };
 
 function badgeClass(status: string): string {
@@ -18,7 +20,7 @@ function badgeClass(status: string): string {
   }
 }
 
-export function IngestionBatchesTable({ items }: Props) {
+export function IngestionBatchesTable({ items, getHref }: Props) {
   if (items.length === 0) return <EmptyState label="No ingestion batches found." />;
 
   return (
@@ -37,7 +39,7 @@ export function IngestionBatchesTable({ items }: Props) {
         <tbody>
           {items.map((item) => (
             <tr key={item.id}>
-              <td>{item.id}</td>
+              <td>{getHref ? <Link href={getHref(item)}>{item.id}</Link> : item.id}</td>
               <td>
                 <span className={badgeClass(item.status)}>{item.status}</span>
               </td>

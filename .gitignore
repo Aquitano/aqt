@@ -39,6 +39,8 @@ docs/.swagger-codegen/
 docs/.swagger-codegen-ignore
 aqt-health.yaml
 src/main/resources/openapi/aqt-health.yaml
+frontend/.openapi/
+frontend/next-env.d.ts
 
 ### NetBeans ###
 /nbproject/private/
@@ -50,3 +52,4 @@ src/main/resources/openapi/aqt-health.yaml
 ### VS Code ###
 .vscode/
 .codex/config.toml
+frontend/src/lib/generated/aqtHealthApiTypes.ts

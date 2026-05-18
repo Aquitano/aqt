@@ -5,8 +5,8 @@ import styles from "./StatusBar.module.css";
 type StatusBarProps = {
   apiBaseUrl: string;
   health: ApiResult<HealthResponse>;
-  fromDate: string;
-  toDate: string;
+  fromDate?: string;
+  toDate?: string;
 };
 
 export function StatusBar({ apiBaseUrl, health, fromDate, toDate }: StatusBarProps) {
@@ -29,10 +29,12 @@ export function StatusBar({ apiBaseUrl, health, fromDate, toDate }: StatusBarPro
         <span className={styles.label}>API</span>
         <span className={styles.value}>{apiBaseUrl}</span>
       </div>
-      <div className={styles.item}>
-        <span className={styles.label}>Range</span>
-        <span className={styles.value}>{fromDate} → {toDate}</span>
-      </div>
+      {fromDate && toDate ? (
+        <div className={styles.item}>
+          <span className={styles.label}>Range</span>
+          <span className={styles.value}>{fromDate} to {toDate}</span>
+        </div>
+      ) : null}
       <div className={styles.item}>
         <span className={styles.label}>Backend time</span>
         <span className={styles.value}>{serviceTime}</span>

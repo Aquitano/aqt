@@ -182,6 +182,22 @@ export type IngestionBatchesResponse = {
   items: IngestionBatch[];
 };
 
+export type IngestionRecordAdmin = {
+  id: number;
+  recordType: string;
+  providerRecordId?: string;
+  recordStartAt?: string;
+  recordEndAt?: string;
+  createdAt: string;
+  normalizedRecord?: unknown;
+};
+
+export type IngestionBatchDetailResponse = IngestionBatch & {
+  records: IngestionRecordAdmin[];
+  sourcePayload?: unknown;
+  normalizedPayload?: unknown;
+};
+
 export type ProviderCatalogResponse = {
   providers: ProviderDescriptor[];
 };
@@ -324,18 +340,27 @@ export type ProviderAccountStatus = {
   expiresAt?: string;
 };
 
-export type DashboardData = {
+export type HealthStatusData = {
   apiBaseUrl: string;
   health: ApiResult<HealthResponse>;
+};
+
+export type HealthDataPageData = HealthStatusData & {
   summary: ApiResult<DashboardSummaryResponse>;
   healthDay: ApiResult<HealthDayResponse>;
   dailySteps: ApiResult<StepDailySummariesResponse>;
   latestWeight: ApiResult<BodyMeasurementLatestResponse>;
   latestHeartRate: ApiResult<HeartRateSamplesResponse>;
   latestSleep: ApiResult<SleepNightsResponse>;
-  batches: ApiResult<IngestionBatchesResponse>;
-  failures: ApiResult<IngestionBatchesResponse>;
+  metricCatalog: ApiResult<MetricCatalogResponse>;
+};
+
+export type ProviderSyncPageData = HealthStatusData & {
   providerCatalog: ApiResult<ProviderCatalogResponse>;
   providerStatuses: ApiResult<ProviderStatusCatalogResponse>;
-  metricCatalog: ApiResult<MetricCatalogResponse>;
+};
+
+export type IngestionsPageData = HealthStatusData & {
+  batches: ApiResult<IngestionBatchesResponse>;
+  failures: ApiResult<IngestionBatchesResponse>;
 };

@@ -1,0 +1,45 @@
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-6);
+}
+
+.copy {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.eyebrow {
+  color: var(--fg-dim);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.title {
+  color: var(--fg);
+  font-size: clamp(1.8rem, 5vw, 2.7rem);
+  font-weight: 750;
+  line-height: 1;
+}
+
+.description {
+  max-width: 58ch;
+  color: var(--fg-muted);
+  font-size: 0.86rem;
+}
+
+.actions {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 760px) {
+  .header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--s-4);
+  }
+}

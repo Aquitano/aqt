@@ -1,37 +1,43 @@
 import type {
   ApiResult,
   BodyMeasurementLatestResponse,
-  DashboardData,
   DashboardSummaryResponse,
+  HealthDataPageData,
   HealthResponse,
+  HealthStatusData,
   HealthDayModuleName,
   HealthDayResponse,
   HeartRateSamplesResponse,
+  IngestionBatchDetailResponse,
   IngestionBatchesResponse,
+  IngestionsPageData,
   MetricCatalogResponse,
   ProviderCatalogResponse,
   ProviderOAuthStartResponse,
+  ProviderSyncPageData,
   ProviderStatusCatalogResponse,
   ProviderSyncRequest,
   ProviderSyncResponse,
   SleepNightsResponse,
   StepDailySummariesResponse,
 } from "./types";
+import { createAqtHealthClient } from "./aqtHealthClient";
 
-type FetchOptions = {
-  protected?: boolean;
-  method?: "GET" | "POST";
-  body?: unknown;
-};
+export async function getHealthStatus(): Promise<HealthStatusData> {
+  const client = createAqtHealthClient();
+  return {
+    apiBaseUrl: client.apiBaseUrl,
+    health: asResult<HealthResponse>(await client.getHealth()),
+  };
+}
 
-const defaultBaseUrl = "http://localhost:8080";
-
-export async function getDashboardData(
+export async function getHealthDataPageData(
   fromDate: string,
   toDate: string,
   timezone: string,
-): Promise<DashboardData> {
-  const apiBaseUrl = apiBaseUrlFromEnv();
+): Promise<HealthDataPageData> {
+  const client = createAqtHealthClient();
+  const apiBaseUrl = client.apiBaseUrl;
   const metricCatalog = await getMetricCatalog();
 
   const [
@@ -42,90 +48,86 @@ export async function getDashboardData(
     latestWeight,
     latestHeartRate,
     latestSleep,
-    batches,
-    failures,
-    providerCatalog,
-    providerStatuses,
   ] = await Promise.all([
-    request<HealthResponse>("/api/v1/admin/health"),
-    request<DashboardSummaryResponse>(
-      `${catalogReadPath(metricCatalog, "steps", "summary", "/api/v1/dashboard/summary")}?${params({
-        fromDate,
-        toDate,
-        timezone,
-      })}`,
-      { protected: true },
-    ),
+    client.getHealth(),
+    client.getDashboardSummary({
+      fromDate,
+      toDate,
+    }),
     getHealthDay({
       date: toDate,
       timezone,
       modules: ["steps", "heartRate", "weight", "sleep"],
       includeSource: true,
     }),
-    request<StepDailySummariesResponse>(
-      `${catalogReadPath(metricCatalog, "steps", "daily", "/api/v1/metrics/steps/daily")}?${params({
-        fromDate,
-        toDate,
-        includeSource: "true",
-      })}`,
-      { protected: true },
-    ),
-    request<BodyMeasurementLatestResponse>(
-      `${catalogReadPath(
-        metricCatalog,
-        "body_measurements",
-        "latest",
-        "/api/v1/body/measurements",
-      )}?metricType=weight&includeSource=true`,
-      { protected: true },
-    ),
-    request<HeartRateSamplesResponse>(
-      `${catalogReadPath(
-        metricCatalog,
-        "heart_rate",
-        "latest",
-        "/api/v1/metrics/heart-rate",
-      )}?latest=true&includeSource=true`,
-      { protected: true },
-    ),
-    request<SleepNightsResponse>(
-      `${catalogReadPath(
-        metricCatalog,
-        "sleep",
-        "night",
-        "/api/v1/sleep/nights",
-      )}?${params({
-        date: toDate,
-        timezone,
-        includeSource: "true",
-      })}`,
-      { protected: true },
-    ),
-    request<IngestionBatchesResponse>("/api/v1/admin/ingestion/batches?limit=10", {
-      protected: true,
-    }),
-    request<IngestionBatchesResponse>("/api/v1/admin/ingestion/failures?limit=10", {
-      protected: true,
-    }),
+    client.listDailyStepSummaries({ fromDate, toDate, includeSource: true }),
+    client.getLatestBodyMeasurement({ metricType: "weight", includeSource: true }),
+    client.listHeartRateSamples({ latest: true, includeSource: true }),
+    client.listSleepNights({ date: toDate, timezone, includeSource: true }),
+  ]);
+
+  return {
+    apiBaseUrl,
+    health: asResult<HealthResponse>(health),
+    summary: asResult<DashboardSummaryResponse>(summary),
+    healthDay,
+    dailySteps: asResult<StepDailySummariesResponse>(dailySteps),
+    latestWeight: asResult<BodyMeasurementLatestResponse>(latestWeight),
+    latestHeartRate: asResult<HeartRateSamplesResponse>(latestHeartRate),
+    latestSleep: asResult<SleepNightsResponse>(latestSleep),
+    metricCatalog,
+  };
+}
+
+export async function getProviderSyncPageData(): Promise<ProviderSyncPageData> {
+  const client = createAqtHealthClient();
+  const [health, providerCatalog, providerStatuses] = await Promise.all([
+    client.getHealth(),
     getProviderCatalog(),
     getProviderStatuses(),
   ]);
 
   return {
-    apiBaseUrl,
-    health,
-    summary,
-    healthDay,
-    dailySteps,
-    latestWeight,
-    latestHeartRate,
-    latestSleep,
-    batches,
-    failures,
+    apiBaseUrl: client.apiBaseUrl,
+    health: asResult<HealthResponse>(health),
     providerCatalog,
     providerStatuses,
-    metricCatalog,
   };
+}
+
+export async function getIngestionsPageData(options: {
+  limit: string;
+  status?: string;
+}): Promise<IngestionsPageData> {
+  const client = createAqtHealthClient();
+  const limit = toPositiveInteger(options.limit) ?? 25;
+  const status = ingestionStatus(options.status);
+
+  const [health, batches, failures] = await Promise.all([
+    client.getHealth(),
+    client.listIngestionBatches({ limit, status }),
+    client.listIngestionFailures({ limit }),
+  ]);
+
+  return {
+    apiBaseUrl: client.apiBaseUrl,
+    health: asResult<HealthResponse>(health),
+    batches: asResult<IngestionBatchesResponse>(batches),
+    failures: asResult<IngestionBatchesResponse>(failures),
+  };
+}
+
+export async function getIngestionBatchDetail(
+  id: string,
+): Promise<ApiResult<IngestionBatchDetailResponse>> {
+  const parsed = Number(id);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return { ok: false, message: "Ingestion batch id must be a positive integer." };
+  }
+
+  return asResult<IngestionBatchDetailResponse>(
+    await createAqtHealthClient().getIngestionBatch(parsed),
+  );
 }
 
 export async function getHealthDay(paramsValue: {
@@ -134,43 +136,35 @@ export async function getHealthDay(paramsValue: {
   modules: HealthDayModuleName[];
   includeSource?: boolean;
 }): Promise<ApiResult<HealthDayResponse>> {
-  return request<HealthDayResponse>(
-    `/api/v1/health/day?${params({
+  return asResult<HealthDayResponse>(
+    await createAqtHealthClient().getHealthDay({
       date: paramsValue.date,
       timezone: paramsValue.timezone,
       modules: paramsValue.modules.join(","),
-      includeSource: String(paramsValue.includeSource ?? false),
-    })}`,
-    { protected: true },
+      includeSource: paramsValue.includeSource ?? false,
+    }),
   );
 }
 
 export async function getMetricCatalog(): Promise<ApiResult<MetricCatalogResponse>> {
-  return request<MetricCatalogResponse>("/api/v1/metrics/catalog", {
-    protected: true,
-  });
+  return asResult<MetricCatalogResponse>(await createAqtHealthClient().getMetricCatalog());
 }
 
 export async function getProviderCatalog(): Promise<ApiResult<ProviderCatalogResponse>> {
-  return request<ProviderCatalogResponse>("/api/v1/providers", {
-    protected: true,
-  });
+  return asResult<ProviderCatalogResponse>(await createAqtHealthClient().listProviders());
 }
 
 export async function getProviderStatuses(): Promise<ApiResult<ProviderStatusCatalogResponse>> {
-  return request<ProviderStatusCatalogResponse>("/api/v1/providers/status", {
-    protected: true,
-  });
+  return asResult<ProviderStatusCatalogResponse>(
+    await createAqtHealthClient().listProviderStatuses(),
+  );
 }
 
 export async function startProviderOAuth(
   providerCode: string,
 ): Promise<ApiResult<ProviderOAuthStartResponse>> {
-  return request<ProviderOAuthStartResponse>(
-    `/api/v1/providers/${encodeURIComponent(providerCode)}/oauth/start`,
-    {
-      protected: true,
-    },
+  return asResult<ProviderOAuthStartResponse>(
+    await createAqtHealthClient().startProviderOAuth(providerCode),
   );
 }
 
@@ -178,101 +172,22 @@ export async function syncProvider(
   providerCode: string,
   payload: ProviderSyncRequest,
 ): Promise<ApiResult<ProviderSyncResponse>> {
-  return request<ProviderSyncResponse>(`/api/v1/providers/${encodeURIComponent(providerCode)}/sync`, {
-    protected: true,
-    method: "POST",
-    body: payload,
-  });
+  return asResult<ProviderSyncResponse>(
+    await createAqtHealthClient().syncProvider(providerCode, payload),
+  );
 }
 
-function apiBaseUrlFromEnv(): string {
-  return process.env.AQT_HEALTH_API_BASE_URL ?? defaultBaseUrl;
+function asResult<T>(result: ApiResult<unknown>): ApiResult<T> {
+  return result as ApiResult<T>;
 }
 
-function catalogReadPath(
-  catalog: ApiResult<MetricCatalogResponse>,
-  familyName: string,
-  mode: string,
-  fallback: string,
-): string {
-  if (!catalog.ok) return fallback;
-
-  const path = catalog.data.families
-    .find((family) => family.name === familyName)
-    ?.readEndpoints.find((endpoint) => endpoint.mode === mode && endpoint.available)?.path;
-
-  return path ?? fallback;
+function ingestionStatus(value?: string): "processed" | "failed" | undefined {
+  if (value === "processed" || value === "failed") return value;
+  return undefined;
 }
 
-async function request<T>(path: string, options: FetchOptions = {}): Promise<ApiResult<T>> {
-  const apiBaseUrl = apiBaseUrlFromEnv();
-  const headers: HeadersInit = {};
-
-  if (options.protected) {
-    const apiKey = process.env.AQT_HEALTH_API_KEY;
-    if (!apiKey) {
-      return {
-        ok: false,
-        message: "AQT_HEALTH_API_KEY is not configured for protected backend requests.",
-      };
-    }
-    headers.Authorization = `Bearer ${apiKey}`;
-  }
-
-  if (options.body !== undefined) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  try {
-    const response = await fetch(new URL(path, apiBaseUrl), {
-      headers,
-      method: options.method ?? "GET",
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      next: { revalidate: 0 },
-    });
-    const text = await response.text();
-    const body = parseJson(text);
-
-    if (!response.ok) {
-      return {
-        ok: false,
-        status: response.status,
-        message: errorMessage(body, response.statusText),
-      };
-    }
-
-    return {
-      ok: true,
-      data: body as T,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      message: error instanceof Error ? error.message : "Backend request failed.",
-    };
-  }
-}
-
-function params(values: Record<string, string>): string {
-  return new URLSearchParams(values).toString();
-}
-
-function parseJson(text: string): unknown {
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function errorMessage(body: unknown, fallback: string): string {
-  if (typeof body === "object" && body !== null && "error" in body) {
-    const error = (body as { error?: { message?: unknown; code?: unknown } }).error;
-    if (typeof error?.message === "string") return error.message;
-    if (typeof error?.code === "string") return error.code;
-  }
-
-  if (typeof body === "string" && body.trim()) return body;
-  return fallback || "Backend returned an error.";
+function toPositiveInteger(value: string): number | undefined {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
+  return parsed;
 }
