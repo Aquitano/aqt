@@ -1,8 +1,10 @@
 package me.aquitano.health.application
 
 import me.aquitano.health.api.dto.ProviderAccountStatusResponseDto
+import me.aquitano.health.api.dto.ProviderNextAction
 import me.aquitano.health.api.dto.ProviderStatusCatalogResponseDto
 import me.aquitano.health.api.dto.ProviderStatusResponseDto
+import me.aquitano.health.api.dto.ProviderTokenStatus
 import me.aquitano.health.domain.HealthProvider
 import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthAccount
@@ -35,10 +37,10 @@ class ProviderStatusService(
         val canSync = configured && accounts.any { it.hasStoredTokens() }
         val needsAuthentication = configured && !canSync
         val nextAction = when {
-            !configured -> "configure"
-            !connected -> "connect"
-            !canSync -> "reconnect"
-            else -> "sync"
+            !configured -> ProviderNextAction.Configure
+            !connected -> ProviderNextAction.Connect
+            !canSync -> ProviderNextAction.Reconnect
+            else -> ProviderNextAction.Sync
         }
 
         return ProviderStatusResponseDto(
@@ -65,11 +67,11 @@ class ProviderStatusService(
             expiresAt = expiresAt.toString(),
         )
 
-    private fun ProviderOAuthAccount.tokenStatus(now: Instant): String =
+    private fun ProviderOAuthAccount.tokenStatus(now: Instant): ProviderTokenStatus =
         when {
-            accessTokenCiphertext.isBlank() || refreshTokenCiphertext.isBlank() -> "missing"
-            !expiresAt.isAfter(now) -> "expired"
-            else -> "valid"
+            accessTokenCiphertext.isBlank() || refreshTokenCiphertext.isBlank() -> ProviderTokenStatus.Missing
+            !expiresAt.isAfter(now) -> ProviderTokenStatus.Expired
+            else -> ProviderTokenStatus.Valid
         }
 
     private fun ProviderOAuthAccount.hasStoredTokens(): Boolean =

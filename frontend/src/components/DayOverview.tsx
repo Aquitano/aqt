@@ -86,7 +86,7 @@ export function DayOverview({ day }: DayOverviewProps) {
   );
 }
 
-function formatDelta(value?: number, unit?: string): string {
+function formatDelta(value?: number | null, unit?: string | null): string {
   if (value === undefined || value === null) return "n/a";
   const sign = value > 0 ? "+" : "";
   return `${sign}${new Intl.NumberFormat("en", { maximumFractionDigits: 1 }).format(value)} ${unit ?? ""}`.trim();

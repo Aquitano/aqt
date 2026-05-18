@@ -68,7 +68,8 @@ class HealthDayQueryService(
                 )
             )
         val moduleNames = parseModules(params.required("modules"))
-        val modules = registry.resolve(moduleNames)
+        val moduleKeys = moduleNames.map { it.wireName }
+        val modules = registry.resolve(moduleKeys)
         val from = date.atStartOfDay(timezone).toInstant()
         val to = date.plusDays(1).atStartOfDay(timezone).toInstant()
         val context = HealthDayQueryContext(
@@ -97,7 +98,7 @@ class HealthDayQueryService(
         }
     }
 
-    private fun parseModules(value: String): List<String> {
+    private fun parseModules(value: String): List<HealthDayModuleName> {
         val modules = value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
             .distinct()
         if (modules.isEmpty()) {
@@ -111,7 +112,19 @@ class HealthDayQueryService(
                 )
             )
         }
-        return modules
+        val unsupported = modules.filter { HealthDayModuleName.fromWireName(it) == null }
+        if (unsupported.isNotEmpty()) {
+            throw RequestValidationException(
+                unsupported.map {
+                    ValidationIssue(
+                        field = "modules",
+                        code = ValidationIssueCodes.UnsupportedValue,
+                        message = "unsupported module $it",
+                    )
+                }
+            )
+        }
+        return modules.map { HealthDayModuleName.fromWireName(it)!! }
     }
 }
 

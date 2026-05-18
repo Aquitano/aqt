@@ -60,7 +60,7 @@ export default async function HealthDataPage({ searchParams }: PageProps) {
 
         <DataSection title="Latest weight" result={data.latestWeight}>
           {(response) => (
-            <BodyMeasurementsTable items={response.item === undefined ? [] : [response.item]} />
+            <BodyMeasurementsTable items={response.item == null ? [] : [response.item]} />
           )}
         </DataSection>
 

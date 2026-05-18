@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "generate:api": "node scripts/sanitize-openapi.mjs ../build/openapi/openapi.json .openapi/openapi.sanitized.json && openapi-typescript .openapi/openapi.sanitized.json -o src/lib/generated/aqtHealthApiTypes.ts",
+    "generate:api": "openapi-typescript ../build/openapi/openapi.json -o src/lib/generated/aqtHealthApiTypes.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint ."

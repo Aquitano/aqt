@@ -187,8 +187,49 @@ class ApplicationTest {
         assertTrue("metricType" in bodyMetricParamNames)
         assertTrue("latest" in bodyMetricParamNames)
 
+        val schemas = body["components"]!!.jsonObject["schemas"]!!.jsonObject
+        val providerStatus = schemas["ProviderStatusResponseDto"]!!.jsonObject
+        assertEquals(
+            setOf("configure", "connect", "reconnect", "sync"),
+            providerStatus["properties"]!!.jsonObject["nextAction"]!!.jsonObject["enum"]!!
+                .jsonArray.map { it.jsonPrimitive.content }.toSet(),
+        )
+        val providerAccountStatus = schemas["ProviderAccountStatusResponseDto"]!!.jsonObject
+        assertEquals(
+            setOf("valid", "expired", "missing", "unknown"),
+            providerAccountStatus["properties"]!!.jsonObject["tokenStatus"]!!.jsonObject["enum"]!!
+                .jsonArray.map { it.jsonPrimitive.content }.toSet(),
+        )
+        val healthDay = schemas["HealthDayResponse"]!!.jsonObject
+        assertEquals(
+            setOf("steps", "heartRate", "weight", "sleep"),
+            healthDay["properties"]!!.jsonObject["modules"]!!.jsonObject["items"]!!.jsonObject["enum"]!!
+                .jsonArray.map { it.jsonPrimitive.content }.toSet(),
+        )
+
+        listOf(
+            "StepIntervalDto",
+            "SleepSessionDto",
+            "BodyMeasurementDto",
+            "HeartRateDto",
+        ).forEach { schemaName ->
+            assertNotNull(schemas[schemaName], "Missing OpenAPI component schema $schemaName")
+        }
+
         val requestSchema = paths["/api/v1/ingestion/batches"]!!.jsonObject["post"]!!.jsonObject["requestBody"]!!
             .jsonObject["content"]!!.jsonObject["application/json"]!!.jsonObject["schema"]!!.jsonObject
+        val recordRefs = requestSchema["properties"]!!.jsonObject["records"]!!.jsonObject["items"]!!.jsonObject["oneOf"]!!
+            .jsonArray.map { it.jsonObject["\$ref"]!!.jsonPrimitive.content }
+            .toSet()
+        assertEquals(
+            setOf(
+                "#/components/schemas/StepIntervalDto",
+                "#/components/schemas/SleepSessionDto",
+                "#/components/schemas/BodyMeasurementDto",
+                "#/components/schemas/HeartRateDto",
+            ),
+            recordRefs,
+        )
         assertTrue(
             requestSchema.toString().contains("oneOf") || requestSchema.toString().contains("IngestionRecordDto"),
             "Ingestion request schema should expose polymorphic records",

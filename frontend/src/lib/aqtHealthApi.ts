@@ -1,15 +1,9 @@
 import type {
   ApiResult,
-  BodyMeasurementLatestResponse,
-  DashboardSummaryResponse,
   HealthDataPageData,
-  HealthResponse,
-  HealthStatusData,
   HealthDayModuleName,
   HealthDayResponse,
-  HeartRateSamplesResponse,
   IngestionBatchDetailResponse,
-  IngestionBatchesResponse,
   IngestionsPageData,
   MetricCatalogResponse,
   ProviderCatalogResponse,
@@ -18,8 +12,7 @@ import type {
   ProviderStatusCatalogResponse,
   ProviderSyncRequest,
   ProviderSyncResponse,
-  SleepNightsResponse,
-  StepDailySummariesResponse,
+  HealthStatusData,
 } from "./types";
 import { createAqtHealthClient } from "./aqtHealthClient";
 
@@ -27,7 +20,7 @@ export async function getHealthStatus(): Promise<HealthStatusData> {
   const client = createAqtHealthClient();
   return {
     apiBaseUrl: client.apiBaseUrl,
-    health: asResult<HealthResponse>(await client.getHealth()),
+    health: await client.getHealth(),
   };
 }
 
@@ -68,13 +61,13 @@ export async function getHealthDataPageData(
 
   return {
     apiBaseUrl,
-    health: asResult<HealthResponse>(health),
-    summary: asResult<DashboardSummaryResponse>(summary),
+    health,
+    summary,
     healthDay,
-    dailySteps: asResult<StepDailySummariesResponse>(dailySteps),
-    latestWeight: asResult<BodyMeasurementLatestResponse>(latestWeight),
-    latestHeartRate: asResult<HeartRateSamplesResponse>(latestHeartRate),
-    latestSleep: asResult<SleepNightsResponse>(latestSleep),
+    dailySteps,
+    latestWeight,
+    latestHeartRate,
+    latestSleep,
     metricCatalog,
   };
 }
@@ -89,7 +82,7 @@ export async function getProviderSyncPageData(): Promise<ProviderSyncPageData> {
 
   return {
     apiBaseUrl: client.apiBaseUrl,
-    health: asResult<HealthResponse>(health),
+    health,
     providerCatalog,
     providerStatuses,
   };
@@ -111,9 +104,9 @@ export async function getIngestionsPageData(options: {
 
   return {
     apiBaseUrl: client.apiBaseUrl,
-    health: asResult<HealthResponse>(health),
-    batches: asResult<IngestionBatchesResponse>(batches),
-    failures: asResult<IngestionBatchesResponse>(failures),
+    health,
+    batches,
+    failures,
   };
 }
 
@@ -125,9 +118,7 @@ export async function getIngestionBatchDetail(
     return { ok: false, message: "Ingestion batch id must be a positive integer." };
   }
 
-  return asResult<IngestionBatchDetailResponse>(
-    await createAqtHealthClient().getIngestionBatch(parsed),
-  );
+  return createAqtHealthClient().getIngestionBatch(parsed);
 }
 
 export async function getHealthDay(paramsValue: {
@@ -136,49 +127,37 @@ export async function getHealthDay(paramsValue: {
   modules: HealthDayModuleName[];
   includeSource?: boolean;
 }): Promise<ApiResult<HealthDayResponse>> {
-  return asResult<HealthDayResponse>(
-    await createAqtHealthClient().getHealthDay({
-      date: paramsValue.date,
-      timezone: paramsValue.timezone,
-      modules: paramsValue.modules.join(","),
-      includeSource: paramsValue.includeSource ?? false,
-    }),
-  );
+  return createAqtHealthClient().getHealthDay({
+    date: paramsValue.date,
+    timezone: paramsValue.timezone,
+    modules: paramsValue.modules.join(","),
+    includeSource: paramsValue.includeSource ?? false,
+  });
 }
 
 export async function getMetricCatalog(): Promise<ApiResult<MetricCatalogResponse>> {
-  return asResult<MetricCatalogResponse>(await createAqtHealthClient().getMetricCatalog());
+  return createAqtHealthClient().getMetricCatalog();
 }
 
 export async function getProviderCatalog(): Promise<ApiResult<ProviderCatalogResponse>> {
-  return asResult<ProviderCatalogResponse>(await createAqtHealthClient().listProviders());
+  return createAqtHealthClient().listProviders();
 }
 
 export async function getProviderStatuses(): Promise<ApiResult<ProviderStatusCatalogResponse>> {
-  return asResult<ProviderStatusCatalogResponse>(
-    await createAqtHealthClient().listProviderStatuses(),
-  );
+  return createAqtHealthClient().listProviderStatuses();
 }
 
 export async function startProviderOAuth(
   providerCode: string,
 ): Promise<ApiResult<ProviderOAuthStartResponse>> {
-  return asResult<ProviderOAuthStartResponse>(
-    await createAqtHealthClient().startProviderOAuth(providerCode),
-  );
+  return createAqtHealthClient().startProviderOAuth(providerCode);
 }
 
 export async function syncProvider(
   providerCode: string,
   payload: ProviderSyncRequest,
 ): Promise<ApiResult<ProviderSyncResponse>> {
-  return asResult<ProviderSyncResponse>(
-    await createAqtHealthClient().syncProvider(providerCode, payload),
-  );
-}
-
-function asResult<T>(result: ApiResult<unknown>): ApiResult<T> {
-  return result as ApiResult<T>;
+  return createAqtHealthClient().syncProvider(providerCode, payload);
 }
 
 function ingestionStatus(value?: string): "processed" | "failed" | undefined {

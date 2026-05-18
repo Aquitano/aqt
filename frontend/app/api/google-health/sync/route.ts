@@ -29,6 +29,6 @@ function normalizePayload(body: ProviderSyncRequest): ProviderSyncRequest {
   };
 }
 
-function nonEmpty(value?: string): string | undefined {
+function nonEmpty(value?: string | null): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }

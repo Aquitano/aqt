@@ -1,6 +1,7 @@
 package me.aquitano.health.api.dto
 
 import io.ktor.openapi.*
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -166,12 +167,32 @@ data class HealthDayResponse(
     val from: String,
     @JsonSchema.Format("date-time")
     val to: String,
-    val modules: List<String>,
+    val modules: List<HealthDayModuleName>,
     val steps: HealthDayStepsResponse? = null,
     val heartRate: HealthDayHeartRateResponse? = null,
     val weight: HealthDayWeightResponse? = null,
     val sleep: HealthDaySleepResponse? = null,
 )
+
+@Serializable
+enum class HealthDayModuleName(val wireName: String) {
+    @SerialName("steps")
+    Steps("steps"),
+
+    @SerialName("heartRate")
+    HeartRate("heartRate"),
+
+    @SerialName("weight")
+    Weight("weight"),
+
+    @SerialName("sleep")
+    Sleep("sleep");
+
+    companion object {
+        fun fromWireName(value: String): HealthDayModuleName? =
+            entries.firstOrNull { it.wireName == value }
+    }
+}
 
 @Serializable
 data class HealthDayBucketResponse(

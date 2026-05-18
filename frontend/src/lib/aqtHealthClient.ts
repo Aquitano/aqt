@@ -1,9 +1,6 @@
 import createClient from "openapi-fetch";
-import type { ApiResult } from "./types";
-import type { components, paths } from "./generated/aqtHealthApiTypes";
-
-export type AqtHealthSchema<Name extends keyof components["schemas"]> =
-  components["schemas"][Name];
+import type { ApiResult, ApiSchema } from "./types";
+import type { paths } from "./generated/aqtHealthApiTypes";
 
 type ClientResponse<T> = {
   data?: T;
@@ -58,12 +55,12 @@ export function createAqtHealthClient() {
     apiBaseUrl,
 
     getHealth: () =>
-      call<AqtHealthSchema<"HealthResponse">>(() => rawClient.GET("/api/v1/admin/health"), {
+      call<ApiSchema<"HealthResponse">>(() => rawClient.GET("/api/v1/admin/health"), {
         protected: false,
       }),
 
     listIngestionBatches: (query: IngestionBatchQuery) =>
-      call<AqtHealthSchema<"IngestionBatchesResponse">>(
+      call<ApiSchema<"IngestionBatchesResponse">>(
         (headers) =>
           rawClient.GET("/api/v1/admin/ingestion/batches", {
             headers,
@@ -72,7 +69,7 @@ export function createAqtHealthClient() {
       ),
 
     getIngestionBatch: (id: number) =>
-      call<AqtHealthSchema<"IngestionBatchDetailResponse">>(
+      call<ApiSchema<"IngestionBatchDetailResponse">>(
         (headers) =>
           rawClient.GET("/api/v1/admin/ingestion/batches/{id}", {
             headers,
@@ -81,7 +78,7 @@ export function createAqtHealthClient() {
       ),
 
     listIngestionFailures: (query: IngestionFailuresQuery) =>
-      call<AqtHealthSchema<"IngestionBatchesResponse">>(
+      call<ApiSchema<"IngestionBatchesResponse">>(
         (headers) =>
           rawClient.GET("/api/v1/admin/ingestion/failures", {
             headers,
@@ -90,17 +87,17 @@ export function createAqtHealthClient() {
       ),
 
     listProviders: () =>
-      call<AqtHealthSchema<"ProviderCatalogResponseDto">>((headers) =>
+      call<ApiSchema<"ProviderCatalogResponseDto">>((headers) =>
         rawClient.GET("/api/v1/providers", { headers }),
       ),
 
     listProviderStatuses: () =>
-      call<AqtHealthSchema<"ProviderStatusCatalogResponseDto">>((headers) =>
+      call<ApiSchema<"ProviderStatusCatalogResponseDto">>((headers) =>
         rawClient.GET("/api/v1/providers/status", { headers }),
       ),
 
     startProviderOAuth: (providerCode: string) =>
-      call<AqtHealthSchema<"ProviderOAuthStartResponse">>((headers) =>
+      call<ApiSchema<"ProviderOAuthStartResponse">>((headers) =>
         rawClient.GET("/api/v1/providers/{providerCode}/oauth/start", {
           headers,
           params: { path: { providerCode: providerCode as ProviderPathCode } },
@@ -109,9 +106,9 @@ export function createAqtHealthClient() {
 
     syncProvider: (
       providerCode: string,
-      body: AqtHealthSchema<"ProviderSyncRequestDto">,
+      body: ApiSchema<"ProviderSyncRequestDto">,
     ) =>
-      call<AqtHealthSchema<"ProviderSyncResponseDto">>((headers) =>
+      call<ApiSchema<"ProviderSyncResponseDto">>((headers) =>
         rawClient.POST("/api/v1/providers/{providerCode}/sync", {
           body,
           headers,
@@ -120,12 +117,12 @@ export function createAqtHealthClient() {
       ),
 
     getMetricCatalog: () =>
-      call<AqtHealthSchema<"MetricCatalogResponseDto">>((headers) =>
+      call<ApiSchema<"MetricCatalogResponseDto">>((headers) =>
         rawClient.GET("/api/v1/metrics/catalog", { headers }),
       ),
 
     getHealthDay: (query: HealthDayQuery) =>
-      call<AqtHealthSchema<"HealthDayResponse">>((headers) =>
+      call<ApiSchema<"HealthDayResponse">>((headers) =>
         rawClient.GET("/api/v1/health/day", {
           headers,
           params: { query },
@@ -133,7 +130,7 @@ export function createAqtHealthClient() {
       ),
 
     listDailyStepSummaries: (query: DailyStepsQuery) =>
-      call<AqtHealthSchema<"StepDailySummariesResponse">>((headers) =>
+      call<ApiSchema<"StepDailySummariesResponse">>((headers) =>
         rawClient.GET("/api/v1/metrics/steps/daily", {
           headers,
           params: { query },
@@ -141,7 +138,7 @@ export function createAqtHealthClient() {
       ),
 
     listHeartRateSamples: (query: HeartRateSamplesQuery) =>
-      call<AqtHealthSchema<"HeartRateSamplesResponse">>((headers) =>
+      call<ApiSchema<"HeartRateSamplesResponse">>((headers) =>
         rawClient.GET("/api/v1/metrics/heart-rate", {
           headers,
           params: { query },
@@ -149,7 +146,7 @@ export function createAqtHealthClient() {
       ),
 
     listSleepNights: (query: SleepNightsQuery) =>
-      call<AqtHealthSchema<"SleepNightsResponse">>((headers) =>
+      call<ApiSchema<"SleepNightsResponse">>((headers) =>
         rawClient.GET("/api/v1/sleep/nights", {
           headers,
           params: { query },
@@ -157,7 +154,7 @@ export function createAqtHealthClient() {
       ),
 
     getLatestBodyMeasurement: (query: LatestBodyMeasurementQuery) =>
-      call<AqtHealthSchema<"BodyMeasurementLatestResponse">>((headers) =>
+      call<ApiSchema<"BodyMeasurementLatestResponse">>((headers) =>
         rawClient.GET("/api/v1/body/measurements/latest", {
           headers,
           params: { query },
@@ -165,7 +162,7 @@ export function createAqtHealthClient() {
       ),
 
     getDashboardSummary: (query: DashboardSummaryQuery) =>
-      call<AqtHealthSchema<"DashboardSummaryResponse">>((headers) =>
+      call<ApiSchema<"DashboardSummaryResponse">>((headers) =>
         rawClient.GET("/api/v1/dashboard/summary", {
           headers,
           params: { query },

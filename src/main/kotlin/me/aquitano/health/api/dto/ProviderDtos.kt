@@ -1,6 +1,7 @@
 package me.aquitano.health.api.dto
 
 import io.ktor.openapi.*
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -42,7 +43,7 @@ data class ProviderStatusResponseDto(
     val connected: Boolean,
     val needsAuthentication: Boolean,
     val canSync: Boolean,
-    val nextAction: String,
+    val nextAction: ProviderNextAction,
     val accounts: List<ProviderAccountStatusResponseDto>,
 )
 
@@ -53,10 +54,40 @@ data class ProviderAccountStatusResponseDto(
     val connectedAt: String,
     @JsonSchema.Format("date-time")
     val lastSyncAt: String? = null,
-    val tokenStatus: String,
+    val tokenStatus: ProviderTokenStatus,
     @JsonSchema.Format("date-time")
     val expiresAt: String? = null,
 )
+
+@Serializable
+enum class ProviderNextAction {
+    @SerialName("configure")
+    Configure,
+
+    @SerialName("connect")
+    Connect,
+
+    @SerialName("reconnect")
+    Reconnect,
+
+    @SerialName("sync")
+    Sync,
+}
+
+@Serializable
+enum class ProviderTokenStatus {
+    @SerialName("valid")
+    Valid,
+
+    @SerialName("expired")
+    Expired,
+
+    @SerialName("missing")
+    Missing,
+
+    @SerialName("unknown")
+    Unknown,
+}
 
 @Serializable
 data class ProviderOAuthStartResponse(

@@ -17,7 +17,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.serializer
-import me.aquitano.external.google.GOOGLE_HEALTH_PROVIDER_CODE
 import me.aquitano.external.withings.WITHINGS_PROVIDER_CODE
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.BodyMetricTypes
@@ -141,6 +140,7 @@ private fun sanitizeOperation(operation: JsonElement): JsonElement {
 
 private fun openApiComponents(): Components =
     Components(
+        schemas = ingestionRecordComponentSchemas(),
         securitySchemes = mapOf(
             BearerApiKeySecurityScheme to ReferenceOr.Value<SecurityScheme>(
                 HttpSecurityScheme(
@@ -155,6 +155,14 @@ private fun openApiComponents(): Components =
                 validationErrorExample()
             ),
         ),
+    )
+
+private fun ingestionRecordComponentSchemas(): Map<String, JsonSchema> =
+    mapOf(
+        StepIntervalSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<StepIntervalDto>()),
+        SleepSessionSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<SleepSessionDto>()),
+        BodyMeasurementSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<BodyMeasurementDto>()),
+        HeartRateSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<HeartRateDto>()),
     )
 
 internal fun Operation.Builder.publicEndpoint() {
@@ -332,7 +340,7 @@ internal fun Operation.Builder.providerCodePath() {
                 "Provider code. Current examples are `google-health` and `withings`."
             schema = stringSchema(
                 enumValues = listOf(
-                    GOOGLE_HEALTH_PROVIDER_CODE,
+                    "google-health",
                     WITHINGS_PROVIDER_CODE
                 ), example = WITHINGS_PROVIDER_CODE
             )
@@ -626,9 +634,8 @@ internal fun Operation.Builder.adminQueryParameters() {
             description = "Batch status filter."
             schema = stringSchema(
                 enumValues = listOf(
-                    "accepted",
+                    "processed",
                     "failed",
-                    "duplicate"
                 ), example = "failed"
             )
         }
