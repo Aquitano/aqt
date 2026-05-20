@@ -110,13 +110,8 @@ class GoogleHealthProvider(
         now: Instant,
     ): ProviderSyncSummary {
         val validated = validate(request)
-        val account = repository.latestAccount(GOOGLE_HEALTH_PROVIDER_CODE)
-            ?: throw ConflictException(
-                "google_health_not_connected",
-                "Google Health is not connected",
-            )
-        val providerInstanceId =
-            validated.providerInstanceId ?: account.providerInstanceId
+        val account = accountForSync(validated.providerInstanceId)
+        val providerInstanceId = account.providerInstanceId
         val cipher = TokenCipher(config.tokenEncryptionKey)
         val tokenState = freshAccessToken(account, cipher, now)
 
@@ -301,6 +296,24 @@ class GoogleHealthProvider(
             errors = errors,
         )
     }
+
+    private suspend fun accountForSync(providerInstanceId: String?): ProviderOAuthAccount =
+        if (providerInstanceId == null) {
+            repository.latestAccount(GOOGLE_HEALTH_PROVIDER_CODE)
+                ?: throw ConflictException(
+                    "google_health_not_connected",
+                    "Google Health is not connected",
+                )
+        } else {
+            repository.accountByProviderInstance(
+                GOOGLE_HEALTH_PROVIDER_CODE,
+                providerInstanceId,
+            )
+                ?: throw ConflictException(
+                    "google_health_account_not_found",
+                    "Google Health account is not connected for providerInstanceId: $providerInstanceId",
+                )
+        }
 
     private fun validate(request: ProviderSyncRequest): ValidatedSyncRequest {
         val issues = mutableListOf<ValidationIssue>()

@@ -52,4 +52,3 @@ frontend/next-env.d.ts
 ### VS Code ###
 .vscode/
 .codex/config.toml
-frontend/src/lib/generated/aqtHealthApiTypes.ts

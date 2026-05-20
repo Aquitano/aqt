@@ -7,7 +7,9 @@ import me.aquitano.health.application.IngestionMappingService
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.application.ProviderWorkflowService
 import me.aquitano.health.application.StepSummaryService
+import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.ProviderSyncRequest
+import me.aquitano.health.domain.ServerConfigurationException
 import me.aquitano.health.domain.UpstreamProviderException
 import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.infrastructure.config.GoogleHealthConfig
@@ -82,6 +84,18 @@ class GoogleHealthProviderTest {
     }
 
     @Test
+    fun oauthStartDoesNotStoreStateWhenProviderIsMisconfigured() = runBlocking {
+        val fixture = Fixture(clientSecret = "")
+
+        val error = assertFailsWith<ServerConfigurationException> {
+            fixture.providerWorkflowService.startOAuth("google-health", fixture.now)
+        }
+
+        assertEquals("google_health_not_configured", error.code)
+        assertEquals(0, countRows(fixture.dbPath, "provider_oauth_states"))
+    }
+
+    @Test
     fun syncIngestsExistingMetricTypesAndIsIdempotent() = runBlocking {
         val fixture = Fixture()
         fixture.storeAccount(accessToken = "access-token", refreshToken = "refresh-token")
@@ -104,6 +118,32 @@ class GoogleHealthProviderTest {
         assertEquals(2, countRows(fixture.dbPath, "sleep_stages"))
         assertEquals(1, countRows(fixture.dbPath, "heart_rate_samples"))
         assertEquals(2, countRows(fixture.dbPath, "body_measurements"))
+    }
+
+    @Test
+    fun syncRejectsRequestedGoogleProviderInstanceWithoutStoredAccount() = runBlocking {
+        val fixture = Fixture()
+        fixture.storeAccount(
+            providerInstanceId = "google-user-1",
+            accessToken = "access-token",
+            refreshToken = "refresh-token",
+        )
+
+        val error = assertFailsWith<ConflictException> {
+            fixture.provider.sync(
+                ProviderSyncRequest(
+                    providerInstanceId = "google-user-2",
+                    from = Instant.parse("2026-04-01T00:00:00Z"),
+                    to = Instant.parse("2026-04-02T00:00:00Z"),
+                    dataTypes = listOf("steps"),
+                ),
+                fixture.now,
+            )
+        }
+
+        assertEquals("google_health_account_not_found", error.code)
+        assertEquals(0, fixture.client.fetchRequests.size)
+        assertEquals(0, countRows(fixture.dbPath, "provider_sync_runs"))
     }
 
     @Test
@@ -360,7 +400,9 @@ class GoogleHealthProviderTest {
         assertEquals("failed", singleString(fixture.dbPath, "SELECT status FROM provider_sync_runs"))
     }
 
-    private class Fixture {
+    private class Fixture(
+        clientSecret: String = "client-secret",
+    ) {
         val dbPath: Path = Files.createTempFile("aqt-health-google-provider-test", ".db")
         val database: Database = DatabaseFactory().initialize(
             DatabaseConfig("jdbc:sqlite:$dbPath", "org.sqlite.JDBC")
@@ -368,7 +410,7 @@ class GoogleHealthProviderTest {
         val now: Instant = Instant.parse("2026-04-20T10:00:00Z")
         val config = GoogleHealthConfig(
             clientId = "client-id",
-            clientSecret = "client-secret",
+            clientSecret = clientSecret,
             redirectUri = "http://localhost:8080/api/v1/providers/google-health/oauth/callback",
             tokenEncryptionKey = "test-token-encryption-key-with-32-bytes",
             apiBaseUrl = "https://health.googleapis.com",
@@ -398,6 +440,7 @@ class GoogleHealthProviderTest {
         )
 
         suspend fun storeAccount(
+            providerInstanceId: String = "google-user-1",
             accessToken: String,
             refreshToken: String,
             expiresAt: Instant = now.plusSeconds(3600),
@@ -405,8 +448,8 @@ class GoogleHealthProviderTest {
             val cipher = TokenCipher(config.tokenEncryptionKey)
             providerRepository.upsertAccount(
                 providerCode = GOOGLE_HEALTH_PROVIDER_CODE,
-                providerUserId = "google-user-1",
-                providerInstanceId = "google-user-1",
+                providerUserId = providerInstanceId,
+                providerInstanceId = providerInstanceId,
                 accessTokenCiphertext = cipher.encrypt(accessToken),
                 refreshTokenCiphertext = cipher.encrypt(refreshToken),
                 tokenType = "Bearer",

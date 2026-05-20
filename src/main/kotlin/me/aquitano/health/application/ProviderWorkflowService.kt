@@ -29,6 +29,7 @@ class ProviderWorkflowService(
 
         val state = randomState()
         val expiresAt = now.plus(Duration.ofMinutes(10))
+        val authorizationUrl = provider.getAuthUrl(state)
         providerOAuthRepository.insertState(
             state,
             provider.providerCode,
@@ -43,7 +44,7 @@ class ProviderWorkflowService(
 
         return ProviderOAuthStartResponse(
             provider = provider.providerCode,
-            authorizationUrl = provider.getAuthUrl(state),
+            authorizationUrl = authorizationUrl,
             expiresAt = expiresAt.toString(),
         )
     }
