@@ -6,9 +6,9 @@ import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.ApiKeyHasher
 import me.aquitano.health.infrastructure.time.UtcClock
+import me.aquitano.health.test.PostgresTestDatabase
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
-import java.nio.file.Files
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -22,9 +22,9 @@ class DatabaseFactoryTest {
 
         val tableNames = transaction(database) {
             val names = mutableSetOf<String>()
-            exec("SELECT name FROM sqlite_master WHERE type = 'table'") { resultSet ->
+            exec("SELECT tablename FROM pg_tables WHERE schemaname = current_schema()") { resultSet ->
                 while (resultSet.next()) {
-                    names.add(resultSet.getString("name"))
+                    names.add(resultSet.getString("tablename"))
                 }
             }
             names
@@ -41,6 +41,9 @@ class DatabaseFactoryTest {
         assertContains(tableNames, "sleep_stages")
         assertContains(tableNames, "body_measurements")
         assertContains(tableNames, "heart_rate_samples")
+        assertContains(tableNames, "provider_oauth_accounts")
+        assertContains(tableNames, "provider_oauth_states")
+        assertContains(tableNames, "provider_sync_runs")
     }
 
     @Test
@@ -49,15 +52,16 @@ class DatabaseFactoryTest {
 
         val indexNames = transaction(database) {
             val names = mutableSetOf<String>()
-            exec("SELECT name FROM sqlite_master WHERE type = 'index'") { resultSet ->
+            exec("SELECT indexname FROM pg_indexes WHERE schemaname = current_schema()") { resultSet ->
                 while (resultSet.next()) {
-                    names.add(resultSet.getString("name"))
+                    names.add(resultSet.getString("indexname"))
                 }
             }
             names
         }
 
-        assertContains(indexNames, "step_samples_source_instance_start_idx")
+        assertContains(indexNames, "step_samples_source_instance_start_end_idx")
+        assertContains(indexNames, "step_samples_source_instance_time_range_gist_idx")
         assertContains(indexNames, "sleep_sessions_source_instance_start_idx")
         assertContains(indexNames, "body_measurements_source_instance_metric_measured_idx")
         assertContains(indexNames, "heart_rate_samples_source_instance_measured_idx")
@@ -91,13 +95,10 @@ class DatabaseFactoryTest {
     }
 
     @Test
-    fun sqliteForeignKeysAreEnforced() {
+    fun postgresForeignKeysAreEnforced() {
         val database = DatabaseFactory().initialize(tempDatabaseConfig())
 
         transaction(database) {
-            val enabled = singleInt("PRAGMA foreign_keys")
-            assertEquals(1, enabled)
-
             assertFailsWith<Exception> {
                 exec(
                     """
@@ -122,28 +123,11 @@ class DatabaseFactoryTest {
     }
 
     @Test
-    fun sqliteFileConnectionsUseBusyTimeoutAndWal() {
+    fun postgresConnectionUsesReadCommitted() {
         val database = DatabaseFactory().initialize(tempDatabaseConfig())
 
         transaction(database) {
-            assertEquals(1, singleInt("PRAGMA foreign_keys"))
-            assertEquals(5000, singleInt("PRAGMA busy_timeout"))
-            assertEquals("wal", singleString("PRAGMA journal_mode"))
-        }
-    }
-
-    @Test
-    fun sqliteMemoryConnectionsUseBusyTimeoutWithoutWalSetup() {
-        val database = DatabaseFactory().initialize(
-            DatabaseConfig(
-                jdbcUrl = "jdbc:sqlite::memory:",
-                driver = "org.sqlite.JDBC",
-            )
-        )
-
-        transaction(database) {
-            assertEquals(1, singleInt("PRAGMA foreign_keys"))
-            assertEquals(5000, singleInt("PRAGMA busy_timeout"))
+            assertEquals("read committed", singleString("SHOW transaction_isolation"))
         }
     }
 
@@ -152,32 +136,7 @@ class DatabaseFactoryTest {
         val database = DatabaseFactory().initialize(tempDatabaseConfig())
 
         transaction(database) {
-            exec(
-                """
-                INSERT INTO sources (id, code, display_name, created_at)
-                VALUES (1, 'health_connect', NULL, '2026-04-19T10:00:00Z')
-                """.trimIndent()
-            )
-            exec(
-                """
-                INSERT INTO source_instances (
-                    id,
-                    source_id,
-                    provider_instance_id,
-                    display_name,
-                    created_at,
-                    updated_at
-                )
-                VALUES (
-                    1,
-                    1,
-                    'pixel-8-health-connect',
-                    NULL,
-                    '2026-04-19T10:00:00Z',
-                    '2026-04-19T10:00:00Z'
-                )
-                """.trimIndent()
-            )
+            insertSourceInstance()
             exec(
                 """
                 INSERT INTO sleep_sessions (
@@ -228,7 +187,7 @@ class DatabaseFactoryTest {
     }
 
     @Test
-    fun integrityTriggersRejectInvalidMetricRows() {
+    fun integrityConstraintsRejectInvalidMetricRows() {
         val database = DatabaseFactory().initialize(tempDatabaseConfig())
 
         transaction(database) {
@@ -319,13 +278,7 @@ class DatabaseFactoryTest {
         }
     }
 
-    private fun tempDatabaseConfig(): DatabaseConfig {
-        val dbPath = Files.createTempFile("aqt-health-db-test", ".db")
-        return DatabaseConfig(
-            jdbcUrl = "jdbc:sqlite:$dbPath",
-            driver = "org.sqlite.JDBC",
-        )
-    }
+    private fun tempDatabaseConfig(): DatabaseConfig = PostgresTestDatabase.config()
 
     private fun singleInt(sql: String): Int {
         var value = 0

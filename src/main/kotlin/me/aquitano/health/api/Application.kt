@@ -35,7 +35,8 @@ fun Application.module() {
         "app_starting {}",
         kv("databaseDriver", appConfig.database.driver),
     )
-    val database = DatabaseFactory().initialize(appConfig.database)
+    val databaseFactory = DatabaseFactory()
+    val database = databaseFactory.initialize(appConfig.database)
     val apiKeyHasher = ApiKeyHasher()
     val supportRepository = SupportRepository(database)
     val metricsWriteRepository = MetricsWriteRepository()
@@ -50,6 +51,10 @@ fun Application.module() {
             socketTimeoutMillis = 60_000
             requestTimeoutMillis = 120_000
         }
+    }
+    monitor.subscribe(ApplicationStopping) {
+        httpClient.close()
+        databaseFactory.close()
     }
     val googleHealthOAuthClient =
         KtorGoogleHealthOAuthClient(httpClient, appConfig.googleHealth)

@@ -10,10 +10,9 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.shared.AppJson
-import java.nio.file.Files
-import java.nio.file.Path
-import java.sql.DriverManager
+import me.aquitano.health.test.PostgresTestDatabase
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -286,19 +285,18 @@ class IngestionRouteTest {
             )
         }
 
-    private fun ApplicationTestBuilder.configureTestApplication(): Path {
-        val dbPath = Files.createTempFile("aqt-health-ingestion-test", ".db")
+    private fun ApplicationTestBuilder.configureTestApplication(): DatabaseConfig {
+        val dbConfig = PostgresTestDatabase.config()
         environment {
             config = MapApplicationConfig(
                 "ktor.application.modules.size" to "1",
                 "ktor.application.modules.0" to "me.aquitano.health.api.ApplicationKt.module",
-                "aqtHealth.database.jdbcUrl" to "jdbc:sqlite:$dbPath",
-                "aqtHealth.database.driver" to "org.sqlite.JDBC",
+                *PostgresTestDatabase.ktorConfigEntries(dbConfig),
                 "aqtHealth.auth.bootstrapClientName" to "test-client",
                 "aqtHealth.auth.bootstrapApiKey" to "test-key",
             )
         }
-        return dbPath
+        return dbConfig
     }
 
     private fun HttpRequestBuilder.authorized() {
@@ -311,11 +309,11 @@ class IngestionRouteTest {
     private suspend fun HttpResponse.errorCode(): String =
         jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
 
-    private fun countRows(dbPath: Path, tableName: String): Int =
+    private fun countRows(dbPath: DatabaseConfig, tableName: String): Int =
         singleInt(dbPath, "SELECT COUNT(*) FROM $tableName")
 
-    private fun singleInt(dbPath: Path, sql: String): Int =
-        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+    private fun singleInt(dbPath: DatabaseConfig, sql: String): Int =
+        PostgresTestDatabase.connection(dbPath).use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeQuery(sql).use { resultSet ->
                     resultSet.next()
@@ -324,8 +322,8 @@ class IngestionRouteTest {
             }
         }
 
-    private fun singleString(dbPath: Path, sql: String): String =
-        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+    private fun singleString(dbPath: DatabaseConfig, sql: String): String =
+        PostgresTestDatabase.connection(dbPath).use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeQuery(sql).use { resultSet ->
                     resultSet.next()
@@ -335,12 +333,12 @@ class IngestionRouteTest {
         }
 
     private fun insertFailedBatch(
-        dbPath: Path,
+        dbPath: DatabaseConfig,
         provider: String,
         providerInstanceId: String,
         batchExternalId: String,
     ) {
-        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+        PostgresTestDatabase.connection(dbPath).use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeUpdate(
                     """

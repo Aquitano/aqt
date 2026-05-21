@@ -1,6 +1,7 @@
 package me.aquitano.health.infrastructure.repositories
 
 import kotlinx.coroutines.Dispatchers
+import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.database.tables.ProviderOAuthAccountsTable
 import me.aquitano.health.infrastructure.database.tables.ProviderOAuthStatesTable
 import me.aquitano.health.infrastructure.database.tables.ProviderSyncRunsTable
@@ -53,8 +54,8 @@ class ProviderOAuthRepository(private val database: Database) {
             ProviderOAuthStatesTable.insert {
                 it[this.state] = state
                 it[this.providerCode] = providerCode
-                it[this.createdAt] = createdAt.toString()
-                it[this.expiresAt] = expiresAt.toString()
+                it[this.createdAt] = createdAt.toDbTimestamp()
+                it[this.expiresAt] = expiresAt.toDbTimestamp()
                 it[consumedAt] = null
             }
         }
@@ -66,14 +67,14 @@ class ProviderOAuthRepository(private val database: Database) {
         now: Instant,
     ): ProviderOAuthStateConsumeResult =
         newSuspendedTransaction(Dispatchers.IO, db = database) {
-            val nowString = now.toString()
+            val nowTimestamp = now.toDbTimestamp()
             val updated = ProviderOAuthStatesTable.update({
                 (ProviderOAuthStatesTable.state eq state) and
                         (ProviderOAuthStatesTable.providerCode eq providerCode) and
                         ProviderOAuthStatesTable.consumedAt.isNull() and
-                        (ProviderOAuthStatesTable.expiresAt greater nowString)
+                        (ProviderOAuthStatesTable.expiresAt greater nowTimestamp)
             }) {
-                it[consumedAt] = nowString
+                it[consumedAt] = nowTimestamp
             }
 
             if (updated == 1) {
@@ -127,39 +128,36 @@ class ProviderOAuthRepository(private val database: Database) {
         now: Instant,
     ) {
         newSuspendedTransaction(Dispatchers.IO, db = database) {
-            val existingId = ProviderOAuthAccountsTable
-                .select(ProviderOAuthAccountsTable.id)
-                .where {
-                    (ProviderOAuthAccountsTable.providerCode eq providerCode) and
-                            (ProviderOAuthAccountsTable.providerUserId eq providerUserId)
-                }
-                .limit(1)
-                .singleOrNull()
-                ?.get(ProviderOAuthAccountsTable.id)
-
-            if (existingId == null) {
-                ProviderOAuthAccountsTable.insert {
-                    it[this.providerCode] = providerCode
-                    it[this.providerUserId] = providerUserId
-                    it[this.providerInstanceId] = providerInstanceId
-                    it[this.accessTokenCiphertext] = accessTokenCiphertext
-                    it[this.refreshTokenCiphertext] = refreshTokenCiphertext
-                    it[this.tokenType] = tokenType
-                    it[this.expiresAt] = expiresAt.toString()
-                    it[this.scope] = scope
-                    it[createdAt] = now.toString()
-                    it[updatedAt] = now.toString()
-                }
-            } else {
-                ProviderOAuthAccountsTable.update({ ProviderOAuthAccountsTable.id eq existingId }) {
-                    it[this.providerInstanceId] = providerInstanceId
-                    it[this.accessTokenCiphertext] = accessTokenCiphertext
-                    it[this.refreshTokenCiphertext] = refreshTokenCiphertext
-                    it[this.tokenType] = tokenType
-                    it[this.expiresAt] = expiresAt.toString()
-                    it[this.scope] = scope
-                    it[updatedAt] = now.toString()
-                }
+            ProviderOAuthAccountsTable.upsert(
+                ProviderOAuthAccountsTable.providerCode,
+                ProviderOAuthAccountsTable.providerUserId,
+                onUpdate = {
+                    it[ProviderOAuthAccountsTable.providerInstanceId] =
+                        insertValue(ProviderOAuthAccountsTable.providerInstanceId)
+                    it[ProviderOAuthAccountsTable.accessTokenCiphertext] =
+                        insertValue(ProviderOAuthAccountsTable.accessTokenCiphertext)
+                    it[ProviderOAuthAccountsTable.refreshTokenCiphertext] =
+                        insertValue(ProviderOAuthAccountsTable.refreshTokenCiphertext)
+                    it[ProviderOAuthAccountsTable.tokenType] =
+                        insertValue(ProviderOAuthAccountsTable.tokenType)
+                    it[ProviderOAuthAccountsTable.expiresAt] =
+                        insertValue(ProviderOAuthAccountsTable.expiresAt)
+                    it[ProviderOAuthAccountsTable.scope] =
+                        insertValue(ProviderOAuthAccountsTable.scope)
+                    it[ProviderOAuthAccountsTable.updatedAt] =
+                        insertValue(ProviderOAuthAccountsTable.updatedAt)
+                },
+            ) {
+                it[this.providerCode] = providerCode
+                it[this.providerUserId] = providerUserId
+                it[this.providerInstanceId] = providerInstanceId
+                it[this.accessTokenCiphertext] = accessTokenCiphertext
+                it[this.refreshTokenCiphertext] = refreshTokenCiphertext
+                it[this.tokenType] = tokenType
+                it[this.expiresAt] = expiresAt.toDbTimestamp()
+                it[this.scope] = scope
+                it[createdAt] = now.toDbTimestamp()
+                it[updatedAt] = now.toDbTimestamp()
             }
         }
     }
@@ -180,9 +178,9 @@ class ProviderOAuthRepository(private val database: Database) {
                     it[this.refreshTokenCiphertext] = value
                 }
                 it[this.tokenType] = tokenType
-                it[this.expiresAt] = expiresAt.toString()
+                it[this.expiresAt] = expiresAt.toDbTimestamp()
                 scope?.let { value -> it[this.scope] = value }
-                it[updatedAt] = now.toString()
+                it[updatedAt] = now.toDbTimestamp()
             }
         }
     }
@@ -239,7 +237,7 @@ class ProviderOAuthRepository(private val database: Database) {
                 .limit(1)
                 .singleOrNull()
                 ?.get(ProviderSyncRunsTable.finishedAt)
-                ?.let(Instant::parse)
+                ?.toInstant()
         }
 
     suspend fun startSyncRun(
@@ -253,10 +251,10 @@ class ProviderOAuthRepository(private val database: Database) {
             ProviderSyncRunsTable.insertAndGetId {
                 it[this.providerCode] = providerCode
                 it[this.providerInstanceId] = providerInstanceId
-                it[this.requestedFrom] = requestedFrom.toString()
-                it[this.requestedTo] = requestedTo.toString()
+                it[this.requestedFrom] = requestedFrom.toDbTimestamp()
+                it[this.requestedTo] = requestedTo.toDbTimestamp()
                 it[status] = "running"
-                it[this.startedAt] = startedAt.toString()
+                it[this.startedAt] = startedAt.toDbTimestamp()
                 it[finishedAt] = null
                 it[errorMessage] = null
             }.value
@@ -271,7 +269,7 @@ class ProviderOAuthRepository(private val database: Database) {
         newSuspendedTransaction(Dispatchers.IO, db = database) {
             ProviderSyncRunsTable.update({ ProviderSyncRunsTable.id eq runId }) {
                 it[this.status] = status
-                it[this.finishedAt] = finishedAt.toString()
+                it[this.finishedAt] = finishedAt.toDbTimestamp()
                 it[this.errorMessage] = errorMessage?.take(2000)
             }
         }
@@ -281,8 +279,8 @@ class ProviderOAuthRepository(private val database: Database) {
         ProviderOAuthState(
             state = this[ProviderOAuthStatesTable.state],
             providerCode = this[ProviderOAuthStatesTable.providerCode],
-            expiresAt = Instant.parse(this[ProviderOAuthStatesTable.expiresAt]),
-            consumedAt = this[ProviderOAuthStatesTable.consumedAt]?.let(Instant::parse),
+            expiresAt = this[ProviderOAuthStatesTable.expiresAt].toInstant(),
+            consumedAt = this[ProviderOAuthStatesTable.consumedAt]?.toInstant(),
         )
 
     private fun ResultRow.toOAuthAccount(): ProviderOAuthAccount =
@@ -294,9 +292,9 @@ class ProviderOAuthRepository(private val database: Database) {
             accessTokenCiphertext = this[ProviderOAuthAccountsTable.accessTokenCiphertext],
             refreshTokenCiphertext = this[ProviderOAuthAccountsTable.refreshTokenCiphertext],
             tokenType = this[ProviderOAuthAccountsTable.tokenType],
-            expiresAt = Instant.parse(this[ProviderOAuthAccountsTable.expiresAt]),
+            expiresAt = this[ProviderOAuthAccountsTable.expiresAt].toInstant(),
             scope = this[ProviderOAuthAccountsTable.scope],
-            createdAt = Instant.parse(this[ProviderOAuthAccountsTable.createdAt]),
-            updatedAt = Instant.parse(this[ProviderOAuthAccountsTable.updatedAt]),
+            createdAt = this[ProviderOAuthAccountsTable.createdAt].toInstant(),
+            updatedAt = this[ProviderOAuthAccountsTable.updatedAt].toInstant(),
         )
 }

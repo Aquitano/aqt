@@ -1,10 +1,12 @@
 val exposed_version: String by project
 val flyway_version: String by project
+val hikari_version: String by project
 val kotlin_version: String by project
 val logback_version: String by project
 val logstash_logback_encoder_version: String by project
 val okhttp_version: String by project
-val sqlite_jdbc_version: String by project
+val postgresql_jdbc_version: String by project
+val testcontainers_version: String by project
 
 plugins {
     kotlin("jvm") version "2.3.0"
@@ -56,14 +58,17 @@ dependencies {
     implementation("org.jetbrains.exposed:exposed-dao:$exposed_version")
     implementation("org.jetbrains.exposed:exposed-java-time:$exposed_version")
     implementation("org.jetbrains.exposed:exposed-jdbc:$exposed_version")
-    implementation("org.xerial:sqlite-jdbc:$sqlite_jdbc_version")
+    implementation("org.postgresql:postgresql:$postgresql_jdbc_version")
+    implementation("com.zaxxer:HikariCP:$hikari_version")
     implementation("org.flywaydb:flyway-core:$flyway_version")
+    implementation("org.flywaydb:flyway-database-postgresql:$flyway_version")
 
     implementation("com.google.cloud:google-cloud-health:0.1.0")
 
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("io.ktor:ktor-client-mock")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
+    testImplementation("org.testcontainers:postgresql:$testcontainers_version")
 }
 
 tasks.register<Test>("generateOpenApi") {

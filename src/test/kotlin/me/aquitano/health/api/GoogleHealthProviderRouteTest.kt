@@ -8,7 +8,7 @@ import io.ktor.server.testing.*
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.aquitano.health.shared.AppJson
-import java.nio.file.Files
+import me.aquitano.health.test.PostgresTestDatabase
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -68,12 +68,10 @@ class GoogleHealthProviderRouteTest {
     private fun ApplicationTestBuilder.configureTestApplication(
         withClientSecret: Boolean = true,
     ) {
-        val dbPath = Files.createTempFile("aqt-health-google-provider-route-test", ".db")
+        val dbConfig = PostgresTestDatabase.config()
         val configValues = mutableMapOf(
             "ktor.application.modules.size" to "1",
             "ktor.application.modules.0" to "me.aquitano.health.api.ApplicationKt.module",
-            "aqtHealth.database.jdbcUrl" to "jdbc:sqlite:$dbPath",
-            "aqtHealth.database.driver" to "org.sqlite.JDBC",
             "aqtHealth.auth.bootstrapClientName" to "test-client",
             "aqtHealth.auth.bootstrapApiKey" to "test-key",
             "aqtHealth.googleHealth.clientId" to "client-id",
@@ -83,6 +81,7 @@ class GoogleHealthProviderRouteTest {
             "aqtHealth.googleHealth.oauthTokenUrl" to "https://oauth2.googleapis.com/token",
             "aqtHealth.googleHealth.oauthAuthUrl" to "https://accounts.google.com/o/oauth2/v2/auth",
         )
+        configValues.putAll(PostgresTestDatabase.ktorConfigEntries(dbConfig).toMap())
         if (withClientSecret) {
             configValues["aqtHealth.googleHealth.clientSecret"] = "client-secret"
         }

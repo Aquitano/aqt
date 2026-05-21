@@ -12,8 +12,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
+import me.aquitano.health.test.PostgresTestDatabase
 import me.aquitano.health.shared.AppJson
-import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -237,13 +237,12 @@ class ApplicationTest {
     }
 
     private fun ApplicationTestBuilder.configureTestApplication() {
-        val dbPath = Files.createTempFile("aqt-health-app-test", ".db")
+        val dbConfig = PostgresTestDatabase.config()
         environment {
             config = MapApplicationConfig(
                 "ktor.application.modules.size" to "1",
                 "ktor.application.modules.0" to "me.aquitano.health.api.ApplicationKt.module",
-                "aqtHealth.database.jdbcUrl" to "jdbc:sqlite:$dbPath",
-                "aqtHealth.database.driver" to "org.sqlite.JDBC",
+                *PostgresTestDatabase.ktorConfigEntries(dbConfig),
                 "aqtHealth.auth.bootstrapClientName" to "test-client",
                 "aqtHealth.auth.bootstrapApiKey" to "test-key",
             )

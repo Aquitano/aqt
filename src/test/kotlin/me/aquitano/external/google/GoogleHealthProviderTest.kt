@@ -19,10 +19,8 @@ import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
+import me.aquitano.health.test.PostgresTestDatabase
 import org.jetbrains.exposed.sql.Database
-import java.nio.file.Files
-import java.nio.file.Path
-import java.sql.DriverManager
 import java.time.Instant
 import kotlin.test.*
 
@@ -403,9 +401,9 @@ class GoogleHealthProviderTest {
     private class Fixture(
         clientSecret: String = "client-secret",
     ) {
-        val dbPath: Path = Files.createTempFile("aqt-health-google-provider-test", ".db")
+        val dbPath: DatabaseConfig = PostgresTestDatabase.config()
         val database: Database = DatabaseFactory().initialize(
-            DatabaseConfig("jdbc:sqlite:$dbPath", "org.sqlite.JDBC")
+            dbPath
         )
         val now: Instant = Instant.parse("2026-04-20T10:00:00Z")
         val config = GoogleHealthConfig(
@@ -619,11 +617,11 @@ class GoogleHealthProviderTest {
         }
     }
 
-    private fun countRows(dbPath: Path, tableName: String): Int =
+    private fun countRows(dbPath: DatabaseConfig, tableName: String): Int =
         singleInt(dbPath, "SELECT COUNT(*) FROM $tableName")
 
-    private fun singleInt(dbPath: Path, sql: String): Int =
-        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+    private fun singleInt(dbPath: DatabaseConfig, sql: String): Int =
+        PostgresTestDatabase.connection(dbPath).use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeQuery(sql).use { resultSet ->
                     resultSet.next()
@@ -632,8 +630,8 @@ class GoogleHealthProviderTest {
             }
         }
 
-    private fun singleString(dbPath: Path, sql: String): String =
-        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+    private fun singleString(dbPath: DatabaseConfig, sql: String): String =
+        PostgresTestDatabase.connection(dbPath).use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeQuery(sql).use { resultSet ->
                     resultSet.next()
@@ -643,11 +641,11 @@ class GoogleHealthProviderTest {
         }
 
     private fun insertFailedGoogleBatch(
-        dbPath: Path,
+        dbPath: DatabaseConfig,
         providerInstanceId: String,
         batchExternalId: String,
     ) {
-        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+        PostgresTestDatabase.connection(dbPath).use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeUpdate(
                     """

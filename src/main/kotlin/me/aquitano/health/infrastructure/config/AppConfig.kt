@@ -12,6 +12,9 @@ data class AppConfig(
 data class DatabaseConfig(
     val jdbcUrl: String,
     val driver: String,
+    val user: String,
+    val password: String,
+    val maxPoolSize: Int,
 )
 
 data class AuthConfig(
@@ -44,6 +47,10 @@ fun ApplicationConfig.toAppConfig(): AppConfig =
         database = DatabaseConfig(
             jdbcUrl = property("aqtHealth.database.jdbcUrl").getString(),
             driver = property("aqtHealth.database.driver").getString(),
+            user = property("aqtHealth.database.user").getString(),
+            password = property("aqtHealth.database.password").getString(),
+            maxPoolSize = property("aqtHealth.database.maxPoolSize").getString()
+                .toInt(),
         ),
         auth = AuthConfig(
             bootstrapClientName = property("aqtHealth.auth.bootstrapClientName").getString(),

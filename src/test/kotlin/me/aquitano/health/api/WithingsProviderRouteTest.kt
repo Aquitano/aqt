@@ -16,7 +16,7 @@ import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.aquitano.health.shared.AppJson
-import java.nio.file.Files
+import me.aquitano.health.test.PostgresTestDatabase
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -87,12 +87,10 @@ class WithingsProviderRouteTest {
     private fun ApplicationTestBuilder.configureTestApplication(
         withClientSecret: Boolean = true,
     ) {
-        val dbPath = Files.createTempFile("aqt-health-withings-provider-route-test", ".db")
+        val dbConfig = PostgresTestDatabase.config()
         val configValues = mutableMapOf(
             "ktor.application.modules.size" to "1",
             "ktor.application.modules.0" to "me.aquitano.health.api.ApplicationKt.module",
-            "aqtHealth.database.jdbcUrl" to "jdbc:sqlite:$dbPath",
-            "aqtHealth.database.driver" to "org.sqlite.JDBC",
             "aqtHealth.auth.bootstrapClientName" to "test-client",
             "aqtHealth.auth.bootstrapApiKey" to "test-key",
             "aqtHealth.withings.clientId" to "withings-client-id",
@@ -102,6 +100,7 @@ class WithingsProviderRouteTest {
             "aqtHealth.withings.oauthTokenUrl" to "https://wbsapi.withings.net/v2/oauth2",
             "aqtHealth.withings.oauthAuthUrl" to "https://account.withings.com/oauth2_user/authorize2",
         )
+        configValues.putAll(PostgresTestDatabase.ktorConfigEntries(dbConfig).toMap())
         if (withClientSecret) {
             configValues["aqtHealth.withings.clientSecret"] = "withings-client-secret"
         }

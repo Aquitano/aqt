@@ -1,6 +1,6 @@
 # aqt-health
 
-Personal, single-user health data hub built with Ktor, Kotlin, SQLite, Exposed, and Flyway.
+Personal, single-user health data hub built with Ktor, Kotlin, PostgreSQL, Exposed, and Flyway.
 
 The service accepts normalized health batches from trusted scripts or provider adapters, stores the original source JSON for audit/reprocessing, writes structured metric tables, and exposes read endpoints for local tools.
 
@@ -8,7 +8,7 @@ The service accepts normalized health batches from trusted scripts or provider a
 
 - Kotlin 2.3
 - Ktor 3.4
-- SQLite via `org.xerial:sqlite-jdbc`
+- PostgreSQL via JDBC and HikariCP
 - Exposed DAO for support entities only
 - Exposed DSL for ingestion and metric reads/writes
 - Flyway versioned migrations
@@ -16,14 +16,35 @@ The service accepts normalized health batches from trusted scripts or provider a
 
 ## Run Locally
 
+Start PostgreSQL:
+
+```bash
+docker compose up -d postgres
+```
+
+The compose file uses `AQT_HEALTH_DB_USER`, `AQT_HEALTH_DB_PASSWORD`, `AQT_HEALTH_DB_PORT`, and `POSTGRES_DB` from the environment when set.
+
+Bash:
+
+```bash
+export AQT_HEALTH_BOOTSTRAP_API_KEY="local-dev-key"
+export AQT_HEALTH_JDBC_URL="jdbc:postgresql://localhost:5432/aqt_health"
+export AQT_HEALTH_DB_USER="aqt_health"
+export AQT_HEALTH_DB_PASSWORD="aqt_health"
+./gradlew run
+```
+
 PowerShell:
 
 ```powershell
 $env:AQT_HEALTH_BOOTSTRAP_API_KEY = "local-dev-key"
+$env:AQT_HEALTH_JDBC_URL = "jdbc:postgresql://localhost:5432/aqt_health"
+$env:AQT_HEALTH_DB_USER = "aqt_health"
+$env:AQT_HEALTH_DB_PASSWORD = "aqt_health"
 .\gradlew.bat run
 ```
 
-The default database is `./data/aqt-health.db`. Flyway migrations run at startup.
+The default database URL is `jdbc:postgresql://localhost:5432/aqt_health`. Flyway migrations run at startup.
 
 Useful tasks:
 
@@ -49,7 +70,10 @@ Runtime config is read from `src/main/resources/application.yaml`.
 Environment variables:
 
 - `PORT`: HTTP port, default `8080`
-- `AQT_HEALTH_JDBC_URL`: SQLite JDBC URL, default `jdbc:sqlite:./data/aqt-health.db`
+- `AQT_HEALTH_JDBC_URL`: PostgreSQL JDBC URL, default `jdbc:postgresql://localhost:5432/aqt_health`
+- `AQT_HEALTH_DB_USER`: PostgreSQL username, default `aqt_health`
+- `AQT_HEALTH_DB_PASSWORD`: PostgreSQL password, default `aqt_health`
+- `AQT_HEALTH_DB_MAX_POOL_SIZE`: maximum Hikari connection pool size, default `10`
 - `AQT_HEALTH_BOOTSTRAP_CLIENT_NAME`: initial API client name, default `local-admin`
 - `AQT_HEALTH_BOOTSTRAP_API_KEY`: optional plaintext bootstrap key
 - `AQT_HEALTH_GOOGLE_CLIENT_ID`: Google OAuth web client ID for Google Health
@@ -73,7 +97,9 @@ Environment variables:
 - `OPENOBSERVE_AUTHORIZATION`: optional full OpenObserve authorization header value, for example `Basic ...`
 - `AQT_HEALTH_ENV`: environment label added to forwarded logs, default `local`
 
-If `AQT_HEALTH_BOOTSTRAP_API_KEY` is set, the app hashes it with SHA-256 and stores only `sha256:<hex>` in `api_clients`. If it is blank, startup still succeeds, but protected endpoints require a client row to exist in SQLite.
+If `AQT_HEALTH_BOOTSTRAP_API_KEY` is set, the app hashes it with SHA-256 and stores only `sha256:<hex>` in `api_clients`. If it is blank, startup still succeeds, but protected endpoints require a client row to exist in PostgreSQL.
+
+PostgreSQL migrations require permission to run `CREATE EXTENSION IF NOT EXISTS btree_gist`. Managed deployments should enable `btree_gist` ahead of application startup if the application database user cannot create extensions.
 
 For local secrets, copy `.env.example` to `.env` and put real values only in `.env`. The `.env` file is ignored by git.
 
@@ -401,7 +427,7 @@ Support tables:
 - `provider_oauth_states`
 - `provider_sync_runs`
 
-Timestamps are stored as UTC ISO-8601 text. Daily step summaries use UTC dates and assign each interval to the date of `startAt`.
+Timestamps are stored as PostgreSQL `timestamptz` values and returned as UTC ISO-8601 strings. Daily step summaries use UTC dates and assign each interval to the date of `startAt`.
 
 ## Tests
 
@@ -409,4 +435,12 @@ Timestamps are stored as UTC ISO-8601 text. Daily step summaries use UTC dates a
 .\gradlew.bat test
 ```
 
-Tests run against temporary SQLite files and apply the same Flyway migrations as the application.
+Tests run against temporary PostgreSQL databases via Testcontainers and apply the same Flyway migrations as the application.
+If Docker is unavailable, point tests at an existing PostgreSQL database; each test gets an isolated schema:
+
+```bash
+export AQT_HEALTH_TEST_JDBC_URL="jdbc:postgresql://localhost:5432/aqt_health_test"
+export AQT_HEALTH_TEST_DB_USER="aqt_health"
+export AQT_HEALTH_TEST_DB_PASSWORD="aqt_health"
+./gradlew test
+```

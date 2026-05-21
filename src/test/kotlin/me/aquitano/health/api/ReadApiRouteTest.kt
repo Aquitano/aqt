@@ -9,10 +9,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.*
+import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.shared.AppJson
-import java.sql.DriverManager
-import java.nio.file.Files
-import java.nio.file.Path
+import me.aquitano.health.test.PostgresTestDatabase
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -584,19 +583,18 @@ class ReadApiRouteTest {
         )
     }
 
-    private fun ApplicationTestBuilder.configureTestApplication(): Path {
-        val dbPath = Files.createTempFile("aqt-health-read-test", ".db")
+    private fun ApplicationTestBuilder.configureTestApplication(): DatabaseConfig {
+        val dbConfig = PostgresTestDatabase.config()
         environment {
             config = MapApplicationConfig(
                 "ktor.application.modules.size" to "1",
                 "ktor.application.modules.0" to "me.aquitano.health.api.ApplicationKt.module",
-                "aqtHealth.database.jdbcUrl" to "jdbc:sqlite:$dbPath",
-                "aqtHealth.database.driver" to "org.sqlite.JDBC",
+                *PostgresTestDatabase.ktorConfigEntries(dbConfig),
                 "aqtHealth.auth.bootstrapClientName" to "test-client",
                 "aqtHealth.auth.bootstrapApiKey" to "test-key",
             )
         }
-        return dbPath
+        return dbConfig
     }
 
     private suspend fun ApplicationTestBuilder.ingestMixedBatch(): Int {
@@ -638,8 +636,8 @@ class ReadApiRouteTest {
         header(HttpHeaders.Authorization, "Bearer test-key")
     }
 
-    private fun lastUsedAt(dbPath: Path): String? =
-        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+    private fun lastUsedAt(dbPath: DatabaseConfig): String? =
+        PostgresTestDatabase.connection(dbPath).use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeQuery("SELECT last_used_at FROM api_clients WHERE name = 'test-client'").use { resultSet ->
                     if (resultSet.next()) resultSet.getString("last_used_at") else null

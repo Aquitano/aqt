@@ -4,8 +4,8 @@ import me.aquitano.health.domain.BodyMeasurementRecord
 import me.aquitano.health.domain.HeartRateRecord
 import me.aquitano.health.domain.SleepSessionRecord
 import me.aquitano.health.domain.StepIntervalRecord
+import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.database.tables.*
-import org.jetbrains.exposed.exceptions.ExposedSQLException
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import java.time.Duration
@@ -27,18 +27,15 @@ class MetricsWriteRepository {
                 record
             )
         ) return false
-        return insertOrSkipDuplicateUnit {
-            StepSamplesTable.insert {
+        return StepSamplesTable.insertIgnoreAndGetId {
                 it[this.sourceInstanceId] = sourceInstanceId
                 it[this.ingestionRecordId] = ingestionRecordId
                 it[providerRecordId] = record.providerRecordId
-                it[startAt] = record.startAt.toString()
-                it[endAt] = record.endAt.toString()
+                it[startAt] = record.startAt.toDbTimestamp()
+                it[endAt] = record.endAt.toDbTimestamp()
                 it[steps] = record.steps
-                it[createdAt] = now.toString()
-            }
-            Unit
-        }
+                it[createdAt] = now.toDbTimestamp()
+            } != null
     }
 
     fun insertSleepSession(
@@ -47,24 +44,23 @@ class MetricsWriteRepository {
         record: SleepSessionRecord,
         now: Instant,
     ): Int? {
-        val sessionId = insertOrNullOnDuplicate {
-            SleepSessionsTable.insertAndGetId {
+        val sessionId =
+            SleepSessionsTable.insertIgnoreAndGetId {
                 it[this.sourceInstanceId] = sourceInstanceId
                 it[this.ingestionRecordId] = ingestionRecordId
                 it[providerRecordId] = record.providerRecordId
-                it[startAt] = record.startAt.toString()
-                it[endAt] = record.endAt.toString()
+                it[startAt] = record.startAt.toDbTimestamp()
+                it[endAt] = record.endAt.toDbTimestamp()
                 it[durationSeconds] =
                     Duration.between(record.startAt, record.endAt).seconds
-                it[createdAt] = now.toString()
-            }.value
-        } ?: return null
+                it[createdAt] = now.toDbTimestamp()
+            }?.value ?: return null
         record.stages.forEach { stage ->
             SleepStagesTable.insert {
                 it[sleepSessionId] = sessionId
                 it[this.stage] = stage.stage
-                it[startAt] = stage.startAt.toString()
-                it[endAt] = stage.endAt.toString()
+                it[startAt] = stage.startAt.toDbTimestamp()
+                it[endAt] = stage.endAt.toDbTimestamp()
                 it[durationSeconds] =
                     Duration.between(stage.startAt, stage.endAt).seconds
             }
@@ -80,19 +76,17 @@ class MetricsWriteRepository {
     ): Int {
         var created = 0
         record.measurements.forEach { measurement ->
-            val inserted = insertOrSkipDuplicateUnit {
-                BodyMeasurementsTable.insert {
+            val inserted =
+                BodyMeasurementsTable.insertIgnoreAndGetId {
                     it[this.sourceInstanceId] = sourceInstanceId
                     it[this.ingestionRecordId] = ingestionRecordId
                     it[providerRecordId] = record.providerRecordId
-                    it[measuredAt] = record.measuredAt.toString()
+                    it[measuredAt] = record.measuredAt.toDbTimestamp()
                     it[metricType] = measurement.metricType
                     it[value] = measurement.value
                     it[unit] = measurement.unit
-                    it[createdAt] = now.toString()
-                }
-                Unit
-            }
+                    it[createdAt] = now.toDbTimestamp()
+                } != null
             if (inserted) created += 1
         }
         return created
@@ -104,18 +98,15 @@ class MetricsWriteRepository {
         record: HeartRateRecord,
         now: Instant,
     ): Boolean {
-        return insertOrSkipDuplicateUnit {
-            HeartRateSamplesTable.insert {
+        return HeartRateSamplesTable.insertIgnoreAndGetId {
                 it[this.sourceInstanceId] = sourceInstanceId
                 it[this.ingestionRecordId] = ingestionRecordId
                 it[providerRecordId] = record.providerRecordId
-                it[measuredAt] = record.measuredAt.toString()
+                it[measuredAt] = record.measuredAt.toDbTimestamp()
                 it[bpm] = record.bpm
                 it[context] = record.context
-                it[createdAt] = now.toString()
-            }
-            Unit
-        }
+                it[createdAt] = now.toDbTimestamp()
+            } != null
     }
 
     fun recomputeStepDailySummary(
@@ -129,8 +120,8 @@ class MetricsWriteRepository {
             .selectAll()
             .where {
                 (StepSamplesTable.sourceInstanceId eq sourceInstanceId) and
-                        (StepSamplesTable.startAt less dayEnd.toString()) and
-                        (StepSamplesTable.endAt greater dayStart.toString())
+                        (StepSamplesTable.startAt less dayEnd.toDbTimestamp()) and
+                        (StepSamplesTable.endAt greater dayStart.toDbTimestamp())
             }
             .toList()
         val steps = rows.sumOf {
@@ -138,17 +129,29 @@ class MetricsWriteRepository {
         }
         val sampleCount = rows.size
 
-        StepDailySummariesTable.deleteWhere {
-            (StepDailySummariesTable.sourceInstanceId eq sourceInstanceId) and
-                    (StepDailySummariesTable.date eq date.toString())
-        }
-        if (sampleCount > 0) {
-            StepDailySummariesTable.insert {
+        if (sampleCount == 0) {
+            StepDailySummariesTable.deleteWhere {
+                (StepDailySummariesTable.sourceInstanceId eq sourceInstanceId) and
+                        (StepDailySummariesTable.date eq date)
+            }
+        } else {
+            StepDailySummariesTable.upsert(
+                StepDailySummariesTable.date,
+                StepDailySummariesTable.sourceInstanceId,
+                onUpdate = {
+                    it[StepDailySummariesTable.steps] =
+                        insertValue(StepDailySummariesTable.steps)
+                    it[StepDailySummariesTable.sampleCount] =
+                        insertValue(StepDailySummariesTable.sampleCount)
+                    it[StepDailySummariesTable.computedAt] =
+                        insertValue(StepDailySummariesTable.computedAt)
+                },
+            ) {
                 it[this.sourceInstanceId] = sourceInstanceId
-                it[this.date] = date.toString()
+                it[this.date] = date
                 it[this.steps] = steps
                 it[this.sampleCount] = sampleCount
-                it[this.computedAt] = computedAt.toString()
+                it[this.computedAt] = computedAt.toDbTimestamp()
             }
         }
     }
@@ -157,8 +160,8 @@ class MetricsWriteRepository {
         sourceInstanceId: Int,
         record: StepIntervalRecord,
     ): Boolean {
-        val candidateStartBefore = record.endAt.plusSeconds(1).toString()
-        val candidateEndAfter = record.startAt.minusSeconds(1).toString()
+        val candidateStartBefore = record.endAt.plusSeconds(1).toDbTimestamp()
+        val candidateEndAfter = record.startAt.minusSeconds(1).toDbTimestamp()
         return StepSamplesTable.selectAll()
             .where {
                 (StepSamplesTable.sourceInstanceId eq sourceInstanceId) and
@@ -166,15 +169,9 @@ class MetricsWriteRepository {
                         (StepSamplesTable.endAt greater candidateEndAfter)
             }
             .any {
-                val existingStart = runCatching {
-                    Instant.parse(it[StepSamplesTable.startAt])
-                }.getOrNull()
-                val existingEnd = runCatching {
-                    Instant.parse(it[StepSamplesTable.endAt])
-                }.getOrNull()
-                existingStart != null &&
-                        existingEnd != null &&
-                        existingStart.isBefore(record.endAt) &&
+                val existingStart = it[StepSamplesTable.startAt].toInstant()
+                val existingEnd = it[StepSamplesTable.endAt].toInstant()
+                existingStart.isBefore(record.endAt) &&
                         record.startAt.isBefore(existingEnd)
             }
     }
@@ -184,8 +181,8 @@ class MetricsWriteRepository {
         dayStart: Instant,
         dayEnd: Instant,
     ): Int {
-        val sampleStart = Instant.parse(row[StepSamplesTable.startAt])
-        val sampleEnd = Instant.parse(row[StepSamplesTable.endAt])
+        val sampleStart = row[StepSamplesTable.startAt].toInstant()
+        val sampleEnd = row[StepSamplesTable.endAt].toInstant()
         val totalSeconds = Duration.between(sampleStart, sampleEnd).seconds
         if (totalSeconds <= 0) return 0
 
@@ -198,26 +195,6 @@ class MetricsWriteRepository {
         return (steps.toDouble() * overlapSeconds / totalSeconds).roundToInt()
     }
 
-    private fun insertOrSkipDuplicateUnit(block: () -> Unit): Boolean =
-        try {
-            block()
-            true
-        } catch (exception: ExposedSQLException) {
-            if (exception.isUniqueConstraintViolation()) false else throw exception
-        }
-
-    private fun <T : Any> insertOrNullOnDuplicate(block: () -> T): T? =
-        try {
-            block()
-        } catch (exception: ExposedSQLException) {
-            if (exception.isUniqueConstraintViolation()) null else throw exception
-        }
 }
 
 private const val GOOGLE_HEALTH_PROVIDER_CODE = "google_health"
-
-private fun ExposedSQLException.isUniqueConstraintViolation(): Boolean {
-    val text = listOfNotNull(message, cause?.message).joinToString("\n")
-    return text.contains("UNIQUE constraint failed", ignoreCase = true) ||
-            text.contains("SQLITE_CONSTRAINT_UNIQUE", ignoreCase = true)
-}

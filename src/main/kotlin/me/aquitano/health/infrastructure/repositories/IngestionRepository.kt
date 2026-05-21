@@ -1,6 +1,8 @@
 package me.aquitano.health.infrastructure.repositories
 
 import me.aquitano.health.domain.HealthRecord
+import me.aquitano.health.infrastructure.database.toApiString
+import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.database.tables.IngestionBatchesTable
 import me.aquitano.health.infrastructure.database.tables.IngestionRecordsTable
 import me.aquitano.health.infrastructure.database.tables.SourceInstancesTable
@@ -89,12 +91,12 @@ class IngestionRepository {
             it[this.sourcePayloadJson] = sourcePayloadJson
             it[this.normalizedPayloadJson] = normalizedPayloadJson
             it[status] = "received"
-            it[this.ingestedAt] = ingestedAt.toString()
-            it[this.receivedAt] = receivedAt.toString()
+            it[this.ingestedAt] = ingestedAt.toDbTimestamp()
+            it[this.receivedAt] = receivedAt.toDbTimestamp()
             it[processedAt] = null
             it[errorMessage] = null
-            it[createdAt] = receivedAt.toString()
-            it[updatedAt] = receivedAt.toString()
+            it[createdAt] = receivedAt.toDbTimestamp()
+            it[updatedAt] = receivedAt.toDbTimestamp()
         }.value
 
     fun releaseFailedBatchExternalId(
@@ -107,7 +109,7 @@ class IngestionRepository {
                     (IngestionBatchesTable.status eq "failed")
         }) {
             it[this.batchExternalId] = "$batchExternalId#failed:$batchId"
-            it[updatedAt] = releasedAt.toString()
+            it[updatedAt] = releasedAt.toDbTimestamp()
         }
     }
 
@@ -123,9 +125,9 @@ class IngestionRepository {
                 it[providerRecordId] = record.providerRecordId
                 it[normalizedRecordJson] =
                     AppJson.encodeToString(record.normalizedRecordJson)
-                it[recordStartAt] = record.recordStartAt?.toString()
-                it[recordEndAt] = record.recordEndAt?.toString()
-                it[createdAt] = now.toString()
+                it[recordStartAt] = record.recordStartAt?.toDbTimestamp()
+                it[recordEndAt] = record.recordEndAt?.toDbTimestamp()
+                it[createdAt] = now.toDbTimestamp()
             }.value
             IngestionRecordRef(id = id, record = record)
         }
@@ -133,8 +135,8 @@ class IngestionRepository {
     fun markProcessed(batchId: Int, processedAt: Instant) {
         IngestionBatchesTable.update({ IngestionBatchesTable.id eq batchId }) {
             it[status] = "processed"
-            it[this.processedAt] = processedAt.toString()
-            it[updatedAt] = processedAt.toString()
+            it[this.processedAt] = processedAt.toDbTimestamp()
+            it[updatedAt] = processedAt.toDbTimestamp()
             it[errorMessage] = null
         }
     }
@@ -143,7 +145,7 @@ class IngestionRepository {
         IngestionBatchesTable.update({ IngestionBatchesTable.id eq batchId }) {
             it[status] = "failed"
             it[processedAt] = null
-            it[updatedAt] = failedAt.toString()
+            it[updatedAt] = failedAt.toDbTimestamp()
             it[errorMessage] = error.take(2000)
         }
     }
@@ -156,8 +158,8 @@ class IngestionRepository {
     ): List<AdminBatchRow> {
         val conditions = mutableListOf<Op<Boolean>>()
         status?.let { conditions.add(IngestionBatchesTable.status eq it) }
-        from?.let { conditions.add(IngestionBatchesTable.receivedAt greaterEq it.toString()) }
-        to?.let { conditions.add(IngestionBatchesTable.receivedAt less it.toString()) }
+        from?.let { conditions.add(IngestionBatchesTable.receivedAt greaterEq it.toDbTimestamp()) }
+        to?.let { conditions.add(IngestionBatchesTable.receivedAt less it.toDbTimestamp()) }
 
         val batches = IngestionBatchesTable
             .innerJoin(SourceInstancesTable)
@@ -177,9 +179,9 @@ class IngestionRepository {
                 providerInstanceId = it[SourceInstancesTable.providerInstanceId],
                 batchExternalId = it[IngestionBatchesTable.batchExternalId],
                 status = it[IngestionBatchesTable.status],
-                ingestedAt = it[IngestionBatchesTable.ingestedAt],
-                receivedAt = it[IngestionBatchesTable.receivedAt],
-                processedAt = it[IngestionBatchesTable.processedAt],
+                ingestedAt = it[IngestionBatchesTable.ingestedAt].toApiString(),
+                receivedAt = it[IngestionBatchesTable.receivedAt].toApiString(),
+                processedAt = it[IngestionBatchesTable.processedAt]?.toApiString(),
                 errorMessage = it[IngestionBatchesTable.errorMessage],
                 recordCount = recordCounts[it[IngestionBatchesTable.id].value]
                     ?: 0,
@@ -201,9 +203,9 @@ class IngestionRepository {
                     providerInstanceId = it[SourceInstancesTable.providerInstanceId],
                     batchExternalId = it[IngestionBatchesTable.batchExternalId],
                     status = it[IngestionBatchesTable.status],
-                    ingestedAt = it[IngestionBatchesTable.ingestedAt],
-                    receivedAt = it[IngestionBatchesTable.receivedAt],
-                    processedAt = it[IngestionBatchesTable.processedAt],
+                    ingestedAt = it[IngestionBatchesTable.ingestedAt].toApiString(),
+                    receivedAt = it[IngestionBatchesTable.receivedAt].toApiString(),
+                    processedAt = it[IngestionBatchesTable.processedAt]?.toApiString(),
                     errorMessage = it[IngestionBatchesTable.errorMessage],
                     sourcePayloadJson = it[IngestionBatchesTable.sourcePayloadJson],
                     normalizedPayloadJson = it[IngestionBatchesTable.normalizedPayloadJson],
@@ -222,9 +224,9 @@ class IngestionRepository {
                     recordType = it[IngestionRecordsTable.recordType],
                     providerRecordId = it[IngestionRecordsTable.providerRecordId],
                     normalizedRecordJson = it[IngestionRecordsTable.normalizedRecordJson],
-                    recordStartAt = it[IngestionRecordsTable.recordStartAt],
-                    recordEndAt = it[IngestionRecordsTable.recordEndAt],
-                    createdAt = it[IngestionRecordsTable.createdAt],
+                    recordStartAt = it[IngestionRecordsTable.recordStartAt]?.toApiString(),
+                    recordEndAt = it[IngestionRecordsTable.recordEndAt]?.toApiString(),
+                    createdAt = it[IngestionRecordsTable.createdAt].toApiString(),
                 )
             }
 

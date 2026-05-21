@@ -6,7 +6,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.config.MapApplicationConfig
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
-import java.nio.file.Files
+import me.aquitano.health.test.PostgresTestDatabase
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
@@ -29,13 +29,12 @@ class OpenApiExportTest {
     }
 
     private fun ApplicationTestBuilder.configureExportApplication() {
-        val dbPath = Files.createTempFile("aqt-health-openapi-export", ".db")
+        val dbConfig = PostgresTestDatabase.config()
         environment {
             config = MapApplicationConfig(
                 "ktor.application.modules.size" to "1",
                 "ktor.application.modules.0" to "me.aquitano.health.api.ApplicationKt.module",
-                "aqtHealth.database.jdbcUrl" to "jdbc:sqlite:$dbPath",
-                "aqtHealth.database.driver" to "org.sqlite.JDBC",
+                *PostgresTestDatabase.ktorConfigEntries(dbConfig),
                 "aqtHealth.auth.bootstrapClientName" to "test-client",
                 "aqtHealth.auth.bootstrapApiKey" to "test-key",
             )

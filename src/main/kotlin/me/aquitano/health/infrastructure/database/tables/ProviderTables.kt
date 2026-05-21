@@ -2,6 +2,7 @@ package me.aquitano.health.infrastructure.database.tables
 
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.Table
+import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone
 
 object ProviderOAuthAccountsTable : IntIdTable("provider_oauth_accounts") {
     val providerCode = text("provider_code")
@@ -10,10 +11,10 @@ object ProviderOAuthAccountsTable : IntIdTable("provider_oauth_accounts") {
     val accessTokenCiphertext = text("access_token_ciphertext")
     val refreshTokenCiphertext = text("refresh_token_ciphertext")
     val tokenType = text("token_type")
-    val expiresAt = text("expires_at")
+    val expiresAt = timestampWithTimeZone("expires_at")
     val scope = text("scope")
-    val createdAt = text("created_at")
-    val updatedAt = text("updated_at")
+    val createdAt = timestampWithTimeZone("created_at")
+    val updatedAt = timestampWithTimeZone("updated_at")
 
     init {
         uniqueIndex(providerCode, providerUserId)
@@ -23,9 +24,9 @@ object ProviderOAuthAccountsTable : IntIdTable("provider_oauth_accounts") {
 object ProviderOAuthStatesTable : Table("provider_oauth_states") {
     val state = text("state")
     val providerCode = text("provider_code")
-    val createdAt = text("created_at")
-    val expiresAt = text("expires_at")
-    val consumedAt = text("consumed_at").nullable()
+    val createdAt = timestampWithTimeZone("created_at")
+    val expiresAt = timestampWithTimeZone("expires_at")
+    val consumedAt = timestampWithTimeZone("consumed_at").nullable()
 
     override val primaryKey = PrimaryKey(state)
 }
@@ -33,10 +34,10 @@ object ProviderOAuthStatesTable : Table("provider_oauth_states") {
 object ProviderSyncRunsTable : IntIdTable("provider_sync_runs") {
     val providerCode = text("provider_code")
     val providerInstanceId = text("provider_instance_id")
-    val requestedFrom = text("requested_from")
-    val requestedTo = text("requested_to")
+    val requestedFrom = timestampWithTimeZone("requested_from")
+    val requestedTo = timestampWithTimeZone("requested_to")
     val status = text("status")
-    val startedAt = text("started_at")
-    val finishedAt = text("finished_at").nullable()
+    val startedAt = timestampWithTimeZone("started_at")
+    val finishedAt = timestampWithTimeZone("finished_at").nullable()
     val errorMessage = text("error_message").nullable()
 }

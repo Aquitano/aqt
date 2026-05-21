@@ -13,17 +13,16 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.shared.AppJson
-import java.nio.file.Files
-import java.nio.file.Path
-import java.sql.DriverManager
+import me.aquitano.health.test.PostgresTestDatabase
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ProviderStatusRouteTest {
     @Test
     fun providerStatusRequiresAuthentication() = testApplication {
-        val dbPath = Files.createTempFile("aqt-health-provider-status-auth-test", ".db")
+        val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
 
         val response = client.get("/api/v1/providers/status")
@@ -33,7 +32,7 @@ class ProviderStatusRouteTest {
 
     @Test
     fun unconfiguredProviderReportsConfigureAction() = testApplication {
-        val dbPath = Files.createTempFile("aqt-health-provider-status-unconfigured-test", ".db")
+        val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath, googleConfigured = false)
 
         val response = client.get("/api/v1/providers/google-health/status") {
@@ -53,7 +52,7 @@ class ProviderStatusRouteTest {
 
     @Test
     fun configuredButUnconnectedProviderReportsConnectAction() = testApplication {
-        val dbPath = Files.createTempFile("aqt-health-provider-status-unconnected-test", ".db")
+        val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
 
         val response = client.get("/api/v1/providers/google-health/status") {
@@ -71,7 +70,7 @@ class ProviderStatusRouteTest {
 
     @Test
     fun connectedProviderReportsValidAccountAndLastSync() = testApplication {
-        val dbPath = Files.createTempFile("aqt-health-provider-status-valid-test", ".db")
+        val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
         client.get("/api/v1/admin/health")
         insertGoogleAccount(
@@ -110,7 +109,7 @@ class ProviderStatusRouteTest {
 
     @Test
     fun connectedExpiredProviderCanStillSyncWithRefreshToken() = testApplication {
-        val dbPath = Files.createTempFile("aqt-health-provider-status-expired-test", ".db")
+        val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
         client.get("/api/v1/admin/health")
         insertGoogleAccount(
@@ -134,7 +133,7 @@ class ProviderStatusRouteTest {
 
     @Test
     fun unknownProviderStatusReturnsNotFound() = testApplication {
-        val dbPath = Files.createTempFile("aqt-health-provider-status-not-found-test", ".db")
+        val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
 
         val response = client.get("/api/v1/providers/not-real/status") {
@@ -145,14 +144,12 @@ class ProviderStatusRouteTest {
     }
 
     private fun ApplicationTestBuilder.configureTestApplication(
-        dbPath: Path,
+        dbPath: DatabaseConfig,
         googleConfigured: Boolean = true,
     ) {
         val configValues = mutableMapOf(
             "ktor.application.modules.size" to "1",
             "ktor.application.modules.0" to "me.aquitano.health.api.ApplicationKt.module",
-            "aqtHealth.database.jdbcUrl" to "jdbc:sqlite:$dbPath",
-            "aqtHealth.database.driver" to "org.sqlite.JDBC",
             "aqtHealth.auth.bootstrapClientName" to "test-client",
             "aqtHealth.auth.bootstrapApiKey" to "test-key",
             "aqtHealth.googleHealth.clientId" to "client-id",
@@ -169,6 +166,7 @@ class ProviderStatusRouteTest {
             "aqtHealth.withings.oauthTokenUrl" to "https://wbsapi.withings.net/v2/oauth2",
             "aqtHealth.withings.oauthAuthUrl" to "https://account.withings.com/oauth2_user/authorize2",
         )
+        configValues.putAll(PostgresTestDatabase.ktorConfigEntries(dbPath).toMap())
         if (googleConfigured) {
             configValues["aqtHealth.googleHealth.clientSecret"] = "client-secret"
         }
@@ -177,8 +175,8 @@ class ProviderStatusRouteTest {
         }
     }
 
-    private fun insertGoogleAccount(dbPath: Path, expiresAt: String) {
-        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+    private fun insertGoogleAccount(dbPath: DatabaseConfig, expiresAt: String) {
+        PostgresTestDatabase.connection(dbPath).use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeUpdate(
                     """
@@ -211,8 +209,8 @@ class ProviderStatusRouteTest {
         }
     }
 
-    private fun insertSyncRun(dbPath: Path, finishedAt: String?) {
-        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+    private fun insertSyncRun(dbPath: DatabaseConfig, finishedAt: String?) {
+        PostgresTestDatabase.connection(dbPath).use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeUpdate(
                     """

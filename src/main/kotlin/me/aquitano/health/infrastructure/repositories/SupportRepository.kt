@@ -2,16 +2,17 @@ package me.aquitano.health.infrastructure.repositories
 
 import kotlinx.coroutines.Dispatchers
 import me.aquitano.health.infrastructure.database.dao.ApiClientDao
-import me.aquitano.health.infrastructure.database.dao.SourceDao
-import me.aquitano.health.infrastructure.database.dao.SourceInstanceDao
+import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.database.tables.ApiClientsTable
 import me.aquitano.health.infrastructure.database.tables.SourceInstancesTable
 import me.aquitano.health.infrastructure.database.tables.SourcesTable
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.insertIgnoreAndGetId
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.Instant
+import java.time.OffsetDateTime
 
 data class SourceInstanceRef(
     val id: Int,
@@ -44,7 +45,7 @@ class SupportRepository(
                     this.name = name
                     this.apiKeyHash = apiKeyHash
                     enabled = true
-                    createdAt = now.toString()
+                    createdAt = now.toDbTimestamp()
                     lastUsedAt = null
                 }
                 true
@@ -61,7 +62,7 @@ class SupportRepository(
                 .firstOrNull()
                 ?: return@dbQuery null
             if (shouldUpdateLastUsedAt(client.lastUsedAt, now)) {
-                client.lastUsedAt = now.toString()
+                client.lastUsedAt = now.toDbTimestamp()
             }
             ApiClientRef(id = client.id.value, name = client.name)
         }
@@ -84,32 +85,35 @@ class SupportRepository(
         providerInstanceId: String,
         now: Instant
     ): SourceInstanceRef {
-        val source =
-            SourceDao.find { SourcesTable.code eq provider }.firstOrNull()
-                ?: SourceDao.new {
-                    code = provider
-                    displayName = null
-                    createdAt = now.toString()
-                }
+        val sourceId = SourcesTable.insertIgnoreAndGetId {
+            it[code] = provider
+            it[displayName] = null
+            it[createdAt] = now.toDbTimestamp()
+        }?.value ?: SourcesTable
+            .select(SourcesTable.id)
+            .where { SourcesTable.code eq provider }
+            .limit(1)
+            .single()[SourcesTable.id].value
 
-        val instance = SourceInstanceDao
-            .find {
-                (SourceInstancesTable.sourceId eq source.id) and
+        val instanceId = SourceInstancesTable.insertIgnoreAndGetId {
+            it[this.sourceId] = sourceId
+            it[this.providerInstanceId] = providerInstanceId
+            it[displayName] = null
+            it[createdAt] = now.toDbTimestamp()
+            it[updatedAt] = now.toDbTimestamp()
+        }?.value ?: SourceInstancesTable
+            .select(SourceInstancesTable.id)
+            .where {
+                (SourceInstancesTable.sourceId eq sourceId) and
                         (SourceInstancesTable.providerInstanceId eq providerInstanceId)
             }
-            .firstOrNull()
-            ?: SourceInstanceDao.new {
-                this.source = source
-                this.providerInstanceId = providerInstanceId
-                displayName = null
-                createdAt = now.toString()
-                updatedAt = now.toString()
-            }
+            .limit(1)
+            .single()[SourceInstancesTable.id].value
 
         return SourceInstanceRef(
-            id = instance.id.value,
-            provider = source.code,
-            providerInstanceId = instance.providerInstanceId,
+            id = instanceId,
+            provider = provider,
+            providerInstanceId = providerInstanceId,
         )
     }
 
@@ -119,13 +123,11 @@ class SupportRepository(
         }
 
     private fun shouldUpdateLastUsedAt(
-        current: String?,
+        current: OffsetDateTime?,
         now: Instant
     ): Boolean {
         if (current == null) return true
-        val parsed =
-            runCatching { Instant.parse(current) }.getOrNull() ?: return true
-        return parsed <= now.minusSeconds(
+        return current.toInstant() <= now.minusSeconds(
             API_CLIENT_LAST_USED_UPDATE_INTERVAL_SECONDS
         )
     }

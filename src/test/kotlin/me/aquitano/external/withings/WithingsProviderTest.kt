@@ -21,10 +21,8 @@ import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
+import me.aquitano.health.test.PostgresTestDatabase
 import org.jetbrains.exposed.sql.Database
-import java.nio.file.Files
-import java.nio.file.Path
-import java.sql.DriverManager
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -288,7 +286,7 @@ class WithingsProviderTest {
     }
 
     private class Fixture(
-        val dbPath: Path = Files.createTempFile("aqt-health-withings-provider-test", ".db"),
+        val dbPath: DatabaseConfig = PostgresTestDatabase.config(),
         val now: Instant = Instant.parse("2026-04-20T10:00:00Z"),
     ) {
         val config = WithingsConfig(
@@ -301,10 +299,7 @@ class WithingsProviderTest {
             oauthAuthUrl = "https://account.withings.com/oauth2_user/authorize2",
         )
         private val database: Database = DatabaseFactory().initialize(
-            DatabaseConfig(
-                jdbcUrl = "jdbc:sqlite:$dbPath",
-                driver = "org.sqlite.JDBC",
-            )
+            dbPath
         )
         private val providerRepository = ProviderOAuthRepository(database)
         private val metricsWriteRepository = MetricsWriteRepository()
@@ -518,8 +513,8 @@ class WithingsProviderTest {
     }
 }
 
-private fun singleString(dbPath: Path, sql: String): String =
-    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+private fun singleString(dbPath: DatabaseConfig, sql: String): String =
+    PostgresTestDatabase.connection(dbPath).use { connection ->
         connection.createStatement().use { statement ->
             statement.executeQuery(sql).use { resultSet ->
                 resultSet.next()
@@ -528,8 +523,8 @@ private fun singleString(dbPath: Path, sql: String): String =
         }
     }
 
-private fun countRows(dbPath: Path, tableName: String): Int =
-    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+private fun countRows(dbPath: DatabaseConfig, tableName: String): Int =
+    PostgresTestDatabase.connection(dbPath).use { connection ->
         connection.createStatement().use { statement ->
             statement.executeQuery("SELECT COUNT(*) FROM $tableName").use { resultSet ->
                 resultSet.next()
