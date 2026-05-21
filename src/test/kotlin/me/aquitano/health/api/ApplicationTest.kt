@@ -120,10 +120,18 @@ class ApplicationTest {
             "/api/v1/health/day",
             "/api/v1/metrics/steps",
             "/api/v1/metrics/steps/daily",
+            "/api/v1/activity/summaries",
+            "/api/v1/activity/summaries/latest",
             "/api/v1/sleep/sessions",
             "/api/v1/sleep/nights",
+            "/api/v1/sleep/summaries",
+            "/api/v1/sleep/summaries/latest",
             "/api/v1/body/measurements",
             "/api/v1/metrics/heart-rate",
+            "/api/v1/metrics/respiratory-rate",
+            "/api/v1/metrics/respiratory-rate/summary",
+            "/api/v1/metrics/hrv",
+            "/api/v1/metrics/hrv/summary",
             "/api/v1/dashboard/summary",
             "/api/v1/admin/ingestion/batches",
             "/api/v1/admin/ingestion/batches/{id}",
@@ -181,6 +189,19 @@ class ApplicationTest {
         assertTrue("date" in dailyStepParamNames)
         assertTrue("fromDate" in dailyStepParamNames)
         assertTrue("toDate" in dailyStepParamNames)
+        assertFalse("from" in dailyStepParamNames)
+        assertFalse("to" in dailyStepParamNames)
+
+        val latestActivityParamNames = paths["/api/v1/activity/summaries/latest"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
+            .jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
+        assertTrue("date" in latestActivityParamNames)
+        assertTrue("fromDate" in latestActivityParamNames)
+        assertTrue("toDate" in latestActivityParamNames)
+        assertFalse("from" in latestActivityParamNames)
+        assertFalse("to" in latestActivityParamNames)
+        assertFalse("limit" in latestActivityParamNames)
+        assertFalse("sort" in latestActivityParamNames)
+        assertFalse("order" in latestActivityParamNames)
 
         val bodyMetricParamNames = paths["/api/v1/body/measurements"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
             .jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
@@ -212,6 +233,10 @@ class ApplicationTest {
             "SleepSessionDto",
             "BodyMeasurementDto",
             "HeartRateDto",
+            "ActivitySummaryDto",
+            "SleepSummaryDto",
+            "RespiratoryRateDto",
+            "HrvDto",
         ).forEach { schemaName ->
             assertNotNull(schemas[schemaName], "Missing OpenAPI component schema $schemaName")
         }
@@ -227,6 +252,10 @@ class ApplicationTest {
                 "#/components/schemas/SleepSessionDto",
                 "#/components/schemas/BodyMeasurementDto",
                 "#/components/schemas/HeartRateDto",
+                "#/components/schemas/ActivitySummaryDto",
+                "#/components/schemas/SleepSummaryDto",
+                "#/components/schemas/RespiratoryRateDto",
+                "#/components/schemas/HrvDto",
             ),
             recordRefs,
         )

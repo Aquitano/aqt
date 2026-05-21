@@ -5,6 +5,10 @@ object RecordTypes {
     const val SLEEP_SESSION = "sleep_session"
     const val BODY_MEASUREMENT = "body_measurement"
     const val HEART_RATE = "heart_rate"
+    const val ACTIVITY_SUMMARY = "activity_summary"
+    const val SLEEP_SUMMARY = "sleep_summary"
+    const val RESPIRATORY_RATE = "respiratory_rate"
+    const val HRV = "hrv"
 }
 
 object SleepStages {
@@ -25,4 +29,20 @@ object BodyMetricTypes {
 object HeartRateContexts {
     val supported =
         setOf("resting", "active", "workout", "sleep", "general", "unknown")
+}
+
+object RespiratoryRateContexts {
+    val supported =
+        setOf("sleep", "resting", "general", "unknown")
+}
+
+object HrvMetricTypes {
+    const val RMSSD = "rmssd"
+
+    val supported = setOf(RMSSD)
+}
+
+object HrvContexts {
+    val supported =
+        setOf("sleep", "resting", "general", "unknown")
 }

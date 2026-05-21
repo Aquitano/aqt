@@ -9,12 +9,16 @@ import {
   type ChartPointDetail,
 } from "./charts/HealthMetricChart";
 import type {
+  ActivitySummariesResponse,
   BodyMeasurement,
   BodyMeasurementsResponse,
   HealthDayBucket,
   HealthDayResponse,
   HeartRateSamplesResponse,
+  HrvSamplesResponse,
+  RespiratoryRateSamplesResponse,
   SleepNightsResponse,
+  SleepSummariesResponse,
   StepDailySummariesResponse,
 } from "@/lib/types";
 import styles from "./HealthDataVisualizations.module.css";
@@ -30,11 +34,15 @@ const bodyMetricConfig: Record<string, { label: string; color: string }> = {
 const bodyMetricOrder = ["weight", "body_fat", "muscle", "water", "visceral_fat"];
 
 type HealthDataVisualizationsProps = {
+  activitySummaries?: ActivitySummariesResponse;
   bodyMeasurements?: BodyMeasurementsResponse;
   dailySteps?: StepDailySummariesResponse;
   healthDay?: HealthDayResponse;
+  hrvSamples?: HrvSamplesResponse;
   latestHeartRate?: HeartRateSamplesResponse;
   latestSleep?: SleepNightsResponse;
+  respiratoryRates?: RespiratoryRateSamplesResponse;
+  sleepSummaries?: SleepSummariesResponse;
   fromDate: string;
   toDate: string;
   timezone: string;
@@ -51,11 +59,15 @@ type ModalChart = {
 };
 
 export function HealthDataVisualizations({
+  activitySummaries,
   bodyMeasurements,
   dailySteps,
   healthDay,
+  hrvSamples,
   latestHeartRate,
   latestSleep,
+  respiratoryRates,
+  sleepSummaries,
   fromDate,
   toDate,
   timezone,
@@ -64,6 +76,7 @@ export function HealthDataVisualizations({
   const bodyChart = useMemo(() => buildBodyChart(bodyMeasurements?.items ?? []), [bodyMeasurements]);
   const weightChart = useMemo(() => buildWeightChart(bodyMeasurements?.items ?? []), [bodyMeasurements]);
   const stepsChart = useMemo(() => buildStepsChart(dailySteps?.items ?? []), [dailySteps]);
+  const activityChart = useMemo(() => buildActivityChart(activitySummaries?.items ?? []), [activitySummaries]);
   const heartRateChart = useMemo(
     () => buildBucketChart({
       buckets: healthDay?.heartRate?.buckets ?? [],
@@ -75,6 +88,12 @@ export function HealthDataVisualizations({
     [healthDay],
   );
   const sleepChart = useMemo(() => buildSleepChart(latestSleep), [latestSleep]);
+  const sleepSummaryChart = useMemo(() => buildSleepSummaryChart(sleepSummaries?.items ?? []), [sleepSummaries]);
+  const respiratoryRateChart = useMemo(
+    () => buildRespiratoryRateChart(respiratoryRates?.items ?? []),
+    [respiratoryRates],
+  );
+  const hrvChart = useMemo(() => buildHrvChart(hrvSamples?.items ?? []), [hrvSamples]);
   const dateLabel = `${fromDate} to ${toDate} (${timezone})`;
 
   return (
@@ -142,6 +161,23 @@ export function HealthDataVisualizations({
           }
         />
         <HealthMetricChart
+          key={`activity-${activityChart.data.length}`}
+          title="Activity summaries"
+          description="Distance, energy, active minutes, and daily heart-rate ranges."
+          series={activityChart.series}
+          data={activityChart.data}
+          defaultVisibleMetricKeys={activityChart.defaultVisibleMetricKeys}
+          height={260}
+          onExpand={(visible) =>
+            openModal({
+              title: "Activity summaries",
+              description: dateLabel,
+              chart: activityChart,
+              visibleMetricKeys: visible,
+            })
+          }
+        />
+        <HealthMetricChart
           key={`heart-${heartRateChart.data.length}`}
           title="Heart-rate detail"
           description={latestHeartRate?.items.length ? "Bucketed day view plus latest sample context." : "Bucketed day view."}
@@ -171,6 +207,57 @@ export function HealthDataVisualizations({
               title: "Sleep sessions",
               description: dateLabel,
               chart: sleepChart,
+              visibleMetricKeys: visible,
+            })
+          }
+        />
+        <HealthMetricChart
+          key={`sleep-summary-${sleepSummaryChart.data.length}`}
+          title="Sleep summaries"
+          description="Sleep score, efficiency, and duration totals."
+          series={sleepSummaryChart.series}
+          data={sleepSummaryChart.data}
+          defaultVisibleMetricKeys={sleepSummaryChart.defaultVisibleMetricKeys}
+          height={260}
+          onExpand={(visible) =>
+            openModal({
+              title: "Sleep summaries",
+              description: dateLabel,
+              chart: sleepSummaryChart,
+              visibleMetricKeys: visible,
+            })
+          }
+        />
+        <HealthMetricChart
+          key={`respiratory-${respiratoryRateChart.data.length}`}
+          title="Respiratory rate"
+          description="Breaths per minute across the selected range."
+          series={respiratoryRateChart.series}
+          data={respiratoryRateChart.data}
+          defaultVisibleMetricKeys={respiratoryRateChart.defaultVisibleMetricKeys}
+          height={260}
+          onExpand={(visible) =>
+            openModal({
+              title: "Respiratory rate",
+              description: dateLabel,
+              chart: respiratoryRateChart,
+              visibleMetricKeys: visible,
+            })
+          }
+        />
+        <HealthMetricChart
+          key={`hrv-${hrvChart.data.length}`}
+          title="HRV"
+          description="Heart-rate variability samples by metric type."
+          series={hrvChart.series}
+          data={hrvChart.data}
+          defaultVisibleMetricKeys={hrvChart.defaultVisibleMetricKeys}
+          height={260}
+          onExpand={(visible) =>
+            openModal({
+              title: "HRV",
+              description: dateLabel,
+              chart: hrvChart,
               visibleMetricKeys: visible,
             })
           }
@@ -274,6 +361,69 @@ function buildStepsChart(items: StepDailySummariesResponse["items"]): Normalized
   return detailsToChart(details, [{ key: "steps", label: "Steps", color: "#d4a94a", unit: "steps" }], ["steps"]);
 }
 
+function buildActivityChart(items: ActivitySummariesResponse["items"]): NormalizedChart {
+  const details: ChartPointDetail[] = [];
+  for (const item of [...items].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id)) {
+    const at = `${item.date}T12:00:00.000Z`;
+    const source = sourceLabel(item.source);
+    if (typeof item.distanceMeters === "number") {
+      details.push({
+        id: `activity-distance-${item.id}`,
+        at,
+        metricKey: "distance",
+        label: "Distance",
+        value: item.distanceMeters / 1000,
+        unit: "km",
+        source,
+      });
+    }
+    if (typeof item.activeEnergyKcal === "number") {
+      details.push({
+        id: `activity-energy-${item.id}`,
+        at,
+        metricKey: "active_energy",
+        label: "Active energy",
+        value: item.activeEnergyKcal,
+        unit: "kcal",
+        source,
+      });
+    }
+    if (typeof item.activeMinutes === "number") {
+      details.push({
+        id: `activity-minutes-${item.id}`,
+        at,
+        metricKey: "active_minutes",
+        label: "Active minutes",
+        value: item.activeMinutes,
+        unit: "min",
+        source,
+      });
+    }
+    if (typeof item.averageHeartRateBpm === "number") {
+      details.push({
+        id: `activity-avg-hr-${item.id}`,
+        at,
+        metricKey: "average_heart_rate",
+        label: "Avg heart rate",
+        value: item.averageHeartRateBpm,
+        unit: "bpm",
+        source,
+      });
+    }
+  }
+
+  return detailsToChart(
+    details,
+    [
+      { key: "distance", label: "Distance", color: "#d4a94a", unit: "km" },
+      { key: "active_energy", label: "Active energy", color: "#f2b36d", unit: "kcal" },
+      { key: "active_minutes", label: "Active minutes", color: "#7fd4c4", unit: "min" },
+      { key: "average_heart_rate", label: "Avg heart rate", color: "#d46a6a", unit: "bpm" },
+    ],
+    ["distance", "active_minutes"],
+  );
+}
+
 function buildBucketChart({
   buckets,
   metricKey,
@@ -317,6 +467,114 @@ function buildSleepChart(latestSleep?: SleepNightsResponse): NormalizedChart {
     }));
 
   return detailsToChart(details, [{ key: "sleep", label: "Sleep", color: "#8fa2ff", unit: "h" }], ["sleep"]);
+}
+
+function buildSleepSummaryChart(items: SleepSummariesResponse["items"]): NormalizedChart {
+  const details: ChartPointDetail[] = [];
+  for (const item of [...items].sort((a, b) => a.startAt.localeCompare(b.startAt) || a.id - b.id)) {
+    const source = sourceLabel(item.source);
+    if (typeof item.sleepScore === "number") {
+      details.push({
+        id: `sleep-score-${item.id}`,
+        at: item.startAt,
+        metricKey: "sleep_score",
+        label: "Sleep score",
+        value: item.sleepScore,
+        unit: "score",
+        source,
+      });
+    }
+    if (typeof item.sleepEfficiencyPercent === "number") {
+      details.push({
+        id: `sleep-efficiency-${item.id}`,
+        at: item.startAt,
+        metricKey: "sleep_efficiency",
+        label: "Efficiency",
+        value: item.sleepEfficiencyPercent,
+        unit: "%",
+        source,
+      });
+    }
+    if (typeof item.totalSleepSeconds === "number") {
+      details.push({
+        id: `sleep-total-${item.id}`,
+        at: item.startAt,
+        metricKey: "sleep_hours",
+        label: "Sleep",
+        value: item.totalSleepSeconds / 3600,
+        unit: "h",
+        source,
+      });
+    }
+    if (typeof item.wakeupCount === "number") {
+      details.push({
+        id: `sleep-wakeups-${item.id}`,
+        at: item.startAt,
+        metricKey: "wakeups",
+        label: "Wakeups",
+        value: item.wakeupCount,
+        unit: "count",
+        source,
+      });
+    }
+  }
+
+  return detailsToChart(
+    details,
+    [
+      { key: "sleep_score", label: "Sleep score", color: "#8fa2ff", unit: "score" },
+      { key: "sleep_efficiency", label: "Efficiency", color: "#67c7e8", unit: "%" },
+      { key: "sleep_hours", label: "Sleep", color: "#7fd4c4", unit: "h" },
+      { key: "wakeups", label: "Wakeups", color: "#f2b36d", unit: "count" },
+    ],
+    ["sleep_score", "sleep_efficiency"],
+  );
+}
+
+function buildRespiratoryRateChart(items: RespiratoryRateSamplesResponse["items"]): NormalizedChart {
+  const details = [...items]
+    .sort((a, b) => a.measuredAt.localeCompare(b.measuredAt) || a.id - b.id)
+    .map((item) => ({
+      id: `respiratory-${item.id}`,
+      at: item.measuredAt,
+      metricKey: "respiratory_rate",
+      label: "Respiratory rate",
+      value: item.breathsPerMinute,
+      unit: "br/min",
+      source: sourceLabel(item.source),
+    }));
+
+  return detailsToChart(
+    details,
+    [{ key: "respiratory_rate", label: "Respiratory rate", color: "#67c7e8", unit: "br/min" }],
+    ["respiratory_rate"],
+  );
+}
+
+function buildHrvChart(items: HrvSamplesResponse["items"]): NormalizedChart {
+  const presentMetricKeys = Array.from(new Set(items.map((item) => item.metricType))).sort();
+  const details = [...items]
+    .sort((a, b) => a.measuredAt.localeCompare(b.measuredAt) || a.id - b.id)
+    .map((item) => ({
+      id: `hrv-${item.id}`,
+      at: item.measuredAt,
+      metricKey: item.metricType,
+      label: item.metricType.toUpperCase(),
+      value: item.value,
+      unit: item.unit,
+      source: sourceLabel(item.source),
+    }));
+
+  return detailsToChart(
+    details,
+    presentMetricKeys.map((metricKey, index) => ({
+      key: metricKey,
+      label: metricKey.toUpperCase(),
+      color: ["#9dcf7a", "#7fd4c4", "#8fa2ff"][index % 3],
+      unit: items.find((item) => item.metricType === metricKey)?.unit,
+    })),
+    presentMetricKeys.length ? [presentMetricKeys[0]] : [],
+  );
 }
 
 function measurementsToData(items: BodyMeasurement[]): HealthChartDatum[] {

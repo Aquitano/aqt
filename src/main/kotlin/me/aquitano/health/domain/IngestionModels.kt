@@ -20,6 +20,10 @@ data class MetricCreatedCounts(
     val sleepStages: Int = 0,
     val bodyMeasurements: Int = 0,
     val heartRateSamples: Int = 0,
+    val activitySummaries: Int = 0,
+    val sleepSummaries: Int = 0,
+    val respiratoryRateSamples: Int = 0,
+    val hrvSamples: Int = 0,
 ) {
     operator fun plus(other: MetricCreatedCounts): MetricCreatedCounts =
         MetricCreatedCounts(
@@ -28,6 +32,10 @@ data class MetricCreatedCounts(
             sleepStages = sleepStages + other.sleepStages,
             bodyMeasurements = bodyMeasurements + other.bodyMeasurements,
             heartRateSamples = heartRateSamples + other.heartRateSamples,
+            activitySummaries = activitySummaries + other.activitySummaries,
+            sleepSummaries = sleepSummaries + other.sleepSummaries,
+            respiratoryRateSamples = respiratoryRateSamples + other.respiratoryRateSamples,
+            hrvSamples = hrvSamples + other.hrvSamples,
         )
 }
 

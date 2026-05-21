@@ -2,6 +2,7 @@ package me.aquitano.health.domain
 
 import kotlinx.serialization.json.JsonObject
 import java.time.Instant
+import java.time.LocalDate
 
 sealed interface HealthRecord {
     val providerRecordId: String?
@@ -66,6 +67,76 @@ data class HeartRateRecord(
     val context: String,
 ) : HealthRecord {
     override val recordType: String = RecordTypes.HEART_RATE
+    override val recordStartAt: Instant = measuredAt
+    override val recordEndAt: Instant? = null
+}
+
+data class ActivitySummaryRecord(
+    override val providerRecordId: String?,
+    override val normalizedRecordJson: JsonObject,
+    val date: LocalDate,
+    val distanceMeters: Double?,
+    val activeEnergyKcal: Double?,
+    val totalEnergyKcal: Double?,
+    val elevationMeters: Double?,
+    val softMinutes: Int?,
+    val moderateMinutes: Int?,
+    val intenseMinutes: Int?,
+    val activeMinutes: Int?,
+    val averageHeartRateBpm: Int?,
+    val minHeartRateBpm: Int?,
+    val maxHeartRateBpm: Int?,
+) : HealthRecord {
+    override val recordType: String = RecordTypes.ACTIVITY_SUMMARY
+    override val recordStartAt: Instant? = null
+    override val recordEndAt: Instant? = null
+}
+
+data class SleepSummaryRecord(
+    override val providerRecordId: String?,
+    override val normalizedRecordJson: JsonObject,
+    val startAt: Instant,
+    val endAt: Instant,
+    val timeInBedSeconds: Long?,
+    val totalSleepSeconds: Long?,
+    val lightSleepSeconds: Long?,
+    val deepSleepSeconds: Long?,
+    val remSleepSeconds: Long?,
+    val sleepEfficiencyPercent: Double?,
+    val sleepLatencySeconds: Long?,
+    val wakeupLatencySeconds: Long?,
+    val wakeupDurationSeconds: Long?,
+    val wakeupCount: Int?,
+    val wasoSeconds: Long?,
+    val sleepScore: Int?,
+) : HealthRecord {
+    override val recordType: String = RecordTypes.SLEEP_SUMMARY
+    override val recordStartAt: Instant = startAt
+    override val recordEndAt: Instant = endAt
+}
+
+data class RespiratoryRateRecord(
+    override val providerRecordId: String?,
+    override val normalizedRecordJson: JsonObject,
+    val measuredAt: Instant,
+    val breathsPerMinute: Int,
+    val context: String,
+) : HealthRecord {
+    override val recordType: String = RecordTypes.RESPIRATORY_RATE
+    override val recordStartAt: Instant = measuredAt
+    override val recordEndAt: Instant? = null
+}
+
+data class HrvRecord(
+    override val providerRecordId: String?,
+    override val normalizedRecordJson: JsonObject,
+    val measuredAt: Instant,
+    val metricType: String,
+    val value: Double,
+    val unit: String,
+    val context: String,
+) : HealthRecord {
+    override val recordType: String = RecordTypes.HRV
     override val recordStartAt: Instant = measuredAt
     override val recordEndAt: Instant? = null
 }

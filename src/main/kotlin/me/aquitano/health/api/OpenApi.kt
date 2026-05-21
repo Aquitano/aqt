@@ -20,6 +20,7 @@ import kotlinx.serialization.serializer
 import me.aquitano.external.withings.WITHINGS_PROVIDER_CODE
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.BodyMetricTypes
+import me.aquitano.health.domain.HrvMetricTypes
 import me.aquitano.health.domain.RecordTypes
 import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.shared.AppJson
@@ -54,6 +55,10 @@ private const val StepIntervalSchemaName = "StepIntervalDto"
 private const val SleepSessionSchemaName = "SleepSessionDto"
 private const val BodyMeasurementSchemaName = "BodyMeasurementDto"
 private const val HeartRateSchemaName = "HeartRateDto"
+private const val ActivitySummarySchemaName = "ActivitySummaryDto"
+private const val SleepSummarySchemaName = "SleepSummaryDto"
+private const val RespiratoryRateSchemaName = "RespiratoryRateDto"
+private const val HrvSchemaName = "HrvDto"
 
 internal fun openApiInfo(): OpenApiInfo =
     OpenApiInfo(
@@ -163,6 +168,10 @@ private fun ingestionRecordComponentSchemas(): Map<String, JsonSchema> =
         SleepSessionSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<SleepSessionDto>()),
         BodyMeasurementSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<BodyMeasurementDto>()),
         HeartRateSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<HeartRateDto>()),
+        ActivitySummarySchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<ActivitySummaryDto>()),
+        SleepSummarySchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<SleepSummaryDto>()),
+        RespiratoryRateSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<RespiratoryRateDto>()),
+        HrvSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<HrvDto>()),
     )
 
 internal fun Operation.Builder.publicEndpoint() {
@@ -412,8 +421,56 @@ internal fun Operation.Builder.readQueryParameters(includeLatest: Boolean = fals
 }
 
 internal fun Operation.Builder.dailyStepQueryParameters() {
-    readQueryParameters()
+    dailyReadQueryParameters()
     dateRangeQueryParameters("UTC date")
+}
+
+internal fun Operation.Builder.dailyLatestQueryParameters() {
+    dailyReadQueryParameters(includeListControls = false)
+    dateRangeQueryParameters("UTC date")
+}
+
+private fun Operation.Builder.dailyReadQueryParameters(includeListControls: Boolean = true) {
+    parameters {
+        query("provider") {
+            description = "Source provider filter."
+            schema = stringSchema(example = WITHINGS_PROVIDER_CODE)
+        }
+        query("providerInstanceId") {
+            description = "Source provider account or instance filter."
+            schema = stringSchema(example = ExampleProviderInstanceId)
+        }
+        query("includeSource") {
+            description =
+                "Include source provider metadata in each item. Defaults to false."
+            schema = booleanSchema(default = false, example = false)
+        }
+        if (includeListControls) {
+            query("sort") {
+                description = "Sort field. Daily endpoints support date."
+                schema = stringSchema(example = "date")
+            }
+            query("order") {
+                description =
+                    "Sort direction. Defaults to asc. Use desc for newest-first reads."
+                schema = stringSchema(
+                    enumValues = listOf("asc", "desc"),
+                    default = "asc",
+                    example = "desc",
+                )
+            }
+            query("limit") {
+                description =
+                    "Maximum number of items. Defaults to 500 and cannot exceed 5000."
+                schema = integerSchema(
+                    default = 500,
+                    minimum = 1.0,
+                    maximum = 5000.0,
+                    example = 100
+                )
+            }
+        }
+    }
 }
 
 internal fun Operation.Builder.sleepNightQueryParameters() {
@@ -565,6 +622,34 @@ internal fun Operation.Builder.heartRateSummaryQueryParameters() {
     }
 }
 
+internal fun Operation.Builder.hrvReadQueryParameters(includeLatest: Boolean) {
+    readQueryParameters(includeLatest = includeLatest)
+    parameters {
+        query("metricType") {
+            description = "HRV metric type filter. Defaults to rmssd."
+            schema = stringSchema(
+                enumValues = HrvMetricTypes.supported.sorted(),
+                default = HrvMetricTypes.RMSSD,
+                example = HrvMetricTypes.RMSSD,
+            )
+        }
+    }
+}
+
+internal fun Operation.Builder.hrvSummaryQueryParameters() {
+    heartRateSummaryQueryParameters()
+    parameters {
+        query("metricType") {
+            description = "HRV metric type filter. Defaults to rmssd."
+            schema = stringSchema(
+                enumValues = HrvMetricTypes.supported.sorted(),
+                default = HrvMetricTypes.RMSSD,
+                example = HrvMetricTypes.RMSSD,
+            )
+        }
+    }
+}
+
 internal fun Operation.Builder.dashboardQueryParameters() {
     parameters {
         query("fromDate") {
@@ -705,9 +790,75 @@ internal fun Route.describeDailyStepReadOperation(): Route = describe {
     tag("Read")
     summary = "List daily step summaries"
     description =
-        "Returns daily UTC step totals. Use `date` for one day, or `fromDate` and `toDate` for an inclusive date range. `from` and `to` are also accepted by the shared query parser for timestamp-style filters."
+        "Returns daily UTC step totals. Use `date` for one day, or `fromDate` and `toDate` for an inclusive date range."
     requiresBearerAuth()
     dailyStepQueryParameters()
+    errorResponses()
+}
+
+internal fun Route.describeActivitySummaryReadOperation(): Route = describe {
+    operationId = "listActivitySummaries"
+    tag("Read")
+    summary = "List activity summaries"
+    description =
+        "Returns daily activity summary metrics such as distance, calories, elevation, activity minutes, and daily heart-rate summary values."
+    requiresBearerAuth()
+    dailyStepQueryParameters()
+    errorResponses()
+}
+
+internal fun Route.describeActivitySummaryLatestReadOperation(): Route = describe {
+    operationId = "getLatestActivitySummary"
+    tag("Read")
+    summary = "Get latest activity summary"
+    description =
+        "Returns the latest matching daily activity summary for optional date and source filters."
+    requiresBearerAuth()
+    dailyLatestQueryParameters()
+    errorResponses()
+}
+
+internal fun Route.describeSleepSummaryLatestReadOperation(): Route = describe {
+    operationId = "getLatestSleepSummary"
+    tag("Read")
+    summary = "Get latest sleep summary"
+    description =
+        "Returns the latest matching aggregate sleep summary for optional timestamp and source filters."
+    requiresBearerAuth()
+    heartRateSummaryQueryParameters()
+    errorResponses()
+}
+
+internal fun Route.describeRespiratoryRateSummaryOperation(): Route = describe {
+    operationId = "summarizeRespiratoryRate"
+    tag("Read")
+    summary = "Summarize respiratory rate samples"
+    description =
+        "Returns count, minimum, maximum, average, and latest respiratory-rate sample for the requested timestamp and source filters."
+    requiresBearerAuth()
+    heartRateSummaryQueryParameters()
+    errorResponses()
+}
+
+internal fun Route.describeHrvReadOperation(): Route = describe {
+    operationId = "listHrvSamples"
+    tag("Read")
+    summary = "List HRV samples"
+    description =
+        "Returns timestamped HRV samples filtered by timestamp, source, and metric type. Use `latest=true` to return the latest matching sample only."
+    requiresBearerAuth()
+    hrvReadQueryParameters(includeLatest = true)
+    errorResponses()
+}
+
+internal fun Route.describeHrvSummaryOperation(): Route = describe {
+    operationId = "summarizeHrv"
+    tag("Read")
+    summary = "Summarize HRV samples"
+    description =
+        "Returns count, minimum, maximum, average, and latest HRV sample for the requested metric type, timestamp, and source filters."
+    requiresBearerAuth()
+    hrvSummaryQueryParameters()
     errorResponses()
 }
 
@@ -840,6 +991,10 @@ internal fun ingestionSummaryExample(duplicate: Boolean = false): ExampleObject 
                 sleepStages = if (duplicate) 0 else 1,
                 bodyMeasurements = if (duplicate) 0 else 1,
                 heartRateSamples = if (duplicate) 0 else 1,
+                activitySummaries = if (duplicate) 0 else 1,
+                sleepSummaries = if (duplicate) 0 else 1,
+                respiratoryRateSamples = if (duplicate) 0 else 1,
+                hrvSamples = if (duplicate) 0 else 1,
             ),
             metricsSkipped = MetricSkippedCountsResponse(
                 duplicates = if (duplicate) 4 else 0,
@@ -978,6 +1133,10 @@ internal fun ingestionRecordSchema(): JsonSchema =
             ReferenceOr.schema(SleepSessionSchemaName),
             ReferenceOr.schema(BodyMeasurementSchemaName),
             ReferenceOr.schema(HeartRateSchemaName),
+            ReferenceOr.schema(ActivitySummarySchemaName),
+            ReferenceOr.schema(SleepSummarySchemaName),
+            ReferenceOr.schema(RespiratoryRateSchemaName),
+            ReferenceOr.schema(HrvSchemaName),
         ),
         discriminator = JsonSchemaDiscriminator(
             propertyName = "type",
@@ -992,6 +1151,16 @@ internal fun ingestionRecordSchema(): JsonSchema =
                     BodyMeasurementSchemaName
                 ),
                 RecordTypes.HEART_RATE to componentSchemaRef(HeartRateSchemaName),
+                RecordTypes.ACTIVITY_SUMMARY to componentSchemaRef(
+                    ActivitySummarySchemaName
+                ),
+                RecordTypes.SLEEP_SUMMARY to componentSchemaRef(
+                    SleepSummarySchemaName
+                ),
+                RecordTypes.RESPIRATORY_RATE to componentSchemaRef(
+                    RespiratoryRateSchemaName
+                ),
+                RecordTypes.HRV to componentSchemaRef(HrvSchemaName),
             )
         ),
     )

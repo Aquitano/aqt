@@ -40,20 +40,31 @@ class WithingsNormalizer {
     }
 
     private fun normalizeActivity(records: List<JsonObject>): List<IngestionRecordDto> =
-        records.mapNotNull { record ->
-            val date = record.string("date")
-                ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-                ?: return@mapNotNull null
-            val steps = record.int("steps") ?: return@mapNotNull null
-            if (steps <= 0) return@mapNotNull null
-            StepIntervalDto(
-                providerRecordId = "withings:activity:$date",
-                startAt = date.atStartOfDay().toInstant(ZoneOffset.UTC)
-                    .toString(),
-                endAt = date.plusDays(1).atStartOfDay()
-                    .toInstant(ZoneOffset.UTC).toString(),
-                steps = steps,
-            )
+        buildList {
+            records.forEach { record ->
+                val date = record.string("date")
+                    ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                    ?: return@forEach
+                val steps = record.int("steps")
+                if (steps != null && steps > 0) {
+                    add(
+                        StepIntervalDto(
+                            providerRecordId = "withings:activity:$date",
+                            startAt = date.atStartOfDay()
+                                .toInstant(ZoneOffset.UTC)
+                                .toString(),
+                            endAt = date.plusDays(1)
+                                .atStartOfDay()
+                                .toInstant(ZoneOffset.UTC)
+                                .toString(),
+                            steps = steps,
+                        )
+                    )
+                }
+
+                val summary = record.toActivitySummary(date)
+                if (summary.hasAnyMetric()) add(summary)
+            }
         }
 
     private fun normalizeMeasures(records: List<JsonObject>): List<IngestionRecordDto> =
@@ -70,6 +81,7 @@ class WithingsNormalizer {
                 var weightKg: Double? = null
                 var bodyFatPercent: Double? = null
                 var muscleKg: Double? = null
+                var waterPercent: Double? = null
                 var visceralFatRating: Double? = null
                 var heartPulse: Int? = null
 
@@ -87,12 +99,18 @@ class WithingsNormalizer {
                             realValue.toInt()
 
                         76 -> if (realValue > 0.0) muscleKg = realValue
-                        170 -> if (realValue > 0.0) visceralFatRating =
-                            realValue
+                        77 -> if (realValue in 0.0..100.0) waterPercent = realValue
+                        170 -> if (realValue > 0.0) visceralFatRating = realValue
                     }
                 }
 
-                if (weightKg != null || bodyFatPercent != null || muscleKg != null || visceralFatRating != null) {
+                if (
+                    weightKg != null ||
+                    bodyFatPercent != null ||
+                    muscleKg != null ||
+                    waterPercent != null ||
+                    visceralFatRating != null
+                ) {
                     add(
                         BodyMeasurementDto(
                             providerRecordId = "withings:measure:$grpid:body",
@@ -100,6 +118,7 @@ class WithingsNormalizer {
                             weightKg = weightKg,
                             bodyFatPercent = bodyFatPercent,
                             muscleKg = muscleKg,
+                            bodyWaterPercent = waterPercent,
                             visceralFatRating = visceralFatRating,
                         )
                     )
@@ -118,16 +137,51 @@ class WithingsNormalizer {
         }
 
     private fun normalizeSleepSummary(records: List<JsonObject>): List<IngestionRecordDto> =
-        records.mapNotNull { record ->
-            val start = record.long("startdate") ?: return@mapNotNull null
-            val end = record.long("enddate") ?: return@mapNotNull null
-            if (start >= end) return@mapNotNull null
-            SleepSessionDto(
-                providerRecordId = "withings:sleep-summary:$start:$end",
-                startAt = Instant.ofEpochSecond(start).toString(),
-                endAt = Instant.ofEpochSecond(end).toString(),
-                stages = emptyList(),
-            )
+        buildList {
+            records.forEach { record ->
+                val start = record.long("startdate") ?: return@forEach
+                val end = record.long("enddate") ?: return@forEach
+                if (start >= end) return@forEach
+                add(
+                    SleepSessionDto(
+                        providerRecordId = "withings:sleep-summary:$start:$end",
+                        startAt = Instant.ofEpochSecond(start).toString(),
+                        endAt = Instant.ofEpochSecond(end).toString(),
+                        stages = emptyList(),
+                    )
+                )
+
+                val data = record["data"] as? JsonObject ?: record
+                val totalSleepSeconds =
+                    data.nonNegativeLong("total_sleep_time")
+                        ?: data.nonNegativeLong("asleepduration")
+                val sleepLatencySeconds =
+                    data.nonNegativeLong("sleep_latency")
+                        ?: data.nonNegativeLong("durationtosleep")
+                val wakeupLatencySeconds =
+                    data.nonNegativeLong("wakeup_latency")
+                        ?: data.nonNegativeLong("durationtowakeup")
+                val sleepScore = data.int("sleep_score")?.takeIf { it in 0..100 }
+                val summary = SleepSummaryDto(
+                    providerRecordId = "withings:sleep-summary:$start:$end:summary",
+                    startAt = Instant.ofEpochSecond(start).toString(),
+                    endAt = Instant.ofEpochSecond(end).toString(),
+                    timeInBedSeconds = data.nonNegativeLong("total_timeinbed"),
+                    totalSleepSeconds = totalSleepSeconds,
+                    lightSleepSeconds = data.nonNegativeLong("lightsleepduration"),
+                    deepSleepSeconds = data.nonNegativeLong("deepsleepduration"),
+                    remSleepSeconds = data.nonNegativeLong("remsleepduration"),
+                    sleepEfficiencyPercent = data.nonNegativeDouble("sleep_efficiency")
+                        ?.takeIf { it in 0.0..100.0 },
+                    sleepLatencySeconds = sleepLatencySeconds,
+                    wakeupLatencySeconds = wakeupLatencySeconds,
+                    wakeupDurationSeconds = data.nonNegativeLong("wakeupduration"),
+                    wakeupCount = data.nonNegativeInt("wakeupcount"),
+                    wasoSeconds = data.nonNegativeLong("waso"),
+                    sleepScore = sleepScore,
+                )
+                if (summary.hasAnyMetric()) add(summary)
+            }
         }
 
     private fun normalizeSleep(records: List<JsonObject>): List<IngestionRecordDto> {
@@ -155,6 +209,36 @@ class WithingsNormalizer {
             )
         }
 
+        val respiratoryRates = records.mapNotNull { record ->
+            val breathsPerMinute = record.sleepRespiratoryRate() ?: return@mapNotNull null
+            if (breathsPerMinute !in 5..80) return@mapNotNull null
+            val instant = record.sleepInstant("timestamp")
+                ?: record.sleepInstant("startdate")
+                ?: return@mapNotNull null
+            RespiratoryRateDto(
+                providerRecordId = "withings:sleep:rr:${instant.epochSecond}",
+                measuredAt = instant.toString(),
+                breathsPerMinute = breathsPerMinute,
+                context = "sleep",
+            )
+        }
+
+        val hrv = records.mapNotNull { record ->
+            val rmssd = record.sleepRmssd() ?: return@mapNotNull null
+            if (rmssd <= 0.0 || rmssd > 500.0) return@mapNotNull null
+            val instant = record.sleepInstant("timestamp")
+                ?: record.sleepInstant("startdate")
+                ?: return@mapNotNull null
+            HrvDto(
+                providerRecordId = "withings:sleep:rmssd:${instant.epochSecond}",
+                measuredAt = instant.toString(),
+                metricType = "rmssd",
+                value = rmssd,
+                unit = "ms",
+                context = "sleep",
+            )
+        }
+
         if (segments.isNotEmpty()) {
             val sessions =
                 splitSleepSegments(segments).mapNotNull { sessionSegments ->
@@ -174,7 +258,7 @@ class WithingsNormalizer {
                         },
                     )
                 }
-            return sessions + heartRates
+            return sessions + heartRates + respiratoryRates + hrv
         }
 
         val sorted = records.mapNotNull { record ->
@@ -206,7 +290,7 @@ class WithingsNormalizer {
                 stages = stages,
             )
         }
-        return sessions + heartRates
+        return sessions + heartRates + respiratoryRates + hrv
     }
 
     private fun splitSleepSegments(segments: List<SleepSegment>): List<List<SleepSegment>> =
@@ -263,6 +347,50 @@ class WithingsNormalizer {
             else -> "unknown"
         }
 
+    private fun JsonObject.toActivitySummary(date: LocalDate): ActivitySummaryDto =
+        ActivitySummaryDto(
+            providerRecordId = "withings:activity:$date:summary",
+            date = date.toString(),
+            distanceMeters = nonNegativeDouble("distance"),
+            activeEnergyKcal = nonNegativeDouble("calories"),
+            totalEnergyKcal = nonNegativeDouble("totalcalories"),
+            elevationMeters = nonNegativeDouble("elevation"),
+            softMinutes = nonNegativeInt("soft"),
+            moderateMinutes = nonNegativeInt("moderate"),
+            intenseMinutes = nonNegativeInt("intense"),
+            activeMinutes = nonNegativeInt("active"),
+            averageHeartRateBpm = validHeartRate("hr_average"),
+            minHeartRateBpm = validHeartRate("hr_min"),
+            maxHeartRateBpm = validHeartRate("hr_max"),
+        )
+
+    private fun ActivitySummaryDto.hasAnyMetric(): Boolean =
+        distanceMeters != null ||
+            activeEnergyKcal != null ||
+            totalEnergyKcal != null ||
+            elevationMeters != null ||
+            softMinutes != null ||
+            moderateMinutes != null ||
+            intenseMinutes != null ||
+            activeMinutes != null ||
+            averageHeartRateBpm != null ||
+            minHeartRateBpm != null ||
+            maxHeartRateBpm != null
+
+    private fun SleepSummaryDto.hasAnyMetric(): Boolean =
+        timeInBedSeconds != null ||
+            totalSleepSeconds != null ||
+            lightSleepSeconds != null ||
+            deepSleepSeconds != null ||
+            remSleepSeconds != null ||
+            sleepEfficiencyPercent != null ||
+            sleepLatencySeconds != null ||
+            wakeupLatencySeconds != null ||
+            wakeupDurationSeconds != null ||
+            wakeupCount != null ||
+            wasoSeconds != null ||
+            sleepScore != null
+
     private fun JsonObject.string(key: String): String? =
         this[key]?.jsonPrimitive?.contentOrNull
 
@@ -296,6 +424,24 @@ class WithingsNormalizer {
     private fun JsonObject.sleepHeartRate(): Int? =
         int("hr") ?: (this["data"] as? JsonObject)?.int("hr")
 
+    private fun JsonObject.sleepRespiratoryRate(): Int? =
+        int("rr") ?: (this["data"] as? JsonObject)?.int("rr")
+
+    private fun JsonObject.sleepRmssd(): Double? =
+        double("rmssd") ?: (this["data"] as? JsonObject)?.double("rmssd")
+
     private fun JsonObject.sleepInstant(key: String): Instant? =
         instant(key) ?: (this["data"] as? JsonObject)?.instant(key)
+
+    private fun JsonObject.nonNegativeInt(key: String): Int? =
+        int(key)?.takeIf { it >= 0 }
+
+    private fun JsonObject.nonNegativeLong(key: String): Long? =
+        long(key)?.takeIf { it >= 0 }
+
+    private fun JsonObject.nonNegativeDouble(key: String): Double? =
+        double(key)?.takeIf { it >= 0.0 }
+
+    private fun JsonObject.validHeartRate(key: String): Int? =
+        int(key)?.takeIf { it in 25..250 }
 }

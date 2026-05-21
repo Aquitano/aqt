@@ -24,10 +24,28 @@ type HealthDayQuery = NonNullable<paths["/api/v1/health/day"]["get"]["parameters
 type DailyStepsQuery = NonNullable<
   paths["/api/v1/metrics/steps/daily"]["get"]["parameters"]["query"]
 >;
+type ActivitySummariesQuery = NonNullable<
+  paths["/api/v1/activity/summaries"]["get"]["parameters"]["query"]
+>;
+type ActivitySummaryLatestQuery = NonNullable<
+  paths["/api/v1/activity/summaries/latest"]["get"]["parameters"]["query"]
+>;
 type HeartRateSamplesQuery = NonNullable<
   paths["/api/v1/metrics/heart-rate"]["get"]["parameters"]["query"]
 >;
+type RespiratoryRateSamplesQuery = NonNullable<
+  paths["/api/v1/metrics/respiratory-rate"]["get"]["parameters"]["query"]
+>;
+type HrvSamplesQuery = NonNullable<
+  paths["/api/v1/metrics/hrv"]["get"]["parameters"]["query"]
+>;
 type SleepNightsQuery = NonNullable<paths["/api/v1/sleep/nights"]["get"]["parameters"]["query"]>;
+type SleepSummariesQuery = NonNullable<
+  paths["/api/v1/sleep/summaries"]["get"]["parameters"]["query"]
+>;
+type SleepSummaryLatestQuery = NonNullable<
+  paths["/api/v1/sleep/summaries/latest"]["get"]["parameters"]["query"]
+>;
 type LatestBodyMeasurementQuery = NonNullable<
   paths["/api/v1/body/measurements/latest"]["get"]["parameters"]["query"]
 >;
@@ -140,6 +158,22 @@ export function createAqtHealthClient() {
         }),
       ),
 
+    listActivitySummaries: (query: ActivitySummariesQuery) =>
+      call<ApiSchema<"ActivitySummariesResponse">>((headers) =>
+        rawClient.GET("/api/v1/activity/summaries", {
+          headers,
+          params: { query },
+        }),
+      ),
+
+    getLatestActivitySummary: (query: ActivitySummaryLatestQuery) =>
+      call<ApiSchema<"ActivitySummaryLatestResponse">>((headers) =>
+        rawClient.GET("/api/v1/activity/summaries/latest", {
+          headers,
+          params: { query },
+        }),
+      ),
+
     listHeartRateSamples: (query: HeartRateSamplesQuery) =>
       call<ApiSchema<"HeartRateSamplesResponse">>((headers) =>
         rawClient.GET("/api/v1/metrics/heart-rate", {
@@ -148,9 +182,41 @@ export function createAqtHealthClient() {
         }),
       ),
 
+    listRespiratoryRateSamples: (query: RespiratoryRateSamplesQuery) =>
+      call<ApiSchema<"RespiratoryRateSamplesResponse">>((headers) =>
+        rawClient.GET("/api/v1/metrics/respiratory-rate", {
+          headers,
+          params: { query },
+        }),
+      ),
+
+    listHrvSamples: (query: HrvSamplesQuery) =>
+      call<ApiSchema<"HrvSamplesResponse">>((headers) =>
+        rawClient.GET("/api/v1/metrics/hrv", {
+          headers,
+          params: { query },
+        }),
+      ),
+
     listSleepNights: (query: SleepNightsQuery) =>
       call<ApiSchema<"SleepNightsResponse">>((headers) =>
         rawClient.GET("/api/v1/sleep/nights", {
+          headers,
+          params: { query },
+        }),
+      ),
+
+    listSleepSummaries: (query: SleepSummariesQuery) =>
+      call<ApiSchema<"SleepSummariesResponse">>((headers) =>
+        rawClient.GET("/api/v1/sleep/summaries", {
+          headers,
+          params: { query },
+        }),
+      ),
+
+    getLatestSleepSummary: (query: SleepSummaryLatestQuery) =>
+      call<ApiSchema<"SleepSummaryLatestResponse">>((headers) =>
+        rawClient.GET("/api/v1/sleep/summaries/latest", {
           headers,
           params: { query },
         }),

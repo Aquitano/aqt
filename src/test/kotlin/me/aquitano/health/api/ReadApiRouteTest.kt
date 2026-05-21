@@ -63,10 +63,38 @@ class ReadApiRouteTest {
             heartRate.items()[0].jsonObject["context"]!!.jsonPrimitive.content
         )
 
+        val activity = authorizedGet("/api/v1/activity/summaries?fromDate=2026-04-19&toDate=2026-04-19")
+        assertEquals(1, activity.items().size)
+        assertEquals(
+            800.5,
+            activity.items()[0].jsonObject["distanceMeters"]!!.jsonPrimitive.double,
+        )
+
+        val sleepSummary = authorizedGet("/api/v1/sleep/summaries")
+        assertEquals(1, sleepSummary.items().size)
+        assertEquals(
+            88,
+            sleepSummary.items()[0].jsonObject["sleepScore"]!!.jsonPrimitive.int,
+        )
+
+        val respiratoryRate = authorizedGet("/api/v1/metrics/respiratory-rate")
+        assertEquals(1, respiratoryRate.items().size)
+        assertEquals(
+            14,
+            respiratoryRate.items()[0].jsonObject["breathsPerMinute"]!!.jsonPrimitive.int,
+        )
+
+        val hrv = authorizedGet("/api/v1/metrics/hrv")
+        assertEquals(1, hrv.items().size)
+        assertEquals(
+            "rmssd",
+            hrv.items()[0].jsonObject["metricType"]!!.jsonPrimitive.content,
+        )
+
         val batches = authorizedGet("/api/v1/admin/ingestion/batches")
         assertEquals(1, batches.items().size)
         assertEquals(
-            4,
+            8,
             batches.items()[0].jsonObject["recordCount"]!!.jsonPrimitive.int
         )
 
@@ -101,7 +129,16 @@ class ReadApiRouteTest {
         assertEquals(HttpStatusCode.OK, response.status)
         val families = response.jsonBody()["families"]!!.jsonArray
         assertEquals(
-            setOf("steps", "sleep", "body_measurements", "heart_rate"),
+            setOf(
+                "steps",
+                "sleep",
+                "body_measurements",
+                "heart_rate",
+                "activity",
+                "sleep_summary",
+                "respiratory_rate",
+                "hrv",
+            ),
             families.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet(),
         )
 
@@ -147,6 +184,23 @@ class ReadApiRouteTest {
         assertContains(heartRate.endpointPaths(), "/api/v1/metrics/heart-rate/summary")
         assertContains(heartRate.modeNames(), "latest")
         assertContains(heartRate.modeNames(), "day")
+
+        val activity = families.family("activity")
+        assertContains(activity.endpointPaths(), "/api/v1/activity/summaries")
+        assertContains(activity.endpointPaths(), "/api/v1/activity/summaries/latest")
+
+        val sleepSummary = families.family("sleep_summary")
+        assertContains(sleepSummary.endpointPaths(), "/api/v1/sleep/summaries")
+        assertContains(sleepSummary.endpointPaths(), "/api/v1/sleep/summaries/latest")
+
+        val respiratoryRate = families.family("respiratory_rate")
+        assertContains(respiratoryRate.endpointPaths(), "/api/v1/metrics/respiratory-rate")
+        assertContains(respiratoryRate.endpointPaths(), "/api/v1/metrics/respiratory-rate/summary")
+
+        val hrv = families.family("hrv")
+        assertContains(hrv.endpointPaths(), "/api/v1/metrics/hrv")
+        assertContains(hrv.endpointPaths(), "/api/v1/metrics/hrv/summary")
+        assertContains(hrv.queryParameterNames(), "metricType")
     }
 
     @Test
@@ -231,6 +285,20 @@ class ReadApiRouteTest {
         assertEquals(
             67,
             latestHeartRate.items()[0].jsonObject["bpm"]!!.jsonPrimitive.int
+        )
+
+        val latestSleepSummary =
+            authorizedGet("/api/v1/sleep/summaries?latest=true")
+        val latestSleepSummaryAlias =
+            authorizedGet("/api/v1/sleep/summaries/latest")
+        assertEquals(1, latestSleepSummary.items().size)
+        assertEquals(
+            91,
+            latestSleepSummary.items()[0].jsonObject["sleepScore"]!!.jsonPrimitive.int
+        )
+        assertEquals(
+            latestSleepSummary.items()[0].jsonObject["sleepScore"]!!.jsonPrimitive.int,
+            latestSleepSummaryAlias.jsonBody()["item"]!!.jsonObject["sleepScore"]!!.jsonPrimitive.int
         )
 
         val datedSteps =
@@ -328,6 +396,14 @@ class ReadApiRouteTest {
         assertEquals(
             "limit",
             latestWithLimit.errorDetails()[0].jsonObject["field"]!!.jsonPrimitive.content
+        )
+
+        val latestActivityWithLimit =
+            authorizedGet("/api/v1/activity/summaries/latest?limit=10")
+        assertEquals(HttpStatusCode.BadRequest, latestActivityWithLimit.status)
+        assertEquals(
+            "limit",
+            latestActivityWithLimit.errorDetails()[0].jsonObject["field"]!!.jsonPrimitive.content
         )
     }
 
@@ -542,8 +618,8 @@ class ReadApiRouteTest {
         assertEquals(HttpStatusCode.OK, detail.status)
         val body = detail.jsonBody()
         assertEquals(batchId, body["id"]!!.jsonPrimitive.int)
-        assertEquals(4, body["recordCount"]!!.jsonPrimitive.int)
-        assertEquals(4, body["records"]!!.jsonArray.size)
+        assertEquals(8, body["recordCount"]!!.jsonPrimitive.int)
+        assertEquals(8, body["records"]!!.jsonArray.size)
         assertFalse(body.containsKey("sourcePayload"))
         assertFalse(body.containsKey("normalizedPayload"))
         assertFalse(
@@ -732,6 +808,56 @@ class ReadApiRouteTest {
               "providerRecordId": "hr-read-1",
               "measuredAt": "2026-04-19T08:30:00Z",
               "bpm": 62
+            },
+            {
+              "type": "activity_summary",
+              "providerRecordId": "activity-read-1",
+              "date": "2026-04-19",
+              "distanceMeters": 800.5,
+              "activeEnergyKcal": 310.0,
+              "totalEnergyKcal": 2100.0,
+              "elevationMeters": 15.0,
+              "softMinutes": 20,
+              "moderateMinutes": 30,
+              "intenseMinutes": 10,
+              "activeMinutes": 60,
+              "averageHeartRateBpm": 74,
+              "minHeartRateBpm": 58,
+              "maxHeartRateBpm": 132
+            },
+            {
+              "type": "sleep_summary",
+              "providerRecordId": "sleep-summary-read-1",
+              "startAt": "2026-04-18T22:30:00Z",
+              "endAt": "2026-04-19T06:45:00Z",
+              "timeInBedSeconds": 29700,
+              "totalSleepSeconds": 21000,
+              "lightSleepSeconds": 9000,
+              "deepSleepSeconds": 6300,
+              "remSleepSeconds": 5700,
+              "sleepEfficiencyPercent": 88.5,
+              "sleepLatencySeconds": 600,
+              "wakeupLatencySeconds": 120,
+              "wakeupDurationSeconds": 900,
+              "wakeupCount": 2,
+              "wasoSeconds": 300,
+              "sleepScore": 88
+            },
+            {
+              "type": "respiratory_rate",
+              "providerRecordId": "rr-read-1",
+              "measuredAt": "2026-04-19T02:30:00Z",
+              "breathsPerMinute": 14,
+              "context": "sleep"
+            },
+            {
+              "type": "hrv",
+              "providerRecordId": "hrv-read-1",
+              "measuredAt": "2026-04-19T02:30:00Z",
+              "metricType": "rmssd",
+              "value": 42.5,
+              "unit": "ms",
+              "context": "sleep"
             }
           ]
         }
@@ -780,6 +906,24 @@ class ReadApiRouteTest {
               "measuredAt": "2026-04-19T21:45:00Z",
               "bpm": 67,
               "context": "resting"
+            },
+            {
+              "type": "sleep_summary",
+              "providerRecordId": "sleep-summary-read-2",
+              "startAt": "2026-04-18T21:00:00Z",
+              "endAt": "2026-04-20T07:00:00Z",
+              "timeInBedSeconds": 122400,
+              "totalSleepSeconds": 21600,
+              "lightSleepSeconds": 9600,
+              "deepSleepSeconds": 6600,
+              "remSleepSeconds": 5400,
+              "sleepEfficiencyPercent": 91.0,
+              "sleepLatencySeconds": 480,
+              "wakeupLatencySeconds": 90,
+              "wakeupDurationSeconds": 600,
+              "wakeupCount": 1,
+              "wasoSeconds": 240,
+              "sleepScore": 91
             }
           ]
         }

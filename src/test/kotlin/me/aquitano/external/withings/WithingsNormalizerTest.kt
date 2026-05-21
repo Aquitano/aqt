@@ -7,6 +7,10 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import me.aquitano.health.api.dto.BodyMeasurementDto
 import me.aquitano.health.api.dto.HeartRateDto
+import me.aquitano.health.api.dto.ActivitySummaryDto
+import me.aquitano.health.api.dto.HrvDto
+import me.aquitano.health.api.dto.RespiratoryRateDto
+import me.aquitano.health.api.dto.SleepSummaryDto
 import me.aquitano.health.api.dto.SleepSessionDto
 import me.aquitano.health.api.dto.StepIntervalDto
 import kotlin.test.Test
@@ -41,8 +45,44 @@ class WithingsNormalizerTest {
         assertEquals(80.136, body.weightKg!!, 0.000001)
         assertEquals(21.4, body.bodyFatPercent!!, 0.000001)
         assertEquals(40.2, body.muscleKg!!, 0.000001)
-        assertEquals(null, body.waterPercent)
+        assertEquals(50.1, body.bodyWaterPercent!!, 0.000001)
         assertEquals(9.0, body.visceralFatRating!!, 0.000001)
+    }
+
+    @Test
+    fun activityCreatesSummaryFieldsAlongsideSteps() {
+        val result = normalizer.normalize(
+            fetchResult(
+                "activity",
+                buildJsonObject {
+                    put("date", "2026-04-01")
+                    put("steps", 1234)
+                    put("distance", 800.5)
+                    put("calories", 310.0)
+                    put("totalcalories", 2100.0)
+                    put("elevation", 15.0)
+                    put("soft", 20)
+                    put("moderate", 30)
+                    put("intense", 10)
+                    put("active", 60)
+                    put("hr_average", 74)
+                    put("hr_min", 58)
+                    put("hr_max", 132)
+                }
+            )
+        )
+
+        val summary = assertIs<ActivitySummaryDto>(
+            result.records.filterIsInstance<ActivitySummaryDto>().single()
+        )
+        assertEquals("withings:activity:2026-04-01:summary", summary.providerRecordId)
+        assertEquals(800.5, summary.distanceMeters!!, 0.000001)
+        assertEquals(310.0, summary.activeEnergyKcal!!, 0.000001)
+        assertEquals(2100.0, summary.totalEnergyKcal!!, 0.000001)
+        assertEquals(15.0, summary.elevationMeters!!, 0.000001)
+        assertEquals(60, summary.activeMinutes)
+        assertEquals(74, summary.averageHeartRateBpm)
+        assertEquals(1, result.records.filterIsInstance<StepIntervalDto>().size)
     }
 
     @Test
@@ -99,7 +139,9 @@ class WithingsNormalizerTest {
             )
         )
 
-        val steps = assertIs<StepIntervalDto>(result.records.single())
+        val steps = assertIs<StepIntervalDto>(
+            result.records.filterIsInstance<StepIntervalDto>().single()
+        )
         assertEquals("withings:activity:2026-04-01", steps.providerRecordId)
         assertEquals("2026-04-01T00:00:00Z", steps.startAt)
         assertEquals("2026-04-02T00:00:00Z", steps.endAt)
@@ -122,11 +164,49 @@ class WithingsNormalizerTest {
             )
         )
 
-        val sleep = assertIs<SleepSessionDto>(result.records.single())
+        val sleep = assertIs<SleepSessionDto>(
+            result.records.filterIsInstance<SleepSessionDto>().single()
+        )
         assertEquals("withings:sleep-summary:1775001600:1775023200", sleep.providerRecordId)
         assertEquals("2026-04-01T00:00:00Z", sleep.startAt)
         assertEquals("2026-04-01T06:00:00Z", sleep.endAt)
         assertTrue(sleep.stages.isEmpty())
+    }
+
+    @Test
+    fun sleepSummaryCreatesAggregateSleepMetrics() {
+        val result = normalizer.normalize(
+            fetchResult(
+                "sleep-summary",
+                buildJsonObject {
+                    put("startdate", 1775001600)
+                    put("enddate", 1775023200)
+                    putJsonObject("data") {
+                        put("total_timeinbed", 21600)
+                        put("total_sleep_time", 18000)
+                        put("lightsleepduration", 9000)
+                        put("deepsleepduration", 3600)
+                        put("remsleepduration", 5400)
+                        put("sleep_efficiency", 83.3)
+                        put("sleep_latency", 600)
+                        put("wakeup_latency", 120)
+                        put("wakeupduration", 900)
+                        put("wakeupcount", 2)
+                        put("waso", 300)
+                        put("sleep_score", 88)
+                    }
+                }
+            )
+        )
+
+        val summary = assertIs<SleepSummaryDto>(
+            result.records.filterIsInstance<SleepSummaryDto>().single()
+        )
+        assertEquals("withings:sleep-summary:1775001600:1775023200:summary", summary.providerRecordId)
+        assertEquals(21600, summary.timeInBedSeconds)
+        assertEquals(18000, summary.totalSleepSeconds)
+        assertEquals(83.3, summary.sleepEfficiencyPercent!!, 0.000001)
+        assertEquals(88, summary.sleepScore)
     }
 
     @Test
@@ -138,6 +218,8 @@ class WithingsNormalizerTest {
                     put("timestamp", 1775001600)
                     put("state", 1)
                     put("hr", 58)
+                    put("rr", 14)
+                    put("rmssd", 42.5)
                 },
                 buildJsonObject {
                     put("timestamp", 1775005200)
@@ -153,6 +235,15 @@ class WithingsNormalizerTest {
         val heartRates = result.records.filterIsInstance<HeartRateDto>()
         assertEquals(2, heartRates.size)
         assertEquals("sleep", heartRates.first().context)
+        val respiratoryRate = assertIs<RespiratoryRateDto>(
+            result.records.filterIsInstance<RespiratoryRateDto>().single()
+        )
+        assertEquals("withings:sleep:rr:1775001600", respiratoryRate.providerRecordId)
+        assertEquals(14, respiratoryRate.breathsPerMinute)
+        val hrv = assertIs<HrvDto>(result.records.filterIsInstance<HrvDto>().single())
+        assertEquals("withings:sleep:rmssd:1775001600", hrv.providerRecordId)
+        assertEquals("rmssd", hrv.metricType)
+        assertEquals(42.5, hrv.value, 0.000001)
     }
 
     @Test

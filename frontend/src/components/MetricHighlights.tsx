@@ -1,0 +1,76 @@
+import { formatDateTime, formatDuration, formatMeasurement, formatNumber } from "@/lib/format";
+import type {
+  ActivitySummaryLatestResponse,
+  HrvSamplesResponse,
+  RespiratoryRateSamplesResponse,
+  SleepSummaryLatestResponse,
+} from "@/lib/types";
+import styles from "./MetricHighlights.module.css";
+
+type MetricHighlightsProps = {
+  latestActivity?: ActivitySummaryLatestResponse;
+  latestSleepSummary?: SleepSummaryLatestResponse;
+  latestRespiratoryRate?: RespiratoryRateSamplesResponse;
+  latestHrv?: HrvSamplesResponse;
+};
+
+export function MetricHighlights({
+  latestActivity,
+  latestSleepSummary,
+  latestRespiratoryRate,
+  latestHrv,
+}: MetricHighlightsProps) {
+  const activity = latestActivity?.item;
+  const sleep = latestSleepSummary?.item;
+  const respiratoryRate = latestRespiratoryRate?.items[0];
+  const hrv = latestHrv?.items[0];
+
+  const cards = [
+    {
+      kind: "activity",
+      label: "Latest activity",
+      value: activity?.distanceMeters
+        ? formatMeasurement(activity.distanceMeters / 1000, "km")
+        : formatMeasurement(activity?.activeEnergyKcal, "kcal"),
+      detail: activity
+        ? `${activity.date} - ${formatMeasurement(activity.activeEnergyKcal, "active kcal")} - ${formatNumber(activity.activeMinutes)} active min`
+        : "No activity summary",
+    },
+    {
+      kind: "sleep",
+      label: "Sleep score",
+      value: sleep?.sleepScore !== undefined && sleep.sleepScore !== null ? `${sleep.sleepScore}/100` : "n/a",
+      detail: sleep
+        ? `${formatDuration(sleep.totalSleepSeconds)} asleep - ${formatMeasurement(sleep.sleepEfficiencyPercent, "%")} efficiency`
+        : "No sleep summary",
+    },
+    {
+      kind: "respiratory",
+      label: "Respiratory rate",
+      value: respiratoryRate ? `${respiratoryRate.breathsPerMinute} br/min` : "n/a",
+      detail: respiratoryRate
+        ? `${respiratoryRate.context} - ${formatDateTime(respiratoryRate.measuredAt)}`
+        : "No respiratory-rate sample",
+    },
+    {
+      kind: "hrv",
+      label: "HRV",
+      value: hrv ? formatMeasurement(hrv.value, hrv.unit) : "n/a",
+      detail: hrv
+        ? `${hrv.metricType.toUpperCase()} - ${hrv.context} - ${formatDateTime(hrv.measuredAt)}`
+        : "No HRV sample",
+    },
+  ];
+
+  return (
+    <section className={styles.cards} aria-label="Latest expanded metrics">
+      {cards.map((card) => (
+        <article className={styles.card} data-kind={card.kind} key={card.kind}>
+          <span className={styles.label}>{card.label}</span>
+          <span className={styles.value}>{card.value}</span>
+          <span className={styles.detail}>{card.detail}</span>
+        </article>
+      ))}
+    </section>
+  );
+}

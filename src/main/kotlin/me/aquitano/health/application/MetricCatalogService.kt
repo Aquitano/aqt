@@ -2,6 +2,7 @@ package me.aquitano.health.application
 
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.BodyMetricTypes
+import me.aquitano.health.domain.HrvMetricTypes
 
 class MetricCatalogService(
     private val providerRegistry: HealthProviderRegistry,
@@ -13,6 +14,10 @@ class MetricCatalogService(
                 sleepCatalog(),
                 bodyMeasurementsCatalog(),
                 heartRateCatalog(),
+                activityCatalog(),
+                sleepSummaryCatalog(),
+                respiratoryRateCatalog(),
+                hrvCatalog(),
             ),
         )
 
@@ -212,6 +217,136 @@ class MetricCatalogService(
                 )
             ),
             schemaHint = "items contain timestamped heart-rate samples with bpm and context, and list responses include meta with count, limit, sort, order, and no cursor for now. The combined day endpoint accepts modules=heartRate and can be called with other modules in one request.",
+        )
+
+    private fun activityCatalog(): MetricFamilyCatalogDto =
+        MetricFamilyCatalogDto(
+            name = "activity",
+            readEndpoints = listOf(
+                endpoint(
+                    "daily",
+                    "/api/v1/activity/summaries",
+                    "ActivitySummariesResponse"
+                ),
+                endpoint(
+                    "latest",
+                    "/api/v1/activity/summaries/latest",
+                    "ActivitySummaryLatestResponse"
+                ),
+            ),
+            queryParameters = dailyParameters() + instantReadParameters().filter {
+                it.name in setOf(
+                    "provider",
+                    "providerInstanceId",
+                    "includeSource",
+                    "limit",
+                    "sort",
+                    "order"
+                )
+            },
+            aggregationModes = listOf(
+                mode("daily", "/api/v1/activity/summaries"),
+                mode("latest", "/api/v1/activity/summaries/latest"),
+            ),
+            responseDtos = listOf(
+                "ActivitySummariesResponse",
+                "ActivitySummaryLatestResponse",
+            ),
+            providerDataTypes = providerDataTypes(
+                mapOf("withings" to listOf("activity"))
+            ),
+            schemaHint = "items contain per-day Withings activity summary metrics such as distance, calories, elevation, activity minutes, and summary heart-rate values.",
+        )
+
+    private fun sleepSummaryCatalog(): MetricFamilyCatalogDto =
+        MetricFamilyCatalogDto(
+            name = "sleep_summary",
+            readEndpoints = listOf(
+                endpoint(
+                    "raw",
+                    "/api/v1/sleep/summaries",
+                    "SleepSummariesResponse"
+                ),
+                endpoint(
+                    "latest",
+                    "/api/v1/sleep/summaries/latest",
+                    "SleepSummaryLatestResponse"
+                ),
+            ),
+            queryParameters = instantReadParameters() + latestParameter(),
+            aggregationModes = listOf(
+                mode("raw", "/api/v1/sleep/summaries"),
+                mode("latest", "/api/v1/sleep/summaries/latest"),
+            ),
+            responseDtos = listOf(
+                "SleepSummariesResponse",
+                "SleepSummaryLatestResponse",
+            ),
+            providerDataTypes = providerDataTypes(
+                mapOf("withings" to listOf("sleep-summary"))
+            ),
+            schemaHint = "items contain aggregate sleep quality metrics such as total sleep, time in bed, sleep score, efficiency, latency, WASO, wakeups, and stage durations.",
+        )
+
+    private fun respiratoryRateCatalog(): MetricFamilyCatalogDto =
+        MetricFamilyCatalogDto(
+            name = "respiratory_rate",
+            readEndpoints = listOf(
+                endpoint(
+                    "raw",
+                    "/api/v1/metrics/respiratory-rate",
+                    "RespiratoryRateSamplesResponse"
+                ),
+                endpoint(
+                    "summary",
+                    "/api/v1/metrics/respiratory-rate/summary",
+                    "RespiratoryRateSummaryResponse"
+                ),
+            ),
+            queryParameters = instantReadParameters() + latestParameter(),
+            aggregationModes = listOf(
+                mode("raw", "/api/v1/metrics/respiratory-rate"),
+                mode("summary", "/api/v1/metrics/respiratory-rate/summary"),
+            ),
+            responseDtos = listOf(
+                "RespiratoryRateSamplesResponse",
+                "RespiratoryRateSummaryResponse",
+            ),
+            providerDataTypes = providerDataTypes(
+                mapOf("withings" to listOf("sleep"))
+            ),
+            schemaHint = "items contain timestamped respiratory-rate samples in breaths per minute, currently sourced from Withings sleep series.",
+        )
+
+    private fun hrvCatalog(): MetricFamilyCatalogDto =
+        MetricFamilyCatalogDto(
+            name = "hrv",
+            readEndpoints = listOf(
+                endpoint("raw", "/api/v1/metrics/hrv", "HrvSamplesResponse"),
+                endpoint(
+                    "summary",
+                    "/api/v1/metrics/hrv/summary",
+                    "HrvSummaryResponse"
+                ),
+            ),
+            queryParameters = instantReadParameters() + latestParameter() + listOf(
+                MetricQueryParameterDto(
+                    name = "metricType",
+                    type = "string",
+                    description = "HRV metric type filter. Defaults to rmssd.",
+                    values = HrvMetricTypes.supported.sorted(),
+                ),
+            ),
+            aggregationModes = listOf(
+                mode("raw", "/api/v1/metrics/hrv"),
+                mode("summary", "/api/v1/metrics/hrv/summary"),
+            ),
+            metricTypes = HrvMetricTypes.supported.sorted(),
+            responseDtos = listOf("HrvSamplesResponse", "HrvSummaryResponse"),
+            providerDataTypes = providerDataTypes(
+                mapOf("withings" to listOf("sleep"))
+            ),
+            schemaHint = "items contain timestamped HRV samples. The initial normalized metric type is rmssd in milliseconds, currently sourced from Withings sleep series.",
         )
 
     private fun endpoint(

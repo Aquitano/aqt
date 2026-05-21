@@ -90,11 +90,15 @@ class IngestionService(
                             recordsReceived = validated.records.size,
                             ingestionRecordsStored = 0,
                             metricsCreated = MetricCreatedCountsResponse(
-                                0,
-                                0,
-                                0,
-                                0,
-                                0
+                                stepSamples = 0,
+                                sleepSessions = 0,
+                                sleepStages = 0,
+                                bodyMeasurements = 0,
+                                heartRateSamples = 0,
+                                activitySummaries = 0,
+                                sleepSummaries = 0,
+                                respiratoryRateSamples = 0,
+                                hrvSamples = 0,
                             ),
                             metricsSkipped = MetricSkippedCountsResponse(
                                 duplicates = 0
@@ -176,6 +180,34 @@ class IngestionService(
                                     record,
                                     now
                                 )
+
+                                is ActivitySummaryRecord -> writeActivitySummary(
+                                    sourceInstance.id,
+                                    ingestionRecord.id,
+                                    record,
+                                    now
+                                )
+
+                                is SleepSummaryRecord -> writeSleepSummary(
+                                    sourceInstance.id,
+                                    ingestionRecord.id,
+                                    record,
+                                    now
+                                )
+
+                                is RespiratoryRateRecord -> writeRespiratoryRate(
+                                    sourceInstance.id,
+                                    ingestionRecord.id,
+                                    record,
+                                    now
+                                )
+
+                                is HrvRecord -> writeHrv(
+                                    sourceInstance.id,
+                                    ingestionRecord.id,
+                                    record,
+                                    now
+                                )
                             }
                         created += result.created
                         duplicateSkipped += result.duplicateSkipped
@@ -217,6 +249,10 @@ class IngestionService(
                             sleepStages = created.sleepStages,
                             bodyMeasurements = created.bodyMeasurements,
                             heartRateSamples = created.heartRateSamples,
+                            activitySummaries = created.activitySummaries,
+                            sleepSummaries = created.sleepSummaries,
+                            respiratoryRateSamples = created.respiratoryRateSamples,
+                            hrvSamples = created.hrvSamples,
                         ),
                         metricsSkipped = MetricSkippedCountsResponse(
                             duplicates = duplicateSkipped
@@ -231,7 +267,7 @@ class IngestionService(
                 val response = transactionResult.response
                 if (!response.duplicateBatch) {
                     logger.info(
-                        "ingestion_batch_processed {} {} {} {} {} {} {} {}",
+                        "ingestion_batch_processed {} {} {} {} {} {} {} {} {} {} {} {}",
                         kv("batchId", response.batchId),
                         kv("recordsStored", response.ingestionRecordsStored),
                         kv(
@@ -253,6 +289,22 @@ class IngestionService(
                         kv(
                             "heartRateSamplesCreated",
                             response.metricsCreated.heartRateSamples
+                        ),
+                        kv(
+                            "activitySummariesCreated",
+                            response.metricsCreated.activitySummaries
+                        ),
+                        kv(
+                            "sleepSummariesCreated",
+                            response.metricsCreated.sleepSummaries
+                        ),
+                        kv(
+                            "respiratoryRateSamplesCreated",
+                            response.metricsCreated.respiratoryRateSamples
+                        ),
+                        kv(
+                            "hrvSamplesCreated",
+                            response.metricsCreated.hrvSamples
                         ),
                         kv(
                             "duplicateSkips",
@@ -350,6 +402,84 @@ class IngestionService(
         )
         return if (inserted) {
             MetricWriteResult(created = MetricCreatedCounts(heartRateSamples = 1))
+        } else {
+            MetricWriteResult(duplicateSkipped = 1)
+        }
+    }
+
+    private fun writeActivitySummary(
+        sourceInstanceId: Int,
+        ingestionRecordId: Int,
+        record: ActivitySummaryRecord,
+        now: Instant,
+    ): MetricWriteResult {
+        val inserted = metricsWriteRepository.insertActivitySummary(
+            sourceInstanceId,
+            ingestionRecordId,
+            record,
+            now
+        )
+        return if (inserted) {
+            MetricWriteResult(created = MetricCreatedCounts(activitySummaries = 1))
+        } else {
+            MetricWriteResult(duplicateSkipped = 1)
+        }
+    }
+
+    private fun writeSleepSummary(
+        sourceInstanceId: Int,
+        ingestionRecordId: Int,
+        record: SleepSummaryRecord,
+        now: Instant,
+    ): MetricWriteResult {
+        val inserted = metricsWriteRepository.insertSleepSummary(
+            sourceInstanceId,
+            ingestionRecordId,
+            record,
+            now
+        )
+        return if (inserted) {
+            MetricWriteResult(created = MetricCreatedCounts(sleepSummaries = 1))
+        } else {
+            MetricWriteResult(duplicateSkipped = 1)
+        }
+    }
+
+    private fun writeRespiratoryRate(
+        sourceInstanceId: Int,
+        ingestionRecordId: Int,
+        record: RespiratoryRateRecord,
+        now: Instant,
+    ): MetricWriteResult {
+        val inserted = metricsWriteRepository.insertRespiratoryRateSample(
+            sourceInstanceId,
+            ingestionRecordId,
+            record,
+            now
+        )
+        return if (inserted) {
+            MetricWriteResult(
+                created = MetricCreatedCounts(respiratoryRateSamples = 1)
+            )
+        } else {
+            MetricWriteResult(duplicateSkipped = 1)
+        }
+    }
+
+    private fun writeHrv(
+        sourceInstanceId: Int,
+        ingestionRecordId: Int,
+        record: HrvRecord,
+        now: Instant,
+    ): MetricWriteResult {
+        val inserted = metricsWriteRepository.insertHrvSample(
+            sourceInstanceId,
+            ingestionRecordId,
+            record,
+            now
+        )
+        return if (inserted) {
+            MetricWriteResult(created = MetricCreatedCounts(hrvSamples = 1))
         } else {
             MetricWriteResult(duplicateSkipped = 1)
         }

@@ -1,0 +1,81 @@
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-4);
+  margin: var(--s-6) 0;
+}
+
+.card {
+  position: relative;
+  overflow: hidden;
+  min-height: 132px;
+  padding: var(--s-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-4);
+  background:
+    radial-gradient(circle at top right, rgba(127, 212, 196, 0.16), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018));
+  box-shadow: var(--shadow-soft);
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--accent);
+}
+
+.card[data-kind="activity"]::before {
+  background: #d4a94a;
+}
+
+.card[data-kind="sleep"]::before {
+  background: #8fa2ff;
+}
+
+.card[data-kind="respiratory"]::before {
+  background: #67c7e8;
+}
+
+.card[data-kind="hrv"]::before {
+  background: #9dcf7a;
+}
+
+.label {
+  display: block;
+  color: var(--fg-dim);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.value {
+  display: block;
+  margin-top: var(--s-2);
+  color: var(--fg);
+  font-size: 1.8rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.detail {
+  display: block;
+  margin-top: var(--s-2);
+  color: var(--fg-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 980px) {
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}

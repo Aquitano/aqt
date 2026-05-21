@@ -323,6 +323,26 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 )
             )
         }.describeDailyStepReadOperation()
+        get("/api/v1/activity/summaries/latest") {
+            call.authenticateProtected(services)
+            call.respond<ActivitySummaryLatestResponse>(
+                HttpStatusCode.OK,
+                services.metricsQueryService.latestActivitySummary(
+                    call.queryParams(),
+                    services.clock.now()
+                )
+            )
+        }.describeActivitySummaryLatestReadOperation()
+        get("/api/v1/activity/summaries") {
+            call.authenticateProtected(services)
+            call.respond<ActivitySummariesResponse>(
+                HttpStatusCode.OK,
+                services.metricsQueryService.listActivitySummaries(
+                    call.queryParams(),
+                    services.clock.now()
+                )
+            )
+        }.describeActivitySummaryReadOperation()
         get("/api/v1/sleep/sessions") {
             call.authenticateProtected(services)
             call.respond<SleepSessionsResponse>(
@@ -346,6 +366,28 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 )
             )
         }.describeSleepNightReadOperation()
+        get("/api/v1/sleep/summaries/latest") {
+            call.authenticateProtected(services)
+            call.respond<SleepSummaryLatestResponse>(
+                HttpStatusCode.OK,
+                services.metricsQueryService.latestSleepSummary(
+                    call.queryParams()
+                )
+            )
+        }.describeSleepSummaryLatestReadOperation()
+        get("/api/v1/sleep/summaries") {
+            call.authenticateProtected(services)
+            call.respond<SleepSummariesResponse>(
+                services.metricsQueryService.listSleepSummaries(
+                    call.queryParams()
+                )
+            )
+        }.describeReadOperation(
+            operationId = "listSleepSummaries",
+            summary = "List sleep summaries",
+            descriptionText = "Returns aggregate sleep summary records such as sleep score, efficiency, latency, wakeups, WASO, and stage-duration totals. Use `latest=true` to return the latest matching summary only.",
+            includeLatest = true,
+        )
         get("/api/v1/body/measurements/latest") {
             call.authenticateProtected(services)
             call.respond<BodyMeasurementLatestResponse>(
@@ -412,6 +454,45 @@ fun Application.configureRoutes(services: ApplicationServices) {
             descriptionText = "Returns heart-rate samples filtered by timestamp and source. Use `latest=true` to return the latest matching sample only.",
             includeLatest = true,
         )
+        get("/api/v1/metrics/respiratory-rate/summary") {
+            call.authenticateProtected(services)
+            call.respond<RespiratoryRateSummaryResponse>(
+                HttpStatusCode.OK,
+                services.metricsQueryService.respiratoryRateSummary(
+                    call.queryParams()
+                )
+            )
+        }.describeRespiratoryRateSummaryOperation()
+        get("/api/v1/metrics/respiratory-rate") {
+            call.authenticateProtected(services)
+            call.respond<RespiratoryRateSamplesResponse>(
+                services.metricsQueryService.listRespiratoryRateSamples(
+                    call.queryParams()
+                )
+            )
+        }.describeReadOperation(
+            operationId = "listRespiratoryRateSamples",
+            summary = "List respiratory rate samples",
+            descriptionText = "Returns timestamped respiratory-rate samples filtered by timestamp and source. Use `latest=true` to return the latest matching sample only.",
+            includeLatest = true,
+        )
+        get("/api/v1/metrics/hrv/summary") {
+            call.authenticateProtected(services)
+            call.respond<HrvSummaryResponse>(
+                HttpStatusCode.OK,
+                services.metricsQueryService.hrvSummary(
+                    call.queryParams()
+                )
+            )
+        }.describeHrvSummaryOperation()
+        get("/api/v1/metrics/hrv") {
+            call.authenticateProtected(services)
+            call.respond<HrvSamplesResponse>(
+                services.metricsQueryService.listHrvSamples(
+                    call.queryParams()
+                )
+            )
+        }.describeHrvReadOperation()
         get("/api/v1/dashboard/summary") {
             call.authenticateProtected(services)
             call.respond<DashboardSummaryResponse>(
