@@ -81,12 +81,14 @@ fun Application.module() {
         ),
     )
     val metricsReadRepository = MetricsReadRepository()
+    val canonicalMetricsService =
+        CanonicalMetricsService(CanonicalMetricsPolicy.default())
     val healthDayModuleRegistry = HealthDayModuleRegistry(
         listOf(
-            StepsDayModule(metricsReadRepository),
-            HeartRateDayModule(metricsReadRepository),
-            WeightDayModule(metricsReadRepository),
-            SleepDayModule(metricsReadRepository),
+            StepsDayModule(metricsReadRepository, canonicalMetricsService),
+            HeartRateDayModule(metricsReadRepository, canonicalMetricsService),
+            WeightDayModule(metricsReadRepository, canonicalMetricsService),
+            SleepDayModule(metricsReadRepository, canonicalMetricsService),
         )
     )
     val ingestionService = IngestionService(
@@ -123,6 +125,7 @@ fun Application.module() {
         metricsQueryService = MetricsQueryService(
             database = database,
             metricsReadRepository = metricsReadRepository,
+            canonicalMetricsService = canonicalMetricsService,
         ),
         healthDayQueryService = HealthDayQueryService(
             database = database,

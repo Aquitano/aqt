@@ -206,6 +206,29 @@ Supported record types:
 
 `batchExternalId` is idempotent per source instance. Provider record IDs are also used to skip duplicate metric rows where available.
 
+## Raw vs Canonical Metrics
+
+The database preserves raw provider rows for auditability. Cross-provider conflict resolution is applied at read time through `canonical=true|false`; no provider rows are deleted or rewritten.
+
+Raw list endpoints default to `canonical=false`. Latest, summary, dashboard, and `/api/v1/health/day` reads default to `canonical=true`. Provider filters are applied before canonicalization, so `provider=withings&canonical=true` only reconciles matching Withings source instances.
+
+Default source priorities are code-based in `CanonicalMetricsPolicy`:
+
+- Steps and activity: Google Health or Health Connect first, then Withings.
+- Body measurements: Withings first, then Google Health or Health Connect.
+- Sleep sessions and sleep summaries: Withings first, then Google Health or Health Connect.
+- Heart rate: same-timestamp conflicts prefer the denser source; ties prefer Withings for sleep context and Google Health or Health Connect for general/active context.
+- Respiratory rate and HRV: Withings first, then Google Health or Health Connect.
+
+Overlap handling:
+
+- Steps: overlapping intervals from different sources keep the higher-priority interval; non-overlapping intervals are preserved.
+- Sleep: overlapping sessions or summaries from different sources are grouped; richer staged sessions or more complete summaries win before provider priority.
+- Heart rate, respiratory rate, and HRV: samples from different sources at the same or near-identical timestamp are de-duplicated within a 30-second tolerance.
+- Body measurements: rows with the same metric type and timestamp from different sources resolve by provider priority.
+
+Use `canonical=false` on read endpoints when inspecting all provider-specific rows, or `canonical=true` on list endpoints when a client wants the same conflict policy used by summaries and dashboards.
+
 ## Provider Discovery
 
 All provider discovery endpoints require `Authorization: Bearer <api-key>`.

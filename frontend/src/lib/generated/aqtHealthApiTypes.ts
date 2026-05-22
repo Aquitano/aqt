@@ -1147,6 +1147,7 @@ export interface components {
             total: number;
             sampleCount: number;
             buckets: components["schemas"]["HealthDayBucketResponse"][];
+            source?: components["schemas"]["SourceMetadataResponse"] | null;
         };
         /** HealthDayHeartRateResponse */
         HealthDayHeartRateResponse: {
@@ -1316,6 +1317,7 @@ export interface components {
         DashboardStepsSummaryResponse: {
             steps: number;
             sampleCount: number;
+            source?: components["schemas"]["SourceMetadataResponse"] | null;
         };
         /** DashboardSummaryResponse */
         DashboardSummaryResponse: {
@@ -2341,6 +2343,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in each item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Return canonical cross-provider rows when true. Raw list reads default to false; latest=true reads default to true unless explicitly set. */
+                canonical?: boolean;
                 /** @description Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order. */
                 latest?: boolean;
                 /** @description Sort field for this endpoint. Each metric endpoint supports its documented default temporal or date field. */
@@ -2423,6 +2427,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in each item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Return canonical cross-provider rows when true. Daily list reads default to false; latest aliases default to true. */
+                canonical?: boolean;
                 /** @description Sort field. Daily endpoints support date. */
                 sort?: string;
                 /** @description Sort direction. Defaults to asc. Use desc for newest-first reads. */
@@ -2513,6 +2519,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in the nested latest item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Compute summary values from canonical cross-provider samples when true. Defaults to true. */
+                canonical?: boolean;
             };
             header?: never;
             path?: never;
@@ -2591,6 +2599,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in each item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Return canonical cross-provider rows when true. Raw list reads default to false; latest=true reads default to true unless explicitly set. */
+                canonical?: boolean;
                 /** @description Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order. */
                 latest?: boolean;
                 /** @description Sort field for this endpoint. Each metric endpoint supports its documented default temporal or date field. */
@@ -2677,6 +2687,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in the nested latest item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Compute summary values from canonical cross-provider samples when true. Defaults to true. */
+                canonical?: boolean;
             };
             header?: never;
             path?: never;
@@ -2755,6 +2767,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in each item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Return canonical cross-provider rows when true. Raw list reads default to false; latest=true reads default to true unless explicitly set. */
+                canonical?: boolean;
                 /** @description Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order. */
                 latest?: boolean;
                 /** @description Sort field for this endpoint. Each metric endpoint supports its documented default temporal or date field. */
@@ -2841,6 +2855,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in the nested latest item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Compute summary values from canonical cross-provider samples when true. Defaults to true. */
+                canonical?: boolean;
                 /** @description HRV metric type filter. Defaults to rmssd. */
                 metricType?: "rmssd";
             };
@@ -2921,6 +2937,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in each item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Return canonical cross-provider rows when true. Raw list reads default to false; latest=true reads default to true unless explicitly set. */
+                canonical?: boolean;
                 /** @description Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order. */
                 latest?: boolean;
                 /** @description Sort field for this endpoint. Each metric endpoint supports its documented default temporal or date field. */
@@ -3011,6 +3029,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata on point-level objects where available. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Compute day modules from canonical cross-provider rows when true. Defaults to true. */
+                canonical?: boolean;
             };
             header?: never;
             path?: never;
@@ -3086,6 +3106,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in each item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Return canonical cross-provider rows when true. Daily list reads default to false; latest aliases default to true. */
+                canonical?: boolean;
                 /** @description Exact UTC date or `today`. Cannot be combined with fromDate or toDate. */
                 date?: string;
                 /** @description Inclusive UTC date start date. */
@@ -3166,6 +3188,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in each item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Return canonical cross-provider rows when true. Daily list reads default to false; latest aliases default to true. */
+                canonical?: boolean;
                 /** @description Sort field. Daily endpoints support date. */
                 sort?: string;
                 /** @description Sort direction. Defaults to asc. Use desc for newest-first reads. */
@@ -3256,6 +3280,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in each item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Return canonical cross-provider rows when true. Raw list reads default to false; latest=true reads default to true unless explicitly set. */
+                canonical?: boolean;
                 /** @description Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order. */
                 latest?: boolean;
                 /** @description Sort field for this endpoint. Each metric endpoint supports its documented default temporal or date field. */
@@ -3346,6 +3372,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in each item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Return canonical cross-provider sleep nights when true. Defaults to false for list reads. */
+                canonical?: boolean;
                 /** @description Maximum number of items. Defaults to 500, cannot exceed 5000, and is ignored as 1 when date is provided. */
                 limit?: number;
                 /** @description Sort field. Sleep night reads support `date`. */
@@ -3430,6 +3458,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in the nested latest item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Compute summary values from canonical cross-provider samples when true. Defaults to true. */
+                canonical?: boolean;
             };
             header?: never;
             path?: never;
@@ -3508,6 +3538,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in each item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Return canonical cross-provider rows when true. Raw list reads default to false; latest=true reads default to true unless explicitly set. */
+                canonical?: boolean;
                 /** @description Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order. */
                 latest?: boolean;
                 /** @description Sort field for this endpoint. Each metric endpoint supports its documented default temporal or date field. */
@@ -3594,6 +3626,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in the returned item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Return the latest canonical body measurement when true. Defaults to true. */
+                canonical?: boolean;
                 /** @description Required body measurement type filter. */
                 metricType: "body_fat" | "muscle" | "visceral_fat" | "water" | "weight";
             };
@@ -3674,6 +3708,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in each item. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Return canonical cross-provider rows when true. Raw list reads default to false; latest=true reads default to true unless explicitly set. */
+                canonical?: boolean;
                 /** @description Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order. */
                 latest?: boolean;
                 /** @description Sort field for this endpoint. Each metric endpoint supports its documented default temporal or date field. */
@@ -3762,6 +3798,8 @@ export interface operations {
                 providerInstanceId?: string;
                 /** @description Include source provider metadata for nested latest items. Defaults to false. */
                 includeSource?: boolean;
+                /** @description Compute dashboard values from canonical cross-provider rows when true. Defaults to true. */
+                canonical?: boolean;
             };
             header?: never;
             path?: never;

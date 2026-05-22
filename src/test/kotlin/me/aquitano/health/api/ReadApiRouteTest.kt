@@ -148,6 +148,7 @@ class ReadApiRouteTest {
         assertContains(steps.queryParameterNames(), "from")
         assertContains(steps.queryParameterNames(), "to")
         assertContains(steps.queryParameterNames(), "includeSource")
+        assertContains(steps.queryParameterNames(), "canonical")
         assertContains(steps.queryParameterNames(), "sort")
         assertContains(steps.queryParameterNames(), "order")
         assertContains(steps.modeNames(), "raw")
@@ -167,6 +168,7 @@ class ReadApiRouteTest {
         )
         assertContains(body.endpointPaths(), "/api/v1/body/measurements")
         assertContains(body.endpointPaths(), "/api/v1/body/measurements/latest")
+        assertContains(body.queryParameterNames(), "canonical")
 
         val sleep = families.family("sleep")
         val nightMode = sleep["aggregationModes"]!!.jsonArray
@@ -184,6 +186,7 @@ class ReadApiRouteTest {
         assertContains(heartRate.endpointPaths(), "/api/v1/metrics/heart-rate/summary")
         assertContains(heartRate.modeNames(), "latest")
         assertContains(heartRate.modeNames(), "day")
+        assertContains(heartRate.queryParameterNames(), "canonical")
 
         val activity = families.family("activity")
         assertContains(activity.endpointPaths(), "/api/v1/activity/summaries")
@@ -581,6 +584,72 @@ class ReadApiRouteTest {
     }
 
     @Test
+    fun canonicalReadsResolveCrossProviderConflictsAndRawReadsRemainInspectable() = testApplication {
+        configureTestApplication()
+        ingestCanonicalConflictBatches()
+
+        val rawSteps =
+            authorizedGet("/api/v1/metrics/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z&includeSource=true")
+        assertEquals(HttpStatusCode.OK, rawSteps.status)
+        assertEquals(2, rawSteps.items().size)
+
+        val canonicalSteps =
+            authorizedGet("/api/v1/metrics/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z&includeSource=true&canonical=true")
+        assertEquals(1, canonicalSteps.items().size)
+        assertEquals(1000, canonicalSteps.items()[0].jsonObject["steps"]!!.jsonPrimitive.int)
+        assertEquals(
+            "health_connect",
+            canonicalSteps.items()[0].jsonObject["source"]!!.jsonObject["provider"]!!.jsonPrimitive.content
+        )
+
+        val dashboard =
+            authorizedGet("/api/v1/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19&includeSource=true")
+        assertEquals(1000, dashboard.jsonBody()["steps"]!!.jsonObject["steps"]!!.jsonPrimitive.int)
+        assertEquals(
+            "health_connect",
+            dashboard.jsonBody()["steps"]!!.jsonObject["source"]!!.jsonObject["provider"]!!.jsonPrimitive.content
+        )
+        assertEquals(
+            81.8,
+            dashboard.jsonBody()["latestWeight"]!!.jsonObject["value"]!!.jsonPrimitive.double
+        )
+        assertEquals(
+            58,
+            dashboard.jsonBody()["latestHeartRate"]!!.jsonObject["bpm"]!!.jsonPrimitive.int
+        )
+
+        val rawDashboard =
+            authorizedGet("/api/v1/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19&canonical=false")
+        assertEquals(3000, rawDashboard.jsonBody()["steps"]!!.jsonObject["steps"]!!.jsonPrimitive.int)
+
+        val day =
+            authorizedGet("/api/v1/health/day?date=2026-04-19&timezone=UTC&modules=steps,heartRate,weight,sleep&includeSource=true")
+        assertEquals(1000, day.jsonBody()["steps"]!!.jsonObject["total"]!!.jsonPrimitive.int)
+        assertEquals(
+            "health_connect",
+            day.jsonBody()["steps"]!!.jsonObject["source"]!!.jsonObject["provider"]!!.jsonPrimitive.content
+        )
+        assertEquals(1, day.jsonBody()["sleep"]!!.jsonObject["sessions"]!!.jsonArray.size)
+        assertEquals(
+            "withings",
+            day.jsonBody()["sleep"]!!.jsonObject["sessions"]!!.jsonArray[0].jsonObject["source"]!!.jsonObject["provider"]!!.jsonPrimitive.content
+        )
+
+        val nextDayWeight =
+            authorizedGet("/api/v1/health/day?date=2026-04-20&timezone=UTC&modules=weight&includeSource=true")
+        val previousWeight = nextDayWeight.jsonBody()["weight"]!!.jsonObject["previous"]!!.jsonObject
+        assertEquals(81.8, previousWeight["value"]!!.jsonPrimitive.double)
+        assertEquals(
+            "withings",
+            previousWeight["source"]!!.jsonObject["provider"]!!.jsonPrimitive.content
+        )
+
+        val rawBody =
+            authorizedGet("/api/v1/body/measurements?metricType=weight&canonical=false")
+        assertEquals(2, rawBody.items().size)
+    }
+
+    @Test
     fun dashboardRelatedProtectedReadsCanRunConcurrently() = testApplication {
         val dbPath = configureTestApplication()
         ingestMixedBatch()
@@ -701,6 +770,17 @@ class ReadApiRouteTest {
         }
         assertEquals(HttpStatusCode.Created, response.status)
         return response.jsonBody()["batchId"]!!.jsonPrimitive.int
+    }
+
+    private suspend fun ApplicationTestBuilder.ingestCanonicalConflictBatches() {
+        listOf(canonicalHealthConnectPayload(), canonicalWithingsPayload()).forEach { payload ->
+            val response = client.post("/api/v1/ingestion/batches") {
+                authorized()
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+            assertEquals(HttpStatusCode.Created, response.status)
+        }
     }
 
     private suspend fun ApplicationTestBuilder.authorizedGet(path: String) =
@@ -965,6 +1045,112 @@ class ReadApiRouteTest {
                   "endAt": "2026-04-21T06:00:00Z"
                 }
               ]
+            }
+          ]
+        }
+        """.trimIndent()
+
+    private fun canonicalHealthConnectPayload(): String =
+        """
+        {
+          "provider": "health-connect",
+          "providerInstanceId": "pixel-conflict",
+          "batchExternalId": "canonical-health-connect",
+          "ingestedAt": "2026-04-19T12:00:00Z",
+          "sourcePayload": {
+            "exportId": "canonical-health-connect"
+          },
+          "records": [
+            {
+              "type": "step_interval",
+              "providerRecordId": "hc-steps",
+              "startAt": "2026-04-19T08:00:00Z",
+              "endAt": "2026-04-19T09:00:00Z",
+              "steps": 1000
+            },
+            {
+              "type": "sleep_session",
+              "providerRecordId": "hc-sleep",
+              "startAt": "2026-04-18T22:00:00Z",
+              "endAt": "2026-04-19T06:00:00Z",
+              "stages": [
+                {
+                  "stage": "asleep",
+                  "startAt": "2026-04-18T22:00:00Z",
+                  "endAt": "2026-04-19T06:00:00Z"
+                }
+              ]
+            },
+            {
+              "type": "body_measurement",
+              "providerRecordId": "hc-body",
+              "measuredAt": "2026-04-19T07:00:00Z",
+              "weightKg": 82.0
+            },
+            {
+              "type": "heart_rate",
+              "providerRecordId": "hc-hr",
+              "measuredAt": "2026-04-19T02:00:00Z",
+              "bpm": 60,
+              "context": "sleep"
+            }
+          ]
+        }
+        """.trimIndent()
+
+    private fun canonicalWithingsPayload(): String =
+        """
+        {
+          "provider": "withings",
+          "providerInstanceId": "withings-conflict",
+          "batchExternalId": "canonical-withings",
+          "ingestedAt": "2026-04-19T12:01:00Z",
+          "sourcePayload": {
+            "exportId": "canonical-withings"
+          },
+          "records": [
+            {
+              "type": "step_interval",
+              "providerRecordId": "withings-steps",
+              "startAt": "2026-04-19T08:00:00Z",
+              "endAt": "2026-04-19T09:00:00Z",
+              "steps": 2000
+            },
+            {
+              "type": "sleep_session",
+              "providerRecordId": "withings-sleep",
+              "startAt": "2026-04-18T22:05:00Z",
+              "endAt": "2026-04-19T06:05:00Z",
+              "stages": [
+                {
+                  "stage": "light",
+                  "startAt": "2026-04-18T22:05:00Z",
+                  "endAt": "2026-04-19T01:00:00Z"
+                },
+                {
+                  "stage": "deep",
+                  "startAt": "2026-04-19T01:00:00Z",
+                  "endAt": "2026-04-19T03:00:00Z"
+                },
+                {
+                  "stage": "rem",
+                  "startAt": "2026-04-19T03:00:00Z",
+                  "endAt": "2026-04-19T06:05:00Z"
+                }
+              ]
+            },
+            {
+              "type": "body_measurement",
+              "providerRecordId": "withings-body",
+              "measuredAt": "2026-04-19T07:00:00Z",
+              "weightKg": 81.8
+            },
+            {
+              "type": "heart_rate",
+              "providerRecordId": "withings-hr",
+              "measuredAt": "2026-04-19T02:00:20Z",
+              "bpm": 58,
+              "context": "sleep"
             }
           ]
         }

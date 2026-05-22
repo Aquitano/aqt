@@ -272,6 +272,7 @@ data class DashboardSummaryResponse(
 data class DashboardStepsSummaryResponse(
     val steps: Int,
     val sampleCount: Int,
+    val source: SourceMetadataResponse? = null,
 )
 
 @Serializable
@@ -325,6 +326,7 @@ data class HealthDayStepsResponse(
     val total: Int,
     val sampleCount: Int,
     val buckets: List<HealthDayBucketResponse>,
+    val source: SourceMetadataResponse? = null,
 )
 
 @Serializable

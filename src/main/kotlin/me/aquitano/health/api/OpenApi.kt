@@ -386,6 +386,11 @@ internal fun Operation.Builder.readQueryParameters(includeLatest: Boolean = fals
                 "Include source provider metadata in each item. Defaults to false."
             schema = booleanSchema(default = false, example = false)
         }
+        query("canonical") {
+            description =
+                "Return canonical cross-provider rows when true. Raw list reads default to false; latest=true reads default to true unless explicitly set."
+            schema = booleanSchema(example = false)
+        }
         if (includeLatest) {
             query("latest") {
                 description =
@@ -444,6 +449,11 @@ private fun Operation.Builder.dailyReadQueryParameters(includeListControls: Bool
             description =
                 "Include source provider metadata in each item. Defaults to false."
             schema = booleanSchema(default = false, example = false)
+        }
+        query("canonical") {
+            description =
+                "Return canonical cross-provider rows when true. Daily list reads default to false; latest aliases default to true."
+            schema = booleanSchema(example = false)
         }
         if (includeListControls) {
             query("sort") {
@@ -509,6 +519,11 @@ internal fun Operation.Builder.sleepNightQueryParameters() {
         query("includeSource") {
             description =
                 "Include source provider metadata in each item. Defaults to false."
+            schema = booleanSchema(default = false, example = false)
+        }
+        query("canonical") {
+            description =
+                "Return canonical cross-provider sleep nights when true. Defaults to false for list reads."
             schema = booleanSchema(default = false, example = false)
         }
         query("limit") {
@@ -581,6 +596,11 @@ internal fun Operation.Builder.bodyMeasurementLatestQueryParameters() {
                 "Include source provider metadata in the returned item. Defaults to false."
             schema = booleanSchema(default = false, example = false)
         }
+        query("canonical") {
+            description =
+                "Return the latest canonical body measurement when true. Defaults to true."
+            schema = booleanSchema(default = true, example = true)
+        }
         query("metricType") {
             description = "Required body measurement type filter."
             required = true
@@ -618,6 +638,11 @@ internal fun Operation.Builder.heartRateSummaryQueryParameters() {
             description =
                 "Include source provider metadata in the nested latest item. Defaults to false."
             schema = booleanSchema(default = false, example = false)
+        }
+        query("canonical") {
+            description =
+                "Compute summary values from canonical cross-provider samples when true. Defaults to true."
+            schema = booleanSchema(default = true, example = true)
         }
     }
 }
@@ -679,6 +704,11 @@ internal fun Operation.Builder.dashboardQueryParameters() {
                 "Include source provider metadata for nested latest items. Defaults to false."
             schema = booleanSchema(default = false, example = false)
         }
+        query("canonical") {
+            description =
+                "Compute dashboard values from canonical cross-provider rows when true. Defaults to true."
+            schema = booleanSchema(default = true, example = true)
+        }
     }
 }
 
@@ -709,6 +739,10 @@ internal fun Operation.Builder.healthDayQueryParameters() {
         query("includeSource") {
             description = "Include source provider metadata on point-level objects where available. Defaults to false."
             schema = booleanSchema(default = false, example = false)
+        }
+        query("canonical") {
+            description = "Compute day modules from canonical cross-provider rows when true. Defaults to true."
+            schema = booleanSchema(default = true, example = true)
         }
     }
 }

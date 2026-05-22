@@ -22,6 +22,7 @@ data class HealthDayQueryContext(
     val provider: String?,
     val providerInstanceId: String?,
     val includeSource: Boolean,
+    val canonical: Boolean,
 )
 
 interface HealthDayModule<T> {
@@ -80,6 +81,7 @@ class HealthDayQueryService(
             provider = params.optional("provider"),
             providerInstanceId = params.optional("providerInstanceId"),
             includeSource = params.boolean("includeSource", default = false),
+            canonical = params.canonical(default = true),
         )
 
         return newSuspendedTransaction(Dispatchers.IO, db = database) {
@@ -130,11 +132,20 @@ class HealthDayQueryService(
 
 class StepsDayModule(
     private val metricsReadRepository: MetricsReadRepository,
+    private val canonicalMetricsService: CanonicalMetricsService,
 ) : HealthDayModule<HealthDayStepsResponse> {
     override val name = "steps"
 
     override fun read(context: HealthDayQueryContext): HealthDayStepsResponse {
-        val (rows) = metricsReadRepository.listStepSamplesForWindow(context.filters())
+        val (rawRows) = metricsReadRepository.listStepSamplesForWindow(context.filters())
+        val rows = if (context.canonical) {
+            canonicalMetricsService.canonicalStepSamples(
+                rawRows,
+                metricsReadRepository.sourceMetadataFor(rawRows.sourceIds { it.sourceInstanceId }),
+            )
+        } else {
+            rawRows
+        }
         val buckets = buckets(context)
         val values = DoubleArray(buckets.size)
         val counts = IntArray(buckets.size)
@@ -164,20 +175,31 @@ class StepsDayModule(
                     count = counts[index],
                 )
             },
+            source = rows.singleSource(context.includeSource, metricsReadRepository) { it.sourceInstanceId },
         )
     }
 }
 
 class HeartRateDayModule(
     private val metricsReadRepository: MetricsReadRepository,
+    private val canonicalMetricsService: CanonicalMetricsService,
 ) : HealthDayModule<HealthDayHeartRateResponse> {
     override val name = "heartRate"
 
     override fun read(context: HealthDayQueryContext): HealthDayHeartRateResponse {
         val filters = context.filters()
-        val summary = metricsReadRepository.summarizeHeartRateForWindow(filters)
-        val (samples, sourceMetadata) =
+        val rawSummary = metricsReadRepository.summarizeHeartRateForWindow(filters)
+        val (rawSamples, sourceMetadata) =
             metricsReadRepository.listHeartRateSamplesForWindow(filters)
+        val samples = if (context.canonical) {
+            canonicalMetricsService.canonicalHeartRateSamples(
+                rawSamples,
+                metricsReadRepository.sourceMetadataFor(rawSamples.sourceIds { it.sourceInstanceId }),
+            )
+        } else {
+            rawSamples
+        }
+        val summary = if (context.canonical) samples.heartRateSummary() else rawSummary
         val latest = samples.maxWithOrNull(compareBy<HeartRateSampleRow> { it.measuredAt }.thenBy { it.id })
         val buckets = buckets(context)
         val totals = DoubleArray(buckets.size)
@@ -212,15 +234,37 @@ class HeartRateDayModule(
 
 class WeightDayModule(
     private val metricsReadRepository: MetricsReadRepository,
+    private val canonicalMetricsService: CanonicalMetricsService,
 ) : HealthDayModule<HealthDayWeightResponse> {
     override val name = "weight"
 
     override fun read(context: HealthDayQueryContext): HealthDayWeightResponse {
         val filters = context.filters()
-        val (points, pointSourceMetadata) =
+        val (rawPoints, pointSourceMetadata) =
             metricsReadRepository.listBodyMeasurementsForWindow(filters, BodyMetricTypes.WEIGHT)
-        val (previous, previousSourceMetadata) =
-            metricsReadRepository.latestBodyMeasurementBefore(filters, BodyMetricTypes.WEIGHT)
+        val points = if (context.canonical) {
+            canonicalMetricsService.canonicalBodyMeasurements(
+                rawPoints,
+                metricsReadRepository.sourceMetadataFor(rawPoints.sourceIds { it.sourceInstanceId }),
+            )
+        } else {
+            rawPoints
+        }
+        val (previousCandidates, previousSourceMetadata) =
+            if (context.canonical) {
+                metricsReadRepository.latestBodyMeasurementsBefore(filters, BodyMetricTypes.WEIGHT)
+            } else {
+                val (row, metadata) = metricsReadRepository.latestBodyMeasurementBefore(filters, BodyMetricTypes.WEIGHT)
+                listOfNotNull(row) to metadata
+            }
+        val previous = if (context.canonical) {
+            canonicalMetricsService.canonicalBodyMeasurements(
+                previousCandidates,
+                metricsReadRepository.sourceMetadataFor(previousCandidates.sourceIds { it.sourceInstanceId }),
+            ).maxWithOrNull(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.id })
+        } else {
+            previousCandidates.singleOrNull()
+        }
         val latest = points.maxWithOrNull(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.id })
         val sourceMetadata = pointSourceMetadata + previousSourceMetadata
 
@@ -235,12 +279,22 @@ class WeightDayModule(
 
 class SleepDayModule(
     private val metricsReadRepository: MetricsReadRepository,
+    private val canonicalMetricsService: CanonicalMetricsService,
 ) : HealthDayModule<HealthDaySleepResponse> {
     override val name = "sleep"
 
     override fun read(context: HealthDayQueryContext): HealthDaySleepResponse {
-        val (sessions, stagesBySession, sourceMetadata) =
+        val (rawSessions, stagesBySession, sourceMetadata) =
             metricsReadRepository.listSleepSessionsOverlappingWindow(context.filters())
+        val sessions = if (context.canonical) {
+            canonicalMetricsService.canonicalSleepSessions(
+                rawSessions,
+                stagesBySession,
+                metricsReadRepository.sourceMetadataFor(rawSessions.sourceIds { it.sourceInstanceId }),
+            )
+        } else {
+            rawSessions
+        }
         val timeline = sessions.flatMap { session ->
             stagesBySession[session.id].orEmpty().mapNotNull { stage ->
                 val start = maxOf(Instant.parse(stage.startAt), context.from)

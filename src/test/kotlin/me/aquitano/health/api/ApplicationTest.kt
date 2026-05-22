@@ -189,6 +189,7 @@ class ApplicationTest {
         assertTrue("date" in dailyStepParamNames)
         assertTrue("fromDate" in dailyStepParamNames)
         assertTrue("toDate" in dailyStepParamNames)
+        assertTrue("canonical" in dailyStepParamNames)
         assertFalse("from" in dailyStepParamNames)
         assertFalse("to" in dailyStepParamNames)
 
@@ -207,6 +208,15 @@ class ApplicationTest {
             .jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
         assertTrue("metricType" in bodyMetricParamNames)
         assertTrue("latest" in bodyMetricParamNames)
+        assertTrue("canonical" in bodyMetricParamNames)
+
+        val dashboardParamNames = paths["/api/v1/dashboard/summary"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
+            .jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
+        assertTrue("canonical" in dashboardParamNames)
+
+        val healthDayParamNames = paths["/api/v1/health/day"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
+            .jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
+        assertTrue("canonical" in healthDayParamNames)
 
         val schemas = body["components"]!!.jsonObject["schemas"]!!.jsonObject
         val providerStatus = schemas["ProviderStatusResponseDto"]!!.jsonObject

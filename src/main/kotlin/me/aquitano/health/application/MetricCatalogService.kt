@@ -396,6 +396,11 @@ class MetricCatalogService(
                 description = "Include source provider metadata."
             ),
             MetricQueryParameterDto(
+                "canonical",
+                "boolean",
+                description = "Return canonical cross-provider rows when true. Raw list reads default to false; latest reads default to true."
+            ),
+            MetricQueryParameterDto(
                 "limit",
                 "integer",
                 description = "Maximum items. Default 500, max 5000."
@@ -429,6 +434,11 @@ class MetricCatalogService(
                 "date",
                 description = "Inclusive UTC end date."
             ),
+            MetricQueryParameterDto(
+                "canonical",
+                "boolean",
+                description = "Return canonical cross-provider daily rows when true. Daily list reads default to false; latest aliases default to true."
+            ),
         )
 
     private fun sleepNightParameters(): List<MetricQueryParameterDto> =
@@ -453,6 +463,11 @@ class MetricCatalogService(
                 "IANA timezone",
                 description = "Timezone used to classify sleep endAt dates. Default UTC."
             ),
+            MetricQueryParameterDto(
+                "canonical",
+                "boolean",
+                description = "Return canonical cross-provider sleep nights when true. Defaults to false for list reads."
+            ),
         )
 
     private fun dashboardParameters(): List<MetricQueryParameterDto> =
@@ -468,6 +483,11 @@ class MetricCatalogService(
                 "date",
                 required = true,
                 description = "Inclusive UTC end date for dashboard summaries."
+            ),
+            MetricQueryParameterDto(
+                "canonical",
+                "boolean",
+                description = "Compute dashboard values from canonical cross-provider rows when true. Defaults to true."
             ),
         )
 
@@ -489,6 +509,11 @@ class MetricCatalogService(
                 "comma-separated string",
                 required = true,
                 description = "Requested combined day modules. This family uses `$module`; multiple modules can be requested in one call."
+            ),
+            MetricQueryParameterDto(
+                "canonical",
+                "boolean",
+                description = "Compute day modules from canonical cross-provider rows when true. Defaults to true."
             ),
         )
 
