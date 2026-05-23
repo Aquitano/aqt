@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Gradle tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: aqt_health
+          POSTGRES_USER: aqt_health
+          POSTGRES_PASSWORD: aqt_health
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aqt_health -d aqt_health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      AQT_HEALTH_TEST_JDBC_URL: jdbc:postgresql://localhost:5432/aqt_health
+      AQT_HEALTH_TEST_DB_USER: aqt_health
+      AQT_HEALTH_TEST_DB_PASSWORD: aqt_health
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Run tests
+        run: ./gradlew check --continue
