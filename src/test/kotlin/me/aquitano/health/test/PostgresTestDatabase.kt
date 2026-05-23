@@ -1,7 +1,6 @@
 package me.aquitano.health.test
 
 import me.aquitano.health.infrastructure.config.DatabaseConfig
-import org.junit.AssumptionViolatedException
 import org.testcontainers.containers.PostgreSQLContainer
 import java.sql.Connection
 import java.sql.DriverManager
@@ -41,10 +40,7 @@ object PostgresTestDatabase {
         )?.let { return it }
 
         if (!dockerIsAvailable()) {
-            throw AssumptionViolatedException(
-                "PostgreSQL integration tests require Docker or a reachable " +
-                        "AQT_HEALTH_TEST_JDBC_URL/local PostgreSQL database.",
-            )
+            throw IllegalStateException(MISSING_DATABASE_MESSAGE)
         }
 
         val databaseName = "aqt_health_test_${UUID.randomUUID().toString().replace("-", "")}"
@@ -54,12 +50,8 @@ object PostgresTestDatabase {
                     statement.execute("CREATE DATABASE $databaseName")
                 }
             }
-        } catch (exception: IllegalStateException) {
-            throw AssumptionViolatedException(
-                "PostgreSQL integration tests require Docker or a reachable " +
-                        "AQT_HEALTH_TEST_JDBC_URL/local PostgreSQL database.",
-                exception,
-            )
+        } catch (exception: Exception) {
+            throw IllegalStateException(MISSING_DATABASE_MESSAGE, exception)
         }
         return DatabaseConfig(
             jdbcUrl = "jdbc:postgresql://${container.host}:${container.getMappedPort(5432)}/$databaseName",
@@ -104,7 +96,12 @@ object PostgresTestDatabase {
                     }
                 }
         } catch (exception: SQLException) {
-            if (required) throw exception
+            if (required) {
+                throw IllegalStateException(
+                    "AQT_HEALTH_TEST_JDBC_URL is set, but the configured PostgreSQL database is not reachable.",
+                    exception,
+                )
+            }
             return null
         }
         externalSchemas.add(ExternalSchema(jdbcUrl, user, password, schema))
@@ -161,4 +158,8 @@ object PostgresTestDatabase {
 
     private const val LOCAL_JDBC_URL =
         "jdbc:postgresql://localhost:5432/aqt_health"
+
+    private const val MISSING_DATABASE_MESSAGE =
+        "PostgreSQL integration tests require Docker or a reachable " +
+                "AQT_HEALTH_TEST_JDBC_URL/local PostgreSQL database."
 }

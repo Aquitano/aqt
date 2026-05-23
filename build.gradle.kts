@@ -71,6 +71,66 @@ dependencies {
     testImplementation("org.testcontainers:postgresql:$testcontainers_version")
 }
 
+val integrationTestClasses = listOf(
+    "**/ApplicationTest.class",
+    "**/GoogleHealthProviderTest.class",
+    "**/GoogleHealthProviderRouteTest.class",
+    "**/IngestionRouteTest.class",
+    "**/ProviderStatusRouteTest.class",
+    "**/ReadApiRouteTest.class",
+    "**/WithingsProviderTest.class",
+    "**/WithingsProviderRouteTest.class",
+    "**/DatabaseFactoryTest.class",
+    "**/SupportRepositoryTest.class",
+)
+
+fun dockerIsAvailable(): Boolean =
+    listOf(
+        listOf("docker", "info"),
+        listOf("/usr/local/bin/docker", "info"),
+        listOf("/opt/homebrew/bin/docker", "info"),
+    ).any { command ->
+        try {
+            ProcessBuilder(command)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start()
+                .waitFor() == 0
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+fun requirePostgresIntegrationDatabase() {
+    if (System.getenv("AQT_HEALTH_TEST_JDBC_URL").isNullOrBlank() && !dockerIsAvailable()) {
+        throw GradleException(
+            "PostgreSQL integration tests require Docker/Testcontainers or AQT_HEALTH_TEST_JDBC_URL.",
+        )
+    }
+}
+
+tasks.test {
+    description = "Runs fast unit tests that do not require PostgreSQL."
+    exclude(integrationTestClasses)
+    exclude("**/OpenApiExportTest.class")
+}
+
+tasks.register<Test>("integrationTest") {
+    description = "Runs PostgreSQL-backed integration tests."
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    shouldRunAfter(tasks.test)
+    include(integrationTestClasses)
+    doFirst {
+        requirePostgresIntegrationDatabase()
+    }
+}
+
+tasks.check {
+    dependsOn(tasks.named("integrationTest"))
+}
+
 tasks.register<Test>("generateOpenApi") {
     description = "Generates the runtime OpenAPI contract at build/openapi/openapi.json."
     group = "documentation"
@@ -82,4 +142,7 @@ tasks.register<Test>("generateOpenApi") {
         layout.buildDirectory.file("openapi/openapi.json").get().asFile.absolutePath,
     )
     outputs.file(layout.buildDirectory.file("openapi/openapi.json"))
+    doFirst {
+        requirePostgresIntegrationDatabase()
+    }
 }

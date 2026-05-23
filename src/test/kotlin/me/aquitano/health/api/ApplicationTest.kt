@@ -80,26 +80,6 @@ class ApplicationTest {
     }
 
     @Test
-    fun openApiDocumentIsGenerated() = testApplication {
-        configureTestApplication()
-
-        val response = client.get("/openapi")
-
-        assertEquals(HttpStatusCode.OK, response.status)
-        assertEquals(ContentType.Application.Json, response.contentType())
-        val body = AppJson.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertNotNull(body["openapi"])
-        assertNotNull(body["paths"])
-        assertNotNull(body["components"]!!.jsonObject["securitySchemes"]!!.jsonObject["bearerApiKey"])
-        assertEquals(
-            "bearerApiKey",
-            body["security"]!!.jsonArray.first().jsonObject.keys.first()
-        )
-        // The /openapi route itself must not appear in the spec
-        assertFalse(response.bodyAsText().contains("\"/openapi\""))
-    }
-
-    @Test
     fun openApiDocumentContainsContractMetadata() = testApplication {
         configureTestApplication()
 

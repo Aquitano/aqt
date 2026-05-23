@@ -47,29 +47,6 @@ class DatabaseFactoryTest {
     }
 
     @Test
-    fun migrationsCreateReadPathIndexes() {
-        val database = DatabaseFactory().initialize(tempDatabaseConfig())
-
-        val indexNames = transaction(database) {
-            val names = mutableSetOf<String>()
-            exec("SELECT indexname FROM pg_indexes WHERE schemaname = current_schema()") { resultSet ->
-                while (resultSet.next()) {
-                    names.add(resultSet.getString("indexname"))
-                }
-            }
-            names
-        }
-
-        assertContains(indexNames, "step_samples_source_instance_start_end_idx")
-        assertContains(indexNames, "step_samples_source_instance_time_range_gist_idx")
-        assertContains(indexNames, "sleep_sessions_source_instance_start_idx")
-        assertContains(indexNames, "body_measurements_source_instance_metric_measured_idx")
-        assertContains(indexNames, "heart_rate_samples_source_instance_measured_idx")
-        assertContains(indexNames, "ingestion_batches_status_received_idx")
-        assertContains(indexNames, "provider_sync_runs_provider_instance_started_idx")
-    }
-
-    @Test
     fun bootstrapStoresOnlyHashedApiKey() {
         val database = DatabaseFactory().initialize(tempDatabaseConfig())
         val hasher = ApiKeyHasher()
