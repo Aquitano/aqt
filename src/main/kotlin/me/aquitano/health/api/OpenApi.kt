@@ -357,7 +357,12 @@ internal fun Operation.Builder.providerCodePath() {
     }
 }
 
-internal fun Operation.Builder.readQueryParameters(includeLatest: Boolean = false) {
+internal fun Operation.Builder.readQueryParameters(
+    includeLatest: Boolean = false,
+    sortValues: List<String>,
+    defaultSort: String,
+    sortExample: String = defaultSort,
+) {
     parameters {
         query("from") {
             description =
@@ -401,7 +406,11 @@ internal fun Operation.Builder.readQueryParameters(includeLatest: Boolean = fals
         query("sort") {
             description =
                 "Sort field for this endpoint. Each metric endpoint supports its documented default temporal or date field."
-            schema = stringSchema(example = "measuredAt")
+            schema = stringSchema(
+                enumValues = sortValues,
+                default = defaultSort,
+                example = sortExample,
+            )
         }
         query("order") {
             description =
@@ -458,7 +467,11 @@ private fun Operation.Builder.dailyReadQueryParameters(includeListControls: Bool
         if (includeListControls) {
             query("sort") {
                 description = "Sort field. Daily endpoints support date."
-                schema = stringSchema(example = "date")
+                schema = stringSchema(
+                    enumValues = listOf("date"),
+                    default = "date",
+                    example = "date",
+                )
             }
             query("order") {
                 description =
@@ -557,7 +570,11 @@ internal fun Operation.Builder.sleepNightQueryParameters() {
 }
 
 internal fun Operation.Builder.bodyMeasurementQueryParameters() {
-    readQueryParameters(includeLatest = true)
+    readQueryParameters(
+        includeLatest = true,
+        sortValues = listOf("measuredAt"),
+        defaultSort = "measuredAt",
+    )
     parameters {
         query("metricType") {
             description = "Body measurement type filter."
@@ -648,7 +665,11 @@ internal fun Operation.Builder.heartRateSummaryQueryParameters() {
 }
 
 internal fun Operation.Builder.hrvReadQueryParameters(includeLatest: Boolean) {
-    readQueryParameters(includeLatest = includeLatest)
+    readQueryParameters(
+        includeLatest = includeLatest,
+        sortValues = listOf("measuredAt"),
+        defaultSort = "measuredAt",
+    )
     parameters {
         query("metricType") {
             description = "HRV metric type filter. Defaults to rmssd."
@@ -809,13 +830,21 @@ internal fun Route.describeReadOperation(
     summary: String,
     descriptionText: String,
     includeLatest: Boolean = false,
+    sortValues: List<String>,
+    defaultSort: String,
+    sortExample: String = defaultSort,
 ): Route = describe {
     this.operationId = operationId
     tag("Read")
     this.summary = summary
     description = descriptionText
     requiresBearerAuth()
-    readQueryParameters(includeLatest = includeLatest)
+    readQueryParameters(
+        includeLatest = includeLatest,
+        sortValues = sortValues,
+        defaultSort = defaultSort,
+        sortExample = sortExample,
+    )
     errorResponses()
 }
 

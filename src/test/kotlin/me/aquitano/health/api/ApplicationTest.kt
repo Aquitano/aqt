@@ -275,6 +275,18 @@ class ApplicationTest {
         )
     }
 
+    @Test
+    fun openApiDocumentsEndpointSpecificReadSortEnums() = testApplication {
+        configureTestApplication()
+
+        val paths = client.get("/openapi").jsonBody()["paths"]!!.jsonObject
+
+        assertEquals(listOf("endAt"), paths.sortEnum("/api/v1/sleep/summaries"))
+        assertEquals(listOf("startAt"), paths.sortEnum("/api/v1/sleep/sessions"))
+        assertEquals(listOf("measuredAt"), paths.sortEnum("/api/v1/metrics/heart-rate"))
+        assertEquals(listOf("date"), paths.sortEnum("/api/v1/metrics/steps/daily"))
+    }
+
     private fun ApplicationTestBuilder.configureTestApplication() {
         val dbConfig = PostgresTestDatabase.config()
         environment {
@@ -290,4 +302,10 @@ class ApplicationTest {
 
     private suspend fun HttpResponse.jsonBody() =
         AppJson.parseToJsonElement(bodyAsText()).jsonObject
+
+    private fun JsonObject.sortEnum(path: String): List<String> =
+        this[path]!!.jsonObject["get"]!!.jsonObject["parameters"]!!.jsonArray
+            .first { it.jsonObject["name"]!!.jsonPrimitive.content == "sort" }
+            .jsonObject["schema"]!!.jsonObject["enum"]!!.jsonArray
+            .map { it.jsonPrimitive.content }
 }

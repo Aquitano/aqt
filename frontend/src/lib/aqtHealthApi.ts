@@ -90,7 +90,7 @@ export async function getHealthDataPageData(
       from: measurementsFrom,
       to: measurementsTo,
       includeSource: true,
-      sort: "startAt",
+      sort: "endAt",
       order: "desc",
       limit: 5000,
     }),

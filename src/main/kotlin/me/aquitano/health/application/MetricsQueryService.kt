@@ -160,49 +160,6 @@ class MetricsQueryService(
             )
         }
 
-    suspend fun listSleepSummaries(params: QueryParams): SleepSummariesResponse =
-        dbQuery {
-            val canonical = params.canonical(default = params.boolean("latest", default = false))
-            val filters = params.readFilters(
-                defaultSort = SortFields.END_AT,
-                allowedSorts = setOf(SortFields.END_AT),
-                latestSupported = true,
-            )
-            val (rawRows, sourceMetadata) =
-                metricsReadRepository.listSleepSummaries(filters)
-            val rows = if (canonical) {
-                canonicalMetricsService.canonicalSleepSummaries(
-                    rawRows,
-                    metricsReadRepository.sourceMetadataFor(rawRows.sourceIds { it.sourceInstanceId }),
-                )
-            } else {
-                rawRows
-            }
-            SleepSummariesResponse(
-                items = rows.map { it.toResponse(sourceMetadata) },
-                meta = rows.meta(filters),
-            )
-        }
-
-    suspend fun latestSleepSummary(params: QueryParams): SleepSummaryLatestResponse =
-        dbQuery {
-            val filters = params.summaryFilters(SortFields.END_AT)
-            val canonical = params.canonical(default = true)
-            val (row, sourceMetadata) = if (canonical) {
-                val (rows, metadata) = metricsReadRepository.listSleepSummaries(
-                    filters.copy(limit = Int.MAX_VALUE, order = Orders.ASC)
-                )
-                val canonicalRows = canonicalMetricsService.canonicalSleepSummaries(
-                    rows,
-                    metricsReadRepository.sourceMetadataFor(rows.sourceIds { it.sourceInstanceId }),
-                )
-                canonicalRows.maxWithOrNull(compareBy<SleepSummaryRow> { it.endAt }.thenBy { it.id }) to metadata
-            } else {
-                metricsReadRepository.latestSleepSummary(filters)
-            }
-            SleepSummaryLatestResponse(item = row?.toResponse(sourceMetadata))
-        }
-
     suspend fun listSleepNights(
         params: QueryParams,
         now: Instant,
@@ -598,57 +555,6 @@ class MetricsQueryService(
         }
     }
 
-    private fun QueryParams.readFilters(
-        defaultSort: String,
-        allowedSorts: Set<String>,
-        latestSupported: Boolean,
-    ): ReadFilters {
-        val latest = boolean("latest", default = false)
-        if (latest && !latestSupported) {
-            throw RequestValidationException(
-                listOf(
-                    ValidationIssue(
-                        field = "latest",
-                        code = ValidationIssueCodes.UnsupportedValue,
-                        message = "latest is not supported for this endpoint",
-                    )
-                )
-            )
-        }
-        if (latest) {
-            validateLatestOverrides()
-        }
-        val from = instant("from")
-        val to = instant("to")
-        validateRange(from, to, "from", "to")
-        return ReadFilters(
-            from = from,
-            to = to,
-            provider = optional("provider"),
-            providerInstanceId = optional("providerInstanceId"),
-            includeSource = boolean("includeSource", default = false),
-            limit = if (latest) 1 else limit(default = 500, max = 5000),
-            sort = if (latest) defaultSort else sort(allowedSorts, defaultSort),
-            order = if (latest) Orders.DESC else order(),
-        )
-    }
-
-    private fun QueryParams.summaryFilters(defaultSort: String): ReadFilters {
-        val from = instant("from")
-        val to = instant("to")
-        validateRange(from, to, "from", "to")
-        return ReadFilters(
-            from = from,
-            to = to,
-            provider = optional("provider"),
-            providerInstanceId = optional("providerInstanceId"),
-            includeSource = boolean("includeSource", default = false),
-            limit = 1,
-            sort = defaultSort,
-            order = Orders.DESC,
-        )
-    }
-
     private fun QueryParams.sleepNightReadFilters(now: Instant): SleepNightReadFilters {
         val timezone = timezone()
         val exactDate = dateOrToday("date", now, timezone)
@@ -757,6 +663,57 @@ class MetricsQueryService(
         newSuspendedTransaction(Dispatchers.IO, db = database) {
             block()
         }
+}
+
+internal fun QueryParams.readFilters(
+    defaultSort: String,
+    allowedSorts: Set<String>,
+    latestSupported: Boolean,
+): ReadFilters {
+    val latest = boolean("latest", default = false)
+    if (latest && !latestSupported) {
+        throw RequestValidationException(
+            listOf(
+                ValidationIssue(
+                    field = "latest",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "latest is not supported for this endpoint",
+                )
+            )
+        )
+    }
+    if (latest) {
+        validateLatestOverrides()
+    }
+    val from = instant("from")
+    val to = instant("to")
+    validateRange(from, to, "from", "to")
+    return ReadFilters(
+        from = from,
+        to = to,
+        provider = optional("provider"),
+        providerInstanceId = optional("providerInstanceId"),
+        includeSource = boolean("includeSource", default = false),
+        limit = if (latest) 1 else limit(default = 500, max = 5000),
+        sort = if (latest) defaultSort else sort(allowedSorts, defaultSort),
+        order = if (latest) Orders.DESC else order(),
+    )
+}
+
+internal fun QueryParams.summaryFilters(defaultSort: String): ReadFilters {
+    val from = instant("from")
+    val to = instant("to")
+    validateRange(from, to, "from", "to")
+    return ReadFilters(
+        from = from,
+        to = to,
+        provider = optional("provider"),
+        providerInstanceId = optional("providerInstanceId"),
+        includeSource = boolean("includeSource", default = false),
+        limit = 1,
+        sort = defaultSort,
+        order = Orders.DESC,
+    )
 }
 
 class QueryParams(
@@ -1049,7 +1006,7 @@ private fun ActivitySummaryRow.toResponse(
         source = sourceMetadata[sourceInstanceId].toResponse(),
     )
 
-private fun SleepSummaryRow.toResponse(
+internal fun SleepSummaryRow.toResponse(
     sourceMetadata: Map<Int, SourceMetadata>
 ): SleepSummaryResponse =
     SleepSummaryResponse(
@@ -1136,7 +1093,7 @@ private fun SleepNightRow.toResponse(
         session = session.toResponse(stagesBySession, sourceMetadata),
     )
 
-private fun <T> List<T>.meta(filters: ReadFilters): ReadResponseMeta =
+internal fun <T> List<T>.meta(filters: ReadFilters): ReadResponseMeta =
     ReadResponseMeta(
         count = size,
         limit = filters.limit,
@@ -1190,14 +1147,14 @@ private fun validateBodyMetricType(metricType: String) {
     }
 }
 
-private object SortFields {
+internal object SortFields {
     const val START_AT = "startAt"
     const val END_AT = "endAt"
     const val DATE = "date"
     const val MEASURED_AT = "measuredAt"
 }
 
-private object Orders {
+internal object Orders {
     const val ASC = "asc"
     const val DESC = "desc"
 }

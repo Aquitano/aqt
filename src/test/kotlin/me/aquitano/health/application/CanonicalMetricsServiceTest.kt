@@ -40,6 +40,19 @@ class CanonicalMetricsServiceTest {
     }
 
     @Test
+    fun stepSamplesKeepPairwiseWinnersAcrossBridgeOverlap() {
+        val rows = listOf(
+            StepSampleRow(1, 3, "2026-04-19T08:00:00Z", "2026-04-19T12:00:00Z", 2000),
+            StepSampleRow(2, 3, "2026-04-19T09:00:00Z", "2026-04-19T10:00:00Z", 700),
+            StepSampleRow(3, 2, "2026-04-19T09:30:00Z", "2026-04-19T11:00:00Z", 1000),
+        )
+
+        val canonical = service.canonicalStepSamples(rows, metadata)
+
+        assertEquals(listOf(1, 2), canonical.map { it.id })
+    }
+
+    @Test
     fun richerSleepSessionWinsCrossSourceOverlap() {
         val rows = listOf(
             SleepSessionRow(1, 2, "2026-04-18T22:00:00Z", "2026-04-19T06:00:00Z", 28800),
@@ -55,6 +68,37 @@ class CanonicalMetricsServiceTest {
         val canonical = service.canonicalSleepSessions(rows, stages, metadata)
 
         assertEquals(listOf(1, 3), canonical.map { it.id })
+    }
+
+    @Test
+    fun sleepSessionsKeepPairwiseWinnersAcrossBridgeOverlap() {
+        val rows = listOf(
+            SleepSessionRow(1, 2, "2026-04-18T22:00:00Z", "2026-04-19T06:00:00Z", 28800),
+            SleepSessionRow(2, 2, "2026-04-18T23:00:00Z", "2026-04-19T01:00:00Z", 7200),
+            SleepSessionRow(3, 1, "2026-04-18T23:30:00Z", "2026-04-19T03:00:00Z", 12600),
+        )
+        val stages = mapOf(
+            1 to listOf(stage("light"), stage("deep"), stage("rem")),
+            2 to listOf(stage("light"), stage("deep"), stage("rem")),
+            3 to listOf(stage("asleep")),
+        )
+
+        val canonical = service.canonicalSleepSessions(rows, stages, metadata)
+
+        assertEquals(listOf(1, 2), canonical.map { it.id })
+    }
+
+    @Test
+    fun sleepSummariesKeepPairwiseWinnersAcrossBridgeOverlapAndSortByStart() {
+        val rows = listOf(
+            sleepSummary(1, 2, "2026-04-18T22:00:00Z", "2026-04-19T06:00:00Z", score = 90),
+            sleepSummary(2, 2, "2026-04-18T23:00:00Z", "2026-04-19T01:00:00Z", score = 88),
+            sleepSummary(3, 1, "2026-04-18T23:30:00Z", "2026-04-19T03:00:00Z", score = 70),
+        )
+
+        val canonical = service.canonicalSleepSummaries(rows, metadata)
+
+        assertEquals(listOf(1, 2), canonical.map { it.id })
     }
 
     @Test
@@ -109,5 +153,31 @@ class CanonicalMetricsServiceTest {
             startAt = "2026-04-18T22:00:00Z",
             endAt = "2026-04-18T23:00:00Z",
             durationSeconds = 3600,
+        )
+
+    private fun sleepSummary(
+        id: Int,
+        sourceInstanceId: Int,
+        startAt: String,
+        endAt: String,
+        score: Int,
+    ): SleepSummaryRow =
+        SleepSummaryRow(
+            id = id,
+            sourceInstanceId = sourceInstanceId,
+            startAt = startAt,
+            endAt = endAt,
+            timeInBedSeconds = 28800,
+            totalSleepSeconds = 25200,
+            lightSleepSeconds = null,
+            deepSleepSeconds = null,
+            remSleepSeconds = null,
+            sleepEfficiencyPercent = null,
+            sleepLatencySeconds = null,
+            wakeupLatencySeconds = null,
+            wakeupDurationSeconds = null,
+            wakeupCount = null,
+            wasoSeconds = null,
+            sleepScore = score,
         )
 }

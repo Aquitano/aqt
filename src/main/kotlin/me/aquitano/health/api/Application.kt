@@ -127,6 +127,11 @@ fun Application.module() {
             metricsReadRepository = metricsReadRepository,
             canonicalMetricsService = canonicalMetricsService,
         ),
+        sleepSummaryReadService = SleepSummaryReadService(
+            database = database,
+            metricsReadRepository = metricsReadRepository,
+            canonicalMetricsService = canonicalMetricsService,
+        ),
         healthDayQueryService = HealthDayQueryService(
             database = database,
             registry = healthDayModuleRegistry,
@@ -170,6 +175,7 @@ data class ApplicationServices(
     val clock: UtcClock,
     val ingestionService: IngestionService,
     val metricsQueryService: MetricsQueryService,
+    val sleepSummaryReadService: SleepSummaryReadService,
     val healthDayQueryService: HealthDayQueryService,
     val adminService: AdminService,
     val providerRegistry: HealthProviderRegistry,

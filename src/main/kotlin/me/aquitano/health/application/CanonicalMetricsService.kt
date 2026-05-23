@@ -35,8 +35,8 @@ class CanonicalMetricsService(
                 instant(left.startAt).isBefore(instant(right.endAt)) &&
                     instant(right.startAt).isBefore(instant(left.endAt))
             },
-            choose = { candidates ->
-                candidates.minWithOrNull(
+            choosePreferred = { left, right ->
+                listOf(left, right).minWithOrNull(
                     compareBy<StepSampleRow> { rank(CanonicalMetricFamily.STEPS, it, metadata) }
                         .thenBy { durationSeconds(it.startAt, it.endAt) }
                         .thenByDescending { stepsPerSecond(it) }
@@ -71,8 +71,8 @@ class CanonicalMetricsService(
             overlaps = { left, right ->
                 left.sourceInstanceId != right.sourceInstanceId && sleepOverlaps(left, right)
             },
-            choose = { candidates ->
-                candidates.maxWithOrNull(
+            choosePreferred = { left, right ->
+                listOf(left, right).maxWithOrNull(
                     compareBy<SleepSessionRow> { stagesBySession[it.id].orEmpty().size }
                         .thenBy { stagesBySession[it.id].orEmpty().map { stage -> stage.stage }.filterNot { stage -> stage == "unknown" }.toSet().size }
                         .thenBy { durationSeconds(it.startAt, it.endAt) == it.durationSeconds }
@@ -92,8 +92,8 @@ class CanonicalMetricsService(
             overlaps = { left, right ->
                 left.sourceInstanceId != right.sourceInstanceId && sleepOverlaps(left, right)
             },
-            choose = { candidates ->
-                candidates.minWithOrNull(
+            choosePreferred = { left, right ->
+                listOf(left, right).minWithOrNull(
                     compareByDescending<SleepSummaryRow> { sleepSummaryFieldCount(it) }
                         .thenBy { rank(CanonicalMetricFamily.SLEEP_SUMMARY, it, metadata) }
                         .thenBy { it.id }
@@ -191,7 +191,7 @@ class CanonicalMetricsService(
     private fun <T> canonicalIntervals(
         rows: List<T>,
         overlaps: (T, T) -> Boolean,
-        choose: (List<T>) -> T,
+        choosePreferred: (T, T) -> T,
         start: (T) -> Instant,
     ): List<T> {
         val selected = mutableListOf<T>()
@@ -200,10 +200,13 @@ class CanonicalMetricsService(
             if (overlapping.isEmpty()) {
                 selected += row
             } else {
-                val cluster = overlapping + row
-                val winner = choose(cluster)
-                selected.removeAll(overlapping.toSet())
-                selected += winner
+                val candidateWinsAll = overlapping.all { existing ->
+                    choosePreferred(existing, row) == row
+                }
+                if (candidateWinsAll) {
+                    selected.removeAll(overlapping.toSet())
+                    selected += row
+                }
             }
         }
         return selected.sortedBy(start)
