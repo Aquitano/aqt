@@ -3,7 +3,7 @@ package me.aquitano.health.infrastructure.database
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import me.aquitano.health.infrastructure.config.DatabaseConfig
-import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.v1.jdbc.Database
 
 class DatabaseFactory(
     private val migrator: FlywayMigrator = FlywayMigrator(),

@@ -10,8 +10,9 @@ import me.aquitano.health.domain.SleepSessionRecord
 import me.aquitano.health.domain.StepIntervalRecord
 import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.database.tables.*
-import org.jetbrains.exposed.sql.*
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.v1.core.*
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.*
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate

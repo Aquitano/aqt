@@ -1,8 +1,8 @@
 package me.aquitano.health.infrastructure.database.tables
 
 import me.aquitano.health.infrastructure.database.jsonb
-import org.jetbrains.exposed.dao.id.IntIdTable
-import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone
+import org.jetbrains.exposed.v1.core.dao.id.IntIdTable
+import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
 
 object IngestionBatchesTable : IntIdTable("ingestion_batches") {
     val sourceInstanceId =

@@ -5,7 +5,7 @@ import me.aquitano.health.infrastructure.database.DatabaseFactory
 import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.infrastructure.security.ApiKeyHasher
 import me.aquitano.health.test.PostgresTestDatabase
-import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import java.time.Instant
 import java.time.OffsetDateTime
 import kotlin.test.Test
@@ -47,7 +47,7 @@ class SupportRepositoryTest {
 
     private fun tempDatabaseConfig(): DatabaseConfig = PostgresTestDatabase.config()
 
-    private fun lastUsedAt(database: org.jetbrains.exposed.sql.Database): String? =
+    private fun lastUsedAt(database: org.jetbrains.exposed.v1.jdbc.Database): String? =
         transaction(database) {
             var value: String? = null
             exec("SELECT last_used_at FROM api_clients WHERE name = 'test-client'") { resultSet ->

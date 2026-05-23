@@ -3,9 +3,9 @@ package me.aquitano.health.infrastructure.database.dao
 import me.aquitano.health.infrastructure.database.tables.ApiClientsTable
 import me.aquitano.health.infrastructure.database.tables.SourceInstancesTable
 import me.aquitano.health.infrastructure.database.tables.SourcesTable
-import org.jetbrains.exposed.dao.IntEntity
-import org.jetbrains.exposed.dao.IntEntityClass
-import org.jetbrains.exposed.dao.id.EntityID
+import org.jetbrains.exposed.v1.core.dao.id.EntityID
+import org.jetbrains.exposed.v1.dao.IntEntity
+import org.jetbrains.exposed.v1.dao.IntEntityClass
 
 class SourceDao(id: EntityID<Int>) : IntEntity(id) {
     companion object : IntEntityClass<SourceDao>(SourcesTable)

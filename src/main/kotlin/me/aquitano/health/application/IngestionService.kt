@@ -1,6 +1,5 @@
 package me.aquitano.health.application
 
-import kotlinx.coroutines.Dispatchers
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
 import me.aquitano.health.api.dto.MetricCreatedCountsResponse
@@ -12,8 +11,8 @@ import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.shared.AppJson
 import me.aquitano.health.shared.utcDate
 import net.logstash.logback.argument.StructuredArguments.kv
-import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
+import org.jetbrains.exposed.v1.jdbc.Database
+import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.time.LocalDate
@@ -35,7 +34,7 @@ class IngestionService(
         batchExternalId: String,
         now: Instant,
     ) =
-        newSuspendedTransaction(Dispatchers.IO, db = database) {
+        suspendTransaction(db = database) {
             val sourceInstance =
                 supportRepository.resolveOrCreateSourceInstanceInTransaction(
                     provider = provider,
@@ -61,7 +60,7 @@ class IngestionService(
             kv("hasExternalId", validated.batchExternalId != null),
         )
         val transactionResult =
-            newSuspendedTransaction(Dispatchers.IO, db = database) {
+            suspendTransaction(db = database) {
                 val sourceInstance =
                     supportRepository.resolveOrCreateSourceInstanceInTransaction(
                         provider = validated.provider,
@@ -82,7 +81,7 @@ class IngestionService(
                         kv("batchId", existingBatch.id),
                         kv("recordCount", validated.records.size),
                     )
-                    return@newSuspendedTransaction IngestionTransactionResult.Success(
+                    return@suspendTransaction IngestionTransactionResult.Success(
                         IngestionSummaryResponse(
                             batchId = existingBatch.id,
                             status = existingBatch.status,
@@ -231,7 +230,7 @@ class IngestionService(
                         kv("batchId", batchId),
                         exception,
                     )
-                    return@newSuspendedTransaction IngestionTransactionResult.Failure(
+                    return@suspendTransaction IngestionTransactionResult.Failure(
                         exception
                     )
                 }

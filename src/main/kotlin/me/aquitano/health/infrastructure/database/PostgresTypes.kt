@@ -1,8 +1,8 @@
 package me.aquitano.health.infrastructure.database
 
-import org.jetbrains.exposed.sql.Column
-import org.jetbrains.exposed.sql.ColumnType
-import org.jetbrains.exposed.sql.Table
+import org.jetbrains.exposed.v1.core.Column
+import org.jetbrains.exposed.v1.core.ColumnType
+import org.jetbrains.exposed.v1.core.Table
 import org.postgresql.util.PGobject
 import java.time.Instant
 import java.time.OffsetDateTime

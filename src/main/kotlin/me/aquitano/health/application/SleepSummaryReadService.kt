@@ -1,12 +1,11 @@
 package me.aquitano.health.application
 
-import kotlinx.coroutines.Dispatchers
 import me.aquitano.health.api.dto.SleepSummariesResponse
 import me.aquitano.health.api.dto.SleepSummaryLatestResponse
 import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
 import me.aquitano.health.infrastructure.repositories.SleepSummaryRow
-import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
+import org.jetbrains.exposed.v1.jdbc.Database
+import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 
 class SleepSummaryReadService(
     private val database: Database,
@@ -57,7 +56,7 @@ class SleepSummaryReadService(
         }
 
     private suspend fun <T> dbQuery(block: () -> T): T =
-        newSuspendedTransaction(Dispatchers.IO, db = database) {
+        suspendTransaction(db = database) {
             block()
         }
 }

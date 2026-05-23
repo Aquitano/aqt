@@ -1,6 +1,5 @@
 package me.aquitano.health.application
 
-import kotlinx.coroutines.Dispatchers
 import me.aquitano.health.api.dto.IngestionBatchAdminResponse
 import me.aquitano.health.api.dto.IngestionBatchDetailResponse
 import me.aquitano.health.api.dto.IngestionBatchesResponse
@@ -11,8 +10,8 @@ import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.shared.AppJson
-import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
+import org.jetbrains.exposed.v1.jdbc.Database
+import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 
 class AdminService(
     private val database: Database,
@@ -129,7 +128,7 @@ class AdminService(
     }
 
     private suspend fun <T> dbQuery(block: () -> T): T =
-        newSuspendedTransaction(Dispatchers.IO, db = database) {
+        suspendTransaction(db = database) {
             block()
         }
 }

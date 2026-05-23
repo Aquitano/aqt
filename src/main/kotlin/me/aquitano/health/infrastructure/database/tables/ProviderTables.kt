@@ -1,8 +1,8 @@
 package me.aquitano.health.infrastructure.database.tables
 
-import org.jetbrains.exposed.dao.id.IntIdTable
-import org.jetbrains.exposed.sql.Table
-import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone
+import org.jetbrains.exposed.v1.core.Table
+import org.jetbrains.exposed.v1.core.dao.id.IntIdTable
+import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
 
 object ProviderOAuthAccountsTable : IntIdTable("provider_oauth_accounts") {
     val providerCode = text("provider_code")

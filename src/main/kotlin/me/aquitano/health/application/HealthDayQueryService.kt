@@ -1,14 +1,13 @@
 package me.aquitano.health.application
 
-import kotlinx.coroutines.Dispatchers
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.BodyMetricTypes
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.repositories.*
-import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
+import org.jetbrains.exposed.v1.jdbc.Database
+import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -84,7 +83,7 @@ class HealthDayQueryService(
             canonical = params.canonical(default = true),
         )
 
-        return newSuspendedTransaction(Dispatchers.IO, db = database) {
+        return suspendTransaction(db = database) {
             val results = modules.associate { it.name to it.read(context) }
             HealthDayResponse(
                 date = date.toString(),

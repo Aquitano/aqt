@@ -1,8 +1,8 @@
 package me.aquitano.health.infrastructure.database.tables
 
-import org.jetbrains.exposed.dao.id.IntIdTable
-import org.jetbrains.exposed.sql.javatime.date
-import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone
+import org.jetbrains.exposed.v1.core.dao.id.IntIdTable
+import org.jetbrains.exposed.v1.javatime.date
+import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
 
 object StepSamplesTable : IntIdTable("step_samples") {
     val sourceInstanceId =

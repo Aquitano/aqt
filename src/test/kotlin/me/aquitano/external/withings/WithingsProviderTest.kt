@@ -22,7 +22,7 @@ import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
 import me.aquitano.health.test.PostgresTestDatabase
-import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.v1.jdbc.Database
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
