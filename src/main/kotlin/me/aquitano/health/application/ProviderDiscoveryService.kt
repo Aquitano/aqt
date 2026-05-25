@@ -43,6 +43,9 @@ class ProviderDiscoveryService(
         ProviderWorkflowEndpointsResponseDto(
             oauthStart = oauthStart,
             oauthCallback = oauthCallback,
+            accounts = accounts,
+            disconnect = disconnect,
+            reconnect = reconnect,
             sync = sync,
         )
 }

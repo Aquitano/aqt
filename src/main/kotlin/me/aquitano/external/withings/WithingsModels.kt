@@ -132,4 +132,5 @@ data class WithingsNormalizedBatch(
 class WithingsHttpException(
     val code: String,
     message: String,
+    val providerStatus: Int? = null,
 ) : RuntimeException(message)

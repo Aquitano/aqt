@@ -19,9 +19,28 @@ data class ProviderOAuthAccount(
     val tokenType: String,
     val expiresAt: Instant,
     val scope: String,
+    val accountStatus: String,
+    val connectedAt: Instant?,
+    val disconnectedAt: Instant?,
+    val lastTokenRefreshAt: Instant?,
+    val lastTokenRefreshStatus: String?,
+    val lastAuthErrorCode: String?,
+    val lastAuthErrorMessage: String?,
     val createdAt: Instant,
     val updatedAt: Instant,
-)
+) {
+    fun isConnectedForSync(): Boolean =
+        accountStatus == ACCOUNT_STATUS_CONNECTED &&
+                accessTokenCiphertext.isNotBlank() &&
+                refreshTokenCiphertext.isNotBlank()
+}
+
+const val ACCOUNT_STATUS_CONNECTED = "connected"
+const val ACCOUNT_STATUS_NEEDS_REAUTH = "needs_reauth"
+const val ACCOUNT_STATUS_DISCONNECTED = "disconnected"
+
+const val TOKEN_REFRESH_STATUS_SUCCESS = "success"
+const val TOKEN_REFRESH_STATUS_FAILED = "failed"
 
 data class ProviderOAuthState(
     val state: String,
@@ -128,36 +147,63 @@ class ProviderOAuthRepository(private val database: Database) {
         now: Instant,
     ) {
         suspendTransaction(db = database) {
-            ProviderOAuthAccountsTable.upsert(
-                ProviderOAuthAccountsTable.providerCode,
-                ProviderOAuthAccountsTable.providerUserId,
-                onUpdate = {
-                    it[ProviderOAuthAccountsTable.providerInstanceId] =
-                        insertValue(ProviderOAuthAccountsTable.providerInstanceId)
-                    it[ProviderOAuthAccountsTable.accessTokenCiphertext] =
-                        insertValue(ProviderOAuthAccountsTable.accessTokenCiphertext)
-                    it[ProviderOAuthAccountsTable.refreshTokenCiphertext] =
-                        insertValue(ProviderOAuthAccountsTable.refreshTokenCiphertext)
-                    it[ProviderOAuthAccountsTable.tokenType] =
-                        insertValue(ProviderOAuthAccountsTable.tokenType)
-                    it[ProviderOAuthAccountsTable.expiresAt] =
-                        insertValue(ProviderOAuthAccountsTable.expiresAt)
-                    it[ProviderOAuthAccountsTable.scope] =
-                        insertValue(ProviderOAuthAccountsTable.scope)
-                    it[ProviderOAuthAccountsTable.updatedAt] =
-                        insertValue(ProviderOAuthAccountsTable.updatedAt)
-                },
-            ) {
-                it[this.providerCode] = providerCode
-                it[this.providerUserId] = providerUserId
-                it[this.providerInstanceId] = providerInstanceId
-                it[this.accessTokenCiphertext] = accessTokenCiphertext
-                it[this.refreshTokenCiphertext] = refreshTokenCiphertext
-                it[this.tokenType] = tokenType
-                it[this.expiresAt] = expiresAt.toDbTimestamp()
-                it[this.scope] = scope
-                it[createdAt] = now.toDbTimestamp()
-                it[updatedAt] = now.toDbTimestamp()
+            val nowTimestamp = now.toDbTimestamp()
+            val existing = ProviderOAuthAccountsTable
+                .selectAll()
+                .where {
+                    (ProviderOAuthAccountsTable.providerCode eq providerCode) and
+                            (ProviderOAuthAccountsTable.providerUserId eq providerUserId)
+                }
+                .limit(1)
+                .singleOrNull()
+
+            if (existing == null) {
+                ProviderOAuthAccountsTable.insert {
+                    it[this.providerCode] = providerCode
+                    it[this.providerUserId] = providerUserId
+                    it[this.providerInstanceId] = providerInstanceId
+                    it[this.accessTokenCiphertext] = accessTokenCiphertext
+                    it[this.refreshTokenCiphertext] = refreshTokenCiphertext
+                    it[this.tokenType] = tokenType
+                    it[this.expiresAt] = expiresAt.toDbTimestamp()
+                    it[this.scope] = scope
+                    it[accountStatus] = ACCOUNT_STATUS_CONNECTED
+                    it[connectedAt] = nowTimestamp
+                    it[disconnectedAt] = null
+                    it[lastTokenRefreshAt] = null
+                    it[lastTokenRefreshStatus] = null
+                    it[lastAuthErrorCode] = null
+                    it[lastAuthErrorMessage] = null
+                    it[createdAt] = nowTimestamp
+                    it[updatedAt] = nowTimestamp
+                }
+            } else {
+                val previousStatus = existing[ProviderOAuthAccountsTable.accountStatus]
+                val previousConnectedAt = existing[ProviderOAuthAccountsTable.connectedAt]
+                val nextConnectedAt =
+                    if (previousStatus == ACCOUNT_STATUS_DISCONNECTED || previousStatus == ACCOUNT_STATUS_NEEDS_REAUTH) {
+                        nowTimestamp
+                    } else {
+                        previousConnectedAt ?: nowTimestamp
+                    }
+                ProviderOAuthAccountsTable.update({
+                    ProviderOAuthAccountsTable.id eq existing[ProviderOAuthAccountsTable.id]
+                }) {
+                    it[this.providerInstanceId] = providerInstanceId
+                    it[this.accessTokenCiphertext] = accessTokenCiphertext
+                    it[this.refreshTokenCiphertext] = refreshTokenCiphertext
+                    it[this.tokenType] = tokenType
+                    it[this.expiresAt] = expiresAt.toDbTimestamp()
+                    it[this.scope] = scope
+                    it[accountStatus] = ACCOUNT_STATUS_CONNECTED
+                    it[connectedAt] = nextConnectedAt
+                    it[disconnectedAt] = null
+                    it[lastTokenRefreshAt] = null
+                    it[lastTokenRefreshStatus] = null
+                    it[lastAuthErrorCode] = null
+                    it[lastAuthErrorMessage] = null
+                    it[updatedAt] = nowTimestamp
+                }
             }
         }
     }
@@ -180,32 +226,129 @@ class ProviderOAuthRepository(private val database: Database) {
                 it[this.tokenType] = tokenType
                 it[this.expiresAt] = expiresAt.toDbTimestamp()
                 scope?.let { value -> it[this.scope] = value }
+                it[accountStatus] = ACCOUNT_STATUS_CONNECTED
+                it[lastTokenRefreshAt] = now.toDbTimestamp()
+                it[lastTokenRefreshStatus] = TOKEN_REFRESH_STATUS_SUCCESS
+                it[lastAuthErrorCode] = null
+                it[lastAuthErrorMessage] = null
                 it[updatedAt] = now.toDbTimestamp()
             }
         }
     }
 
+    suspend fun markNeedsReauth(
+        accountId: Int,
+        errorCode: String,
+        errorMessage: String,
+        now: Instant,
+    ) {
+        suspendTransaction(db = database) {
+            ProviderOAuthAccountsTable.update({ ProviderOAuthAccountsTable.id eq accountId }) {
+                it[accountStatus] = ACCOUNT_STATUS_NEEDS_REAUTH
+                it[lastTokenRefreshAt] = now.toDbTimestamp()
+                it[lastTokenRefreshStatus] = TOKEN_REFRESH_STATUS_FAILED
+                it[lastAuthErrorCode] = errorCode.take(200)
+                it[lastAuthErrorMessage] = errorMessage.take(1000)
+                it[updatedAt] = now.toDbTimestamp()
+            }
+        }
+    }
+
+    suspend fun markTokenRefreshFailed(
+        accountId: Int,
+        errorCode: String,
+        errorMessage: String,
+        now: Instant,
+    ) {
+        suspendTransaction(db = database) {
+            ProviderOAuthAccountsTable.update({ ProviderOAuthAccountsTable.id eq accountId }) {
+                it[lastTokenRefreshAt] = now.toDbTimestamp()
+                it[lastTokenRefreshStatus] = TOKEN_REFRESH_STATUS_FAILED
+                it[lastAuthErrorCode] = errorCode.take(200)
+                it[lastAuthErrorMessage] = errorMessage.take(1000)
+                it[updatedAt] = now.toDbTimestamp()
+            }
+        }
+    }
+
+    suspend fun disconnectAccount(
+        providerCode: String,
+        providerInstanceId: String,
+        now: Instant,
+    ): Boolean =
+        suspendTransaction(db = database) {
+            val updated = ProviderOAuthAccountsTable.update({
+                (ProviderOAuthAccountsTable.providerCode eq providerCode) and
+                        (ProviderOAuthAccountsTable.providerInstanceId eq providerInstanceId)
+            }) {
+                it[accessTokenCiphertext] = ""
+                it[refreshTokenCiphertext] = ""
+                it[accountStatus] = ACCOUNT_STATUS_DISCONNECTED
+                it[disconnectedAt] = now.toDbTimestamp()
+                it[lastTokenRefreshAt] = null
+                it[lastTokenRefreshStatus] = null
+                it[lastAuthErrorCode] = null
+                it[lastAuthErrorMessage] = null
+                it[updatedAt] = now.toDbTimestamp()
+            }
+            updated > 0
+        }
+
     suspend fun latestAccount(providerCode: String): ProviderOAuthAccount? =
         suspendTransaction(db = database) {
             ProviderOAuthAccountsTable
                 .selectAll()
-                .where { ProviderOAuthAccountsTable.providerCode eq providerCode }
+                .where {
+                    (ProviderOAuthAccountsTable.providerCode eq providerCode) and
+                            (ProviderOAuthAccountsTable.accountStatus eq ACCOUNT_STATUS_CONNECTED) and
+                            (ProviderOAuthAccountsTable.accessTokenCiphertext neq "") and
+                            (ProviderOAuthAccountsTable.refreshTokenCiphertext neq "")
+                }
                 .orderBy(ProviderOAuthAccountsTable.updatedAt to SortOrder.DESC)
                 .limit(1)
                 .map { it.toOAuthAccount() }
                 .singleOrNull()
         }
 
-    suspend fun accountsByProvider(providerCode: String): List<ProviderOAuthAccount> =
+    suspend fun accountsByProvider(
+        providerCode: String,
+        includeDisconnected: Boolean = true,
+    ): List<ProviderOAuthAccount> =
         suspendTransaction(db = database) {
             ProviderOAuthAccountsTable
                 .selectAll()
-                .where { ProviderOAuthAccountsTable.providerCode eq providerCode }
+                .where {
+                    if (includeDisconnected) {
+                        ProviderOAuthAccountsTable.providerCode eq providerCode
+                    } else {
+                        (ProviderOAuthAccountsTable.providerCode eq providerCode) and
+                                (ProviderOAuthAccountsTable.accountStatus neq ACCOUNT_STATUS_DISCONNECTED)
+                    }
+                }
                 .orderBy(ProviderOAuthAccountsTable.updatedAt to SortOrder.DESC)
                 .map { it.toOAuthAccount() }
         }
 
     suspend fun accountByProviderInstance(
+        providerCode: String,
+        providerInstanceId: String,
+    ): ProviderOAuthAccount? =
+        suspendTransaction(db = database) {
+            ProviderOAuthAccountsTable
+                .selectAll()
+                .where {
+                    (ProviderOAuthAccountsTable.providerCode eq providerCode) and
+                            (ProviderOAuthAccountsTable.providerInstanceId eq providerInstanceId) and
+                            (ProviderOAuthAccountsTable.accountStatus eq ACCOUNT_STATUS_CONNECTED) and
+                            (ProviderOAuthAccountsTable.accessTokenCiphertext neq "") and
+                            (ProviderOAuthAccountsTable.refreshTokenCiphertext neq "")
+                }
+                .limit(1)
+                .map { it.toOAuthAccount() }
+                .singleOrNull()
+        }
+
+    suspend fun accountByProviderInstanceForStatus(
         providerCode: String,
         providerInstanceId: String,
     ): ProviderOAuthAccount? =
@@ -294,6 +437,13 @@ class ProviderOAuthRepository(private val database: Database) {
             tokenType = this[ProviderOAuthAccountsTable.tokenType],
             expiresAt = this[ProviderOAuthAccountsTable.expiresAt].toInstant(),
             scope = this[ProviderOAuthAccountsTable.scope],
+            accountStatus = this[ProviderOAuthAccountsTable.accountStatus],
+            connectedAt = this[ProviderOAuthAccountsTable.connectedAt]?.toInstant(),
+            disconnectedAt = this[ProviderOAuthAccountsTable.disconnectedAt]?.toInstant(),
+            lastTokenRefreshAt = this[ProviderOAuthAccountsTable.lastTokenRefreshAt]?.toInstant(),
+            lastTokenRefreshStatus = this[ProviderOAuthAccountsTable.lastTokenRefreshStatus],
+            lastAuthErrorCode = this[ProviderOAuthAccountsTable.lastAuthErrorCode],
+            lastAuthErrorMessage = this[ProviderOAuthAccountsTable.lastAuthErrorMessage],
             createdAt = this[ProviderOAuthAccountsTable.createdAt].toInstant(),
             updatedAt = this[ProviderOAuthAccountsTable.updatedAt].toInstant(),
         )

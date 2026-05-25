@@ -27,6 +27,9 @@ data class ProviderDescriptorResponseDto(
 data class ProviderWorkflowEndpointsResponseDto(
     val oauthStart: String? = null,
     val oauthCallback: String? = null,
+    val accounts: String? = null,
+    val disconnect: String? = null,
+    val reconnect: String? = null,
     val sync: String,
 )
 
@@ -50,13 +53,35 @@ data class ProviderStatusResponseDto(
 @Serializable
 data class ProviderAccountStatusResponseDto(
     val providerInstanceId: String,
+    val status: ProviderAccountLifecycleStatus,
     @JsonSchema.Format("date-time")
-    val connectedAt: String,
+    val connectedAt: String? = null,
+    @JsonSchema.Format("date-time")
+    val disconnectedAt: String? = null,
     @JsonSchema.Format("date-time")
     val lastSyncAt: String? = null,
     val tokenStatus: ProviderTokenStatus,
     @JsonSchema.Format("date-time")
     val expiresAt: String? = null,
+    @JsonSchema.Format("date-time")
+    val lastTokenRefreshAt: String? = null,
+    val lastTokenRefreshStatus: String? = null,
+    val lastAuthErrorCode: String? = null,
+    val lastAuthErrorMessage: String? = null,
+)
+
+@Serializable
+data class ProviderAccountListResponseDto(
+    val provider: String,
+    val accounts: List<ProviderAccountStatusResponseDto>,
+)
+
+@Serializable
+data class ProviderDisconnectResponseDto(
+    val provider: String,
+    val providerInstanceId: String,
+    val disconnected: Boolean,
+    val status: ProviderAccountLifecycleStatus,
 )
 
 @Serializable
@@ -72,6 +97,24 @@ enum class ProviderNextAction {
 
     @SerialName("sync")
     Sync,
+}
+
+@Serializable
+enum class ProviderAccountLifecycleStatus {
+    @SerialName("not_connected")
+    NotConnected,
+
+    @SerialName("connected")
+    Connected,
+
+    @SerialName("needs_reauth")
+    NeedsReauth,
+
+    @SerialName("disconnected")
+    Disconnected,
+
+    @SerialName("configuration_error")
+    ConfigurationError,
 }
 
 @Serializable

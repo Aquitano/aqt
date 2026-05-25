@@ -8,6 +8,7 @@ import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.config.GoogleHealthConfig
+import me.aquitano.health.infrastructure.repositories.ACCOUNT_STATUS_NEEDS_REAUTH
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthAccount
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
@@ -41,6 +42,9 @@ class GoogleHealthProvider(
             workflowEndpoints = ProviderWorkflowEndpoints(
                 oauthStart = "/api/v1/providers/google-health/oauth/start",
                 oauthCallback = "/api/v1/providers/google-health/oauth/callback",
+                accounts = "/api/v1/providers/google-health/accounts",
+                disconnect = "/api/v1/providers/google-health/accounts/{providerInstanceId}/disconnect",
+                reconnect = "/api/v1/providers/google-health/accounts/{providerInstanceId}/reconnect",
                 sync = "/api/v1/providers/google-health/sync",
             ),
             aliases = listOf(GOOGLE_HEALTH_PROVIDER_CODE),
@@ -304,20 +308,42 @@ class GoogleHealthProvider(
     private suspend fun accountForSync(providerInstanceId: String?): ProviderOAuthAccount =
         if (providerInstanceId == null) {
             repository.latestAccount(GOOGLE_HEALTH_PROVIDER_CODE)
-                ?: throw ConflictException(
-                    "google_health_not_connected",
-                    "Google Health is not connected",
-                )
+                ?: throw googleAccountUnavailable(null)
         } else {
             repository.accountByProviderInstance(
                 GOOGLE_HEALTH_PROVIDER_CODE,
                 providerInstanceId,
             )
-                ?: throw ConflictException(
-                    "google_health_account_not_found",
-                    "Google Health account is not connected for providerInstanceId: $providerInstanceId",
-                )
+                ?: throw googleAccountUnavailable(providerInstanceId)
         }
+
+    private suspend fun googleAccountUnavailable(providerInstanceId: String?): ConflictException {
+        val account = providerInstanceId?.let {
+            repository.accountByProviderInstanceForStatus(
+                GOOGLE_HEALTH_PROVIDER_CODE,
+                it,
+            )
+        } ?: repository.accountsByProvider(GOOGLE_HEALTH_PROVIDER_CODE).firstOrNull {
+            it.accountStatus == ACCOUNT_STATUS_NEEDS_REAUTH
+        }
+        if (account?.accountStatus == ACCOUNT_STATUS_NEEDS_REAUTH) {
+            return ConflictException(
+                "google_health_needs_reauth",
+                "Google Health needs reconnect before syncing",
+            )
+        }
+        return if (providerInstanceId == null) {
+            ConflictException(
+                "google_health_not_connected",
+                "Google Health is not connected",
+            )
+        } else {
+            ConflictException(
+                "google_health_account_not_found",
+                "Google Health account is not connected for providerInstanceId: $providerInstanceId",
+            )
+        }
+    }
 
     private fun validate(request: ProviderSyncRequest): ValidatedSyncRequest {
         val issues = mutableListOf<ValidationIssue>()
@@ -368,15 +394,34 @@ class GoogleHealthProvider(
             client.refreshToken(refreshToken, now)
         } catch (exception: Exception) {
             if (exception is CancellationException) throw exception
-            logger.warn(
-                "provider_token_refresh_failed {} {}",
-                kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
-                kv("errorCode", "google_health_token_refresh_failed"),
+            val message = exception.message ?: "Google OAuth token refresh failed"
+            if (exception.isInvalidRefreshToken()) {
+                repository.markNeedsReauth(
+                    accountId = account.id,
+                    errorCode = "google_health_needs_reauth",
+                    errorMessage = message,
+                    now = now,
+                )
+                logger.warn(
+                    "provider_token_refresh_failed {} {}",
+                    kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
+                    kv("errorCode", "google_health_needs_reauth"),
+                )
+                throw ConflictException(
+                    code = "google_health_needs_reauth",
+                    message = "Google Health needs reconnect before syncing",
+                    cause = exception,
+                )
+            }
+            repository.markTokenRefreshFailed(
+                accountId = account.id,
+                errorCode = errorCode(exception),
+                errorMessage = message,
+                now = now,
             )
             throw UpstreamProviderException(
                 code = "google_health_token_refresh_failed",
-                message = exception.message
-                    ?: "Google OAuth token refresh failed",
+                message = message,
                 statusCode = 502,
                 cause = exception,
             )
@@ -540,6 +585,10 @@ class GoogleHealthProvider(
             is UpstreamProviderException -> throwable.code
             else -> "google_health_sync_failed"
         }
+
+    private fun Exception.isInvalidRefreshToken(): Boolean =
+        this is GoogleHealthUnauthorizedException ||
+                this is GoogleHealthHttpException && oauthError == "invalid_grant"
 
     private data class ValidatedSyncRequest(
         val providerInstanceId: String?,

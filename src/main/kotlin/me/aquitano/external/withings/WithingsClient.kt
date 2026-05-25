@@ -276,6 +276,7 @@ class KtorWithingsClient(
             throw WithingsHttpException(
                 "withings_token_request_failed",
                 "Withings OAuth token request failed with status ${withingsStatus ?: "missing"}",
+                providerStatus = withingsStatus,
             )
         }
 

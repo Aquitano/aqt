@@ -175,6 +175,91 @@ fun Application.configureRoutes(services: ApplicationServices) {
             providerCodePath()
             errorResponses(notFound = true)
         }
+        get("/api/v1/providers/{providerCode}/accounts") {
+            call.authenticateProtected(services)
+            val code = call.providerCode()
+            call.respond<ProviderAccountListResponseDto>(
+                services.providerWorkflowService.listAccounts(
+                    code,
+                    services.clock.now(),
+                )
+            )
+        }.describe {
+            operationId = "listProviderAccounts"
+            tag("Providers")
+            summary = "List provider OAuth accounts"
+            description =
+                "Returns lifecycle status for OAuth accounts for one provider without exposing stored token material."
+            requiresBearerAuth()
+            providerCodePath()
+            errorResponses(notFound = true)
+        }
+        get("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}") {
+            call.authenticateProtected(services)
+            val code = call.providerCode()
+            val providerInstanceId = call.parameters["providerInstanceId"]
+                ?: throw RequestValidationException(listOf(ValidationIssue("providerInstanceId")))
+            call.respond<ProviderAccountStatusResponseDto>(
+                services.providerWorkflowService.getAccount(
+                    code,
+                    providerInstanceId,
+                    services.clock.now(),
+                )
+            )
+        }.describe {
+            operationId = "getProviderAccount"
+            tag("Providers")
+            summary = "Get provider OAuth account status"
+            description =
+                "Returns lifecycle status for one OAuth account without exposing stored token material."
+            requiresBearerAuth()
+            providerCodePath()
+            errorResponses(notFound = true)
+        }
+        post("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/disconnect") {
+            call.authenticateProtected(services)
+            val code = call.providerCode()
+            val providerInstanceId = call.parameters["providerInstanceId"]
+                ?: throw RequestValidationException(listOf(ValidationIssue("providerInstanceId")))
+            call.respond<ProviderDisconnectResponseDto>(
+                services.providerWorkflowService.disconnect(
+                    code,
+                    providerInstanceId,
+                    services.clock.now(),
+                )
+            )
+        }.describe {
+            operationId = "disconnectProviderAccount"
+            tag("Providers")
+            summary = "Disconnect a provider OAuth account locally"
+            description =
+                "Clears locally stored OAuth token material and marks the provider account disconnected. This does not revoke tokens upstream."
+            requiresBearerAuth()
+            providerCodePath()
+            errorResponses(notFound = true, conflict = true)
+        }
+        post("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/reconnect") {
+            call.authenticateProtected(services)
+            val code = call.providerCode()
+            val providerInstanceId = call.parameters["providerInstanceId"]
+                ?: throw RequestValidationException(listOf(ValidationIssue("providerInstanceId")))
+            call.respond<ProviderOAuthStartResponse>(
+                services.providerWorkflowService.reconnect(
+                    code,
+                    providerInstanceId,
+                    services.clock.now(),
+                )
+            )
+        }.describe {
+            operationId = "reconnectProviderAccount"
+            tag("Providers")
+            summary = "Start provider OAuth reconnect flow"
+            description =
+                "Validates an existing local provider account and starts the provider OAuth flow again for re-consent."
+            requiresBearerAuth()
+            providerCodePath()
+            errorResponses(notFound = true)
+        }
         get("/api/v1/providers/{providerCode}/oauth/start") {
             call.authenticateProtected(services)
             val code = call.providerCode()
@@ -620,4 +705,3 @@ private fun ApplicationCall.providerCode(): String {
     }
     return code
 }
-

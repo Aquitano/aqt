@@ -184,6 +184,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/providers/{providerCode}/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List provider OAuth accounts
+         * @description Returns lifecycle status for OAuth accounts for one provider without exposing stored token material.
+         */
+        get: operations["listProviderAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get provider OAuth account status
+         * @description Returns lifecycle status for one OAuth account without exposing stored token material.
+         */
+        get: operations["getProviderAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disconnect a provider OAuth account locally
+         * @description Clears locally stored OAuth token material and marks the provider account disconnected. This does not revoke tokens upstream.
+         */
+        post: operations["disconnectProviderAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/reconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start provider OAuth reconnect flow
+         * @description Validates an existing local provider account and starts the provider OAuth flow again for re-consent.
+         */
+        post: operations["reconnectProviderAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/providers/{providerCode}/oauth/start": {
         parameters: {
             query?: never;
@@ -874,6 +954,9 @@ export interface components {
         ProviderWorkflowEndpointsResponseDto: {
             oauthStart?: string | null;
             oauthCallback?: string | null;
+            accounts?: string | null;
+            disconnect?: string | null;
+            reconnect?: string | null;
             sync: string;
         };
         /** ProviderDescriptorResponseDto */
@@ -896,14 +979,23 @@ export interface components {
         /** ProviderAccountStatusResponseDto */
         ProviderAccountStatusResponseDto: {
             providerInstanceId: string;
+            /** @enum {string} */
+            status: "not_connected" | "connected" | "needs_reauth" | "disconnected" | "configuration_error";
             /** Format: date-time */
-            connectedAt: string;
+            connectedAt?: string | null;
+            /** Format: date-time */
+            disconnectedAt?: string | null;
             /** Format: date-time */
             lastSyncAt?: string | null;
             /** @enum {string} */
             tokenStatus: "valid" | "expired" | "missing" | "unknown";
             /** Format: date-time */
             expiresAt?: string | null;
+            /** Format: date-time */
+            lastTokenRefreshAt?: string | null;
+            lastTokenRefreshStatus?: string | null;
+            lastAuthErrorCode?: string | null;
+            lastAuthErrorMessage?: string | null;
         };
         /** ProviderStatusResponseDto */
         ProviderStatusResponseDto: {
@@ -920,6 +1012,19 @@ export interface components {
         /** ProviderStatusCatalogResponseDto */
         ProviderStatusCatalogResponseDto: {
             providers: components["schemas"]["ProviderStatusResponseDto"][];
+        };
+        /** ProviderAccountListResponseDto */
+        ProviderAccountListResponseDto: {
+            provider: string;
+            accounts: components["schemas"]["ProviderAccountStatusResponseDto"][];
+        };
+        /** ProviderDisconnectResponseDto */
+        ProviderDisconnectResponseDto: {
+            provider: string;
+            providerInstanceId: string;
+            disconnected: boolean;
+            /** @enum {string} */
+            status: "not_connected" | "connected" | "needs_reauth" | "disconnected" | "configuration_error";
         };
         /** ProviderOAuthStartResponse */
         ProviderOAuthStartResponse: {
@@ -1933,6 +2038,334 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderStatusResponseDto"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    listProviderAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider code. Current examples are `google-health` and `withings`. */
+                providerCode: "google-health" | "withings";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccountListResponseDto"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getProviderAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider code. Current examples are `google-health` and `withings`. */
+                providerCode: "google-health" | "withings";
+                providerInstanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAccountStatusResponseDto"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    disconnectProviderAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider code. Current examples are `google-health` and `withings`. */
+                providerCode: "google-health" | "withings";
+                providerInstanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderDisconnectResponseDto"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request conflicts with current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    reconnectProviderAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider code. Current examples are `google-health` and `withings`. */
+                providerCode: "google-health" | "withings";
+                providerInstanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderOAuthStartResponse"];
                 };
             };
             /** @description Request validation failed */

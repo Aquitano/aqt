@@ -93,6 +93,10 @@ class ApplicationTest {
             "/api/v1/providers/status",
             "/api/v1/providers/{providerCode}",
             "/api/v1/providers/{providerCode}/status",
+            "/api/v1/providers/{providerCode}/accounts",
+            "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}",
+            "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/disconnect",
+            "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/reconnect",
             "/api/v1/providers/{providerCode}/oauth/start",
             "/api/v1/providers/{providerCode}/oauth/callback",
             "/api/v1/providers/{providerCode}/sync",
@@ -206,6 +210,11 @@ class ApplicationTest {
                 .jsonArray.map { it.jsonPrimitive.content }.toSet(),
         )
         val providerAccountStatus = schemas["ProviderAccountStatusResponseDto"]!!.jsonObject
+        assertEquals(
+            setOf("not_connected", "connected", "needs_reauth", "disconnected", "configuration_error"),
+            providerAccountStatus["properties"]!!.jsonObject["status"]!!.jsonObject["enum"]!!
+                .jsonArray.map { it.jsonPrimitive.content }.toSet(),
+        )
         assertEquals(
             setOf("valid", "expired", "missing", "unknown"),
             providerAccountStatus["properties"]!!.jsonObject["tokenStatus"]!!.jsonObject["enum"]!!

@@ -2,6 +2,7 @@ package me.aquitano.health.api
 
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
@@ -102,6 +103,7 @@ class ProviderStatusRouteTest {
         assertEquals("sync", google.string("nextAction"))
         val account = google["accounts"]!!.jsonArray.single().jsonObject
         assertEquals("google-health-me", account.string("providerInstanceId"))
+        assertEquals("connected", account.string("status"))
         assertEquals("valid", account.string("tokenStatus"))
         assertEquals("2026-05-15T10:00:00Z", account.string("connectedAt"))
         assertEquals("2026-05-15T11:00:00Z", account.string("lastSyncAt"))
@@ -128,7 +130,157 @@ class ProviderStatusRouteTest {
         assertEquals("false", status["needsAuthentication"].toString())
         assertEquals("sync", status.string("nextAction"))
         val account = status["accounts"]!!.jsonArray.single().jsonObject
+        assertEquals("connected", account.string("status"))
         assertEquals("expired", account.string("tokenStatus"))
+    }
+
+    @Test
+    fun needsReauthProviderReportsReconnectAction() = testApplication {
+        val dbPath = PostgresTestDatabase.config()
+        configureTestApplication(dbPath)
+        client.get("/api/v1/admin/health")
+        insertGoogleAccount(
+            dbPath = dbPath,
+            expiresAt = "2099-01-01T00:00:00Z",
+            accountStatus = "needs_reauth",
+            lastAuthErrorCode = "google_health_needs_reauth",
+        )
+
+        val response = client.get("/api/v1/providers/google-health/status") {
+            authorized()
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val status = response.bodyAsJsonObject()
+        assertEquals("false", status["connected"].toString())
+        assertEquals("false", status["canSync"].toString())
+        assertEquals("true", status["needsAuthentication"].toString())
+        assertEquals("reconnect", status.string("nextAction"))
+        val account = status["accounts"]!!.jsonArray.single().jsonObject
+        assertEquals("needs_reauth", account.string("status"))
+        assertEquals("google_health_needs_reauth", account.string("lastAuthErrorCode"))
+    }
+
+    @Test
+    fun providerWithSyncableAndNeedsReauthAccountsStillReportsSyncAction() = testApplication {
+        val dbPath = PostgresTestDatabase.config()
+        configureTestApplication(dbPath)
+        client.get("/api/v1/admin/health")
+        insertGoogleAccount(
+            dbPath = dbPath,
+            providerUserId = "syncable-user",
+            providerInstanceId = "google-health-syncable",
+            expiresAt = "2099-01-01T00:00:00Z",
+        )
+        insertGoogleAccount(
+            dbPath = dbPath,
+            providerUserId = "reauth-user",
+            providerInstanceId = "google-health-reauth",
+            expiresAt = "2099-01-01T00:00:00Z",
+            accountStatus = "needs_reauth",
+            lastAuthErrorCode = "google_health_needs_reauth",
+        )
+
+        val response = client.get("/api/v1/providers/google-health/status") {
+            authorized()
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val status = response.bodyAsJsonObject()
+        assertEquals("true", status["connected"].toString())
+        assertEquals("true", status["canSync"].toString())
+        assertEquals("false", status["needsAuthentication"].toString())
+        assertEquals("sync", status.string("nextAction"))
+        val accounts = status["accounts"]!!.jsonArray.map { it.jsonObject.string("status") }.toSet()
+        assertEquals(setOf("connected", "needs_reauth"), accounts)
+    }
+
+    @Test
+    fun disconnectedProviderReportsConnectAction() = testApplication {
+        val dbPath = PostgresTestDatabase.config()
+        configureTestApplication(dbPath)
+        client.get("/api/v1/admin/health")
+        insertGoogleAccount(
+            dbPath = dbPath,
+            expiresAt = "2099-01-01T00:00:00Z",
+            accountStatus = "disconnected",
+            accessTokenCiphertext = "",
+            refreshTokenCiphertext = "",
+            disconnectedAt = "2026-05-16T10:00:00Z",
+        )
+
+        val response = client.get("/api/v1/providers/google-health/status") {
+            authorized()
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val status = response.bodyAsJsonObject()
+        assertEquals("false", status["connected"].toString())
+        assertEquals("false", status["canSync"].toString())
+        assertEquals("connect", status.string("nextAction"))
+        val account = status["accounts"]!!.jsonArray.single().jsonObject
+        assertEquals("disconnected", account.string("status"))
+        assertEquals("missing", account.string("tokenStatus"))
+        assertEquals("2026-05-16T10:00:00Z", account.string("disconnectedAt"))
+    }
+
+    @Test
+    fun providerAccountLifecycleRoutesRequireAuthentication() = testApplication {
+        val dbPath = PostgresTestDatabase.config()
+        configureTestApplication(dbPath)
+
+        assertEquals(
+            HttpStatusCode.Unauthorized,
+            client.get("/api/v1/providers/google-health/accounts").status,
+        )
+        assertEquals(
+            HttpStatusCode.Unauthorized,
+            client.post("/api/v1/providers/google-health/accounts/google-health-me/disconnect").status,
+        )
+    }
+
+    @Test
+    fun providerAccountLifecycleRoutesListDisconnectAndReconnect() = testApplication {
+        val dbPath = PostgresTestDatabase.config()
+        configureTestApplication(dbPath)
+        client.get("/api/v1/admin/health")
+        insertGoogleAccount(
+            dbPath = dbPath,
+            expiresAt = "2099-01-01T00:00:00Z",
+        )
+
+        val listResponse = client.get("/api/v1/providers/google-health/accounts") {
+            authorized()
+        }
+        assertEquals(HttpStatusCode.OK, listResponse.status)
+        val listBody = listResponse.bodyAsJsonObject()
+        assertEquals("google-health", listBody.string("provider"))
+        assertEquals(
+            "google-health-me",
+            listBody["accounts"]!!.jsonArray.single().jsonObject.string("providerInstanceId"),
+        )
+
+        val getResponse = client.get("/api/v1/providers/google-health/accounts/google-health-me") {
+            authorized()
+        }
+        assertEquals(HttpStatusCode.OK, getResponse.status)
+        assertEquals("connected", getResponse.bodyAsJsonObject().string("status"))
+
+        val disconnectResponse = client.post("/api/v1/providers/google-health/accounts/google-health-me/disconnect") {
+            authorized()
+        }
+        assertEquals(HttpStatusCode.OK, disconnectResponse.status)
+        assertEquals("disconnected", disconnectResponse.bodyAsJsonObject().string("status"))
+        assertEquals("", singleString(dbPath, "SELECT access_token_ciphertext FROM provider_oauth_accounts"))
+        assertEquals("", singleString(dbPath, "SELECT refresh_token_ciphertext FROM provider_oauth_accounts"))
+
+        val reconnectResponse = client.post("/api/v1/providers/google-health/accounts/google-health-me/reconnect") {
+            authorized()
+        }
+        assertEquals(HttpStatusCode.OK, reconnectResponse.status)
+        val reconnectBody = reconnectResponse.bodyAsJsonObject()
+        assertEquals("google_health", reconnectBody.string("provider"))
+        assertEquals(true, reconnectBody.string("authorizationUrl").contains("state="))
     }
 
     @Test
@@ -175,7 +327,17 @@ class ProviderStatusRouteTest {
         }
     }
 
-    private fun insertGoogleAccount(dbPath: DatabaseConfig, expiresAt: String) {
+    private fun insertGoogleAccount(
+        dbPath: DatabaseConfig,
+        providerUserId: String = "google-health-me",
+        providerInstanceId: String = "google-health-me",
+        expiresAt: String,
+        accountStatus: String = "connected",
+        accessTokenCiphertext: String = "access-ciphertext",
+        refreshTokenCiphertext: String = "refresh-ciphertext",
+        disconnectedAt: String? = null,
+        lastAuthErrorCode: String? = null,
+    ) {
         PostgresTestDatabase.connection(dbPath).use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeUpdate(
@@ -189,17 +351,25 @@ class ProviderStatusRouteTest {
                         token_type,
                         expires_at,
                         scope,
+                        account_status,
+                        connected_at,
+                        disconnected_at,
+                        last_auth_error_code,
                         created_at,
                         updated_at
                     ) VALUES (
                         'google_health',
-                        'google-health-me',
-                        'google-health-me',
-                        'access-ciphertext',
-                        'refresh-ciphertext',
+                        '$providerUserId',
+                        '$providerInstanceId',
+                        '$accessTokenCiphertext',
+                        '$refreshTokenCiphertext',
                         'Bearer',
                         '$expiresAt',
                         'scope',
+                        '$accountStatus',
+                        '2026-05-15T10:00:00Z',
+                        ${disconnectedAt?.let { "'$it'" } ?: "NULL"},
+                        ${lastAuthErrorCode?.let { "'$it'" } ?: "NULL"},
                         '2026-05-15T10:00:00Z',
                         '2026-05-15T10:00:00Z'
                     )
@@ -238,6 +408,16 @@ class ProviderStatusRouteTest {
             }
         }
     }
+
+    private fun singleString(dbPath: DatabaseConfig, sql: String): String =
+        PostgresTestDatabase.connection(dbPath).use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeQuery(sql).use { resultSet ->
+                    resultSet.next()
+                    resultSet.getString(1)
+                }
+            }
+        }
 
     private suspend fun HttpResponse.bodyAsJsonObject(): JsonObject =
         AppJson.parseToJsonElement(bodyAsText()).jsonObject

@@ -8,6 +8,7 @@ import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.config.WithingsConfig
+import me.aquitano.health.infrastructure.repositories.ACCOUNT_STATUS_NEEDS_REAUTH
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthAccount
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
@@ -39,6 +40,9 @@ class WithingsProvider(
             workflowEndpoints = ProviderWorkflowEndpoints(
                 oauthStart = "/api/v1/providers/withings/oauth/start",
                 oauthCallback = "/api/v1/providers/withings/oauth/callback",
+                accounts = "/api/v1/providers/withings/accounts",
+                disconnect = "/api/v1/providers/withings/accounts/{providerInstanceId}/disconnect",
+                reconnect = "/api/v1/providers/withings/accounts/{providerInstanceId}/reconnect",
                 sync = "/api/v1/providers/withings/sync",
             ),
         )
@@ -283,20 +287,42 @@ class WithingsProvider(
     private suspend fun accountForSync(providerInstanceId: String?): ProviderOAuthAccount =
         if (providerInstanceId == null) {
             repository.latestAccount(WITHINGS_PROVIDER_CODE)
-                ?: throw ConflictException(
-                    "withings_not_connected",
-                    "Withings is not connected",
-                )
+                ?: throw withingsAccountUnavailable(null)
         } else {
             repository.accountByProviderInstance(
                 WITHINGS_PROVIDER_CODE,
                 providerInstanceId
             )
-                ?: throw ConflictException(
-                    "withings_account_not_found",
-                    "Withings account is not connected for providerInstanceId: $providerInstanceId",
-                )
+                ?: throw withingsAccountUnavailable(providerInstanceId)
         }
+
+    private suspend fun withingsAccountUnavailable(providerInstanceId: String?): ConflictException {
+        val account = providerInstanceId?.let {
+            repository.accountByProviderInstanceForStatus(
+                WITHINGS_PROVIDER_CODE,
+                it,
+            )
+        } ?: repository.accountsByProvider(WITHINGS_PROVIDER_CODE).firstOrNull {
+            it.accountStatus == ACCOUNT_STATUS_NEEDS_REAUTH
+        }
+        if (account?.accountStatus == ACCOUNT_STATUS_NEEDS_REAUTH) {
+            return ConflictException(
+                "withings_needs_reauth",
+                "Withings needs reconnect before syncing",
+            )
+        }
+        return if (providerInstanceId == null) {
+            ConflictException(
+                "withings_not_connected",
+                "Withings is not connected",
+            )
+        } else {
+            ConflictException(
+                "withings_account_not_found",
+                "Withings account is not connected for providerInstanceId: $providerInstanceId",
+            )
+        }
+    }
 
     private fun validate(request: ProviderSyncRequest): ValidatedSyncRequest {
         val issues = mutableListOf<ValidationIssue>()
@@ -345,10 +371,29 @@ class WithingsProvider(
             client.refreshToken(refreshToken, now)
         } catch (exception: Exception) {
             if (exception is CancellationException) throw exception
+            val message = exception.message ?: "Withings OAuth token refresh failed"
+            if (exception.isInvalidRefreshToken()) {
+                repository.markNeedsReauth(
+                    accountId = account.id,
+                    errorCode = "withings_needs_reauth",
+                    errorMessage = message,
+                    now = now,
+                )
+                throw ConflictException(
+                    code = "withings_needs_reauth",
+                    message = "Withings needs reconnect before syncing",
+                    cause = exception,
+                )
+            }
+            repository.markTokenRefreshFailed(
+                accountId = account.id,
+                errorCode = errorCode(exception),
+                errorMessage = message,
+                now = now,
+            )
             throw UpstreamProviderException(
                 code = "withings_token_refresh_failed",
-                message = exception.message
-                    ?: "Withings OAuth token refresh failed",
+                message = message,
                 statusCode = 502,
                 cause = exception,
             )
@@ -497,6 +542,11 @@ class WithingsProvider(
             is UpstreamProviderException -> throwable.code
             else -> "withings_sync_failed"
         }
+
+    private fun Exception.isInvalidRefreshToken(): Boolean =
+        this is WithingsHttpException &&
+                code == "withings_token_request_failed" &&
+                providerStatus == 401
 
     private data class ValidatedSyncRequest(
         val providerInstanceId: String?,

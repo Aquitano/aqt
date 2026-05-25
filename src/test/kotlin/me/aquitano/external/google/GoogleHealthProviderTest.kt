@@ -6,6 +6,7 @@ import me.aquitano.health.application.HealthProviderRegistry
 import me.aquitano.health.application.IngestionMappingService
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.application.ProviderWorkflowService
+import me.aquitano.health.application.ProviderStatusService
 import me.aquitano.health.application.StepSummaryService
 import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.ProviderSyncRequest
@@ -57,6 +58,46 @@ class GoogleHealthProviderTest {
     }
 
     @Test
+    fun oauthCallbackPreservesConnectedAtForAlreadyConnectedAccount() = runBlocking {
+        val fixture = Fixture()
+        val firstConnectedAt = Instant.parse("2026-04-20T10:00:00Z")
+        val firstStart = fixture.providerWorkflowService.startOAuth("google-health", firstConnectedAt)
+        val firstState = Regex("state=([^&]+)").find(firstStart.authorizationUrl)!!.groupValues[1]
+        fixture.providerWorkflowService.completeOAuth(
+            providerCode = "google-health",
+            code = "auth-code",
+            state = firstState,
+            error = null,
+            now = firstConnectedAt,
+        )
+
+        val secondStart = fixture.providerWorkflowService.startOAuth(
+            "google-health",
+            firstConnectedAt.plusSeconds(60),
+        )
+        val secondState = Regex("state=([^&]+)").find(secondStart.authorizationUrl)!!.groupValues[1]
+        fixture.providerWorkflowService.completeOAuth(
+            providerCode = "google-health",
+            code = "auth-code",
+            state = secondState,
+            error = null,
+            now = firstConnectedAt.plusSeconds(120),
+        )
+
+        assertEquals(
+            1,
+            singleInt(
+                fixture.dbPath,
+                """
+                SELECT COUNT(*)
+                FROM provider_oauth_accounts
+                WHERE connected_at = TIMESTAMPTZ '2026-04-20T10:00:00Z'
+                """.trimIndent(),
+            ),
+        )
+    }
+
+    @Test
     fun oauthCallbackMapsTokenExchangeFailureToUpstreamProviderError() = runBlocking {
         val fixture = Fixture()
         val now = Instant.parse("2026-04-20T10:00:00Z")
@@ -91,6 +132,64 @@ class GoogleHealthProviderTest {
 
         assertEquals("google_health_not_configured", error.code)
         assertEquals(0, countRows(fixture.dbPath, "provider_oauth_states"))
+    }
+
+    @Test
+    fun refreshFailureMarksAccountNeedsReauth() = runBlocking {
+        val fixture = Fixture()
+        fixture.storeAccount(
+            accessToken = "access-token",
+            refreshToken = "refresh-token",
+            expiresAt = fixture.now.minusSeconds(1),
+        )
+        fixture.client.nextRefreshFailure = GoogleHealthUnauthorizedException("invalid refresh token")
+
+        val error = assertFailsWith<ConflictException> {
+            fixture.provider.sync(
+                ProviderSyncRequest(
+                    from = Instant.parse("2026-04-01T00:00:00Z"),
+                    to = Instant.parse("2026-04-02T00:00:00Z"),
+                    dataTypes = listOf("steps"),
+                ),
+                fixture.now,
+            )
+        }
+
+        assertEquals("google_health_needs_reauth", error.code)
+        assertEquals(
+            "needs_reauth",
+            singleString(fixture.dbPath, "SELECT account_status FROM provider_oauth_accounts"),
+        )
+        assertEquals(
+            "google_health_needs_reauth",
+            singleString(fixture.dbPath, "SELECT last_auth_error_code FROM provider_oauth_accounts"),
+        )
+    }
+
+    @Test
+    fun needsReauthAccountIsNotSelectedForSync() = runBlocking {
+        val fixture = Fixture()
+        fixture.storeAccount(accessToken = "access-token", refreshToken = "refresh-token")
+        fixture.providerRepository.markNeedsReauth(
+            accountId = singleInt(fixture.dbPath, "SELECT id FROM provider_oauth_accounts"),
+            errorCode = "google_health_needs_reauth",
+            errorMessage = "invalid refresh token",
+            now = fixture.now,
+        )
+
+        val error = assertFailsWith<ConflictException> {
+            fixture.provider.sync(
+                ProviderSyncRequest(
+                    from = Instant.parse("2026-04-01T00:00:00Z"),
+                    to = Instant.parse("2026-04-02T00:00:00Z"),
+                    dataTypes = listOf("steps"),
+                ),
+                fixture.now,
+            )
+        }
+
+        assertEquals("google_health_needs_reauth", error.code)
+        assertEquals(0, fixture.client.fetchRequests.size)
     }
 
     @Test
@@ -432,9 +531,15 @@ class GoogleHealthProviderTest {
             normalizer = GoogleHealthNormalizer(),
             ingestionService = ingestionService,
         )
-        val providerWorkflowService = ProviderWorkflowService(
-            providerRegistry = HealthProviderRegistry(listOf(provider)),
+        private val providerRegistry = HealthProviderRegistry(listOf(provider))
+        val providerStatusService = ProviderStatusService(
+            providerRegistry = providerRegistry,
             providerOAuthRepository = providerRepository,
+        )
+        val providerWorkflowService = ProviderWorkflowService(
+            providerRegistry = providerRegistry,
+            providerOAuthRepository = providerRepository,
+            providerStatusService = providerStatusService,
         )
 
         suspend fun storeAccount(
@@ -466,6 +571,7 @@ class GoogleHealthProviderTest {
         var refreshCalls = 0
         var throwUnauthorizedOnce = false
         var nextExchangeFailure: RuntimeException? = null
+        var nextRefreshFailure: RuntimeException? = null
         var nextFetchFailure: RuntimeException? = null
 
         override suspend fun exchangeCode(code: String, now: Instant): GoogleHealthTokenSet {
@@ -484,6 +590,10 @@ class GoogleHealthProviderTest {
 
         override suspend fun refreshToken(refreshToken: String, now: Instant): GoogleHealthTokenSet {
             refreshCalls += 1
+            nextRefreshFailure?.let {
+                nextRefreshFailure = null
+                throw it
+            }
             return GoogleHealthTokenSet(
                 accessToken = refreshedAccessToken,
                 refreshToken = refreshToken,

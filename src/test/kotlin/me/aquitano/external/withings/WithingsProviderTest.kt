@@ -8,6 +8,7 @@ import me.aquitano.health.application.HealthProviderRegistry
 import me.aquitano.health.application.IngestionMappingService
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.application.ProviderWorkflowService
+import me.aquitano.health.application.ProviderStatusService
 import me.aquitano.health.application.StepSummaryService
 import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.ProviderSyncRequest
@@ -132,6 +133,96 @@ class WithingsProviderTest {
 
         assertEquals(1, fixture.client.refreshCalls)
         assertEquals("fresh-access", fixture.client.accessTokensUsed.single())
+    }
+
+    @Test
+    fun refreshFailureMarksAccountNeedsReauth() = runBlocking {
+        val fixture = Fixture()
+        fixture.seedAccount(expiresAt = fixture.now.minusSeconds(1))
+        fixture.client.nextRefreshFailure = WithingsHttpException(
+            "withings_token_request_failed",
+            "Withings refresh token is invalid",
+            providerStatus = 401,
+        )
+
+        val error = assertFailsWith<ConflictException> {
+            fixture.provider.sync(
+                ProviderSyncRequest(
+                    from = Instant.parse("2026-04-01T00:00:00Z"),
+                    to = Instant.parse("2026-04-02T00:00:00Z"),
+                    dataTypes = listOf("activity"),
+                ),
+                fixture.now,
+            )
+        }
+
+        assertEquals("withings_needs_reauth", error.code)
+        assertEquals(
+            "needs_reauth",
+            singleString(fixture.dbPath, "SELECT account_status FROM provider_oauth_accounts"),
+        )
+        assertEquals(
+            "withings_needs_reauth",
+            singleString(fixture.dbPath, "SELECT last_auth_error_code FROM provider_oauth_accounts"),
+        )
+    }
+
+    @Test
+    fun temporaryRefreshFailureDoesNotMarkAccountNeedsReauth() = runBlocking {
+        val fixture = Fixture()
+        fixture.seedAccount(expiresAt = fixture.now.minusSeconds(1))
+        fixture.client.nextRefreshFailure = WithingsHttpException(
+            "withings_token_request_failed",
+            "Withings OAuth token request failed with 503",
+            providerStatus = 503,
+        )
+
+        val error = assertFailsWith<UpstreamProviderException> {
+            fixture.provider.sync(
+                ProviderSyncRequest(
+                    from = Instant.parse("2026-04-01T00:00:00Z"),
+                    to = Instant.parse("2026-04-02T00:00:00Z"),
+                    dataTypes = listOf("activity"),
+                ),
+                fixture.now,
+            )
+        }
+
+        assertEquals("withings_token_refresh_failed", error.code)
+        assertEquals(
+            "connected",
+            singleString(fixture.dbPath, "SELECT account_status FROM provider_oauth_accounts"),
+        )
+        assertEquals(
+            "withings_token_request_failed",
+            singleString(fixture.dbPath, "SELECT last_auth_error_code FROM provider_oauth_accounts"),
+        )
+    }
+
+    @Test
+    fun needsReauthAccountIsNotSelectedForSync() = runBlocking {
+        val fixture = Fixture()
+        fixture.seedAccount()
+        fixture.providerRepository.markNeedsReauth(
+            accountId = singleInt(fixture.dbPath, "SELECT id FROM provider_oauth_accounts"),
+            errorCode = "withings_needs_reauth",
+            errorMessage = "invalid refresh token",
+            now = fixture.now,
+        )
+
+        val error = assertFailsWith<ConflictException> {
+            fixture.provider.sync(
+                ProviderSyncRequest(
+                    from = Instant.parse("2026-04-01T00:00:00Z"),
+                    to = Instant.parse("2026-04-02T00:00:00Z"),
+                    dataTypes = listOf("activity"),
+                ),
+                fixture.now,
+            )
+        }
+
+        assertEquals("withings_needs_reauth", error.code)
+        assertTrue(fixture.client.accessTokensUsed.isEmpty())
     }
 
     @Test
@@ -301,7 +392,7 @@ class WithingsProviderTest {
         private val database: Database = DatabaseFactory().initialize(
             dbPath
         )
-        private val providerRepository = ProviderOAuthRepository(database)
+        val providerRepository = ProviderOAuthRepository(database)
         private val metricsWriteRepository = MetricsWriteRepository()
         private val ingestionService = IngestionService(
             database = database,
@@ -319,9 +410,15 @@ class WithingsProviderTest {
             normalizer = WithingsNormalizer(),
             ingestionService = ingestionService,
         )
-        val providerWorkflowService = ProviderWorkflowService(
-            providerRegistry = HealthProviderRegistry(listOf(provider)),
+        private val providerRegistry = HealthProviderRegistry(listOf(provider))
+        val providerStatusService = ProviderStatusService(
+            providerRegistry = providerRegistry,
             providerOAuthRepository = providerRepository,
+        )
+        val providerWorkflowService = ProviderWorkflowService(
+            providerRegistry = providerRegistry,
+            providerOAuthRepository = providerRepository,
+            providerStatusService = providerStatusService,
         )
 
         suspend fun seedAccount(
@@ -349,6 +446,7 @@ class WithingsProviderTest {
 
     private class FakeWithingsClient : WithingsClient {
         var nextExchangeFailure: WithingsHttpException? = null
+        var nextRefreshFailure: WithingsHttpException? = null
         var refreshCalls = 0
         var failDataRequestsWithAccessToken: String? = null
         var failuresRemaining = 0
@@ -369,6 +467,10 @@ class WithingsProviderTest {
 
         override suspend fun refreshToken(refreshToken: String, now: Instant): WithingsTokenSet {
             refreshCalls += 1
+            nextRefreshFailure?.let {
+                nextRefreshFailure = null
+                throw it
+            }
             return WithingsTokenSet(
                 providerUserId = "",
                 accessToken = "fresh-access",
@@ -519,6 +621,16 @@ private fun singleString(dbPath: DatabaseConfig, sql: String): String =
             statement.executeQuery(sql).use { resultSet ->
                 resultSet.next()
                 resultSet.getString(1)
+            }
+        }
+    }
+
+private fun singleInt(dbPath: DatabaseConfig, sql: String): Int =
+    PostgresTestDatabase.connection(dbPath).use { connection ->
+        connection.createStatement().use { statement ->
+            statement.executeQuery(sql).use { resultSet ->
+                resultSet.next()
+                resultSet.getInt(1)
             }
         }
     }

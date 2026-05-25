@@ -51,4 +51,5 @@ class GoogleHealthUnauthorizedException(message: String) :
 class GoogleHealthHttpException(
     val code: String,
     message: String,
+    val oauthError: String? = null,
 ) : RuntimeException(message)

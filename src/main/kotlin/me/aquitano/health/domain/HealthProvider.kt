@@ -67,6 +67,9 @@ enum class ProviderAuthType {
 data class ProviderWorkflowEndpoints(
     val oauthStart: String? = null,
     val oauthCallback: String? = null,
+    val accounts: String? = null,
+    val disconnect: String? = null,
+    val reconnect: String? = null,
     val sync: String,
 )
 

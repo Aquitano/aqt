@@ -89,9 +89,13 @@ class KtorGoogleHealthOAuthClient(
             } else {
                 "google_health_token_refresh_failed"
             }
+            val oauthError = runCatching {
+                AppJson.parseToJsonElement(text).jsonObject.stringOrNull("error")
+            }.getOrNull()
             throw GoogleHealthHttpException(
                 code,
-                "Google OAuth token request failed with ${status.value}"
+                "Google OAuth token request failed with ${status.value}",
+                oauthError = oauthError,
             )
         }
         val body = AppJson.parseToJsonElement(text).jsonObject

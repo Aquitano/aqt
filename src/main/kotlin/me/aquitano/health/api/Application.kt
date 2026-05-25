@@ -115,6 +115,10 @@ fun Application.module() {
     )
     val providerRegistry =
         HealthProviderRegistry(listOf(googleHealthProvider, withingsProvider))
+    val providerStatusService = ProviderStatusService(
+        providerRegistry = providerRegistry,
+        providerOAuthRepository = providerOAuthRepository,
+    )
 
     val services = ApplicationServices(
         database = database,
@@ -147,13 +151,11 @@ fun Application.module() {
         metricCatalogService = MetricCatalogService(
             providerRegistry = providerRegistry,
         ),
-        providerStatusService = ProviderStatusService(
-            providerRegistry = providerRegistry,
-            providerOAuthRepository = providerOAuthRepository,
-        ),
+        providerStatusService = providerStatusService,
         providerWorkflowService = ProviderWorkflowService(
             providerRegistry = providerRegistry,
             providerOAuthRepository = providerOAuthRepository,
+            providerStatusService = providerStatusService,
         ),
     )
 

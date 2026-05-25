@@ -7,6 +7,7 @@ import type {
   ProviderCatalogResponse,
   ProviderDescriptor,
   ProviderOAuthStartResponse,
+  ProviderAccountStatus,
   ProviderStatus,
   ProviderStatusCatalogResponse,
   ProviderSyncResponse,
@@ -28,8 +29,11 @@ export function ProviderSyncPanel({ catalog, statuses }: ProviderSyncPanelProps)
   const [selectedProviderCode, setSelectedProviderCode] = useState("");
   const [result, setResult] = useState<ApiResult<ProviderSyncResponse> | null>(null);
   const [oauthError, setOAuthError] = useState<string | null>(null);
+  const [accountActionError, setAccountActionError] = useState<string | null>(null);
+  const [pendingAccountAction, setPendingAccountAction] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isOAuthPending, startOAuthTransition] = useTransition();
+  const [, startAccountActionTransition] = useTransition();
 
   if (!catalog.ok || !statuses.ok) {
     return (
@@ -86,6 +90,7 @@ export function ProviderSyncPanel({ catalog, statuses }: ProviderSyncPanelProps)
     if (!selectedProvider?.descriptor.workflowEndpoints.oauthStart) return;
     setResult(null);
     setOAuthError(null);
+    setAccountActionError(null);
 
     startOAuthTransition(async () => {
       const response = await fetch(
@@ -97,6 +102,58 @@ export function ProviderSyncPanel({ catalog, statuses }: ProviderSyncPanelProps)
         window.location.assign(body.data.authorizationUrl);
       } else {
         setOAuthError(body.message);
+      }
+    });
+  }
+
+  function onDisconnect(providerInstanceId: string) {
+    if (!selectedProvider) return;
+    setResult(null);
+    setAccountActionError(null);
+    setPendingAccountAction(`disconnect:${providerInstanceId}`);
+
+    startAccountActionTransition(async () => {
+      try {
+        const response = await fetch(
+          `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/disconnect`,
+          { method: "POST" },
+        );
+        const body = (await response.json()) as ApiResult<unknown>;
+        if (body.ok) {
+          router.refresh();
+        } else {
+          setAccountActionError(body.message);
+        }
+      } catch {
+        setAccountActionError("Disconnect failed. Try again.");
+      } finally {
+        setPendingAccountAction(null);
+      }
+    });
+  }
+
+  function onReconnect(providerInstanceId: string) {
+    if (!selectedProvider) return;
+    setResult(null);
+    setAccountActionError(null);
+    setPendingAccountAction(`reconnect:${providerInstanceId}`);
+
+    startAccountActionTransition(async () => {
+      try {
+        const response = await fetch(
+          `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/reconnect`,
+          { method: "POST" },
+        );
+        const body = (await response.json()) as ApiResult<ProviderOAuthStartResponse>;
+        if (body.ok) {
+          window.location.assign(body.data.authorizationUrl);
+        } else {
+          setAccountActionError(body.message);
+        }
+      } catch {
+        setAccountActionError("Reconnect failed. Try again.");
+      } finally {
+        setPendingAccountAction(null);
       }
     });
   }
@@ -130,7 +187,11 @@ export function ProviderSyncPanel({ catalog, statuses }: ProviderSyncPanelProps)
       {selectedProvider ? (
         <ProviderStatusSummary
           isOAuthPending={isOAuthPending}
+          accountActionError={accountActionError}
           oauthError={oauthError}
+          pendingAccountAction={pendingAccountAction}
+          onDisconnect={onDisconnect}
+          onReconnect={onReconnect}
           onStartOAuth={onStartOAuth}
           provider={selectedProvider}
         />
@@ -195,12 +256,20 @@ export function ProviderSyncPanel({ catalog, statuses }: ProviderSyncPanelProps)
 
 function ProviderStatusSummary({
   isOAuthPending,
+  accountActionError,
   oauthError,
+  pendingAccountAction,
+  onDisconnect,
+  onReconnect,
   onStartOAuth,
   provider,
 }: {
   isOAuthPending: boolean;
+  accountActionError: string | null;
   oauthError: string | null;
+  pendingAccountAction: string | null;
+  onDisconnect: (providerInstanceId: string) => void;
+  onReconnect: (providerInstanceId: string) => void;
   onStartOAuth: () => void;
   provider: ProviderOption;
 }) {
@@ -227,23 +296,104 @@ function ProviderStatusSummary({
           onClick={onStartOAuth}
           type="button"
         >
-          {isOAuthPending ? "Starting OAuth..." : "Login / restart OAuth"}
+          {isOAuthPending ? "Starting OAuth..." : primaryOAuthLabel(status)}
         </button>
       ) : null}
       {oauthError ? <div className={styles.errorNotice}>{oauthError}</div> : null}
+      {accountActionError ? <div className={styles.errorNotice}>{accountActionError}</div> : null}
       {status.accounts.length > 0 ? (
         <div className={styles.accountGrid}>
           {status.accounts.map((account) => (
-            <div className={styles.accountRow} key={account.providerInstanceId}>
-              <span>{account.providerInstanceId}</span>
-              <span>{account.tokenStatus}</span>
-              <span>
-                {account.lastSyncAt ? `Last sync ${formatDateTime(account.lastSyncAt)}` : "No sync yet"}
-              </span>
-            </div>
+            <ProviderAccountRow
+              account={account}
+              key={account.providerInstanceId}
+              onDisconnect={onDisconnect}
+              onReconnect={onReconnect}
+              pendingAccountAction={pendingAccountAction}
+            />
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function ProviderAccountRow({
+  account,
+  onDisconnect,
+  onReconnect,
+  pendingAccountAction,
+}: {
+  account: ProviderAccountStatus;
+  onDisconnect: (providerInstanceId: string) => void;
+  onReconnect: (providerInstanceId: string) => void;
+  pendingAccountAction: string | null;
+}) {
+  const disconnectPending = pendingAccountAction === `disconnect:${account.providerInstanceId}`;
+  const reconnectPending = pendingAccountAction === `reconnect:${account.providerInstanceId}`;
+
+  return (
+    <div className={styles.accountRow}>
+      <div className={styles.accountIdentity}>
+        <strong>{account.providerInstanceId}</strong>
+        <span>{formatStatus(account.status)} account</span>
+      </div>
+      <dl className={styles.accountMeta}>
+        <div>
+          <dt>Token</dt>
+          <dd>{formatStatus(account.tokenStatus)}</dd>
+        </div>
+        <div>
+          <dt>Connected</dt>
+          <dd>{account.connectedAt ? formatDateTime(account.connectedAt) : "Never"}</dd>
+        </div>
+        {account.disconnectedAt ? (
+          <div>
+            <dt>Disconnected</dt>
+            <dd>{formatDateTime(account.disconnectedAt)}</dd>
+          </div>
+        ) : null}
+        <div>
+          <dt>Last sync</dt>
+          <dd>{account.lastSyncAt ? formatDateTime(account.lastSyncAt) : "None"}</dd>
+        </div>
+        {account.lastTokenRefreshAt ? (
+          <div>
+            <dt>Refresh</dt>
+            <dd>
+              {formatStatus(account.lastTokenRefreshStatus ?? "unknown")} {formatDateTime(account.lastTokenRefreshAt)}
+            </dd>
+          </div>
+        ) : null}
+        {account.lastAuthErrorCode ? (
+          <div className={styles.accountError}>
+            <dt>{account.lastAuthErrorCode}</dt>
+            <dd>{account.lastAuthErrorMessage ?? "Authentication failed"}</dd>
+          </div>
+        ) : null}
+      </dl>
+      <div className={styles.accountActions}>
+        {account.status === "connected" ? (
+          <button
+            className={styles.secondaryButton}
+            disabled={disconnectPending || reconnectPending}
+            onClick={() => onDisconnect(account.providerInstanceId)}
+            type="button"
+          >
+            {disconnectPending ? "Disconnecting..." : "Disconnect"}
+          </button>
+        ) : null}
+        {account.status === "needs_reauth" || account.status === "disconnected" ? (
+          <button
+            className={styles.oauthButton}
+            disabled={disconnectPending || reconnectPending}
+            onClick={() => onReconnect(account.providerInstanceId)}
+            type="button"
+          >
+            {reconnectPending ? "Starting..." : "Reconnect"}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -321,6 +471,24 @@ function actionDetail(descriptor: ProviderDescriptor, status: ProviderStatus): s
         ? `Connected as ${status.accounts[0].providerInstanceId}.`
         : `${status.accounts.length} connected accounts.`;
   }
+}
+
+function primaryOAuthLabel(status: ProviderStatus): string {
+  switch (status.nextAction) {
+    case "connect":
+      return "Connect";
+    case "reconnect":
+      return "Reconnect";
+    default:
+      return "Start OAuth";
+  }
+}
+
+function formatStatus(value: string): string {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function selectedDataTypes(formData: FormData): string[] | undefined {

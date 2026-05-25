@@ -7,7 +7,10 @@ import type {
   IngestionsPageData,
   MetricCatalogResponse,
   ProviderCatalogResponse,
+  ProviderDisconnectResponse,
   ProviderOAuthStartResponse,
+  ProviderAccountListResponse,
+  ProviderAccountStatus,
   ProviderSyncPageData,
   ProviderStatusCatalogResponse,
   ProviderSyncRequest,
@@ -216,6 +219,33 @@ export async function startProviderOAuth(
   providerCode: string,
 ): Promise<ApiResult<ProviderOAuthStartResponse>> {
   return createAqtHealthClient().startProviderOAuth(providerCode);
+}
+
+export async function listProviderAccounts(
+  providerCode: string,
+): Promise<ApiResult<ProviderAccountListResponse>> {
+  return createAqtHealthClient().listProviderAccounts(providerCode);
+}
+
+export async function getProviderAccount(
+  providerCode: string,
+  providerInstanceId: string,
+): Promise<ApiResult<ProviderAccountStatus>> {
+  return createAqtHealthClient().getProviderAccount(providerCode, providerInstanceId);
+}
+
+export async function disconnectProviderAccount(
+  providerCode: string,
+  providerInstanceId: string,
+): Promise<ApiResult<ProviderDisconnectResponse>> {
+  return createAqtHealthClient().disconnectProviderAccount(providerCode, providerInstanceId);
+}
+
+export async function reconnectProviderAccount(
+  providerCode: string,
+  providerInstanceId: string,
+): Promise<ApiResult<ProviderOAuthStartResponse>> {
+  return createAqtHealthClient().reconnectProviderAccount(providerCode, providerInstanceId);
 }
 
 export async function syncProvider(

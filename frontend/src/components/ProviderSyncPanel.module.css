@@ -112,6 +112,28 @@
   transition: background var(--ease), opacity var(--ease);
 }
 
+.secondaryButton {
+  min-height: 34px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  color: var(--fg);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--ease), opacity var(--ease);
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 10%, var(--bg-input));
+}
+
+.secondaryButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .oauthButton:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 14%, var(--bg-panel));
 }
@@ -128,18 +150,68 @@
 
 .accountRow {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(80px, 0.5fr) minmax(0, 1fr);
+  grid-template-columns: minmax(150px, 0.8fr) minmax(0, 1.6fr) auto;
   gap: var(--s-3);
-  align-items: center;
+  align-items: start;
   padding: var(--s-2) var(--s-3);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   background: var(--bg-panel);
 }
 
-.accountRow span {
+.accountIdentity {
+  display: grid;
+  gap: 3px;
   min-width: 0;
+}
+
+.accountIdentity strong {
   overflow-wrap: anywhere;
+}
+
+.accountIdentity span {
+  color: var(--fg-muted);
+}
+
+.accountMeta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--s-2) var(--s-3);
+  margin: 0;
+}
+
+.accountMeta div {
+  min-width: 0;
+}
+
+.accountMeta dt {
+  color: var(--fg-dim);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.accountMeta dd {
+  margin: 2px 0 0;
+  color: var(--fg-muted);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.accountError {
+  grid-column: 1 / -1;
+}
+
+.accountError dt,
+.accountError dd {
+  color: var(--danger);
+}
+
+.accountActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
 }
 
 .form {
@@ -300,5 +372,9 @@
   .accountRow {
     grid-template-columns: 1fr;
     gap: var(--s-1);
+  }
+
+  .accountActions {
+    justify-content: flex-start;
   }
 }

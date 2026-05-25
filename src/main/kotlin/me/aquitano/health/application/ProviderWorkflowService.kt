@@ -17,6 +17,7 @@ private val logger =
 class ProviderWorkflowService(
     private val providerRegistry: HealthProviderRegistry,
     private val providerOAuthRepository: ProviderOAuthRepository,
+    private val providerStatusService: ProviderStatusService,
 ) {
     private val random = SecureRandom()
 
@@ -144,6 +145,65 @@ class ProviderWorkflowService(
             ?.sync(request.toDomain(now), now)
             ?.toDto()
             ?: throw NotFoundException("Provider '$providerCode' not found")
+
+    suspend fun listAccounts(
+        providerCode: String,
+        now: Instant,
+    ): ProviderAccountListResponseDto {
+        val provider = providerRegistry.getProvider(providerCode)
+            ?: throw NotFoundException("Provider '$providerCode' not found")
+        return ProviderAccountListResponseDto(
+            provider = provider.descriptor.providerCode,
+            accounts = providerStatusService.listAccountStatuses(providerCode, now),
+        )
+    }
+
+    suspend fun getAccount(
+        providerCode: String,
+        providerInstanceId: String,
+        now: Instant,
+    ): ProviderAccountStatusResponseDto =
+        providerStatusService.getAccountStatus(providerCode, providerInstanceId, now)
+
+    suspend fun disconnect(
+        providerCode: String,
+        providerInstanceId: String,
+        now: Instant,
+    ): ProviderDisconnectResponseDto {
+        val provider = providerRegistry.getProvider(providerCode)
+            ?: throw NotFoundException("Provider '$providerCode' not found")
+        val normalizedCode = providerRegistry.normalize(providerCode)
+        providerOAuthRepository.accountByProviderInstanceForStatus(
+            providerCode = normalizedCode,
+            providerInstanceId = providerInstanceId,
+        ) ?: throw NotFoundException("Provider account '$providerInstanceId' not found")
+        providerOAuthRepository.disconnectAccount(
+            providerCode = normalizedCode,
+            providerInstanceId = providerInstanceId,
+            now = now,
+        )
+        return ProviderDisconnectResponseDto(
+            provider = provider.descriptor.providerCode,
+            providerInstanceId = providerInstanceId,
+            disconnected = true,
+            status = ProviderAccountLifecycleStatus.Disconnected,
+        )
+    }
+
+    suspend fun reconnect(
+        providerCode: String,
+        providerInstanceId: String,
+        now: Instant,
+    ): ProviderOAuthStartResponse {
+        providerRegistry.getProvider(providerCode)
+            ?: throw NotFoundException("Provider '$providerCode' not found")
+        val normalizedCode = providerRegistry.normalize(providerCode)
+        providerOAuthRepository.accountByProviderInstanceForStatus(
+            providerCode = normalizedCode,
+            providerInstanceId = providerInstanceId,
+        ) ?: throw NotFoundException("Provider account '$providerInstanceId' not found")
+        return startOAuth(providerCode, now)
+    }
 
     private fun ProviderSyncRequestDto.toDomain(now: Instant): ProviderSyncRequest {
         val issues = mutableListOf<ValidationIssue>()

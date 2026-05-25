@@ -249,6 +249,47 @@ curl "http://localhost:8080/api/v1/providers/google-health" \
 
 Discovery responses return canonical route provider codes. Google Health is returned as `google-health`; `google_health` is accepted as an alias for compatibility with internal source naming and older clients. Each provider descriptor includes OAuth requirements, supported and default `dataTypes`, max sync range, page-size support, and workflow endpoint paths for OAuth and sync.
 
+## Provider Account Lifecycle
+
+Provider OAuth accounts have first-class lifecycle state. Status responses expose account state, token status, last successful sync, last token refresh result, and the latest authentication error without returning encrypted or decrypted token values.
+
+List provider readiness:
+
+```bash
+curl "http://localhost:8080/api/v1/providers/status" \
+  -H "Authorization: Bearer local-dev-key"
+```
+
+List accounts for one provider:
+
+```bash
+curl "http://localhost:8080/api/v1/providers/google-health/accounts" \
+  -H "Authorization: Bearer local-dev-key"
+```
+
+Connect starts the normal provider OAuth flow:
+
+```bash
+curl "http://localhost:8080/api/v1/providers/google-health/oauth/start" \
+  -H "Authorization: Bearer local-dev-key"
+```
+
+Reconnect/re-consent validates an existing local account and starts the same OAuth flow again:
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/providers/google-health/accounts/google-health-me/reconnect" \
+  -H "Authorization: Bearer local-dev-key"
+```
+
+Disconnect is local-only. It clears locally stored OAuth token ciphertext, marks the account `disconnected`, preserves account metadata and sync history, and does not revoke tokens at Google or Withings:
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/providers/google-health/accounts/google-health-me/disconnect" \
+  -H "Authorization: Bearer local-dev-key"
+```
+
+If a refresh token is expired, invalid, or revoked, sync marks the account `needs_reauth`. Manual or future scheduled syncs skip accounts in `needs_reauth` or `disconnected` until reconnect completes.
+
 ## Google Health Provider
 
 The Google Health provider is a server-owned OAuth integration. It reads Google Health data, normalizes it into the same ingestion batch contract shown above, stores the original Google response pages in `sourcePayload`, and writes the existing metric tables through the normal ingestion service.

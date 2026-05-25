@@ -125,6 +125,53 @@ export function createAqtHealthClient() {
         }),
       ),
 
+    listProviderAccounts: (providerCode: string) =>
+      call<ApiSchema<"ProviderAccountListResponseDto">>((headers) =>
+        rawClient.GET("/api/v1/providers/{providerCode}/accounts", {
+          headers,
+          params: { path: { providerCode: providerCode as ProviderPathCode } },
+        }),
+      ),
+
+    getProviderAccount: (providerCode: string, providerInstanceId: string) =>
+      call<ApiSchema<"ProviderAccountStatusResponseDto">>((headers) =>
+        rawClient.GET("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}", {
+          headers,
+          params: {
+            path: {
+              providerCode: providerCode as ProviderPathCode,
+              providerInstanceId,
+            },
+          },
+        }),
+      ),
+
+    disconnectProviderAccount: (providerCode: string, providerInstanceId: string) =>
+      call<ApiSchema<"ProviderDisconnectResponseDto">>((headers) =>
+        rawClient.POST("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/disconnect", {
+          headers,
+          params: {
+            path: {
+              providerCode: providerCode as ProviderPathCode,
+              providerInstanceId,
+            },
+          },
+        }),
+      ),
+
+    reconnectProviderAccount: (providerCode: string, providerInstanceId: string) =>
+      call<ApiSchema<"ProviderOAuthStartResponse">>((headers) =>
+        rawClient.POST("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/reconnect", {
+          headers,
+          params: {
+            path: {
+              providerCode: providerCode as ProviderPathCode,
+              providerInstanceId,
+            },
+          },
+        }),
+      ),
+
     syncProvider: (
       providerCode: string,
       body: ApiSchema<"ProviderSyncRequestDto">,
