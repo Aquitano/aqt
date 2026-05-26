@@ -14,7 +14,7 @@ class ProviderOAuthSyncAccountPort(
     private val repository: ProviderOAuthRepository,
     tokenEncryptionKey: String,
 ) : ProviderSyncAccountPort {
-    private val cipher = TokenCipher(tokenEncryptionKey)
+    private val cipher by lazy { TokenCipher(tokenEncryptionKey) }
 
     override suspend fun selectForSync(
         providerCode: String,
