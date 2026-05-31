@@ -300,6 +300,60 @@ export function createAqtHealthClient() {
           params: { query },
         }),
       ),
+
+    listBloodPressure: (query: Record<string, string | boolean | number | undefined>) =>
+      call<any>(
+        (headers) =>
+          rawClient.GET("/api/v1/metrics/blood-pressure", {
+            headers,
+            params: { query: query as any },
+          }),
+      ),
+
+    getLatestBloodPressure: (query: Record<string, string | boolean | number | undefined>) =>
+      call<any>(
+        (headers) =>
+          rawClient.GET("/api/v1/metrics/blood-pressure/latest", {
+            headers,
+            params: { query: query as any },
+          }),
+      ),
+
+    listCardiovascular: (query: Record<string, string | boolean | number | undefined>) =>
+      call<any>(
+        (headers) =>
+          rawClient.GET("/api/v1/metrics/cardiovascular", {
+            headers,
+            params: { query: query as any },
+          }),
+      ),
+
+    getLatestCardiovascular: (query: Record<string, string | boolean | number | undefined>) =>
+      call<any>(
+        (headers) =>
+          rawClient.GET("/api/v1/metrics/cardiovascular/latest", {
+            headers,
+            params: { query: query as any },
+          }),
+      ),
+
+    listExtendedBodyMeasurements: (query: Record<string, string | boolean | number | undefined>) =>
+      call<any>(
+        (headers) =>
+          rawClient.GET("/api/v1/metrics/extended-body-measurements", {
+            headers,
+            params: { query: query as any },
+          }),
+      ),
+
+    getLatestExtendedBodyMeasurement: (query: Record<string, string | boolean | number | undefined>) =>
+      call<any>(
+        (headers) =>
+          rawClient.GET("/api/v1/metrics/extended-body-measurements/latest", {
+            headers,
+            params: { query: query as any },
+          }),
+      ),
   };
 }
 

@@ -195,6 +195,22 @@ data class SleepSummaryResponse(
     val wakeupCount: Int? = null,
     val wasoSeconds: Long? = null,
     val sleepScore: Int? = null,
+    val remEpisodesCount: Int? = null,
+    val outOfBedCount: Int? = null,
+    val awakeDurationSeconds: Long? = null,
+    val overnightHrvRmssd: Double? = null,
+    val respiratoryRhythm: Double? = null,
+    val breathingQuality: Int? = null,
+    val snoringDurationSeconds: Long? = null,
+    val apneaHypopneaIndex: Double? = null,
+    val movementScore: Double? = null,
+    val snoringEpisodeCount: Int? = null,
+    val hrAverageBpm: Int? = null,
+    val hrMinBpm: Int? = null,
+    val hrMaxBpm: Int? = null,
+    val rrAverage: Double? = null,
+    val rrMin: Double? = null,
+    val rrMax: Double? = null,
     val source: SourceMetadataResponse? = null,
 )
 
@@ -249,6 +265,63 @@ data class HrvSummaryResponse(
     val maxValue: Double? = null,
     val avgValue: Double? = null,
     val latest: HrvSampleResponse? = null,
+)
+
+@Serializable
+data class BloodPressureMeasurementsResponse(
+    val items: List<BloodPressureMeasurementResponse>,
+    val meta: ReadResponseMeta,
+)
+
+@Serializable
+data class BloodPressureMeasurementResponse(
+    val id: Int,
+    @JsonSchema.Format("date-time")
+    val measuredAt: String,
+    val systolicMmhg: Int,
+    val diastolicMmhg: Int,
+    val heartRateBpm: Int? = null,
+    val source: SourceMetadataResponse? = null,
+)
+
+@Serializable
+data class BloodPressureLatestResponse(
+    val item: BloodPressureMeasurementResponse? = null,
+)
+
+@Serializable
+data class CardiovascularMeasurementsResponse(
+    val items: List<CardiovascularMeasurementResponse>,
+    val meta: ReadResponseMeta,
+)
+
+@Serializable
+data class CardiovascularMeasurementResponse(
+    val id: Int,
+    @JsonSchema.Format("date-time")
+    val measuredAt: String,
+    val metricType: String,
+    val value: Double,
+    val unit: String,
+    val source: SourceMetadataResponse? = null,
+)
+
+@Serializable
+data class ExtendedBodyMeasurementsResponse(
+    val items: List<ExtendedBodyMeasurementResponse>,
+    val meta: ReadResponseMeta,
+)
+
+@Serializable
+data class ExtendedBodyMeasurementResponse(
+    val id: Int,
+    @JsonSchema.Format("date-time")
+    val measuredAt: String,
+    val metricType: String,
+    val value: Double,
+    val unit: String,
+    val segment: String? = null,
+    val source: SourceMetadataResponse? = null,
 )
 
 @Serializable

@@ -1,6 +1,7 @@
 import { formatDateTime, formatDuration, formatMeasurement, formatNumber } from "@/lib/format";
 import type {
   ActivitySummaryLatestResponse,
+  BloodPressureLatestResponse,
   HrvSamplesResponse,
   RespiratoryRateSamplesResponse,
   SleepSummaryLatestResponse,
@@ -12,20 +13,29 @@ type MetricHighlightsProps = {
   latestSleepSummary?: SleepSummaryLatestResponse;
   latestRespiratoryRate?: RespiratoryRateSamplesResponse;
   latestHrv?: HrvSamplesResponse;
-};
-
+  latestBloodPressure?: BloodPressureLatestResponse;
 export function MetricHighlights({
   latestActivity,
   latestSleepSummary,
   latestRespiratoryRate,
   latestHrv,
+  latestBloodPressure,
 }: MetricHighlightsProps) {
   const activity = latestActivity?.item;
   const sleep = latestSleepSummary?.item;
   const respiratoryRate = latestRespiratoryRate?.items[0];
   const hrv = latestHrv?.items[0];
+  const bp = latestBloodPressure?.item;
 
   const cards = [
+    {
+      kind: "blood-pressure",
+      label: "Blood pressure",
+      value: bp ? `${bp.systolicMmhg}/${bp.diastolicMmhg} mmHg` : "n/a",
+      detail: bp
+        ? `${bp.heartRateBpm ? bp.heartRateBpm + " bpm · " : ""}${formatDateTime(bp.measuredAt)}`
+        : "No blood pressure reading",
+    },
     {
       kind: "activity",
       label: "Latest activity",

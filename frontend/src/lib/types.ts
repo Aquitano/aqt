@@ -64,6 +64,59 @@ export type MetricAggregationMode = ApiSchema<"MetricAggregationModeDto">;
 export type MetricProviderDataTypes = ApiSchema<"MetricProviderDataTypesDto">;
 export type DashboardTrendsResponse = ApiSchema<"DashboardTrendsResponse">;
 
+// New expanded metric types (will be part of generated API after codegen)
+// New expanded metric types
+export interface BloodPressureMeasurement {
+  id: number;
+  measuredAt: string;
+  systolicMmhg: number;
+  diastolicMmhg: number;
+  heartRateBpm?: number | null;
+  source?: SourceMetadata | null;
+}
+export interface BloodPressureMeasurementsResponse {
+  items: BloodPressureMeasurement[];
+  meta: ReadResponseMeta;
+}
+export interface BloodPressureLatestResponse {
+  item?: BloodPressureMeasurement | null;
+}
+
+export interface CardiovascularMeasurement {
+  id: number;
+  measuredAt: string;
+  metricType: string;
+  value: number;
+  unit: string;
+  source?: SourceMetadata | null;
+}
+export interface CardiovascularMeasurementsResponse {
+  items: CardiovascularMeasurement[];
+  meta: ReadResponseMeta;
+}
+
+export interface CardiovascularMeasurementResponse {
+  item?: CardiovascularMeasurement | null;
+}
+
+export interface ExtendedBodyMeasurement {
+  id: number;
+  measuredAt: string;
+  metricType: string;
+  value: number;
+  unit: string;
+  segment?: string | null;
+  source?: SourceMetadata | null;
+}
+export interface ExtendedBodyMeasurementsResponse {
+  items: ExtendedBodyMeasurement[];
+  meta: ReadResponseMeta;
+}
+
+export interface ExtendedBodyMeasurementResponse {
+  item?: ExtendedBodyMeasurement | null;
+}
+
 export type HealthDayModuleName = HealthDayResponse["modules"][number];
 export type HealthStatusData = {
   apiBaseUrl: string;
@@ -86,6 +139,9 @@ export type HealthDataPageData = HealthStatusData & {
   latestSleepSummary: ApiResult<SleepSummaryLatestResponse>;
   latestRespiratoryRate: ApiResult<RespiratoryRateSamplesResponse>;
   latestHrv: ApiResult<HrvSamplesResponse>;
+  bloodPressure: ApiResult<BloodPressureMeasurementsResponse>;
+  cardiovascular: ApiResult<CardiovascularMeasurementsResponse>;
+  extendedBodyMeasurements: ApiResult<ExtendedBodyMeasurementsResponse>;
   metricCatalog: ApiResult<MetricCatalogResponse>;
 };
 

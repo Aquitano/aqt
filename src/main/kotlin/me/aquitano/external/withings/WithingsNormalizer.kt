@@ -85,6 +85,15 @@ class WithingsNormalizer {
                 var visceralFatRating: Double? = null
                 var heartPulse: Int? = null
 
+                // Blood pressure accumulators (systolic/diastolic in same measure group)
+                var systolicMmhg: Int? = null
+                var diastolicMmhg: Int? = null
+                var bpHeartRate: Int? = null
+
+                // Extended body metrics and cardiovascular as individual DTOs
+                val extendedMetrics = mutableListOf<ExtendedBodyMeasurementDto>()
+                val cardiovascularMetrics = mutableListOf<CardiovascularDto>()
+
                 measures.mapNotNull { it as? JsonObject }.forEach { measure ->
                     val type = measure.int("type") ?: return@forEach
                     val value = measure.double("value") ?: return@forEach
@@ -92,18 +101,117 @@ class WithingsNormalizer {
                     val realValue = value * 10.0.pow(unit)
                     when (type) {
                         1 -> if (realValue > 0.0) weightKg = realValue
-                        6 -> if (realValue in 0.0..100.0) bodyFatPercent =
-                            realValue
-
-                        11 -> if (realValue.toInt() in 25..250) heartPulse =
-                            realValue.toInt()
-
+                        5 -> if (realValue > 0.0) extendedMetrics.add(
+                            ExtendedBodyMeasurementDto(
+                                providerRecordId = providerId(grpid, "fat_free_mass"),
+                                measuredAt = measuredAtString,
+                                metricType = "fat_free_mass",
+                                value = realValue,
+                                unit = "kg",
+                            )
+                        )
+                        6 -> if (realValue in 0.0..100.0) bodyFatPercent = realValue
+                        8 -> if (realValue > 0.0) extendedMetrics.add(
+                            ExtendedBodyMeasurementDto(
+                                providerRecordId = providerId(grpid, "fat_mass"),
+                                measuredAt = measuredAtString,
+                                metricType = "fat_mass",
+                                value = realValue,
+                                unit = "kg",
+                            )
+                        )
+                        9 -> if (realValue.toInt() in 30..200) diastolicMmhg = realValue.toInt()
+                        10 -> if (realValue.toInt() in 60..300) systolicMmhg = realValue.toInt()
+                        11 -> if (realValue.toInt() in 25..250) {
+                            // Heart rate from measure group — used for blood pressure HR if BP present,
+                            // otherwise standalone heart rate sample
+                            if (systolicMmhg != null || diastolicMmhg != null) {
+                                bpHeartRate = realValue.toInt()
+                            }
+                            heartPulse = realValue.toInt()
+                        }
                         76 -> if (realValue > 0.0) muscleKg = realValue
                         77 -> if (realValue in 0.0..100.0) waterPercent = realValue
+                        88 -> if (realValue > 0.0) extendedMetrics.add(
+                            ExtendedBodyMeasurementDto(
+                                providerRecordId = providerId(grpid, "bone_mass"),
+                                measuredAt = measuredAtString,
+                                metricType = "bone_mass",
+                                value = realValue,
+                                unit = "kg",
+                            )
+                        )
+                        91 -> if (realValue > 0.0) cardiovascularMetrics.add(
+                            CardiovascularDto(
+                                providerRecordId = providerId(grpid, "pulse_wave_velocity"),
+                                measuredAt = measuredAtString,
+                                metricType = "pulse_wave_velocity",
+                                value = realValue,
+                                unit = "m/s",
+                            )
+                        )
+                        130 -> if (realValue >= 0.0) extendedMetrics.add(
+                            ExtendedBodyMeasurementDto(
+                                providerRecordId = providerId(grpid, "extracellular_water"),
+                                measuredAt = measuredAtString,
+                                metricType = "extracellular_water",
+                                value = realValue,
+                                unit = "kg",
+                            )
+                        )
+                        135 -> if (realValue >= 0.0) extendedMetrics.add(
+                            ExtendedBodyMeasurementDto(
+                                providerRecordId = providerId(grpid, "intracellular_water"),
+                                measuredAt = measuredAtString,
+                                metricType = "intracellular_water",
+                                value = realValue,
+                                unit = "kg",
+                            )
+                        )
+                        136 -> if (realValue > 0.0) addSegmentalMetric(
+                            extendedMetrics, grpid, measuredAtString, measure,
+                            "segmental_fat_mass", "kg", realValue
+                        )
+                        137 -> if (realValue > 0.0) addSegmentalMetric(
+                            extendedMetrics, grpid, measuredAtString, measure,
+                            "segmental_muscle_mass", "kg", realValue
+                        )
+                        138 -> if (realValue > 0.0) addSegmentalMetric(
+                            extendedMetrics, grpid, measuredAtString, measure,
+                            "segmental_fat_free_mass", "kg", realValue
+                        )
+                        139 -> if (realValue > 0.0) cardiovascularMetrics.add(
+                            CardiovascularDto(
+                                providerRecordId = providerId(grpid, "vascular_age"),
+                                measuredAt = measuredAtString,
+                                metricType = "vascular_age",
+                                value = realValue,
+                                unit = "years",
+                            )
+                        )
+                        155 -> if (realValue.toInt() in 25..250) cardiovascularMetrics.add(
+                            CardiovascularDto(
+                                providerRecordId = providerId(grpid, "standing_heart_rate"),
+                                measuredAt = measuredAtString,
+                                metricType = "standing_heart_rate",
+                                value = realValue,
+                                unit = "bpm",
+                            )
+                        )
                         170 -> if (realValue > 0.0) visceralFatRating = realValue
+                        173 -> if (realValue > 0.0) extendedMetrics.add(
+                            ExtendedBodyMeasurementDto(
+                                providerRecordId = providerId(grpid, "basal_metabolic_rate"),
+                                measuredAt = measuredAtString,
+                                metricType = "basal_metabolic_rate",
+                                value = realValue,
+                                unit = "kcal/day",
+                            )
+                        )
                     }
                 }
 
+                // Emit body measurement for legacy metrics
                 if (
                     weightKg != null ||
                     bodyFatPercent != null ||
@@ -123,6 +231,8 @@ class WithingsNormalizer {
                         )
                     )
                 }
+
+                // Emit standalone heart rate sample
                 heartPulse?.let {
                     add(
                         HeartRateDto(
@@ -133,8 +243,62 @@ class WithingsNormalizer {
                         )
                     )
                 }
+
+                // Emit blood pressure if both systolic and diastolic present
+                if (systolicMmhg != null && diastolicMmhg != null && systolicMmhg > diastolicMmhg) {
+                    add(
+                        BloodPressureDto(
+                            providerRecordId = "withings:measure:$grpid:bp",
+                            measuredAt = measuredAtString,
+                            systolicMmhg = systolicMmhg,
+                            diastolicMmhg = diastolicMmhg,
+                            heartRateBpm = bpHeartRate,
+                        )
+                    )
+                }
+
+                // Emit extended body metrics
+                addAll(extendedMetrics)
+
+                // Emit cardiovascular metrics
+                addAll(cardiovascularMetrics)
             }
         }
+
+    private fun providerId(grpid: String, suffix: String): String =
+        "withings:measure:$grpid:$suffix"
+
+    private fun addSegmentalMetric(
+        target: MutableList<ExtendedBodyMeasurementDto>,
+        grpid: String,
+        measuredAtString: String,
+        measure: JsonObject,
+        metricType: String,
+        unit: String,
+        value: Double,
+    ) {
+        val segmentCode = measure.string("zone") ?: return
+        val segment = mapSegment(segmentCode) ?: return
+        target.add(
+            ExtendedBodyMeasurementDto(
+                providerRecordId = "withings:measure:$grpid:$metricType:$segment",
+                measuredAt = measuredAtString,
+                metricType = metricType,
+                value = value,
+                unit = unit,
+                segment = segment,
+            )
+        )
+    }
+
+    private fun mapSegment(code: String): String? = when (code) {
+        "left_arm" -> "left_arm"
+        "right_arm" -> "right_arm"
+        "left_leg" -> "left_leg"
+        "right_leg" -> "right_leg"
+        "trunk" -> "trunk"
+        else -> null
+    }
 
     private fun normalizeSleepSummary(records: List<JsonObject>): List<IngestionRecordDto> =
         buildList {
@@ -179,6 +343,27 @@ class WithingsNormalizer {
                     wakeupCount = data.nonNegativeInt("wakeupcount"),
                     wasoSeconds = data.nonNegativeLong("waso"),
                     sleepScore = sleepScore,
+                    remEpisodesCount = data.nonNegativeInt("nb_rem_episodes"),
+                    outOfBedCount = data.nonNegativeInt("out_of_bed_count"),
+                    awakeDurationSeconds = data.nonNegativeLong("awake_duration"),
+                    overnightHrvRmssd = data.double("rmssd_start_avg"),
+                    respiratoryRhythm = data.double("chest_movement_rate_wellness_average"),
+                    breathingQuality = data.int("breathing_quality_assessment")
+                        ?.takeIf { it in 0..100 },
+                    snoringDurationSeconds = data.nonNegativeLong("snoring"),
+                    apneaHypopneaIndex = data.double("apnea_hypopnea_index")
+                        ?.takeIf { it >= 0.0 },
+                    movementScore = data.double("mvt_score_avg"),
+                    snoringEpisodeCount = data.nonNegativeInt("snoringepisodecount"),
+                    hrAverageBpm = data.validHeartRate("hr_average"),
+                    hrMinBpm = data.validHeartRate("hr_min"),
+                    hrMaxBpm = data.validHeartRate("hr_max"),
+                    rrAverage = data.double("rr_average")
+                        ?.takeIf { it in 5.0..40.0 },
+                    rrMin = data.double("rr_min")
+                        ?.takeIf { it in 5.0..40.0 },
+                    rrMax = data.double("rr_max")
+                        ?.takeIf { it in 5.0..40.0 },
                 )
                 if (summary.hasAnyMetric()) add(summary)
             }
@@ -389,7 +574,23 @@ class WithingsNormalizer {
             wakeupDurationSeconds != null ||
             wakeupCount != null ||
             wasoSeconds != null ||
-            sleepScore != null
+            sleepScore != null ||
+            remEpisodesCount != null ||
+            outOfBedCount != null ||
+            awakeDurationSeconds != null ||
+            overnightHrvRmssd != null ||
+            respiratoryRhythm != null ||
+            breathingQuality != null ||
+            snoringDurationSeconds != null ||
+            apneaHypopneaIndex != null ||
+            movementScore != null ||
+            snoringEpisodeCount != null ||
+            hrAverageBpm != null ||
+            hrMinBpm != null ||
+            hrMaxBpm != null ||
+            rrAverage != null ||
+            rrMin != null ||
+            rrMax != null
 
     private fun JsonObject.string(key: String): String? =
         this[key]?.jsonPrimitive?.contentOrNull

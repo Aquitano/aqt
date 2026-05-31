@@ -16,7 +16,13 @@ import type {
   ProviderSyncRequest,
   ProviderSyncResponse,
   HealthStatusData,
-} from "./types";
+  BloodPressureMeasurementsResponse,
+  BloodPressureLatestResponse,
+  CardiovascularMeasurementsResponse,
+  CardiovascularMeasurementResponse,
+  ExtendedBodyMeasurementsResponse,
+  ExtendedBodyMeasurementResponse,
+ } from "./types";
 import { createAqtHealthClient } from "./aqtHealthClient";
 import {
   dateOnlyToUtcInstant,
@@ -59,6 +65,12 @@ export async function getHealthDataPageData(
     latestSleepSummary,
     latestRespiratoryRate,
     latestHrv,
+    bloodPressure,
+    latestBloodPressure,
+    cardiovascular,
+    latestCardiovascular,
+    extendedBodyMeasurements,
+    latestExtendedBodyMeasurement,
   ] = await Promise.all([
     client.getHealth(),
     client.getDashboardSummary({
@@ -122,6 +134,33 @@ export async function getHealthDataPageData(
     client.getLatestSleepSummary({ includeSource: true }),
     client.listRespiratoryRateSamples({ latest: true, includeSource: true }),
     client.listHrvSamples({ latest: true, includeSource: true }),
+    client.listBloodPressure({
+      from: measurementsFrom,
+      to: measurementsTo,
+      includeSource: true,
+      sort: "measuredAt",
+      order: "desc",
+      limit: 5000,
+    }),
+    client.getLatestBloodPressure({ includeSource: true }),
+    client.listCardiovascular({
+      from: measurementsFrom,
+      to: measurementsTo,
+      includeSource: true,
+      sort: "measuredAt",
+      order: "desc",
+      limit: 5000,
+    }),
+    client.getLatestCardiovascular({ includeSource: true }),
+    client.listExtendedBodyMeasurements({
+      from: measurementsFrom,
+      to: measurementsTo,
+      includeSource: true,
+      sort: "measuredAt",
+      order: "desc",
+      limit: 5000,
+    }),
+    client.getLatestExtendedBodyMeasurement({ includeSource: true }),
   ]);
 
   return {
@@ -142,6 +181,12 @@ export async function getHealthDataPageData(
     latestSleepSummary,
     latestRespiratoryRate,
     latestHrv,
+    bloodPressure,
+    latestBloodPressure,
+    cardiovascular,
+    latestCardiovascular,
+    extendedBodyMeasurements,
+    latestExtendedBodyMeasurement,
     metricCatalog,
   };
 }

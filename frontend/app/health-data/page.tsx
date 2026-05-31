@@ -19,7 +19,10 @@ import { SleepSummariesTable } from "@/components/tables/SleepSummariesTable";
 import { SleepSessionsTable } from "@/components/tables/SleepSessionsTable";
 import { getHealthDataPageData } from "@/lib/aqtHealthApi";
 import { addUtcDays, parseDateRange } from "@/lib/dates";
-import type { BodyMeasurement } from "@/lib/types";
+import type { BloodPressureMeasurement, CardiovascularMeasurement, ExtendedBodyMeasurement, BodyMeasurement } from "@/lib/types";
+import { BloodPressureTable } from "@/components/tables/BloodPressureTable";
+import { CardiovascularTable } from "@/components/tables/CardiovascularTable";
+import { ExtendedBodyMeasurementsTable } from "@/components/tables/ExtendedBodyMeasurementsTable";
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -79,8 +82,8 @@ export default async function HealthDataPage({ searchParams }: PageProps) {
         latestSleepSummary={data.latestSleepSummary.ok ? data.latestSleepSummary.data : undefined}
         latestRespiratoryRate={data.latestRespiratoryRate.ok ? data.latestRespiratoryRate.data : undefined}
         latestHrv={data.latestHrv.ok ? data.latestHrv.data : undefined}
+        latestBloodPressure={data.latestBloodPressure?.ok ? data.latestBloodPressure.data : undefined}
       />
-
       <HealthDataVisualizations
         activitySummaries={data.activitySummaries.ok ? data.activitySummaries.data : undefined}
         bodyMeasurements={bodyMeasurements}
@@ -127,6 +130,18 @@ export default async function HealthDataPage({ searchParams }: PageProps) {
 
         <DataSection title="HRV" result={data.hrvSamples}>
           {(response) => <HrvTable items={response.items} />}
+        </DataSection>
+
+        <DataSection title="Blood pressure" result={data.bloodPressure}>
+          {(response) => <BloodPressureTable items={response.items} />}
+        </DataSection>
+
+        <DataSection title="Cardiovascular" result={data.cardiovascular}>
+          {(response) => <CardiovascularTable items={response.items} />}
+        </DataSection>
+
+        <DataSection title="Extended body metrics" result={data.extendedBodyMeasurements}>
+          {(response) => <ExtendedBodyMeasurementsTable items={response.items} />}
         </DataSection>
       </div>
 

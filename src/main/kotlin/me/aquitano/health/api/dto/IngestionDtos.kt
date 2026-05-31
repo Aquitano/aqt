@@ -28,6 +28,9 @@ data class IngestionBatchRequest(
     SleepSummaryDto::class,
     RespiratoryRateDto::class,
     HrvDto::class,
+    BloodPressureDto::class,
+    CardiovascularDto::class,
+    ExtendedBodyMeasurementDto::class,
 )
 @JsonSchema.Discriminator(
     "type",
@@ -42,6 +45,12 @@ data class IngestionBatchRequest(
     JsonSchema.Discriminator.Mapping("sleep_summary", SleepSummaryDto::class),
     JsonSchema.Discriminator.Mapping("respiratory_rate", RespiratoryRateDto::class),
     JsonSchema.Discriminator.Mapping("hrv", HrvDto::class),
+    JsonSchema.Discriminator.Mapping("blood_pressure", BloodPressureDto::class),
+    JsonSchema.Discriminator.Mapping("cardiovascular", CardiovascularDto::class),
+    JsonSchema.Discriminator.Mapping(
+        "extended_body_measurement",
+        ExtendedBodyMeasurementDto::class
+    ),
 )
 sealed class IngestionRecordDto {
     abstract val providerRecordId: String?
@@ -142,6 +151,22 @@ data class SleepSummaryDto(
     val wakeupCount: Int? = null,
     val wasoSeconds: Long? = null,
     val sleepScore: Int? = null,
+    val remEpisodesCount: Int? = null,
+    val outOfBedCount: Int? = null,
+    val awakeDurationSeconds: Long? = null,
+    val overnightHrvRmssd: Double? = null,
+    val respiratoryRhythm: Double? = null,
+    val breathingQuality: Int? = null,
+    val snoringDurationSeconds: Long? = null,
+    val apneaHypopneaIndex: Double? = null,
+    val movementScore: Double? = null,
+    val snoringEpisodeCount: Int? = null,
+    val hrAverageBpm: Int? = null,
+    val hrMinBpm: Int? = null,
+    val hrMaxBpm: Int? = null,
+    val rrAverage: Double? = null,
+    val rrMin: Double? = null,
+    val rrMax: Double? = null,
 ) : IngestionRecordDto()
 
 @Serializable
@@ -164,6 +189,40 @@ data class HrvDto(
     val value: Double,
     val unit: String,
     val context: String? = null,
+) : IngestionRecordDto()
+
+@Serializable
+@SerialName("blood_pressure")
+data class BloodPressureDto(
+    override val providerRecordId: String? = null,
+    @JsonSchema.Format("date-time")
+    val measuredAt: String,
+    val systolicMmhg: Int,
+    val diastolicMmhg: Int,
+    val heartRateBpm: Int? = null,
+) : IngestionRecordDto()
+
+@Serializable
+@SerialName("cardiovascular")
+data class CardiovascularDto(
+    override val providerRecordId: String? = null,
+    @JsonSchema.Format("date-time")
+    val measuredAt: String,
+    val metricType: String,
+    val value: Double,
+    val unit: String,
+) : IngestionRecordDto()
+
+@Serializable
+@SerialName("extended_body_measurement")
+data class ExtendedBodyMeasurementDto(
+    override val providerRecordId: String? = null,
+    @JsonSchema.Format("date-time")
+    val measuredAt: String,
+    val metricType: String,
+    val value: Double,
+    val unit: String,
+    val segment: String? = null,
 ) : IngestionRecordDto()
 
 @Serializable
@@ -190,6 +249,9 @@ data class MetricCreatedCountsResponse(
     val sleepSummaries: Int,
     val respiratoryRateSamples: Int,
     val hrvSamples: Int,
+    val bloodPressureMeasurements: Int,
+    val cardiovascularMeasurements: Int,
+    val extendedBodyMeasurements: Int,
 )
 
 @Serializable

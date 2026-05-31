@@ -588,6 +588,48 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 )
             )
         }.describeHrvReadOperation()
+
+        // Blood pressure
+        get("/api/v1/metrics/blood-pressure") {
+            call.authenticateProtected(services)
+            call.respond<BloodPressureMeasurementsResponse>(
+                services.metricsQueryService.listBloodPressure(call.queryParams())
+            )
+        }
+        get("/api/v1/metrics/blood-pressure/latest") {
+            call.authenticateProtected(services)
+            call.respond<BloodPressureLatestResponse>(
+                services.metricsQueryService.latestBloodPressure(call.queryParams())
+            )
+        }
+
+        // Cardiovascular
+        get("/api/v1/metrics/cardiovascular") {
+            call.authenticateProtected(services)
+            call.respond<CardiovascularMeasurementsResponse>(
+                services.metricsQueryService.listCardiovascular(call.queryParams())
+            )
+        }
+        get("/api/v1/metrics/cardiovascular/latest") {
+            call.authenticateProtected(services)
+            call.respond<CardiovascularMeasurementResponse>(
+                services.metricsQueryService.latestCardiovascular(call.queryParams())
+            )
+        }
+
+        // Extended body measurements
+        get("/api/v1/metrics/extended-body-measurements") {
+            call.authenticateProtected(services)
+            call.respond<ExtendedBodyMeasurementsResponse>(
+                services.metricsQueryService.listExtendedBodyMeasurements(call.queryParams())
+            )
+        }
+        get("/api/v1/metrics/extended-body-measurements/latest") {
+            call.authenticateProtected(services)
+            call.respond<ExtendedBodyMeasurementResponse>(
+                services.metricsQueryService.latestExtendedBodyMeasurement(call.queryParams())
+            )
+        }
         get("/api/v1/dashboard/summary") {
             call.authenticateProtected(services)
             call.respond<DashboardSummaryResponse>(

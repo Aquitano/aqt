@@ -97,6 +97,9 @@ class IngestionMappingService {
             is SleepSummaryDto -> mapSleepSummary(field, dto, issues)
             is RespiratoryRateDto -> mapRespiratoryRate(field, dto, issues)
             is HrvDto -> mapHrv(field, dto, issues)
+            is BloodPressureDto -> mapBloodPressure(field, dto, issues)
+            is CardiovascularDto -> mapCardiovascular(field, dto, issues)
+            is ExtendedBodyMeasurementDto -> mapExtendedBodyMeasurement(field, dto, issues)
         }
     }
 
@@ -586,6 +589,33 @@ class IngestionMappingService {
                 )
             )
         }
+        validateNonNegativeInt(dto.remEpisodesCount, "$field.remEpisodesCount", issues)
+        validateNonNegativeInt(dto.outOfBedCount, "$field.outOfBedCount", issues)
+        validateNonNegativeLong(dto.awakeDurationSeconds, "$field.awakeDurationSeconds", issues)
+        if (dto.overnightHrvRmssd != null && dto.overnightHrvRmssd <= 0.0) {
+            issues.add(ValidationIssue("$field.overnightHrvRmssd", code = ValidationIssueCodes.OutOfRange, message = "must be greater than 0"))
+        }
+        validateNonNegativeDouble(dto.respiratoryRhythm, "$field.respiratoryRhythm", issues)
+        if (dto.breathingQuality != null && dto.breathingQuality !in 0..100) {
+            issues.add(ValidationIssue("$field.breathingQuality", code = ValidationIssueCodes.OutOfRange, message = "must be between 0 and 100"))
+        }
+        validateNonNegativeLong(dto.snoringDurationSeconds, "$field.snoringDurationSeconds", issues)
+        validateNonNegativeDouble(dto.apneaHypopneaIndex, "$field.apneaHypopneaIndex", issues)
+        validateNonNegativeDouble(dto.movementScore, "$field.movementScore", issues)
+        validateNonNegativeInt(dto.snoringEpisodeCount, "$field.snoringEpisodeCount", issues)
+        validateOptionalHeartRate(dto.hrAverageBpm, "$field.hrAverageBpm", issues)
+        validateOptionalHeartRate(dto.hrMinBpm, "$field.hrMinBpm", issues)
+        validateOptionalHeartRate(dto.hrMaxBpm, "$field.hrMaxBpm", issues)
+        if (dto.rrAverage != null && dto.rrAverage !in 5.0..40.0) {
+            issues.add(ValidationIssue("$field.rrAverage", code = ValidationIssueCodes.OutOfRange, message = "must be between 5 and 40"))
+        }
+        if (dto.rrMin != null && dto.rrMin !in 5.0..40.0) {
+            issues.add(ValidationIssue("$field.rrMin", code = ValidationIssueCodes.OutOfRange, message = "must be between 5 and 40"))
+        }
+        if (dto.rrMax != null && dto.rrMax !in 5.0..40.0) {
+            issues.add(ValidationIssue("$field.rrMax", code = ValidationIssueCodes.OutOfRange, message = "must be between 5 and 40"))
+        }
+
 
         val hasAnyMetric = listOfNotNull(
             dto.timeInBedSeconds,
@@ -600,6 +630,22 @@ class IngestionMappingService {
             dto.wakeupCount,
             dto.wasoSeconds,
             dto.sleepScore,
+            dto.remEpisodesCount,
+            dto.outOfBedCount,
+            dto.awakeDurationSeconds,
+            dto.overnightHrvRmssd,
+            dto.respiratoryRhythm,
+            dto.breathingQuality,
+            dto.snoringDurationSeconds,
+            dto.apneaHypopneaIndex,
+            dto.movementScore,
+            dto.snoringEpisodeCount,
+            dto.hrAverageBpm,
+            dto.hrMinBpm,
+            dto.hrMaxBpm,
+            dto.rrAverage,
+            dto.rrMin,
+            dto.rrMax,
         ).isNotEmpty()
         if (!hasAnyMetric) {
             issues.add(
@@ -632,6 +678,22 @@ class IngestionMappingService {
                 wakeupCount = dto.wakeupCount,
                 wasoSeconds = dto.wasoSeconds,
                 sleepScore = dto.sleepScore,
+                remEpisodesCount = dto.remEpisodesCount,
+                outOfBedCount = dto.outOfBedCount,
+                awakeDurationSeconds = dto.awakeDurationSeconds,
+                overnightHrvRmssd = dto.overnightHrvRmssd,
+                respiratoryRhythm = dto.respiratoryRhythm,
+                breathingQuality = dto.breathingQuality,
+                snoringDurationSeconds = dto.snoringDurationSeconds,
+                apneaHypopneaIndex = dto.apneaHypopneaIndex,
+                movementScore = dto.movementScore,
+                snoringEpisodeCount = dto.snoringEpisodeCount,
+                hrAverageBpm = dto.hrAverageBpm,
+                hrMinBpm = dto.hrMinBpm,
+                hrMaxBpm = dto.hrMaxBpm,
+                rrAverage = dto.rrAverage,
+                rrMin = dto.rrMin,
+                rrMax = dto.rrMax,
             )
         } else {
             null
@@ -738,6 +800,177 @@ class IngestionMappingService {
                 value = dto.value,
                 unit = dto.unit,
                 context = context,
+            )
+        } else {
+            null
+        }
+    }
+
+    private fun mapBloodPressure(
+        field: String,
+        dto: BloodPressureDto,
+        issues: MutableList<ValidationIssue>
+    ): BloodPressureRecord? {
+        val measuredAt =
+            parseInstant(dto.measuredAt, "$field.measuredAt", issues)
+        if (dto.systolicMmhg !in 60..300) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.systolicMmhg",
+                    code = ValidationIssueCodes.OutOfRange,
+                    message = "must be between 60 and 300",
+                )
+            )
+        }
+        if (dto.diastolicMmhg !in 30..200) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.diastolicMmhg",
+                    code = ValidationIssueCodes.OutOfRange,
+                    message = "must be between 30 and 200",
+                )
+            )
+        }
+        if (dto.systolicMmhg <= dto.diastolicMmhg) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.systolicMmhg",
+                    code = ValidationIssueCodes.InvalidRange,
+                    message = "must be greater than diastolicMmhg",
+                )
+            )
+        }
+        validateOptionalHeartRate(dto.heartRateBpm, "$field.heartRateBpm", issues)
+
+        return if (measuredAt != null && dto.systolicMmhg in 60..300 && dto.diastolicMmhg in 30..200 && dto.systolicMmhg > dto.diastolicMmhg) {
+            BloodPressureRecord(
+                providerRecordId = dto.providerRecordId,
+                normalizedRecordJson = AppJson.encodeToJsonElement(
+                    IngestionRecordDto.serializer(),
+                    dto
+                ).jsonObject,
+                measuredAt = measuredAt,
+                systolicMmhg = dto.systolicMmhg,
+                diastolicMmhg = dto.diastolicMmhg,
+                heartRateBpm = dto.heartRateBpm,
+            )
+        } else {
+            null
+        }
+    }
+
+    private fun mapCardiovascular(
+        field: String,
+        dto: CardiovascularDto,
+        issues: MutableList<ValidationIssue>
+    ): CardiovascularRecord? {
+        val measuredAt =
+            parseInstant(dto.measuredAt, "$field.measuredAt", issues)
+        if (dto.metricType !in CardiovascularMetricTypes.supported) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.metricType",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "unsupported cardiovascular metric type",
+                )
+            )
+        }
+        if (dto.value <= 0.0) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.value",
+                    code = ValidationIssueCodes.OutOfRange,
+                    message = "must be greater than 0",
+                )
+            )
+        }
+        if (dto.metricType == CardiovascularMetricTypes.PULSE_WAVE_VELOCITY && dto.unit != "m/s") {
+            issues.add(ValidationIssue("$field.unit", code = ValidationIssueCodes.UnsupportedValue, message = "must be m/s"))
+        }
+        if (dto.metricType == CardiovascularMetricTypes.VASCULAR_AGE && dto.unit != "years") {
+            issues.add(ValidationIssue("$field.unit", code = ValidationIssueCodes.UnsupportedValue, message = "must be years"))
+        }
+        if (dto.metricType == CardiovascularMetricTypes.STANDING_HEART_RATE && dto.unit != "bpm") {
+            issues.add(ValidationIssue("$field.unit", code = ValidationIssueCodes.UnsupportedValue, message = "must be bpm"))
+        }
+
+        return if (measuredAt != null && dto.metricType in CardiovascularMetricTypes.supported && dto.value > 0.0) {
+            CardiovascularRecord(
+                providerRecordId = dto.providerRecordId,
+                normalizedRecordJson = AppJson.encodeToJsonElement(
+                    IngestionRecordDto.serializer(),
+                    dto
+                ).jsonObject,
+                measuredAt = measuredAt,
+                metricType = dto.metricType,
+                value = dto.value,
+                unit = dto.unit,
+            )
+        } else {
+            null
+        }
+    }
+
+    private fun mapExtendedBodyMeasurement(
+        field: String,
+        dto: ExtendedBodyMeasurementDto,
+        issues: MutableList<ValidationIssue>
+    ): ExtendedBodyMeasurementRecord? {
+        val measuredAt =
+            parseInstant(dto.measuredAt, "$field.measuredAt", issues)
+        if (dto.metricType !in BodyMetricTypes.supported) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.metricType",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "unsupported extended body metric type",
+                )
+            )
+        }
+        if (dto.segment != null && dto.segment !in BodySegments.supported) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.segment",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "unsupported body segment",
+                )
+            )
+        }
+        if (dto.value <= 0.0 && dto.metricType != BodyMetricTypes.INTRACELLULAR_WATER && dto.metricType != BodyMetricTypes.EXTRACELLULAR_WATER) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.value",
+                    code = ValidationIssueCodes.OutOfRange,
+                    message = "must be greater than 0",
+                )
+            )
+        }
+        if ((dto.metricType == BodyMetricTypes.INTRACELLULAR_WATER || dto.metricType == BodyMetricTypes.EXTRACELLULAR_WATER) && dto.value < 0.0) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.value",
+                    code = ValidationIssueCodes.OutOfRange,
+                    message = "must be greater than or equal to 0",
+                )
+            )
+        }
+
+        return if (measuredAt != null && dto.metricType in BodyMetricTypes.supported) {
+            ExtendedBodyMeasurementRecord(
+                providerRecordId = dto.providerRecordId,
+                normalizedRecordJson = AppJson.encodeToJsonElement(
+                    IngestionRecordDto.serializer(),
+                    dto
+                ).jsonObject,
+                measuredAt = measuredAt,
+                measurements = listOf(
+                    ExtendedBodyMeasurementValue(
+                        metricType = dto.metricType,
+                        value = dto.value,
+                        unit = dto.unit,
+                        segment = dto.segment,
+                    )
+                ),
             )
         } else {
             null

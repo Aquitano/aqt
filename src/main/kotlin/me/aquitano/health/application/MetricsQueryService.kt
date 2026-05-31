@@ -3,6 +3,7 @@ package me.aquitano.health.application
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.BodyMetricTypes
 import me.aquitano.health.domain.HrvMetricTypes
+import me.aquitano.health.domain.CardiovascularMetricTypes
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
@@ -554,6 +555,82 @@ class MetricsQueryService(
         }
     }
 
+    suspend fun listBloodPressure(params: QueryParams): BloodPressureMeasurementsResponse =
+        dbQuery {
+            val filters = params.readFilters(
+                defaultSort = SortFields.MEASURED_AT,
+                allowedSorts = setOf(SortFields.MEASURED_AT),
+                latestSupported = true,
+            )
+            val (rawRows, sourceMetadata) = metricsReadRepository.listBloodPressure(filters)
+            BloodPressureMeasurementsResponse(
+                items = rawRows.map { it.toResponse(sourceMetadata) },
+                meta = rawRows.meta(filters),
+            )
+        }
+
+    suspend fun latestBloodPressure(params: QueryParams): BloodPressureLatestResponse =
+        dbQuery {
+            val filters = params.summaryFilters(SortFields.MEASURED_AT)
+            val (row, sourceMetadata) = metricsReadRepository.latestBloodPressure(filters)
+            BloodPressureLatestResponse(item = row?.toResponse(sourceMetadata))
+        }
+
+    suspend fun listCardiovascular(params: QueryParams): CardiovascularMeasurementsResponse {
+        val metricType = params.optional("metricType")
+        if (metricType != null) validateCardiovascularMetricType(metricType)
+        return dbQuery {
+            val filters = params.readFilters(
+                defaultSort = SortFields.MEASURED_AT,
+                allowedSorts = setOf(SortFields.MEASURED_AT),
+                latestSupported = true,
+            )
+            val (rawRows, sourceMetadata) = metricsReadRepository.listCardiovascular(filters, metricType)
+            CardiovascularMeasurementsResponse(
+                items = rawRows.map { it.toResponse(sourceMetadata) },
+                meta = rawRows.meta(filters),
+            )
+        }
+    }
+
+    suspend fun latestCardiovascular(params: QueryParams): CardiovascularMeasurementResponse {
+        val metricType = params.required("metricType")
+        validateCardiovascularMetricType(metricType)
+        return dbQuery {
+            val filters = params.summaryFilters(SortFields.MEASURED_AT)
+            val (row, sourceMetadata) = metricsReadRepository.latestCardiovascular(filters, metricType)
+            row!!.toResponse(sourceMetadata)
+        }
+    }
+
+    suspend fun listExtendedBodyMeasurements(params: QueryParams): ExtendedBodyMeasurementsResponse {
+        val metricType = params.optional("metricType")
+        if (metricType != null) validateBodyMetricType(metricType)
+        return dbQuery {
+            val filters = params.readFilters(
+                defaultSort = SortFields.MEASURED_AT,
+                allowedSorts = setOf(SortFields.MEASURED_AT),
+                latestSupported = true,
+            )
+            val (rawRows, sourceMetadata) = metricsReadRepository.listExtendedBodyMeasurements(filters, metricType)
+            ExtendedBodyMeasurementsResponse(
+                items = rawRows.map { it.toResponse(sourceMetadata) },
+                meta = rawRows.meta(filters),
+            )
+        }
+    }
+
+    suspend fun latestExtendedBodyMeasurement(params: QueryParams): ExtendedBodyMeasurementResponse {
+        val metricType = params.required("metricType")
+        validateBodyMetricType(metricType)
+        return dbQuery {
+            val filters = params.summaryFilters(SortFields.MEASURED_AT)
+            val (row, sourceMetadata) = metricsReadRepository.latestExtendedBodyMeasurementBefore(filters, metricType)
+            row?.toResponse(sourceMetadata) ?: throw me.aquitano.health.domain.NotFoundException("No extended body measurement found")
+        }
+    }
+
+
     private fun QueryParams.sleepNightReadFilters(now: Instant): SleepNightReadFilters {
         val timezone = timezone()
         val exactDate = dateOrToday("date", now, timezone)
@@ -1024,6 +1101,22 @@ internal fun SleepSummaryRow.toResponse(
         wakeupCount = wakeupCount,
         wasoSeconds = wasoSeconds,
         sleepScore = sleepScore,
+        remEpisodesCount = remEpisodesCount,
+        outOfBedCount = outOfBedCount,
+        awakeDurationSeconds = awakeDurationSeconds,
+        overnightHrvRmssd = overnightHrvRmssd,
+        respiratoryRhythm = respiratoryRhythm,
+        breathingQuality = breathingQuality,
+        snoringDurationSeconds = snoringDurationSeconds,
+        apneaHypopneaIndex = apneaHypopneaIndex,
+        movementScore = movementScore,
+        snoringEpisodeCount = snoringEpisodeCount,
+        hrAverageBpm = hrAverageBpm,
+        hrMinBpm = hrMinBpm,
+        hrMaxBpm = hrMaxBpm,
+        rrAverage = rrAverage,
+        rrMin = rrMin,
+        rrMax = rrMax,
         source = sourceMetadata[sourceInstanceId].toResponse(),
     )
 
@@ -1061,6 +1154,44 @@ private fun HrvSampleRow.toResponse(
         context = context,
         source = sourceMetadata[sourceInstanceId].toResponse(),
     )
+
+private fun BloodPressureMeasurementRow.toResponse(
+    sourceMetadata: Map<Int, SourceMetadata>
+): BloodPressureMeasurementResponse =
+    BloodPressureMeasurementResponse(
+        id = id,
+        measuredAt = measuredAt,
+        systolicMmhg = systolicMmhg,
+        diastolicMmhg = diastolicMmhg,
+        heartRateBpm = heartRateBpm,
+        source = sourceMetadata[sourceInstanceId].toResponse(),
+    )
+
+private fun CardiovascularMeasurementRow.toResponse(
+    sourceMetadata: Map<Int, SourceMetadata>
+): CardiovascularMeasurementResponse =
+    CardiovascularMeasurementResponse(
+        id = id,
+        measuredAt = measuredAt,
+        metricType = metricType,
+        value = value,
+        unit = unit,
+        source = sourceMetadata[sourceInstanceId].toResponse(),
+    )
+
+private fun ExtendedBodyMeasurementRow.toResponse(
+    sourceMetadata: Map<Int, SourceMetadata>
+): ExtendedBodyMeasurementResponse =
+    ExtendedBodyMeasurementResponse(
+        id = id,
+        measuredAt = measuredAt,
+        metricType = metricType,
+        value = value,
+        unit = unit,
+        segment = segment,
+        source = sourceMetadata[sourceInstanceId].toResponse(),
+    )
+
 
 private fun SleepSessionRow.toResponse(
     stagesBySession: Map<Int, List<SleepStageRow>>,
@@ -1145,6 +1276,21 @@ private fun validateBodyMetricType(metricType: String) {
         )
     }
 }
+
+private fun validateCardiovascularMetricType(metricType: String) {
+    if (metricType !in CardiovascularMetricTypes.supported) {
+        throw RequestValidationException(
+            listOf(
+                ValidationIssue(
+                    field = "metricType",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "unsupported cardiovascular metric type: $metricType",
+                )
+            )
+        )
+    }
+}
+
 
 internal object SortFields {
     const val START_AT = "startAt"

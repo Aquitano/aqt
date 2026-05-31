@@ -109,6 +109,22 @@ data class SleepSummaryRecord(
     val wakeupCount: Int?,
     val wasoSeconds: Long?,
     val sleepScore: Int?,
+    val remEpisodesCount: Int?,
+    val outOfBedCount: Int?,
+    val awakeDurationSeconds: Long?,
+    val overnightHrvRmssd: Double?,
+    val respiratoryRhythm: Double?,
+    val breathingQuality: Int?,
+    val snoringDurationSeconds: Long?,
+    val apneaHypopneaIndex: Double?,
+    val movementScore: Double?,
+    val snoringEpisodeCount: Int?,
+    val hrAverageBpm: Int?,
+    val hrMinBpm: Int?,
+    val hrMaxBpm: Int?,
+    val rrAverage: Double?,
+    val rrMin: Double?,
+    val rrMax: Double?,
 ) : HealthRecord {
     override val recordType: String = RecordTypes.SLEEP_SUMMARY
     override val recordStartAt: Instant = startAt
@@ -140,3 +156,47 @@ data class HrvRecord(
     override val recordStartAt: Instant = measuredAt
     override val recordEndAt: Instant? = null
 }
+
+data class BloodPressureRecord(
+    override val providerRecordId: String?,
+    override val normalizedRecordJson: JsonObject,
+    val measuredAt: Instant,
+    val systolicMmhg: Int,
+    val diastolicMmhg: Int,
+    val heartRateBpm: Int?,
+) : HealthRecord {
+    override val recordType: String = RecordTypes.BLOOD_PRESSURE
+    override val recordStartAt: Instant = measuredAt
+    override val recordEndAt: Instant? = null
+}
+
+data class CardiovascularRecord(
+    override val providerRecordId: String?,
+    override val normalizedRecordJson: JsonObject,
+    val measuredAt: Instant,
+    val metricType: String,
+    val value: Double,
+    val unit: String,
+) : HealthRecord {
+    override val recordType: String = RecordTypes.CARDIOVASCULAR
+    override val recordStartAt: Instant = measuredAt
+    override val recordEndAt: Instant? = null
+}
+
+data class ExtendedBodyMeasurementRecord(
+    override val providerRecordId: String?,
+    override val normalizedRecordJson: JsonObject,
+    val measuredAt: Instant,
+    val measurements: List<ExtendedBodyMeasurementValue>,
+) : HealthRecord {
+    override val recordType: String = RecordTypes.EXTENDED_BODY_MEASUREMENT
+    override val recordStartAt: Instant = measuredAt
+    override val recordEndAt: Instant? = null
+}
+
+data class ExtendedBodyMeasurementValue(
+    val metricType: String,
+    val value: Double,
+    val unit: String,
+    val segment: String?,
+)

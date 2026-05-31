@@ -2,6 +2,10 @@ package me.aquitano.health.infrastructure.repositories
 
 import me.aquitano.health.domain.BodyMeasurementRecord
 import me.aquitano.health.domain.ActivitySummaryRecord
+import me.aquitano.health.domain.BloodPressureRecord
+import me.aquitano.health.domain.CardiovascularRecord
+import me.aquitano.health.domain.ExtendedBodyMeasurementValue
+import me.aquitano.health.domain.ExtendedBodyMeasurementRecord
 import me.aquitano.health.domain.HeartRateRecord
 import me.aquitano.health.domain.HrvRecord
 import me.aquitano.health.domain.RespiratoryRateRecord
@@ -163,6 +167,22 @@ class MetricsWriteRepository {
             it[wakeupCount] = record.wakeupCount
             it[wasoSeconds] = record.wasoSeconds
             it[sleepScore] = record.sleepScore
+            it[remEpisodesCount] = record.remEpisodesCount
+            it[outOfBedCount] = record.outOfBedCount
+            it[awakeDurationSeconds] = record.awakeDurationSeconds
+            it[overnightHrvRmssd] = record.overnightHrvRmssd
+            it[respiratoryRhythm] = record.respiratoryRhythm
+            it[breathingQuality] = record.breathingQuality
+            it[snoringDurationSeconds] = record.snoringDurationSeconds
+            it[apneaHypopneaIndex] = record.apneaHypopneaIndex
+            it[movementScore] = record.movementScore
+            it[snoringEpisodeCount] = record.snoringEpisodeCount
+            it[hrAverageBpm] = record.hrAverageBpm
+            it[hrMinBpm] = record.hrMinBpm
+            it[hrMaxBpm] = record.hrMaxBpm
+            it[rrAverage] = record.rrAverage
+            it[rrMin] = record.rrMin
+            it[rrMax] = record.rrMax
             it[createdAt] = now.toDbTimestamp()
         } != null
 
@@ -199,6 +219,65 @@ class MetricsWriteRepository {
             it[context] = record.context
             it[createdAt] = now.toDbTimestamp()
         } != null
+
+    fun insertBloodPressure(
+        sourceInstanceId: Int,
+        ingestionRecordId: Int,
+        record: BloodPressureRecord,
+        now: Instant,
+    ): Boolean =
+        BloodPressureMeasurementsTable.insertIgnoreAndGetId {
+            it[this.sourceInstanceId] = sourceInstanceId
+            it[this.ingestionRecordId] = ingestionRecordId
+            it[providerRecordId] = record.providerRecordId
+            it[measuredAt] = record.measuredAt.toDbTimestamp()
+            it[systolicMmhg] = record.systolicMmhg
+            it[diastolicMmhg] = record.diastolicMmhg
+            it[heartRateBpm] = record.heartRateBpm
+            it[createdAt] = now.toDbTimestamp()
+        } != null
+
+    fun insertCardiovascular(
+        sourceInstanceId: Int,
+        ingestionRecordId: Int,
+        record: CardiovascularRecord,
+        now: Instant,
+    ): Boolean =
+        CardiovascularMeasurementsTable.insertIgnoreAndGetId {
+            it[this.sourceInstanceId] = sourceInstanceId
+            it[this.ingestionRecordId] = ingestionRecordId
+            it[providerRecordId] = record.providerRecordId
+            it[measuredAt] = record.measuredAt.toDbTimestamp()
+            it[metricType] = record.metricType
+            it[value] = record.value
+            it[unit] = record.unit
+            it[createdAt] = now.toDbTimestamp()
+        } != null
+
+    fun insertExtendedBodyMeasurements(
+        sourceInstanceId: Int,
+        ingestionRecordId: Int,
+        record: ExtendedBodyMeasurementRecord,
+        now: Instant,
+    ): Int {
+        var created = 0
+        record.measurements.forEach { measurement ->
+            val inserted =
+                ExtendedBodyMeasurementsTable.insertIgnoreAndGetId {
+                    it[this.sourceInstanceId] = sourceInstanceId
+                    it[this.ingestionRecordId] = ingestionRecordId
+                    it[providerRecordId] = record.providerRecordId
+                    it[measuredAt] = record.measuredAt.toDbTimestamp()
+                    it[metricType] = measurement.metricType
+                    it[value] = measurement.value
+                    it[unit] = measurement.unit
+                    it[segment] = measurement.segment
+                    it[createdAt] = now.toDbTimestamp()
+                } != null
+            if (inserted) created += 1
+        }
+        return created
+    }
 
     fun recomputeStepDailySummary(
         sourceInstanceId: Int,

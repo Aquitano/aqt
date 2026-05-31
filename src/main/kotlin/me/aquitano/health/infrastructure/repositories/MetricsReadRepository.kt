@@ -133,6 +133,22 @@ data class SleepSummaryRow(
     val wakeupCount: Int?,
     val wasoSeconds: Long?,
     val sleepScore: Int?,
+    val remEpisodesCount: Int?,
+    val outOfBedCount: Int?,
+    val awakeDurationSeconds: Long?,
+    val overnightHrvRmssd: Double?,
+    val respiratoryRhythm: Double?,
+    val breathingQuality: Int?,
+    val snoringDurationSeconds: Long?,
+    val apneaHypopneaIndex: Double?,
+    val movementScore: Double?,
+    val snoringEpisodeCount: Int?,
+    val hrAverageBpm: Int?,
+    val hrMinBpm: Int?,
+    val hrMaxBpm: Int?,
+    val rrAverage: Double?,
+    val rrMin: Double?,
+    val rrMax: Double?,
 )
 
 data class HeartRateSampleRow(
@@ -149,6 +165,34 @@ data class RespiratoryRateSampleRow(
     val measuredAt: String,
     val breathsPerMinute: Int,
     val context: String,
+)
+
+data class BloodPressureMeasurementRow(
+    val id: Int,
+    val sourceInstanceId: Int,
+    val measuredAt: String,
+    val systolicMmhg: Int,
+    val diastolicMmhg: Int,
+    val heartRateBpm: Int?,
+)
+
+data class CardiovascularMeasurementRow(
+    val id: Int,
+    val sourceInstanceId: Int,
+    val measuredAt: String,
+    val metricType: String,
+    val value: Double,
+    val unit: String,
+)
+
+data class ExtendedBodyMeasurementRow(
+    val id: Int,
+    val sourceInstanceId: Int,
+    val measuredAt: String,
+    val metricType: String,
+    val value: Double,
+    val unit: String,
+    val segment: String?,
 )
 
 data class HrvSampleRow(
@@ -866,6 +910,138 @@ class MetricsReadRepository {
             }
     }
 
+    fun listBloodPressure(filters: ReadFilters): Pair<List<BloodPressureMeasurementRow>, Map<Int, SourceMetadata>> {
+        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<BloodPressureMeasurementRow>() to emptyMap()
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.from?.let { conditions.add(BloodPressureMeasurementsTable.measuredAt greaterEq it.toDbTimestamp()) }
+        filters.to?.let { conditions.add(BloodPressureMeasurementsTable.measuredAt less it.toDbTimestamp()) }
+        sourceIds?.let { conditions.add(BloodPressureMeasurementsTable.sourceInstanceId inList it) }
+        val rows = BloodPressureMeasurementsTable.selectAll()
+            .where(combineConditions(conditions))
+            .orderBy(
+                BloodPressureMeasurementsTable.measuredAt to filters.sortOrder(),
+                BloodPressureMeasurementsTable.id to filters.sortOrder(),
+            )
+            .limit(filters.limit)
+            .map(::toBloodPressureMeasurementRow)
+        return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
+    }
+
+    fun latestBloodPressure(filters: ReadFilters): Pair<BloodPressureMeasurementRow?, Map<Int, SourceMetadata>> {
+        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        if (sourceIds != null && sourceIds.isEmpty()) return null to emptyMap()
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.from?.let { conditions.add(BloodPressureMeasurementsTable.measuredAt greaterEq it.toDbTimestamp()) }
+        filters.to?.let { conditions.add(BloodPressureMeasurementsTable.measuredAt less it.toDbTimestamp()) }
+        sourceIds?.let { conditions.add(BloodPressureMeasurementsTable.sourceInstanceId inList it) }
+        val row = BloodPressureMeasurementsTable.selectAll()
+            .where(combineConditions(conditions))
+            .orderBy(
+                BloodPressureMeasurementsTable.measuredAt to SortOrder.DESC,
+                BloodPressureMeasurementsTable.id to SortOrder.DESC,
+            )
+            .limit(1)
+            .map(::toBloodPressureMeasurementRow)
+            .singleOrNull()
+        return row to sourceMetadata(listOfNotNull(row?.sourceInstanceId).toSet(), filters.includeSource)
+    }
+
+    fun listCardiovascular(
+        filters: ReadFilters,
+        metricType: String?
+    ): Pair<List<CardiovascularMeasurementRow>, Map<Int, SourceMetadata>> {
+        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<CardiovascularMeasurementRow>() to emptyMap()
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.from?.let { conditions.add(CardiovascularMeasurementsTable.measuredAt greaterEq it.toDbTimestamp()) }
+        filters.to?.let { conditions.add(CardiovascularMeasurementsTable.measuredAt less it.toDbTimestamp()) }
+        sourceIds?.let { conditions.add(CardiovascularMeasurementsTable.sourceInstanceId inList it) }
+        metricType?.let { conditions.add(CardiovascularMeasurementsTable.metricType eq it) }
+        val rows = CardiovascularMeasurementsTable.selectAll()
+            .where(combineConditions(conditions))
+            .orderBy(
+                CardiovascularMeasurementsTable.measuredAt to filters.sortOrder(),
+                CardiovascularMeasurementsTable.id to filters.sortOrder(),
+            )
+            .limit(filters.limit)
+            .map(::toCardiovascularMeasurementRow)
+        return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
+    }
+
+    fun latestCardiovascular(
+        filters: ReadFilters,
+        metricType: String
+    ): Pair<CardiovascularMeasurementRow?, Map<Int, SourceMetadata>> {
+        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        if (sourceIds != null && sourceIds.isEmpty()) return null to emptyMap()
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.from?.let { conditions.add(CardiovascularMeasurementsTable.measuredAt greaterEq it.toDbTimestamp()) }
+        filters.to?.let { conditions.add(CardiovascularMeasurementsTable.measuredAt less it.toDbTimestamp()) }
+        sourceIds?.let { conditions.add(CardiovascularMeasurementsTable.sourceInstanceId inList it) }
+        conditions.add(CardiovascularMeasurementsTable.metricType eq metricType)
+        val row = CardiovascularMeasurementsTable.selectAll()
+            .where(combineConditions(conditions))
+            .orderBy(
+                CardiovascularMeasurementsTable.measuredAt to SortOrder.DESC,
+                CardiovascularMeasurementsTable.id to SortOrder.DESC,
+            )
+            .limit(1)
+            .map(::toCardiovascularMeasurementRow)
+            .singleOrNull()
+        return row to sourceMetadata(listOfNotNull(row?.sourceInstanceId).toSet(), filters.includeSource)
+    }
+
+    fun listExtendedBodyMeasurements(
+        filters: ReadFilters,
+        metricType: String?
+    ): Pair<List<ExtendedBodyMeasurementRow>, Map<Int, SourceMetadata>> {
+        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<ExtendedBodyMeasurementRow>() to emptyMap()
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.from?.let { conditions.add(ExtendedBodyMeasurementsTable.measuredAt greaterEq it.toDbTimestamp()) }
+        filters.to?.let { conditions.add(ExtendedBodyMeasurementsTable.measuredAt less it.toDbTimestamp()) }
+        sourceIds?.let { conditions.add(ExtendedBodyMeasurementsTable.sourceInstanceId inList it) }
+        metricType?.let { conditions.add(ExtendedBodyMeasurementsTable.metricType eq it) }
+        val rows = ExtendedBodyMeasurementsTable.selectAll()
+            .where(combineConditions(conditions))
+            .orderBy(
+                ExtendedBodyMeasurementsTable.measuredAt to filters.sortOrder(),
+                ExtendedBodyMeasurementsTable.id to filters.sortOrder(),
+            )
+            .limit(filters.limit)
+            .map(::toExtendedBodyMeasurementRow)
+        return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
+    }
+
+    fun listExtendedBodyMeasurementsForWindow(
+        filters: ReadFilters,
+        metricType: String
+    ): Pair<List<ExtendedBodyMeasurementRow>, Map<Int, SourceMetadata>> =
+        listExtendedBodyMeasurements(filters, metricType)
+
+    fun latestExtendedBodyMeasurementBefore(
+        filters: ReadFilters,
+        metricType: String
+    ): Pair<ExtendedBodyMeasurementRow?, Map<Int, SourceMetadata>> {
+        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        if (sourceIds != null && sourceIds.isEmpty()) return null to emptyMap()
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.from?.let { conditions.add(ExtendedBodyMeasurementsTable.measuredAt less it.toDbTimestamp()) }
+        sourceIds?.let { conditions.add(ExtendedBodyMeasurementsTable.sourceInstanceId inList it) }
+        conditions.add(ExtendedBodyMeasurementsTable.metricType eq metricType)
+        val row = ExtendedBodyMeasurementsTable.selectAll()
+            .where(combineConditions(conditions))
+            .orderBy(
+                ExtendedBodyMeasurementsTable.measuredAt to SortOrder.DESC,
+                ExtendedBodyMeasurementsTable.id to SortOrder.DESC,
+            )
+            .limit(1)
+            .map(::toExtendedBodyMeasurementRow)
+            .singleOrNull()
+        return row to sourceMetadata(listOfNotNull(row?.sourceInstanceId).toSet(), filters.includeSource)
+    }
+
     fun sumStepDailySummaries(filters: DailyReadFilters): DashboardStepsSummaryRow {
         val sourceIds =
             sourceInstanceIds(filters.provider, filters.providerInstanceId)
@@ -1005,6 +1181,22 @@ class MetricsReadRepository {
             wakeupCount = row[SleepSummariesTable.wakeupCount],
             wasoSeconds = row[SleepSummariesTable.wasoSeconds],
             sleepScore = row[SleepSummariesTable.sleepScore],
+            remEpisodesCount = row[SleepSummariesTable.remEpisodesCount],
+            outOfBedCount = row[SleepSummariesTable.outOfBedCount],
+            awakeDurationSeconds = row[SleepSummariesTable.awakeDurationSeconds],
+            overnightHrvRmssd = row[SleepSummariesTable.overnightHrvRmssd],
+            respiratoryRhythm = row[SleepSummariesTable.respiratoryRhythm],
+            breathingQuality = row[SleepSummariesTable.breathingQuality],
+            snoringDurationSeconds = row[SleepSummariesTable.snoringDurationSeconds],
+            apneaHypopneaIndex = row[SleepSummariesTable.apneaHypopneaIndex],
+            movementScore = row[SleepSummariesTable.movementScore],
+            snoringEpisodeCount = row[SleepSummariesTable.snoringEpisodeCount],
+            hrAverageBpm = row[SleepSummariesTable.hrAverageBpm],
+            hrMinBpm = row[SleepSummariesTable.hrMinBpm],
+            hrMaxBpm = row[SleepSummariesTable.hrMaxBpm],
+            rrAverage = row[SleepSummariesTable.rrAverage],
+            rrMin = row[SleepSummariesTable.rrMin],
+            rrMax = row[SleepSummariesTable.rrMax],
         )
 
     private fun toRespiratoryRateSampleRow(row: ResultRow): RespiratoryRateSampleRow =
@@ -1025,6 +1217,37 @@ class MetricsReadRepository {
             value = row[HrvSamplesTable.value],
             unit = row[HrvSamplesTable.unit],
             context = row[HrvSamplesTable.context] ?: "unknown",
+        )
+
+    private fun toBloodPressureMeasurementRow(row: ResultRow): BloodPressureMeasurementRow =
+        BloodPressureMeasurementRow(
+            id = row[BloodPressureMeasurementsTable.id].value,
+            sourceInstanceId = row[BloodPressureMeasurementsTable.sourceInstanceId],
+            measuredAt = row[BloodPressureMeasurementsTable.measuredAt].toApiString(),
+            systolicMmhg = row[BloodPressureMeasurementsTable.systolicMmhg],
+            diastolicMmhg = row[BloodPressureMeasurementsTable.diastolicMmhg],
+            heartRateBpm = row[BloodPressureMeasurementsTable.heartRateBpm],
+        )
+
+    private fun toCardiovascularMeasurementRow(row: ResultRow): CardiovascularMeasurementRow =
+        CardiovascularMeasurementRow(
+            id = row[CardiovascularMeasurementsTable.id].value,
+            sourceInstanceId = row[CardiovascularMeasurementsTable.sourceInstanceId],
+            measuredAt = row[CardiovascularMeasurementsTable.measuredAt].toApiString(),
+            metricType = row[CardiovascularMeasurementsTable.metricType],
+            value = row[CardiovascularMeasurementsTable.value],
+            unit = row[CardiovascularMeasurementsTable.unit],
+        )
+
+    private fun toExtendedBodyMeasurementRow(row: ResultRow): ExtendedBodyMeasurementRow =
+        ExtendedBodyMeasurementRow(
+            id = row[ExtendedBodyMeasurementsTable.id].value,
+            sourceInstanceId = row[ExtendedBodyMeasurementsTable.sourceInstanceId],
+            measuredAt = row[ExtendedBodyMeasurementsTable.measuredAt].toApiString(),
+            metricType = row[ExtendedBodyMeasurementsTable.metricType],
+            value = row[ExtendedBodyMeasurementsTable.value],
+            unit = row[ExtendedBodyMeasurementsTable.unit],
+            segment = row[ExtendedBodyMeasurementsTable.segment],
         )
 
     private fun combineConditions(conditions: List<Op<Boolean>>): Op<Boolean> =
