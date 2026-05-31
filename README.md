@@ -508,3 +508,8 @@ export AQT_HEALTH_TEST_DB_USER="aqt_health"
 export AQT_HEALTH_TEST_DB_PASSWORD="aqt_health"
 ./gradlew test
 ```
+
+## Contributing
+
+For coding standards, development workflows, and conventional commit guidelines used in this project, please see the [CONTRIBUTING.md](CONTRIBUTING.md) guide.
+
