@@ -1,5 +1,16 @@
 import createClient from "openapi-fetch";
-import type { ApiResult, ApiSchema } from "./types";
+import type {
+  ApiResult,
+  ApiSchema,
+  BloodPressureLatestResponse,
+  BloodPressureMeasurementsResponse,
+  CardiovascularMeasurementResponse,
+  CardiovascularMeasurementsResponse,
+  ExtendedBodyMeasurementResponse,
+  ExtendedBodyMeasurementsResponse,
+  ScheduledSyncConfig,
+  ScheduledSyncRunResponse,
+} from "./types";
 import type { paths } from "./generated/aqtHealthApiTypes";
 
 type ClientResponse<T> = {
@@ -174,6 +185,38 @@ export function createAqtHealthClient() {
         }),
       ),
 
+    getScheduledSyncConfig: (providerCode: string, providerInstanceId: string) =>
+      call<ScheduledSyncConfig>((headers) =>
+        fetchJson(
+          `${apiBaseUrl}/api/v1/providers/${encodeURIComponent(providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/scheduled-sync`,
+          { headers },
+        ),
+      ),
+
+    updateScheduledSyncConfig: (
+      providerCode: string,
+      providerInstanceId: string,
+      body: unknown,
+    ) =>
+      call<ScheduledSyncConfig>((headers) =>
+        fetchJson(
+          `${apiBaseUrl}/api/v1/providers/${encodeURIComponent(providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/scheduled-sync`,
+          {
+            method: "PUT",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          },
+        ),
+      ),
+
+    runScheduledSyncNow: (providerCode: string, providerInstanceId: string) =>
+      call<ScheduledSyncRunResponse>((headers) =>
+        fetchJson(
+          `${apiBaseUrl}/api/v1/providers/${encodeURIComponent(providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/scheduled-sync/run`,
+          { method: "POST", headers },
+        ),
+      ),
+
     syncProvider: (
       providerCode: string,
       body: ApiSchema<"ProviderSyncRequestDto">,
@@ -301,60 +344,61 @@ export function createAqtHealthClient() {
         }),
       ),
 
-    listBloodPressure: (query: Record<string, string | boolean | number | undefined>) =>
-      call<any>(
-        (headers) =>
-          rawClient.GET("/api/v1/metrics/blood-pressure", {
-            headers,
-            params: { query: query as any },
-          }),
+    listBloodPressure: (query: LooseQuery) =>
+      call<BloodPressureMeasurementsResponse>(
+        (headers) => fetchJson(`${apiBaseUrl}/api/v1/metrics/blood-pressure${queryString(query)}`, { headers }),
       ),
 
-    getLatestBloodPressure: (query: Record<string, string | boolean | number | undefined>) =>
-      call<any>(
-        (headers) =>
-          rawClient.GET("/api/v1/metrics/blood-pressure/latest", {
-            headers,
-            params: { query: query as any },
-          }),
+    getLatestBloodPressure: (query: LooseQuery) =>
+      call<BloodPressureLatestResponse>(
+        (headers) => fetchJson(`${apiBaseUrl}/api/v1/metrics/blood-pressure/latest${queryString(query)}`, { headers }),
       ),
 
-    listCardiovascular: (query: Record<string, string | boolean | number | undefined>) =>
-      call<any>(
-        (headers) =>
-          rawClient.GET("/api/v1/metrics/cardiovascular", {
-            headers,
-            params: { query: query as any },
-          }),
+    listCardiovascular: (query: LooseQuery) =>
+      call<CardiovascularMeasurementsResponse>(
+        (headers) => fetchJson(`${apiBaseUrl}/api/v1/metrics/cardiovascular${queryString(query)}`, { headers }),
       ),
 
-    getLatestCardiovascular: (query: Record<string, string | boolean | number | undefined>) =>
-      call<any>(
-        (headers) =>
-          rawClient.GET("/api/v1/metrics/cardiovascular/latest", {
-            headers,
-            params: { query: query as any },
-          }),
+    getLatestCardiovascular: (query: LooseQuery) =>
+      call<CardiovascularMeasurementResponse>(
+        (headers) => fetchJson(`${apiBaseUrl}/api/v1/metrics/cardiovascular/latest${queryString(query)}`, { headers }),
       ),
 
-    listExtendedBodyMeasurements: (query: Record<string, string | boolean | number | undefined>) =>
-      call<any>(
-        (headers) =>
-          rawClient.GET("/api/v1/metrics/extended-body-measurements", {
-            headers,
-            params: { query: query as any },
-          }),
+    listExtendedBodyMeasurements: (query: LooseQuery) =>
+      call<ExtendedBodyMeasurementsResponse>(
+        (headers) => fetchJson(`${apiBaseUrl}/api/v1/metrics/extended-body-measurements${queryString(query)}`, { headers }),
       ),
 
-    getLatestExtendedBodyMeasurement: (query: Record<string, string | boolean | number | undefined>) =>
-      call<any>(
-        (headers) =>
-          rawClient.GET("/api/v1/metrics/extended-body-measurements/latest", {
-            headers,
-            params: { query: query as any },
-          }),
+    getLatestExtendedBodyMeasurement: (query: LooseQuery) =>
+      call<ExtendedBodyMeasurementResponse>(
+        (headers) => fetchJson(`${apiBaseUrl}/api/v1/metrics/extended-body-measurements/latest${queryString(query)}`, { headers }),
       ),
   };
+}
+
+type LooseQuery = Record<string, string | boolean | number | undefined>;
+
+function queryString(query: LooseQuery): string {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined) params.set(key, String(value));
+  });
+  const encoded = params.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
+async function fetchJson<T>(
+  input: string,
+  init: RequestInit,
+): Promise<ClientResponse<T>> {
+  const response = await fetch(input, {
+    ...init,
+    next: { revalidate: 0 },
+  } as RequestInit & { next: { revalidate: 0 } });
+  const body = await response.json().catch(() => undefined);
+  return response.ok
+    ? { data: body as T, response }
+    : { error: body, response };
 }
 
 async function call<T>(

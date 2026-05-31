@@ -85,6 +85,7 @@ val integrationTestClasses = listOf(
     "**/WithingsProviderRouteTest.class",
     "**/DatabaseFactoryTest.class",
     "**/SupportRepositoryTest.class",
+    "**/ScheduledSyncRepositoryTest.class",
 )
 
 fun dockerIsAvailable(): Boolean =

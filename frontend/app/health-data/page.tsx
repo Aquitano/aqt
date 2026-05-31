@@ -19,7 +19,7 @@ import { SleepSummariesTable } from "@/components/tables/SleepSummariesTable";
 import { SleepSessionsTable } from "@/components/tables/SleepSessionsTable";
 import { getHealthDataPageData } from "@/lib/aqtHealthApi";
 import { addUtcDays, parseDateRange } from "@/lib/dates";
-import type { BloodPressureMeasurement, CardiovascularMeasurement, ExtendedBodyMeasurement, BodyMeasurement } from "@/lib/types";
+import type { BodyMeasurement } from "@/lib/types";
 import { BloodPressureTable } from "@/components/tables/BloodPressureTable";
 import { CardiovascularTable } from "@/components/tables/CardiovascularTable";
 import { ExtendedBodyMeasurementsTable } from "@/components/tables/ExtendedBodyMeasurementsTable";

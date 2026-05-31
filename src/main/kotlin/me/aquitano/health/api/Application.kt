@@ -42,6 +42,7 @@ fun Application.module() {
     val metricsWriteRepository = MetricsWriteRepository()
     val ingestionRepository = IngestionRepository()
     val providerOAuthRepository = ProviderOAuthRepository(database)
+    val scheduledSyncRepository = ScheduledSyncRepository(database)
     val httpClient = HttpClient(CIO) {
         install(ContentNegotiation) {
             json(AppJson)
@@ -119,6 +120,16 @@ fun Application.module() {
         providerRegistry = providerRegistry,
         providerOAuthRepository = providerOAuthRepository,
     )
+    val scheduledProviderSyncService = ScheduledProviderSyncService(
+        providerRegistry = providerRegistry,
+        providerOAuthRepository = providerOAuthRepository,
+        repository = scheduledSyncRepository,
+    )
+    val scheduledProviderSyncScheduler = ScheduledProviderSyncScheduler(
+        service = scheduledProviderSyncService,
+        clock = clock,
+    )
+    scheduledProviderSyncScheduler.start()
 
     val services = ApplicationServices(
         database = database,
@@ -157,6 +168,7 @@ fun Application.module() {
             providerOAuthRepository = providerOAuthRepository,
             providerStatusService = providerStatusService,
         ),
+        scheduledProviderSyncService = scheduledProviderSyncService,
         trendQueryService = TrendQueryService(
             database = database,
             metricsReadRepository = metricsReadRepository,
@@ -172,6 +184,10 @@ fun Application.module() {
 
     configureHttp(corsConfig = appConfig.cors)
     configureRoutes(services = services)
+
+    monitor.subscribe(ApplicationStopping) {
+        scheduledProviderSyncScheduler.stop()
+    }
 }
 
 data class ApplicationServices(
@@ -189,5 +205,6 @@ data class ApplicationServices(
     val metricCatalogService: MetricCatalogService,
     val providerStatusService: ProviderStatusService,
     val providerWorkflowService: ProviderWorkflowService,
+    val scheduledProviderSyncService: ScheduledProviderSyncService,
     val trendQueryService: TrendQueryService,
 )

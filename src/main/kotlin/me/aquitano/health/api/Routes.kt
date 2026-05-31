@@ -216,6 +216,69 @@ fun Application.configureRoutes(services: ApplicationServices) {
             providerCodePath()
             errorResponses(notFound = true)
         }
+        get("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync") {
+            call.authenticateProtected(services)
+            val code = call.providerCode()
+            val providerInstanceId = call.parameters["providerInstanceId"]
+                ?: throw RequestValidationException(listOf(ValidationIssue("providerInstanceId")))
+            call.respond<ScheduledSyncConfigResponseDto>(
+                services.scheduledProviderSyncService.getConfig(
+                    providerCode = code,
+                    providerInstanceId = providerInstanceId,
+                )
+            )
+        }.describe {
+            operationId = "getScheduledProviderSync"
+            tag("Providers")
+            summary = "Get scheduled provider sync configuration"
+            requiresBearerAuth()
+            providerCodePath()
+            errorResponses(notFound = true)
+        }
+        put("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync") {
+            call.authenticateProtected(services)
+            val code = call.providerCode()
+            val providerInstanceId = call.parameters["providerInstanceId"]
+                ?: throw RequestValidationException(listOf(ValidationIssue("providerInstanceId")))
+            call.respond<ScheduledSyncConfigResponseDto>(
+                services.scheduledProviderSyncService.updateConfig(
+                    providerCode = code,
+                    providerInstanceId = providerInstanceId,
+                    request = call.receive<ScheduledSyncConfigUpdateRequestDto>(),
+                    now = services.clock.now(),
+                )
+            )
+        }.describe {
+            operationId = "updateScheduledProviderSync"
+            tag("Providers")
+            summary = "Update scheduled provider sync configuration"
+            requiresBearerAuth()
+            providerCodePath()
+            jsonRequest<ScheduledSyncConfigUpdateRequestDto>(
+                "Scheduled sync configuration fields to update.",
+            )
+            errorResponses(notFound = true)
+        }
+        post("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync/run") {
+            call.authenticateProtected(services)
+            val code = call.providerCode()
+            val providerInstanceId = call.parameters["providerInstanceId"]
+                ?: throw RequestValidationException(listOf(ValidationIssue("providerInstanceId")))
+            call.respond<ScheduledSyncRunResponseDto>(
+                services.scheduledProviderSyncService.runNow(
+                    providerCode = code,
+                    providerInstanceId = providerInstanceId,
+                    now = services.clock.now(),
+                )
+            )
+        }.describe {
+            operationId = "runScheduledProviderSyncNow"
+            tag("Providers")
+            summary = "Run scheduled provider sync immediately"
+            requiresBearerAuth()
+            providerCodePath()
+            errorResponses(notFound = true, conflict = true, upstream = true)
+        }
         post("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/disconnect") {
             call.authenticateProtected(services)
             val code = call.providerCode()

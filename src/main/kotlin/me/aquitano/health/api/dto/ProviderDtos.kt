@@ -199,3 +199,60 @@ data class ProviderSyncEmptyDataTypeResponseDto(
     val sourceRecordsReceived: Int,
     val normalizedRecords: Int,
 )
+
+@Serializable
+data class ScheduledSyncConfigUpdateRequestDto(
+    val enabled: Boolean? = null,
+    val dataTypes: List<String>? = null,
+    @JsonSchema.Minimum(15.0)
+    val cadenceMinutes: Int? = null,
+    @JsonSchema.Minimum(0.0)
+    val lookbackDays: Int? = null,
+)
+
+@Serializable
+data class ScheduledSyncConfigResponseDto(
+    val providerCode: String,
+    val providerInstanceId: String,
+    val enabled: Boolean,
+    val dataTypes: List<String>,
+    val cadenceMinutes: Int,
+    val lookbackDays: Int,
+    @JsonSchema.Format("date-time")
+    val lastSuccessfulFrom: String? = null,
+    @JsonSchema.Format("date-time")
+    val lastSuccessfulTo: String? = null,
+    @JsonSchema.Format("date-time")
+    val lastSuccessAt: String? = null,
+    @JsonSchema.Format("date-time")
+    val lastAttemptedAt: String? = null,
+    val failureCount: Int,
+    @JsonSchema.Format("date-time")
+    val nextRunAt: String? = null,
+    val lastErrorMessage: String? = null,
+    val checkpoints: List<ScheduledSyncCheckpointResponseDto>,
+)
+
+@Serializable
+data class ScheduledSyncCheckpointResponseDto(
+    val dataType: String,
+    @JsonSchema.Format("date-time")
+    val checkpointAt: String? = null,
+    @JsonSchema.Format("date-time")
+    val lastSuccessfulFrom: String? = null,
+    @JsonSchema.Format("date-time")
+    val lastSuccessfulTo: String? = null,
+)
+
+@Serializable
+data class ScheduledSyncRunResponseDto(
+    val providerCode: String,
+    val providerInstanceId: String,
+    val status: String,
+    @JsonSchema.Format("date-time")
+    val requestedFrom: String? = null,
+    @JsonSchema.Format("date-time")
+    val requestedTo: String? = null,
+    val errors: List<String>,
+    val summaries: List<ProviderSyncResponseDto>,
+)

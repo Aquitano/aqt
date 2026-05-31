@@ -48,3 +48,39 @@ object ProviderSyncRunsTable : IntIdTable("provider_sync_runs") {
     val finishedAt = timestampWithTimeZone("finished_at").nullable()
     val errorMessage = text("error_message").nullable()
 }
+
+object ProviderScheduledSyncConfigsTable : IntIdTable("provider_scheduled_sync_configs") {
+    val providerCode = text("provider_code")
+    val providerInstanceId = text("provider_instance_id")
+    val enabled = bool("enabled")
+    val dataTypes = text("data_types")
+    val cadenceMinutes = integer("cadence_minutes")
+    val lookbackDays = integer("lookback_days")
+    val lastSuccessfulFrom = timestampWithTimeZone("last_successful_from").nullable()
+    val lastSuccessfulTo = timestampWithTimeZone("last_successful_to").nullable()
+    val lastSuccessAt = timestampWithTimeZone("last_success_at").nullable()
+    val lastAttemptedAt = timestampWithTimeZone("last_attempted_at").nullable()
+    val failureCount = integer("failure_count")
+    val nextRunAt = timestampWithTimeZone("next_run_at").nullable()
+    val lastErrorMessage = text("last_error_message").nullable()
+    val createdAt = timestampWithTimeZone("created_at")
+    val updatedAt = timestampWithTimeZone("updated_at")
+
+    init {
+        uniqueIndex(providerCode, providerInstanceId)
+    }
+}
+
+object ProviderScheduledSyncCheckpointsTable : IntIdTable("provider_scheduled_sync_checkpoints") {
+    val configId = reference("config_id", ProviderScheduledSyncConfigsTable)
+    val dataType = text("data_type")
+    val checkpointAt = timestampWithTimeZone("checkpoint_at").nullable()
+    val lastSuccessfulFrom = timestampWithTimeZone("last_successful_from").nullable()
+    val lastSuccessfulTo = timestampWithTimeZone("last_successful_to").nullable()
+    val createdAt = timestampWithTimeZone("created_at")
+    val updatedAt = timestampWithTimeZone("updated_at")
+
+    init {
+        uniqueIndex(configId, dataType)
+    }
+}

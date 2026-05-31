@@ -56,6 +56,43 @@ export type ProviderSyncEmptyDataType = ApiSchema<"ProviderSyncEmptyDataTypeResp
 export type ProviderStatusCatalogResponse = ApiSchema<"ProviderStatusCatalogResponseDto">;
 export type ProviderStatus = ApiSchema<"ProviderStatusResponseDto">;
 export type ProviderAccountStatus = ApiSchema<"ProviderAccountStatusResponseDto">;
+export type ScheduledSyncConfigUpdateRequest = {
+  enabled?: boolean;
+  dataTypes?: string[];
+  cadenceMinutes?: number;
+  lookbackDays?: number;
+};
+export type ScheduledSyncCheckpoint = {
+  dataType: string;
+  checkpointAt?: string | null;
+  lastSuccessfulFrom?: string | null;
+  lastSuccessfulTo?: string | null;
+};
+export type ScheduledSyncConfig = {
+  providerCode: string;
+  providerInstanceId: string;
+  enabled: boolean;
+  dataTypes: string[];
+  cadenceMinutes: number;
+  lookbackDays: number;
+  lastSuccessfulFrom?: string | null;
+  lastSuccessfulTo?: string | null;
+  lastSuccessAt?: string | null;
+  lastAttemptedAt?: string | null;
+  failureCount: number;
+  nextRunAt?: string | null;
+  lastErrorMessage?: string | null;
+  checkpoints: ScheduledSyncCheckpoint[];
+};
+export type ScheduledSyncRunResponse = {
+  providerCode: string;
+  providerInstanceId: string;
+  status: string;
+  requestedFrom?: string | null;
+  requestedTo?: string | null;
+  errors: string[];
+  summaries: ProviderSyncResponse[];
+};
 export type MetricCatalogResponse = ApiSchema<"MetricCatalogResponseDto">;
 export type MetricFamilyCatalog = ApiSchema<"MetricFamilyCatalogDto">;
 export type MetricReadEndpoint = ApiSchema<"MetricReadEndpointDto">;
@@ -140,14 +177,18 @@ export type HealthDataPageData = HealthStatusData & {
   latestRespiratoryRate: ApiResult<RespiratoryRateSamplesResponse>;
   latestHrv: ApiResult<HrvSamplesResponse>;
   bloodPressure: ApiResult<BloodPressureMeasurementsResponse>;
+  latestBloodPressure: ApiResult<BloodPressureLatestResponse>;
   cardiovascular: ApiResult<CardiovascularMeasurementsResponse>;
+  latestCardiovascular: ApiResult<CardiovascularMeasurementResponse>;
   extendedBodyMeasurements: ApiResult<ExtendedBodyMeasurementsResponse>;
+  latestExtendedBodyMeasurement: ApiResult<ExtendedBodyMeasurementResponse>;
   metricCatalog: ApiResult<MetricCatalogResponse>;
 };
 
 export type ProviderSyncPageData = HealthStatusData & {
   providerCatalog: ApiResult<ProviderCatalogResponse>;
   providerStatuses: ApiResult<ProviderStatusCatalogResponse>;
+  scheduledSyncConfigs: ApiResult<ScheduledSyncConfig>[];
 };
 
 export type IngestionsPageData = HealthStatusData & {

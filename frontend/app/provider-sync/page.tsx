@@ -14,7 +14,11 @@ export default async function ProviderSyncPage() {
         description="Check provider readiness, start OAuth, and manually sync supported data types."
       />
       <StatusBar apiBaseUrl={data.apiBaseUrl} health={data.health} />
-      <ProviderSyncPanel catalog={data.providerCatalog} statuses={data.providerStatuses} />
+      <ProviderSyncPanel
+        catalog={data.providerCatalog}
+        statuses={data.providerStatuses}
+        scheduledSyncConfigs={data.scheduledSyncConfigs}
+      />
     </>
   );
 }

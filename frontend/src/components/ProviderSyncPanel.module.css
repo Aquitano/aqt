@@ -210,8 +210,13 @@
 
 .accountActions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--s-2);
+}
+
+.scheduledMeta {
+  grid-column: 1 / -1;
 }
 
 .form {

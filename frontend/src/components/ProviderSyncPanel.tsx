@@ -10,6 +10,8 @@ import type {
   ProviderAccountStatus,
   ProviderStatus,
   ProviderStatusCatalogResponse,
+  ScheduledSyncConfig,
+  ScheduledSyncRunResponse,
   ProviderSyncResponse,
 } from "@/lib/types";
 import styles from "./ProviderSyncPanel.module.css";
@@ -17,6 +19,7 @@ import styles from "./ProviderSyncPanel.module.css";
 type ProviderSyncPanelProps = {
   catalog: ApiResult<ProviderCatalogResponse>;
   statuses: ApiResult<ProviderStatusCatalogResponse>;
+  scheduledSyncConfigs: ApiResult<ScheduledSyncConfig>[];
 };
 
 type ProviderOption = {
@@ -24,16 +27,19 @@ type ProviderOption = {
   status?: ProviderStatus;
 };
 
-export function ProviderSyncPanel({ catalog, statuses }: ProviderSyncPanelProps) {
+export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: ProviderSyncPanelProps) {
   const router = useRouter();
   const [selectedProviderCode, setSelectedProviderCode] = useState("");
   const [result, setResult] = useState<ApiResult<ProviderSyncResponse> | null>(null);
   const [oauthError, setOAuthError] = useState<string | null>(null);
   const [accountActionError, setAccountActionError] = useState<string | null>(null);
   const [pendingAccountAction, setPendingAccountAction] = useState<string | null>(null);
+  const [scheduledResult, setScheduledResult] = useState<ApiResult<ScheduledSyncRunResponse> | null>(null);
+  const [scheduledError, setScheduledError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isOAuthPending, startOAuthTransition] = useTransition();
   const [, startAccountActionTransition] = useTransition();
+  const [, startScheduledTransition] = useTransition();
 
   if (!catalog.ok || !statuses.ok) {
     return (
@@ -55,6 +61,11 @@ export function ProviderSyncPanel({ catalog, statuses }: ProviderSyncPanelProps)
     providers.find((provider) => provider.descriptor.providerCode === selectedProviderCode) ??
     providers[0];
   const canSync = Boolean(selectedProvider?.status?.canSync);
+  const scheduledConfigByAccount = new Map(
+    scheduledSyncConfigs
+      .filter((config): config is { ok: true; data: ScheduledSyncConfig } => config.ok)
+      .map((config) => [`${config.data.providerCode}:${config.data.providerInstanceId}`, config.data]),
+  );
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -158,6 +169,64 @@ export function ProviderSyncPanel({ catalog, statuses }: ProviderSyncPanelProps)
     });
   }
 
+  function onToggleScheduled(providerInstanceId: string, enabled: boolean) {
+    if (!selectedProvider) return;
+    setScheduledError(null);
+    setScheduledResult(null);
+    setPendingAccountAction(`scheduled:${providerInstanceId}`);
+    const config = scheduledConfigByAccount.get(
+      `${selectedProvider.descriptor.providerCode}:${providerInstanceId}`,
+    );
+
+    startScheduledTransition(async () => {
+      try {
+        const response = await fetch(
+          `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/scheduled-sync`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              enabled,
+              dataTypes: config?.dataTypes ?? selectedProvider.descriptor.defaultDataTypes,
+              cadenceMinutes: config?.cadenceMinutes ?? 1440,
+              lookbackDays: config?.lookbackDays ?? 7,
+            }),
+          },
+        );
+        const body = (await response.json()) as ApiResult<ScheduledSyncConfig>;
+        if (body.ok) router.refresh();
+        else setScheduledError(body.message);
+      } catch {
+        setScheduledError("Automatic sync update failed. Try again.");
+      } finally {
+        setPendingAccountAction(null);
+      }
+    });
+  }
+
+  function onRunScheduled(providerInstanceId: string) {
+    if (!selectedProvider) return;
+    setScheduledError(null);
+    setScheduledResult(null);
+    setPendingAccountAction(`scheduled-run:${providerInstanceId}`);
+
+    startScheduledTransition(async () => {
+      try {
+        const response = await fetch(
+          `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/scheduled-sync/run`,
+          { method: "POST" },
+        );
+        const body = (await response.json()) as ApiResult<ScheduledSyncRunResponse>;
+        setScheduledResult(body);
+        if (body.ok) router.refresh();
+      } catch {
+        setScheduledError("Automatic sync run failed. Try again.");
+      } finally {
+        setPendingAccountAction(null);
+      }
+    });
+  }
+
   return (
     <section className={styles.panel}>
       <div className={styles.heading}>
@@ -192,8 +261,11 @@ export function ProviderSyncPanel({ catalog, statuses }: ProviderSyncPanelProps)
           pendingAccountAction={pendingAccountAction}
           onDisconnect={onDisconnect}
           onReconnect={onReconnect}
+          onRunScheduled={onRunScheduled}
           onStartOAuth={onStartOAuth}
+          onToggleScheduled={onToggleScheduled}
           provider={selectedProvider}
+          scheduledConfigByAccount={scheduledConfigByAccount}
         />
       ) : null}
 
@@ -250,6 +322,8 @@ export function ProviderSyncPanel({ catalog, statuses }: ProviderSyncPanelProps)
       ) : null}
 
       {result ? <SyncResult result={result} /> : null}
+      {scheduledError ? <div className={styles.errorNotice}>{scheduledError}</div> : null}
+      {scheduledResult ? <ScheduledRunResult result={scheduledResult} /> : null}
     </section>
   );
 }
@@ -261,8 +335,11 @@ function ProviderStatusSummary({
   pendingAccountAction,
   onDisconnect,
   onReconnect,
+  onRunScheduled,
   onStartOAuth,
+  onToggleScheduled,
   provider,
+  scheduledConfigByAccount,
 }: {
   isOAuthPending: boolean;
   accountActionError: string | null;
@@ -270,8 +347,11 @@ function ProviderStatusSummary({
   pendingAccountAction: string | null;
   onDisconnect: (providerInstanceId: string) => void;
   onReconnect: (providerInstanceId: string) => void;
+  onRunScheduled: (providerInstanceId: string) => void;
   onStartOAuth: () => void;
+  onToggleScheduled: (providerInstanceId: string, enabled: boolean) => void;
   provider: ProviderOption;
+  scheduledConfigByAccount: Map<string, ScheduledSyncConfig>;
 }) {
   const status = provider.status;
 
@@ -309,7 +389,12 @@ function ProviderStatusSummary({
               key={account.providerInstanceId}
               onDisconnect={onDisconnect}
               onReconnect={onReconnect}
+              onRunScheduled={onRunScheduled}
+              onToggleScheduled={onToggleScheduled}
               pendingAccountAction={pendingAccountAction}
+              scheduledConfig={scheduledConfigByAccount.get(
+                `${provider.descriptor.providerCode}:${account.providerInstanceId}`,
+              )}
             />
           ))}
         </div>
@@ -322,15 +407,23 @@ function ProviderAccountRow({
   account,
   onDisconnect,
   onReconnect,
+  onRunScheduled,
+  onToggleScheduled,
   pendingAccountAction,
+  scheduledConfig,
 }: {
   account: ProviderAccountStatus;
   onDisconnect: (providerInstanceId: string) => void;
   onReconnect: (providerInstanceId: string) => void;
+  onRunScheduled: (providerInstanceId: string) => void;
+  onToggleScheduled: (providerInstanceId: string, enabled: boolean) => void;
   pendingAccountAction: string | null;
+  scheduledConfig?: ScheduledSyncConfig;
 }) {
   const disconnectPending = pendingAccountAction === `disconnect:${account.providerInstanceId}`;
   const reconnectPending = pendingAccountAction === `reconnect:${account.providerInstanceId}`;
+  const scheduledPending = pendingAccountAction === `scheduled:${account.providerInstanceId}`;
+  const scheduledRunPending = pendingAccountAction === `scheduled-run:${account.providerInstanceId}`;
 
   return (
     <div className={styles.accountRow}>
@@ -371,8 +464,41 @@ function ProviderAccountRow({
             <dd>{account.lastAuthErrorMessage ?? "Authentication failed"}</dd>
           </div>
         ) : null}
+        <div className={styles.scheduledMeta}>
+          <dt>Automatic</dt>
+          <dd>
+            {scheduledConfig?.enabled ? "Enabled" : "Paused"}
+            {scheduledConfig?.nextRunAt ? `, next ${formatDateTime(scheduledConfig.nextRunAt)}` : ""}
+          </dd>
+        </div>
+        {scheduledConfig?.lastErrorMessage ? (
+          <div className={styles.accountError}>
+            <dt>Scheduled sync error</dt>
+            <dd>{scheduledConfig.lastErrorMessage}</dd>
+          </div>
+        ) : null}
       </dl>
       <div className={styles.accountActions}>
+        {account.status === "connected" ? (
+          <>
+            <button
+              className={styles.secondaryButton}
+              disabled={scheduledPending || scheduledRunPending}
+              onClick={() => onToggleScheduled(account.providerInstanceId, !scheduledConfig?.enabled)}
+              type="button"
+            >
+              {scheduledPending ? "Saving..." : scheduledConfig?.enabled ? "Pause auto" : "Enable auto"}
+            </button>
+            <button
+              className={styles.oauthButton}
+              disabled={scheduledPending || scheduledRunPending}
+              onClick={() => onRunScheduled(account.providerInstanceId)}
+              type="button"
+            >
+              {scheduledRunPending ? "Running..." : "Run auto now"}
+            </button>
+          </>
+        ) : null}
         {account.status === "connected" ? (
           <button
             className={styles.secondaryButton}
@@ -394,6 +520,26 @@ function ProviderAccountRow({
           </button>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function ScheduledRunResult({ result }: { result: ApiResult<ScheduledSyncRunResponse> }) {
+  if (!result.ok) return <ErrorBlock result={result} />;
+
+  return (
+    <div className={styles.result}>
+      <strong>Automatic sync {result.data.status}</strong>
+      <span>
+        {result.data.providerCode}: {result.data.requestedFrom ?? "n/a"} - {result.data.requestedTo ?? "n/a"}
+      </span>
+      {result.data.errors.length > 0 ? (
+        <ul>
+          {result.data.errors.map((error) => (
+            <li key={error}>{error}</li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

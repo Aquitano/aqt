@@ -15,13 +15,10 @@ import type {
   ProviderStatusCatalogResponse,
   ProviderSyncRequest,
   ProviderSyncResponse,
+  ScheduledSyncConfig,
+  ScheduledSyncConfigUpdateRequest,
+  ScheduledSyncRunResponse,
   HealthStatusData,
-  BloodPressureMeasurementsResponse,
-  BloodPressureLatestResponse,
-  CardiovascularMeasurementsResponse,
-  CardiovascularMeasurementResponse,
-  ExtendedBodyMeasurementsResponse,
-  ExtendedBodyMeasurementResponse,
  } from "./types";
 import { createAqtHealthClient } from "./aqtHealthClient";
 import {
@@ -198,12 +195,26 @@ export async function getProviderSyncPageData(): Promise<ProviderSyncPageData> {
     getProviderCatalog(),
     getProviderStatuses(),
   ]);
+  const scheduledSyncConfigs =
+    providerStatuses.ok
+      ? await Promise.all(
+          providerStatuses.data.providers.flatMap((provider) =>
+            provider.accounts.map((account) =>
+              client.getScheduledSyncConfig(
+                provider.providerCode,
+                account.providerInstanceId,
+              ) as Promise<ApiResult<ScheduledSyncConfig>>,
+            ),
+          ),
+        )
+      : [];
 
   return {
     apiBaseUrl: client.apiBaseUrl,
     health,
     providerCatalog,
     providerStatuses,
+    scheduledSyncConfigs,
   };
 }
 
@@ -304,6 +315,28 @@ export async function syncProvider(
   payload: ProviderSyncRequest,
 ): Promise<ApiResult<ProviderSyncResponse>> {
   return createAqtHealthClient().syncProvider(providerCode, payload);
+}
+
+export async function getScheduledSyncConfig(
+  providerCode: string,
+  providerInstanceId: string,
+): Promise<ApiResult<ScheduledSyncConfig>> {
+  return createAqtHealthClient().getScheduledSyncConfig(providerCode, providerInstanceId);
+}
+
+export async function updateScheduledSyncConfig(
+  providerCode: string,
+  providerInstanceId: string,
+  payload: ScheduledSyncConfigUpdateRequest,
+): Promise<ApiResult<ScheduledSyncConfig>> {
+  return createAqtHealthClient().updateScheduledSyncConfig(providerCode, providerInstanceId, payload);
+}
+
+export async function runScheduledSyncNow(
+  providerCode: string,
+  providerInstanceId: string,
+): Promise<ApiResult<ScheduledSyncRunResponse>> {
+  return createAqtHealthClient().runScheduledSyncNow(providerCode, providerInstanceId);
 }
 
 function ingestionStatus(value?: string): "processed" | "failed" | undefined {

@@ -14,6 +14,7 @@ type MetricHighlightsProps = {
   latestRespiratoryRate?: RespiratoryRateSamplesResponse;
   latestHrv?: HrvSamplesResponse;
   latestBloodPressure?: BloodPressureLatestResponse;
+};
 export function MetricHighlights({
   latestActivity,
   latestSleepSummary,
