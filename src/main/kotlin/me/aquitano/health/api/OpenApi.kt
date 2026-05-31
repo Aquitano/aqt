@@ -1058,6 +1058,9 @@ internal fun ingestionSummaryExample(duplicate: Boolean = false): ExampleObject 
                 sleepSummaries = if (duplicate) 0 else 1,
                 respiratoryRateSamples = if (duplicate) 0 else 1,
                 hrvSamples = if (duplicate) 0 else 1,
+                bloodPressureMeasurements = if (duplicate) 0 else 1,
+                cardiovascularMeasurements = if (duplicate) 0 else 1,
+                extendedBodyMeasurements = if (duplicate) 0 else 1,
             ),
             metricsSkipped = MetricSkippedCountsResponse(
                 duplicates = if (duplicate) 4 else 0,

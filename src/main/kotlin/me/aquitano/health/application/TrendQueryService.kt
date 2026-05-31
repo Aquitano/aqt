@@ -20,7 +20,7 @@ class TrendQueryService(
     private val database: Database,
     private val metricsReadRepository: MetricsReadRepository,
 ) {
-    private val logger = LoggerFactory.getLogger(TrendQueryService::class.java) {
+    private val logger = LoggerFactory.getLogger(TrendQueryService::class.java)
     suspend fun dashboardTrends(
         params: QueryParams,
         now: Instant,

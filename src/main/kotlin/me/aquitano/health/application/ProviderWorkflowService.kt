@@ -357,5 +357,8 @@ class ProviderWorkflowService(
             sleepSummaries = sleepSummaries,
             respiratoryRateSamples = respiratoryRateSamples,
             hrvSamples = hrvSamples,
+            bloodPressureMeasurements = bloodPressureMeasurements,
+            cardiovascularMeasurements = cardiovascularMeasurements,
+            extendedBodyMeasurements = extendedBodyMeasurements,
         )
 }

@@ -138,6 +138,7 @@ class ReadApiRouteTest {
                 "sleep_summary",
                 "respiratory_rate",
                 "hrv",
+                "trends",
             ),
             families.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet(),
         )
@@ -204,6 +205,11 @@ class ReadApiRouteTest {
         assertContains(hrv.endpointPaths(), "/api/v1/metrics/hrv")
         assertContains(hrv.endpointPaths(), "/api/v1/metrics/hrv/summary")
         assertContains(hrv.queryParameterNames(), "metricType")
+
+        val trends = families.family("trends")
+        assertContains(trends.endpointPaths(), "/api/v1/dashboard/trends")
+        assertContains(trends.queryParameterNames(), "periodDays")
+        assertContains(trends.queryParameterNames(), "toDate")
     }
 
     @Test
