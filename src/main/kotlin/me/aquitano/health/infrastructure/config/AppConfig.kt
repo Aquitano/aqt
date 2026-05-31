@@ -7,6 +7,11 @@ data class AppConfig(
     val auth: AuthConfig,
     val googleHealth: GoogleHealthConfig,
     val withings: WithingsConfig,
+    val cors: CorsConfig,
+)
+
+data class CorsConfig(
+    val origins: List<String>,
 )
 
 data class DatabaseConfig(
@@ -97,6 +102,12 @@ fun ApplicationConfig.toAppConfig(): AppConfig =
                 "aqtHealth.withings.oauthAuthUrl",
                 "https://account.withings.com/oauth2_user/authorize2",
             ),
+        ),
+        cors = CorsConfig(
+            origins = optional("aqtHealth.cors.origins", "http://localhost:3000")
+                .split(",")
+                .map { it.trim() }
+                .filter { it.isNotBlank() },
         ),
     )
 
