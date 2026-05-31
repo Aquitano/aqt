@@ -9,6 +9,45 @@ services:
       POSTGRES_PASSWORD: ${AQT_HEALTH_DB_PASSWORD:-aqt_health}
     volumes:
       - aqt_health_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AQT_HEALTH_DB_USER:-aqt_health} -d ${POSTGRES_DB:-aqt_health}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      PORT: ${PORT:-8080}
+      AQT_HEALTH_JDBC_URL: ${AQT_HEALTH_JDBC_URL:-jdbc:postgresql://postgres:5432/aqt_health}
+      AQT_HEALTH_DB_USER: ${AQT_HEALTH_DB_USER:-aqt_health}
+      AQT_HEALTH_DB_PASSWORD: ${AQT_HEALTH_DB_PASSWORD:-aqt_health}
+      AQT_HEALTH_DB_MAX_POOL_SIZE: ${AQT_HEALTH_DB_MAX_POOL_SIZE:-10}
+      AQT_HEALTH_BOOTSTRAP_CLIENT_NAME: ${AQT_HEALTH_BOOTSTRAP_CLIENT_NAME:-local-admin}
+      AQT_HEALTH_BOOTSTRAP_API_KEY: ${AQT_HEALTH_BOOTSTRAP_API_KEY:-}
+      AQT_HEALTH_GOOGLE_CLIENT_ID: ${AQT_HEALTH_GOOGLE_CLIENT_ID:-}
+      AQT_HEALTH_GOOGLE_CLIENT_SECRET: ${AQT_HEALTH_GOOGLE_CLIENT_SECRET:-}
+      AQT_HEALTH_GOOGLE_REDIRECT_URI: ${AQT_HEALTH_GOOGLE_REDIRECT_URI:-}
+      AQT_HEALTH_GOOGLE_TOKEN_ENCRYPTION_KEY: ${AQT_HEALTH_GOOGLE_TOKEN_ENCRYPTION_KEY:-}
+      AQT_HEALTH_WITHINGS_CLIENT_ID: ${AQT_HEALTH_WITHINGS_CLIENT_ID:-}
+      AQT_HEALTH_WITHINGS_CLIENT_SECRET: ${AQT_HEALTH_WITHINGS_CLIENT_SECRET:-}
+      AQT_HEALTH_WITHINGS_REDIRECT_URI: ${AQT_HEALTH_WITHINGS_REDIRECT_URI:-}
+      AQT_HEALTH_WITHINGS_TOKEN_ENCRYPTION_KEY: ${AQT_HEALTH_WITHINGS_TOKEN_ENCRYPTION_KEY:-}
+      AQT_HEALTH_LOG_FORMAT: ${AQT_HEALTH_LOG_FORMAT:-text}
+      AQT_HEALTH_CORS_ORIGINS: ${AQT_HEALTH_CORS_ORIGINS:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/v1/admin/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
 
 volumes:
   aqt_health_pgdata:
