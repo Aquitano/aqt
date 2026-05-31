@@ -587,7 +587,7 @@ function ErrorBlock({ result }: { result: ApiResult<unknown> }) {
   );
 }
 
-function actionLabel(descriptor: ProviderDescriptor, status: ProviderStatus): string {
+export function actionLabel(descriptor: ProviderDescriptor, status: ProviderStatus): string {
   switch (status.nextAction) {
     case "configure":
       return `${descriptor.displayName} is not configured`;
@@ -600,7 +600,7 @@ function actionLabel(descriptor: ProviderDescriptor, status: ProviderStatus): st
   }
 }
 
-function actionDetail(descriptor: ProviderDescriptor, status: ProviderStatus): string {
+export function actionDetail(descriptor: ProviderDescriptor, status: ProviderStatus): string {
   switch (status.nextAction) {
     case "configure":
       return `Set the ${descriptor.displayName} credentials and token encryption key on the backend.`;
@@ -619,7 +619,7 @@ function actionDetail(descriptor: ProviderDescriptor, status: ProviderStatus): s
   }
 }
 
-function primaryOAuthLabel(status: ProviderStatus): string {
+export function primaryOAuthLabel(status: ProviderStatus): string {
   switch (status.nextAction) {
     case "connect":
       return "Connect";
@@ -630,7 +630,7 @@ function primaryOAuthLabel(status: ProviderStatus): string {
   }
 }
 
-function formatStatus(value: string): string {
+export function formatStatus(value: string): string {
   return value
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
