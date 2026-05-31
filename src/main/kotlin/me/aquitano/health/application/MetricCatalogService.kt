@@ -18,6 +18,7 @@ class MetricCatalogService(
                 sleepSummaryCatalog(),
                 respiratoryRateCatalog(),
                 hrvCatalog(),
+                trendsCatalog(),
             ),
         )
 
@@ -542,4 +543,32 @@ class MetricCatalogService(
                 )
             }
         }
+
+    private fun trendsCatalog(): MetricFamilyCatalogDto =
+        MetricFamilyCatalogDto(
+            name = "trends",
+            readEndpoints = listOf(
+                endpoint("dashboard", "/api/v1/dashboard/trends", "DashboardTrendsResponse"),
+            ),
+            queryParameters = listOf(
+                MetricQueryParameterDto(
+                    name = "periodDays",
+                    type = "integer",
+                    required = false,
+                    description = "Number of days in the comparison period (1-90, default 7)",
+                ),
+                MetricQueryParameterDto(
+                    name = "toDate",
+                    type = "date",
+                    required = false,
+                    description = "End date of current period (ISO-8601 date); defaults to today",
+                ),
+            ),
+            aggregationModes = listOf(
+                mode("dashboard", "/api/v1/dashboard/trends"),
+            ),
+            responseDtos = listOf("DashboardTrendsResponse"),
+            providerDataTypes = emptyList(),
+            schemaHint = "returns period-over-period trends for steps, heart rate, sleep duration, and weight with percent changes.",
+        )
 }

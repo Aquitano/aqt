@@ -157,6 +157,10 @@ fun Application.module() {
             providerOAuthRepository = providerOAuthRepository,
             providerStatusService = providerStatusService,
         ),
+        trendQueryService = TrendQueryService(
+            database = database,
+            metricsReadRepository = metricsReadRepository,
+        ),
     )
 
     ApiClientBootstrapService(
@@ -166,7 +170,7 @@ fun Application.module() {
         clock = clock,
     ).bootstrap()
 
-    configureHttp()
+    configureHttp(corsConfig = appConfig.cors)
     configureRoutes(services = services)
 }
 
@@ -185,4 +189,5 @@ data class ApplicationServices(
     val metricCatalogService: MetricCatalogService,
     val providerStatusService: ProviderStatusService,
     val providerWorkflowService: ProviderWorkflowService,
+    val trendQueryService: TrendQueryService,
 )

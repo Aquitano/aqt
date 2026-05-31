@@ -62,9 +62,9 @@ export type MetricReadEndpoint = ApiSchema<"MetricReadEndpointDto">;
 export type MetricQueryParameter = ApiSchema<"MetricQueryParameterDto">;
 export type MetricAggregationMode = ApiSchema<"MetricAggregationModeDto">;
 export type MetricProviderDataTypes = ApiSchema<"MetricProviderDataTypesDto">;
+export type DashboardTrendsResponse = ApiSchema<"DashboardTrendsResponse">;
 
 export type HealthDayModuleName = HealthDayResponse["modules"][number];
-
 export type HealthStatusData = {
   apiBaseUrl: string;
   health: ApiResult<HealthResponse>;
@@ -72,6 +72,7 @@ export type HealthStatusData = {
 
 export type HealthDataPageData = HealthStatusData & {
   summary: ApiResult<DashboardSummaryResponse>;
+  trends: ApiResult<DashboardTrendsResponse>;
   healthDay: ApiResult<HealthDayResponse>;
   dailySteps: ApiResult<StepDailySummariesResponse>;
   activitySummaries: ApiResult<ActivitySummariesResponse>;

@@ -1,9 +1,10 @@
 import { formatDuration, formatMeasurement, formatNumber } from "@/lib/format";
-import type { DashboardSummaryResponse } from "@/lib/types";
+import type { DashboardSummaryResponse, DashboardTrendsResponse } from "@/lib/types";
 import styles from "./DashboardCards.module.css";
 
 type DashboardCardsProps = {
   summary?: DashboardSummaryResponse;
+  trends?: DashboardTrendsResponse;
 };
 
 const StepsIcon = () => (
@@ -36,13 +37,31 @@ const SleepIcon = () => (
   </svg>
 );
 
-export function DashboardCards({ summary }: DashboardCardsProps) {
+function TrendBadge({ percentChange }: { percentChange?: number | null }) {
+  if (percentChange === undefined || percentChange === null) return null;
+  const isPositive = percentChange > 0;
+  const isNeutral = percentChange === 0;
+  const sign = isNeutral ? "" : isPositive ? "+" : "";
+  const arrow = isNeutral ? "→" : isPositive ? "↑" : "↓";
+  return (
+    <span
+      className={styles.trend}
+      data-direction={isNeutral ? "neutral" : isPositive ? "up" : "down"}
+      title={`${sign}${percentChange.toFixed(1)}% vs previous${percentChange === 0 ? " period" : ""}`}
+    >
+      {arrow} {sign}{Math.abs(percentChange).toFixed(1)}%
+    </span>
+  );
+}
+
+export function DashboardCards({ summary, trends }: DashboardCardsProps) {
   const cards = [
     {
       kind: "steps" as const,
       label: "Steps",
       value: formatNumber(summary?.steps.steps),
       detail: `${formatNumber(summary?.steps.sampleCount)} samples`,
+      trend: trends?.steps?.percentChange,
       icon: <StepsIcon />,
     },
     {
@@ -50,6 +69,7 @@ export function DashboardCards({ summary }: DashboardCardsProps) {
       label: "Latest weight",
       value: formatMeasurement(summary?.latestWeight?.value, summary?.latestWeight?.unit),
       detail: summary?.latestWeight?.measuredAt ?? "No data",
+      trend: trends?.weight?.percentChange,
       icon: <WeightIcon />,
     },
     {
@@ -57,6 +77,7 @@ export function DashboardCards({ summary }: DashboardCardsProps) {
       label: "Heart rate",
       value: summary?.latestHeartRate ? `${summary.latestHeartRate.bpm} bpm` : "n/a",
       detail: summary?.latestHeartRate?.context ?? "No data",
+      trend: trends?.heartRate?.percentChange,
       icon: <HeartIcon />,
     },
     {
@@ -64,6 +85,7 @@ export function DashboardCards({ summary }: DashboardCardsProps) {
       label: "Last sleep",
       value: formatDuration(summary?.lastSleepSession?.durationSeconds),
       detail: summary?.lastSleepSession?.startAt ?? "No data",
+      trend: trends?.sleep?.percentChange,
       icon: <SleepIcon />,
     },
   ];
@@ -76,7 +98,10 @@ export function DashboardCards({ summary }: DashboardCardsProps) {
           <div className={styles.body}>
             <span className={styles.label}>{card.label}</span>
             <span className={styles.value}>{card.value}</span>
-            <span className={styles.detail}>{card.detail}</span>
+            <span className={styles.detail}>
+              {card.detail}
+              <TrendBadge percentChange={card.trend} />
+            </span>
           </div>
         </article>
       ))}

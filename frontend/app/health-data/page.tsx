@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { DashboardCards } from "@/components/DashboardCards";
 import { DataSection } from "@/components/DataSection";
 import { DateRangeForm } from "@/components/DateRangeForm";
 import { DayOverview } from "@/components/DayOverview";
@@ -59,9 +60,14 @@ export default async function HealthDataPage({ searchParams }: PageProps) {
       {range.warning ? <div className="notice warning">{range.warning}</div> : null}
       <ErrorNotice result={data.health} />
       <ErrorNotice result={data.summary} />
+      <ErrorNotice result={data.trends} />
       <ErrorNotice result={data.healthDay} />
       <ErrorNotice result={data.bodyMeasurements} />
 
+      <DashboardCards
+        summary={data.summary.ok ? data.summary.data : undefined}
+        trends={data.trends.ok ? data.trends.data : undefined}
+      />
       <DayOverview
         day={healthDay}
         weightDelta7d={weightDelta?.value}

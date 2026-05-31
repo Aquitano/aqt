@@ -605,6 +605,33 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 "Returns aggregate dashboard data for an inclusive UTC date range, including total steps and latest matching weight, heart-rate, and sleep values."
             requiresBearerAuth()
             dashboardQueryParameters()
+        }
+        get("/api/v1/dashboard/trends") {
+            call.authenticateProtected(services)
+            call.respond<DashboardTrendsResponse>(
+                HttpStatusCode.OK,
+                services.trendQueryService.dashboardTrends(
+                    call.queryParams(),
+                    services.clock.now(),
+                )
+            )
+        }.describe {
+            operationId = "getDashboardTrends"
+            tag("Read")
+            summary = "Get dashboard trends"
+            description =
+                "Returns trend comparisons for steps, heart rate, sleep, and weight over a configurable period compared to the preceding period."
+            requiresBearerAuth()
+            parameters {
+                query("periodDays") {
+                    description = "Number of days in the comparison period"
+                    schema = integerSchema(minimum = 1.0, maximum = 90.0, example = 7)
+                }
+                query("toDate") {
+                    description = "End date of current period (ISO-8601 date); defaults to today"
+                    schema = stringSchema(format = "date", example = "2026-05-30")
+                }
+            }
             errorResponses()
         }
         get("/api/v1/admin/ingestion/batches") {

@@ -45,6 +45,7 @@ export async function getHealthDataPageData(
   const [
     health,
     summary,
+    trends,
     healthDay,
     dailySteps,
     activitySummaries,
@@ -62,6 +63,10 @@ export async function getHealthDataPageData(
     client.getHealth(),
     client.getDashboardSummary({
       fromDate,
+      toDate,
+    }),
+    client.getDashboardTrends({
+      periodDays: 7,
       toDate,
     }),
     getHealthDay({
@@ -123,6 +128,7 @@ export async function getHealthDataPageData(
     apiBaseUrl,
     health,
     summary,
+    trends,
     healthDay,
     dailySteps,
     activitySummaries,

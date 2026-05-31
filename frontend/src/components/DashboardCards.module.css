@@ -71,7 +71,31 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
+.trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.3;
+  background: var(--bg-elevated);
+  color: var(--fg-muted);
+}
+.trend[data-direction="up"] {
+  background: rgba(91, 184, 164, 0.15);
+  color: #3daa8e;
+}
+.trend[data-direction="down"] {
+  background: rgba(224, 120, 120, 0.15);
+  color: #c45a5a;
+}
+.trend[data-direction="neutral"] {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--fg-dim);
+}
 @media (max-width: 900px) {
   .cards {
     grid-template-columns: repeat(2, 1fr);

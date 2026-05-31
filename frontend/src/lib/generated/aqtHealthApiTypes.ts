@@ -704,6 +704,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dashboard/trends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get dashboard trends
+         * @description Returns trend comparisons for steps, heart rate, sleep, and weight over a configurable period compared to the preceding period.
+         */
+        get: operations["getDashboardTrends"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1432,6 +1452,40 @@ export interface components {
             latestWeight?: components["schemas"]["BodyMeasurementResponse"] | null;
             latestHeartRate?: components["schemas"]["HeartRateSampleResponse"] | null;
             lastSleepSession?: components["schemas"]["SleepSessionResponse"] | null;
+        };
+        /** StepsTrend */
+        StepsTrend: {
+            currentTotal: number;
+            previousTotal: number;
+            percentChange: number;
+            dailyAverage: number;
+        };
+        /** HeartRateTrend */
+        HeartRateTrend: {
+            currentAvg: number;
+            previousAvg: number;
+            percentChange: number;
+        };
+        /** SleepTrend */
+        SleepTrend: {
+            currentAvgSeconds: number;
+            previousAvgSeconds: number;
+            percentChange: number;
+        };
+        /** WeightTrend */
+        WeightTrend: {
+            latest?: components["schemas"]["BodyMeasurementResponse"] | null;
+            previous?: components["schemas"]["BodyMeasurementResponse"] | null;
+            delta?: number | null;
+            percentChange?: number | null;
+        };
+        /** DashboardTrendsResponse */
+        DashboardTrendsResponse: {
+            periodDays: number;
+            steps?: components["schemas"]["StepsTrend"] | null;
+            heartRate?: components["schemas"]["HeartRateTrend"] | null;
+            sleep?: components["schemas"]["SleepTrend"] | null;
+            weight?: components["schemas"]["WeightTrend"] | null;
         };
     };
     responses: never;
@@ -4208,6 +4262,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardSummaryResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getDashboardTrends: {
+        parameters: {
+            query?: {
+                /** @description Number of days in the comparison period */
+                periodDays?: number;
+                /** @description End date of current period (ISO-8601 date); defaults to today */
+                toDate?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardTrendsResponse"];
                 };
             };
             /** @description Request validation failed */

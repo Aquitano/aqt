@@ -1041,4 +1041,29 @@ class MetricsReadRepository {
 
     private fun String.toSortOrder(): SortOrder =
         if (equals("desc", ignoreCase = true)) SortOrder.DESC else SortOrder.ASC
+    fun avgSleepDuration(filters: ReadFilters): Long? {
+        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
+        if (sourceIds != null && sourceIds.isEmpty()) return null
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.from?.let { conditions.add(SleepSessionsTable.endAt greaterEq it.toDbTimestamp()) }
+        filters.to?.let { conditions.add(SleepSessionsTable.startAt less it.toDbTimestamp()) }
+        sourceIds?.let { conditions.add(SleepSessionsTable.sourceInstanceId inList it) }
+        val avgExpression = SleepSessionsTable.durationSeconds.avg()
+        return SleepSessionsTable
+            .select(avgExpression)
+            .where(combineConditions(conditions))
+            .singleOrNull()
+            ?.let { it[avgExpression]?.toLong() }
+    }
+    fun latestBodyMeasurementBefore(before: Instant, metricType: String): BodyMeasurementRow? {
+        return BodyMeasurementsTable.selectAll()
+            .where {
+                (BodyMeasurementsTable.measuredAt less before.toDbTimestamp()) and
+                        (BodyMeasurementsTable.metricType eq metricType)
+            }
+            .orderBy(BodyMeasurementsTable.measuredAt to SortOrder.DESC)
+            .limit(1)
+            .map(::toBodyMeasurementRow)
+            .singleOrNull()
+    }
 }

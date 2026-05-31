@@ -55,7 +55,9 @@ type BodyMeasurementsQuery = NonNullable<
 type DashboardSummaryQuery = NonNullable<
   paths["/api/v1/dashboard/summary"]["get"]["parameters"]["query"]
 >;
-
+type DashboardTrendsQuery = NonNullable<
+  paths["/api/v1/dashboard/trends"]["get"]["parameters"]["query"]
+>;
 const defaultBaseUrl = "http://localhost:8080";
 
 export function apiBaseUrlFromEnv(): string {
@@ -284,10 +286,16 @@ export function createAqtHealthClient() {
           params: { query },
         }),
       ),
-
     getDashboardSummary: (query: DashboardSummaryQuery) =>
       call<ApiSchema<"DashboardSummaryResponse">>((headers) =>
         rawClient.GET("/api/v1/dashboard/summary", {
+          headers,
+          params: { query },
+        }),
+      ),
+    getDashboardTrends: (query: DashboardTrendsQuery) =>
+      call<ApiSchema<"DashboardTrendsResponse">>((headers) =>
+        rawClient.GET("/api/v1/dashboard/trends", {
           headers,
           params: { query },
         }),
