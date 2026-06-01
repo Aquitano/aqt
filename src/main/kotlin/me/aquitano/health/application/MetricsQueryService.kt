@@ -16,6 +16,8 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 
+private const val DashboardSummaryLatestCandidateLimit = 500
+
 class MetricsQueryService(
     private val database: Database,
     private val metricsReadRepository: MetricsReadRepository,
@@ -502,7 +504,10 @@ class MetricsQueryService(
             }
             val (weight, weightSourceMetadata) = if (canonical) {
                 val (rows, metadata) = metricsReadRepository.listBodyMeasurements(
-                    instantFilters.copy(limit = Int.MAX_VALUE, order = Orders.ASC),
+                    instantFilters.copy(
+                        limit = DashboardSummaryLatestCandidateLimit,
+                        order = Orders.DESC,
+                    ),
                     BodyMetricTypes.WEIGHT,
                 )
                 val canonicalRows = canonicalMetricsService.canonicalBodyMeasurements(
@@ -518,7 +523,10 @@ class MetricsQueryService(
             }
             val (heartRate, heartRateSourceMetadata) = if (canonical) {
                 val (rows, metadata) = metricsReadRepository.listHeartRateSamples(
-                    instantFilters.copy(limit = Int.MAX_VALUE, order = Orders.ASC)
+                    instantFilters.copy(
+                        limit = DashboardSummaryLatestCandidateLimit,
+                        order = Orders.DESC,
+                    )
                 )
                 val canonicalRows = canonicalMetricsService.canonicalHeartRateSamples(
                     rows,
@@ -530,7 +538,10 @@ class MetricsQueryService(
             }
             val (sleepNights, sleepStagesBySession, sleepSourceMetadata) =
                 metricsReadRepository.listSleepNights(
-                    sleepNightFilters.copy(limit = if (canonical) Int.MAX_VALUE else sleepNightFilters.limit)
+                    sleepNightFilters.copy(
+                        limit = if (canonical) DashboardSummaryLatestCandidateLimit else sleepNightFilters.limit,
+                        order = Orders.DESC,
+                    )
                 )
             val sleep = if (canonical) {
                 canonicalMetricsService.canonicalSleepSessions(

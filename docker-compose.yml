@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgres:17
     ports:
-      - "${AQT_HEALTH_DB_PORT:-5432}:5432"
+      - "${AQT_HEALTH_DB_PORT:-55432}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-aqt_health}
       POSTGRES_USER: ${AQT_HEALTH_DB_USER:-aqt_health}

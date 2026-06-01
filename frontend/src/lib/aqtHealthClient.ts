@@ -70,6 +70,7 @@ type DashboardTrendsQuery = NonNullable<
   paths["/api/v1/dashboard/trends"]["get"]["parameters"]["query"]
 >;
 const defaultBaseUrl = "http://localhost:8080";
+const backendRequestTimeoutMs = 8_000;
 
 export function apiBaseUrlFromEnv(): string {
   return process.env.AQT_HEALTH_API_BASE_URL ?? defaultBaseUrl;
@@ -79,10 +80,7 @@ export function createAqtHealthClient() {
   const apiBaseUrl = apiBaseUrlFromEnv();
   const rawClient = createClient<paths>({
     baseUrl: apiBaseUrl,
-    fetch: (input) =>
-      fetch(input, {
-        next: { revalidate: 0 },
-      } as RequestInit & { next: { revalidate: 0 } }),
+    fetch: (input: Request) => fetchWithTimeout(input),
   });
 
   return {
@@ -391,14 +389,28 @@ async function fetchJson<T>(
   input: string,
   init: RequestInit,
 ): Promise<ClientResponse<T>> {
-  const response = await fetch(input, {
-    ...init,
-    next: { revalidate: 0 },
-  } as RequestInit & { next: { revalidate: 0 } });
+  const response = await fetchWithTimeout(input, init);
   const body = await response.json().catch(() => undefined);
   return response.ok
     ? { data: body as T, response }
     : { error: body, response };
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), backendRequestTimeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+      next: { revalidate: 0 },
+    } as RequestInit & { next: { revalidate: 0 } });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function call<T>(

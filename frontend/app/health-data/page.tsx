@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { DashboardCards } from "@/components/DashboardCards";
 import { DataSection } from "@/components/DataSection";
 import { DateRangeForm } from "@/components/DateRangeForm";
@@ -10,19 +9,20 @@ import { MetricHighlights } from "@/components/MetricHighlights";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBar } from "@/components/StatusBar";
 import { ActivitySummariesTable } from "@/components/tables/ActivitySummariesTable";
+import { BloodPressureTable } from "@/components/tables/BloodPressureTable";
 import { BodyMeasurementsTable } from "@/components/tables/BodyMeasurementsTable";
+import { CardiovascularTable } from "@/components/tables/CardiovascularTable";
 import { DailyStepsTable } from "@/components/tables/DailyStepsTable";
+import { ExtendedBodyMeasurementsTable } from "@/components/tables/ExtendedBodyMeasurementsTable";
 import { HeartRateTable } from "@/components/tables/HeartRateTable";
 import { HrvTable } from "@/components/tables/HrvTable";
 import { RespiratoryRateTable } from "@/components/tables/RespiratoryRateTable";
-import { SleepSummariesTable } from "@/components/tables/SleepSummariesTable";
 import { SleepSessionsTable } from "@/components/tables/SleepSessionsTable";
+import { SleepSummariesTable } from "@/components/tables/SleepSummariesTable";
 import { getHealthDataPageData } from "@/lib/aqtHealthApi";
 import { addUtcDays, parseDateRange } from "@/lib/dates";
 import type { BodyMeasurement } from "@/lib/types";
-import { BloodPressureTable } from "@/components/tables/BloodPressureTable";
-import { CardiovascularTable } from "@/components/tables/CardiovascularTable";
-import { ExtendedBodyMeasurementsTable } from "@/components/tables/ExtendedBodyMeasurementsTable";
+import { Suspense } from "react";
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -35,11 +35,6 @@ export default async function HealthDataPage({ searchParams }: PageProps) {
     toDate: params.toDate,
     timezone: params.timezone,
   });
-  const data = await getHealthDataPageData(range.fromDate, range.toDate, range.timezone);
-  const healthDay = data.healthDay.ok ? data.healthDay.data : undefined;
-  const bodyMeasurements = data.bodyMeasurements.ok ? data.bodyMeasurements.data : undefined;
-  const weightTrendItems = bodyMeasurements?.items.filter((item) => isWeightTrendItem(item, range.toDate)) ?? [];
-  const weightDelta = weightChange(weightTrendItems);
 
   return (
     <>
@@ -54,13 +49,49 @@ export default async function HealthDataPage({ searchParams }: PageProps) {
         }
       />
 
+      {range.warning ? <div className="notice warning">{range.warning}</div> : null}
+
+      <Suspense fallback={<div className="notice">Loading health data...</div>}>
+        <HealthDataContent
+          fromDate={range.fromDate}
+          toDate={range.toDate}
+          timezone={range.timezone}
+        />
+      </Suspense>
+    </>
+  );
+}
+
+async function HealthDataContent({
+  fromDate,
+  toDate,
+  timezone,
+}: {
+  fromDate: string;
+  toDate: string;
+  timezone: string;
+}) {
+  const data = await getHealthDataPageData(fromDate, toDate, timezone);
+  console.info(JSON.stringify({
+    event: "health_data_route_data_completed",
+    page: "/health-data",
+    fromDate,
+    toDate,
+    timezone,
+  }));
+  const healthDay = data.healthDay.ok ? data.healthDay.data : undefined;
+  const bodyMeasurements = data.bodyMeasurements.ok ? data.bodyMeasurements.data : undefined;
+  const weightTrendItems = bodyMeasurements?.items.filter((item) => isWeightTrendItem(item, toDate)) ?? [];
+  const weightDelta = weightChange(weightTrendItems);
+
+  const content = (
+    <>
       <StatusBar
         apiBaseUrl={data.apiBaseUrl}
         health={data.health}
-        fromDate={range.fromDate}
-        toDate={range.toDate}
+        fromDate={fromDate}
+        toDate={toDate}
       />
-      {range.warning ? <div className="notice warning">{range.warning}</div> : null}
       <ErrorNotice result={data.health} />
       <ErrorNotice result={data.summary} />
       <ErrorNotice result={data.trends} />
@@ -94,9 +125,9 @@ export default async function HealthDataPage({ searchParams }: PageProps) {
         latestSleep={data.latestSleep.ok ? data.latestSleep.data : undefined}
         respiratoryRates={data.respiratoryRates.ok ? data.respiratoryRates.data : undefined}
         sleepSummaries={data.sleepSummaries.ok ? data.sleepSummaries.data : undefined}
-        fromDate={range.fromDate}
-        toDate={range.toDate}
-        timezone={range.timezone}
+        fromDate={fromDate}
+        toDate={toDate}
+        timezone={timezone}
       />
 
       <div className="grid">
