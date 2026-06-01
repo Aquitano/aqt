@@ -6,6 +6,7 @@ import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.repositories.*
+import me.aquitano.health.application.metric.common.sourceInstanceIds
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import java.time.Duration
@@ -140,7 +141,7 @@ class StepsDayModule(
         val rows = if (context.canonical) {
             canonicalMetricsService.canonicalStepSamples(
                 rawRows,
-                metricsReadRepository.sourceMetadataFor(rawRows.sourceIds { it.sourceInstanceId }),
+                metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
             )
         } else {
             rawRows
@@ -193,7 +194,7 @@ class HeartRateDayModule(
         val samples = if (context.canonical) {
             canonicalMetricsService.canonicalHeartRateSamples(
                 rawSamples,
-                metricsReadRepository.sourceMetadataFor(rawSamples.sourceIds { it.sourceInstanceId }),
+                metricsReadRepository.sourceMetadataFor(rawSamples.sourceInstanceIds { it.sourceInstanceId }),
             )
         } else {
             rawSamples
@@ -244,7 +245,7 @@ class WeightDayModule(
         val points = if (context.canonical) {
             canonicalMetricsService.canonicalBodyMeasurements(
                 rawPoints,
-                metricsReadRepository.sourceMetadataFor(rawPoints.sourceIds { it.sourceInstanceId }),
+                metricsReadRepository.sourceMetadataFor(rawPoints.sourceInstanceIds { it.sourceInstanceId }),
             )
         } else {
             rawPoints
@@ -259,7 +260,7 @@ class WeightDayModule(
         val previous = if (context.canonical) {
             canonicalMetricsService.canonicalBodyMeasurements(
                 previousCandidates,
-                metricsReadRepository.sourceMetadataFor(previousCandidates.sourceIds { it.sourceInstanceId }),
+                metricsReadRepository.sourceMetadataFor(previousCandidates.sourceInstanceIds { it.sourceInstanceId }),
             ).maxWithOrNull(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.id })
         } else {
             previousCandidates.singleOrNull()
@@ -289,7 +290,7 @@ class SleepDayModule(
             canonicalMetricsService.canonicalSleepSessions(
                 rawSessions,
                 stagesBySession,
-                metricsReadRepository.sourceMetadataFor(rawSessions.sourceIds { it.sourceInstanceId }),
+                metricsReadRepository.sourceMetadataFor(rawSessions.sourceInstanceIds { it.sourceInstanceId }),
             )
         } else {
             rawSessions

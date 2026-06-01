@@ -3,6 +3,7 @@ package me.aquitano.health.application
 import me.aquitano.health.api.dto.SleepSummariesResponse
 import me.aquitano.health.api.dto.SleepSummaryLatestResponse
 import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
+import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.infrastructure.repositories.SleepSummaryRow
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
@@ -25,7 +26,7 @@ class SleepSummaryReadService(
             val rows = if (canonical) {
                 canonicalMetricsService.canonicalSleepSummaries(
                     rawRows,
-                    metricsReadRepository.sourceMetadataFor(rawRows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawRows
@@ -46,7 +47,7 @@ class SleepSummaryReadService(
                 )
                 val canonicalRows = canonicalMetricsService.canonicalSleepSummaries(
                     rows,
-                    metricsReadRepository.sourceMetadataFor(rows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
                 )
                 canonicalRows.maxWithOrNull(compareBy<SleepSummaryRow> { it.endAt }.thenBy { it.id }) to metadata
             } else {

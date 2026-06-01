@@ -8,6 +8,7 @@ import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.repositories.*
+import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.shared.utcDate
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
@@ -35,7 +36,7 @@ class MetricsQueryService(
             val rows = if (canonical) {
                 canonicalMetricsService.canonicalActivitySummaries(
                     rawRows,
-                    metricsReadRepository.sourceMetadataFor(rawRows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawRows
@@ -59,7 +60,7 @@ class MetricsQueryService(
                 )
                 val canonicalRows = canonicalMetricsService.canonicalActivitySummaries(
                     rows,
-                    metricsReadRepository.sourceMetadataFor(rows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
                 )
                 canonicalRows.maxWithOrNull(compareBy<ActivitySummaryRow> { it.date }.thenBy { it.id }) to metadata
             } else {
@@ -84,7 +85,7 @@ class MetricsQueryService(
             val rows = if (canonical) {
                 canonicalMetricsService.canonicalStepSamples(
                     rawRows,
-                    metricsReadRepository.sourceMetadataFor(rawRows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawRows
@@ -117,7 +118,7 @@ class MetricsQueryService(
             val rows = if (canonical) {
                 canonicalMetricsService.canonicalStepDailySummaries(
                     rawRows,
-                    metricsReadRepository.sourceMetadataFor(rawRows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawRows
@@ -149,7 +150,7 @@ class MetricsQueryService(
                 canonicalMetricsService.canonicalSleepSessions(
                     rawSessions,
                     stagesBySession,
-                    metricsReadRepository.sourceMetadataFor(rawSessions.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rawSessions.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawSessions
@@ -176,7 +177,7 @@ class MetricsQueryService(
                 canonicalMetricsService.canonicalSleepSessions(
                     rawNights.map { it.session },
                     stagesBySession,
-                    metricsReadRepository.sourceMetadataFor(rawNights.map { it.session }.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rawNights.map { it.session }.sourceInstanceIds { it.sourceInstanceId }),
                 ).map { it.id }.toSet()
             } else {
                 rawNights.map { it.session.id }.toSet()
@@ -217,7 +218,7 @@ class MetricsQueryService(
             val rows = if (canonical) {
                 canonicalMetricsService.canonicalBodyMeasurements(
                     rawRows,
-                    metricsReadRepository.sourceMetadataFor(rawRows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawRows
@@ -242,7 +243,7 @@ class MetricsQueryService(
             val rows = if (canonical) {
                 canonicalMetricsService.canonicalHeartRateSamples(
                     rawRows,
-                    metricsReadRepository.sourceMetadataFor(rawRows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawRows
@@ -266,7 +267,7 @@ class MetricsQueryService(
             val rows = if (canonical) {
                 canonicalMetricsService.canonicalRespiratoryRateSamples(
                     rawRows,
-                    metricsReadRepository.sourceMetadataFor(rawRows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawRows
@@ -287,7 +288,7 @@ class MetricsQueryService(
                 )
                 val canonicalRows = canonicalMetricsService.canonicalRespiratoryRateSamples(
                     rows,
-                    metricsReadRepository.sourceMetadataFor(rows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
                 )
                 Triple(
                     canonicalRows.respiratoryRateSummary(),
@@ -322,7 +323,7 @@ class MetricsQueryService(
             val rows = if (canonical) {
                 canonicalMetricsService.canonicalHrvSamples(
                     rawRows,
-                    metricsReadRepository.sourceMetadataFor(rawRows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawRows
@@ -347,7 +348,7 @@ class MetricsQueryService(
                 )
                 val canonicalRows = canonicalMetricsService.canonicalHrvSamples(
                     rows,
-                    metricsReadRepository.sourceMetadataFor(rows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
                 )
                 Triple(
                     canonicalRows.hrvSummary(),
@@ -382,7 +383,7 @@ class MetricsQueryService(
                 )
                 val canonicalRows = canonicalMetricsService.canonicalBodyMeasurements(
                     rows,
-                    metricsReadRepository.sourceMetadataFor(rows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
                 )
                 canonicalRows.maxWithOrNull(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.id }) to metadata
             } else {
@@ -404,7 +405,7 @@ class MetricsQueryService(
                 )
                 val canonicalRows = canonicalMetricsService.canonicalHeartRateSamples(
                     rows,
-                    metricsReadRepository.sourceMetadataFor(rows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
                 )
                 Triple(
                     canonicalRows.heartRateSummary(),
@@ -484,7 +485,7 @@ class MetricsQueryService(
                 )
                 val canonicalRows = canonicalMetricsService.canonicalStepDailySummaries(
                     rows,
-                    metricsReadRepository.sourceMetadataFor(rows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
                 )
                 DashboardStepsSummaryResponse(
                     steps = canonicalRows.sumOf { it.steps },
@@ -512,7 +513,7 @@ class MetricsQueryService(
                 )
                 val canonicalRows = canonicalMetricsService.canonicalBodyMeasurements(
                     rows,
-                    metricsReadRepository.sourceMetadataFor(rows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
                 )
                 canonicalRows.maxWithOrNull(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.id }) to metadata
             } else {
@@ -530,7 +531,7 @@ class MetricsQueryService(
                 )
                 val canonicalRows = canonicalMetricsService.canonicalHeartRateSamples(
                     rows,
-                    metricsReadRepository.sourceMetadataFor(rows.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
                 )
                 canonicalRows.maxWithOrNull(compareBy<HeartRateSampleRow> { it.measuredAt }.thenBy { it.id }) to metadata
             } else {
@@ -547,7 +548,7 @@ class MetricsQueryService(
                 canonicalMetricsService.canonicalSleepSessions(
                     sleepNights.map { it.session },
                     sleepStagesBySession,
-                    metricsReadRepository.sourceMetadataFor(sleepNights.map { it.session }.sourceIds { it.sourceInstanceId }),
+                    metricsReadRepository.sourceMetadataFor(sleepNights.map { it.session }.sourceInstanceIds { it.sourceInstanceId }),
                 ).maxWithOrNull(compareBy<SleepSessionRow> { it.endAt }.thenBy { it.id })
             } else {
                 sleepNights.firstOrNull()?.session

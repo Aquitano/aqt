@@ -1,5 +1,7 @@
 package me.aquitano.health.infrastructure.repositories
 
+import me.aquitano.health.application.metric.common.MetricReadRepository
+
 import me.aquitano.health.infrastructure.database.tables.*
 import me.aquitano.health.infrastructure.database.toApiString
 import me.aquitano.health.infrastructure.database.toDbTimestamp
@@ -231,7 +233,7 @@ data class HrvSummaryRow(
     val avgValue: Double?,
 )
 
-class MetricsReadRepository {
+class MetricsReadRepository : MetricReadRepository {
     fun listActivitySummaries(filters: DailyReadFilters): Pair<List<ActivitySummaryRow>, Map<Int, SourceMetadata>> {
         val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
         if (sourceIds != null && sourceIds.isEmpty()) return emptyList<ActivitySummaryRow>() to emptyMap()
