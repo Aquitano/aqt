@@ -1,6 +1,6 @@
 package me.aquitano.health.application.metric.common
 
-import me.aquitano.health.infrastructure.repositories.SourceMetadata
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
 
 /**
  * Contract for metric-specific read repositories.

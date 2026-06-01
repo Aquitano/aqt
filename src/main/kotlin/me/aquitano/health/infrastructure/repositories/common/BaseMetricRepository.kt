@@ -1,9 +1,12 @@
 package me.aquitano.health.infrastructure.repositories.common
 
 import me.aquitano.health.application.metric.common.MetricReadRepository
+import me.aquitano.health.application.metric.common.repository.DailyReadFilters
+import me.aquitano.health.application.metric.common.repository.ReadFilters
+import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.infrastructure.database.tables.SourceInstancesTable
 import me.aquitano.health.infrastructure.database.tables.SourcesTable
-import me.aquitano.health.infrastructure.repositories.SourceMetadata
 import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
@@ -63,6 +66,12 @@ abstract class BaseMetricRepository : MetricReadRepository {
             .map { it[SourceInstancesTable.id].value }
     }
 
+    protected fun sourceMetadata(
+        sourceInstanceIds: Set<Int>,
+        includeSource: Boolean,
+    ): Map<Int, SourceMetadata> =
+        if (includeSource) sourceMetadataFor(sourceInstanceIds) else emptyMap()
+
     /**
      * Combines a list of Exposed boolean conditions with `AND`.
      *
@@ -76,4 +85,13 @@ abstract class BaseMetricRepository : MetricReadRepository {
      */
     protected fun sortOrder(order: String): SortOrder =
         if (order.equals("desc", ignoreCase = true)) SortOrder.DESC else SortOrder.ASC
+
+    protected fun ReadFilters.sortOrder(): SortOrder =
+        sortOrder(order)
+
+    protected fun DailyReadFilters.sortOrder(): SortOrder =
+        sortOrder(order)
+
+    protected fun SleepNightReadFilters.sortOrder(): SortOrder =
+        sortOrder(order)
 }
