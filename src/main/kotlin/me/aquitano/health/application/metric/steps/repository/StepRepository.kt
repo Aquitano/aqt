@@ -3,29 +3,21 @@ package me.aquitano.health.application.metric.steps.repository
 import me.aquitano.health.application.metric.common.repository.*
 import me.aquitano.health.infrastructure.database.tables.*
 import me.aquitano.health.infrastructure.database.toApiString
-import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
+import me.aquitano.health.infrastructure.repositories.common.TimeFilterMode
 import org.jetbrains.exposed.v1.core.*
-import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.core.greater
-import org.jetbrains.exposed.v1.core.greaterEq
-import org.jetbrains.exposed.v1.core.inList
-import org.jetbrains.exposed.v1.core.less
-import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.jdbc.*
-import java.time.Instant
 
 class StepRepository : BaseMetricRepository() {
     fun listStepSamples(filters: ReadFilters): Pair<List<StepSampleRow>, Map<Int, SourceMetadata>> {
-        val sourceIds =
-            sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<StepSampleRow>() to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(StepSamplesTable.startAt greaterEq it.toDbTimestamp()) }
-        filters.to?.let { conditions.add(StepSamplesTable.startAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(StepSamplesTable.sourceInstanceId inList it) }
+        val where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = StepSamplesTable.sourceInstanceId,
+            fromColumn = StepSamplesTable.startAt,
+        ).whereOrNull() ?: return emptyReadResult()
+
         val rows = StepSamplesTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where)
             .orderBy(
                 StepSamplesTable.startAt to filters.sortOrder(),
                 StepSamplesTable.id to filters.sortOrder(),
@@ -47,15 +39,16 @@ class StepRepository : BaseMetricRepository() {
     }
 
     fun listStepSamplesForWindow(filters: ReadFilters): Pair<List<StepSampleRow>, Map<Int, SourceMetadata>> {
-        val sourceIds =
-            sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<StepSampleRow>() to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(StepSamplesTable.endAt greater it.toDbTimestamp()) }
-        filters.to?.let { conditions.add(StepSamplesTable.startAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(StepSamplesTable.sourceInstanceId inList it) }
+        val conditionResult = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = StepSamplesTable.sourceInstanceId,
+            fromColumn = StepSamplesTable.startAt,
+            toColumn = StepSamplesTable.endAt,
+            mode = TimeFilterMode.OVERLAPS_WINDOW,
+        ).whereOrNull() ?: return emptyReadResult()
+
         val rows = StepSamplesTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(conditionResult)
             .orderBy(
                 StepSamplesTable.startAt to SortOrder.ASC,
                 StepSamplesTable.id to SortOrder.ASC,
@@ -68,15 +61,14 @@ class StepRepository : BaseMetricRepository() {
     }
 
     fun listStepDailySummaries(filters: DailyReadFilters): Pair<List<StepDailySummaryRow>, Map<Int, SourceMetadata>> {
-        val sourceIds =
-            sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<StepDailySummaryRow>() to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.fromDate?.let { conditions.add(StepDailySummariesTable.date greaterEq it) }
-        filters.toDate?.let { conditions.add(StepDailySummariesTable.date lessEq it) }
-        sourceIds?.let { conditions.add(StepDailySummariesTable.sourceInstanceId inList it) }
+        val where = dateConditions(
+            filters = filters,
+            sourceInstanceIdColumn = StepDailySummariesTable.sourceInstanceId,
+            dateColumn = StepDailySummariesTable.date,
+        ).whereOrNull() ?: return emptyReadResult()
+
         val rows = StepDailySummariesTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where)
             .orderBy(
                 StepDailySummariesTable.date to filters.sortOrder(),
                 StepDailySummariesTable.sourceInstanceId to filters.sortOrder(),
@@ -97,21 +89,19 @@ class StepRepository : BaseMetricRepository() {
     }
 
     fun sumStepDailySummaries(filters: DailyReadFilters): DashboardStepsSummaryRow {
-        val sourceIds =
-            sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return DashboardStepsSummaryRow(
+        val where = dateConditions(
+            filters = filters,
+            sourceInstanceIdColumn = StepDailySummariesTable.sourceInstanceId,
+            dateColumn = StepDailySummariesTable.date,
+        ).whereOrNull() ?: return DashboardStepsSummaryRow(
             steps = 0,
             sampleCount = 0,
         )
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.fromDate?.let { conditions.add(StepDailySummariesTable.date greaterEq it) }
-        filters.toDate?.let { conditions.add(StepDailySummariesTable.date lessEq it) }
-        sourceIds?.let { conditions.add(StepDailySummariesTable.sourceInstanceId inList it) }
         val stepsExpression = StepDailySummariesTable.steps.sum()
         val sampleCountExpression = StepDailySummariesTable.sampleCount.sum()
         val row = StepDailySummariesTable
             .select(stepsExpression, sampleCountExpression)
-            .where(combineConditions(conditions))
+            .where(where)
             .single()
         return DashboardStepsSummaryRow(
             steps = row[stepsExpression] ?: 0,

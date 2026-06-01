@@ -3,28 +3,20 @@ package me.aquitano.health.application.metric.respiratory.repository
 import me.aquitano.health.application.metric.common.repository.*
 import me.aquitano.health.infrastructure.database.tables.*
 import me.aquitano.health.infrastructure.database.toApiString
-import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
 import org.jetbrains.exposed.v1.core.*
-import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.core.greater
-import org.jetbrains.exposed.v1.core.greaterEq
-import org.jetbrains.exposed.v1.core.inList
-import org.jetbrains.exposed.v1.core.less
-import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.jdbc.*
-import java.time.Instant
 
 class RespiratoryRateRepository : BaseMetricRepository() {
     fun listRespiratoryRateSamples(filters: ReadFilters): Pair<List<RespiratoryRateSampleRow>, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<RespiratoryRateSampleRow>() to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(RespiratoryRateSamplesTable.measuredAt greaterEq it.toDbTimestamp()) }
-        filters.to?.let { conditions.add(RespiratoryRateSamplesTable.measuredAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(RespiratoryRateSamplesTable.sourceInstanceId inList it) }
+        val where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = RespiratoryRateSamplesTable.sourceInstanceId,
+            fromColumn = RespiratoryRateSamplesTable.measuredAt,
+        ).whereOrNull() ?: return emptyReadResult()
+
         val rows = RespiratoryRateSamplesTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where)
             .orderBy(
                 RespiratoryRateSamplesTable.measuredAt to filters.sortOrder(),
                 RespiratoryRateSamplesTable.id to filters.sortOrder(),
@@ -35,14 +27,14 @@ class RespiratoryRateRepository : BaseMetricRepository() {
     }
 
     fun latestRespiratoryRateSample(filters: ReadFilters): Pair<RespiratoryRateSampleRow?, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return null to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(RespiratoryRateSamplesTable.measuredAt greaterEq it.toDbTimestamp()) }
-        filters.to?.let { conditions.add(RespiratoryRateSamplesTable.measuredAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(RespiratoryRateSamplesTable.sourceInstanceId inList it) }
+        val where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = RespiratoryRateSamplesTable.sourceInstanceId,
+            fromColumn = RespiratoryRateSamplesTable.measuredAt,
+        ).whereOrNull() ?: return emptyLatestResult()
+
         val row = RespiratoryRateSamplesTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where)
             .orderBy(
                 RespiratoryRateSamplesTable.measuredAt to SortOrder.DESC,
                 RespiratoryRateSamplesTable.id to SortOrder.DESC,
@@ -54,19 +46,19 @@ class RespiratoryRateRepository : BaseMetricRepository() {
     }
 
     fun summarizeRespiratoryRate(filters: ReadFilters): RespiratoryRateSummaryRow {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return RespiratoryRateSummaryRow(0, null, null, null)
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(RespiratoryRateSamplesTable.measuredAt greaterEq it.toDbTimestamp()) }
-        filters.to?.let { conditions.add(RespiratoryRateSamplesTable.measuredAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(RespiratoryRateSamplesTable.sourceInstanceId inList it) }
+        val where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = RespiratoryRateSamplesTable.sourceInstanceId,
+            fromColumn = RespiratoryRateSamplesTable.measuredAt,
+        ).whereOrNull() ?: return RespiratoryRateSummaryRow(0, null, null, null)
+
         val countExpression = RespiratoryRateSamplesTable.id.count()
         val minExpression = RespiratoryRateSamplesTable.breathsPerMinute.min()
         val maxExpression = RespiratoryRateSamplesTable.breathsPerMinute.max()
         val avgExpression = RespiratoryRateSamplesTable.breathsPerMinute.avg()
         return RespiratoryRateSamplesTable
             .select(countExpression, minExpression, maxExpression, avgExpression)
-            .where(combineConditions(conditions))
+            .where(where)
             .single()
             .let {
                 RespiratoryRateSummaryRow(

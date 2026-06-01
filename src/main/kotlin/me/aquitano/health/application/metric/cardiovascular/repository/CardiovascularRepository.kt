@@ -3,28 +3,21 @@ package me.aquitano.health.application.metric.cardiovascular.repository
 import me.aquitano.health.application.metric.common.repository.*
 import me.aquitano.health.infrastructure.database.tables.*
 import me.aquitano.health.infrastructure.database.toApiString
-import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.core.greater
-import org.jetbrains.exposed.v1.core.greaterEq
-import org.jetbrains.exposed.v1.core.inList
-import org.jetbrains.exposed.v1.core.less
-import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.jdbc.*
-import java.time.Instant
 
 class CardiovascularRepository : BaseMetricRepository() {
     fun listBloodPressure(filters: ReadFilters): Pair<List<BloodPressureMeasurementRow>, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<BloodPressureMeasurementRow>() to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(BloodPressureMeasurementsTable.measuredAt greaterEq it.toDbTimestamp()) }
-        filters.to?.let { conditions.add(BloodPressureMeasurementsTable.measuredAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(BloodPressureMeasurementsTable.sourceInstanceId inList it) }
+        val where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = BloodPressureMeasurementsTable.sourceInstanceId,
+            fromColumn = BloodPressureMeasurementsTable.measuredAt,
+        ).whereOrNull() ?: return emptyReadResult()
+
         val rows = BloodPressureMeasurementsTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where)
             .orderBy(
                 BloodPressureMeasurementsTable.measuredAt to filters.sortOrder(),
                 BloodPressureMeasurementsTable.id to filters.sortOrder(),
@@ -35,14 +28,14 @@ class CardiovascularRepository : BaseMetricRepository() {
     }
 
     fun latestBloodPressure(filters: ReadFilters): Pair<BloodPressureMeasurementRow?, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return null to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(BloodPressureMeasurementsTable.measuredAt greaterEq it.toDbTimestamp()) }
-        filters.to?.let { conditions.add(BloodPressureMeasurementsTable.measuredAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(BloodPressureMeasurementsTable.sourceInstanceId inList it) }
+        val where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = BloodPressureMeasurementsTable.sourceInstanceId,
+            fromColumn = BloodPressureMeasurementsTable.measuredAt,
+        ).whereOrNull() ?: return emptyLatestResult()
+
         val row = BloodPressureMeasurementsTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where)
             .orderBy(
                 BloodPressureMeasurementsTable.measuredAt to SortOrder.DESC,
                 BloodPressureMeasurementsTable.id to SortOrder.DESC,
@@ -57,15 +50,15 @@ class CardiovascularRepository : BaseMetricRepository() {
         filters: ReadFilters,
         metricType: String?
     ): Pair<List<CardiovascularMeasurementRow>, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<CardiovascularMeasurementRow>() to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(CardiovascularMeasurementsTable.measuredAt greaterEq it.toDbTimestamp()) }
-        filters.to?.let { conditions.add(CardiovascularMeasurementsTable.measuredAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(CardiovascularMeasurementsTable.sourceInstanceId inList it) }
-        metricType?.let { conditions.add(CardiovascularMeasurementsTable.metricType eq it) }
+        var where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = CardiovascularMeasurementsTable.sourceInstanceId,
+            fromColumn = CardiovascularMeasurementsTable.measuredAt,
+        ).whereOrNull() ?: return emptyReadResult()
+        metricType?.let { where = where and (CardiovascularMeasurementsTable.metricType eq it) }
+
         val rows = CardiovascularMeasurementsTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where)
             .orderBy(
                 CardiovascularMeasurementsTable.measuredAt to filters.sortOrder(),
                 CardiovascularMeasurementsTable.id to filters.sortOrder(),
@@ -79,15 +72,14 @@ class CardiovascularRepository : BaseMetricRepository() {
         filters: ReadFilters,
         metricType: String
     ): Pair<CardiovascularMeasurementRow?, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return null to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(CardiovascularMeasurementsTable.measuredAt greaterEq it.toDbTimestamp()) }
-        filters.to?.let { conditions.add(CardiovascularMeasurementsTable.measuredAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(CardiovascularMeasurementsTable.sourceInstanceId inList it) }
-        conditions.add(CardiovascularMeasurementsTable.metricType eq metricType)
+        val where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = CardiovascularMeasurementsTable.sourceInstanceId,
+            fromColumn = CardiovascularMeasurementsTable.measuredAt,
+        ).whereOrNull() ?: return emptyLatestResult()
+
         val row = CardiovascularMeasurementsTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where and (CardiovascularMeasurementsTable.metricType eq metricType))
             .orderBy(
                 CardiovascularMeasurementsTable.measuredAt to SortOrder.DESC,
                 CardiovascularMeasurementsTable.id to SortOrder.DESC,

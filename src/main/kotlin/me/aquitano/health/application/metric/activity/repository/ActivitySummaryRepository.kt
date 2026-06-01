@@ -3,28 +3,20 @@ package me.aquitano.health.application.metric.activity.repository
 import me.aquitano.health.application.metric.common.repository.*
 import me.aquitano.health.infrastructure.database.tables.*
 import me.aquitano.health.infrastructure.database.toApiString
-import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
 import org.jetbrains.exposed.v1.core.*
-import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.core.greater
-import org.jetbrains.exposed.v1.core.greaterEq
-import org.jetbrains.exposed.v1.core.inList
-import org.jetbrains.exposed.v1.core.less
-import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.jdbc.*
-import java.time.Instant
 
 class ActivitySummaryRepository : BaseMetricRepository() {
     fun listActivitySummaries(filters: DailyReadFilters): Pair<List<ActivitySummaryRow>, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<ActivitySummaryRow>() to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.fromDate?.let { conditions.add(ActivitySummariesTable.date greaterEq it) }
-        filters.toDate?.let { conditions.add(ActivitySummariesTable.date lessEq it) }
-        sourceIds?.let { conditions.add(ActivitySummariesTable.sourceInstanceId inList it) }
+        val where = dateConditions(
+            filters = filters,
+            sourceInstanceIdColumn = ActivitySummariesTable.sourceInstanceId,
+            dateColumn = ActivitySummariesTable.date,
+        ).whereOrNull() ?: return emptyReadResult()
+
         val rows = ActivitySummariesTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where)
             .orderBy(
                 ActivitySummariesTable.date to filters.sortOrder(),
                 ActivitySummariesTable.id to filters.sortOrder(),
@@ -35,14 +27,14 @@ class ActivitySummaryRepository : BaseMetricRepository() {
     }
 
     fun latestActivitySummary(filters: DailyReadFilters): Pair<ActivitySummaryRow?, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return null to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.fromDate?.let { conditions.add(ActivitySummariesTable.date greaterEq it) }
-        filters.toDate?.let { conditions.add(ActivitySummariesTable.date lessEq it) }
-        sourceIds?.let { conditions.add(ActivitySummariesTable.sourceInstanceId inList it) }
+        val where = dateConditions(
+            filters = filters,
+            sourceInstanceIdColumn = ActivitySummariesTable.sourceInstanceId,
+            dateColumn = ActivitySummariesTable.date,
+        ).whereOrNull() ?: return emptyLatestResult()
+
         val row = ActivitySummariesTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where)
             .orderBy(
                 ActivitySummariesTable.date to SortOrder.DESC,
                 ActivitySummariesTable.id to SortOrder.DESC,

@@ -7,13 +7,11 @@ import me.aquitano.health.application.metric.common.repository.SleepNightReadFil
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.infrastructure.database.tables.SourceInstancesTable
 import me.aquitano.health.infrastructure.database.tables.SourcesTable
-import org.jetbrains.exposed.v1.core.Op
-import org.jetbrains.exposed.v1.core.SortOrder
-import org.jetbrains.exposed.v1.core.and
-import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.core.inList
+import me.aquitano.health.infrastructure.database.toDbTimestamp
+import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.select
-import org.jetbrains.exposed.v1.jdbc.selectAll
+import java.time.LocalDate
+import java.time.OffsetDateTime
 
 /**
  * Base class for metric-specific read repositories.
@@ -50,7 +48,10 @@ abstract class BaseMetricRepository : MetricReadRepository {
      * Returns `null` when neither filter is supplied, signalling that no
      * source filtering should be applied.
      */
-    protected fun sourceInstanceIds(provider: String?, providerInstanceId: String?): List<Int>? {
+    protected fun sourceInstanceIds(
+        provider: String?,
+        providerInstanceId: String?
+    ): List<Int>? {
         if (provider == null && providerInstanceId == null) return null
         return SourceInstancesTable
             .innerJoin(SourcesTable)
@@ -65,6 +66,148 @@ abstract class BaseMetricRepository : MetricReadRepository {
             }
             .map { it[SourceInstancesTable.id].value }
     }
+
+    protected fun ReadFilters.sourceInstanceIds(): List<Int>? =
+        sourceInstanceIds(provider, providerInstanceId)
+
+    protected fun DailyReadFilters.sourceInstanceIds(): List<Int>? =
+        sourceInstanceIds(provider, providerInstanceId)
+
+    protected fun SleepNightReadFilters.sourceInstanceIds(): List<Int>? =
+        sourceInstanceIds(provider, providerInstanceId)
+
+    protected fun List<Int>?.hasNoMatchingSources(): Boolean =
+        this != null && isEmpty()
+
+    protected fun <T> emptyReadResult(): Pair<List<T>, Map<Int, SourceMetadata>> =
+        emptyList<T>() to emptyMap()
+
+    protected fun <T> emptyLatestResult(): Pair<T?, Map<Int, SourceMetadata>> =
+        null to emptyMap()
+
+    protected fun <T, S> emptyTripleReadResult(): Triple<List<T>, Map<Int, List<S>>, Map<Int, SourceMetadata>> =
+        Triple(emptyList(), emptyMap(), emptyMap())
+
+    protected fun <T, S> emptyTripleLatestResult(): Triple<T?, Map<Int, List<S>>, Map<Int, SourceMetadata>> =
+        Triple(null, emptyMap(), emptyMap())
+
+    protected fun timestampConditions(
+        filters: ReadFilters,
+        sourceInstanceIdColumn: Column<Int>,
+        fromColumn: Column<OffsetDateTime>,
+        toColumn: Column<OffsetDateTime>? = null,
+        mode: TimeFilterMode = TimeFilterMode.START_AT_IN_RANGE,
+    ): MetricConditionResult {
+        val sourceIds = filters.sourceInstanceIds()
+
+        if (sourceIds != null && sourceIds.isEmpty()) {
+            return MetricConditionResult.Empty
+        }
+
+        val conditions = mutableListOf<Op<Boolean>>()
+
+        when (mode) {
+            TimeFilterMode.START_AT_IN_RANGE -> {
+                filters.from?.let {
+                    conditions.add(fromColumn greaterEq it.toDbTimestamp())
+                }
+                filters.to?.let {
+                    conditions.add(fromColumn less it.toDbTimestamp())
+                }
+            }
+
+            TimeFilterMode.OVERLAPS_WINDOW -> {
+                requireNotNull(toColumn) {
+                    "toColumn is required for OVERLAPS_WINDOW filtering"
+                }
+
+                filters.from?.let {
+                    conditions.add(toColumn greater it.toDbTimestamp())
+                }
+                filters.to?.let {
+                    conditions.add(fromColumn less it.toDbTimestamp())
+                }
+            }
+
+            TimeFilterMode.BEFORE_FROM -> {
+                filters.from?.let {
+                    conditions.add(fromColumn less it.toDbTimestamp())
+                }
+            }
+
+            TimeFilterMode.OVERLAPS_WINDOW_INCLUSIVE_FROM -> {
+                requireNotNull(toColumn) {
+                    "toColumn is required for OVERLAPS_WINDOW_INCLUSIVE_FROM filtering"
+                }
+
+                filters.from?.let {
+                    conditions.add(toColumn greaterEq it.toDbTimestamp())
+                }
+                filters.to?.let {
+                    conditions.add(fromColumn less it.toDbTimestamp())
+                }
+            }
+        }
+
+        sourceIds?.let {
+            conditions.add(sourceInstanceIdColumn inList it)
+        }
+
+        return MetricConditionResult.Conditions(combineConditions(conditions))
+    }
+
+    protected fun dateConditions(
+        filters: DailyReadFilters,
+        sourceInstanceIdColumn: Column<Int>,
+        dateColumn: Column<LocalDate>,
+    ): MetricConditionResult {
+        val sourceIds = filters.sourceInstanceIds()
+
+        if (sourceIds.hasNoMatchingSources()) {
+            return MetricConditionResult.Empty
+        }
+
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.fromDate?.let { conditions.add(dateColumn greaterEq it) }
+        filters.toDate?.let { conditions.add(dateColumn lessEq it) }
+        sourceIds?.let { conditions.add(sourceInstanceIdColumn inList it) }
+
+        return MetricConditionResult.Conditions(combineConditions(conditions))
+    }
+
+    protected fun zonedDateTimeConditions(
+        filters: SleepNightReadFilters,
+        sourceInstanceIdColumn: Column<Int>,
+        timestampColumn: Column<OffsetDateTime>,
+    ): MetricConditionResult {
+        val sourceIds = filters.sourceInstanceIds()
+
+        if (sourceIds.hasNoMatchingSources()) {
+            return MetricConditionResult.Empty
+        }
+
+        val conditions = mutableListOf<Op<Boolean>>()
+        filters.fromDate?.let {
+            conditions.add(timestampColumn greaterEq it.atStartOfDay(filters.timezone).toInstant().toDbTimestamp())
+        }
+        filters.toDate?.let {
+            conditions.add(
+                timestampColumn less it.plusDays(1)
+                    .atStartOfDay(filters.timezone)
+                    .toInstant()
+                    .toDbTimestamp()
+            )
+        }
+        sourceIds?.let { conditions.add(sourceInstanceIdColumn inList it) }
+
+        return MetricConditionResult.Conditions(combineConditions(conditions))
+    }
+
+    protected fun MetricConditionResult.whereOrNull(): Op<Boolean>? =
+        when (this) {
+            MetricConditionResult.Empty -> null
+            is MetricConditionResult.Conditions -> where
+        }
 
     protected fun sourceMetadata(
         sourceInstanceIds: Set<Int>,
@@ -84,7 +227,11 @@ abstract class BaseMetricRepository : MetricReadRepository {
      * Converts a string order ("asc" / "desc") into an Exposed [SortOrder].
      */
     protected fun sortOrder(order: String): SortOrder =
-        if (order.equals("desc", ignoreCase = true)) SortOrder.DESC else SortOrder.ASC
+        if (order.equals(
+                "desc",
+                ignoreCase = true
+            )
+        ) SortOrder.DESC else SortOrder.ASC
 
     protected fun ReadFilters.sortOrder(): SortOrder =
         sortOrder(order)
@@ -94,4 +241,19 @@ abstract class BaseMetricRepository : MetricReadRepository {
 
     protected fun SleepNightReadFilters.sortOrder(): SortOrder =
         sortOrder(order)
+}
+
+enum class TimeFilterMode {
+    START_AT_IN_RANGE,
+    OVERLAPS_WINDOW,
+    BEFORE_FROM,
+    OVERLAPS_WINDOW_INCLUSIVE_FROM,
+}
+
+sealed interface MetricConditionResult {
+    data object Empty : MetricConditionResult
+
+    data class Conditions(
+        val where: Op<Boolean>,
+    ) : MetricConditionResult
 }

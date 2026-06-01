@@ -5,13 +5,11 @@ import me.aquitano.health.infrastructure.database.tables.*
 import me.aquitano.health.infrastructure.database.toApiString
 import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
+import me.aquitano.health.infrastructure.repositories.common.TimeFilterMode
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.core.greater
-import org.jetbrains.exposed.v1.core.greaterEq
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.less
-import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.jdbc.*
 import java.time.Instant
 
@@ -20,16 +18,15 @@ class BodyMeasurementRepository : BaseMetricRepository() {
         filters: ReadFilters,
         metricType: String?
     ): Pair<List<BodyMeasurementRow>, Map<Int, SourceMetadata>> {
-        val sourceIds =
-            sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<BodyMeasurementRow>() to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(BodyMeasurementsTable.measuredAt greaterEq it.toDbTimestamp()) }
-        filters.to?.let { conditions.add(BodyMeasurementsTable.measuredAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(BodyMeasurementsTable.sourceInstanceId inList it) }
-        metricType?.let { conditions.add(BodyMeasurementsTable.metricType eq it) }
+        var where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = BodyMeasurementsTable.sourceInstanceId,
+            fromColumn = BodyMeasurementsTable.measuredAt,
+        ).whereOrNull() ?: return emptyReadResult()
+        metricType?.let { where = where and (BodyMeasurementsTable.metricType eq it) }
+
         val rows = BodyMeasurementsTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where)
             .orderBy(
                 BodyMeasurementsTable.measuredAt to filters.sortOrder(),
                 BodyMeasurementsTable.id to filters.sortOrder(),
@@ -61,15 +58,15 @@ class BodyMeasurementRepository : BaseMetricRepository() {
         filters: ReadFilters,
         metricType: String
     ): Pair<BodyMeasurementRow?, Map<Int, SourceMetadata>> {
-        val sourceIds =
-            sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return null to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(BodyMeasurementsTable.measuredAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(BodyMeasurementsTable.sourceInstanceId inList it) }
-        conditions.add(BodyMeasurementsTable.metricType eq metricType)
+        val where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = BodyMeasurementsTable.sourceInstanceId,
+            fromColumn = BodyMeasurementsTable.measuredAt,
+            mode = TimeFilterMode.BEFORE_FROM,
+        ).whereOrNull() ?: return emptyLatestResult()
+
         val row = BodyMeasurementsTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where and (BodyMeasurementsTable.metricType eq metricType))
             .orderBy(
                 BodyMeasurementsTable.measuredAt to SortOrder.DESC,
                 BodyMeasurementsTable.id to SortOrder.DESC,
@@ -87,15 +84,17 @@ class BodyMeasurementRepository : BaseMetricRepository() {
         filters: ReadFilters,
         metricType: String
     ): Pair<List<BodyMeasurementRow>, Map<Int, SourceMetadata>> {
-        val sourceIds =
-            sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<BodyMeasurementRow>() to emptyMap()
-        val latestConditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { latestConditions.add(BodyMeasurementsTable.measuredAt less it.toDbTimestamp()) }
-        sourceIds?.let { latestConditions.add(BodyMeasurementsTable.sourceInstanceId inList it) }
-        latestConditions.add(BodyMeasurementsTable.metricType eq metricType)
+        val sourceIds = filters.sourceInstanceIds()
+        if (sourceIds.hasNoMatchingSources()) return emptyReadResult()
+        val latestWhere = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = BodyMeasurementsTable.sourceInstanceId,
+            fromColumn = BodyMeasurementsTable.measuredAt,
+            mode = TimeFilterMode.BEFORE_FROM,
+        ).whereOrNull() ?: return emptyReadResult()
+
         val latestMeasuredAt = BodyMeasurementsTable.selectAll()
-            .where(combineConditions(latestConditions))
+            .where(latestWhere and (BodyMeasurementsTable.metricType eq metricType))
             .orderBy(
                 BodyMeasurementsTable.measuredAt to SortOrder.DESC,
                 BodyMeasurementsTable.id to SortOrder.DESC,
@@ -103,7 +102,7 @@ class BodyMeasurementRepository : BaseMetricRepository() {
             .limit(1)
             .map { it[BodyMeasurementsTable.measuredAt] }
             .singleOrNull()
-            ?: return emptyList<BodyMeasurementRow>() to emptyMap()
+            ?: return emptyReadResult()
 
         val conflictConditions = mutableListOf<Op<Boolean>>(
             BodyMeasurementsTable.measuredAt eq latestMeasuredAt,
@@ -124,16 +123,15 @@ class BodyMeasurementRepository : BaseMetricRepository() {
         filters: ReadFilters,
         metricType: String?
     ): Pair<BodyMeasurementRow?, Map<Int, SourceMetadata>> {
-        val sourceIds =
-            sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return null to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(BodyMeasurementsTable.measuredAt greaterEq it.toDbTimestamp()) }
-        filters.to?.let { conditions.add(BodyMeasurementsTable.measuredAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(BodyMeasurementsTable.sourceInstanceId inList it) }
-        metricType?.let { conditions.add(BodyMeasurementsTable.metricType eq it) }
+        var where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = BodyMeasurementsTable.sourceInstanceId,
+            fromColumn = BodyMeasurementsTable.measuredAt,
+        ).whereOrNull() ?: return emptyLatestResult()
+        metricType?.let { where = where and (BodyMeasurementsTable.metricType eq it) }
+
         val row = BodyMeasurementsTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where)
             .orderBy(
                 BodyMeasurementsTable.measuredAt to SortOrder.DESC,
                 BodyMeasurementsTable.id to SortOrder.DESC,
@@ -160,15 +158,15 @@ class BodyMeasurementRepository : BaseMetricRepository() {
         filters: ReadFilters,
         metricType: String?
     ): Pair<List<ExtendedBodyMeasurementRow>, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return emptyList<ExtendedBodyMeasurementRow>() to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(ExtendedBodyMeasurementsTable.measuredAt greaterEq it.toDbTimestamp()) }
-        filters.to?.let { conditions.add(ExtendedBodyMeasurementsTable.measuredAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(ExtendedBodyMeasurementsTable.sourceInstanceId inList it) }
-        metricType?.let { conditions.add(ExtendedBodyMeasurementsTable.metricType eq it) }
+        var where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = ExtendedBodyMeasurementsTable.sourceInstanceId,
+            fromColumn = ExtendedBodyMeasurementsTable.measuredAt,
+        ).whereOrNull() ?: return emptyReadResult()
+        metricType?.let { where = where and (ExtendedBodyMeasurementsTable.metricType eq it) }
+
         val rows = ExtendedBodyMeasurementsTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where)
             .orderBy(
                 ExtendedBodyMeasurementsTable.measuredAt to filters.sortOrder(),
                 ExtendedBodyMeasurementsTable.id to filters.sortOrder(),
@@ -188,14 +186,15 @@ class BodyMeasurementRepository : BaseMetricRepository() {
         filters: ReadFilters,
         metricType: String
     ): Pair<ExtendedBodyMeasurementRow?, Map<Int, SourceMetadata>> {
-        val sourceIds = sourceInstanceIds(filters.provider, filters.providerInstanceId)
-        if (sourceIds != null && sourceIds.isEmpty()) return null to emptyMap()
-        val conditions = mutableListOf<Op<Boolean>>()
-        filters.from?.let { conditions.add(ExtendedBodyMeasurementsTable.measuredAt less it.toDbTimestamp()) }
-        sourceIds?.let { conditions.add(ExtendedBodyMeasurementsTable.sourceInstanceId inList it) }
-        conditions.add(ExtendedBodyMeasurementsTable.metricType eq metricType)
+        val where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = ExtendedBodyMeasurementsTable.sourceInstanceId,
+            fromColumn = ExtendedBodyMeasurementsTable.measuredAt,
+            mode = TimeFilterMode.BEFORE_FROM,
+        ).whereOrNull() ?: return emptyLatestResult()
+
         val row = ExtendedBodyMeasurementsTable.selectAll()
-            .where(combineConditions(conditions))
+            .where(where and (ExtendedBodyMeasurementsTable.metricType eq metricType))
             .orderBy(
                 ExtendedBodyMeasurementsTable.measuredAt to SortOrder.DESC,
                 ExtendedBodyMeasurementsTable.id to SortOrder.DESC,
