@@ -11,7 +11,10 @@ import me.aquitano.external.withings.KtorWithingsClient
 import me.aquitano.external.withings.WithingsNormalizer
 import me.aquitano.external.withings.WithingsProvider
 import me.aquitano.health.application.*
+import me.aquitano.health.application.metric.common.MetricWriteService
+import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
+import me.aquitano.health.application.metric.steps.repository.StepDailySummaryDerivationRepository
 import me.aquitano.health.infrastructure.config.toAppConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
 import me.aquitano.health.infrastructure.repositories.*
@@ -84,6 +87,7 @@ fun Application.module() {
     )
     val metricsReadRepository = MetricsReadRepository()
     val sleepRepository = SleepRepository()
+    val sleepNightDerivationRepository = SleepNightDerivationRepository()
     val canonicalMetricsService =
         CanonicalMetricsService(CanonicalMetricsPolicy.default())
     val healthDayModuleRegistry = HealthDayModuleRegistry(
@@ -99,8 +103,11 @@ fun Application.module() {
         mappingService = IngestionMappingService(),
         supportRepository = supportRepository,
         ingestionRepository = ingestionRepository,
-        metricsWriteRepository = metricsWriteRepository,
-        stepSummaryService = StepSummaryService(metricsWriteRepository),
+        metricWriteService = MetricWriteService(metricsWriteRepository),
+        stepSummaryService = StepSummaryService(
+            StepDailySummaryDerivationRepository()
+        ),
+        sleepNightService = SleepNightService(sleepNightDerivationRepository),
     )
     val googleHealthProvider = GoogleHealthProvider(
         config = appConfig.googleHealth,
@@ -143,6 +150,7 @@ fun Application.module() {
             database = database,
             metricsReadRepository = metricsReadRepository,
             canonicalMetricsService = canonicalMetricsService,
+            sleepNightService = SleepNightService(sleepNightDerivationRepository),
         ),
         sleepSummaryReadService = SleepSummaryReadService(
             database = database,

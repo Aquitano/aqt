@@ -9,7 +9,11 @@ import me.aquitano.health.application.IngestionMappingService
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.application.ProviderWorkflowService
 import me.aquitano.health.application.ProviderStatusService
+import me.aquitano.health.application.SleepNightService
 import me.aquitano.health.application.StepSummaryService
+import me.aquitano.health.application.metric.common.MetricWriteService
+import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
+import me.aquitano.health.application.metric.steps.repository.StepDailySummaryDerivationRepository
 import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.domain.RequestValidationException
@@ -399,8 +403,11 @@ class WithingsProviderTest {
             mappingService = IngestionMappingService(),
             supportRepository = SupportRepository(database),
             ingestionRepository = IngestionRepository(),
-            metricsWriteRepository = metricsWriteRepository,
-            stepSummaryService = StepSummaryService(metricsWriteRepository),
+            metricWriteService = MetricWriteService(metricsWriteRepository),
+            stepSummaryService = StepSummaryService(
+                StepDailySummaryDerivationRepository()
+            ),
+            sleepNightService = SleepNightService(SleepNightDerivationRepository()),
         )
         val client = FakeWithingsClient()
         val provider = WithingsProvider(

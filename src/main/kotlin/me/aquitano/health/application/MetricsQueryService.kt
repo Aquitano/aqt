@@ -23,6 +23,7 @@ class MetricsQueryService(
     private val database: Database,
     private val metricsReadRepository: MetricsReadRepository,
     private val canonicalMetricsService: CanonicalMetricsService,
+    private val sleepNightService: SleepNightService,
 ) {
     suspend fun listActivitySummaries(
         params: QueryParams,
@@ -170,6 +171,7 @@ class MetricsQueryService(
         dbQuery {
             params.rejectLatest()
             val filters = params.sleepNightReadFilters(now)
+            sleepNightService.materialize(filters, now)
             val canonical = params.canonical(default = false)
             val (rawNights, stagesBySession, sourceMetadata) =
                 metricsReadRepository.listSleepNights(filters)
@@ -479,6 +481,7 @@ class MetricsQueryService(
                 sort = SortFields.DATE,
                 order = Orders.ASC,
             )
+            sleepNightService.materialize(sleepNightFilters, now)
             val steps = if (canonical) {
                 val (rows) = metricsReadRepository.listStepDailySummaries(
                     dailyFilters.copy(limit = Int.MAX_VALUE)
@@ -747,7 +750,7 @@ class MetricsQueryService(
         return fromDate to toDate
     }
 
-    private suspend fun <T> dbQuery(block: () -> T): T =
+    private suspend fun <T> dbQuery(block: suspend () -> T): T =
         suspendTransaction(db = database) {
             block()
         }

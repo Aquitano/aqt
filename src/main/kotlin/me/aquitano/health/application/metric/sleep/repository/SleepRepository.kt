@@ -67,17 +67,23 @@ class SleepRepository : BaseMetricRepository() {
     }
 
     fun listSleepNights(filters: SleepNightReadFilters): Triple<List<SleepNightRow>, Map<Int, List<SleepStageRow>>, Map<Int, SourceMetadata>> {
-        val where = zonedDateTimeConditions(
-            filters = filters,
-            sourceInstanceIdColumn = SleepSessionsTable.sourceInstanceId,
-            timestampColumn = SleepSessionsTable.endAt,
-        ).whereOrNull() ?: return emptyTripleReadResult()
+        val sourceIds = filters.sourceInstanceIds()
+        if (sourceIds.hasNoMatchingSources()) return emptyTripleReadResult()
 
-        val nights = SleepSessionsTable.selectAll()
-            .where(where)
+        val conditions = mutableListOf<Op<Boolean>>(
+            SleepNightsTable.timezone eq filters.timezone.id,
+        )
+        filters.fromDate?.let { conditions.add(SleepNightsTable.date greaterEq it) }
+        filters.toDate?.let { conditions.add(SleepNightsTable.date lessEq it) }
+        sourceIds?.let { conditions.add(SleepNightsTable.sourceInstanceId inList it) }
+
+        val nights = SleepNightsTable
+            .innerJoin(SleepSessionsTable)
+            .selectAll()
+            .where { combineConditions(conditions) }
             .orderBy(
-                SleepSessionsTable.endAt to filters.sortOrder(),
-                SleepSessionsTable.id to filters.sortOrder(),
+                SleepNightsTable.date to filters.sortOrder(),
+                SleepNightsTable.id to filters.sortOrder(),
             )
             .limit(filters.limit)
             .map {
@@ -89,9 +95,8 @@ class SleepRepository : BaseMetricRepository() {
                     durationSeconds = it[SleepSessionsTable.durationSeconds],
                 )
                 SleepNightRow(
-                    date = Instant.parse(session.endAt).atZone(filters.timezone)
-                        .toLocalDate().toString(),
-                    timezone = filters.timezone.id,
+                    date = it[SleepNightsTable.date].toString(),
+                    timezone = it[SleepNightsTable.timezone],
                     session = session,
                 )
             }

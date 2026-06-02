@@ -10,18 +10,13 @@ import me.aquitano.health.domain.HeartRateRecord
 import me.aquitano.health.domain.HrvRecord
 import me.aquitano.health.domain.RespiratoryRateRecord
 import me.aquitano.health.domain.SleepSummaryRecord
-import me.aquitano.health.domain.SleepSessionRecord
 import me.aquitano.health.domain.StepIntervalRecord
 import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.database.tables.*
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.*
-import java.time.Duration
 import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneOffset
-import kotlin.math.roundToInt
 
 class MetricsWriteRepository {
     fun insertStepSample(
@@ -45,36 +40,6 @@ class MetricsWriteRepository {
                 it[steps] = record.steps
                 it[createdAt] = now.toDbTimestamp()
             } != null
-    }
-
-    fun insertSleepSession(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: SleepSessionRecord,
-        now: Instant,
-    ): Int? {
-        val sessionId =
-            SleepSessionsTable.insertIgnoreAndGetId {
-                it[this.sourceInstanceId] = sourceInstanceId
-                it[this.ingestionRecordId] = ingestionRecordId
-                it[providerRecordId] = record.providerRecordId
-                it[startAt] = record.startAt.toDbTimestamp()
-                it[endAt] = record.endAt.toDbTimestamp()
-                it[durationSeconds] =
-                    Duration.between(record.startAt, record.endAt).seconds
-                it[createdAt] = now.toDbTimestamp()
-            }?.value ?: return null
-        record.stages.forEach { stage ->
-            SleepStagesTable.insert {
-                it[sleepSessionId] = sessionId
-                it[this.stage] = stage.stage
-                it[startAt] = stage.startAt.toDbTimestamp()
-                it[endAt] = stage.endAt.toDbTimestamp()
-                it[durationSeconds] =
-                    Duration.between(stage.startAt, stage.endAt).seconds
-            }
-        }
-        return sessionId
     }
 
     fun insertBodyMeasurements(
@@ -279,53 +244,6 @@ class MetricsWriteRepository {
         return created
     }
 
-    fun recomputeStepDailySummary(
-        sourceInstanceId: Int,
-        date: LocalDate,
-        computedAt: Instant
-    ) {
-        val dayStart = date.atStartOfDay().toInstant(ZoneOffset.UTC)
-        val dayEnd = date.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
-        val rows = StepSamplesTable
-            .selectAll()
-            .where {
-                (StepSamplesTable.sourceInstanceId eq sourceInstanceId) and
-                        (StepSamplesTable.startAt less dayEnd.toDbTimestamp()) and
-                        (StepSamplesTable.endAt greater dayStart.toDbTimestamp())
-            }
-            .toList()
-        val steps = rows.sumOf {
-            allocatedStepsForDay(it, dayStart, dayEnd)
-        }
-        val sampleCount = rows.size
-
-        if (sampleCount == 0) {
-            StepDailySummariesTable.deleteWhere {
-                (StepDailySummariesTable.sourceInstanceId eq sourceInstanceId) and
-                        (StepDailySummariesTable.date eq date)
-            }
-        } else {
-            StepDailySummariesTable.upsert(
-                StepDailySummariesTable.date,
-                StepDailySummariesTable.sourceInstanceId,
-                onUpdate = {
-                    it[StepDailySummariesTable.steps] =
-                        insertValue(StepDailySummariesTable.steps)
-                    it[StepDailySummariesTable.sampleCount] =
-                        insertValue(StepDailySummariesTable.sampleCount)
-                    it[StepDailySummariesTable.computedAt] =
-                        insertValue(StepDailySummariesTable.computedAt)
-                },
-            ) {
-                it[this.sourceInstanceId] = sourceInstanceId
-                it[this.date] = date
-                it[this.steps] = steps
-                it[this.sampleCount] = sampleCount
-                it[this.computedAt] = computedAt.toDbTimestamp()
-            }
-        }
-    }
-
     private fun stepSampleOverlaps(
         sourceInstanceId: Int,
         record: StepIntervalRecord,
@@ -344,25 +262,6 @@ class MetricsWriteRepository {
                 existingStart.isBefore(record.endAt) &&
                         record.startAt.isBefore(existingEnd)
             }
-    }
-
-    private fun allocatedStepsForDay(
-        row: ResultRow,
-        dayStart: Instant,
-        dayEnd: Instant,
-    ): Int {
-        val sampleStart = row[StepSamplesTable.startAt].toInstant()
-        val sampleEnd = row[StepSamplesTable.endAt].toInstant()
-        val totalSeconds = Duration.between(sampleStart, sampleEnd).seconds
-        if (totalSeconds <= 0) return 0
-
-        val overlapStart = maxOf(sampleStart, dayStart)
-        val overlapEnd = minOf(sampleEnd, dayEnd)
-        val overlapSeconds = Duration.between(overlapStart, overlapEnd).seconds
-        if (overlapSeconds <= 0) return 0
-
-        val steps = row[StepSamplesTable.steps]
-        return (steps.toDouble() * overlapSeconds / totalSeconds).roundToInt()
     }
 
 }

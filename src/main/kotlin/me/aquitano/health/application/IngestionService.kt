@@ -4,12 +4,11 @@ import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
 import me.aquitano.health.api.dto.MetricCreatedCountsResponse
 import me.aquitano.health.api.dto.MetricSkippedCountsResponse
+import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
-import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.shared.AppJson
-import me.aquitano.health.shared.utcDate
 import net.logstash.logback.argument.StructuredArguments.kv
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
@@ -25,8 +24,9 @@ class IngestionService(
     private val mappingService: IngestionMappingService,
     private val supportRepository: SupportRepository,
     private val ingestionRepository: IngestionRepository,
-    private val metricsWriteRepository: MetricsWriteRepository,
+    private val metricWriteService: MetricWriteService,
     private val stepSummaryService: StepSummaryService,
+    private val sleepNightService: SleepNightService,
 ) {
     suspend fun findExistingBatch(
         provider: String,
@@ -148,97 +148,31 @@ class IngestionService(
 
                 var created = MetricCreatedCounts()
                 var duplicateSkipped = 0
-                val affectedDates = linkedSetOf<LocalDate>()
+                val affectedStepDates = linkedSetOf<LocalDate>()
+                val affectedSleepNightDates = linkedSetOf<LocalDate>()
 
                 try {
                     ingestionRecords.forEach { ingestionRecord ->
-                        val result =
-                            when (val record = ingestionRecord.record) {
-                                is StepIntervalRecord -> writeStepInterval(
-                                    validated.provider,
-                                    sourceInstance.id,
-                                    ingestionRecord.id,
-                                    record,
-                                    now
-                                )
-
-                                is SleepSessionRecord -> writeSleepSession(
-                                    sourceInstance.id,
-                                    ingestionRecord.id,
-                                    record,
-                                    now
-                                )
-
-                                is BodyMeasurementRecord -> writeBodyMeasurement(
-                                    sourceInstance.id,
-                                    ingestionRecord.id,
-                                    record,
-                                    now
-                                )
-
-                                is HeartRateRecord -> writeHeartRate(
-                                    sourceInstance.id,
-                                    ingestionRecord.id,
-                                    record,
-                                    now
-                                )
-
-                                is ActivitySummaryRecord -> writeActivitySummary(
-                                    sourceInstance.id,
-                                    ingestionRecord.id,
-                                    record,
-                                    now
-                                )
-
-                                is SleepSummaryRecord -> writeSleepSummary(
-                                    sourceInstance.id,
-                                    ingestionRecord.id,
-                                    record,
-                                    now
-                                )
-
-                                is RespiratoryRateRecord -> writeRespiratoryRate(
-                                    sourceInstance.id,
-                                    ingestionRecord.id,
-                                    record,
-                                    now
-                                )
-
-                                is HrvRecord -> writeHrv(
-                                    sourceInstance.id,
-                                    ingestionRecord.id,
-                                    record,
-                                    now
-                                )
-
-                                is BloodPressureRecord -> writeBloodPressure(
-                                    sourceInstance.id,
-                                    ingestionRecord.id,
-                                    record,
-                                    now
-                                )
-
-                                is CardiovascularRecord -> writeCardiovascular(
-                                    sourceInstance.id,
-                                    ingestionRecord.id,
-                                    record,
-                                    now
-                                )
-
-                                is ExtendedBodyMeasurementRecord -> writeExtendedBodyMeasurement(
-                                    sourceInstance.id,
-                                    ingestionRecord.id,
-                                    record,
-                                    now
-                                )
-                            }
+                        val result = metricWriteService.write(
+                            provider = validated.provider,
+                            sourceInstanceId = sourceInstance.id,
+                            ingestionRecordId = ingestionRecord.id,
+                            record = ingestionRecord.record,
+                            now = now,
+                        )
                         created += result.created
                         duplicateSkipped += result.duplicateSkipped
-                        affectedDates.addAll(result.affectedStepSummaryDates)
+                        affectedStepDates.addAll(result.affectedStepSummaryDates)
+                        affectedSleepNightDates.addAll(result.affectedSleepNightDates)
                     }
                     stepSummaryService.recompute(
                         sourceInstance.id,
-                        affectedDates,
+                        affectedStepDates,
+                        now
+                    )
+                    sleepNightService.recomputeUtc(
+                        sourceInstance.id,
+                        affectedSleepNightDates,
                         now
                     )
                     ingestionRepository.markProcessed(batchId, now)
@@ -283,7 +217,7 @@ class IngestionService(
                         metricsSkipped = MetricSkippedCountsResponse(
                             duplicates = duplicateSkipped
                         ),
-                        affectedStepSummaryDates = affectedDates.map { it.toString() },
+                        affectedStepSummaryDates = affectedStepDates.map { it.toString() },
                     ),
                 )
             }
@@ -356,253 +290,11 @@ class IngestionService(
             is IngestionTransactionResult.Failure -> throw transactionResult.throwable
         }
     }
-
-    private fun writeStepInterval(
-        provider: String,
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: StepIntervalRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertStepSample(
-            provider,
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now
-        )
-        return if (inserted) {
-            MetricWriteResult(
-                created = MetricCreatedCounts(stepSamples = 1),
-                affectedStepSummaryDates = affectedUtcDates(
-                    record.startAt,
-                    record.endAt
-                ),
-            )
-        } else {
-            MetricWriteResult(duplicateSkipped = 1)
-        }
-    }
-
-    private fun writeSleepSession(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: SleepSessionRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val sessionId = metricsWriteRepository.insertSleepSession(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now
-        )
-        return if (sessionId != null) {
-            MetricWriteResult(
-                created = MetricCreatedCounts(
-                    sleepSessions = 1,
-                    sleepStages = record.stages.size,
-                ),
-            )
-        } else {
-            MetricWriteResult(duplicateSkipped = 1)
-        }
-    }
-
-    private fun writeBodyMeasurement(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: BodyMeasurementRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertBodyMeasurements(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now
-        )
-        return MetricWriteResult(
-            created = MetricCreatedCounts(bodyMeasurements = inserted),
-            duplicateSkipped = record.measurements.size - inserted,
-        )
-    }
-
-    private fun writeHeartRate(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: HeartRateRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertHeartRateSample(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now
-        )
-        return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(heartRateSamples = 1))
-        } else {
-            MetricWriteResult(duplicateSkipped = 1)
-        }
-    }
-
-    private fun writeActivitySummary(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: ActivitySummaryRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertActivitySummary(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now
-        )
-        return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(activitySummaries = 1))
-        } else {
-            MetricWriteResult(duplicateSkipped = 1)
-        }
-    }
-
-    private fun writeSleepSummary(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: SleepSummaryRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertSleepSummary(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now
-        )
-        return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(sleepSummaries = 1))
-        } else {
-            MetricWriteResult(duplicateSkipped = 1)
-        }
-    }
-
-    private fun writeRespiratoryRate(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: RespiratoryRateRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertRespiratoryRateSample(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now
-        )
-        return if (inserted) {
-            MetricWriteResult(
-                created = MetricCreatedCounts(respiratoryRateSamples = 1)
-            )
-        } else {
-            MetricWriteResult(duplicateSkipped = 1)
-        }
-    }
-
-    private fun writeHrv(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: HrvRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertHrvSample(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now
-        )
-        return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(hrvSamples = 1))
-        } else {
-            MetricWriteResult(duplicateSkipped = 1)
-        }
-    }
-
-    private fun writeBloodPressure(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: BloodPressureRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertBloodPressure(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now
-        )
-        return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(bloodPressureMeasurements = 1))
-        } else {
-            MetricWriteResult(duplicateSkipped = 1)
-        }
-    }
-
-    private fun writeCardiovascular(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: CardiovascularRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertCardiovascular(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now
-        )
-        return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(cardiovascularMeasurements = 1))
-        } else {
-            MetricWriteResult(duplicateSkipped = 1)
-        }
-    }
-
-    private fun writeExtendedBodyMeasurement(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: ExtendedBodyMeasurementRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertExtendedBodyMeasurements(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now
-        )
-        return MetricWriteResult(
-            created = MetricCreatedCounts(extendedBodyMeasurements = inserted),
-            duplicateSkipped = record.measurements.size - inserted,
-        )
-    }
 }
-
-private data class MetricWriteResult(
-    val created: MetricCreatedCounts = MetricCreatedCounts(),
-    val duplicateSkipped: Int = 0,
-    val affectedStepSummaryDates: Set<LocalDate> = emptySet(),
-)
 
 private sealed interface IngestionTransactionResult {
     data class Success(val response: IngestionSummaryResponse) :
         IngestionTransactionResult
 
     data class Failure(val throwable: Throwable) : IngestionTransactionResult
-}
-
-private fun affectedUtcDates(
-    start: Instant,
-    exclusiveEnd: Instant
-): Set<LocalDate> {
-    val lastIncludedDate = exclusiveEnd.minusNanos(1).utcDate()
-    val dates = linkedSetOf<LocalDate>()
-    var cursor = start.utcDate()
-    while (!cursor.isAfter(lastIncludedDate)) {
-        dates.add(cursor)
-        cursor = cursor.plusDays(1)
-    }
-    return dates
 }
