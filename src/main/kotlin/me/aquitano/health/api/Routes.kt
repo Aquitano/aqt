@@ -11,7 +11,7 @@ import io.ktor.server.routing.*
 import io.ktor.server.routing.openapi.*
 import kotlinx.serialization.Serializable
 import me.aquitano.health.api.dto.*
-import me.aquitano.health.application.QueryParams
+import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes

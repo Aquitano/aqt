@@ -1,6 +1,7 @@
 package me.aquitano.health.application
 
 import me.aquitano.health.api.dto.*
+import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.domain.BodyMetricTypes
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue

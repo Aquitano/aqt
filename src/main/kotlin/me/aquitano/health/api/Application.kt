@@ -11,6 +11,7 @@ import me.aquitano.external.withings.KtorWithingsClient
 import me.aquitano.external.withings.WithingsNormalizer
 import me.aquitano.external.withings.WithingsProvider
 import me.aquitano.health.application.*
+import me.aquitano.health.application.metric.common.MetricsQueryService
 import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository

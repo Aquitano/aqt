@@ -16,7 +16,7 @@ abstract class BaseReadService(
      * All repository reads should be wrapped in this call to maintain a
      * consistent transaction scope and to support suspension.
      */
-    protected suspend fun <T> dbQuery(block: () -> T): T =
+    protected suspend fun <T> dbQuery(block: suspend () -> T): T =
         suspendTransaction(db = database) {
             block()
         }
