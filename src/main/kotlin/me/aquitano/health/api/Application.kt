@@ -43,7 +43,6 @@ fun Application.module() {
     val database = databaseFactory.initialize(appConfig.database)
     val apiKeyHasher = ApiKeyHasher()
     val supportRepository = SupportRepository(database)
-    val metricsWriteRepository = MetricsWriteRepository()
     val ingestionRepository = IngestionRepository()
     val providerOAuthRepository = ProviderOAuthRepository(database)
     val scheduledSyncRepository = ScheduledSyncRepository(database)
@@ -103,7 +102,7 @@ fun Application.module() {
         mappingService = IngestionMappingService(),
         supportRepository = supportRepository,
         ingestionRepository = ingestionRepository,
-        metricWriteService = MetricWriteService(metricsWriteRepository),
+        metricWriteService = MetricWriteService(),
         stepSummaryService = StepSummaryService(
             StepDailySummaryDerivationRepository()
         ),

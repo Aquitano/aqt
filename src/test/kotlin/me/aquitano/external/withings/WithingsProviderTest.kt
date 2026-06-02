@@ -22,7 +22,6 @@ import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.infrastructure.config.WithingsConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
-import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
@@ -397,13 +396,12 @@ class WithingsProviderTest {
             dbPath
         )
         val providerRepository = ProviderOAuthRepository(database)
-        private val metricsWriteRepository = MetricsWriteRepository()
         private val ingestionService = IngestionService(
             database = database,
             mappingService = IngestionMappingService(),
             supportRepository = SupportRepository(database),
             ingestionRepository = IngestionRepository(),
-            metricWriteService = MetricWriteService(metricsWriteRepository),
+            metricWriteService = MetricWriteService(),
             stepSummaryService = StepSummaryService(
                 StepDailySummaryDerivationRepository()
             ),

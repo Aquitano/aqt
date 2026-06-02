@@ -20,7 +20,6 @@ import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.infrastructure.config.GoogleHealthConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
-import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
@@ -525,7 +524,7 @@ class GoogleHealthProviderTest {
             mappingService = IngestionMappingService(),
             supportRepository = SupportRepository(database),
             ingestionRepository = IngestionRepository(),
-            metricWriteService = MetricWriteService(MetricsWriteRepository()),
+            metricWriteService = MetricWriteService(),
             stepSummaryService = StepSummaryService(
                 StepDailySummaryDerivationRepository()
             ),

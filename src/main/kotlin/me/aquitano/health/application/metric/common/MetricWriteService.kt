@@ -1,5 +1,13 @@
 package me.aquitano.health.application.metric.common
 
+import me.aquitano.health.application.metric.activity.repository.ActivitySummaryWriteRepository
+import me.aquitano.health.application.metric.body.repository.BodyMeasurementWriteRepository
+import me.aquitano.health.application.metric.cardiovascular.repository.CardiovascularWriteRepository
+import me.aquitano.health.application.metric.heart.repository.HeartRateWriteRepository
+import me.aquitano.health.application.metric.hrv.repository.HrvWriteRepository
+import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateWriteRepository
+import me.aquitano.health.application.metric.sleep.repository.SleepWriteRepository
+import me.aquitano.health.application.metric.steps.repository.StepWriteRepository
 import me.aquitano.health.domain.ActivitySummaryRecord
 import me.aquitano.health.domain.BloodPressureRecord
 import me.aquitano.health.domain.BodyMeasurementRecord
@@ -13,15 +21,19 @@ import me.aquitano.health.domain.RespiratoryRateRecord
 import me.aquitano.health.domain.SleepSessionRecord
 import me.aquitano.health.domain.SleepSummaryRecord
 import me.aquitano.health.domain.StepIntervalRecord
-import me.aquitano.health.application.metric.sleep.repository.SleepWriteRepository
-import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
 import me.aquitano.health.shared.utcDate
 import java.time.Instant
 import java.time.LocalDate
 
 class MetricWriteService(
-    private val metricsWriteRepository: MetricsWriteRepository,
+    private val stepWriteRepository: StepWriteRepository = StepWriteRepository(),
     private val sleepWriteRepository: SleepWriteRepository = SleepWriteRepository(),
+    private val bodyMeasurementWriteRepository: BodyMeasurementWriteRepository = BodyMeasurementWriteRepository(),
+    private val heartRateWriteRepository: HeartRateWriteRepository = HeartRateWriteRepository(),
+    private val activitySummaryWriteRepository: ActivitySummaryWriteRepository = ActivitySummaryWriteRepository(),
+    private val respiratoryRateWriteRepository: RespiratoryRateWriteRepository = RespiratoryRateWriteRepository(),
+    private val hrvWriteRepository: HrvWriteRepository = HrvWriteRepository(),
+    private val cardiovascularWriteRepository: CardiovascularWriteRepository = CardiovascularWriteRepository(),
 ) {
     fun write(
         provider: String,
@@ -117,7 +129,7 @@ class MetricWriteService(
         record: StepIntervalRecord,
         now: Instant,
     ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertStepSample(
+        val inserted = stepWriteRepository.insertStepSample(
             provider,
             sourceInstanceId,
             ingestionRecordId,
@@ -168,7 +180,7 @@ class MetricWriteService(
         record: BodyMeasurementRecord,
         now: Instant,
     ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertBodyMeasurements(
+        val inserted = bodyMeasurementWriteRepository.insertBodyMeasurements(
             sourceInstanceId,
             ingestionRecordId,
             record,
@@ -186,7 +198,7 @@ class MetricWriteService(
         record: HeartRateRecord,
         now: Instant,
     ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertHeartRateSample(
+        val inserted = heartRateWriteRepository.insertHeartRateSample(
             sourceInstanceId,
             ingestionRecordId,
             record,
@@ -205,7 +217,7 @@ class MetricWriteService(
         record: ActivitySummaryRecord,
         now: Instant,
     ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertActivitySummary(
+        val inserted = activitySummaryWriteRepository.insertActivitySummary(
             sourceInstanceId,
             ingestionRecordId,
             record,
@@ -224,7 +236,7 @@ class MetricWriteService(
         record: SleepSummaryRecord,
         now: Instant,
     ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertSleepSummary(
+        val inserted = sleepWriteRepository.insertSleepSummary(
             sourceInstanceId,
             ingestionRecordId,
             record,
@@ -243,7 +255,7 @@ class MetricWriteService(
         record: RespiratoryRateRecord,
         now: Instant,
     ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertRespiratoryRateSample(
+        val inserted = respiratoryRateWriteRepository.insertRespiratoryRateSample(
             sourceInstanceId,
             ingestionRecordId,
             record,
@@ -264,7 +276,7 @@ class MetricWriteService(
         record: HrvRecord,
         now: Instant,
     ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertHrvSample(
+        val inserted = hrvWriteRepository.insertHrvSample(
             sourceInstanceId,
             ingestionRecordId,
             record,
@@ -283,7 +295,7 @@ class MetricWriteService(
         record: BloodPressureRecord,
         now: Instant,
     ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertBloodPressure(
+        val inserted = cardiovascularWriteRepository.insertBloodPressure(
             sourceInstanceId,
             ingestionRecordId,
             record,
@@ -302,7 +314,7 @@ class MetricWriteService(
         record: CardiovascularRecord,
         now: Instant,
     ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertCardiovascular(
+        val inserted = cardiovascularWriteRepository.insertCardiovascular(
             sourceInstanceId,
             ingestionRecordId,
             record,
@@ -321,7 +333,7 @@ class MetricWriteService(
         record: ExtendedBodyMeasurementRecord,
         now: Instant,
     ): MetricWriteResult {
-        val inserted = metricsWriteRepository.insertExtendedBodyMeasurements(
+        val inserted = bodyMeasurementWriteRepository.insertExtendedBodyMeasurements(
             sourceInstanceId,
             ingestionRecordId,
             record,
