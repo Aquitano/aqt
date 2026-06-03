@@ -52,6 +52,21 @@ object SleepStagesTable : IntIdTable("sleep_stages") {
     val durationSeconds = long("duration_seconds")
 }
 
+object SleepNightsTable : IntIdTable("sleep_nights") {
+    val date = date("date")
+    val timezone = text("timezone")
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
+    val sleepSessionId =
+        integer("sleep_session_id").references(SleepSessionsTable.id)
+    val algorithmVersion = integer("algorithm_version")
+    val computedAt = timestampWithTimeZone("computed_at")
+
+    init {
+        uniqueIndex(timezone, sleepSessionId)
+    }
+}
+
 object BodyMeasurementsTable : IntIdTable("body_measurements") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)

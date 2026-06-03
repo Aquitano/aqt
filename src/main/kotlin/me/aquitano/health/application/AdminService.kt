@@ -4,6 +4,8 @@ import me.aquitano.health.api.dto.IngestionBatchAdminResponse
 import me.aquitano.health.api.dto.IngestionBatchDetailResponse
 import me.aquitano.health.api.dto.IngestionBatchesResponse
 import me.aquitano.health.api.dto.IngestionRecordAdminResponse
+import me.aquitano.health.application.metric.common.QueryParams
+import me.aquitano.health.application.metric.common.validateRange
 import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue

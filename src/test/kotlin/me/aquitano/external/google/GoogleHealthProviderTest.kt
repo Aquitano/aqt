@@ -7,7 +7,11 @@ import me.aquitano.health.application.IngestionMappingService
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.application.ProviderWorkflowService
 import me.aquitano.health.application.ProviderStatusService
+import me.aquitano.health.application.SleepNightService
 import me.aquitano.health.application.StepSummaryService
+import me.aquitano.health.application.metric.common.MetricWriteService
+import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
+import me.aquitano.health.application.metric.steps.repository.StepDailySummaryDerivationRepository
 import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.domain.ServerConfigurationException
@@ -16,7 +20,6 @@ import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.infrastructure.config.GoogleHealthConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
-import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
@@ -521,8 +524,11 @@ class GoogleHealthProviderTest {
             mappingService = IngestionMappingService(),
             supportRepository = SupportRepository(database),
             ingestionRepository = IngestionRepository(),
-            metricsWriteRepository = MetricsWriteRepository(),
-            stepSummaryService = StepSummaryService(MetricsWriteRepository()),
+            metricWriteService = MetricWriteService(),
+            stepSummaryService = StepSummaryService(
+                StepDailySummaryDerivationRepository()
+            ),
+            sleepNightService = SleepNightService(SleepNightDerivationRepository()),
         )
         val provider = GoogleHealthProvider(
             config = config,

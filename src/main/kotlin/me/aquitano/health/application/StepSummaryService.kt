@@ -1,23 +1,22 @@
 package me.aquitano.health.application
 
-import me.aquitano.health.infrastructure.repositories.MetricsWriteRepository
+import me.aquitano.health.application.metric.steps.derived.StepDailySummaryDerivation
+import me.aquitano.health.application.metric.steps.repository.StepDailySummaryDerivationRepository
 import java.time.Instant
 import java.time.LocalDate
 
 class StepSummaryService(
-    private val metricsWriteRepository: MetricsWriteRepository,
+    private val derivation: StepDailySummaryDerivation,
 ) {
-    fun recompute(
+    constructor(repository: StepDailySummaryDerivationRepository) : this(
+        StepDailySummaryDerivation(repository)
+    )
+
+    suspend fun recompute(
         sourceInstanceId: Int,
         dates: Set<LocalDate>,
         computedAt: Instant
     ) {
-        dates.forEach { date ->
-            metricsWriteRepository.recomputeStepDailySummary(
-                sourceInstanceId,
-                date,
-                computedAt
-            )
-        }
+        derivation.recompute(sourceInstanceId, dates, computedAt)
     }
 }

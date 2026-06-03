@@ -1,23 +1,21 @@
 package me.aquitano.health.application
 
 import me.aquitano.health.api.dto.SourceMetadataResponse
-import me.aquitano.health.infrastructure.repositories.HeartRateSampleRow
-import me.aquitano.health.infrastructure.repositories.HeartRateSummaryRow
-import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
-import me.aquitano.health.infrastructure.repositories.SourceMetadata
-
-internal fun <T> List<T>.sourceIds(sourceInstanceId: (T) -> Int): Set<Int> =
-    map(sourceInstanceId).toSet()
+import me.aquitano.health.application.metric.common.MetricReadRepository
+import me.aquitano.health.application.metric.common.sourceInstanceIds
+import me.aquitano.health.application.metric.heart.repository.HeartRateSampleRow
+import me.aquitano.health.application.metric.heart.repository.HeartRateSummaryRow
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
 
 internal fun <T> List<T>.singleSource(
     includeSource: Boolean,
-    metricsReadRepository: MetricsReadRepository,
+    repository: MetricReadRepository,
     sourceInstanceId: (T) -> Int,
 ): SourceMetadataResponse? {
     if (!includeSource) return null
-    val sourceIds = sourceIds(sourceInstanceId)
-    if (sourceIds.size != 1) return null
-    return metricsReadRepository.sourceMetadataFor(sourceIds)
+    val ids = sourceInstanceIds(sourceInstanceId)
+    if (ids.size != 1) return null
+    return repository.sourceMetadataFor(ids)
         .values
         .singleOrNull()
         .toResponse()
