@@ -1,6 +1,7 @@
 package me.aquitano.health.application
 
 import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
+import me.aquitano.health.application.metric.sleep.derived.SLEEP_NIGHT_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.sleep.derived.SleepNightDerivation
 import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
 import java.time.Instant
@@ -33,12 +34,20 @@ class SleepNightService(
             provider = filters.provider,
             providerInstanceId = filters.providerInstanceId,
         )
-        derivation.recompute(
+        val datesToRecompute = repository.findDatesNeedingRecompute(
             sourceInstanceIds = sourceInstanceIds,
             dates = dates,
             timezone = filters.timezone,
-            computedAt = computedAt,
+            algorithmVersion = SLEEP_NIGHT_ALGORITHM_VERSION,
         )
+        if (datesToRecompute.isNotEmpty()) {
+            derivation.recompute(
+                sourceInstanceIds = sourceInstanceIds,
+                dates = datesToRecompute,
+                timezone = filters.timezone,
+                computedAt = computedAt,
+            )
+        }
     }
 
     private fun requestedDates(filters: SleepNightReadFilters): Set<LocalDate>? {

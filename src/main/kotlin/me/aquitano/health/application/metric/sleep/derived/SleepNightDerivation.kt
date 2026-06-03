@@ -14,7 +14,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
-private const val SLEEP_NIGHT_ALGORITHM_VERSION = 1
+const val SLEEP_NIGHT_ALGORITHM_VERSION = 1
 
 class SleepNightDerivation(
     private val repository: SleepNightDerivationRepository,
@@ -98,6 +98,7 @@ data class SleepNightInput(
 data class SleepNightRawSession(
     val id: Int,
     val sourceInstanceId: Int,
+    val endAt: Instant,
 )
 
 private class SleepNightCalculator :
