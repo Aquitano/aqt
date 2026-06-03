@@ -81,7 +81,7 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
     }
 
     // External provider clients
-    single {
+    single<GoogleHealthOAuthClient> {
         KtorGoogleHealthOAuthClient(get(), config.googleHealth)
     }
     single {
