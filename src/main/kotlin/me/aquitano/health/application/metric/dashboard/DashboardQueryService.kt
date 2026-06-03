@@ -11,6 +11,8 @@ import me.aquitano.health.application.metric.common.SortFields
 import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.application.metric.common.toResponse
 import me.aquitano.health.application.metric.common.validateDateRange
+import me.aquitano.health.application.metric.heart.derived.CANONICAL_HEART_RATE_ALGORITHM_VERSION
+import me.aquitano.health.application.metric.heart.repository.CanonicalHeartRateDerivationRepository
 import me.aquitano.health.application.singleSource
 import me.aquitano.health.domain.BodyMetricTypes
 import me.aquitano.health.application.metric.body.repository.BodyMeasurementRow
@@ -35,6 +37,7 @@ class DashboardQueryService(
     private val sleepRepository: SleepRepository,
     private val bodyMeasurementRepository: BodyMeasurementRepository,
     private val heartRateRepository: HeartRateRepository,
+    private val canonicalHeartRateRepository: CanonicalHeartRateDerivationRepository = CanonicalHeartRateDerivationRepository(),
     private val canonicalMetricsService: CanonicalMetricsService,
     private val sleepNightService: SleepNightService,
 ) : BaseReadService(database) {
@@ -152,19 +155,17 @@ class DashboardQueryService(
         row?.toResponse(metadata)
     }
 
-    private fun latestHeartRate(
+    private suspend fun latestHeartRate(
         filters: ReadFilters,
         canonical: Boolean,
     ) = if (canonical) {
-        val (rows, metadata) = heartRateRepository.listHeartRateSamples(
-            filters.copy(
-                limit = DashboardSummaryLatestCandidateLimit,
-                order = Orders.DESC,
-            ),
+        val canonicalFilters = filters.copy(
+            limit = DashboardSummaryLatestCandidateLimit,
+            order = Orders.DESC,
         )
-        val canonicalRows = canonicalMetricsService.canonicalHeartRateSamples(
-            rows,
-            heartRateRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
+        val (canonicalRows, metadata) = canonicalHeartRateRepository.listCanonicalHeartRateSamples(
+            canonicalFilters,
+            CANONICAL_HEART_RATE_ALGORITHM_VERSION,
         )
         canonicalRows.maxWithOrNull(compareBy<HeartRateSampleRow> { it.measuredAt }.thenBy { it.id })
             ?.toResponse(metadata)

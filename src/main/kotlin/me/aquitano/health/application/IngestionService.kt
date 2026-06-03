@@ -4,7 +4,13 @@ import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
 import me.aquitano.health.api.dto.MetricCreatedCountsResponse
 import me.aquitano.health.api.dto.MetricSkippedCountsResponse
+import me.aquitano.health.application.metric.heart.derived.CanonicalHeartRateDerivationService
+import me.aquitano.health.application.metric.heart.repository.CanonicalHeartRateDerivationRepository
+import me.aquitano.health.application.metric.hrv.derived.CanonicalHrvDerivationService
+import me.aquitano.health.application.metric.hrv.repository.CanonicalHrvDerivationRepository
 import me.aquitano.health.application.metric.common.MetricWriteService
+import me.aquitano.health.application.metric.respiratory.derived.CanonicalRespiratoryRateDerivationService
+import me.aquitano.health.application.metric.respiratory.repository.CanonicalRespiratoryRateDerivationRepository
 import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
@@ -27,6 +33,12 @@ class IngestionService(
     private val metricWriteService: MetricWriteService,
     private val stepSummaryService: StepSummaryService,
     private val sleepNightService: SleepNightService,
+    private val canonicalHeartRateService: CanonicalHeartRateDerivationService =
+        CanonicalHeartRateDerivationService(CanonicalHeartRateDerivationRepository()),
+    private val canonicalRespiratoryRateService: CanonicalRespiratoryRateDerivationService =
+        CanonicalRespiratoryRateDerivationService(CanonicalRespiratoryRateDerivationRepository()),
+    private val canonicalHrvService: CanonicalHrvDerivationService =
+        CanonicalHrvDerivationService(CanonicalHrvDerivationRepository()),
 ) {
     suspend fun findExistingBatch(
         provider: String,
@@ -150,6 +162,9 @@ class IngestionService(
                 var duplicateSkipped = 0
                 val affectedStepDates = linkedSetOf<LocalDate>()
                 val affectedSleepNightDates = linkedSetOf<LocalDate>()
+                val affectedHeartRateCanonicalDates = linkedSetOf<LocalDate>()
+                val affectedRespiratoryRateCanonicalDates = linkedSetOf<LocalDate>()
+                val affectedHrvCanonicalDates = linkedSetOf<LocalDate>()
 
                 try {
                     ingestionRecords.forEach { ingestionRecord ->
@@ -164,6 +179,9 @@ class IngestionService(
                         duplicateSkipped += result.duplicateSkipped
                         affectedStepDates.addAll(result.affectedStepSummaryDates)
                         affectedSleepNightDates.addAll(result.affectedSleepNightDates)
+                        affectedHeartRateCanonicalDates.addAll(result.affectedHeartRateCanonicalDates)
+                        affectedRespiratoryRateCanonicalDates.addAll(result.affectedRespiratoryRateCanonicalDates)
+                        affectedHrvCanonicalDates.addAll(result.affectedHrvCanonicalDates)
                     }
                     stepSummaryService.recompute(
                         sourceInstance.id,
@@ -175,6 +193,9 @@ class IngestionService(
                         affectedSleepNightDates,
                         now
                     )
+                    canonicalHeartRateService.recompute(affectedHeartRateCanonicalDates, now)
+                    canonicalRespiratoryRateService.recompute(affectedRespiratoryRateCanonicalDates, now)
+                    canonicalHrvService.recompute(affectedHrvCanonicalDates, now)
                     ingestionRepository.markProcessed(batchId, now)
                 } catch (exception: Exception) {
                     if (exception is CancellationException) throw exception

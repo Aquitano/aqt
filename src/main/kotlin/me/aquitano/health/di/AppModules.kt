@@ -20,10 +20,16 @@ import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.application.metric.common.MetricsQueryService
 import me.aquitano.health.application.metric.dashboard.DashboardQueryService
 import me.aquitano.health.application.metric.heart.HeartRateQueryService
+import me.aquitano.health.application.metric.heart.derived.CanonicalHeartRateDerivationService
+import me.aquitano.health.application.metric.heart.repository.CanonicalHeartRateDerivationRepository
 import me.aquitano.health.application.metric.heart.repository.HeartRateRepository
 import me.aquitano.health.application.metric.hrv.HrvQueryService
+import me.aquitano.health.application.metric.hrv.derived.CanonicalHrvDerivationService
+import me.aquitano.health.application.metric.hrv.repository.CanonicalHrvDerivationRepository
 import me.aquitano.health.application.metric.hrv.repository.HrvRepository
 import me.aquitano.health.application.metric.respiratory.RespiratoryRateQueryService
+import me.aquitano.health.application.metric.respiratory.derived.CanonicalRespiratoryRateDerivationService
+import me.aquitano.health.application.metric.respiratory.repository.CanonicalRespiratoryRateDerivationRepository
 import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateRepository
 import me.aquitano.health.application.metric.sleep.SleepQueryService
 import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
@@ -61,8 +67,11 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
     single { BodyMeasurementRepository() }
     single { CardiovascularRepository() }
     single { HeartRateRepository() }
+    single { CanonicalHeartRateDerivationRepository() }
     single { HrvRepository() }
+    single { CanonicalHrvDerivationRepository() }
     single { RespiratoryRateRepository() }
+    single { CanonicalRespiratoryRateDerivationRepository() }
     single { SleepRepository() }
     single { StepRepository() }
     single { SleepNightDerivationRepository() }
@@ -107,6 +116,9 @@ fun servicesModule(database: Database, config: AppConfig) = module {
     single {
         StepSummaryService(get<StepDailySummaryDerivationRepository>())
     }
+    single { CanonicalHeartRateDerivationService(get<CanonicalHeartRateDerivationRepository>()) }
+    single { CanonicalRespiratoryRateDerivationService(get<CanonicalRespiratoryRateDerivationRepository>()) }
+    single { CanonicalHrvDerivationService(get<CanonicalHrvDerivationRepository>()) }
     single {
         IngestionMappingService()
     }
@@ -119,6 +131,9 @@ fun servicesModule(database: Database, config: AppConfig) = module {
             metricWriteService = get(),
             stepSummaryService = get(),
             sleepNightService = get(),
+            canonicalHeartRateService = get(),
+            canonicalRespiratoryRateService = get(),
+            canonicalHrvService = get(),
         )
     }
 
@@ -209,9 +224,27 @@ fun queryServicesModule(database: Database) = module {
     single { ActivityQueryService(database = database, activitySummaryRepository = get(), canonicalMetricsService = get()) }
     single { BodyMeasurementQueryService(database = database, bodyMeasurementRepository = get(), canonicalMetricsService = get()) }
     single { CardiovascularQueryService(database = database, cardiovascularRepository = get()) }
-    single { HeartRateQueryService(database = database, heartRateRepository = get(), canonicalMetricsService = get()) }
-    single { HrvQueryService(database = database, hrvRepository = get(), canonicalMetricsService = get()) }
-    single { RespiratoryRateQueryService(database = database, respiratoryRateRepository = get(), canonicalMetricsService = get()) }
+    single {
+        HeartRateQueryService(
+            database = database,
+            heartRateRepository = get(),
+            canonicalRepository = get(),
+        )
+    }
+    single {
+        HrvQueryService(
+            database = database,
+            hrvRepository = get(),
+            canonicalRepository = get(),
+        )
+    }
+    single {
+        RespiratoryRateQueryService(
+            database = database,
+            respiratoryRateRepository = get(),
+            canonicalRepository = get(),
+        )
+    }
     single {
         SleepQueryService(
             database = database,
@@ -228,6 +261,7 @@ fun queryServicesModule(database: Database) = module {
             sleepRepository = get(),
             bodyMeasurementRepository = get(),
             heartRateRepository = get(),
+            canonicalHeartRateRepository = get(),
             canonicalMetricsService = get(),
             sleepNightService = get(),
         )

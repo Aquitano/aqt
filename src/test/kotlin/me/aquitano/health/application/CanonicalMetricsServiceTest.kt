@@ -3,9 +3,6 @@ package me.aquitano.health.application
 import me.aquitano.health.application.metric.activity.repository.ActivitySummaryRow
 import me.aquitano.health.application.metric.body.repository.BodyMeasurementRow
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
-import me.aquitano.health.application.metric.heart.repository.HeartRateSampleRow
-import me.aquitano.health.application.metric.hrv.repository.HrvSampleRow
-import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateSampleRow
 import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
 import me.aquitano.health.application.metric.sleep.repository.SleepStageRow
 import me.aquitano.health.application.metric.sleep.repository.SleepSummaryRow
@@ -112,22 +109,7 @@ class CanonicalMetricsServiceTest {
     }
 
     @Test
-    fun heartRateUsesDensityThenContextPriorityForNearTimestampDuplicates() {
-        val rows = listOf(
-            HeartRateSampleRow(1, 1, "2026-04-19T02:00:00Z", 60, "sleep"),
-            HeartRateSampleRow(2, 2, "2026-04-19T02:00:20Z", 58, "sleep"),
-            HeartRateSampleRow(3, 2, "2026-04-19T03:00:00Z", 57, "sleep"),
-            HeartRateSampleRow(4, 1, "2026-04-19T12:00:00Z", 80, "general"),
-            HeartRateSampleRow(5, 2, "2026-04-19T12:00:10Z", 78, "general"),
-        )
-
-        val canonical = service.canonicalHeartRateSamples(rows, metadata)
-
-        assertEquals(listOf(2, 3, 5), canonical.map { it.id })
-    }
-
-    @Test
-    fun bodyRespiratoryAndHrvResolveSameTimestampCrossSourceConflicts() {
+    fun bodyMeasurementsResolveSameTimestampCrossSourceConflicts() {
         val body = service.canonicalBodyMeasurements(
             listOf(
                 BodyMeasurementRow(1, 1, "2026-04-19T07:00:00Z", "weight", 82.0, "kg"),
@@ -137,24 +119,6 @@ class CanonicalMetricsServiceTest {
             metadata,
         )
         assertEquals(listOf(2, 3), body.map { it.id })
-
-        val respiratory = service.canonicalRespiratoryRateSamples(
-            listOf(
-                RespiratoryRateSampleRow(1, 1, "2026-04-19T02:00:00Z", 15, "sleep"),
-                RespiratoryRateSampleRow(2, 2, "2026-04-19T02:00:15Z", 14, "sleep"),
-            ),
-            metadata,
-        )
-        assertEquals(listOf(2), respiratory.map { it.id })
-
-        val hrv = service.canonicalHrvSamples(
-            listOf(
-                HrvSampleRow(1, 1, "2026-04-19T02:00:00Z", "rmssd", 40.0, "ms", "sleep"),
-                HrvSampleRow(2, 2, "2026-04-19T02:00:20Z", "rmssd", 44.0, "ms", "sleep"),
-            ),
-            metadata,
-        )
-        assertEquals(listOf(2), hrv.map { it.id })
     }
 
     private fun stage(stage: String): SleepStageRow =

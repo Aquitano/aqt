@@ -7,6 +7,8 @@ import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.application.metric.heart.repository.HeartRateSummaryRow
+import me.aquitano.health.application.metric.heart.derived.CANONICAL_HEART_RATE_ALGORITHM_VERSION
+import me.aquitano.health.application.metric.heart.repository.CanonicalHeartRateDerivationRepository
 import me.aquitano.health.application.metric.steps.repository.StepRepository
 import me.aquitano.health.application.metric.heart.repository.HeartRateRepository
 import me.aquitano.health.application.metric.body.repository.BodyMeasurementRepository
@@ -39,7 +41,7 @@ data class HealthDayQueryContext(
 
 interface HealthDayModule<T> {
     val name: String
-    fun read(context: HealthDayQueryContext): T
+    suspend fun read(context: HealthDayQueryContext): T
 }
 
 class HealthDayModuleRegistry(
@@ -148,7 +150,7 @@ class StepsDayModule(
 ) : HealthDayModule<HealthDayStepsResponse> {
     override val name = "steps"
 
-    override fun read(context: HealthDayQueryContext): HealthDayStepsResponse {
+    override suspend fun read(context: HealthDayQueryContext): HealthDayStepsResponse {
         val (rawRows) = stepRepository.listStepSamplesForWindow(context.filters())
         val rows = if (context.canonical) {
             canonicalMetricsService.canonicalStepSamples(
@@ -194,22 +196,20 @@ class StepsDayModule(
 
 class HeartRateDayModule(
     private val heartRateRepository: HeartRateRepository = HeartRateRepository(),
-    private val canonicalMetricsService: CanonicalMetricsService,
+    private val canonicalRepository: CanonicalHeartRateDerivationRepository = CanonicalHeartRateDerivationRepository(),
 ) : HealthDayModule<HealthDayHeartRateResponse> {
     override val name = "heartRate"
 
-    override fun read(context: HealthDayQueryContext): HealthDayHeartRateResponse {
+    override suspend fun read(context: HealthDayQueryContext): HealthDayHeartRateResponse {
         val filters = context.filters()
         val rawSummary = heartRateRepository.summarizeHeartRateForWindow(filters)
-        val (rawSamples, sourceMetadata) =
-            heartRateRepository.listHeartRateSamplesForWindow(filters)
-        val samples = if (context.canonical) {
-            canonicalMetricsService.canonicalHeartRateSamples(
-                rawSamples,
-                heartRateRepository.sourceMetadataFor(rawSamples.sourceInstanceIds { it.sourceInstanceId }),
+        val (samples, sourceMetadata) = if (context.canonical) {
+            canonicalRepository.listCanonicalHeartRateSamples(
+                filters.copy(limit = Int.MAX_VALUE, sort = "measuredAt", order = "asc"),
+                CANONICAL_HEART_RATE_ALGORITHM_VERSION,
             )
         } else {
-            rawSamples
+            heartRateRepository.listHeartRateSamplesForWindow(filters)
         }
         val summary = if (context.canonical) samples.heartRateSummary() else rawSummary
         val latest = samples.maxWithOrNull(compareBy<HeartRateSampleRow> { it.measuredAt }.thenBy { it.id })
@@ -250,7 +250,7 @@ class WeightDayModule(
 ) : HealthDayModule<HealthDayWeightResponse> {
     override val name = "weight"
 
-    override fun read(context: HealthDayQueryContext): HealthDayWeightResponse {
+    override suspend fun read(context: HealthDayQueryContext): HealthDayWeightResponse {
         val filters = context.filters()
         val (rawPoints, pointSourceMetadata) =
             bodyMeasurementRepository.listBodyMeasurementsForWindow(filters, BodyMetricTypes.WEIGHT)
@@ -295,7 +295,7 @@ class SleepDayModule(
 ) : HealthDayModule<HealthDaySleepResponse> {
     override val name = "sleep"
 
-    override fun read(context: HealthDayQueryContext): HealthDaySleepResponse {
+    override suspend fun read(context: HealthDayQueryContext): HealthDaySleepResponse {
         val (rawSessions, stagesBySession, sourceMetadata) =
             sleepRepository.listSleepSessionsOverlappingWindow(context.filters())
         val sessions = if (context.canonical) {

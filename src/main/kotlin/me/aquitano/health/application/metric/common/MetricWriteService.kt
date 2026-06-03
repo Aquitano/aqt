@@ -205,7 +205,10 @@ class MetricWriteService(
             now,
         )
         return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(heartRateSamples = 1))
+            MetricWriteResult(
+                created = MetricCreatedCounts(heartRateSamples = 1),
+                affectedHeartRateCanonicalDates = setOf(record.measuredAt.utcDate()),
+            )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
         }
@@ -264,6 +267,7 @@ class MetricWriteService(
         return if (inserted) {
             MetricWriteResult(
                 created = MetricCreatedCounts(respiratoryRateSamples = 1),
+                affectedRespiratoryRateCanonicalDates = setOf(record.measuredAt.utcDate()),
             )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
@@ -283,7 +287,10 @@ class MetricWriteService(
             now,
         )
         return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(hrvSamples = 1))
+            MetricWriteResult(
+                created = MetricCreatedCounts(hrvSamples = 1),
+                affectedHrvCanonicalDates = setOf(record.measuredAt.utcDate()),
+            )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
         }
@@ -351,6 +358,9 @@ data class MetricWriteResult(
     val duplicateSkipped: Int = 0,
     val affectedStepSummaryDates: Set<LocalDate> = emptySet(),
     val affectedSleepNightDates: Set<LocalDate> = emptySet(),
+    val affectedHeartRateCanonicalDates: Set<LocalDate> = emptySet(),
+    val affectedRespiratoryRateCanonicalDates: Set<LocalDate> = emptySet(),
+    val affectedHrvCanonicalDates: Set<LocalDate> = emptySet(),
 )
 
 private fun affectedUtcDates(

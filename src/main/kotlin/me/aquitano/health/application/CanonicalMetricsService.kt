@@ -3,9 +3,6 @@ package me.aquitano.health.application
 import me.aquitano.health.application.metric.activity.repository.ActivitySummaryRow
 import me.aquitano.health.application.metric.body.repository.BodyMeasurementRow
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
-import me.aquitano.health.application.metric.heart.repository.HeartRateSampleRow
-import me.aquitano.health.application.metric.hrv.repository.HrvSampleRow
-import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateSampleRow
 import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
 import me.aquitano.health.application.metric.sleep.repository.SleepStageRow
 import me.aquitano.health.application.metric.sleep.repository.SleepSummaryRow
@@ -13,7 +10,6 @@ import me.aquitano.health.application.metric.steps.repository.StepDailySummaryRo
 import me.aquitano.health.application.metric.steps.repository.StepSampleRow
 import java.time.Duration
 import java.time.Instant
-import kotlin.math.abs
 
 class CanonicalMetricsService(
     private val policy: CanonicalMetricsPolicy,
@@ -132,72 +128,6 @@ class CanonicalMetricsService(
             }
             .sortedWith(compareBy<BodyMeasurementRow> { instant(it.measuredAt) }.thenBy { it.metricType }.thenBy { it.id })
 
-    fun canonicalHeartRateSamples(
-        rows: List<HeartRateSampleRow>,
-        metadata: Map<Int, SourceMetadata>,
-    ): List<HeartRateSampleRow> {
-        val densityBySource = rows.groupingBy { it.sourceInstanceId }.eachCount()
-        return timestampBuckets(
-            rows = rows.sortedWith(compareBy<HeartRateSampleRow> { instant(it.measuredAt) }.thenBy { it.id }),
-            measuredAt = { it.measuredAt },
-            groupKey = { it.context },
-        ).flatMap { candidates ->
-            if (candidates.map { it.sourceInstanceId }.toSet().size <= 1) {
-                candidates
-            } else {
-                listOf(
-                    candidates.maxWithOrNull(
-                        compareBy<HeartRateSampleRow> { densityBySource[it.sourceInstanceId] ?: 0 }
-                            .thenBy { -policy.heartRateRank(metadata[it.sourceInstanceId]?.provider, it.context) }
-                            .thenBy { -it.id }
-                    )!!
-                )
-            }
-        }.sortedWith(compareBy<HeartRateSampleRow> { instant(it.measuredAt) }.thenBy { it.id })
-    }
-
-    fun canonicalRespiratoryRateSamples(
-        rows: List<RespiratoryRateSampleRow>,
-        metadata: Map<Int, SourceMetadata>,
-    ): List<RespiratoryRateSampleRow> =
-        timestampBuckets(
-            rows = rows.sortedWith(compareBy<RespiratoryRateSampleRow> { instant(it.measuredAt) }.thenBy { it.id }),
-            measuredAt = { it.measuredAt },
-            groupKey = { it.context },
-        ).flatMap { candidates ->
-            if (candidates.map { it.sourceInstanceId }.toSet().size <= 1) {
-                candidates
-            } else {
-                listOf(
-                    candidates.minWithOrNull(
-                        compareBy<RespiratoryRateSampleRow> { rank(CanonicalMetricFamily.RESPIRATORY_RATE, it, metadata) }
-                            .thenBy { it.id }
-                    )!!
-                )
-            }
-        }.sortedWith(compareBy<RespiratoryRateSampleRow> { instant(it.measuredAt) }.thenBy { it.id })
-
-    fun canonicalHrvSamples(
-        rows: List<HrvSampleRow>,
-        metadata: Map<Int, SourceMetadata>,
-    ): List<HrvSampleRow> =
-        timestampBuckets(
-            rows = rows.sortedWith(compareBy<HrvSampleRow> { instant(it.measuredAt) }.thenBy { it.id }),
-            measuredAt = { it.measuredAt },
-            groupKey = { it.metricType to it.context },
-        ).flatMap { candidates ->
-            if (candidates.map { it.sourceInstanceId }.toSet().size <= 1) {
-                candidates
-            } else {
-                listOf(
-                    candidates.minWithOrNull(
-                        compareBy<HrvSampleRow> { rank(CanonicalMetricFamily.HRV, it, metadata) }
-                            .thenBy { it.id }
-                    )!!
-                )
-            }
-        }.sortedWith(compareBy<HrvSampleRow> { instant(it.measuredAt) }.thenBy { it.id })
-
     private fun <T> canonicalIntervals(
         rows: List<T>,
         overlaps: (T, T) -> Boolean,
@@ -220,54 +150,6 @@ class CanonicalMetricsService(
             }
         }
         return selected.sortedBy(start)
-    }
-
-    private data class TimedRow<T, K>(
-        val row: T,
-        val key: K,
-        val measuredAt: Instant,
-    )
-
-    private data class TimestampBucket<T>(
-        val representativeAt: Instant,
-        val rows: MutableList<T> = mutableListOf(),
-    )
-
-    private fun <T, K> timestampBuckets(
-        rows: List<T>,
-        measuredAt: (T) -> String,
-        groupKey: (T) -> K,
-    ): List<List<T>> {
-        val timedRows = rows.map { row ->
-            TimedRow(
-                row = row,
-                key = groupKey(row),
-                measuredAt = Instant.parse(measuredAt(row)),
-            )
-        }
-
-        val bucketsByKey = mutableMapOf<K, MutableList<TimestampBucket<T>>>()
-
-        for (timedRow in timedRows) {
-            val bucketsForKey = bucketsByKey.getOrPut(timedRow.key) { mutableListOf() }
-
-            val bucket = bucketsForKey.firstOrNull { bucket ->
-                abs(Duration.between(bucket.representativeAt, timedRow.measuredAt).seconds) <= SameTimestampToleranceSeconds
-            }
-
-            if (bucket == null) {
-                bucketsForKey += TimestampBucket(
-                    representativeAt = timedRow.measuredAt,
-                    rows = mutableListOf(timedRow.row),
-                )
-            } else {
-                bucket.rows += timedRow.row
-            }
-        }
-
-        return bucketsByKey.values
-            .flatten()
-            .map { it.rows }
     }
 
     private fun sleepOverlaps(left: SleepSessionRow, right: SleepSessionRow): Boolean =
@@ -308,8 +190,6 @@ class CanonicalMetricsService(
             is SleepSessionRow -> row.sourceInstanceId
             is SleepSummaryRow -> row.sourceInstanceId
             is BodyMeasurementRow -> row.sourceInstanceId
-            is RespiratoryRateSampleRow -> row.sourceInstanceId
-            is HrvSampleRow -> row.sourceInstanceId
             else -> return Int.MAX_VALUE
         }
         return policy.rank(family, metadata[sourceInstanceId]?.provider)
@@ -366,7 +246,6 @@ class CanonicalMetricsService(
     }
 
     private companion object {
-        const val SameTimestampToleranceSeconds = 30L
         const val SleepOverlapMinimumSeconds = 30L * 60L
     }
 }
