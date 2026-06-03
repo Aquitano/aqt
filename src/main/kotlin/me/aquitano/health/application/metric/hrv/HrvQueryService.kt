@@ -21,7 +21,7 @@ import org.jetbrains.exposed.v1.jdbc.Database
 
 class HrvQueryService(
     database: Database,
-    private val hrvRepository: HrvRepository = HrvRepository(),
+    private val hrvRepository: HrvRepository,
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : BaseReadService(database) {
     suspend fun listHrvSamples(params: QueryParams): HrvSamplesResponse {

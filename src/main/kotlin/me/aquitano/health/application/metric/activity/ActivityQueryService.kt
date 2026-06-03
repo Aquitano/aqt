@@ -17,7 +17,7 @@ import java.time.Instant
 
 class ActivityQueryService(
     database: Database,
-    private val activitySummaryRepository: ActivitySummaryRepository = ActivitySummaryRepository(),
+    private val activitySummaryRepository: ActivitySummaryRepository,
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : BaseReadService(database) {
     suspend fun listActivitySummaries(

@@ -2,6 +2,7 @@ val exposed_version: String by project
 val flyway_version: String by project
 val hikari_version: String by project
 val kotlin_version: String by project
+val koin_version: String by project
 val logback_version: String by project
 val logstash_logback_encoder_version: String by project
 val okhttp_version: String by project
@@ -53,6 +54,9 @@ dependencies {
     implementation("io.ktor:ktor-server-swagger")
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     implementation("io.ktor:ktor-server-config-yaml")
+    implementation("io.insert-koin:koin-ktor:$koin_version")
+    implementation("io.insert-koin:koin-logger-slf4j:$koin_version")
+
     implementation("ch.qos.logback:logback-classic:$logback_version")
     implementation("net.logstash.logback:logstash-logback-encoder:$logstash_logback_encoder_version")
     implementation("com.squareup.okhttp3:okhttp:$okhttp_version")

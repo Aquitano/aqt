@@ -19,7 +19,7 @@ import org.jetbrains.exposed.v1.jdbc.Database
 
 class RespiratoryRateQueryService(
     database: Database,
-    private val respiratoryRateRepository: RespiratoryRateRepository = RespiratoryRateRepository(),
+    private val respiratoryRateRepository: RespiratoryRateRepository,
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : BaseReadService(database) {
     suspend fun listRespiratoryRateSamples(params: QueryParams): RespiratoryRateSamplesResponse =

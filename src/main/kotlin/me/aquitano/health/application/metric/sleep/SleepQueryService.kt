@@ -22,7 +22,7 @@ import java.time.Instant
 
 class SleepQueryService(
     database: Database,
-    private val sleepRepository: SleepRepository = SleepRepository(),
+    private val sleepRepository: SleepRepository,
     private val canonicalMetricsService: CanonicalMetricsService,
     private val sleepNightService: SleepNightService,
 ) : BaseReadService(database) {

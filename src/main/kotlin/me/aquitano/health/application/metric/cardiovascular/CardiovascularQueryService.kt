@@ -17,7 +17,7 @@ import org.jetbrains.exposed.v1.jdbc.Database
 
 class CardiovascularQueryService(
     database: Database,
-    private val cardiovascularRepository: CardiovascularRepository = CardiovascularRepository(),
+    private val cardiovascularRepository: CardiovascularRepository,
 ) : BaseReadService(database) {
     suspend fun listBloodPressure(params: QueryParams): BloodPressureMeasurementsResponse =
         dbQuery {

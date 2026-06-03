@@ -31,10 +31,10 @@ private const val DashboardSummaryLatestCandidateLimit = 500
 
 class DashboardQueryService(
     database: Database,
-    private val stepRepository: StepRepository = StepRepository(),
-    private val sleepRepository: SleepRepository = SleepRepository(),
-    private val bodyMeasurementRepository: BodyMeasurementRepository = BodyMeasurementRepository(),
-    private val heartRateRepository: HeartRateRepository = HeartRateRepository(),
+    private val stepRepository: StepRepository,
+    private val sleepRepository: SleepRepository,
+    private val bodyMeasurementRepository: BodyMeasurementRepository,
+    private val heartRateRepository: HeartRateRepository,
     private val canonicalMetricsService: CanonicalMetricsService,
     private val sleepNightService: SleepNightService,
 ) : BaseReadService(database) {

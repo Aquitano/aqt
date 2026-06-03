@@ -21,7 +21,7 @@ import java.time.Instant
 
 class StepQueryService(
     database: Database,
-    private val stepRepository: StepRepository = StepRepository(),
+    private val stepRepository: StepRepository,
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : BaseReadService(database) {
     suspend fun listStepSamples(params: QueryParams): StepSamplesResponse =

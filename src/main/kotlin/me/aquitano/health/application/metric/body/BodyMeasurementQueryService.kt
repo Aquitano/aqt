@@ -22,7 +22,7 @@ import org.jetbrains.exposed.v1.jdbc.Database
 
 class BodyMeasurementQueryService(
     database: Database,
-    private val bodyMeasurementRepository: BodyMeasurementRepository = BodyMeasurementRepository(),
+    private val bodyMeasurementRepository: BodyMeasurementRepository,
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : BaseReadService(database) {
     suspend fun listBodyMeasurements(params: QueryParams): BodyMeasurementsResponse {

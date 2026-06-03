@@ -19,7 +19,7 @@ import org.jetbrains.exposed.v1.jdbc.Database
 
 class HeartRateQueryService(
     database: Database,
-    private val heartRateRepository: HeartRateRepository = HeartRateRepository(),
+    private val heartRateRepository: HeartRateRepository,
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : BaseReadService(database) {
     suspend fun listHeartRateSamples(params: QueryParams): HeartRateSamplesResponse =

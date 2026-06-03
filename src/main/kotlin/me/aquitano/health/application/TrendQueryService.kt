@@ -22,10 +22,10 @@ import kotlin.math.roundToInt
 
 class TrendQueryService(
     private val database: Database,
-    private val stepRepository: StepRepository = StepRepository(),
-    private val heartRateRepository: HeartRateRepository = HeartRateRepository(),
-    private val sleepRepository: SleepRepository = SleepRepository(),
-    private val bodyMeasurementRepository: BodyMeasurementRepository = BodyMeasurementRepository(),
+    private val stepRepository: StepRepository,
+    private val heartRateRepository: HeartRateRepository,
+    private val sleepRepository: SleepRepository,
+    private val bodyMeasurementRepository: BodyMeasurementRepository,
 ) {
     private val logger = LoggerFactory.getLogger(TrendQueryService::class.java)
 

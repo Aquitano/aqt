@@ -1,8 +1,6 @@
 package me.aquitano.health.application.metric.common
 
 import me.aquitano.health.api.dto.*
-import me.aquitano.health.application.CanonicalMetricsService
-import me.aquitano.health.application.SleepNightService
 import me.aquitano.health.application.metric.activity.ActivityQueryService
 import me.aquitano.health.application.metric.body.BodyMeasurementQueryService
 import me.aquitano.health.application.metric.cardiovascular.CardiovascularQueryService
@@ -12,50 +10,23 @@ import me.aquitano.health.application.metric.hrv.HrvQueryService
 import me.aquitano.health.application.metric.respiratory.RespiratoryRateQueryService
 import me.aquitano.health.application.metric.sleep.SleepQueryService
 import me.aquitano.health.application.metric.steps.StepQueryService
-import org.jetbrains.exposed.v1.jdbc.Database
 import java.time.Instant
 
+/**
+ * Facade that delegates all metric read operations to the appropriate
+ * per-metric query service.  Instances are assembled by Koin with each
+ * sub-service injected from the container.
+ */
 class MetricsQueryService(
-    database: Database,
-    canonicalMetricsService: CanonicalMetricsService,
-    sleepNightService: SleepNightService,
-    private val activityQueryService: ActivityQueryService = ActivityQueryService(
-        database = database,
-        canonicalMetricsService = canonicalMetricsService,
-    ),
-    private val stepQueryService: StepQueryService = StepQueryService(
-        database = database,
-        canonicalMetricsService = canonicalMetricsService,
-    ),
-    private val sleepQueryService: SleepQueryService = SleepQueryService(
-        database = database,
-        canonicalMetricsService = canonicalMetricsService,
-        sleepNightService = sleepNightService,
-    ),
-    private val bodyMeasurementQueryService: BodyMeasurementQueryService = BodyMeasurementQueryService(
-        database = database,
-        canonicalMetricsService = canonicalMetricsService,
-    ),
-    private val heartRateQueryService: HeartRateQueryService = HeartRateQueryService(
-        database = database,
-        canonicalMetricsService = canonicalMetricsService,
-    ),
-    private val respiratoryRateQueryService: RespiratoryRateQueryService = RespiratoryRateQueryService(
-        database = database,
-        canonicalMetricsService = canonicalMetricsService,
-    ),
-    private val hrvQueryService: HrvQueryService = HrvQueryService(
-        database = database,
-        canonicalMetricsService = canonicalMetricsService,
-    ),
-    private val cardiovascularQueryService: CardiovascularQueryService = CardiovascularQueryService(
-        database = database,
-    ),
-    private val dashboardQueryService: DashboardQueryService = DashboardQueryService(
-        database = database,
-        canonicalMetricsService = canonicalMetricsService,
-        sleepNightService = sleepNightService,
-    ),
+    private val activityQueryService: ActivityQueryService,
+    private val stepQueryService: StepQueryService,
+    private val sleepQueryService: SleepQueryService,
+    private val bodyMeasurementQueryService: BodyMeasurementQueryService,
+    private val heartRateQueryService: HeartRateQueryService,
+    private val respiratoryRateQueryService: RespiratoryRateQueryService,
+    private val hrvQueryService: HrvQueryService,
+    private val cardiovascularQueryService: CardiovascularQueryService,
+    private val dashboardQueryService: DashboardQueryService,
 ) {
     suspend fun listActivitySummaries(
         params: QueryParams,
