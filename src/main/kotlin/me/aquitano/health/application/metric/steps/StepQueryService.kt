@@ -13,13 +13,15 @@ import me.aquitano.health.application.metric.common.meta
 import me.aquitano.health.application.metric.common.readFilters
 import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.application.metric.common.toResponse
-import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
+import me.aquitano.health.application.metric.steps.repository.StepRepository
+import me.aquitano.health.application.metric.steps.repository.StepSampleRow
+import me.aquitano.health.application.metric.steps.repository.StepDailySummaryRow
 import org.jetbrains.exposed.v1.jdbc.Database
 import java.time.Instant
 
 class StepQueryService(
     database: Database,
-    private val metricsReadRepository: MetricsReadRepository,
+    private val stepRepository: StepRepository = StepRepository(),
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : BaseReadService(database) {
     suspend fun listStepSamples(params: QueryParams): StepSamplesResponse =
@@ -30,11 +32,11 @@ class StepQueryService(
                 allowedSorts = setOf(SortFields.START_AT),
                 latestSupported = true,
             )
-            val (rawRows, sourceMetadata) = metricsReadRepository.listStepSamples(filters)
+            val (rawRows, sourceMetadata) = stepRepository.listStepSamples(filters)
             val rows = if (canonical) {
                 canonicalMetricsService.canonicalStepSamples(
                     rawRows,
-                    metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
+                    stepRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawRows
@@ -61,11 +63,11 @@ class StepQueryService(
             params.rejectLatest()
             val filters = params.dailyReadFilters(now)
             val canonical = params.canonical(default = false)
-            val (rawRows, sourceMetadata) = metricsReadRepository.listStepDailySummaries(filters)
+            val (rawRows, sourceMetadata) = stepRepository.listStepDailySummaries(filters)
             val rows = if (canonical) {
                 canonicalMetricsService.canonicalStepDailySummaries(
                     rawRows,
-                    metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
+                    stepRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawRows

@@ -1,9 +1,9 @@
 package me.aquitano.health.application.metric.common
 
-import me.aquitano.health.infrastructure.repositories.HrvSampleRow
-import me.aquitano.health.infrastructure.repositories.HrvSummaryRow
-import me.aquitano.health.infrastructure.repositories.RespiratoryRateSampleRow
-import me.aquitano.health.infrastructure.repositories.RespiratoryRateSummaryRow
+import me.aquitano.health.application.metric.hrv.repository.HrvSampleRow
+import me.aquitano.health.application.metric.hrv.repository.HrvSummaryRow
+import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateSampleRow
+import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateSummaryRow
 
 internal fun List<RespiratoryRateSampleRow>.respiratoryRateSummary(): RespiratoryRateSummaryRow =
     RespiratoryRateSummaryRow(

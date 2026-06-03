@@ -1,7 +1,22 @@
 package me.aquitano.health.application.metric.common
 
 import me.aquitano.health.api.dto.*
-import me.aquitano.health.infrastructure.repositories.*
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
+import me.aquitano.health.application.metric.common.repository.ReadFilters
+import me.aquitano.health.application.metric.common.repository.DailyReadFilters
+import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
+import me.aquitano.health.application.metric.body.repository.BodyMeasurementRow
+import me.aquitano.health.application.metric.activity.repository.ActivitySummaryRow
+import me.aquitano.health.application.metric.sleep.repository.SleepSummaryRow
+import me.aquitano.health.application.metric.heart.repository.HeartRateSampleRow
+import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateSampleRow
+import me.aquitano.health.application.metric.hrv.repository.HrvSampleRow
+import me.aquitano.health.application.metric.cardiovascular.repository.BloodPressureMeasurementRow
+import me.aquitano.health.application.metric.cardiovascular.repository.CardiovascularMeasurementRow
+import me.aquitano.health.application.metric.body.repository.ExtendedBodyMeasurementRow
+import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
+import me.aquitano.health.application.metric.sleep.repository.SleepStageRow
+import me.aquitano.health.application.metric.sleep.repository.SleepNightRow
 
 internal fun SourceMetadata?.toResponse(): SourceMetadataResponse? =
     this?.let {

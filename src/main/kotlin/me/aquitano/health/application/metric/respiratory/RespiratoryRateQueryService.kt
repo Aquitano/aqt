@@ -13,13 +13,13 @@ import me.aquitano.health.application.metric.common.respiratoryRateSummary
 import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.application.metric.common.summaryFilters
 import me.aquitano.health.application.metric.common.toResponse
-import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
-import me.aquitano.health.infrastructure.repositories.RespiratoryRateSampleRow
+import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateRepository
+import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateSampleRow
 import org.jetbrains.exposed.v1.jdbc.Database
 
 class RespiratoryRateQueryService(
     database: Database,
-    private val metricsReadRepository: MetricsReadRepository,
+    private val respiratoryRateRepository: RespiratoryRateRepository = RespiratoryRateRepository(),
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : BaseReadService(database) {
     suspend fun listRespiratoryRateSamples(params: QueryParams): RespiratoryRateSamplesResponse =
@@ -30,11 +30,11 @@ class RespiratoryRateQueryService(
                 allowedSorts = setOf(SortFields.MEASURED_AT),
                 latestSupported = true,
             )
-            val (rawRows, sourceMetadata) = metricsReadRepository.listRespiratoryRateSamples(filters)
+            val (rawRows, sourceMetadata) = respiratoryRateRepository.listRespiratoryRateSamples(filters)
             val rows = if (canonical) {
                 canonicalMetricsService.canonicalRespiratoryRateSamples(
                     rawRows,
-                    metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
+                    respiratoryRateRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawRows
@@ -50,12 +50,12 @@ class RespiratoryRateQueryService(
             val filters = params.summaryFilters(SortFields.MEASURED_AT)
             val canonical = params.canonical(default = true)
             val (summary, latest, sourceMetadata) = if (canonical) {
-                val (rows, metadata) = metricsReadRepository.listRespiratoryRateSamples(
+                val (rows, metadata) = respiratoryRateRepository.listRespiratoryRateSamples(
                     filters.copy(limit = Int.MAX_VALUE, order = Orders.ASC),
                 )
                 val canonicalRows = canonicalMetricsService.canonicalRespiratoryRateSamples(
                     rows,
-                    metricsReadRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
+                    respiratoryRateRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
                 )
                 Triple(
                     canonicalRows.respiratoryRateSummary(),
@@ -63,8 +63,8 @@ class RespiratoryRateQueryService(
                     metadata,
                 )
             } else {
-                val (latest, metadata) = metricsReadRepository.latestRespiratoryRateSample(filters)
-                Triple(metricsReadRepository.summarizeRespiratoryRate(filters), latest, metadata)
+                val (latest, metadata) = respiratoryRateRepository.latestRespiratoryRateSample(filters)
+                Triple(respiratoryRateRepository.summarizeRespiratoryRate(filters), latest, metadata)
             }
             RespiratoryRateSummaryResponse(
                 count = summary.count,

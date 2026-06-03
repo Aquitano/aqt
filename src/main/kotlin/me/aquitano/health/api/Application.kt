@@ -16,6 +16,9 @@ import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
 import me.aquitano.health.application.metric.steps.repository.StepDailySummaryDerivationRepository
+import me.aquitano.health.application.metric.steps.repository.StepRepository
+import me.aquitano.health.application.metric.heart.repository.HeartRateRepository
+import me.aquitano.health.application.metric.body.repository.BodyMeasurementRepository
 import me.aquitano.health.infrastructure.config.toAppConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
 import me.aquitano.health.infrastructure.repositories.*
@@ -85,17 +88,19 @@ fun Application.module() {
                     appConfig.withings.tokenEncryptionKey.isNotBlank(),
         ),
     )
-    val metricsReadRepository = MetricsReadRepository()
     val sleepRepository = SleepRepository()
+    val stepRepository = StepRepository()
+    val heartRateRepository = HeartRateRepository()
+    val bodyMeasurementRepository = BodyMeasurementRepository()
     val sleepNightDerivationRepository = SleepNightDerivationRepository()
     val canonicalMetricsService =
         CanonicalMetricsService(CanonicalMetricsPolicy.default())
     val healthDayModuleRegistry = HealthDayModuleRegistry(
         listOf(
-            StepsDayModule(metricsReadRepository, canonicalMetricsService),
-            HeartRateDayModule(metricsReadRepository, canonicalMetricsService),
-            WeightDayModule(metricsReadRepository, canonicalMetricsService),
-            SleepDayModule(metricsReadRepository, canonicalMetricsService),
+            StepsDayModule(stepRepository, canonicalMetricsService),
+            HeartRateDayModule(heartRateRepository, canonicalMetricsService),
+            WeightDayModule(bodyMeasurementRepository, canonicalMetricsService),
+            SleepDayModule(sleepRepository, canonicalMetricsService),
         )
     )
     val ingestionService = IngestionService(
@@ -148,7 +153,6 @@ fun Application.module() {
         ingestionService = ingestionService,
         metricsQueryService = MetricsQueryService(
             database = database,
-            metricsReadRepository = metricsReadRepository,
             canonicalMetricsService = canonicalMetricsService,
             sleepNightService = SleepNightService(sleepNightDerivationRepository),
         ),
@@ -181,7 +185,10 @@ fun Application.module() {
         scheduledProviderSyncService = scheduledProviderSyncService,
         trendQueryService = TrendQueryService(
             database = database,
-            metricsReadRepository = metricsReadRepository,
+            stepRepository = stepRepository,
+            heartRateRepository = heartRateRepository,
+            sleepRepository = sleepRepository,
+            bodyMeasurementRepository = bodyMeasurementRepository,
         ),
     )
 

@@ -6,7 +6,18 @@ import me.aquitano.health.domain.BodyMetricTypes
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
-import me.aquitano.health.infrastructure.repositories.*
+import me.aquitano.health.application.metric.heart.repository.HeartRateSummaryRow
+import me.aquitano.health.application.metric.steps.repository.StepRepository
+import me.aquitano.health.application.metric.heart.repository.HeartRateRepository
+import me.aquitano.health.application.metric.body.repository.BodyMeasurementRepository
+import me.aquitano.health.application.metric.sleep.repository.SleepRepository
+import me.aquitano.health.application.metric.steps.repository.StepSampleRow
+import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
+import me.aquitano.health.application.metric.sleep.repository.SleepStageRow
+import me.aquitano.health.application.metric.body.repository.BodyMeasurementRow
+import me.aquitano.health.application.metric.heart.repository.HeartRateSampleRow
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
+import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.sourceInstanceIds
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
@@ -132,17 +143,17 @@ class HealthDayQueryService(
 }
 
 class StepsDayModule(
-    private val metricsReadRepository: MetricsReadRepository,
+    private val stepRepository: StepRepository = StepRepository(),
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : HealthDayModule<HealthDayStepsResponse> {
     override val name = "steps"
 
     override fun read(context: HealthDayQueryContext): HealthDayStepsResponse {
-        val (rawRows) = metricsReadRepository.listStepSamplesForWindow(context.filters())
+        val (rawRows) = stepRepository.listStepSamplesForWindow(context.filters())
         val rows = if (context.canonical) {
             canonicalMetricsService.canonicalStepSamples(
                 rawRows,
-                metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
+                stepRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
             )
         } else {
             rawRows
@@ -176,26 +187,26 @@ class StepsDayModule(
                     count = counts[index],
                 )
             },
-            source = rows.singleSource(context.includeSource, metricsReadRepository) { it.sourceInstanceId },
+            source = rows.singleSource(context.includeSource, stepRepository) { it.sourceInstanceId },
         )
     }
 }
 
 class HeartRateDayModule(
-    private val metricsReadRepository: MetricsReadRepository,
+    private val heartRateRepository: HeartRateRepository = HeartRateRepository(),
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : HealthDayModule<HealthDayHeartRateResponse> {
     override val name = "heartRate"
 
     override fun read(context: HealthDayQueryContext): HealthDayHeartRateResponse {
         val filters = context.filters()
-        val rawSummary = metricsReadRepository.summarizeHeartRateForWindow(filters)
+        val rawSummary = heartRateRepository.summarizeHeartRateForWindow(filters)
         val (rawSamples, sourceMetadata) =
-            metricsReadRepository.listHeartRateSamplesForWindow(filters)
+            heartRateRepository.listHeartRateSamplesForWindow(filters)
         val samples = if (context.canonical) {
             canonicalMetricsService.canonicalHeartRateSamples(
                 rawSamples,
-                metricsReadRepository.sourceMetadataFor(rawSamples.sourceInstanceIds { it.sourceInstanceId }),
+                heartRateRepository.sourceMetadataFor(rawSamples.sourceInstanceIds { it.sourceInstanceId }),
             )
         } else {
             rawSamples
@@ -234,7 +245,7 @@ class HeartRateDayModule(
 }
 
 class WeightDayModule(
-    private val metricsReadRepository: MetricsReadRepository,
+    private val bodyMeasurementRepository: BodyMeasurementRepository = BodyMeasurementRepository(),
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : HealthDayModule<HealthDayWeightResponse> {
     override val name = "weight"
@@ -242,26 +253,26 @@ class WeightDayModule(
     override fun read(context: HealthDayQueryContext): HealthDayWeightResponse {
         val filters = context.filters()
         val (rawPoints, pointSourceMetadata) =
-            metricsReadRepository.listBodyMeasurementsForWindow(filters, BodyMetricTypes.WEIGHT)
+            bodyMeasurementRepository.listBodyMeasurementsForWindow(filters, BodyMetricTypes.WEIGHT)
         val points = if (context.canonical) {
             canonicalMetricsService.canonicalBodyMeasurements(
                 rawPoints,
-                metricsReadRepository.sourceMetadataFor(rawPoints.sourceInstanceIds { it.sourceInstanceId }),
+                bodyMeasurementRepository.sourceMetadataFor(rawPoints.sourceInstanceIds { it.sourceInstanceId }),
             )
         } else {
             rawPoints
         }
         val (previousCandidates, previousSourceMetadata) =
             if (context.canonical) {
-                metricsReadRepository.latestBodyMeasurementsBefore(filters, BodyMetricTypes.WEIGHT)
+                bodyMeasurementRepository.latestBodyMeasurementsBefore(filters, BodyMetricTypes.WEIGHT)
             } else {
-                val (row, metadata) = metricsReadRepository.latestBodyMeasurementBefore(filters, BodyMetricTypes.WEIGHT)
+                val (row, metadata) = bodyMeasurementRepository.latestBodyMeasurementBefore(filters, BodyMetricTypes.WEIGHT)
                 listOfNotNull(row) to metadata
             }
         val previous = if (context.canonical) {
             canonicalMetricsService.canonicalBodyMeasurements(
                 previousCandidates,
-                metricsReadRepository.sourceMetadataFor(previousCandidates.sourceInstanceIds { it.sourceInstanceId }),
+                bodyMeasurementRepository.sourceMetadataFor(previousCandidates.sourceInstanceIds { it.sourceInstanceId }),
             ).maxWithOrNull(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.id })
         } else {
             previousCandidates.singleOrNull()
@@ -279,19 +290,19 @@ class WeightDayModule(
 }
 
 class SleepDayModule(
-    private val metricsReadRepository: MetricsReadRepository,
+    private val sleepRepository: SleepRepository = SleepRepository(),
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : HealthDayModule<HealthDaySleepResponse> {
     override val name = "sleep"
 
     override fun read(context: HealthDayQueryContext): HealthDaySleepResponse {
         val (rawSessions, stagesBySession, sourceMetadata) =
-            metricsReadRepository.listSleepSessionsOverlappingWindow(context.filters())
+            sleepRepository.listSleepSessionsOverlappingWindow(context.filters())
         val sessions = if (context.canonical) {
             canonicalMetricsService.canonicalSleepSessions(
                 rawSessions,
                 stagesBySession,
-                metricsReadRepository.sourceMetadataFor(rawSessions.sourceInstanceIds { it.sourceInstanceId }),
+                sleepRepository.sourceMetadataFor(rawSessions.sourceInstanceIds { it.sourceInstanceId }),
             )
         } else {
             rawSessions

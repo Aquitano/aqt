@@ -3,9 +3,9 @@ package me.aquitano.health.application.metric.common
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
-import me.aquitano.health.infrastructure.repositories.DailyReadFilters
-import me.aquitano.health.infrastructure.repositories.ReadFilters
-import me.aquitano.health.infrastructure.repositories.SleepNightReadFilters
+import me.aquitano.health.application.metric.common.repository.DailyReadFilters
+import me.aquitano.health.application.metric.common.repository.ReadFilters
+import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
 import java.time.Instant
 import java.time.LocalDate
 

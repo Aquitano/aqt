@@ -3,12 +3,15 @@ package me.aquitano.health.application
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.domain.BodyMetricTypes
-import me.aquitano.health.infrastructure.repositories.BodyMeasurementRow
-import me.aquitano.health.infrastructure.repositories.DailyReadFilters
-import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
-import me.aquitano.health.infrastructure.repositories.ReadFilters
-import me.aquitano.health.infrastructure.repositories.SourceMetadata
+import me.aquitano.health.application.metric.body.repository.BodyMeasurementRow
+import me.aquitano.health.application.metric.common.repository.DailyReadFilters
+import me.aquitano.health.application.metric.common.repository.ReadFilters
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.shared.utcDate
+import me.aquitano.health.application.metric.steps.repository.StepRepository
+import me.aquitano.health.application.metric.heart.repository.HeartRateRepository
+import me.aquitano.health.application.metric.sleep.repository.SleepRepository
+import me.aquitano.health.application.metric.body.repository.BodyMeasurementRepository
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.slf4j.LoggerFactory
@@ -19,9 +22,13 @@ import kotlin.math.roundToInt
 
 class TrendQueryService(
     private val database: Database,
-    private val metricsReadRepository: MetricsReadRepository,
+    private val stepRepository: StepRepository = StepRepository(),
+    private val heartRateRepository: HeartRateRepository = HeartRateRepository(),
+    private val sleepRepository: SleepRepository = SleepRepository(),
+    private val bodyMeasurementRepository: BodyMeasurementRepository = BodyMeasurementRepository(),
 ) {
     private val logger = LoggerFactory.getLogger(TrendQueryService::class.java)
+
     suspend fun dashboardTrends(
         params: QueryParams,
         now: Instant,
@@ -53,10 +60,10 @@ class TrendQueryService(
         previousTo: LocalDate,
         periodDays: Int,
     ): StepsTrend? {
-        val current = metricsReadRepository.sumStepDailySummaries(
+        val current = stepRepository.sumStepDailySummaries(
             dailyReadFilters(currentFrom, currentTo)
         )
-        val previous = metricsReadRepository.sumStepDailySummaries(
+        val previous = stepRepository.sumStepDailySummaries(
             dailyReadFilters(previousFrom, previousTo)
         )
         if (current.sampleCount == 0 && previous.sampleCount == 0) return null
@@ -75,10 +82,10 @@ class TrendQueryService(
         previousFrom: LocalDate,
         previousTo: LocalDate,
     ): HeartRateTrend? {
-        val currentSummary = metricsReadRepository.summarizeHeartRate(
+        val currentSummary = heartRateRepository.summarizeHeartRate(
             readFilters(currentFrom, currentTo)
         )
-        val previousSummary = metricsReadRepository.summarizeHeartRate(
+        val previousSummary = heartRateRepository.summarizeHeartRate(
             readFilters(previousFrom, previousTo)
         )
         if (currentSummary.count == 0 && previousSummary.count == 0) return null
@@ -97,10 +104,10 @@ class TrendQueryService(
         previousFrom: LocalDate,
         previousTo: LocalDate,
     ): SleepTrend? {
-        val currentAvg = metricsReadRepository.avgSleepDuration(
+        val currentAvg = sleepRepository.avgSleepDuration(
             readFilters(currentFrom, currentTo)
         )
-        val previousAvg = metricsReadRepository.avgSleepDuration(
+        val previousAvg = sleepRepository.avgSleepDuration(
             readFilters(previousFrom, previousTo)
         )
         if (currentAvg == null && previousAvg == null) return null
@@ -114,7 +121,7 @@ class TrendQueryService(
     }
 
     private fun weightTrend(toDate: LocalDate): WeightTrend? {
-        val current = metricsReadRepository.latestBodyMeasurementBefore(
+        val current = bodyMeasurementRepository.latestBodyMeasurementBefore(
             before = toDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant(),
             metricType = BodyMetricTypes.WEIGHT,
         )
@@ -125,7 +132,7 @@ class TrendQueryService(
                 logger.warn("Failed to parse measuredAt for weight trend: {}", measuredAt)
             }
             instant?.let {
-                metricsReadRepository.latestBodyMeasurementBefore(
+                bodyMeasurementRepository.latestBodyMeasurementBefore(
                     before = it,
                     metricType = BodyMetricTypes.WEIGHT,
                 )
@@ -136,7 +143,7 @@ class TrendQueryService(
             percentChange(current.value, previous.value)
         } else null
 
-        val sourceMetadata = metricsReadRepository.sourceMetadataFor(
+        val sourceMetadata = bodyMeasurementRepository.sourceMetadataFor(
             setOf(current.sourceInstanceId)
         )
         val currentResponse = current.toResponse(sourceMetadata)
@@ -183,7 +190,7 @@ class TrendQueryService(
         (value * 10.0).roundToInt() / 10.0
 
     private fun BodyMeasurementRow.toResponse(
-        sourceMetadata: Map<Int, me.aquitano.health.infrastructure.repositories.SourceMetadata>
+        sourceMetadata: Map<Int, SourceMetadata>
     ): BodyMeasurementResponse =
         BodyMeasurementResponse(
             id = id,

@@ -14,14 +14,14 @@ import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.application.metric.common.summaryFilters
 import me.aquitano.health.application.metric.common.toResponse
 import me.aquitano.health.application.metric.common.validateHrvMetricType
+import me.aquitano.health.application.metric.hrv.repository.HrvRepository
+import me.aquitano.health.application.metric.hrv.repository.HrvSampleRow
 import me.aquitano.health.domain.HrvMetricTypes
-import me.aquitano.health.infrastructure.repositories.HrvSampleRow
-import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
 import org.jetbrains.exposed.v1.jdbc.Database
 
 class HrvQueryService(
     database: Database,
-    private val metricsReadRepository: MetricsReadRepository,
+    private val hrvRepository: HrvRepository = HrvRepository(),
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : BaseReadService(database) {
     suspend fun listHrvSamples(params: QueryParams): HrvSamplesResponse {
@@ -34,11 +34,11 @@ class HrvQueryService(
                 allowedSorts = setOf(SortFields.MEASURED_AT),
                 latestSupported = true,
             )
-            val (rawRows, sourceMetadata) = metricsReadRepository.listHrvSamples(filters, metricType)
+            val (rawRows, sourceMetadata) = hrvRepository.listHrvSamples(filters, metricType)
             val rows = if (canonical) {
                 canonicalMetricsService.canonicalHrvSamples(
                     rawRows,
-                    metricsReadRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
+                    hrvRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawRows
@@ -57,13 +57,13 @@ class HrvQueryService(
             val filters = params.summaryFilters(SortFields.MEASURED_AT)
             val canonical = params.canonical(default = true)
             val (summary, latest, sourceMetadata) = if (canonical) {
-                val (rows, metadata) = metricsReadRepository.listHrvSamples(
+                val (rows, metadata) = hrvRepository.listHrvSamples(
                     filters.copy(limit = Int.MAX_VALUE, order = Orders.ASC),
                     metricType,
                 )
                 val canonicalRows = canonicalMetricsService.canonicalHrvSamples(
                     rows,
-                    metricsReadRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
+                    hrvRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
                 )
                 Triple(
                     canonicalRows.hrvSummary(),
@@ -71,8 +71,8 @@ class HrvQueryService(
                     metadata,
                 )
             } else {
-                val (latest, metadata) = metricsReadRepository.latestHrvSample(filters, metricType)
-                Triple(metricsReadRepository.summarizeHrv(filters, metricType), latest, metadata)
+                val (latest, metadata) = hrvRepository.latestHrvSample(filters, metricType)
+                Triple(hrvRepository.summarizeHrv(filters, metricType), latest, metadata)
             }
             HrvSummaryResponse(
                 count = summary.count,

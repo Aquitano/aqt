@@ -3,8 +3,9 @@ package me.aquitano.health.application
 import me.aquitano.health.api.dto.SourceMetadataResponse
 import me.aquitano.health.application.metric.common.MetricReadRepository
 import me.aquitano.health.application.metric.common.sourceInstanceIds
-import me.aquitano.health.infrastructure.repositories.HeartRateSampleRow
-import me.aquitano.health.infrastructure.repositories.HeartRateSummaryRow
+import me.aquitano.health.application.metric.heart.repository.HeartRateSampleRow
+import me.aquitano.health.application.metric.heart.repository.HeartRateSummaryRow
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
 
 internal fun <T> List<T>.singleSource(
     includeSource: Boolean,
@@ -28,7 +29,7 @@ internal fun List<HeartRateSampleRow>.heartRateSummary(): HeartRateSummaryRow =
         avgBpm = if (isEmpty()) null else sumOf { it.bpm }.toDouble() / size.toDouble(),
     )
 
-private fun me.aquitano.health.infrastructure.repositories.SourceMetadata?.toResponse(): SourceMetadataResponse? =
+private fun SourceMetadata?.toResponse(): SourceMetadataResponse? =
     this?.let {
         SourceMetadataResponse(
             provider = it.provider,

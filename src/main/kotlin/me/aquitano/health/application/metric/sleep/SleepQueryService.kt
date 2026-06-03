@@ -12,13 +12,17 @@ import me.aquitano.health.application.metric.common.readFilters
 import me.aquitano.health.application.metric.common.sleepNightReadFilters
 import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.application.metric.common.toResponse
-import me.aquitano.health.infrastructure.repositories.MetricsReadRepository
+import me.aquitano.health.application.metric.sleep.repository.SleepRepository
+import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
+import me.aquitano.health.application.metric.sleep.repository.SleepNightRow
+import me.aquitano.health.application.metric.sleep.repository.SleepStageRow
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import org.jetbrains.exposed.v1.jdbc.Database
 import java.time.Instant
 
 class SleepQueryService(
     database: Database,
-    private val metricsReadRepository: MetricsReadRepository,
+    private val sleepRepository: SleepRepository = SleepRepository(),
     private val canonicalMetricsService: CanonicalMetricsService,
     private val sleepNightService: SleepNightService,
 ) : BaseReadService(database) {
@@ -31,12 +35,12 @@ class SleepQueryService(
                 latestSupported = true,
             )
             val (rawSessions, stagesBySession, sourceMetadata) =
-                metricsReadRepository.listSleepSessions(filters)
+                sleepRepository.listSleepSessions(filters)
             val sessions = if (canonical) {
                 canonicalMetricsService.canonicalSleepSessions(
                     rawSessions,
                     stagesBySession,
-                    metricsReadRepository.sourceMetadataFor(rawSessions.sourceInstanceIds { it.sourceInstanceId }),
+                    sleepRepository.sourceMetadataFor(rawSessions.sourceInstanceIds { it.sourceInstanceId }),
                 )
             } else {
                 rawSessions
@@ -59,12 +63,12 @@ class SleepQueryService(
             sleepNightService.materialize(filters, now)
             val canonical = params.canonical(default = false)
             val (rawNights, stagesBySession, sourceMetadata) =
-                metricsReadRepository.listSleepNights(filters)
+                sleepRepository.listSleepNights(filters)
             val canonicalSessionIds = if (canonical) {
                 canonicalMetricsService.canonicalSleepSessions(
                     rawNights.map { it.session },
                     stagesBySession,
-                    metricsReadRepository.sourceMetadataFor(
+                    sleepRepository.sourceMetadataFor(
                         rawNights.map { it.session }.sourceInstanceIds { it.sourceInstanceId },
                     ),
                 ).map { it.id }.toSet()
