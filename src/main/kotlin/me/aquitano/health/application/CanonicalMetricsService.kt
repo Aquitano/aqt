@@ -222,25 +222,52 @@ class CanonicalMetricsService(
         return selected.sortedBy(start)
     }
 
+    private data class TimedRow<T, K>(
+        val row: T,
+        val key: K,
+        val measuredAt: Instant,
+    )
+
+    private data class TimestampBucket<T>(
+        val representativeAt: Instant,
+        val rows: MutableList<T> = mutableListOf(),
+    )
+
     private fun <T, K> timestampBuckets(
         rows: List<T>,
         measuredAt: (T) -> String,
         groupKey: (T) -> K,
     ): List<List<T>> {
-        val buckets = mutableListOf<MutableList<T>>()
-        rows.forEach { row ->
-            val rowAt = instant(measuredAt(row))
-            val bucket = buckets.firstOrNull { existing ->
-                groupKey(existing.first()) == groupKey(row) &&
-                    abs(Duration.between(instant(measuredAt(existing.first())), rowAt).seconds) <= SameTimestampToleranceSeconds
+        val timedRows = rows.map { row ->
+            TimedRow(
+                row = row,
+                key = groupKey(row),
+                measuredAt = Instant.parse(measuredAt(row)),
+            )
+        }
+
+        val bucketsByKey = mutableMapOf<K, MutableList<TimestampBucket<T>>>()
+
+        for (timedRow in timedRows) {
+            val bucketsForKey = bucketsByKey.getOrPut(timedRow.key) { mutableListOf() }
+
+            val bucket = bucketsForKey.firstOrNull { bucket ->
+                abs(Duration.between(bucket.representativeAt, timedRow.measuredAt).seconds) <= SameTimestampToleranceSeconds
             }
+
             if (bucket == null) {
-                buckets += mutableListOf(row)
+                bucketsForKey += TimestampBucket(
+                    representativeAt = timedRow.measuredAt,
+                    rows = mutableListOf(timedRow.row),
+                )
             } else {
-                bucket += row
+                bucket.rows += timedRow.row
             }
         }
-        return buckets
+
+        return bucketsByKey.values
+            .flatten()
+            .map { it.rows }
     }
 
     private fun sleepOverlaps(left: SleepSessionRow, right: SleepSessionRow): Boolean =
