@@ -179,6 +179,8 @@ async function HealthDataContent({
       <JsonDetails title="Raw day overview response" value={data.healthDay} />
     </>
   );
+
+  return content;
 }
 
 function isWeightTrendItem(item: BodyMeasurement, toDate: string): boolean {
