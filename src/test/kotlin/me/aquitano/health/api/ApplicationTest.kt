@@ -32,6 +32,16 @@ class ApplicationTest {
     }
 
     @Test
+    fun metricsEndpointReturnsRegistryScrape() = testApplication {
+        configureTestApplication()
+        val response = client.get("/metrics")
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val bodyText = response.bodyAsText()
+        assertTrue(bodyText.isNotBlank())
+    }
+
+    @Test
     fun requestIdIsEchoedFromHeaderOrGeneratedWhenAbsent() = testApplication {
         configureTestApplication()
 

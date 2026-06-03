@@ -31,3 +31,9 @@ aqtHealth:
     apiBaseUrl: "$AQT_HEALTH_WITHINGS_API_BASE_URL:https://wbsapi.withings.net"
     oauthTokenUrl: "$AQT_HEALTH_WITHINGS_OAUTH_TOKEN_URL:https://wbsapi.withings.net/v2/oauth2"
     oauthAuthUrl: "$AQT_HEALTH_WITHINGS_OAUTH_AUTH_URL:https://account.withings.com/oauth2_user/authorize2"
+  cors:
+    origins: "$AQT_HEALTH_CORS_ORIGINS:http://localhost:3000"
+  openObserve:
+    url: "$OPENOBSERVE_URL:"
+    user: "$OPENOBSERVE_USER:"
+    password: "$OPENOBSERVE_PASSWORD:"

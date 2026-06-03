@@ -8,6 +8,14 @@ data class AppConfig(
     val googleHealth: GoogleHealthConfig,
     val withings: WithingsConfig,
     val cors: CorsConfig,
+    val openObserve: OpenObserveConfig,
+)
+
+data class OpenObserveConfig(
+    val url: String,
+    val org: String,
+    val user: String,
+    val password: String,
 )
 
 data class CorsConfig(
@@ -108,6 +116,12 @@ fun ApplicationConfig.toAppConfig(): AppConfig =
                 .split(",")
                 .map { it.trim() }
                 .filter { it.isNotBlank() },
+        ),
+        openObserve = OpenObserveConfig(
+            url = optional("aqtHealth.openObserve.url"),
+            org = optional("aqtHealth.openObserve.org"),
+            user = optional("aqtHealth.openObserve.user"),
+            password = optional("aqtHealth.openObserve.password"),
         ),
     )
 

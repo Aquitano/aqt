@@ -81,6 +81,7 @@ fun Application.module() {
     // Assemble the services bag for route handlers and wire routes
     val services = buildApplicationServices()
     configureHttp(corsConfig = appConfig.cors)
+    configureMetrics(appConfig = appConfig, sharedHttpClient = httpClient)
     configureRoutes(services = services)
 }
 
