@@ -20,7 +20,6 @@ import me.aquitano.health.application.metric.common.repository.DailyReadFilters
 import me.aquitano.health.application.metric.heart.repository.HeartRateSampleRow
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
-import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
 import me.aquitano.health.application.metric.steps.repository.StepRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
 import me.aquitano.health.application.metric.body.repository.BodyMeasurementRepository
@@ -76,7 +75,11 @@ class DashboardQueryService(
                 order = Orders.ASC,
             )
 
-            sleepNightService.materialize(sleepNightFilters, now)
+            if (canonical) {
+                sleepNightService.materializeCanonical(sleepNightFilters, now)
+            } else {
+                sleepNightService.materialize(sleepNightFilters, now)
+            }
             DashboardSummaryResponse(
                 fromDate = fromDate.toString(),
                 toDate = toDate.toString(),
@@ -177,23 +180,24 @@ class DashboardQueryService(
     private fun lastSleepSession(
         filters: SleepNightReadFilters,
         canonical: Boolean,
-    ) = sleepRepository.listSleepNights(
-        filters.copy(
-            limit = if (canonical) DashboardSummaryLatestCandidateLimit else filters.limit,
-            order = Orders.DESC,
-        )
-    ).let { (sleepNights, sleepStagesBySession, sleepSourceMetadata) ->
-        val sleep = if (canonical) {
-            canonicalMetricsService.canonicalSleepSessions(
-                sleepNights.map { it.session },
-                sleepStagesBySession,
-                sleepRepository.sourceMetadataFor(
-                    sleepNights.map { it.session }.sourceInstanceIds { it.sourceInstanceId },
-                ),
-            ).maxWithOrNull(compareBy<SleepSessionRow> { it.endAt }.thenBy { it.id })
+    ) = (
+        if (canonical) {
+            sleepRepository.listCanonicalSleepNights(
+                filters.copy(
+                    limit = filters.limit,
+                    order = Orders.DESC,
+                )
+            )
         } else {
-            sleepNights.firstOrNull()?.session
+            sleepRepository.listSleepNights(
+                filters.copy(
+                    limit = filters.limit,
+                    order = Orders.DESC,
+                )
+            )
         }
+        ).let { (sleepNights, sleepStagesBySession, sleepSourceMetadata) ->
+        val sleep = sleepNights.firstOrNull()?.session
         sleep?.toResponse(sleepStagesBySession, sleepSourceMetadata)
     }
 }

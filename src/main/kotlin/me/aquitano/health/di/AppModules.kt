@@ -111,7 +111,7 @@ fun servicesModule(database: Database, config: AppConfig) = module {
     single { UtcClock() }
     single { ApiKeyHasher() }
     single { CanonicalMetricsService(CanonicalMetricsPolicy.default()) }
-    single { SleepNightService(get<SleepNightDerivationRepository>()) }
+    single { SleepNightService(get<SleepNightDerivationRepository>(), get()) }
     single { MetricWriteService() }
     single {
         StepSummaryService(get<StepDailySummaryDerivationRepository>())

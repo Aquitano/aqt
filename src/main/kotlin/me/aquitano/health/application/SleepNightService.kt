@@ -1,6 +1,8 @@
 package me.aquitano.health.application
 
 import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
+import me.aquitano.health.application.metric.common.sourceInstanceIds
+import me.aquitano.health.application.metric.sleep.derived.CANONICAL_SLEEP_NIGHT_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.sleep.derived.SLEEP_NIGHT_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.sleep.derived.SleepNightDerivation
 import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
@@ -10,6 +12,7 @@ import java.time.ZoneOffset
 
 class SleepNightService(
     private val repository: SleepNightDerivationRepository,
+    private val canonicalMetricsService: CanonicalMetricsService = CanonicalMetricsService(CanonicalMetricsPolicy.default()),
     private val derivation: SleepNightDerivation = SleepNightDerivation(repository),
 ) {
     suspend fun recomputeUtc(
@@ -46,6 +49,44 @@ class SleepNightService(
                 dates = datesToRecompute,
                 timezone = filters.timezone,
                 computedAt = computedAt,
+            )
+        }
+    }
+
+    suspend fun materializeCanonical(
+        filters: SleepNightReadFilters,
+        computedAt: Instant,
+    ) {
+        materialize(filters, computedAt)
+        val dates = requestedDates(filters) ?: return
+        val sourceInstanceIds = repository.sourceInstanceIds(
+            provider = filters.provider,
+            providerInstanceId = filters.providerInstanceId,
+        )
+        val datesToRecompute = repository.findCanonicalDatesNeedingRecompute(
+            sourceInstanceIds = sourceInstanceIds,
+            dates = dates,
+            timezone = filters.timezone,
+            algorithmVersion = CANONICAL_SLEEP_NIGHT_ALGORITHM_VERSION,
+        )
+        datesToRecompute.forEach { date ->
+            val (sessions, stagesBySession) = repository.listSleepSessionsForCanonicalNights(
+                sourceInstanceIds = sourceInstanceIds,
+                timezone = filters.timezone,
+                date = date,
+            )
+            val canonicalSessions = canonicalMetricsService.canonicalSleepSessions(
+                sessions,
+                stagesBySession,
+                repository.sourceMetadataFor(sessions.sourceInstanceIds { it.sourceInstanceId }),
+            )
+            repository.replaceCanonicalSleepNights(
+                date = date,
+                timezone = filters.timezone,
+                sourceInstanceIds = sourceInstanceIds,
+                algorithmVersion = CANONICAL_SLEEP_NIGHT_ALGORITHM_VERSION,
+                computedAt = computedAt,
+                sessions = canonicalSessions,
             )
         }
     }

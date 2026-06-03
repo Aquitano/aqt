@@ -15,6 +15,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 const val SLEEP_NIGHT_ALGORITHM_VERSION = 1
+const val CANONICAL_SLEEP_NIGHT_ALGORITHM_VERSION = 1
 
 class SleepNightDerivation(
     private val repository: SleepNightDerivationRepository,

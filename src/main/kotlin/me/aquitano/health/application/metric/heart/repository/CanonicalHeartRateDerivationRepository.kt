@@ -67,6 +67,74 @@ class CanonicalHeartRateDerivationRepository : BaseMetricRepository() {
         return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
     }
 
+    fun summarizeCanonicalHeartRate(
+        filters: ReadFilters,
+        algorithmVersion: Int,
+    ): HeartRateSummaryRow {
+        val where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = CanonicalHeartRateSamplesTable.sourceInstanceId,
+            fromColumn = CanonicalHeartRateSamplesTable.measuredAt,
+        ).whereOrNull() ?: return HeartRateSummaryRow(
+            count = 0,
+            minBpm = null,
+            maxBpm = null,
+            avgBpm = null,
+        )
+        val countExpression = HeartRateSamplesTable.id.count()
+        val minExpression = HeartRateSamplesTable.bpm.min()
+        val maxExpression = HeartRateSamplesTable.bpm.max()
+        val avgExpression = HeartRateSamplesTable.bpm.avg()
+        return CanonicalHeartRateSamplesTable
+            .innerJoin(
+                HeartRateSamplesTable,
+                { heartRateSampleId },
+                { HeartRateSamplesTable.id },
+            )
+            .select(countExpression, minExpression, maxExpression, avgExpression)
+            .where(where and (CanonicalHeartRateSamplesTable.algorithmVersion eq algorithmVersion))
+            .single()
+            .let {
+                HeartRateSummaryRow(
+                    count = it[countExpression].toInt(),
+                    minBpm = it[minExpression],
+                    maxBpm = it[maxExpression],
+                    avgBpm = it[avgExpression]?.toDouble(),
+                )
+            }
+    }
+
+    fun latestCanonicalHeartRateSample(
+        filters: ReadFilters,
+        algorithmVersion: Int,
+    ): Pair<HeartRateSampleRow?, Map<Int, SourceMetadata>> {
+        val where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = CanonicalHeartRateSamplesTable.sourceInstanceId,
+            fromColumn = CanonicalHeartRateSamplesTable.measuredAt,
+        ).whereOrNull() ?: return emptyLatestResult()
+
+        val row = CanonicalHeartRateSamplesTable
+            .innerJoin(
+                HeartRateSamplesTable,
+                { heartRateSampleId },
+                { HeartRateSamplesTable.id },
+            )
+            .selectAll()
+            .where(where and (CanonicalHeartRateSamplesTable.algorithmVersion eq algorithmVersion))
+            .orderBy(
+                CanonicalHeartRateSamplesTable.measuredAt to SortOrder.DESC,
+                HeartRateSamplesTable.id to SortOrder.DESC,
+            )
+            .limit(1)
+            .map(::toJoinedHeartRateSampleRow)
+            .singleOrNull()
+        return row to sourceMetadata(
+            listOfNotNull(row?.sourceInstanceId).toSet(),
+            filters.includeSource,
+        )
+    }
+
     fun materializedDates(dates: Set<LocalDate>, algorithmVersion: Int): Set<LocalDate> {
         if (dates.isEmpty()) return emptySet()
         return CanonicalHeartRateSamplesTable

@@ -60,22 +60,14 @@ class SleepQueryService(
         dbQuery {
             params.rejectLatest()
             val filters = params.sleepNightReadFilters(now)
-            sleepNightService.materialize(filters, now)
             val canonical = params.canonical(default = false)
-            val (rawNights, stagesBySession, sourceMetadata) =
-                sleepRepository.listSleepNights(filters)
-            val canonicalSessionIds = if (canonical) {
-                canonicalMetricsService.canonicalSleepSessions(
-                    rawNights.map { it.session },
-                    stagesBySession,
-                    sleepRepository.sourceMetadataFor(
-                        rawNights.map { it.session }.sourceInstanceIds { it.sourceInstanceId },
-                    ),
-                ).map { it.id }.toSet()
+            val (nights, stagesBySession, sourceMetadata) = if (canonical) {
+                sleepNightService.materializeCanonical(filters, now)
+                sleepRepository.listCanonicalSleepNights(filters)
             } else {
-                rawNights.map { it.session.id }.toSet()
+                sleepNightService.materialize(filters, now)
+                sleepRepository.listSleepNights(filters)
             }
-            val nights = rawNights.filter { it.session.id in canonicalSessionIds }
             SleepNightsResponse(
                 items = nights.map { night ->
                     night.toResponse(stagesBySession, sourceMetadata)

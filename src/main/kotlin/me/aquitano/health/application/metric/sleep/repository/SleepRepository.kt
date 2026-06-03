@@ -1,6 +1,7 @@
 package me.aquitano.health.application.metric.sleep.repository
 
 import me.aquitano.health.application.metric.common.repository.*
+import me.aquitano.health.application.metric.sleep.derived.CANONICAL_SLEEP_NIGHT_ALGORITHM_VERSION
 import me.aquitano.health.infrastructure.database.tables.*
 import me.aquitano.health.infrastructure.database.toApiString
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
@@ -97,6 +98,49 @@ class SleepRepository : BaseMetricRepository() {
                 SleepNightRow(
                     date = it[SleepNightsTable.date].toString(),
                     timezone = it[SleepNightsTable.timezone],
+                    session = session,
+                )
+            }
+        val stagesBySession = sleepStagesBySession(nights.map { it.session.id })
+        val metadata = sourceMetadata(
+            nights.map { it.session.sourceInstanceId }.toSet(),
+            filters.includeSource
+        )
+        return Triple(nights, stagesBySession, metadata)
+    }
+
+    fun listCanonicalSleepNights(filters: SleepNightReadFilters): Triple<List<SleepNightRow>, Map<Int, List<SleepStageRow>>, Map<Int, SourceMetadata>> {
+        val sourceIds = filters.sourceInstanceIds()
+        if (sourceIds.hasNoMatchingSources()) return emptyTripleReadResult()
+
+        val conditions = mutableListOf<Op<Boolean>>(
+            CanonicalSleepNightsTable.timezone eq filters.timezone.id,
+            CanonicalSleepNightsTable.algorithmVersion eq CANONICAL_SLEEP_NIGHT_ALGORITHM_VERSION,
+        )
+        filters.fromDate?.let { conditions.add(CanonicalSleepNightsTable.date greaterEq it) }
+        filters.toDate?.let { conditions.add(CanonicalSleepNightsTable.date lessEq it) }
+        sourceIds?.let { conditions.add(CanonicalSleepNightsTable.sourceInstanceId inList it) }
+
+        val nights = CanonicalSleepNightsTable
+            .innerJoin(SleepSessionsTable)
+            .selectAll()
+            .where { combineConditions(conditions) }
+            .orderBy(
+                CanonicalSleepNightsTable.date to filters.sortOrder(),
+                CanonicalSleepNightsTable.id to filters.sortOrder(),
+            )
+            .limit(filters.limit)
+            .map {
+                val session = SleepSessionRow(
+                    id = it[SleepSessionsTable.id].value,
+                    sourceInstanceId = it[SleepSessionsTable.sourceInstanceId],
+                    startAt = it[SleepSessionsTable.startAt].toApiString(),
+                    endAt = it[SleepSessionsTable.endAt].toApiString(),
+                    durationSeconds = it[SleepSessionsTable.durationSeconds],
+                )
+                SleepNightRow(
+                    date = it[CanonicalSleepNightsTable.date].toString(),
+                    timezone = it[CanonicalSleepNightsTable.timezone],
                     session = session,
                 )
             }

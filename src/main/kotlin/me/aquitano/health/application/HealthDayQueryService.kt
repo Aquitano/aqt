@@ -202,7 +202,6 @@ class HeartRateDayModule(
 
     override suspend fun read(context: HealthDayQueryContext): HealthDayHeartRateResponse {
         val filters = context.filters()
-        val rawSummary = heartRateRepository.summarizeHeartRateForWindow(filters)
         val (samples, sourceMetadata) = if (context.canonical) {
             canonicalRepository.listCanonicalHeartRateSamples(
                 filters.copy(limit = Int.MAX_VALUE, sort = "measuredAt", order = "asc"),
@@ -211,7 +210,14 @@ class HeartRateDayModule(
         } else {
             heartRateRepository.listHeartRateSamplesForWindow(filters)
         }
-        val summary = if (context.canonical) samples.heartRateSummary() else rawSummary
+        val summary = if (context.canonical) {
+            canonicalRepository.summarizeCanonicalHeartRate(
+                filters,
+                CANONICAL_HEART_RATE_ALGORITHM_VERSION,
+            )
+        } else {
+            heartRateRepository.summarizeHeartRateForWindow(filters)
+        }
         val latest = samples.maxWithOrNull(compareBy<HeartRateSampleRow> { it.measuredAt }.thenBy { it.id })
         val buckets = buckets(context)
         val totals = DoubleArray(buckets.size)
