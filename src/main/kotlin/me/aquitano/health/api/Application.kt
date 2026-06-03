@@ -32,7 +32,7 @@ fun Application.module() {
     val databaseFactory = DatabaseFactory()
     val database = databaseFactory.initialize(appConfig.database)
 
-    monitor.subscribe(ApplicationStopping) {
+    monitor.subscribe(ApplicationStopped) {
         databaseFactory.close()
     }
 

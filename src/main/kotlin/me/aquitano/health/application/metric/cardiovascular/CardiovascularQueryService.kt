@@ -1,4 +1,5 @@
 package me.aquitano.health.application.metric.cardiovascular
+import me.aquitano.health.domain.NotFoundException
 
 import me.aquitano.health.api.dto.BloodPressureLatestResponse
 import me.aquitano.health.api.dto.BloodPressureMeasurementsResponse
@@ -63,7 +64,8 @@ class CardiovascularQueryService(
         return dbQuery {
             val filters = params.summaryFilters(SortFields.MEASURED_AT)
             val (row, sourceMetadata) = cardiovascularRepository.latestCardiovascular(filters, metricType)
-            row!!.toResponse(sourceMetadata)
+            row?.toResponse(sourceMetadata)
+                ?: throw NotFoundException("No cardiovascular measurement found")
         }
     }
 }

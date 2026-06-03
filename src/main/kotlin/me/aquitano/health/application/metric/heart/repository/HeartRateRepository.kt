@@ -109,12 +109,4 @@ class HeartRateRepository : BaseMetricRepository() {
         summarizeHeartRate(filters)
 
 
-    private fun toHeartRateSampleRow(row: ResultRow): HeartRateSampleRow =
-        HeartRateSampleRow(
-            id = row[HeartRateSamplesTable.id].value,
-            sourceInstanceId = row[HeartRateSamplesTable.sourceInstanceId],
-            measuredAt = row[HeartRateSamplesTable.measuredAt].toApiString(),
-            bpm = row[HeartRateSamplesTable.bpm],
-            context = row[HeartRateSamplesTable.context] ?: "unknown",
-        )
 }
