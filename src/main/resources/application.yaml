@@ -6,6 +6,7 @@ ktor:
     port: "$PORT:8080"
 
 aqtHealth:
+  environment: "$AQT_HEALTH_ENV:local"
   database:
     jdbcUrl: "$AQT_HEALTH_JDBC_URL:jdbc:postgresql://localhost:5432/aqt_health"
     driver: "$AQT_HEALTH_DB_DRIVER:org.postgresql.Driver"
@@ -26,7 +27,7 @@ aqtHealth:
   withings:
     clientId: "$AQT_HEALTH_WITHINGS_CLIENT_ID:"
     clientSecret: "$AQT_HEALTH_WITHINGS_CLIENT_SECRET:"
-    redirectUri: "$AQT_HEALTH_WITHINGS_REDIRECT_URI:http://localhost:8080/oauth/withings/callback"
+    redirectUri: "$AQT_HEALTH_WITHINGS_REDIRECT_URI:http://localhost:8080/api/v1/providers/withings/oauth/callback"
     tokenEncryptionKey: "$AQT_HEALTH_WITHINGS_TOKEN_ENCRYPTION_KEY:"
     apiBaseUrl: "$AQT_HEALTH_WITHINGS_API_BASE_URL:https://wbsapi.withings.net"
     oauthTokenUrl: "$AQT_HEALTH_WITHINGS_OAUTH_TOKEN_URL:https://wbsapi.withings.net/v2/oauth2"

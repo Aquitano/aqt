@@ -70,6 +70,7 @@ Runtime config is read from `src/main/resources/application.yaml`.
 Environment variables:
 
 - `PORT`: HTTP port, default `8080`
+- `AQT_HEALTH_ENV`: runtime mode, default `local`; set to `production` to enable fail-fast config validation
 - `AQT_HEALTH_JDBC_URL`: PostgreSQL JDBC URL, default `jdbc:postgresql://localhost:5432/aqt_health`
 - `AQT_HEALTH_DB_USER`: PostgreSQL username, default `aqt_health`
 - `AQT_HEALTH_DB_PASSWORD`: PostgreSQL password, default `aqt_health`
@@ -95,11 +96,25 @@ Environment variables:
 - `AQT_HEALTH_LOG_FILE_ROLLOVER`: rolling JSON log archive pattern, default `build/logs/aqt-health.%d{yyyy-MM-dd}.%i.jsonl.gz`
 - `OPENOBSERVE_LOG_URL`: optional OpenObserve HTTP ingestion endpoint for direct app log delivery
 - `OPENOBSERVE_AUTHORIZATION`: optional full OpenObserve authorization header value, for example `Basic ...`
-- `AQT_HEALTH_ENV`: environment label added to forwarded logs, default `local`
 
 If `AQT_HEALTH_BOOTSTRAP_API_KEY` is set, the app hashes it with SHA-256 and stores only `sha256:<hex>` in `api_clients`. If it is blank, startup still succeeds, but protected endpoints require a client row to exist in PostgreSQL.
 
 PostgreSQL migrations require permission to run `CREATE EXTENSION IF NOT EXISTS btree_gist`. Managed deployments should enable `btree_gist` ahead of application startup if the application database user cannot create extensions.
+
+### Production validation
+
+Set `AQT_HEALTH_ENV=production` for production and production-like deployments. In production mode the app fails startup before connecting to PostgreSQL when critical config is blank, placeholder, localhost-only, or still using local defaults.
+
+Production requires:
+
+- A non-placeholder `AQT_HEALTH_BOOTSTRAP_API_KEY` and non-local `AQT_HEALTH_BOOTSTRAP_CLIENT_NAME`.
+- Non-default database credentials; the compose `aqt_health` / `aqt_health` pair is rejected.
+- Google Health and Withings OAuth client IDs, client secrets, public HTTPS redirect URIs, and token encryption keys.
+- Provider token encryption keys of at least 32 bytes.
+- Public HTTPS CORS origins. `localhost`, HTTP origins, and `*` are rejected.
+- Public HTTPS provider API, OAuth token, and OAuth authorization URLs.
+
+See [Production Deployment](docs/production-deployment.md) for a deployment checklist.
 
 For local secrets, copy `.env.example` to `.env` and put real values only in `.env`. The `.env` file is ignored by git.
 

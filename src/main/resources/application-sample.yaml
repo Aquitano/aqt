@@ -6,6 +6,7 @@ ktor:
     port: "$PORT:8080"
 
 aqtHealth:
+  environment: "$AQT_HEALTH_ENV:local"
   database:
     jdbcUrl: "$AQT_HEALTH_JDBC_URL:jdbc:postgresql://localhost:5432/aqt_health"
     driver: "$AQT_HEALTH_DB_DRIVER:org.postgresql.Driver"
@@ -37,3 +38,9 @@ aqtHealth:
     url: "$OPENOBSERVE_URL:"
     user: "$OPENOBSERVE_USER:"
     password: "$OPENOBSERVE_PASSWORD:"
+
+# Set AQT_HEALTH_ENV=production for production deployments. Production mode
+# fails startup when required secrets are blank/placeholders, provider token
+# encryption keys are shorter than 32 bytes, OAuth redirects are not public
+# HTTPS URLs, CORS origins are localhost/wildcard, or DB credentials use the
+# local compose defaults.

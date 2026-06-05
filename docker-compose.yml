@@ -23,6 +23,7 @@ services:
       - "${PORT:-8080}:8080"
     environment:
       PORT: ${PORT:-8080}
+      AQT_HEALTH_ENV: ${AQT_HEALTH_ENV:-local}
       AQT_HEALTH_JDBC_URL: ${AQT_HEALTH_JDBC_URL:-jdbc:postgresql://postgres:5432/aqt_health}
       AQT_HEALTH_DB_USER: ${AQT_HEALTH_DB_USER:-aqt_health}
       AQT_HEALTH_DB_PASSWORD: ${AQT_HEALTH_DB_PASSWORD:-aqt_health}
