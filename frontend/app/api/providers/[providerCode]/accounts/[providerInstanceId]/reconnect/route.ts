@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { reconnectProviderAccount } from "@/lib/aqtHealthApi";
+import { requirePrivilegedProxyAccess } from "@/lib/privilegedProxyAuth";
 
 type RouteContext = {
   params: Promise<{
@@ -8,7 +9,10 @@ type RouteContext = {
   }>;
 };
 
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
+  const guard = requirePrivilegedProxyAccess(request, { mutation: true });
+  if (guard) return guard;
+
   const { providerCode, providerInstanceId } = await context.params;
   const result = await reconnectProviderAccount(providerCode, providerInstanceId);
 

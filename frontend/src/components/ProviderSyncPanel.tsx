@@ -14,6 +14,7 @@ import type {
   ScheduledSyncRunResponse,
   ProviderSyncResponse,
 } from "@/lib/types";
+import { privilegedMutationHeaders } from "@/lib/privilegedProxyClient";
 import styles from "./ProviderSyncPanel.module.css";
 
 type ProviderSyncPanelProps = {
@@ -87,7 +88,7 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
         `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/sync`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { ...privilegedMutationHeaders, "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         },
       );
@@ -106,7 +107,7 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
     startOAuthTransition(async () => {
       const response = await fetch(
         `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/oauth/start`,
-        { method: "POST" },
+        { method: "POST", headers: privilegedMutationHeaders },
       );
       const body = (await response.json()) as ApiResult<ProviderOAuthStartResponse>;
       if (body.ok) {
@@ -127,7 +128,7 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
       try {
         const response = await fetch(
           `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/disconnect`,
-          { method: "POST" },
+          { method: "POST", headers: privilegedMutationHeaders },
         );
         const body = (await response.json()) as ApiResult<unknown>;
         if (body.ok) {
@@ -153,7 +154,7 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
       try {
         const response = await fetch(
           `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/reconnect`,
-          { method: "POST" },
+          { method: "POST", headers: privilegedMutationHeaders },
         );
         const body = (await response.json()) as ApiResult<ProviderOAuthStartResponse>;
         if (body.ok) {
@@ -184,7 +185,7 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
           `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/scheduled-sync`,
           {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: { ...privilegedMutationHeaders, "Content-Type": "application/json" },
             body: JSON.stringify({
               enabled,
               dataTypes: config?.dataTypes ?? selectedProvider.descriptor.defaultDataTypes,
@@ -214,7 +215,7 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
       try {
         const response = await fetch(
           `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/scheduled-sync/run`,
-          { method: "POST" },
+          { method: "POST", headers: privilegedMutationHeaders },
         );
         const body = (await response.json()) as ApiResult<ScheduledSyncRunResponse>;
         setScheduledResult(body);

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { syncProvider } from "@/lib/aqtHealthApi";
+import { requirePrivilegedProxyAccess } from "@/lib/privilegedProxyAuth";
 import type { ProviderSyncRequest } from "@/lib/types";
 
 type RouteContext = {
@@ -9,6 +10,9 @@ type RouteContext = {
 };
 
 export async function POST(request: Request, context: RouteContext) {
+  const guard = requirePrivilegedProxyAccess(request, { mutation: true });
+  if (guard) return guard;
+
   const { providerCode } = await context.params;
   const body = (await request.json().catch(() => ({}))) as ProviderSyncRequest;
   const result = await syncProvider(providerCode, normalizePayload(body));
