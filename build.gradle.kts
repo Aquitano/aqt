@@ -88,6 +88,7 @@ val integrationTestClasses = listOf(
     "**/IngestionRouteTest.class",
     "**/ProviderStatusRouteTest.class",
     "**/ReadApiRouteTest.class",
+    "**/ScheduledProviderSyncServiceTest.class",
     "**/WithingsProviderTest.class",
     "**/WithingsProviderRouteTest.class",
     "**/DatabaseFactoryTest.class",

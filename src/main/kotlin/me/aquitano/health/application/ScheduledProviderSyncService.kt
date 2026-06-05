@@ -7,19 +7,38 @@ import me.aquitano.health.infrastructure.repositories.ScheduledSyncCheckpointRec
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncConfigRecord
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncRepository
 import net.logstash.logback.argument.StructuredArguments.kv
+import kotlinx.coroutines.sync.Mutex
 import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
 import kotlin.math.pow
 
 private val scheduledSyncLogger =
     LoggerFactory.getLogger(ScheduledProviderSyncService::class.java)
 
+class ScheduledSyncRunGuard {
+    // This is intentionally process-local. Multiple scheduler processes sharing one DB need a DB-backed claim.
+    private val running = ConcurrentHashMap<String, Mutex>()
+
+    suspend fun <T> tryRun(key: String, block: suspend () -> T): T? {
+        val mutex = running.computeIfAbsent(key) { Mutex() }
+        if (!mutex.tryLock()) return null
+        return try {
+            block()
+        } finally {
+            mutex.unlock()
+            running.remove(key, mutex)
+        }
+    }
+}
+
 class ScheduledProviderSyncService(
     private val providerRegistry: HealthProviderRegistry,
     private val providerOAuthRepository: me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository,
     private val repository: ScheduledSyncRepository,
+    private val runGuard: ScheduledSyncRunGuard = ScheduledSyncRunGuard(),
 ) {
     suspend fun getConfig(
         providerCode: String,
@@ -96,7 +115,12 @@ class ScheduledProviderSyncService(
                 code = "scheduled_sync_not_configured",
                 message = "Scheduled sync is not configured for this provider account",
             )
-        val result = executeConfig(provider, config, now)
+        val result = runGuard.tryRun(runKey(config)) {
+            executeConfig(provider, config, now)
+        } ?: throw ConflictException(
+            code = "scheduled_sync_already_running",
+            message = "A scheduled sync is already running for this provider account",
+        )
         return ScheduledSyncRunResponseDto(
             providerCode = provider.providerCode,
             providerInstanceId = providerInstanceId,
@@ -122,8 +146,12 @@ class ScheduledProviderSyncService(
                 )
                 return@forEach
             }
-            executeConfig(provider, config, now)
-            count += 1
+            val result = runGuard.tryRun(runKey(config)) {
+                executeConfig(provider, config, now)
+            }
+            if (result != null) {
+                count += 1
+            }
         }
         return count
     }
@@ -212,6 +240,9 @@ class ScheduledProviderSyncService(
         val to = if (maxTo.isBefore(now)) maxTo else now
         return candidateFrom to to
     }
+
+    private fun runKey(config: ScheduledSyncConfigRecord): String =
+        "${config.providerCode}:${config.providerInstanceId}"
 
     private fun defaultConfig(
         provider: HealthProvider,

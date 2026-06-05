@@ -61,6 +61,7 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
     single { IngestionRepository() }
     single { ProviderOAuthRepository(database) }
     single { ScheduledSyncRepository(database) }
+    single { ScheduledSyncRunGuard() }
 
     // Metric repositories (stateless, no constructor args needed)
     single { ActivitySummaryRepository() }
@@ -188,6 +189,7 @@ fun servicesModule(database: Database, config: AppConfig) = module {
             providerRegistry = get(),
             providerOAuthRepository = get(),
             repository = get<ScheduledSyncRepository>(),
+            runGuard = get(),
         )
     }
     single {
