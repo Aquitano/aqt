@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { runScheduledSyncNow } from "@/lib/aqtHealthApi";
 
+export const maxDuration = 300;
+
 type RouteContext = {
   params: Promise<{
     providerCode: string;

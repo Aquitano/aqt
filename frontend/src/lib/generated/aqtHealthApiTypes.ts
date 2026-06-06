@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": unknown;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/health": {
         parameters: {
             query?: never;
@@ -224,6 +258,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get scheduled provider sync configuration */
+        get: operations["getScheduledProviderSync"];
+        /** Update scheduled provider sync configuration */
+        put: operations["updateScheduledProviderSync"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run scheduled provider sync immediately */
+        post: operations["runScheduledProviderSyncNow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/disconnect": {
         parameters: {
             query?: never;
@@ -353,7 +422,7 @@ export interface paths {
         };
         /**
          * List step samples
-         * @description Returns raw step samples filtered by timestamp range, source provider, provider instance, source metadata inclusion, item limit, and sort order. Use `latest=true` to return the latest matching sample only.
+         * @description Returns canonical step samples filtered by timestamp range, source provider, provider instance, source metadata inclusion, item limit, and sort order. Use `latest=true` to return the latest matching sample only.
          */
         get: operations["listStepSamples"];
         put?: never;
@@ -496,6 +565,213 @@ export interface paths {
          * @description Returns timestamped HRV samples filtered by timestamp, source, and metric type. Use `latest=true` to return the latest matching sample only.
          */
         get: operations["listHrvSamples"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metrics/blood-pressure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Blood pressure */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BloodPressureMeasurementsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metrics/blood-pressure/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BloodPressureLatestResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metrics/cardiovascular": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cardiovascular */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CardiovascularMeasurementsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metrics/cardiovascular/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CardiovascularMeasurementResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metrics/extended-body-measurements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Extended body measurements */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExtendedBodyMeasurementsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metrics/extended-body-measurements/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExtendedBodyMeasurementResponse"];
+                    };
+                };
+            };
+        };
         put?: never;
         post?: never;
         delete?: never;
@@ -832,6 +1108,22 @@ export interface components {
             wakeupCount?: number | null;
             wasoSeconds?: number | null;
             sleepScore?: number | null;
+            remEpisodesCount?: number | null;
+            outOfBedCount?: number | null;
+            awakeDurationSeconds?: number | null;
+            overnightHrvRmssd?: number | null;
+            respiratoryRhythm?: number | null;
+            breathingQuality?: number | null;
+            snoringDurationSeconds?: number | null;
+            apneaHypopneaIndex?: number | null;
+            movementScore?: number | null;
+            snoringEpisodeCount?: number | null;
+            hrAverageBpm?: number | null;
+            hrMinBpm?: number | null;
+            hrMaxBpm?: number | null;
+            rrAverage?: number | null;
+            rrMin?: number | null;
+            rrMax?: number | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -954,6 +1246,9 @@ export interface components {
             sleepSummaries: number;
             respiratoryRateSamples: number;
             hrvSamples: number;
+            bloodPressureMeasurements: number;
+            cardiovascularMeasurements: number;
+            extendedBodyMeasurements: number;
         };
         /** MetricSkippedCountsResponse */
         MetricSkippedCountsResponse: {
@@ -1038,36 +1333,44 @@ export interface components {
             provider: string;
             accounts: components["schemas"]["ProviderAccountStatusResponseDto"][];
         };
-        /** ProviderDisconnectResponseDto */
-        ProviderDisconnectResponseDto: {
-            provider: string;
+        /** ScheduledSyncCheckpointResponseDto */
+        ScheduledSyncCheckpointResponseDto: {
+            dataType: string;
+            /** Format: date-time */
+            checkpointAt?: string | null;
+            /** Format: date-time */
+            lastSuccessfulFrom?: string | null;
+            /** Format: date-time */
+            lastSuccessfulTo?: string | null;
+        };
+        /** ScheduledSyncConfigResponseDto */
+        ScheduledSyncConfigResponseDto: {
+            providerCode: string;
             providerInstanceId: string;
-            disconnected: boolean;
-            /** @enum {string} */
-            status: "not_connected" | "connected" | "needs_reauth" | "disconnected" | "configuration_error";
-        };
-        /** ProviderOAuthStartResponse */
-        ProviderOAuthStartResponse: {
-            provider: string;
-            authorizationUrl: string;
+            enabled: boolean;
+            dataTypes: string[];
+            cadenceMinutes: number;
+            lookbackDays: number;
             /** Format: date-time */
-            expiresAt: string;
-        };
-        /** ProviderOAuthCallbackResponse */
-        ProviderOAuthCallbackResponse: {
-            provider: string;
-            providerInstanceId: string;
-            connected: boolean;
-        };
-        /** ProviderSyncRequestDto */
-        ProviderSyncRequestDto: {
-            providerInstanceId?: string | null;
+            lastSuccessfulFrom?: string | null;
             /** Format: date-time */
-            from?: string | null;
+            lastSuccessfulTo?: string | null;
             /** Format: date-time */
-            to?: string | null;
+            lastSuccessAt?: string | null;
+            /** Format: date-time */
+            lastAttemptedAt?: string | null;
+            failureCount: number;
+            /** Format: date-time */
+            nextRunAt?: string | null;
+            lastErrorMessage?: string | null;
+            checkpoints: components["schemas"]["ScheduledSyncCheckpointResponseDto"][];
+        };
+        /** ScheduledSyncConfigUpdateRequestDto */
+        ScheduledSyncConfigUpdateRequestDto: {
+            enabled?: boolean | null;
             dataTypes?: string[] | null;
-            pageSize?: number | null;
+            cadenceMinutes?: number | null;
+            lookbackDays?: number | null;
         };
         /** ProviderSyncBatchResponseDto */
         ProviderSyncBatchResponseDto: {
@@ -1105,6 +1408,49 @@ export interface components {
             batches: components["schemas"]["ProviderSyncBatchResponseDto"][];
             emptyDataTypes: components["schemas"]["ProviderSyncEmptyDataTypeResponseDto"][];
             errors: components["schemas"]["ProviderSyncErrorResponseDto"][];
+        };
+        /** ScheduledSyncRunResponseDto */
+        ScheduledSyncRunResponseDto: {
+            providerCode: string;
+            providerInstanceId: string;
+            status: string;
+            /** Format: date-time */
+            requestedFrom?: string | null;
+            /** Format: date-time */
+            requestedTo?: string | null;
+            errors: string[];
+            summaries: components["schemas"]["ProviderSyncResponseDto"][];
+        };
+        /** ProviderDisconnectResponseDto */
+        ProviderDisconnectResponseDto: {
+            provider: string;
+            providerInstanceId: string;
+            disconnected: boolean;
+            /** @enum {string} */
+            status: "not_connected" | "connected" | "needs_reauth" | "disconnected" | "configuration_error";
+        };
+        /** ProviderOAuthStartResponse */
+        ProviderOAuthStartResponse: {
+            provider: string;
+            authorizationUrl: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        /** ProviderOAuthCallbackResponse */
+        ProviderOAuthCallbackResponse: {
+            provider: string;
+            providerInstanceId: string;
+            connected: boolean;
+        };
+        /** ProviderSyncRequestDto */
+        ProviderSyncRequestDto: {
+            providerInstanceId?: string | null;
+            /** Format: date-time */
+            from?: string | null;
+            /** Format: date-time */
+            to?: string | null;
+            dataTypes?: string[] | null;
+            pageSize?: number | null;
         };
         /** MetricReadEndpointDto */
         MetricReadEndpointDto: {
@@ -1258,6 +1604,56 @@ export interface components {
             items: components["schemas"]["HrvSampleResponse"][];
             meta: components["schemas"]["ReadResponseMeta"];
         };
+        /** BloodPressureMeasurementResponse */
+        BloodPressureMeasurementResponse: {
+            id: number;
+            /** Format: date-time */
+            measuredAt: string;
+            systolicMmhg: number;
+            diastolicMmhg: number;
+            heartRateBpm?: number | null;
+            source?: components["schemas"]["SourceMetadataResponse"] | null;
+        };
+        /** BloodPressureMeasurementsResponse */
+        BloodPressureMeasurementsResponse: {
+            items: components["schemas"]["BloodPressureMeasurementResponse"][];
+            meta: components["schemas"]["ReadResponseMeta"];
+        };
+        /** BloodPressureLatestResponse */
+        BloodPressureLatestResponse: {
+            item?: components["schemas"]["BloodPressureMeasurementResponse"] | null;
+        };
+        /** CardiovascularMeasurementResponse */
+        CardiovascularMeasurementResponse: {
+            id: number;
+            /** Format: date-time */
+            measuredAt: string;
+            metricType: string;
+            value: number;
+            unit: string;
+            source?: components["schemas"]["SourceMetadataResponse"] | null;
+        };
+        /** CardiovascularMeasurementsResponse */
+        CardiovascularMeasurementsResponse: {
+            items: components["schemas"]["CardiovascularMeasurementResponse"][];
+            meta: components["schemas"]["ReadResponseMeta"];
+        };
+        /** ExtendedBodyMeasurementResponse */
+        ExtendedBodyMeasurementResponse: {
+            id: number;
+            /** Format: date-time */
+            measuredAt: string;
+            metricType: string;
+            value: number;
+            unit: string;
+            segment?: string | null;
+            source?: components["schemas"]["SourceMetadataResponse"] | null;
+        };
+        /** ExtendedBodyMeasurementsResponse */
+        ExtendedBodyMeasurementsResponse: {
+            items: components["schemas"]["ExtendedBodyMeasurementResponse"][];
+            meta: components["schemas"]["ReadResponseMeta"];
+        };
         /** HealthDayBucketResponse */
         HealthDayBucketResponse: {
             /** Format: date-time */
@@ -1272,6 +1668,7 @@ export interface components {
             total: number;
             sampleCount: number;
             buckets: components["schemas"]["HealthDayBucketResponse"][];
+            source?: components["schemas"]["SourceMetadataResponse"] | null;
         };
         /** HealthDayHeartRateResponse */
         HealthDayHeartRateResponse: {
@@ -1417,6 +1814,22 @@ export interface components {
             wakeupCount?: number | null;
             wasoSeconds?: number | null;
             sleepScore?: number | null;
+            remEpisodesCount?: number | null;
+            outOfBedCount?: number | null;
+            awakeDurationSeconds?: number | null;
+            overnightHrvRmssd?: number | null;
+            respiratoryRhythm?: number | null;
+            breathingQuality?: number | null;
+            snoringDurationSeconds?: number | null;
+            apneaHypopneaIndex?: number | null;
+            movementScore?: number | null;
+            snoringEpisodeCount?: number | null;
+            hrAverageBpm?: number | null;
+            hrMinBpm?: number | null;
+            hrMaxBpm?: number | null;
+            rrAverage?: number | null;
+            rrMin?: number | null;
+            rrMax?: number | null;
             source?: components["schemas"]["SourceMetadataResponse"] | null;
         };
         /** SleepSummaryLatestResponse */
@@ -1441,6 +1854,7 @@ export interface components {
         DashboardStepsSummaryResponse: {
             steps: number;
             sampleCount: number;
+            source?: components["schemas"]["SourceMetadataResponse"] | null;
         };
         /** DashboardSummaryResponse */
         DashboardSummaryResponse: {
@@ -2282,6 +2696,269 @@ export interface operations {
             };
             /** @description Unexpected server error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getScheduledProviderSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider code. Current examples are `google-health` and `withings`. */
+                providerCode: "google-health" | "withings";
+                providerInstanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledSyncConfigResponseDto"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    updateScheduledProviderSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider code. Current examples are `google-health` and `withings`. */
+                providerCode: "google-health" | "withings";
+                providerInstanceId: string;
+            };
+            cookie?: never;
+        };
+        /** @description Scheduled sync configuration fields to update. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduledSyncConfigUpdateRequestDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledSyncConfigResponseDto"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    runScheduledProviderSyncNow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider code. Current examples are `google-health` and `withings`. */
+                providerCode: "google-health" | "withings";
+                providerInstanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledSyncRunResponseDto"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request conflicts with current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Upstream provider request failed */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4082,7 +4759,7 @@ export interface operations {
                 /** @description Include source provider metadata in the returned item. Defaults to false. */
                 includeSource?: boolean;
                 /** @description Required body measurement type filter. */
-                metricType: "body_fat" | "muscle" | "visceral_fat" | "water" | "weight";
+                metricType: "basal_metabolic_rate" | "body_fat" | "bone_mass" | "extracellular_water" | "fat_free_mass" | "fat_mass" | "intracellular_water" | "muscle" | "segmental_fat_free_mass" | "segmental_fat_mass" | "segmental_muscle_mass" | "visceral_fat" | "water" | "weight";
             };
             header?: never;
             path?: never;
@@ -4170,7 +4847,7 @@ export interface operations {
                 /** @description Maximum number of items. Defaults to 500 and cannot exceed 5000. */
                 limit?: number;
                 /** @description Body measurement type filter. */
-                metricType?: "body_fat" | "muscle" | "visceral_fat" | "water" | "weight";
+                metricType?: "basal_metabolic_rate" | "body_fat" | "bone_mass" | "extracellular_water" | "fat_free_mass" | "fat_mass" | "intracellular_water" | "muscle" | "segmental_fat_free_mass" | "segmental_fat_mass" | "segmental_muscle_mass" | "visceral_fat" | "water" | "weight";
             };
             header?: never;
             path?: never;
@@ -4262,54 +4939,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardSummaryResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
                 };
             };
         };

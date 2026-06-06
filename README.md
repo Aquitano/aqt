@@ -171,20 +171,14 @@ Do not hardcode the `Authorization` header in committed files; rotate any OpenOb
 
 For production, either keep direct OpenObserve delivery enabled with deployment secrets or route stdout/JSONL logs through a platform collector.
 
-## Frontend Proxy Authentication
+## Frontend Proxy
 
-The Next.js frontend includes API routes under `frontend/app/api/**` that proxy privileged provider actions to the backend with `AQT_HEALTH_API_KEY`. Public deployments must protect those frontend routes before traffic reaches the backend key.
+The Next.js frontend includes API routes under `frontend/app/api/**` that proxy privileged provider actions to the backend with `AQT_HEALTH_API_KEY`.
 
 Set these variables in the frontend runtime:
 
 - `AQT_HEALTH_API_BASE_URL`: backend API URL
 - `AQT_HEALTH_API_KEY`: backend API key used only by the frontend server
-- `AQT_HEALTH_FRONTEND_SESSION_SECRET`: random per-deployment session value required by privileged proxy routes
-- `AQT_HEALTH_FRONTEND_SESSION_COOKIE`: optional cookie name, default `aqt_health_frontend_session`
-
-Authenticated browser requests must include a cookie named by `AQT_HEALTH_FRONTEND_SESSION_COOKIE` whose value exactly matches `AQT_HEALTH_FRONTEND_SESSION_SECRET`. Put a real auth layer, private reverse proxy, or deployment access control in front of the app to issue that `HttpOnly`, `Secure`, `SameSite=Strict` cookie after user authentication. Mutation proxy routes also require same-origin requests and the `X-AQT-Health-CSRF: 1` header, which the frontend sends for its provider action buttons.
-
-If `AQT_HEALTH_FRONTEND_SESSION_SECRET` is missing, privileged frontend proxy routes return `401` and do not use `AQT_HEALTH_API_KEY`.
 
 ## Health Check
 

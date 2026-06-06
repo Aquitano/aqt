@@ -56,43 +56,10 @@ export type ProviderSyncEmptyDataType = ApiSchema<"ProviderSyncEmptyDataTypeResp
 export type ProviderStatusCatalogResponse = ApiSchema<"ProviderStatusCatalogResponseDto">;
 export type ProviderStatus = ApiSchema<"ProviderStatusResponseDto">;
 export type ProviderAccountStatus = ApiSchema<"ProviderAccountStatusResponseDto">;
-export type ScheduledSyncConfigUpdateRequest = {
-  enabled?: boolean;
-  dataTypes?: string[];
-  cadenceMinutes?: number;
-  lookbackDays?: number;
-};
-export type ScheduledSyncCheckpoint = {
-  dataType: string;
-  checkpointAt?: string | null;
-  lastSuccessfulFrom?: string | null;
-  lastSuccessfulTo?: string | null;
-};
-export type ScheduledSyncConfig = {
-  providerCode: string;
-  providerInstanceId: string;
-  enabled: boolean;
-  dataTypes: string[];
-  cadenceMinutes: number;
-  lookbackDays: number;
-  lastSuccessfulFrom?: string | null;
-  lastSuccessfulTo?: string | null;
-  lastSuccessAt?: string | null;
-  lastAttemptedAt?: string | null;
-  failureCount: number;
-  nextRunAt?: string | null;
-  lastErrorMessage?: string | null;
-  checkpoints: ScheduledSyncCheckpoint[];
-};
-export type ScheduledSyncRunResponse = {
-  providerCode: string;
-  providerInstanceId: string;
-  status: string;
-  requestedFrom?: string | null;
-  requestedTo?: string | null;
-  errors: string[];
-  summaries: ProviderSyncResponse[];
-};
+export type ScheduledSyncConfigUpdateRequest = ApiSchema<"ScheduledSyncConfigUpdateRequestDto">;
+export type ScheduledSyncCheckpoint = ApiSchema<"ScheduledSyncCheckpointResponseDto">;
+export type ScheduledSyncConfig = ApiSchema<"ScheduledSyncConfigResponseDto">;
+export type ScheduledSyncRunResponse = ApiSchema<"ScheduledSyncRunResponseDto">;
 export type MetricCatalogResponse = ApiSchema<"MetricCatalogResponseDto">;
 export type MetricFamilyCatalog = ApiSchema<"MetricFamilyCatalogDto">;
 export type MetricReadEndpoint = ApiSchema<"MetricReadEndpointDto">;

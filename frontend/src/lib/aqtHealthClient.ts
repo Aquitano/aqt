@@ -9,6 +9,7 @@ import type {
   ExtendedBodyMeasurementResponse,
   ExtendedBodyMeasurementsResponse,
   ScheduledSyncConfig,
+  ScheduledSyncConfigUpdateRequest,
   ScheduledSyncRunResponse,
 } from "./types";
 import type { paths } from "./generated/aqtHealthApiTypes";
@@ -71,6 +72,7 @@ type DashboardTrendsQuery = NonNullable<
 >;
 const defaultBaseUrl = "http://localhost:8080";
 const backendRequestTimeoutMs = 8_000;
+const longRunningBackendRequestTimeoutMs = 300_000;
 
 export function apiBaseUrlFromEnv(): string {
   return process.env.AQT_HEALTH_API_BASE_URL ?? defaultBaseUrl;
@@ -81,6 +83,10 @@ export function createAqtHealthClient() {
   const rawClient = createClient<paths>({
     baseUrl: apiBaseUrl,
     fetch: (input: Request) => fetchWithTimeout(input),
+  });
+  const longRunningClient = createClient<paths>({
+    baseUrl: apiBaseUrl,
+    fetch: (input: Request) => fetchWithTimeout(input, undefined, longRunningBackendRequestTimeoutMs),
   });
 
   return {
@@ -185,34 +191,46 @@ export function createAqtHealthClient() {
 
     getScheduledSyncConfig: (providerCode: string, providerInstanceId: string) =>
       call<ScheduledSyncConfig>((headers) =>
-        fetchJson(
-          `${apiBaseUrl}/api/v1/providers/${encodeURIComponent(providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/scheduled-sync`,
-          { headers },
-        ),
+        rawClient.GET("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync", {
+          headers,
+          params: {
+            path: {
+              providerCode: providerCode as ProviderPathCode,
+              providerInstanceId,
+            },
+          },
+        }),
       ),
 
     updateScheduledSyncConfig: (
       providerCode: string,
       providerInstanceId: string,
-      body: unknown,
+      body: ScheduledSyncConfigUpdateRequest,
     ) =>
       call<ScheduledSyncConfig>((headers) =>
-        fetchJson(
-          `${apiBaseUrl}/api/v1/providers/${encodeURIComponent(providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/scheduled-sync`,
-          {
-            method: "PUT",
-            headers: { ...headers, "Content-Type": "application/json" },
-            body: JSON.stringify(body),
+        rawClient.PUT("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync", {
+          body,
+          headers,
+          params: {
+            path: {
+              providerCode: providerCode as ProviderPathCode,
+              providerInstanceId,
+            },
           },
-        ),
+        }),
       ),
 
     runScheduledSyncNow: (providerCode: string, providerInstanceId: string) =>
       call<ScheduledSyncRunResponse>((headers) =>
-        fetchJson(
-          `${apiBaseUrl}/api/v1/providers/${encodeURIComponent(providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/scheduled-sync/run`,
-          { method: "POST", headers },
-        ),
+        longRunningClient.POST("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync/run", {
+          headers,
+          params: {
+            path: {
+              providerCode: providerCode as ProviderPathCode,
+              providerInstanceId,
+            },
+          },
+        }),
       ),
 
     syncProvider: (
@@ -220,7 +238,7 @@ export function createAqtHealthClient() {
       body: ApiSchema<"ProviderSyncRequestDto">,
     ) =>
       call<ApiSchema<"ProviderSyncResponseDto">>((headers) =>
-        rawClient.POST("/api/v1/providers/{providerCode}/sync", {
+        longRunningClient.POST("/api/v1/providers/{providerCode}/sync", {
           body,
           headers,
           params: { path: { providerCode: providerCode as ProviderPathCode } },
@@ -388,8 +406,9 @@ function queryString(query: LooseQuery): string {
 async function fetchJson<T>(
   input: string,
   init: RequestInit,
+  timeoutMs = backendRequestTimeoutMs,
 ): Promise<ClientResponse<T>> {
-  const response = await fetchWithTimeout(input, init);
+  const response = await fetchWithTimeout(input, init, timeoutMs);
   const body = await response.json().catch(() => undefined);
   return response.ok
     ? { data: body as T, response }
@@ -399,9 +418,10 @@ async function fetchJson<T>(
 async function fetchWithTimeout(
   input: RequestInfo | URL,
   init?: RequestInit,
+  timeoutMs = backendRequestTimeoutMs,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), backendRequestTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(input, {
       ...init,

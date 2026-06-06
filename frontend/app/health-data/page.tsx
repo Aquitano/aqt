@@ -4,7 +4,6 @@ import { DateRangeForm } from "@/components/DateRangeForm";
 import { DayOverview } from "@/components/DayOverview";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { HealthDataVisualizations } from "@/components/HealthDataVisualizations";
-import { JsonDetails } from "@/components/JsonDetails";
 import { MetricHighlights } from "@/components/MetricHighlights";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBar } from "@/components/StatusBar";
@@ -175,8 +174,6 @@ async function HealthDataContent({
           {(response) => <ExtendedBodyMeasurementsTable items={response.items} />}
         </DataSection>
       </div>
-
-      <JsonDetails title="Raw day overview response" value={data.healthDay} />
     </>
   );
 
