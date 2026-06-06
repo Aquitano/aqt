@@ -2,6 +2,7 @@ package me.aquitano.health.application.metric.steps.repository
 
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
+import me.aquitano.health.application.metric.common.repository.DailyReadFilters
 import me.aquitano.health.infrastructure.database.tables.CanonicalStepDayBucketContributionsTable
 import me.aquitano.health.infrastructure.database.tables.CanonicalStepSamplesTable
 import me.aquitano.health.infrastructure.database.tables.StepSamplesTable
@@ -44,6 +45,12 @@ data class StepBucketContributionRow(
     val bucketStartAt: String,
     val bucketEndAt: String,
     val value: Double,
+)
+
+data class CanonicalDashboardStepsSummary(
+    val steps: Int,
+    val sampleCount: Int,
+    val sourceInstanceIds: Set<Int>,
 )
 
 class CanonicalStepDerivationRepository : BaseMetricRepository() {
@@ -135,6 +142,58 @@ class CanonicalStepDerivationRepository : BaseMetricRepository() {
                 )
             }
     }
+
+    fun summarizeCanonicalStepsForDashboard(
+        filters: DailyReadFilters,
+        algorithmVersion: Int,
+    ): Pair<CanonicalDashboardStepsSummary, Map<Int, SourceMetadata>> {
+        val contributionWhere = dateConditions(
+            filters = filters,
+            sourceInstanceIdColumn = CanonicalStepDayBucketContributionsTable.sourceInstanceId,
+            dateColumn = CanonicalStepDayBucketContributionsTable.date,
+        ).whereOrNull() ?: return emptyDashboardStepSummary(filters.includeSource)
+        val sampleWhere = dateConditions(
+            filters = filters,
+            sourceInstanceIdColumn = CanonicalStepSamplesTable.sourceInstanceId,
+            dateColumn = CanonicalStepSamplesTable.date,
+        ).whereOrNull() ?: return emptyDashboardStepSummary(filters.includeSource)
+
+        val valueExpression = CanonicalStepDayBucketContributionsTable.value.sum()
+        val stepsBySource = CanonicalStepDayBucketContributionsTable
+            .select(CanonicalStepDayBucketContributionsTable.sourceInstanceId, valueExpression)
+            .where(contributionWhere and (CanonicalStepDayBucketContributionsTable.algorithmVersion eq algorithmVersion))
+            .groupBy(CanonicalStepDayBucketContributionsTable.sourceInstanceId)
+            .associate {
+                it[CanonicalStepDayBucketContributionsTable.sourceInstanceId] to
+                    ((it[valueExpression] ?: 0.0).toInt())
+            }
+
+        val countExpression = CanonicalStepSamplesTable.stepSampleId.count()
+        val sampleCountsBySource = CanonicalStepSamplesTable
+            .select(CanonicalStepSamplesTable.sourceInstanceId, countExpression)
+            .where(sampleWhere and (CanonicalStepSamplesTable.algorithmVersion eq algorithmVersion))
+            .groupBy(CanonicalStepSamplesTable.sourceInstanceId)
+            .associate {
+                it[CanonicalStepSamplesTable.sourceInstanceId] to it[countExpression].toInt()
+            }
+
+        val sourceIds = stepsBySource.keys + sampleCountsBySource.keys
+        val summary = CanonicalDashboardStepsSummary(
+            steps = stepsBySource.values.sum(),
+            sampleCount = sampleCountsBySource.values.sum(),
+            sourceInstanceIds = sourceIds,
+        )
+        return summary to sourceMetadata(sourceIds, filters.includeSource)
+    }
+
+    private fun emptyDashboardStepSummary(
+        includeSource: Boolean,
+    ): Pair<CanonicalDashboardStepsSummary, Map<Int, SourceMetadata>> =
+        CanonicalDashboardStepsSummary(
+            steps = 0,
+            sampleCount = 0,
+            sourceInstanceIds = emptySet(),
+        ) to sourceMetadata(emptySet(), includeSource)
 
     private fun toJoinedStepSampleRow(row: ResultRow): StepSampleRow =
         StepSampleRow(

@@ -279,11 +279,10 @@ fun queryServicesModule(database: Database) = module {
     single {
         DashboardQueryService(
             database = database,
-            stepRepository = get(),
+            canonicalStepRepository = get(),
             sleepRepository = get(),
             canonicalHeartRateRepository = get(),
             canonicalBodyMeasurementRepository = get(),
-            canonicalMetricsService = get(),
             sleepNightService = get(),
         )
     }

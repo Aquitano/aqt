@@ -2,41 +2,36 @@ package me.aquitano.health.application.metric.dashboard
 
 import me.aquitano.health.api.dto.DashboardStepsSummaryResponse
 import me.aquitano.health.api.dto.DashboardSummaryResponse
-import me.aquitano.health.application.CanonicalMetricsService
 import me.aquitano.health.application.SleepNightService
 import me.aquitano.health.application.metric.common.BaseReadService
 import me.aquitano.health.application.metric.common.Orders
 import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.application.metric.common.SortFields
-import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.application.metric.common.toResponse
 import me.aquitano.health.application.metric.common.validateDateRange
 import me.aquitano.health.application.metric.heart.derived.CANONICAL_HEART_RATE_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.body.derived.CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementDerivationRepository
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.application.metric.heart.repository.CanonicalHeartRateDerivationRepository
-import me.aquitano.health.application.singleSource
 import me.aquitano.health.domain.BodyMetricTypes
 import me.aquitano.health.application.metric.common.repository.DailyReadFilters
-import me.aquitano.health.application.metric.heart.repository.HeartRateSampleRow
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
-import me.aquitano.health.application.metric.steps.repository.StepRepository
+import me.aquitano.health.application.metric.steps.derived.CANONICAL_STEP_ALGORITHM_VERSION
+import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
 import org.jetbrains.exposed.v1.jdbc.Database
 import java.time.Instant
 import java.time.ZoneOffset
 
-private const val DashboardSummaryLatestCandidateLimit = 500
-
 class DashboardQueryService(
     database: Database,
-    private val stepRepository: StepRepository,
+    private val canonicalStepRepository: CanonicalStepDerivationRepository,
     private val sleepRepository: SleepRepository,
     private val canonicalHeartRateRepository: CanonicalHeartRateDerivationRepository = CanonicalHeartRateDerivationRepository(),
     private val canonicalBodyMeasurementRepository: CanonicalBodyMeasurementDerivationRepository =
         CanonicalBodyMeasurementDerivationRepository(),
-    private val canonicalMetricsService: CanonicalMetricsService,
     private val sleepNightService: SleepNightService,
 ) : BaseReadService(database) {
     suspend fun dashboardSummary(
@@ -77,7 +72,7 @@ class DashboardQueryService(
             DashboardSummaryResponse(
                 fromDate = fromDate.toString(),
                 toDate = toDate.toString(),
-                steps = stepsSummary(dailyFilters, includeSource),
+                steps = stepsSummary(dailyFilters),
                 latestWeight = latestWeight(dailyFilters.toReadFilters(fromInstant, toInstant)),
                 latestHeartRate = latestHeartRate(dailyFilters.toReadFilters(fromInstant, toInstant)),
                 lastSleepSession = lastSleepSession(sleepNightFilters),
@@ -99,22 +94,15 @@ class DashboardQueryService(
 
     private fun stepsSummary(
         filters: DailyReadFilters,
-        includeSource: Boolean,
     ): DashboardStepsSummaryResponse {
-        val (rows) = stepRepository.listStepDailySummaries(
-            filters.copy(limit = Int.MAX_VALUE),
-        )
-        val canonicalRows = canonicalMetricsService.canonicalStepDailySummaries(
-            rows,
-            stepRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
+        val (summary, sourceMetadata) = canonicalStepRepository.summarizeCanonicalStepsForDashboard(
+            filters,
+            CANONICAL_STEP_ALGORITHM_VERSION,
         )
         return DashboardStepsSummaryResponse(
-            steps = canonicalRows.sumOf { it.steps },
-            sampleCount = canonicalRows.sumOf { it.sampleCount },
-            source = canonicalRows.singleSource(
-                includeSource,
-                stepRepository,
-            ) { it.sourceInstanceId },
+            steps = summary.steps,
+            sampleCount = summary.sampleCount,
+            source = summary.sourceInstanceIds.singleSource(sourceMetadata),
         )
     }
 
@@ -132,16 +120,11 @@ class DashboardQueryService(
     private suspend fun latestHeartRate(
         filters: ReadFilters,
     ) = run {
-        val canonicalFilters = filters.copy(
-            limit = DashboardSummaryLatestCandidateLimit,
-            order = Orders.DESC,
-        )
-        val (canonicalRows, metadata) = canonicalHeartRateRepository.listCanonicalHeartRateSamples(
-            canonicalFilters,
+        val (row, metadata) = canonicalHeartRateRepository.latestCanonicalHeartRateSample(
+            filters,
             CANONICAL_HEART_RATE_ALGORITHM_VERSION,
         )
-        canonicalRows.maxWithOrNull(compareBy<HeartRateSampleRow> { it.measuredAt }.thenBy { it.id })
-            ?.toResponse(metadata)
+        row?.toResponse(metadata)
     }
 
     private fun lastSleepSession(
@@ -156,4 +139,8 @@ class DashboardQueryService(
             val sleep = sleepNights.firstOrNull()?.session
             sleep?.toResponse(sleepStagesBySession, sleepSourceMetadata)
         }
+
+    private fun Set<Int>.singleSource(
+        sourceMetadata: Map<Int, SourceMetadata>,
+    ) = if (size == 1) sourceMetadata[first()].toResponse() else null
 }
