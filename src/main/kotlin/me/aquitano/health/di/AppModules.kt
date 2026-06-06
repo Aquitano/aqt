@@ -38,6 +38,7 @@ import me.aquitano.health.application.metric.respiratory.repository.RespiratoryR
 import me.aquitano.health.application.metric.sleep.SleepQueryService
 import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSessionDerivationService
 import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSummaryDerivationService
+import me.aquitano.health.application.metric.sleep.derived.SleepNightDerivation
 import me.aquitano.health.application.metric.sleep.repository.CanonicalSleepSessionDerivationRepository
 import me.aquitano.health.application.metric.sleep.repository.CanonicalSleepSummaryDerivationRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
@@ -126,6 +127,7 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
 fun servicesModule(database: Database, config: AppConfig) = module {
     single { UtcClock() }
     single { ApiKeyHasher() }
+    single { SleepNightDerivation(get<SleepNightDerivationRepository>()) }
     single { SleepNightService(get<SleepNightDerivationRepository>(), get()) }
     single { MetricWriteService() }
     single {

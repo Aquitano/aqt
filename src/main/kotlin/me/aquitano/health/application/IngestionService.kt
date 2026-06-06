@@ -182,6 +182,7 @@ class IngestionService(
                 var duplicateSkipped = 0
                 val affectedStepDates = linkedSetOf<LocalDate>()
                 val affectedSleepNightDates = linkedSetOf<LocalDate>()
+                val affectedSleepSessionCanonicalDates = linkedSetOf<LocalDate>()
                 val affectedHeartRateCanonicalDates = linkedSetOf<LocalDate>()
                 val affectedRespiratoryRateCanonicalDates = linkedSetOf<LocalDate>()
                 val affectedHrvCanonicalDates = linkedSetOf<LocalDate>()
@@ -202,6 +203,7 @@ class IngestionService(
                         duplicateSkipped += result.duplicateSkipped
                         affectedStepDates.addAll(result.affectedStepSummaryDates)
                         affectedSleepNightDates.addAll(result.affectedSleepNightDates)
+                        affectedSleepSessionCanonicalDates.addAll(result.affectedSleepSessionCanonicalDates)
                         affectedHeartRateCanonicalDates.addAll(result.affectedHeartRateCanonicalDates)
                         affectedRespiratoryRateCanonicalDates.addAll(result.affectedRespiratoryRateCanonicalDates)
                         affectedHrvCanonicalDates.addAll(result.affectedHrvCanonicalDates)
@@ -225,7 +227,7 @@ class IngestionService(
                     canonicalHrvService.recompute(affectedHrvCanonicalDates, now)
                     canonicalBodyMeasurementService.recompute(affectedBodyMeasurementCanonicalDates, now)
                     canonicalSleepSummaryService.recompute(affectedSleepSummaryCanonicalDates, now)
-                    canonicalSleepSessionService.recompute(affectedSleepNightDates, now)
+                    canonicalSleepSessionService.recompute(affectedSleepSessionCanonicalDates, now)
                     canonicalActivitySummaryService.recompute(affectedActivitySummaryCanonicalDates, now)
                     ingestionRepository.markProcessed(batchId, now)
                 } catch (exception: Exception) {

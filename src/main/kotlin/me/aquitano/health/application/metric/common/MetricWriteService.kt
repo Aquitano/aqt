@@ -168,6 +168,7 @@ class MetricWriteService(
                     sleepStages = record.stages.size,
                 ),
                 affectedSleepNightDates = setOf(record.endAt.utcDate()),
+                affectedSleepSessionCanonicalDates = setOf(record.startAt.utcDate()),
             )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
@@ -366,6 +367,7 @@ data class MetricWriteResult(
     val duplicateSkipped: Int = 0,
     val affectedStepSummaryDates: Set<LocalDate> = emptySet(),
     val affectedSleepNightDates: Set<LocalDate> = emptySet(),
+    val affectedSleepSessionCanonicalDates: Set<LocalDate> = emptySet(),
     val affectedHeartRateCanonicalDates: Set<LocalDate> = emptySet(),
     val affectedRespiratoryRateCanonicalDates: Set<LocalDate> = emptySet(),
     val affectedHrvCanonicalDates: Set<LocalDate> = emptySet(),
