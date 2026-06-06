@@ -4,7 +4,6 @@ import me.aquitano.health.api.dto.StepDailySummariesResponse
 import me.aquitano.health.api.dto.StepDailySummaryResponse
 import me.aquitano.health.api.dto.StepSampleResponse
 import me.aquitano.health.api.dto.StepSamplesResponse
-import me.aquitano.health.application.CanonicalMetricsService
 import me.aquitano.health.application.metric.common.BaseReadService
 import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.application.metric.common.SortFields
@@ -24,7 +23,6 @@ class StepQueryService(
     database: Database,
     private val stepRepository: StepRepository,
     private val canonicalRepository: CanonicalStepDerivationRepository,
-    private val canonicalMetricsService: CanonicalMetricsService,
 ) : BaseReadService(database) {
     suspend fun listStepSamples(params: QueryParams): StepSamplesResponse =
         dbQuery {
@@ -56,11 +54,7 @@ class StepQueryService(
         dbQuery {
             params.rejectLatest()
             val filters = params.dailyReadFilters(now)
-            val (rawRows, sourceMetadata) = stepRepository.listStepDailySummaries(filters)
-            val rows = canonicalMetricsService.canonicalStepDailySummaries(
-                rawRows,
-                stepRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
-            )
+            val (rows, sourceMetadata) = canonicalRepository.listCanonicalStepDailySummaries(filters, CANONICAL_STEP_ALGORITHM_VERSION)
             StepDailySummariesResponse(
                 items = rows.map {
                     StepDailySummaryResponse(

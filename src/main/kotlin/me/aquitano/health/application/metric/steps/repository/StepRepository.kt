@@ -76,6 +76,7 @@ class StepRepository : BaseMetricRepository() {
             .limit(filters.limit)
             .map {
                 StepDailySummaryRow(
+                    id = it[StepDailySummariesTable.id].value,
                     sourceInstanceId = it[StepDailySummariesTable.sourceInstanceId],
                     date = it[StepDailySummariesTable.date].toString(),
                     steps = it[StepDailySummariesTable.steps],

@@ -9,6 +9,7 @@ data class StepSampleRow(
 )
 
 data class StepDailySummaryRow(
+    val id: Int,
     val sourceInstanceId: Int,
     val date: String,
     val steps: Int,

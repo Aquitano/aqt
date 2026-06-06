@@ -120,7 +120,6 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
 fun servicesModule(database: Database, config: AppConfig) = module {
     single { UtcClock() }
     single { ApiKeyHasher() }
-    single { CanonicalMetricsService(CanonicalMetricsPolicy.default()) }
     single { SleepNightService(get<SleepNightDerivationRepository>(), get()) }
     single { MetricWriteService() }
     single {
@@ -238,7 +237,7 @@ fun servicesModule(database: Database, config: AppConfig) = module {
  * Query services layer: read-side services consumed by route handlers.
  */
 fun queryServicesModule(database: Database) = module {
-    single { ActivityQueryService(database = database, activitySummaryRepository = get(), canonicalMetricsService = get()) }
+    single { ActivityQueryService(database = database, activitySummaryRepository = get()) }
     single {
         BodyMeasurementQueryService(
             database = database,
@@ -269,7 +268,7 @@ fun queryServicesModule(database: Database) = module {
         SleepQueryService(
             database = database,
             sleepRepository = get(),
-            canonicalMetricsService = get(),
+            canonicalSessionRepository = get(),
             sleepNightService = get(),
         )
     }
@@ -278,7 +277,6 @@ fun queryServicesModule(database: Database) = module {
             database = database,
             stepRepository = get(),
             canonicalRepository = get(),
-            canonicalMetricsService = get(),
         )
     }
     single {

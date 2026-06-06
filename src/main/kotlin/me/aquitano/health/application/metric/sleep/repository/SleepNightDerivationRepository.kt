@@ -251,6 +251,40 @@ class SleepNightDerivationRepository {
         return sessions to sleepStagesBySession(sessions.map { it.id })
     }
 
+    fun listCanonicalSleepSessionsForCanonicalNights(
+        sourceInstanceIds: Set<Int>?,
+        timezone: ZoneId,
+        date: LocalDate,
+    ): List<SleepSessionRow> {
+        if (sourceInstanceIds != null && sourceInstanceIds.isEmpty()) {
+            return emptyList()
+        }
+
+        val conditions = mutableListOf<Op<Boolean>>(
+            SleepNightsTable.timezone eq timezone.id,
+            SleepNightsTable.date eq date,
+        )
+        sourceInstanceIds?.let {
+            conditions.add(SleepNightsTable.sourceInstanceId inList it)
+        }
+
+        return SleepNightsTable
+            .innerJoin(SleepSessionsTable, onColumn = { sleepSessionId }, otherColumn = { id })
+            .innerJoin(me.aquitano.health.infrastructure.database.tables.CanonicalSleepSessionsTable, onColumn = { SleepSessionsTable.id }, otherColumn = { sleepSessionId })
+            .selectAll()
+            .where { conditions.reduce { left, right -> left and right } }
+            .orderBy(SleepSessionsTable.startAt to SortOrder.ASC, SleepSessionsTable.id to SortOrder.ASC)
+            .map {
+                SleepSessionRow(
+                    id = it[SleepSessionsTable.id].value,
+                    sourceInstanceId = it[SleepSessionsTable.sourceInstanceId],
+                    startAt = it[SleepSessionsTable.startAt].toApiString(),
+                    endAt = it[SleepSessionsTable.endAt].toApiString(),
+                    durationSeconds = it[SleepSessionsTable.durationSeconds],
+                )
+            }
+    }
+
     fun replaceCanonicalSleepNights(
         date: LocalDate,
         timezone: ZoneId,

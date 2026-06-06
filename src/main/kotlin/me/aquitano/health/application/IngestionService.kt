@@ -13,6 +13,8 @@ import me.aquitano.health.application.metric.hrv.repository.CanonicalHrvDerivati
 import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.application.metric.respiratory.derived.CanonicalRespiratoryRateDerivationService
 import me.aquitano.health.application.metric.respiratory.repository.CanonicalRespiratoryRateDerivationRepository
+import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSessionDerivationService
+import me.aquitano.health.application.metric.sleep.repository.CanonicalSleepSessionDerivationRepository
 import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSummaryDerivationService
 import me.aquitano.health.application.metric.sleep.repository.CanonicalSleepSummaryDerivationRepository
 import me.aquitano.health.application.metric.steps.derived.CanonicalStepDerivationService
@@ -51,6 +53,8 @@ class IngestionService(
         CanonicalBodyMeasurementDerivationService(CanonicalBodyMeasurementDerivationRepository()),
     private val canonicalSleepSummaryService: CanonicalSleepSummaryDerivationService =
         CanonicalSleepSummaryDerivationService(CanonicalSleepSummaryDerivationRepository()),
+    private val canonicalSleepSessionService: CanonicalSleepSessionDerivationService =
+        CanonicalSleepSessionDerivationService(CanonicalSleepSessionDerivationRepository()),
 ) {
     suspend fun findExistingBatch(
         provider: String,
@@ -215,6 +219,7 @@ class IngestionService(
                     canonicalHrvService.recompute(affectedHrvCanonicalDates, now)
                     canonicalBodyMeasurementService.recompute(affectedBodyMeasurementCanonicalDates, now)
                     canonicalSleepSummaryService.recompute(affectedSleepSummaryCanonicalDates, now)
+                    canonicalSleepSessionService.recompute(affectedSleepNightDates, now)
                     ingestionRepository.markProcessed(batchId, now)
                 } catch (exception: Exception) {
                     if (exception is CancellationException) throw exception

@@ -43,6 +43,22 @@ object SleepSessionsTable : IntIdTable("sleep_sessions") {
     val createdAt = timestampWithTimeZone("created_at")
 }
 
+object CanonicalSleepSessionsTable : IntIdTable("canonical_sleep_sessions") {
+    val date = date("date")
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
+    val sleepSessionId =
+        integer("sleep_session_id").references(SleepSessionsTable.id)
+    val startAt = timestampWithTimeZone("start_at")
+    val endAt = timestampWithTimeZone("end_at")
+    val algorithmVersion = integer("algorithm_version")
+    val computedAt = timestampWithTimeZone("computed_at")
+
+    init {
+        uniqueIndex(date, sleepSessionId, algorithmVersion)
+    }
+}
+
 object SleepStagesTable : IntIdTable("sleep_stages") {
     val sleepSessionId =
         integer("sleep_session_id").references(SleepSessionsTable.id)
@@ -81,6 +97,21 @@ object CanonicalStepSamplesTable : IntIdTable("canonical_step_samples") {
 
     init {
         uniqueIndex(date, stepSampleId, algorithmVersion)
+    }
+}
+
+object CanonicalStepDailySummariesTable : IntIdTable("canonical_step_daily_summaries") {
+    val date = date("date")
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
+    val stepDailySummaryId =
+        integer("step_daily_summary_id").references(StepDailySummariesTable.id)
+    val steps = integer("steps")
+    val algorithmVersion = integer("algorithm_version")
+    val computedAt = timestampWithTimeZone("computed_at")
+
+    init {
+        uniqueIndex(date, algorithmVersion)
     }
 }
 

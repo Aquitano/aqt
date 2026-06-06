@@ -1,7 +1,6 @@
 package me.aquitano.health.application.metric.steps.derived
 
 import me.aquitano.health.application.CanonicalMetricsPolicy
-import me.aquitano.health.application.CanonicalMetricsService
 import me.aquitano.health.application.metric.steps.repository.CanonicalStepBucketContributionOutput
 import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
 import me.aquitano.health.application.metric.steps.repository.CanonicalStepOutput
@@ -12,12 +11,14 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 
+import me.aquitano.health.application.metric.common.CanonicalIntervalCandidate
+import me.aquitano.health.application.metric.common.canonicalIntervalRows
+
 const val CANONICAL_STEP_ALGORITHM_VERSION = 1
 
 class CanonicalStepDerivationService(
     private val repository: CanonicalStepDerivationRepository,
-    private val canonicalMetricsService: CanonicalMetricsService =
-        CanonicalMetricsService(CanonicalMetricsPolicy.default()),
+    private val policy: CanonicalMetricsPolicy = CanonicalMetricsPolicy.default(),
 ) {
     suspend fun recompute(dates: Set<LocalDate>, computedAt: Instant) {
         dates.forEach { date ->
@@ -25,22 +26,62 @@ class CanonicalStepDerivationService(
             val dayEnd = date.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
             val rawSamples = repository.listRawSamplesForDay(dayStart, dayEnd)
             val metadata = repository.sourceMetadataFor(rawSamples.map { it.sourceInstanceId }.toSet())
-            val canonicalSamples = canonicalMetricsService.canonicalStepSamples(rawSamples, metadata)
+            val preparedSamples = rawSamples.map { preparedCanonicalSample(it, metadata) }
+                .sortedWith(compareBy<PreparedCanonicalStepSample> { it.candidate.startAt }
+                    .thenBy { it.candidate.endAt }
+                    .thenBy { it.candidate.row.id })
+            
+            val canonicalSamples = canonicalIntervalRows(
+                rows = preparedSamples.map { it.candidate },
+                overlaps = { left, right ->
+                    left.startAt.isBefore(right.endAt) && right.startAt.isBefore(left.endAt)
+                },
+                choosePreferred = { left, right ->
+                    val leftPrepared = preparedSamples.first { it.candidate === left }
+                    val rightPrepared = preparedSamples.first { it.candidate === right }
+                    listOf(leftPrepared, rightPrepared).minWithOrNull(
+                        compareBy<PreparedCanonicalStepSample> { it.providerRank }
+                            .thenBy { it.durationSeconds }
+                            .thenByDescending { it.stepsPerSecond }
+                            .thenBy { it.candidate.row.id }
+                    )!!.candidate
+                }
+            )
+            val selectedPreparedSamples = preparedSamples.filter { canonicalSamples.contains(it.candidate.row) }
+
+            val rawSummaries = repository.listRawDailySummariesForDay(date)
+            val summaryMetadata = repository.sourceMetadataFor(rawSummaries.map { it.sourceInstanceId }.toSet())
+            val canonicalSummary = rawSummaries.maxWithOrNull(
+                compareBy<me.aquitano.health.application.metric.steps.repository.StepDailySummaryRow> { -policy.rank(me.aquitano.health.application.CanonicalMetricFamily.STEPS, summaryMetadata[it.sourceInstanceId]?.provider) }
+                    .thenBy { it.sampleCount }
+                    .thenBy { it.steps }
+                    .thenBy { it.sourceInstanceId }
+            )
+            val dailySummaryOutput = canonicalSummary?.let { summary ->
+                me.aquitano.health.application.metric.steps.repository.CanonicalStepDailySummaryOutput(
+                    stepDailySummaryId = summary.id,
+                    sourceInstanceId = summary.sourceInstanceId,
+                    date = date,
+                    steps = summary.steps,
+                )
+            }
+
             repository.persistCanonicalOutput(
                 CanonicalStepOutput(
                     date = date,
                     algorithmVersion = CANONICAL_STEP_ALGORITHM_VERSION,
                     computedAt = computedAt,
-                    samples = canonicalSamples.map {
+                    dailySummary = dailySummaryOutput,
+                    samples = selectedPreparedSamples.map {
                         CanonicalStepSampleOutput(
-                            sampleId = it.id,
-                            sourceInstanceId = it.sourceInstanceId,
-                            startAt = Instant.parse(it.startAt),
-                            endAt = Instant.parse(it.endAt),
-                            steps = it.steps,
+                            sampleId = it.candidate.row.id,
+                            sourceInstanceId = it.candidate.row.sourceInstanceId,
+                            startAt = it.candidate.startAt,
+                            endAt = it.candidate.endAt,
+                            steps = it.candidate.row.steps,
                         )
                     },
-                    bucketContributions = canonicalSamples.flatMap {
+                    bucketContributions = selectedPreparedSamples.flatMap {
                         bucketContributions(date, dayStart, dayEnd, it, computedAt)
                     },
                 )
@@ -52,27 +93,24 @@ class CanonicalStepDerivationService(
         date: LocalDate,
         dayStart: Instant,
         dayEnd: Instant,
-        sample: StepSampleRow,
+        sample: PreparedCanonicalStepSample,
         computedAt: Instant,
     ): List<CanonicalStepBucketContributionOutput> {
-        val sampleStart = Instant.parse(sample.startAt)
-        val sampleEnd = Instant.parse(sample.endAt)
-        val sampleSeconds = Duration.between(sampleStart, sampleEnd).seconds
-        if (sampleSeconds <= 0) return emptyList()
+        if (sample.durationSeconds <= 0) return emptyList()
 
         val contributions = mutableListOf<CanonicalStepBucketContributionOutput>()
         var bucketStart = dayStart
         while (bucketStart.isBefore(dayEnd)) {
             val bucketEnd = minOf(bucketStart.plus(Duration.ofMinutes(15)), dayEnd)
-            val overlapSeconds = overlapSeconds(sampleStart, sampleEnd, bucketStart, bucketEnd)
+            val overlapSeconds = overlapSeconds(sample.candidate.startAt, sample.candidate.endAt, bucketStart, bucketEnd)
             if (overlapSeconds > 0) {
                 contributions += CanonicalStepBucketContributionOutput(
                     date = date,
-                    sourceInstanceId = sample.sourceInstanceId,
-                    sampleId = sample.id,
+                    sourceInstanceId = sample.candidate.row.sourceInstanceId,
+                    sampleId = sample.candidate.row.id,
                     bucketStartAt = bucketStart,
                     bucketEndAt = bucketEnd,
-                    value = sample.steps * (overlapSeconds.toDouble() / sampleSeconds.toDouble()),
+                    value = sample.candidate.row.steps * (overlapSeconds.toDouble() / sample.durationSeconds.toDouble()),
                     computedAt = computedAt,
                 )
             }
@@ -95,4 +133,31 @@ class CanonicalStepDerivationService(
             0
         }
     }
+
+    private fun preparedCanonicalSample(
+        row: StepSampleRow,
+        metadata: Map<Int, me.aquitano.health.application.metric.common.repository.SourceMetadata>
+    ): PreparedCanonicalStepSample {
+        val startAt = Instant.parse(row.startAt)
+        val endAt = Instant.parse(row.endAt)
+        val duration = Duration.between(startAt, endAt).seconds
+        return PreparedCanonicalStepSample(
+            candidate = CanonicalIntervalCandidate(
+                row = row,
+                sourceInstanceId = row.sourceInstanceId,
+                startAt = startAt,
+                endAt = endAt,
+            ),
+            durationSeconds = duration,
+            providerRank = policy.rank(me.aquitano.health.application.CanonicalMetricFamily.STEPS, metadata[row.sourceInstanceId]?.provider),
+            stepsPerSecond = row.steps.toDouble() / duration.coerceAtLeast(1).toDouble(),
+        )
+    }
 }
+
+private data class PreparedCanonicalStepSample(
+    val candidate: CanonicalIntervalCandidate<StepSampleRow>,
+    val durationSeconds: Long,
+    val providerRank: Int,
+    val stepsPerSecond: Double,
+)
