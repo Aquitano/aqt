@@ -28,17 +28,13 @@ class StepQueryService(
 ) : BaseReadService(database) {
     suspend fun listStepSamples(params: QueryParams): StepSamplesResponse =
         dbQuery {
-            val canonical = params.canonical(default = params.boolean("latest", default = false))
             val filters = params.readFilters(
                 defaultSort = SortFields.START_AT,
                 allowedSorts = setOf(SortFields.START_AT),
                 latestSupported = true,
             )
-            val (rows, sourceMetadata) = if (canonical) {
+            val (rows, sourceMetadata) =
                 canonicalRepository.listCanonicalStepSamples(filters, CANONICAL_STEP_ALGORITHM_VERSION)
-            } else {
-                stepRepository.listStepSamples(filters)
-            }
             StepSamplesResponse(
                 items = rows.map {
                     StepSampleResponse(
@@ -60,16 +56,11 @@ class StepQueryService(
         dbQuery {
             params.rejectLatest()
             val filters = params.dailyReadFilters(now)
-            val canonical = params.canonical(default = false)
             val (rawRows, sourceMetadata) = stepRepository.listStepDailySummaries(filters)
-            val rows = if (canonical) {
-                canonicalMetricsService.canonicalStepDailySummaries(
-                    rawRows,
-                    stepRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
-                )
-            } else {
-                rawRows
-            }
+            val rows = canonicalMetricsService.canonicalStepDailySummaries(
+                rawRows,
+                stepRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
+            )
             StepDailySummariesResponse(
                 items = rows.map {
                     StepDailySummaryResponse(

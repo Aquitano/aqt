@@ -2,7 +2,6 @@ package me.aquitano.health.application.metric.heart
 
 import me.aquitano.health.api.dto.HeartRateSamplesResponse
 import me.aquitano.health.api.dto.HeartRateSummaryResponse
-import me.aquitano.health.application.heartRateSummary
 import me.aquitano.health.application.metric.heart.derived.CANONICAL_HEART_RATE_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.common.BaseReadService
 import me.aquitano.health.application.metric.common.QueryParams
@@ -11,31 +10,24 @@ import me.aquitano.health.application.metric.common.meta
 import me.aquitano.health.application.metric.common.readFilters
 import me.aquitano.health.application.metric.common.summaryFilters
 import me.aquitano.health.application.metric.common.toResponse
-import me.aquitano.health.application.metric.heart.repository.HeartRateRepository
 import me.aquitano.health.application.metric.heart.repository.CanonicalHeartRateDerivationRepository
 import org.jetbrains.exposed.v1.jdbc.Database
 
 class HeartRateQueryService(
     database: Database,
-    private val heartRateRepository: HeartRateRepository,
     private val canonicalRepository: CanonicalHeartRateDerivationRepository = CanonicalHeartRateDerivationRepository(),
 ) : BaseReadService(database) {
     suspend fun listHeartRateSamples(params: QueryParams): HeartRateSamplesResponse =
         dbQuery {
-            val canonical = params.canonical(default = params.boolean("latest", default = false))
             val filters = params.readFilters(
                 defaultSort = SortFields.MEASURED_AT,
                 allowedSorts = setOf(SortFields.MEASURED_AT),
                 latestSupported = true,
             )
-            val (rows, sourceMetadata) = if (canonical) {
-                canonicalRepository.listCanonicalHeartRateSamples(
-                    filters,
-                    CANONICAL_HEART_RATE_ALGORITHM_VERSION,
-                )
-            } else {
-                heartRateRepository.listHeartRateSamples(filters)
-            }
+            val (rows, sourceMetadata) = canonicalRepository.listCanonicalHeartRateSamples(
+                filters,
+                CANONICAL_HEART_RATE_ALGORITHM_VERSION,
+            )
             HeartRateSamplesResponse(
                 items = rows.map { it.toResponse(sourceMetadata) },
                 meta = rows.meta(filters),
@@ -45,21 +37,14 @@ class HeartRateQueryService(
     suspend fun heartRateSummary(params: QueryParams): HeartRateSummaryResponse =
         dbQuery {
             val filters = params.summaryFilters(SortFields.MEASURED_AT)
-            val canonical = params.canonical(default = true)
-            val (summary, latest, sourceMetadata) = if (canonical) {
-                val summary = canonicalRepository.summarizeCanonicalHeartRate(
-                    filters,
-                    CANONICAL_HEART_RATE_ALGORITHM_VERSION,
-                )
-                val (latest, metadata) = canonicalRepository.latestCanonicalHeartRateSample(
-                    filters,
-                    CANONICAL_HEART_RATE_ALGORITHM_VERSION,
-                )
-                Triple(summary, latest, metadata)
-            } else {
-                val (latest, metadata) = heartRateRepository.latestHeartRateSample(filters)
-                Triple(heartRateRepository.summarizeHeartRate(filters), latest, metadata)
-            }
+            val summary = canonicalRepository.summarizeCanonicalHeartRate(
+                filters,
+                CANONICAL_HEART_RATE_ALGORITHM_VERSION,
+            )
+            val (latest, sourceMetadata) = canonicalRepository.latestCanonicalHeartRateSample(
+                filters,
+                CANONICAL_HEART_RATE_ALGORITHM_VERSION,
+            )
             HeartRateSummaryResponse(
                 count = summary.count,
                 minBpm = summary.minBpm,

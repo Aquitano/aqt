@@ -14,32 +14,25 @@ import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.application.metric.common.summaryFilters
 import me.aquitano.health.application.metric.common.toResponse
 import me.aquitano.health.application.metric.respiratory.repository.CanonicalRespiratoryRateDerivationRepository
-import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateRepository
 import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateSampleRow
 import org.jetbrains.exposed.v1.jdbc.Database
 
 class RespiratoryRateQueryService(
     database: Database,
-    private val respiratoryRateRepository: RespiratoryRateRepository,
     private val canonicalRepository: CanonicalRespiratoryRateDerivationRepository =
         CanonicalRespiratoryRateDerivationRepository(),
 ) : BaseReadService(database) {
     suspend fun listRespiratoryRateSamples(params: QueryParams): RespiratoryRateSamplesResponse =
         dbQuery {
-            val canonical = params.canonical(default = params.boolean("latest", default = false))
             val filters = params.readFilters(
                 defaultSort = SortFields.MEASURED_AT,
                 allowedSorts = setOf(SortFields.MEASURED_AT),
                 latestSupported = true,
             )
-            val (rows, sourceMetadata) = if (canonical) {
-                canonicalRepository.listCanonicalRespiratoryRateSamples(
-                    filters,
-                    CANONICAL_RESPIRATORY_RATE_ALGORITHM_VERSION,
-                )
-            } else {
-                respiratoryRateRepository.listRespiratoryRateSamples(filters)
-            }
+            val (rows, sourceMetadata) = canonicalRepository.listCanonicalRespiratoryRateSamples(
+                filters,
+                CANONICAL_RESPIRATORY_RATE_ALGORITHM_VERSION,
+            )
             RespiratoryRateSamplesResponse(
                 items = rows.map { it.toResponse(sourceMetadata) },
                 meta = rows.meta(filters),
@@ -49,22 +42,14 @@ class RespiratoryRateQueryService(
     suspend fun respiratoryRateSummary(params: QueryParams): RespiratoryRateSummaryResponse =
         dbQuery {
             val filters = params.summaryFilters(SortFields.MEASURED_AT)
-            val canonical = params.canonical(default = true)
-            val (summary, latest, sourceMetadata) = if (canonical) {
-                val canonicalFilters = filters.copy(limit = Int.MAX_VALUE, order = Orders.ASC)
-                val (canonicalRows, metadata) = canonicalRepository.listCanonicalRespiratoryRateSamples(
-                    canonicalFilters,
-                    CANONICAL_RESPIRATORY_RATE_ALGORITHM_VERSION,
-                )
-                Triple(
-                    canonicalRows.respiratoryRateSummary(),
-                    canonicalRows.maxWithOrNull(compareBy<RespiratoryRateSampleRow> { it.measuredAt }.thenBy { it.id }),
-                    metadata,
-                )
-            } else {
-                val (latest, metadata) = respiratoryRateRepository.latestRespiratoryRateSample(filters)
-                Triple(respiratoryRateRepository.summarizeRespiratoryRate(filters), latest, metadata)
-            }
+            val canonicalFilters = filters.copy(limit = Int.MAX_VALUE, order = Orders.ASC)
+            val (canonicalRows, sourceMetadata) = canonicalRepository.listCanonicalRespiratoryRateSamples(
+                canonicalFilters,
+                CANONICAL_RESPIRATORY_RATE_ALGORITHM_VERSION,
+            )
+            val summary = canonicalRows.respiratoryRateSummary()
+            val latest =
+                canonicalRows.maxWithOrNull(compareBy<RespiratoryRateSampleRow> { it.measuredAt }.thenBy { it.id })
             RespiratoryRateSummaryResponse(
                 count = summary.count,
                 minBreathsPerMinute = summary.minBreathsPerMinute,

@@ -26,16 +26,11 @@ class ActivityQueryService(
     ): ActivitySummariesResponse =
         dbQuery {
             val filters = params.dailyReadFilters(now)
-            val canonical = params.canonical(default = false)
             val (rawRows, sourceMetadata) = activitySummaryRepository.listActivitySummaries(filters)
-            val rows = if (canonical) {
-                canonicalMetricsService.canonicalActivitySummaries(
-                    rawRows,
-                    activitySummaryRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
-                )
-            } else {
-                rawRows
-            }
+            val rows = canonicalMetricsService.canonicalActivitySummaries(
+                rawRows,
+                activitySummaryRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
+            )
             ActivitySummariesResponse(
                 items = rows.map { it.toResponse(sourceMetadata) },
                 meta = rows.meta(filters),
@@ -48,19 +43,14 @@ class ActivityQueryService(
     ): ActivitySummaryLatestResponse =
         dbQuery {
             val filters = params.dailyLatestReadFilters(now)
-            val canonical = params.canonical(default = true)
-            val (row, sourceMetadata) = if (canonical) {
-                val (rows, metadata) = activitySummaryRepository.listActivitySummaries(
-                    filters.copy(limit = Int.MAX_VALUE),
-                )
-                val canonicalRows = canonicalMetricsService.canonicalActivitySummaries(
-                    rows,
-                    activitySummaryRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
-                )
-                canonicalRows.maxWithOrNull(compareBy<ActivitySummaryRow> { it.date }.thenBy { it.id }) to metadata
-            } else {
-                activitySummaryRepository.latestActivitySummary(filters)
-            }
+            val (rows, sourceMetadata) = activitySummaryRepository.listActivitySummaries(
+                filters.copy(limit = Int.MAX_VALUE),
+            )
+            val canonicalRows = canonicalMetricsService.canonicalActivitySummaries(
+                rows,
+                activitySummaryRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
+            )
+            val row = canonicalRows.maxWithOrNull(compareBy<ActivitySummaryRow> { it.date }.thenBy { it.id })
             ActivitySummaryLatestResponse(item = row?.toResponse(sourceMetadata))
         }
 }

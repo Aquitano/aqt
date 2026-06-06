@@ -28,7 +28,6 @@ class SleepQueryService(
 ) : BaseReadService(database) {
     suspend fun listSleepSessions(params: QueryParams): SleepSessionsResponse =
         dbQuery {
-            val canonical = params.canonical(default = params.boolean("latest", default = false))
             val filters = params.readFilters(
                 defaultSort = SortFields.START_AT,
                 allowedSorts = setOf(SortFields.START_AT),
@@ -36,15 +35,11 @@ class SleepQueryService(
             )
             val (rawSessions, stagesBySession, sourceMetadata) =
                 sleepRepository.listSleepSessions(filters)
-            val sessions = if (canonical) {
-                canonicalMetricsService.canonicalSleepSessions(
-                    rawSessions,
-                    stagesBySession,
-                    sleepRepository.sourceMetadataFor(rawSessions.sourceInstanceIds { it.sourceInstanceId }),
-                )
-            } else {
-                rawSessions
-            }
+            val sessions = canonicalMetricsService.canonicalSleepSessions(
+                rawSessions,
+                stagesBySession,
+                sleepRepository.sourceMetadataFor(rawSessions.sourceInstanceIds { it.sourceInstanceId }),
+            )
             SleepSessionsResponse(
                 items = sessions.map { session ->
                     session.toResponse(stagesBySession, sourceMetadata)
@@ -60,14 +55,9 @@ class SleepQueryService(
         dbQuery {
             params.rejectLatest()
             val filters = params.sleepNightReadFilters(now)
-            val canonical = params.canonical(default = false)
-            val (nights, stagesBySession, sourceMetadata) = if (canonical) {
-                sleepNightService.materializeCanonical(filters, now)
+            sleepNightService.materializeCanonical(filters, now)
+            val (nights, stagesBySession, sourceMetadata) =
                 sleepRepository.listCanonicalSleepNights(filters)
-            } else {
-                sleepNightService.materialize(filters, now)
-                sleepRepository.listSleepNights(filters)
-            }
             SleepNightsResponse(
                 items = nights.map { night ->
                     night.toResponse(stagesBySession, sourceMetadata)

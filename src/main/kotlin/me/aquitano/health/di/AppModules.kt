@@ -152,9 +152,9 @@ fun servicesModule(database: Database, config: AppConfig) = module {
     single {
         HealthDayModuleRegistry(
             listOf(
-                StepsDayModule(get(), get()),
-                HeartRateDayModule(get(), get()),
-                WeightDayModule(get(), get()),
+                StepsDayModule(get()),
+                HeartRateDayModule(get()),
+                WeightDayModule(get()),
                 SleepDayModule(get(), get()),
             )
         )
@@ -245,21 +245,18 @@ fun queryServicesModule(database: Database) = module {
     single {
         HeartRateQueryService(
             database = database,
-            heartRateRepository = get(),
             canonicalRepository = get(),
         )
     }
     single {
         HrvQueryService(
             database = database,
-            hrvRepository = get(),
             canonicalRepository = get(),
         )
     }
     single {
         RespiratoryRateQueryService(
             database = database,
-            respiratoryRateRepository = get(),
             canonicalRepository = get(),
         )
     }
@@ -284,8 +281,6 @@ fun queryServicesModule(database: Database) = module {
             database = database,
             stepRepository = get(),
             sleepRepository = get(),
-            bodyMeasurementRepository = get(),
-            heartRateRepository = get(),
             canonicalHeartRateRepository = get(),
             canonicalBodyMeasurementRepository = get(),
             canonicalMetricsService = get(),

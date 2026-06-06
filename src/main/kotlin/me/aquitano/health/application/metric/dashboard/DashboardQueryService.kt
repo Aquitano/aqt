@@ -23,8 +23,6 @@ import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
 import me.aquitano.health.application.metric.steps.repository.StepRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
-import me.aquitano.health.application.metric.body.repository.BodyMeasurementRepository
-import me.aquitano.health.application.metric.heart.repository.HeartRateRepository
 import org.jetbrains.exposed.v1.jdbc.Database
 import java.time.Instant
 import java.time.ZoneOffset
@@ -35,8 +33,6 @@ class DashboardQueryService(
     database: Database,
     private val stepRepository: StepRepository,
     private val sleepRepository: SleepRepository,
-    private val bodyMeasurementRepository: BodyMeasurementRepository,
-    private val heartRateRepository: HeartRateRepository,
     private val canonicalHeartRateRepository: CanonicalHeartRateDerivationRepository = CanonicalHeartRateDerivationRepository(),
     private val canonicalBodyMeasurementRepository: CanonicalBodyMeasurementDerivationRepository =
         CanonicalBodyMeasurementDerivationRepository(),
@@ -51,7 +47,6 @@ class DashboardQueryService(
         val toDate = params.requiredDate("toDate")
         validateDateRange(fromDate, toDate)
         val includeSource = params.boolean("includeSource", default = false)
-        val canonical = params.canonical(default = true)
         val fromInstant = fromDate.atStartOfDay().toInstant(ZoneOffset.UTC)
         val toInstant = toDate.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
 
@@ -78,18 +73,14 @@ class DashboardQueryService(
                 order = Orders.ASC,
             )
 
-            if (canonical) {
-                sleepNightService.materializeCanonical(sleepNightFilters, now)
-            } else {
-                sleepNightService.materialize(sleepNightFilters, now)
-            }
+            sleepNightService.materializeCanonical(sleepNightFilters, now)
             DashboardSummaryResponse(
                 fromDate = fromDate.toString(),
                 toDate = toDate.toString(),
-                steps = stepsSummary(dailyFilters, includeSource, canonical),
-                latestWeight = latestWeight(dailyFilters.toReadFilters(fromInstant, toInstant), canonical),
-                latestHeartRate = latestHeartRate(dailyFilters.toReadFilters(fromInstant, toInstant), canonical),
-                lastSleepSession = lastSleepSession(sleepNightFilters, canonical),
+                steps = stepsSummary(dailyFilters, includeSource),
+                latestWeight = latestWeight(dailyFilters.toReadFilters(fromInstant, toInstant)),
+                latestHeartRate = latestHeartRate(dailyFilters.toReadFilters(fromInstant, toInstant)),
+                lastSleepSession = lastSleepSession(sleepNightFilters),
             )
         }
     }
@@ -109,55 +100,38 @@ class DashboardQueryService(
     private fun stepsSummary(
         filters: DailyReadFilters,
         includeSource: Boolean,
-        canonical: Boolean,
-    ): DashboardStepsSummaryResponse =
-        if (canonical) {
-            val (rows) = stepRepository.listStepDailySummaries(
-                filters.copy(limit = Int.MAX_VALUE),
-            )
-            val canonicalRows = canonicalMetricsService.canonicalStepDailySummaries(
-                rows,
-                stepRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
-            )
-            DashboardStepsSummaryResponse(
-                steps = canonicalRows.sumOf { it.steps },
-                sampleCount = canonicalRows.sumOf { it.sampleCount },
-                source = canonicalRows.singleSource(
-                    includeSource,
-                    stepRepository,
-                ) { it.sourceInstanceId },
-            )
-        } else {
-            stepRepository.sumStepDailySummaries(filters).let {
-                DashboardStepsSummaryResponse(
-                    steps = it.steps,
-                    sampleCount = it.sampleCount,
-                )
-            }
-        }
+    ): DashboardStepsSummaryResponse {
+        val (rows) = stepRepository.listStepDailySummaries(
+            filters.copy(limit = Int.MAX_VALUE),
+        )
+        val canonicalRows = canonicalMetricsService.canonicalStepDailySummaries(
+            rows,
+            stepRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
+        )
+        return DashboardStepsSummaryResponse(
+            steps = canonicalRows.sumOf { it.steps },
+            sampleCount = canonicalRows.sumOf { it.sampleCount },
+            source = canonicalRows.singleSource(
+                includeSource,
+                stepRepository,
+            ) { it.sourceInstanceId },
+        )
+    }
 
     private fun latestWeight(
         filters: ReadFilters,
-        canonical: Boolean,
-    ) = if (canonical) {
+    ) = run {
         val (row, metadata) = canonicalBodyMeasurementRepository.latestCanonicalBodyMeasurement(
             filters,
             BodyMetricTypes.WEIGHT,
             CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
         )
         row?.toResponse(metadata)
-    } else {
-        val (row, metadata) = bodyMeasurementRepository.latestBodyMeasurement(
-            filters,
-            BodyMetricTypes.WEIGHT,
-        )
-        row?.toResponse(metadata)
     }
 
     private suspend fun latestHeartRate(
         filters: ReadFilters,
-        canonical: Boolean,
-    ) = if (canonical) {
+    ) = run {
         val canonicalFilters = filters.copy(
             limit = DashboardSummaryLatestCandidateLimit,
             order = Orders.DESC,
@@ -168,32 +142,18 @@ class DashboardQueryService(
         )
         canonicalRows.maxWithOrNull(compareBy<HeartRateSampleRow> { it.measuredAt }.thenBy { it.id })
             ?.toResponse(metadata)
-    } else {
-        val (row, metadata) = heartRateRepository.latestHeartRateSample(filters)
-        row?.toResponse(metadata)
     }
 
     private fun lastSleepSession(
         filters: SleepNightReadFilters,
-        canonical: Boolean,
-    ) = (
-        if (canonical) {
-            sleepRepository.listCanonicalSleepNights(
-                filters.copy(
-                    limit = filters.limit,
-                    order = Orders.DESC,
-                )
-            )
-        } else {
-            sleepRepository.listSleepNights(
-                filters.copy(
-                    limit = filters.limit,
-                    order = Orders.DESC,
-                )
-            )
+    ) = sleepRepository.listCanonicalSleepNights(
+        filters.copy(
+            limit = filters.limit,
+            order = Orders.DESC,
+        )
+    )
+        .let { (sleepNights, sleepStagesBySession, sleepSourceMetadata) ->
+            val sleep = sleepNights.firstOrNull()?.session
+            sleep?.toResponse(sleepStagesBySession, sleepSourceMetadata)
         }
-        ).let { (sleepNights, sleepStagesBySession, sleepSourceMetadata) ->
-        val sleep = sleepNights.firstOrNull()?.session
-        sleep?.toResponse(sleepStagesBySession, sleepSourceMetadata)
-    }
 }

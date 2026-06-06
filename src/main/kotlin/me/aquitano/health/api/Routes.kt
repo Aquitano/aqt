@@ -458,7 +458,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
         }.describeReadOperation(
             operationId = "listStepSamples",
             summary = "List step samples",
-            descriptionText = "Returns raw step samples filtered by timestamp range, source provider, provider instance, source metadata inclusion, item limit, and sort order. Use `latest=true` to return the latest matching sample only.",
+            descriptionText = "Returns canonical step samples filtered by timestamp range, source provider, provider instance, source metadata inclusion, item limit, and sort order. Use `latest=true` to return the latest matching sample only.",
             includeLatest = true,
             sortValues = listOf("startAt"),
             defaultSort = "startAt",

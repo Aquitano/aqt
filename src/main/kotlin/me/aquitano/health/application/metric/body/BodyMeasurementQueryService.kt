@@ -27,21 +27,16 @@ class BodyMeasurementQueryService(
         val metricType = params.optional("metricType")
         if (metricType != null) validateBodyMetricType(metricType)
         return dbQuery {
-            val canonical = params.canonical(default = params.boolean("latest", default = false))
             val filters = params.readFilters(
                 defaultSort = SortFields.MEASURED_AT,
                 allowedSorts = setOf(SortFields.MEASURED_AT),
                 latestSupported = true,
             )
-            val (rows, sourceMetadata) = if (canonical) {
-                canonicalRepository.listCanonicalBodyMeasurements(
-                    filters,
-                    metricType,
-                    CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
-                )
-            } else {
-                bodyMeasurementRepository.listBodyMeasurements(filters, metricType)
-            }
+            val (rows, sourceMetadata) = canonicalRepository.listCanonicalBodyMeasurements(
+                filters,
+                metricType,
+                CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
+            )
             BodyMeasurementsResponse(
                 items = rows.map { it.toResponse(sourceMetadata) },
                 meta = rows.meta(filters),
@@ -54,17 +49,11 @@ class BodyMeasurementQueryService(
         validateBodyMetricType(metricType)
         return dbQuery {
             val filters = params.summaryFilters(SortFields.MEASURED_AT)
-            val canonical = params.canonical(default = true)
-            val (row, sourceMetadata) =
-                if (canonical) {
-                    canonicalRepository.latestCanonicalBodyMeasurement(
-                        filters,
-                        metricType,
-                        CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
-                    )
-                } else {
-                    bodyMeasurementRepository.latestBodyMeasurement(filters, metricType)
-                }
+            val (row, sourceMetadata) = canonicalRepository.latestCanonicalBodyMeasurement(
+                filters,
+                metricType,
+                CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
+            )
             BodyMeasurementLatestResponse(item = row?.toResponse(sourceMetadata))
         }
     }
