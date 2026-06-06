@@ -229,7 +229,10 @@ class MetricWriteService(
             now,
         )
         return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(activitySummaries = 1))
+            MetricWriteResult(
+                created = MetricCreatedCounts(activitySummaries = 1),
+                affectedActivitySummaryCanonicalDates = setOf(record.date),
+            )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
         }
@@ -368,6 +371,7 @@ data class MetricWriteResult(
     val affectedHrvCanonicalDates: Set<LocalDate> = emptySet(),
     val affectedBodyMeasurementCanonicalDates: Set<LocalDate> = emptySet(),
     val affectedSleepSummaryCanonicalDates: Set<LocalDate> = emptySet(),
+    val affectedActivitySummaryCanonicalDates: Set<LocalDate> = emptySet(),
 )
 
 private fun affectedUtcDates(

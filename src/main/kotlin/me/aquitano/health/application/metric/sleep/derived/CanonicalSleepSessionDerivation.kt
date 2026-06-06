@@ -66,25 +66,21 @@ class CanonicalSleepSessionDerivationService(
             .thenBy { it.candidate.row.id })
             
         val canonical = canonicalIntervalRows(
-            rows = candidates.map { it.candidate },
+            rows = candidates.map { it.asIntervalCandidate() },
             overlaps = { left, right ->
-                val leftPrepared = candidates.first { it.candidate === left }
-                val rightPrepared = candidates.first { it.candidate === right }
-                sleepOverlaps(leftPrepared, rightPrepared)
+                sleepOverlaps(left.row, right.row)
             },
             choosePreferred = { left, right ->
-                val leftPrepared = candidates.first { it.candidate === left }
-                val rightPrepared = candidates.first { it.candidate === right }
-                listOf(leftPrepared, rightPrepared).maxWithOrNull(
+                listOf(left.row, right.row).maxWithOrNull(
                     compareBy<PreparedCanonicalSleepSession> { it.stageStats.count }
                         .thenBy { it.stageStats.knownStageCount }
                         .thenBy { it.durationSeconds == it.candidate.row.durationSeconds }
                         .thenBy { -it.providerRank }
                         .thenBy { -it.candidate.row.id }
-                )!!.candidate
+                )!!.asIntervalCandidate()
             }
         )
-        return candidates.filter { canonical.contains(it.candidate.row) }.map { it.candidate.row }
+        return canonical.map { it.candidate.row }
     }
 
     private fun preparedCanonicalSession(
@@ -145,4 +141,12 @@ private data class PreparedCanonicalSleepSession(
     val durationSeconds: Long,
     val providerRank: Int,
     val stageStats: SleepStageStats,
-)
+) {
+    fun asIntervalCandidate(): CanonicalIntervalCandidate<PreparedCanonicalSleepSession> =
+        CanonicalIntervalCandidate(
+            row = this,
+            sourceInstanceId = candidate.sourceInstanceId,
+            startAt = candidate.startAt,
+            endAt = candidate.endAt,
+        )
+}

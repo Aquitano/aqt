@@ -6,6 +6,8 @@ import me.aquitano.health.application.metric.steps.repository.CanonicalStepDeriv
 import me.aquitano.health.application.metric.steps.repository.CanonicalStepOutput
 import me.aquitano.health.application.metric.steps.repository.CanonicalStepSampleOutput
 import me.aquitano.health.application.metric.steps.repository.StepSampleRow
+import me.aquitano.health.application.metric.steps.repository.StepDailySummaryRow
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -32,31 +34,24 @@ class CanonicalStepDerivationService(
                     .thenBy { it.candidate.row.id })
             
             val canonicalSamples = canonicalIntervalRows(
-                rows = preparedSamples.map { it.candidate },
+                rows = preparedSamples.map { it.asIntervalCandidate() },
                 overlaps = { left, right ->
                     left.startAt.isBefore(right.endAt) && right.startAt.isBefore(left.endAt)
                 },
                 choosePreferred = { left, right ->
-                    val leftPrepared = preparedSamples.first { it.candidate === left }
-                    val rightPrepared = preparedSamples.first { it.candidate === right }
-                    listOf(leftPrepared, rightPrepared).minWithOrNull(
+                    listOf(left.row, right.row).minWithOrNull(
                         compareBy<PreparedCanonicalStepSample> { it.providerRank }
                             .thenBy { it.durationSeconds }
                             .thenByDescending { it.stepsPerSecond }
                             .thenBy { it.candidate.row.id }
-                    )!!.candidate
+                    )!!.asIntervalCandidate()
                 }
             )
-            val selectedPreparedSamples = preparedSamples.filter { canonicalSamples.contains(it.candidate.row) }
+            val selectedPreparedSamples = canonicalSamples
 
             val rawSummaries = repository.listRawDailySummariesForDay(date)
             val summaryMetadata = repository.sourceMetadataFor(rawSummaries.map { it.sourceInstanceId }.toSet())
-            val canonicalSummary = rawSummaries.maxWithOrNull(
-                compareBy<me.aquitano.health.application.metric.steps.repository.StepDailySummaryRow> { -policy.rank(me.aquitano.health.application.CanonicalMetricFamily.STEPS, summaryMetadata[it.sourceInstanceId]?.provider) }
-                    .thenBy { it.sampleCount }
-                    .thenBy { it.steps }
-                    .thenBy { it.sourceInstanceId }
-            )
+            val canonicalSummary = canonicalStepDailySummary(rawSummaries, summaryMetadata)
             val dailySummaryOutput = canonicalSummary?.let { summary ->
                 me.aquitano.health.application.metric.steps.repository.CanonicalStepDailySummaryOutput(
                     stepDailySummaryId = summary.id,
@@ -88,6 +83,22 @@ class CanonicalStepDerivationService(
             )
         }
     }
+
+    fun canonicalStepDailySummary(
+        rows: List<StepDailySummaryRow>,
+        metadata: Map<Int, SourceMetadata>,
+    ): StepDailySummaryRow? =
+        rows.minWithOrNull(
+            compareBy<StepDailySummaryRow> {
+                policy.rank(
+                    me.aquitano.health.application.CanonicalMetricFamily.STEPS,
+                    metadata[it.sourceInstanceId]?.provider,
+                )
+            }
+                .thenByDescending { it.sampleCount }
+                .thenByDescending { it.steps }
+                .thenBy { it.sourceInstanceId }
+        )
 
     private fun bucketContributions(
         date: LocalDate,
@@ -160,4 +171,12 @@ private data class PreparedCanonicalStepSample(
     val durationSeconds: Long,
     val providerRank: Int,
     val stepsPerSecond: Double,
-)
+) {
+    fun asIntervalCandidate(): CanonicalIntervalCandidate<PreparedCanonicalStepSample> =
+        CanonicalIntervalCandidate(
+            row = this,
+            sourceInstanceId = candidate.sourceInstanceId,
+            startAt = candidate.startAt,
+            endAt = candidate.endAt,
+        )
+}

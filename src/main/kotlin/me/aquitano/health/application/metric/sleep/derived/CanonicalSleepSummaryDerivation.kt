@@ -30,23 +30,19 @@ class CanonicalSleepSummaryDerivationService(
                     .thenBy { it.candidate.row.id })
             
             val canonical = canonicalIntervalRows(
-                rows = preparedSummaries.map { it.candidate },
+                rows = preparedSummaries.map { it.asIntervalCandidate() },
                 overlaps = { left, right ->
-                    val leftPrepared = preparedSummaries.first { it.candidate === left }
-                    val rightPrepared = preparedSummaries.first { it.candidate === right }
-                    sleepOverlaps(leftPrepared, rightPrepared)
+                    sleepOverlaps(left.row, right.row)
                 },
                 choosePreferred = { left, right ->
-                    val leftPrepared = preparedSummaries.first { it.candidate === left }
-                    val rightPrepared = preparedSummaries.first { it.candidate === right }
-                    listOf(leftPrepared, rightPrepared).minWithOrNull(
+                    listOf(left.row, right.row).minWithOrNull(
                         compareByDescending<PreparedCanonicalSleepSummary> { it.fieldCount }
                             .thenBy { it.providerRank }
                             .thenBy { it.candidate.row.id }
-                    )!!.candidate
+                    )!!.asIntervalCandidate()
                 }
             )
-            val selectedPreparedSummaries = preparedSummaries.filter { canonical.contains(it.candidate.row) }
+            val selectedPreparedSummaries = canonical
 
             repository.persistCanonicalOutput(
                 CanonicalSleepSummaryOutput(
@@ -135,4 +131,12 @@ private data class PreparedCanonicalSleepSummary(
     val durationSeconds: Long,
     val providerRank: Int,
     val fieldCount: Int,
-)
+) {
+    fun asIntervalCandidate(): CanonicalIntervalCandidate<PreparedCanonicalSleepSummary> =
+        CanonicalIntervalCandidate(
+            row = this,
+            sourceInstanceId = candidate.sourceInstanceId,
+            startAt = candidate.startAt,
+            endAt = candidate.endAt,
+        )
+}

@@ -228,6 +228,20 @@ object ActivitySummariesTable : IntIdTable("activity_summaries") {
     val createdAt = timestampWithTimeZone("created_at")
 }
 
+object CanonicalActivitySummariesTable : IntIdTable("canonical_activity_summaries") {
+    val date = date("date")
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
+    val activitySummaryId =
+        integer("activity_summary_id").references(ActivitySummariesTable.id)
+    val algorithmVersion = integer("algorithm_version")
+    val computedAt = timestampWithTimeZone("computed_at")
+
+    init {
+        uniqueIndex(date, algorithmVersion)
+    }
+}
+
 object SleepSummariesTable : IntIdTable("sleep_summaries") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)

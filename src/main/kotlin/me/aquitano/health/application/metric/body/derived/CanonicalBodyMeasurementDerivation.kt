@@ -5,6 +5,7 @@ import me.aquitano.health.application.metric.body.repository.BodyMeasurementRow
 import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementDerivationRepository
 import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementOutput
 import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementRowOutput
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -21,21 +22,7 @@ class CanonicalBodyMeasurementDerivationService(
             val dayEnd = date.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
             val rawMeasurements = repository.listRawMeasurementsForDay(dayStart, dayEnd)
             val metadata = repository.sourceMetadataFor(rawMeasurements.map { it.sourceInstanceId }.toSet())
-            val canonical = rawMeasurements.groupBy { it.metricType to it.measuredAt }
-                .values
-                .flatMap { candidates ->
-                    if (candidates.map { it.sourceInstanceId }.toSet().size <= 1) {
-                        candidates
-                    } else {
-                        listOf(
-                            candidates.maxWithOrNull(
-                                compareBy<BodyMeasurementRow> { policy.rank(me.aquitano.health.application.CanonicalMetricFamily.BODY_MEASUREMENT, metadata[it.sourceInstanceId]?.provider) }
-                                    .thenBy { -it.id }
-                            )!!
-                        )
-                    }
-                }
-                .sortedWith(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.metricType }.thenBy { it.id })
+            val canonical = canonicalBodyMeasurements(rawMeasurements, metadata)
             
             repository.persistCanonicalOutput(
                 CanonicalBodyMeasurementOutput(
@@ -47,6 +34,31 @@ class CanonicalBodyMeasurementDerivationService(
             )
         }
     }
+
+    fun canonicalBodyMeasurements(
+        rows: List<BodyMeasurementRow>,
+        metadata: Map<Int, SourceMetadata>,
+    ): List<BodyMeasurementRow> =
+        rows.groupBy { it.metricType to it.measuredAt }
+            .values
+            .flatMap { candidates ->
+                if (candidates.map { it.sourceInstanceId }.toSet().size <= 1) {
+                    candidates
+                } else {
+                    listOf(
+                        candidates.minWithOrNull(
+                            compareBy<BodyMeasurementRow> {
+                                policy.rank(
+                                    me.aquitano.health.application.CanonicalMetricFamily.BODY_MEASUREMENT,
+                                    metadata[it.sourceInstanceId]?.provider,
+                                )
+                            }
+                                .thenBy { it.id }
+                        )!!
+                    )
+                }
+            }
+            .sortedWith(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.metricType }.thenBy { it.id })
 
     private fun toOutput(row: BodyMeasurementRow): CanonicalBodyMeasurementRowOutput =
         CanonicalBodyMeasurementRowOutput(

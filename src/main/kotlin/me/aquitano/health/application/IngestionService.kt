@@ -4,6 +4,8 @@ import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
 import me.aquitano.health.api.dto.MetricCreatedCountsResponse
 import me.aquitano.health.api.dto.MetricSkippedCountsResponse
+import me.aquitano.health.application.metric.activity.derived.CanonicalActivitySummaryDerivationService
+import me.aquitano.health.application.metric.activity.repository.CanonicalActivitySummaryDerivationRepository
 import me.aquitano.health.application.metric.body.derived.CanonicalBodyMeasurementDerivationService
 import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementDerivationRepository
 import me.aquitano.health.application.metric.heart.derived.CanonicalHeartRateDerivationService
@@ -55,6 +57,8 @@ class IngestionService(
         CanonicalSleepSummaryDerivationService(CanonicalSleepSummaryDerivationRepository()),
     private val canonicalSleepSessionService: CanonicalSleepSessionDerivationService =
         CanonicalSleepSessionDerivationService(CanonicalSleepSessionDerivationRepository()),
+    private val canonicalActivitySummaryService: CanonicalActivitySummaryDerivationService =
+        CanonicalActivitySummaryDerivationService(CanonicalActivitySummaryDerivationRepository()),
 ) {
     suspend fun findExistingBatch(
         provider: String,
@@ -183,6 +187,7 @@ class IngestionService(
                 val affectedHrvCanonicalDates = linkedSetOf<LocalDate>()
                 val affectedBodyMeasurementCanonicalDates = linkedSetOf<LocalDate>()
                 val affectedSleepSummaryCanonicalDates = linkedSetOf<LocalDate>()
+                val affectedActivitySummaryCanonicalDates = linkedSetOf<LocalDate>()
 
                 try {
                     ingestionRecords.forEach { ingestionRecord ->
@@ -202,6 +207,7 @@ class IngestionService(
                         affectedHrvCanonicalDates.addAll(result.affectedHrvCanonicalDates)
                         affectedBodyMeasurementCanonicalDates.addAll(result.affectedBodyMeasurementCanonicalDates)
                         affectedSleepSummaryCanonicalDates.addAll(result.affectedSleepSummaryCanonicalDates)
+                        affectedActivitySummaryCanonicalDates.addAll(result.affectedActivitySummaryCanonicalDates)
                     }
                     stepSummaryService.recompute(
                         sourceInstance.id,
@@ -220,6 +226,7 @@ class IngestionService(
                     canonicalBodyMeasurementService.recompute(affectedBodyMeasurementCanonicalDates, now)
                     canonicalSleepSummaryService.recompute(affectedSleepSummaryCanonicalDates, now)
                     canonicalSleepSessionService.recompute(affectedSleepNightDates, now)
+                    canonicalActivitySummaryService.recompute(affectedActivitySummaryCanonicalDates, now)
                     ingestionRepository.markProcessed(batchId, now)
                 } catch (exception: Exception) {
                     if (exception is CancellationException) throw exception
