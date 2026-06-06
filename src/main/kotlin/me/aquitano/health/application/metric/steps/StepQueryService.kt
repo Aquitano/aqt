@@ -13,8 +13,9 @@ import me.aquitano.health.application.metric.common.meta
 import me.aquitano.health.application.metric.common.readFilters
 import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.application.metric.common.toResponse
+import me.aquitano.health.application.metric.steps.derived.CANONICAL_STEP_ALGORITHM_VERSION
+import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
 import me.aquitano.health.application.metric.steps.repository.StepRepository
-import me.aquitano.health.application.metric.steps.repository.StepSampleRow
 import me.aquitano.health.application.metric.steps.repository.StepDailySummaryRow
 import org.jetbrains.exposed.v1.jdbc.Database
 import java.time.Instant
@@ -22,6 +23,7 @@ import java.time.Instant
 class StepQueryService(
     database: Database,
     private val stepRepository: StepRepository,
+    private val canonicalRepository: CanonicalStepDerivationRepository,
     private val canonicalMetricsService: CanonicalMetricsService,
 ) : BaseReadService(database) {
     suspend fun listStepSamples(params: QueryParams): StepSamplesResponse =
@@ -32,14 +34,10 @@ class StepQueryService(
                 allowedSorts = setOf(SortFields.START_AT),
                 latestSupported = true,
             )
-            val (rawRows, sourceMetadata) = stepRepository.listStepSamples(filters)
-            val rows = if (canonical) {
-                canonicalMetricsService.canonicalStepSamples(
-                    rawRows,
-                    stepRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
-                )
+            val (rows, sourceMetadata) = if (canonical) {
+                canonicalRepository.listCanonicalStepSamples(filters, CANONICAL_STEP_ALGORITHM_VERSION)
             } else {
-                rawRows
+                stepRepository.listStepSamples(filters)
             }
             StepSamplesResponse(
                 items = rows.map {

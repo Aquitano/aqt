@@ -189,6 +189,8 @@ class MetricWriteService(
         return MetricWriteResult(
             created = MetricCreatedCounts(bodyMeasurements = inserted),
             duplicateSkipped = record.measurements.size - inserted,
+            affectedBodyMeasurementCanonicalDates =
+                if (inserted > 0) setOf(record.measuredAt.utcDate()) else emptySet(),
         )
     }
 
@@ -361,6 +363,7 @@ data class MetricWriteResult(
     val affectedHeartRateCanonicalDates: Set<LocalDate> = emptySet(),
     val affectedRespiratoryRateCanonicalDates: Set<LocalDate> = emptySet(),
     val affectedHrvCanonicalDates: Set<LocalDate> = emptySet(),
+    val affectedBodyMeasurementCanonicalDates: Set<LocalDate> = emptySet(),
 )
 
 private fun affectedUtcDates(

@@ -9,8 +9,12 @@ import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.application.metric.heart.repository.HeartRateSummaryRow
 import me.aquitano.health.application.metric.heart.derived.CANONICAL_HEART_RATE_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.heart.repository.CanonicalHeartRateDerivationRepository
+import me.aquitano.health.application.metric.steps.derived.CANONICAL_STEP_ALGORITHM_VERSION
+import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
 import me.aquitano.health.application.metric.steps.repository.StepRepository
 import me.aquitano.health.application.metric.heart.repository.HeartRateRepository
+import me.aquitano.health.application.metric.body.derived.CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION
+import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementDerivationRepository
 import me.aquitano.health.application.metric.body.repository.BodyMeasurementRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
 import me.aquitano.health.application.metric.steps.repository.StepSampleRow
@@ -146,34 +150,47 @@ class HealthDayQueryService(
 
 class StepsDayModule(
     private val stepRepository: StepRepository = StepRepository(),
-    private val canonicalMetricsService: CanonicalMetricsService,
+    private val canonicalRepository: CanonicalStepDerivationRepository = CanonicalStepDerivationRepository(),
 ) : HealthDayModule<HealthDayStepsResponse> {
     override val name = "steps"
 
     override suspend fun read(context: HealthDayQueryContext): HealthDayStepsResponse {
-        val (rawRows) = stepRepository.listStepSamplesForWindow(context.filters())
-        val rows = if (context.canonical) {
-            canonicalMetricsService.canonicalStepSamples(
-                rawRows,
-                stepRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
+        val filters = context.filters()
+        val (rows, sourceMetadata) = if (context.canonical) {
+            canonicalRepository.listCanonicalStepSamples(
+                filters,
+                CANONICAL_STEP_ALGORITHM_VERSION,
+                overlapsWindow = true,
             )
         } else {
-            rawRows
+            stepRepository.listStepSamplesForWindow(filters)
         }
         val buckets = buckets(context)
         val values = DoubleArray(buckets.size)
         val counts = IntArray(buckets.size)
 
-        rows.forEach { row ->
-            val sampleStart = Instant.parse(row.startAt)
-            val sampleEnd = Instant.parse(row.endAt)
-            val sampleSeconds = Duration.between(sampleStart, sampleEnd).seconds
-            if (sampleSeconds <= 0) return@forEach
-            buckets.forEachIndexed { index, bucket ->
-                val overlap = overlapSeconds(sampleStart, sampleEnd, bucket.first, bucket.second)
-                if (overlap > 0) {
-                    values[index] += row.steps * (overlap.toDouble() / sampleSeconds.toDouble())
-                    counts[index] += 1
+        if (context.canonical) {
+            val byStart = buckets.mapIndexed { index, bucket -> bucket.first to index }.toMap()
+            canonicalRepository.listBucketContributions(filters, CANONICAL_STEP_ALGORITHM_VERSION)
+                .forEach { contribution ->
+                    val index = byStart[Instant.parse(contribution.bucketStartAt)]
+                    if (index != null) {
+                        values[index] += contribution.value
+                        counts[index] += 1
+                    }
+                }
+        } else {
+            rows.forEach { row ->
+                val sampleStart = Instant.parse(row.startAt)
+                val sampleEnd = Instant.parse(row.endAt)
+                val sampleSeconds = Duration.between(sampleStart, sampleEnd).seconds
+                if (sampleSeconds <= 0) return@forEach
+                buckets.forEachIndexed { index, bucket ->
+                    val overlap = overlapSeconds(sampleStart, sampleEnd, bucket.first, bucket.second)
+                    if (overlap > 0) {
+                        values[index] += row.steps * (overlap.toDouble() / sampleSeconds.toDouble())
+                        counts[index] += 1
+                    }
                 }
             }
         }
@@ -189,7 +206,7 @@ class StepsDayModule(
                     count = counts[index],
                 )
             },
-            source = rows.singleSource(context.includeSource, stepRepository) { it.sourceInstanceId },
+            source = rows.singleSource(context.includeSource, sourceMetadata) { it.sourceInstanceId },
         )
     }
 }
@@ -252,37 +269,33 @@ class HeartRateDayModule(
 
 class WeightDayModule(
     private val bodyMeasurementRepository: BodyMeasurementRepository = BodyMeasurementRepository(),
-    private val canonicalMetricsService: CanonicalMetricsService,
+    private val canonicalRepository: CanonicalBodyMeasurementDerivationRepository =
+        CanonicalBodyMeasurementDerivationRepository(),
 ) : HealthDayModule<HealthDayWeightResponse> {
     override val name = "weight"
 
     override suspend fun read(context: HealthDayQueryContext): HealthDayWeightResponse {
         val filters = context.filters()
-        val (rawPoints, pointSourceMetadata) =
-            bodyMeasurementRepository.listBodyMeasurementsForWindow(filters, BodyMetricTypes.WEIGHT)
-        val points = if (context.canonical) {
-            canonicalMetricsService.canonicalBodyMeasurements(
-                rawPoints,
-                bodyMeasurementRepository.sourceMetadataFor(rawPoints.sourceInstanceIds { it.sourceInstanceId }),
-            )
-        } else {
-            rawPoints
-        }
-        val (previousCandidates, previousSourceMetadata) =
+        val (points, pointSourceMetadata) =
             if (context.canonical) {
-                bodyMeasurementRepository.latestBodyMeasurementsBefore(filters, BodyMetricTypes.WEIGHT)
+                canonicalRepository.listCanonicalBodyMeasurements(
+                    filters,
+                    BodyMetricTypes.WEIGHT,
+                    CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
+                )
             } else {
-                val (row, metadata) = bodyMeasurementRepository.latestBodyMeasurementBefore(filters, BodyMetricTypes.WEIGHT)
-                listOfNotNull(row) to metadata
+                bodyMeasurementRepository.listBodyMeasurementsForWindow(filters, BodyMetricTypes.WEIGHT)
             }
-        val previous = if (context.canonical) {
-            canonicalMetricsService.canonicalBodyMeasurements(
-                previousCandidates,
-                bodyMeasurementRepository.sourceMetadataFor(previousCandidates.sourceInstanceIds { it.sourceInstanceId }),
-            ).maxWithOrNull(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.id })
-        } else {
-            previousCandidates.singleOrNull()
-        }
+        val (previous, previousSourceMetadata) =
+            if (context.canonical) {
+                canonicalRepository.latestCanonicalBodyMeasurementBefore(
+                    filters,
+                    BodyMetricTypes.WEIGHT,
+                    CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
+                )
+            } else {
+                bodyMeasurementRepository.latestBodyMeasurementBefore(filters, BodyMetricTypes.WEIGHT)
+            }
         val latest = points.maxWithOrNull(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.id })
         val sourceMetadata = pointSourceMetadata + previousSourceMetadata
 

@@ -67,6 +67,40 @@ object SleepNightsTable : IntIdTable("sleep_nights") {
     }
 }
 
+object CanonicalStepSamplesTable : IntIdTable("canonical_step_samples") {
+    val date = date("date")
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
+    val stepSampleId =
+        integer("step_sample_id").references(StepSamplesTable.id)
+    val startAt = timestampWithTimeZone("start_at")
+    val endAt = timestampWithTimeZone("end_at")
+    val steps = integer("steps")
+    val algorithmVersion = integer("algorithm_version")
+    val computedAt = timestampWithTimeZone("computed_at")
+
+    init {
+        uniqueIndex(date, stepSampleId, algorithmVersion)
+    }
+}
+
+object CanonicalStepDayBucketContributionsTable : IntIdTable("canonical_step_day_bucket_contributions") {
+    val date = date("date")
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
+    val stepSampleId =
+        integer("step_sample_id").references(StepSamplesTable.id)
+    val bucketStartAt = timestampWithTimeZone("bucket_start_at")
+    val bucketEndAt = timestampWithTimeZone("bucket_end_at")
+    val value = double("value")
+    val algorithmVersion = integer("algorithm_version")
+    val computedAt = timestampWithTimeZone("computed_at")
+
+    init {
+        uniqueIndex(date, stepSampleId, bucketStartAt, algorithmVersion)
+    }
+}
+
 object CanonicalSleepNightsTable : IntIdTable("canonical_sleep_nights") {
     val date = date("date")
     val timezone = text("timezone")
@@ -94,6 +128,22 @@ object BodyMeasurementsTable : IntIdTable("body_measurements") {
     val value = double("value")
     val unit = text("unit")
     val createdAt = timestampWithTimeZone("created_at")
+}
+
+object CanonicalBodyMeasurementsTable : IntIdTable("canonical_body_measurements") {
+    val date = date("date")
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
+    val bodyMeasurementId =
+        integer("body_measurement_id").references(BodyMeasurementsTable.id)
+    val measuredAt = timestampWithTimeZone("measured_at")
+    val metricType = text("metric_type")
+    val algorithmVersion = integer("algorithm_version")
+    val computedAt = timestampWithTimeZone("computed_at")
+
+    init {
+        uniqueIndex(date, bodyMeasurementId, algorithmVersion)
+    }
 }
 
 object HeartRateSamplesTable : IntIdTable("heart_rate_samples") {

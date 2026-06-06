@@ -21,6 +21,17 @@ internal fun <T> List<T>.singleSource(
         .toResponse()
 }
 
+internal fun <T> List<T>.singleSource(
+    includeSource: Boolean,
+    sourceMetadata: Map<Int, SourceMetadata>,
+    sourceInstanceId: (T) -> Int,
+): SourceMetadataResponse? {
+    if (!includeSource) return null
+    val ids = sourceInstanceIds(sourceInstanceId)
+    if (ids.size != 1) return null
+    return sourceMetadata[ids.single()].toResponse()
+}
+
 internal fun List<HeartRateSampleRow>.heartRateSummary(): HeartRateSummaryRow =
     HeartRateSummaryRow(
         count = size,

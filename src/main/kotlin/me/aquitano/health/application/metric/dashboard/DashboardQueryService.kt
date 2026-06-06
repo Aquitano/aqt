@@ -12,10 +12,11 @@ import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.application.metric.common.toResponse
 import me.aquitano.health.application.metric.common.validateDateRange
 import me.aquitano.health.application.metric.heart.derived.CANONICAL_HEART_RATE_ALGORITHM_VERSION
+import me.aquitano.health.application.metric.body.derived.CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION
+import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementDerivationRepository
 import me.aquitano.health.application.metric.heart.repository.CanonicalHeartRateDerivationRepository
 import me.aquitano.health.application.singleSource
 import me.aquitano.health.domain.BodyMetricTypes
-import me.aquitano.health.application.metric.body.repository.BodyMeasurementRow
 import me.aquitano.health.application.metric.common.repository.DailyReadFilters
 import me.aquitano.health.application.metric.heart.repository.HeartRateSampleRow
 import me.aquitano.health.application.metric.common.repository.ReadFilters
@@ -37,6 +38,8 @@ class DashboardQueryService(
     private val bodyMeasurementRepository: BodyMeasurementRepository,
     private val heartRateRepository: HeartRateRepository,
     private val canonicalHeartRateRepository: CanonicalHeartRateDerivationRepository = CanonicalHeartRateDerivationRepository(),
+    private val canonicalBodyMeasurementRepository: CanonicalBodyMeasurementDerivationRepository =
+        CanonicalBodyMeasurementDerivationRepository(),
     private val canonicalMetricsService: CanonicalMetricsService,
     private val sleepNightService: SleepNightService,
 ) : BaseReadService(database) {
@@ -137,19 +140,12 @@ class DashboardQueryService(
         filters: ReadFilters,
         canonical: Boolean,
     ) = if (canonical) {
-        val (rows, metadata) = bodyMeasurementRepository.listBodyMeasurements(
-            filters.copy(
-                limit = DashboardSummaryLatestCandidateLimit,
-                order = Orders.DESC,
-            ),
+        val (row, metadata) = canonicalBodyMeasurementRepository.latestCanonicalBodyMeasurement(
+            filters,
             BodyMetricTypes.WEIGHT,
+            CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
         )
-        val canonicalRows = canonicalMetricsService.canonicalBodyMeasurements(
-            rows,
-            bodyMeasurementRepository.sourceMetadataFor(rows.sourceInstanceIds { it.sourceInstanceId }),
-        )
-        canonicalRows.maxWithOrNull(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.id })
-            ?.toResponse(metadata)
+        row?.toResponse(metadata)
     } else {
         val (row, metadata) = bodyMeasurementRepository.latestBodyMeasurement(
             filters,

@@ -93,6 +93,8 @@ class IngestionRouteTest {
         assertEquals(4, countRows(dbPath, "ingestion_records"))
         assertEquals(1, countRows(dbPath, "step_samples"))
         assertEquals(1, countRows(dbPath, "step_daily_summaries"))
+        assertEquals(1, countRows(dbPath, "canonical_step_samples"))
+        assertEquals(4, countRows(dbPath, "canonical_step_day_bucket_contributions"))
         assertEquals(
             1200,
             singleInt(dbPath, "SELECT steps FROM step_daily_summaries")
@@ -100,6 +102,7 @@ class IngestionRouteTest {
         assertEquals(1, countRows(dbPath, "sleep_sessions"))
         assertEquals(2, countRows(dbPath, "sleep_stages"))
         assertEquals(5, countRows(dbPath, "body_measurements"))
+        assertEquals(5, countRows(dbPath, "canonical_body_measurements"))
         assertEquals(1, countRows(dbPath, "heart_rate_samples"))
         assertEquals(
             "processed",

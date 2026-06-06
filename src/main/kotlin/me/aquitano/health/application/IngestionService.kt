@@ -4,6 +4,8 @@ import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
 import me.aquitano.health.api.dto.MetricCreatedCountsResponse
 import me.aquitano.health.api.dto.MetricSkippedCountsResponse
+import me.aquitano.health.application.metric.body.derived.CanonicalBodyMeasurementDerivationService
+import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementDerivationRepository
 import me.aquitano.health.application.metric.heart.derived.CanonicalHeartRateDerivationService
 import me.aquitano.health.application.metric.heart.repository.CanonicalHeartRateDerivationRepository
 import me.aquitano.health.application.metric.hrv.derived.CanonicalHrvDerivationService
@@ -11,6 +13,8 @@ import me.aquitano.health.application.metric.hrv.repository.CanonicalHrvDerivati
 import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.application.metric.respiratory.derived.CanonicalRespiratoryRateDerivationService
 import me.aquitano.health.application.metric.respiratory.repository.CanonicalRespiratoryRateDerivationRepository
+import me.aquitano.health.application.metric.steps.derived.CanonicalStepDerivationService
+import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
 import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
@@ -39,6 +43,10 @@ class IngestionService(
         CanonicalRespiratoryRateDerivationService(CanonicalRespiratoryRateDerivationRepository()),
     private val canonicalHrvService: CanonicalHrvDerivationService =
         CanonicalHrvDerivationService(CanonicalHrvDerivationRepository()),
+    private val canonicalStepService: CanonicalStepDerivationService =
+        CanonicalStepDerivationService(CanonicalStepDerivationRepository()),
+    private val canonicalBodyMeasurementService: CanonicalBodyMeasurementDerivationService =
+        CanonicalBodyMeasurementDerivationService(CanonicalBodyMeasurementDerivationRepository()),
 ) {
     suspend fun findExistingBatch(
         provider: String,
@@ -165,6 +173,7 @@ class IngestionService(
                 val affectedHeartRateCanonicalDates = linkedSetOf<LocalDate>()
                 val affectedRespiratoryRateCanonicalDates = linkedSetOf<LocalDate>()
                 val affectedHrvCanonicalDates = linkedSetOf<LocalDate>()
+                val affectedBodyMeasurementCanonicalDates = linkedSetOf<LocalDate>()
 
                 try {
                     ingestionRecords.forEach { ingestionRecord ->
@@ -182,12 +191,14 @@ class IngestionService(
                         affectedHeartRateCanonicalDates.addAll(result.affectedHeartRateCanonicalDates)
                         affectedRespiratoryRateCanonicalDates.addAll(result.affectedRespiratoryRateCanonicalDates)
                         affectedHrvCanonicalDates.addAll(result.affectedHrvCanonicalDates)
+                        affectedBodyMeasurementCanonicalDates.addAll(result.affectedBodyMeasurementCanonicalDates)
                     }
                     stepSummaryService.recompute(
                         sourceInstance.id,
                         affectedStepDates,
                         now
                     )
+                    canonicalStepService.recompute(affectedStepDates, now)
                     sleepNightService.recomputeUtc(
                         sourceInstance.id,
                         affectedSleepNightDates,
@@ -196,6 +207,7 @@ class IngestionService(
                     canonicalHeartRateService.recompute(affectedHeartRateCanonicalDates, now)
                     canonicalRespiratoryRateService.recompute(affectedRespiratoryRateCanonicalDates, now)
                     canonicalHrvService.recompute(affectedHrvCanonicalDates, now)
+                    canonicalBodyMeasurementService.recompute(affectedBodyMeasurementCanonicalDates, now)
                     ingestionRepository.markProcessed(batchId, now)
                 } catch (exception: Exception) {
                     if (exception is CancellationException) throw exception
