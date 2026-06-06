@@ -3,7 +3,6 @@ import {
   getScheduledSyncConfig,
   updateScheduledSyncConfig,
 } from "@/lib/aqtHealthApi";
-import { requirePrivilegedProxyAccess } from "@/lib/privilegedProxyAuth";
 import type { ScheduledSyncConfigUpdateRequest } from "@/lib/types";
 
 type RouteContext = {
@@ -14,9 +13,6 @@ type RouteContext = {
 };
 
 export async function GET(request: Request, context: RouteContext) {
-  const guard = requirePrivilegedProxyAccess(request);
-  if (guard) return guard;
-
   const { providerCode, providerInstanceId } = await context.params;
   const result = await getScheduledSyncConfig(providerCode, providerInstanceId);
 
@@ -26,9 +22,6 @@ export async function GET(request: Request, context: RouteContext) {
 }
 
 export async function PUT(request: Request, context: RouteContext) {
-  const guard = requirePrivilegedProxyAccess(request, { mutation: true });
-  if (guard) return guard;
-
   const { providerCode, providerInstanceId } = await context.params;
   const body = (await request.json().catch(() => ({}))) as ScheduledSyncConfigUpdateRequest;
   const result = await updateScheduledSyncConfig(providerCode, providerInstanceId, normalizePayload(body));
@@ -50,6 +43,6 @@ function normalizePayload(body: ScheduledSyncConfigUpdateRequest): ScheduledSync
   };
 }
 
-function positiveInteger(value?: number): number | undefined {
+function positiveInteger(value?: number | null): number | undefined {
   return Number.isInteger(value) && value && value > 0 ? value : undefined;
 }

@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server";
 import { syncProvider } from "@/lib/aqtHealthApi";
-import { requirePrivilegedProxyAccess } from "@/lib/privilegedProxyAuth";
 import type { ProviderSyncRequest } from "@/lib/types";
 
 export async function POST(request: Request) {
-  const guard = requirePrivilegedProxyAccess(request, { mutation: true });
-  if (guard) return guard;
-
   const body = (await request.json().catch(() => ({}))) as ProviderSyncRequest;
   const payload = normalizePayload(body);
   const result = await syncProvider("google-health", payload);
