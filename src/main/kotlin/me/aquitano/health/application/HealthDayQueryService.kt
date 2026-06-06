@@ -13,6 +13,7 @@ import me.aquitano.health.application.metric.steps.derived.CANONICAL_STEP_ALGORI
 import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
 import me.aquitano.health.application.metric.body.derived.CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementDerivationRepository
+import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
 import me.aquitano.health.application.metric.sleep.repository.SleepStageRow
@@ -36,6 +37,7 @@ data class HealthDayQueryContext(
     val provider: String?,
     val providerInstanceId: String?,
     val includeSource: Boolean,
+    val computedAt: Instant,
 )
 
 interface HealthDayModule<T> {
@@ -94,6 +96,7 @@ class HealthDayQueryService(
             provider = params.optional("provider"),
             providerInstanceId = params.optional("providerInstanceId"),
             includeSource = params.boolean("includeSource", default = false),
+            computedAt = now,
         )
 
         return suspendTransaction(db = database) {
@@ -263,18 +266,32 @@ class WeightDayModule(
 
 class SleepDayModule(
     private val sleepRepository: SleepRepository = SleepRepository(),
-    private val canonicalMetricsService: CanonicalMetricsService,
+    private val sleepNightService: SleepNightService,
 ) : HealthDayModule<HealthDaySleepResponse> {
     override val name = "sleep"
 
     override suspend fun read(context: HealthDayQueryContext): HealthDaySleepResponse {
-        val (rawSessions, stagesBySession, sourceMetadata) =
-            sleepRepository.listSleepSessionsOverlappingWindow(context.filters())
-        val sessions = canonicalMetricsService.canonicalSleepSessions(
-            rawSessions,
-            stagesBySession,
-            sleepRepository.sourceMetadataFor(rawSessions.sourceInstanceIds { it.sourceInstanceId }),
+        val filters = SleepNightReadFilters(
+            fromDate = context.date,
+            toDate = context.date.plusDays(1),
+            timezone = context.timezone,
+            provider = context.provider,
+            providerInstanceId = context.providerInstanceId,
+            includeSource = context.includeSource,
+            limit = Int.MAX_VALUE,
+            sort = "date",
+            order = "asc",
         )
+        sleepNightService.materializeCanonical(filters, context.computedAt)
+
+        val (nights, stagesBySession, sourceMetadata) =
+            sleepRepository.listCanonicalSleepNights(filters)
+        val sessions = nights
+            .map { it.session }
+            .filter { session ->
+                Instant.parse(session.startAt).isBefore(context.to) &&
+                    Instant.parse(session.endAt).isAfter(context.from)
+            }
         val timeline = sessions.flatMap { session ->
             stagesBySession[session.id].orEmpty().mapNotNull { stage ->
                 val start = maxOf(Instant.parse(stage.startAt), context.from)
