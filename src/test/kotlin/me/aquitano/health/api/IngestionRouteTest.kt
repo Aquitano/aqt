@@ -66,8 +66,8 @@ class IngestionRouteTest {
 
         assertEquals(HttpStatusCode.Created, response.status)
         val body = response.jsonBody()
-        assertEquals(4, body["recordsReceived"]!!.jsonPrimitive.int)
-        assertEquals(4, body["ingestionRecordsStored"]!!.jsonPrimitive.int)
+        assertEquals(5, body["recordsReceived"]!!.jsonPrimitive.int)
+        assertEquals(5, body["ingestionRecordsStored"]!!.jsonPrimitive.int)
         assertEquals(
             1,
             body["metricsCreated"]!!.jsonObject["stepSamples"]!!.jsonPrimitive.int
@@ -88,9 +88,13 @@ class IngestionRouteTest {
             1,
             body["metricsCreated"]!!.jsonObject["heartRateSamples"]!!.jsonPrimitive.int
         )
+        assertEquals(
+            1,
+            body["metricsCreated"]!!.jsonObject["sleepSummaries"]!!.jsonPrimitive.int
+        )
 
         assertEquals(1, countRows(dbPath, "ingestion_batches"))
-        assertEquals(4, countRows(dbPath, "ingestion_records"))
+        assertEquals(5, countRows(dbPath, "ingestion_records"))
         assertEquals(1, countRows(dbPath, "step_samples"))
         assertEquals(1, countRows(dbPath, "step_daily_summaries"))
         assertEquals(1, countRows(dbPath, "canonical_step_samples"))
@@ -104,6 +108,8 @@ class IngestionRouteTest {
         assertEquals(5, countRows(dbPath, "body_measurements"))
         assertEquals(5, countRows(dbPath, "canonical_body_measurements"))
         assertEquals(1, countRows(dbPath, "heart_rate_samples"))
+        assertEquals(1, countRows(dbPath, "sleep_summaries"))
+        assertEquals(1, countRows(dbPath, "canonical_sleep_summaries"))
         assertEquals(
             "processed",
             singleString(dbPath, "SELECT status FROM ingestion_batches")
@@ -483,6 +489,24 @@ class IngestionRouteTest {
               "providerRecordId": "hr-1",
               "measuredAt": "2026-04-19T08:30:00Z",
               "bpm": 62
+            },
+            {
+              "type": "sleep_summary",
+              "providerRecordId": "sleep-summary-1",
+              "startAt": "2026-04-18T22:30:00Z",
+              "endAt": "2026-04-19T06:45:00Z",
+              "timeInBedSeconds": 29700,
+              "totalSleepSeconds": 21000,
+              "lightSleepSeconds": 9000,
+              "deepSleepSeconds": 6300,
+              "remSleepSeconds": 5700,
+              "sleepEfficiencyPercent": 88.5,
+              "sleepLatencySeconds": 600,
+              "wakeupLatencySeconds": 120,
+              "wakeupDurationSeconds": 900,
+              "wakeupCount": 2,
+              "wasoSeconds": 300,
+              "sleepScore": 88
             }
           ]
         }

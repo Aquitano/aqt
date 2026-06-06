@@ -248,7 +248,10 @@ class MetricWriteService(
             now,
         )
         return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(sleepSummaries = 1))
+            MetricWriteResult(
+                created = MetricCreatedCounts(sleepSummaries = 1),
+                affectedSleepSummaryCanonicalDates = setOf(record.startAt.utcDate()),
+            )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
         }
@@ -364,6 +367,7 @@ data class MetricWriteResult(
     val affectedRespiratoryRateCanonicalDates: Set<LocalDate> = emptySet(),
     val affectedHrvCanonicalDates: Set<LocalDate> = emptySet(),
     val affectedBodyMeasurementCanonicalDates: Set<LocalDate> = emptySet(),
+    val affectedSleepSummaryCanonicalDates: Set<LocalDate> = emptySet(),
 )
 
 private fun affectedUtcDates(

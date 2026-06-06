@@ -237,6 +237,22 @@ object SleepSummariesTable : IntIdTable("sleep_summaries") {
     val createdAt = timestampWithTimeZone("created_at")
 }
 
+object CanonicalSleepSummariesTable : IntIdTable("canonical_sleep_summaries") {
+    val date = date("date")
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
+    val sleepSummaryId =
+        integer("sleep_summary_id").references(SleepSummariesTable.id)
+    val startAt = timestampWithTimeZone("start_at")
+    val endAt = timestampWithTimeZone("end_at")
+    val algorithmVersion = integer("algorithm_version")
+    val computedAt = timestampWithTimeZone("computed_at")
+
+    init {
+        uniqueIndex(date, sleepSummaryId, algorithmVersion)
+    }
+}
+
 object RespiratoryRateSamplesTable : IntIdTable("respiratory_rate_samples") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)

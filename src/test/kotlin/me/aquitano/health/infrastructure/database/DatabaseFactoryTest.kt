@@ -44,6 +44,7 @@ class DatabaseFactoryTest {
         assertContains(tableNames, "canonical_heart_rate_samples")
         assertContains(tableNames, "canonical_respiratory_rate_samples")
         assertContains(tableNames, "canonical_hrv_samples")
+        assertContains(tableNames, "canonical_sleep_summaries")
         assertContains(tableNames, "provider_oauth_accounts")
         assertContains(tableNames, "provider_oauth_states")
         assertContains(tableNames, "provider_sync_runs")
