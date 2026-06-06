@@ -131,9 +131,6 @@ class QueryParams(
         }
     }
 
-    fun canonical(default: Boolean): Boolean =
-        boolean("canonical", default)
-
     fun limit(default: Int, max: Int): Int {
         val value = optional("limit") ?: return default
         val parsed = value.toIntOrNull()

@@ -236,11 +236,11 @@ Supported record types:
 
 `batchExternalId` is idempotent per source instance. Provider record IDs are also used to skip duplicate metric rows where available.
 
-## Raw vs Canonical Metrics
+## Canonical Metrics
 
-The database preserves raw provider rows for auditability. Cross-provider conflict resolution is applied at read time through `canonical=true|false`; no provider rows are deleted or rewritten.
+The database preserves raw provider rows for auditability, but read endpoints return canonical cross-provider results. No provider rows are deleted or rewritten.
 
-Raw list endpoints default to `canonical=false`. Latest, summary, dashboard, and `/api/v1/health/day` reads default to `canonical=true`. Provider filters are applied before canonicalization, so `provider=withings&canonical=true` only reconciles matching Withings source instances.
+Provider filters are applied before canonicalization, so `provider=withings` only reconciles matching Withings source instances.
 
 Default source priorities are code-based in `CanonicalMetricsPolicy`:
 
@@ -257,7 +257,7 @@ Overlap handling:
 - Heart rate, respiratory rate, and HRV: samples from different sources at the same or near-identical timestamp are de-duplicated within a 30-second tolerance.
 - Body measurements: rows with the same metric type and timestamp from different sources resolve by provider priority.
 
-Use `canonical=false` on read endpoints when inspecting all provider-specific rows, or `canonical=true` on list endpoints when a client wants the same conflict policy used by summaries and dashboards.
+Inspect raw provider-specific rows directly in the database when auditing ingestion output.
 
 ## Provider Discovery
 
@@ -489,11 +489,11 @@ Metric list responses include an `items` array plus a `meta` object:
 
 Cursor pagination is intentionally not exposed yet. `nextCursor` is part of the response metadata contract but remains `null` and is omitted from JSON responses until real cursor pagination is added.
 
-`latest=true` is supported on raw step samples, sleep sessions, body measurements, and heart-rate samples. It cannot be combined with `limit`, `sort`, or `order`; unsupported combinations return `400 validation_failed` with field-level details. Daily step summaries and sleep nights do not support `latest=true`; use `date` or descending `order` where appropriate.
+`latest=true` is supported on step samples, sleep sessions, body measurements, and heart-rate samples. It cannot be combined with `limit`, `sort`, or `order`; unsupported combinations return `400 validation_failed` with field-level details. Daily step summaries and sleep nights do not support `latest=true`; use `date` or descending `order` where appropriate.
 
 Sleep reads have two modes:
 
-- `/api/v1/sleep/sessions` is the raw instant-based read. Its `from` and `to` filters apply to session `startAt`, so it is useful for inspecting stored sessions by timestamp.
+- `/api/v1/sleep/sessions` is the instant-based read. Its `from` and `to` filters apply to session `startAt`.
 - `/api/v1/sleep/nights` is the calendar sleep-night read. It returns complete sessions, including all stages, and classifies each session by the localized date of `endAt`. `timezone` is an IANA timezone and defaults to `UTC`; pass it when clients need local calendar behavior. For example, `date=2026-04-20&timezone=Europe/Berlin` returns a session that starts at `2026-04-19T22:00:00Z` and ends at `2026-04-20T06:00:00Z` as the `2026-04-20` sleep night in `Europe/Berlin`. A session from the evening of April 20 to the morning of April 21 is returned for `date=2026-04-21`, not April 20, under those semantics.
 
 ## Storage Model

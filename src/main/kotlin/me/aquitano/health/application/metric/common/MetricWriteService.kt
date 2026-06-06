@@ -168,6 +168,7 @@ class MetricWriteService(
                     sleepStages = record.stages.size,
                 ),
                 affectedSleepNightDates = setOf(record.endAt.utcDate()),
+                affectedSleepSessionCanonicalDates = setOf(record.startAt.utcDate()),
             )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
@@ -189,6 +190,8 @@ class MetricWriteService(
         return MetricWriteResult(
             created = MetricCreatedCounts(bodyMeasurements = inserted),
             duplicateSkipped = record.measurements.size - inserted,
+            affectedBodyMeasurementCanonicalDates =
+                if (inserted > 0) setOf(record.measuredAt.utcDate()) else emptySet(),
         )
     }
 
@@ -227,7 +230,10 @@ class MetricWriteService(
             now,
         )
         return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(activitySummaries = 1))
+            MetricWriteResult(
+                created = MetricCreatedCounts(activitySummaries = 1),
+                affectedActivitySummaryCanonicalDates = setOf(record.date),
+            )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
         }
@@ -246,7 +252,10 @@ class MetricWriteService(
             now,
         )
         return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(sleepSummaries = 1))
+            MetricWriteResult(
+                created = MetricCreatedCounts(sleepSummaries = 1),
+                affectedSleepSummaryCanonicalDates = setOf(record.startAt.utcDate()),
+            )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
         }
@@ -358,9 +367,13 @@ data class MetricWriteResult(
     val duplicateSkipped: Int = 0,
     val affectedStepSummaryDates: Set<LocalDate> = emptySet(),
     val affectedSleepNightDates: Set<LocalDate> = emptySet(),
+    val affectedSleepSessionCanonicalDates: Set<LocalDate> = emptySet(),
     val affectedHeartRateCanonicalDates: Set<LocalDate> = emptySet(),
     val affectedRespiratoryRateCanonicalDates: Set<LocalDate> = emptySet(),
     val affectedHrvCanonicalDates: Set<LocalDate> = emptySet(),
+    val affectedBodyMeasurementCanonicalDates: Set<LocalDate> = emptySet(),
+    val affectedSleepSummaryCanonicalDates: Set<LocalDate> = emptySet(),
+    val affectedActivitySummaryCanonicalDates: Set<LocalDate> = emptySet(),
 )
 
 private fun affectedUtcDates(

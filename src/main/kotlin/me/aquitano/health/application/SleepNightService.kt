@@ -12,7 +12,6 @@ import java.time.ZoneOffset
 
 class SleepNightService(
     private val repository: SleepNightDerivationRepository,
-    private val canonicalMetricsService: CanonicalMetricsService = CanonicalMetricsService(CanonicalMetricsPolicy.default()),
     private val derivation: SleepNightDerivation = SleepNightDerivation(repository),
 ) {
     suspend fun recomputeUtc(
@@ -70,15 +69,10 @@ class SleepNightService(
             algorithmVersion = CANONICAL_SLEEP_NIGHT_ALGORITHM_VERSION,
         )
         datesToRecompute.forEach { date ->
-            val (sessions, stagesBySession) = repository.listSleepSessionsForCanonicalNights(
+            val canonicalSessions = repository.listCanonicalSleepSessionsForCanonicalNights(
                 sourceInstanceIds = sourceInstanceIds,
                 timezone = filters.timezone,
                 date = date,
-            )
-            val canonicalSessions = canonicalMetricsService.canonicalSleepSessions(
-                sessions,
-                stagesBySession,
-                repository.sourceMetadataFor(sessions.sourceInstanceIds { it.sourceInstanceId }),
             )
             repository.replaceCanonicalSleepNights(
                 date = date,

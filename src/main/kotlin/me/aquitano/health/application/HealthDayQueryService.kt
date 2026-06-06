@@ -9,11 +9,12 @@ import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.application.metric.heart.repository.HeartRateSummaryRow
 import me.aquitano.health.application.metric.heart.derived.CANONICAL_HEART_RATE_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.heart.repository.CanonicalHeartRateDerivationRepository
-import me.aquitano.health.application.metric.steps.repository.StepRepository
-import me.aquitano.health.application.metric.heart.repository.HeartRateRepository
-import me.aquitano.health.application.metric.body.repository.BodyMeasurementRepository
+import me.aquitano.health.application.metric.steps.derived.CANONICAL_STEP_ALGORITHM_VERSION
+import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
+import me.aquitano.health.application.metric.body.derived.CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION
+import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementDerivationRepository
+import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
-import me.aquitano.health.application.metric.steps.repository.StepSampleRow
 import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
 import me.aquitano.health.application.metric.sleep.repository.SleepStageRow
 import me.aquitano.health.application.metric.body.repository.BodyMeasurementRow
@@ -36,7 +37,7 @@ data class HealthDayQueryContext(
     val provider: String?,
     val providerInstanceId: String?,
     val includeSource: Boolean,
-    val canonical: Boolean,
+    val computedAt: Instant,
 )
 
 interface HealthDayModule<T> {
@@ -95,7 +96,7 @@ class HealthDayQueryService(
             provider = params.optional("provider"),
             providerInstanceId = params.optional("providerInstanceId"),
             includeSource = params.boolean("includeSource", default = false),
-            canonical = params.canonical(default = true),
+            computedAt = now,
         )
 
         return suspendTransaction(db = database) {
@@ -145,38 +146,30 @@ class HealthDayQueryService(
 }
 
 class StepsDayModule(
-    private val stepRepository: StepRepository = StepRepository(),
-    private val canonicalMetricsService: CanonicalMetricsService,
+    private val canonicalRepository: CanonicalStepDerivationRepository = CanonicalStepDerivationRepository(),
 ) : HealthDayModule<HealthDayStepsResponse> {
     override val name = "steps"
 
     override suspend fun read(context: HealthDayQueryContext): HealthDayStepsResponse {
-        val (rawRows) = stepRepository.listStepSamplesForWindow(context.filters())
-        val rows = if (context.canonical) {
-            canonicalMetricsService.canonicalStepSamples(
-                rawRows,
-                stepRepository.sourceMetadataFor(rawRows.sourceInstanceIds { it.sourceInstanceId }),
-            )
-        } else {
-            rawRows
-        }
+        val filters = context.filters()
+        val (rows, sourceMetadata) = canonicalRepository.listCanonicalStepSamples(
+            filters,
+            CANONICAL_STEP_ALGORITHM_VERSION,
+            overlapsWindow = true,
+        )
         val buckets = buckets(context)
         val values = DoubleArray(buckets.size)
         val counts = IntArray(buckets.size)
 
-        rows.forEach { row ->
-            val sampleStart = Instant.parse(row.startAt)
-            val sampleEnd = Instant.parse(row.endAt)
-            val sampleSeconds = Duration.between(sampleStart, sampleEnd).seconds
-            if (sampleSeconds <= 0) return@forEach
-            buckets.forEachIndexed { index, bucket ->
-                val overlap = overlapSeconds(sampleStart, sampleEnd, bucket.first, bucket.second)
-                if (overlap > 0) {
-                    values[index] += row.steps * (overlap.toDouble() / sampleSeconds.toDouble())
+        val byStart = buckets.mapIndexed { index, bucket -> bucket.first to index }.toMap()
+        canonicalRepository.listBucketContributions(filters, CANONICAL_STEP_ALGORITHM_VERSION)
+            .forEach { contribution ->
+                val index = byStart[Instant.parse(contribution.bucketStartAt)]
+                if (index != null) {
+                    values[index] += contribution.value
                     counts[index] += 1
                 }
             }
-        }
 
         return HealthDayStepsResponse(
             total = values.sum().toInt(),
@@ -189,35 +182,26 @@ class StepsDayModule(
                     count = counts[index],
                 )
             },
-            source = rows.singleSource(context.includeSource, stepRepository) { it.sourceInstanceId },
+            source = rows.singleSource(context.includeSource, sourceMetadata) { it.sourceInstanceId },
         )
     }
 }
 
 class HeartRateDayModule(
-    private val heartRateRepository: HeartRateRepository = HeartRateRepository(),
     private val canonicalRepository: CanonicalHeartRateDerivationRepository = CanonicalHeartRateDerivationRepository(),
 ) : HealthDayModule<HealthDayHeartRateResponse> {
     override val name = "heartRate"
 
     override suspend fun read(context: HealthDayQueryContext): HealthDayHeartRateResponse {
         val filters = context.filters()
-        val (samples, sourceMetadata) = if (context.canonical) {
-            canonicalRepository.listCanonicalHeartRateSamples(
-                filters.copy(limit = Int.MAX_VALUE, sort = "measuredAt", order = "asc"),
-                CANONICAL_HEART_RATE_ALGORITHM_VERSION,
-            )
-        } else {
-            heartRateRepository.listHeartRateSamplesForWindow(filters)
-        }
-        val summary = if (context.canonical) {
-            canonicalRepository.summarizeCanonicalHeartRate(
-                filters,
-                CANONICAL_HEART_RATE_ALGORITHM_VERSION,
-            )
-        } else {
-            heartRateRepository.summarizeHeartRateForWindow(filters)
-        }
+        val (samples, sourceMetadata) = canonicalRepository.listCanonicalHeartRateSamples(
+            filters.copy(limit = Int.MAX_VALUE, sort = "measuredAt", order = "asc"),
+            CANONICAL_HEART_RATE_ALGORITHM_VERSION,
+        )
+        val summary = canonicalRepository.summarizeCanonicalHeartRate(
+            filters,
+            CANONICAL_HEART_RATE_ALGORITHM_VERSION,
+        )
         val latest = samples.maxWithOrNull(compareBy<HeartRateSampleRow> { it.measuredAt }.thenBy { it.id })
         val buckets = buckets(context)
         val totals = DoubleArray(buckets.size)
@@ -251,38 +235,23 @@ class HeartRateDayModule(
 }
 
 class WeightDayModule(
-    private val bodyMeasurementRepository: BodyMeasurementRepository = BodyMeasurementRepository(),
-    private val canonicalMetricsService: CanonicalMetricsService,
+    private val canonicalRepository: CanonicalBodyMeasurementDerivationRepository =
+        CanonicalBodyMeasurementDerivationRepository(),
 ) : HealthDayModule<HealthDayWeightResponse> {
     override val name = "weight"
 
     override suspend fun read(context: HealthDayQueryContext): HealthDayWeightResponse {
         val filters = context.filters()
-        val (rawPoints, pointSourceMetadata) =
-            bodyMeasurementRepository.listBodyMeasurementsForWindow(filters, BodyMetricTypes.WEIGHT)
-        val points = if (context.canonical) {
-            canonicalMetricsService.canonicalBodyMeasurements(
-                rawPoints,
-                bodyMeasurementRepository.sourceMetadataFor(rawPoints.sourceInstanceIds { it.sourceInstanceId }),
-            )
-        } else {
-            rawPoints
-        }
-        val (previousCandidates, previousSourceMetadata) =
-            if (context.canonical) {
-                bodyMeasurementRepository.latestBodyMeasurementsBefore(filters, BodyMetricTypes.WEIGHT)
-            } else {
-                val (row, metadata) = bodyMeasurementRepository.latestBodyMeasurementBefore(filters, BodyMetricTypes.WEIGHT)
-                listOfNotNull(row) to metadata
-            }
-        val previous = if (context.canonical) {
-            canonicalMetricsService.canonicalBodyMeasurements(
-                previousCandidates,
-                bodyMeasurementRepository.sourceMetadataFor(previousCandidates.sourceInstanceIds { it.sourceInstanceId }),
-            ).maxWithOrNull(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.id })
-        } else {
-            previousCandidates.singleOrNull()
-        }
+        val (points, pointSourceMetadata) = canonicalRepository.listCanonicalBodyMeasurements(
+            filters,
+            BodyMetricTypes.WEIGHT,
+            CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
+        )
+        val (previous, previousSourceMetadata) = canonicalRepository.latestCanonicalBodyMeasurementBefore(
+            filters,
+            BodyMetricTypes.WEIGHT,
+            CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
+        )
         val latest = points.maxWithOrNull(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.id })
         val sourceMetadata = pointSourceMetadata + previousSourceMetadata
 
@@ -297,22 +266,32 @@ class WeightDayModule(
 
 class SleepDayModule(
     private val sleepRepository: SleepRepository = SleepRepository(),
-    private val canonicalMetricsService: CanonicalMetricsService,
+    private val sleepNightService: SleepNightService,
 ) : HealthDayModule<HealthDaySleepResponse> {
     override val name = "sleep"
 
     override suspend fun read(context: HealthDayQueryContext): HealthDaySleepResponse {
-        val (rawSessions, stagesBySession, sourceMetadata) =
-            sleepRepository.listSleepSessionsOverlappingWindow(context.filters())
-        val sessions = if (context.canonical) {
-            canonicalMetricsService.canonicalSleepSessions(
-                rawSessions,
-                stagesBySession,
-                sleepRepository.sourceMetadataFor(rawSessions.sourceInstanceIds { it.sourceInstanceId }),
-            )
-        } else {
-            rawSessions
-        }
+        val filters = SleepNightReadFilters(
+            fromDate = context.date,
+            toDate = context.date.plusDays(1),
+            timezone = context.timezone,
+            provider = context.provider,
+            providerInstanceId = context.providerInstanceId,
+            includeSource = context.includeSource,
+            limit = Int.MAX_VALUE,
+            sort = "date",
+            order = "asc",
+        )
+        sleepNightService.materializeCanonical(filters, context.computedAt)
+
+        val (nights, stagesBySession, sourceMetadata) =
+            sleepRepository.listCanonicalSleepNights(filters)
+        val sessions = nights
+            .map { it.session }
+            .filter { session ->
+                Instant.parse(session.startAt).isBefore(context.to) &&
+                    Instant.parse(session.endAt).isAfter(context.from)
+            }
         val timeline = sessions.flatMap { session ->
             stagesBySession[session.id].orEmpty().mapNotNull { stage ->
                 val start = maxOf(Instant.parse(stage.startAt), context.from)

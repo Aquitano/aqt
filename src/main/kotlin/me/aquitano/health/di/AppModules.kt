@@ -11,9 +11,13 @@ import me.aquitano.external.withings.WithingsNormalizer
 import me.aquitano.external.withings.WithingsProvider
 import me.aquitano.health.application.*
 import me.aquitano.health.application.metric.activity.ActivityQueryService
+import me.aquitano.health.application.metric.activity.derived.CanonicalActivitySummaryDerivationService
 import me.aquitano.health.application.metric.activity.repository.ActivitySummaryRepository
+import me.aquitano.health.application.metric.activity.repository.CanonicalActivitySummaryDerivationRepository
 import me.aquitano.health.application.metric.body.BodyMeasurementQueryService
+import me.aquitano.health.application.metric.body.derived.CanonicalBodyMeasurementDerivationService
 import me.aquitano.health.application.metric.body.repository.BodyMeasurementRepository
+import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementDerivationRepository
 import me.aquitano.health.application.metric.cardiovascular.CardiovascularQueryService
 import me.aquitano.health.application.metric.cardiovascular.repository.CardiovascularRepository
 import me.aquitano.health.application.metric.common.MetricWriteService
@@ -32,9 +36,16 @@ import me.aquitano.health.application.metric.respiratory.derived.CanonicalRespir
 import me.aquitano.health.application.metric.respiratory.repository.CanonicalRespiratoryRateDerivationRepository
 import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateRepository
 import me.aquitano.health.application.metric.sleep.SleepQueryService
+import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSessionDerivationService
+import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSummaryDerivationService
+import me.aquitano.health.application.metric.sleep.derived.SleepNightDerivation
+import me.aquitano.health.application.metric.sleep.repository.CanonicalSleepSessionDerivationRepository
+import me.aquitano.health.application.metric.sleep.repository.CanonicalSleepSummaryDerivationRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
 import me.aquitano.health.application.metric.steps.StepQueryService
+import me.aquitano.health.application.metric.steps.derived.CanonicalStepDerivationService
+import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
 import me.aquitano.health.application.metric.steps.repository.StepDailySummaryDerivationRepository
 import me.aquitano.health.application.metric.steps.repository.StepRepository
 import me.aquitano.health.infrastructure.config.AppConfig
@@ -65,7 +76,9 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
 
     // Metric repositories (stateless, no constructor args needed)
     single { ActivitySummaryRepository() }
+    single { CanonicalActivitySummaryDerivationRepository() }
     single { BodyMeasurementRepository() }
+    single { CanonicalBodyMeasurementDerivationRepository() }
     single { CardiovascularRepository() }
     single { HeartRateRepository() }
     single { CanonicalHeartRateDerivationRepository() }
@@ -74,7 +87,10 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
     single { RespiratoryRateRepository() }
     single { CanonicalRespiratoryRateDerivationRepository() }
     single { SleepRepository() }
+    single { CanonicalSleepSessionDerivationRepository() }
+    single { CanonicalSleepSummaryDerivationRepository() }
     single { StepRepository() }
+    single { CanonicalStepDerivationRepository() }
     single { SleepNightDerivationRepository() }
     single { StepDailySummaryDerivationRepository() }
 
@@ -111,7 +127,7 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
 fun servicesModule(database: Database, config: AppConfig) = module {
     single { UtcClock() }
     single { ApiKeyHasher() }
-    single { CanonicalMetricsService(CanonicalMetricsPolicy.default()) }
+    single { SleepNightDerivation(get<SleepNightDerivationRepository>()) }
     single { SleepNightService(get<SleepNightDerivationRepository>(), get()) }
     single { MetricWriteService() }
     single {
@@ -120,6 +136,11 @@ fun servicesModule(database: Database, config: AppConfig) = module {
     single { CanonicalHeartRateDerivationService(get<CanonicalHeartRateDerivationRepository>()) }
     single { CanonicalRespiratoryRateDerivationService(get<CanonicalRespiratoryRateDerivationRepository>()) }
     single { CanonicalHrvDerivationService(get<CanonicalHrvDerivationRepository>()) }
+    single { CanonicalStepDerivationService(get<CanonicalStepDerivationRepository>()) }
+    single { CanonicalBodyMeasurementDerivationService(get<CanonicalBodyMeasurementDerivationRepository>()) }
+    single { CanonicalSleepSummaryDerivationService(get<CanonicalSleepSummaryDerivationRepository>()) }
+    single { CanonicalSleepSessionDerivationService(get<CanonicalSleepSessionDerivationRepository>()) }
+    single { CanonicalActivitySummaryDerivationService(get<CanonicalActivitySummaryDerivationRepository>()) }
     single {
         IngestionMappingService()
     }
@@ -135,6 +156,11 @@ fun servicesModule(database: Database, config: AppConfig) = module {
             canonicalHeartRateService = get(),
             canonicalRespiratoryRateService = get(),
             canonicalHrvService = get(),
+            canonicalStepService = get(),
+            canonicalBodyMeasurementService = get(),
+            canonicalSleepSummaryService = get(),
+            canonicalSleepSessionService = get(),
+            canonicalActivitySummaryService = get(),
         )
     }
 
@@ -142,9 +168,9 @@ fun servicesModule(database: Database, config: AppConfig) = module {
     single {
         HealthDayModuleRegistry(
             listOf(
-                StepsDayModule(get(), get()),
-                HeartRateDayModule(get(), get()),
-                WeightDayModule(get(), get()),
+                StepsDayModule(get()),
+                HeartRateDayModule(get()),
+                WeightDayModule(get()),
                 SleepDayModule(get(), get()),
             )
         )
@@ -223,27 +249,30 @@ fun servicesModule(database: Database, config: AppConfig) = module {
  * Query services layer: read-side services consumed by route handlers.
  */
 fun queryServicesModule(database: Database) = module {
-    single { ActivityQueryService(database = database, activitySummaryRepository = get(), canonicalMetricsService = get()) }
-    single { BodyMeasurementQueryService(database = database, bodyMeasurementRepository = get(), canonicalMetricsService = get()) }
+    single { ActivityQueryService(database = database, canonicalRepository = get()) }
+    single {
+        BodyMeasurementQueryService(
+            database = database,
+            bodyMeasurementRepository = get(),
+            canonicalRepository = get(),
+        )
+    }
     single { CardiovascularQueryService(database = database, cardiovascularRepository = get()) }
     single {
         HeartRateQueryService(
             database = database,
-            heartRateRepository = get(),
             canonicalRepository = get(),
         )
     }
     single {
         HrvQueryService(
             database = database,
-            hrvRepository = get(),
             canonicalRepository = get(),
         )
     }
     single {
         RespiratoryRateQueryService(
             database = database,
-            respiratoryRateRepository = get(),
             canonicalRepository = get(),
         )
     }
@@ -251,20 +280,24 @@ fun queryServicesModule(database: Database) = module {
         SleepQueryService(
             database = database,
             sleepRepository = get(),
-            canonicalMetricsService = get(),
+            canonicalSessionRepository = get(),
             sleepNightService = get(),
         )
     }
-    single { StepQueryService(database = database, stepRepository = get(), canonicalMetricsService = get()) }
+    single {
+        StepQueryService(
+            database = database,
+            stepRepository = get(),
+            canonicalRepository = get(),
+        )
+    }
     single {
         DashboardQueryService(
             database = database,
-            stepRepository = get(),
+            canonicalStepRepository = get(),
             sleepRepository = get(),
-            bodyMeasurementRepository = get(),
-            heartRateRepository = get(),
             canonicalHeartRateRepository = get(),
-            canonicalMetricsService = get(),
+            canonicalBodyMeasurementRepository = get(),
             sleepNightService = get(),
         )
     }
@@ -284,8 +317,7 @@ fun queryServicesModule(database: Database) = module {
     single {
         SleepSummaryReadService(
             database = database,
-            sleepRepository = get(),
-            canonicalMetricsService = get(),
+            canonicalRepository = get(),
         )
     }
     single {

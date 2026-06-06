@@ -149,10 +149,10 @@ class ReadApiRouteTest {
         assertContains(steps.queryParameterNames(), "from")
         assertContains(steps.queryParameterNames(), "to")
         assertContains(steps.queryParameterNames(), "includeSource")
-        assertContains(steps.queryParameterNames(), "canonical")
+        assertFalse("canonical" in steps.queryParameterNames())
         assertContains(steps.queryParameterNames(), "sort")
         assertContains(steps.queryParameterNames(), "order")
-        assertContains(steps.modeNames(), "raw")
+        assertContains(steps.modeNames(), "samples")
         assertContains(steps.modeNames(), "daily")
         assertContains(steps.modeNames(), "summary")
         assertContains(steps.modeNames(), "day")
@@ -169,7 +169,7 @@ class ReadApiRouteTest {
         )
         assertContains(body.endpointPaths(), "/api/v1/body/measurements")
         assertContains(body.endpointPaths(), "/api/v1/body/measurements/latest")
-        assertContains(body.queryParameterNames(), "canonical")
+        assertFalse("canonical" in body.queryParameterNames())
 
         val sleep = families.family("sleep")
         val nightMode = sleep["aggregationModes"]!!.jsonArray
@@ -187,7 +187,7 @@ class ReadApiRouteTest {
         assertContains(heartRate.endpointPaths(), "/api/v1/metrics/heart-rate/summary")
         assertContains(heartRate.modeNames(), "latest")
         assertContains(heartRate.modeNames(), "day")
-        assertContains(heartRate.queryParameterNames(), "canonical")
+        assertFalse("canonical" in heartRate.queryParameterNames())
 
         val activity = families.family("activity")
         assertContains(activity.endpointPaths(), "/api/v1/activity/summaries")
@@ -602,22 +602,18 @@ class ReadApiRouteTest {
     }
 
     @Test
-    fun canonicalReadsResolveCrossProviderConflictsAndRawReadsRemainInspectable() = testApplication {
+    fun readsResolveCrossProviderConflicts() = testApplication {
         configureTestApplication()
         ingestCanonicalConflictBatches()
 
-        val rawSteps =
+        val steps =
             authorizedGet("/api/v1/metrics/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z&includeSource=true")
-        assertEquals(HttpStatusCode.OK, rawSteps.status)
-        assertEquals(2, rawSteps.items().size)
-
-        val canonicalSteps =
-            authorizedGet("/api/v1/metrics/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z&includeSource=true&canonical=true")
-        assertEquals(1, canonicalSteps.items().size)
-        assertEquals(1000, canonicalSteps.items()[0].jsonObject["steps"]!!.jsonPrimitive.int)
+        assertEquals(HttpStatusCode.OK, steps.status)
+        assertEquals(1, steps.items().size)
+        assertEquals(1000, steps.items()[0].jsonObject["steps"]!!.jsonPrimitive.int)
         assertEquals(
             "health_connect",
-            canonicalSteps.items()[0].jsonObject["source"]!!.jsonObject["provider"]!!.jsonPrimitive.content
+            steps.items()[0].jsonObject["source"]!!.jsonObject["provider"]!!.jsonPrimitive.content
         )
 
         val dashboard =
@@ -635,10 +631,6 @@ class ReadApiRouteTest {
             58,
             dashboard.jsonBody()["latestHeartRate"]!!.jsonObject["bpm"]!!.jsonPrimitive.int
         )
-
-        val rawDashboard =
-            authorizedGet("/api/v1/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19&canonical=false")
-        assertEquals(3000, rawDashboard.jsonBody()["steps"]!!.jsonObject["steps"]!!.jsonPrimitive.int)
 
         val day =
             authorizedGet("/api/v1/health/day?date=2026-04-19&timezone=UTC&modules=steps,heartRate,weight,sleep&includeSource=true")
@@ -662,9 +654,10 @@ class ReadApiRouteTest {
             previousWeight["source"]!!.jsonObject["provider"]!!.jsonPrimitive.content
         )
 
-        val rawBody =
-            authorizedGet("/api/v1/body/measurements?metricType=weight&canonical=false")
-        assertEquals(2, rawBody.items().size)
+        val body =
+            authorizedGet("/api/v1/body/measurements?metricType=weight")
+        assertEquals(1, body.items().size)
+        assertEquals(81.8, body.items()[0].jsonObject["value"]!!.jsonPrimitive.double)
     }
 
     @Test

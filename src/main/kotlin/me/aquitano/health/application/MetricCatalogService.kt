@@ -26,7 +26,7 @@ class MetricCatalogService(
         MetricFamilyCatalogDto(
             name = "steps",
             readEndpoints = listOf(
-                endpoint("raw", "/api/v1/metrics/steps", "StepSamplesResponse"),
+                endpoint("samples", "/api/v1/metrics/steps", "StepSamplesResponse"),
                 endpoint(
                     "daily",
                     "/api/v1/metrics/steps/daily",
@@ -45,7 +45,7 @@ class MetricCatalogService(
             ),
             queryParameters = instantReadParameters() + dailyParameters() + dashboardParameters() + dayParameters("steps"),
             aggregationModes = listOf(
-                mode("raw", "/api/v1/metrics/steps"),
+                mode("samples", "/api/v1/metrics/steps"),
                 mode("daily", "/api/v1/metrics/steps/daily"),
                 mode("summary", "/api/v1/dashboard/summary"),
                 mode("day", "/api/v1/health/day"),
@@ -70,7 +70,7 @@ class MetricCatalogService(
             name = "sleep",
             readEndpoints = listOf(
                 endpoint(
-                    "raw",
+                    "sessions",
                     "/api/v1/sleep/sessions",
                     "SleepSessionsResponse"
                 ),
@@ -97,7 +97,7 @@ class MetricCatalogService(
             ),
             queryParameters = instantReadParameters() + latestParameter() + sleepNightParameters() + dashboardParameters() + dayParameters("sleep"),
             aggregationModes = listOf(
-                mode("raw", "/api/v1/sleep/sessions"),
+                mode("sessions", "/api/v1/sleep/sessions"),
                 mode("latest", "/api/v1/sleep/sessions"),
                 mode("night", "/api/v1/sleep/nights"),
                 mode("summary", "/api/v1/dashboard/summary"),
@@ -115,7 +115,7 @@ class MetricCatalogService(
                     "withings" to listOf("sleep", "sleep-summary"),
                 )
             ),
-            schemaHint = "raw items contain sleep sessions with nested stages and list responses include meta with count, limit, sort, order, and no cursor for now. Sleep nights classify complete sessions by the localized endAt date. The combined day endpoint accepts modules=sleep and can be called with other modules in one request.",
+            schemaHint = "items contain canonical sleep sessions with nested stages and list responses include meta with count, limit, sort, order, and no cursor for now. Sleep nights classify complete sessions by the localized endAt date. The combined day endpoint accepts modules=sleep and can be called with other modules in one request.",
         )
 
     private fun bodyMeasurementsCatalog(): MetricFamilyCatalogDto =
@@ -123,7 +123,7 @@ class MetricCatalogService(
             name = "body_measurements",
             readEndpoints = listOf(
                 endpoint(
-                    "raw",
+                    "measurements",
                     "/api/v1/body/measurements",
                     "BodyMeasurementsResponse"
                 ),
@@ -152,7 +152,7 @@ class MetricCatalogService(
                 ),
             ) + dashboardParameters() + dayParameters("weight"),
             aggregationModes = listOf(
-                mode("raw", "/api/v1/body/measurements"),
+                mode("measurements", "/api/v1/body/measurements"),
                 mode("latest", "/api/v1/body/measurements"),
                 mode("summary", "/api/v1/dashboard/summary"),
                 mode("day", "/api/v1/health/day"),
@@ -178,7 +178,7 @@ class MetricCatalogService(
             name = "heart_rate",
             readEndpoints = listOf(
                 endpoint(
-                    "raw",
+                    "samples",
                     "/api/v1/metrics/heart-rate",
                     "HeartRateSamplesResponse"
                 ),
@@ -200,7 +200,7 @@ class MetricCatalogService(
             ),
             queryParameters = instantReadParameters() + latestParameter() + dashboardParameters() + dayParameters("heartRate"),
             aggregationModes = listOf(
-                mode("raw", "/api/v1/metrics/heart-rate"),
+                mode("samples", "/api/v1/metrics/heart-rate"),
                 mode("latest", "/api/v1/metrics/heart-rate"),
                 mode("summary", "/api/v1/metrics/heart-rate/summary"),
                 mode("day", "/api/v1/health/day"),
@@ -264,7 +264,7 @@ class MetricCatalogService(
             name = "sleep_summary",
             readEndpoints = listOf(
                 endpoint(
-                    "raw",
+                    "summaries",
                     "/api/v1/sleep/summaries",
                     "SleepSummariesResponse"
                 ),
@@ -276,7 +276,7 @@ class MetricCatalogService(
             ),
             queryParameters = instantReadParameters() + latestParameter(),
             aggregationModes = listOf(
-                mode("raw", "/api/v1/sleep/summaries"),
+                mode("summaries", "/api/v1/sleep/summaries"),
                 mode("latest", "/api/v1/sleep/summaries/latest"),
             ),
             responseDtos = listOf(
@@ -294,7 +294,7 @@ class MetricCatalogService(
             name = "respiratory_rate",
             readEndpoints = listOf(
                 endpoint(
-                    "raw",
+                    "samples",
                     "/api/v1/metrics/respiratory-rate",
                     "RespiratoryRateSamplesResponse"
                 ),
@@ -306,7 +306,7 @@ class MetricCatalogService(
             ),
             queryParameters = instantReadParameters() + latestParameter(),
             aggregationModes = listOf(
-                mode("raw", "/api/v1/metrics/respiratory-rate"),
+                mode("samples", "/api/v1/metrics/respiratory-rate"),
                 mode("summary", "/api/v1/metrics/respiratory-rate/summary"),
             ),
             responseDtos = listOf(
@@ -323,7 +323,7 @@ class MetricCatalogService(
         MetricFamilyCatalogDto(
             name = "hrv",
             readEndpoints = listOf(
-                endpoint("raw", "/api/v1/metrics/hrv", "HrvSamplesResponse"),
+                endpoint("samples", "/api/v1/metrics/hrv", "HrvSamplesResponse"),
                 endpoint(
                     "summary",
                     "/api/v1/metrics/hrv/summary",
@@ -339,7 +339,7 @@ class MetricCatalogService(
                 ),
             ),
             aggregationModes = listOf(
-                mode("raw", "/api/v1/metrics/hrv"),
+                mode("samples", "/api/v1/metrics/hrv"),
                 mode("summary", "/api/v1/metrics/hrv/summary"),
             ),
             metricTypes = HrvMetricTypes.supported.sorted(),
@@ -397,11 +397,6 @@ class MetricCatalogService(
                 description = "Include source provider metadata."
             ),
             MetricQueryParameterDto(
-                "canonical",
-                "boolean",
-                description = "Return canonical cross-provider rows when true. Raw list reads default to false; latest reads default to true."
-            ),
-            MetricQueryParameterDto(
                 "limit",
                 "integer",
                 description = "Maximum items. Default 500, max 5000."
@@ -435,11 +430,6 @@ class MetricCatalogService(
                 "date",
                 description = "Inclusive UTC end date."
             ),
-            MetricQueryParameterDto(
-                "canonical",
-                "boolean",
-                description = "Return canonical cross-provider daily rows when true. Daily list reads default to false; latest aliases default to true."
-            ),
         )
 
     private fun sleepNightParameters(): List<MetricQueryParameterDto> =
@@ -464,11 +454,6 @@ class MetricCatalogService(
                 "IANA timezone",
                 description = "Timezone used to classify sleep endAt dates. Default UTC."
             ),
-            MetricQueryParameterDto(
-                "canonical",
-                "boolean",
-                description = "Return canonical cross-provider sleep nights when true. Defaults to false for list reads."
-            ),
         )
 
     private fun dashboardParameters(): List<MetricQueryParameterDto> =
@@ -484,11 +469,6 @@ class MetricCatalogService(
                 "date",
                 required = true,
                 description = "Inclusive UTC end date for dashboard summaries."
-            ),
-            MetricQueryParameterDto(
-                "canonical",
-                "boolean",
-                description = "Compute dashboard values from canonical cross-provider rows when true. Defaults to true."
             ),
         )
 
@@ -510,11 +490,6 @@ class MetricCatalogService(
                 "comma-separated string",
                 required = true,
                 description = "Requested combined day modules. This family uses `$module`; multiple modules can be requested in one call."
-            ),
-            MetricQueryParameterDto(
-                "canonical",
-                "boolean",
-                description = "Compute day modules from canonical cross-provider rows when true. Defaults to true."
             ),
         )
 
