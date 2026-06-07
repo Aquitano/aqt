@@ -1,6 +1,7 @@
 package me.aquitano.health.application
 
 import me.aquitano.health.api.dto.*
+import me.aquitano.health.application.providersync.ProviderSyncProgressSink
 import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthStateConsumeResult
@@ -142,9 +143,25 @@ class ProviderWorkflowService(
         now: Instant
     ): ProviderSyncResponseDto =
         providerRegistry.getProvider(providerCode)
-            ?.sync(request.toDomain(now), now)
+            ?.sync(toDomainSyncRequest(request, now), now)
             ?.toDto()
             ?: throw NotFoundException("Provider '$providerCode' not found")
+
+    suspend fun sync(
+        providerCode: String,
+        request: ProviderSyncRequest,
+        now: Instant,
+        progress: ProviderSyncProgressSink,
+    ): ProviderSyncResponseDto =
+        providerRegistry.getProvider(providerCode)
+            ?.sync(request, now, progress)
+            ?.toDto()
+            ?: throw NotFoundException("Provider '$providerCode' not found")
+
+    fun toDomainSyncRequest(
+        request: ProviderSyncRequestDto,
+        now: Instant,
+    ): ProviderSyncRequest = request.toDomain(now)
 
     suspend fun listAccounts(
         providerCode: String,

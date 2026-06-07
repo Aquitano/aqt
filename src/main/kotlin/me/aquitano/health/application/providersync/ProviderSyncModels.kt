@@ -18,6 +18,16 @@ data class ProviderSyncItem(
     val pageSize: Int? = null,
 )
 
+interface ProviderSyncProgressSink {
+    suspend fun started(totalItems: Int, providerInstanceId: String) {}
+    suspend fun itemStarted(item: ProviderSyncItem) {}
+    suspend fun itemCompleted(item: ProviderSyncItem) {}
+
+    companion object {
+        val None = object : ProviderSyncProgressSink {}
+    }
+}
+
 data class SyncAccount(
     val id: Int,
     val providerCode: String,

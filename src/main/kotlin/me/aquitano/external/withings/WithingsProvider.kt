@@ -129,6 +129,12 @@ class WithingsProvider(
         now: Instant
     ): ProviderSyncSummary = syncPipeline.sync(syncAdapter, request, now)
 
+    override suspend fun sync(
+        request: ProviderSyncRequest,
+        now: Instant,
+        progress: me.aquitano.health.application.providersync.ProviderSyncProgressSink,
+    ): ProviderSyncSummary = syncPipeline.sync(syncAdapter, request, now, progress)
+
     private fun requireConfigured() {
         val issues = configurationIssues()
         if (issues.isNotEmpty()) {

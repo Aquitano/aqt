@@ -14,6 +14,8 @@ import type {
   ProviderSyncPageData,
   ProviderStatusCatalogResponse,
   ProviderSyncRequest,
+  ProviderSyncJobStartResponse,
+  ProviderSyncJobStatusResponse,
   ProviderSyncResponse,
   ScheduledSyncConfig,
   ScheduledSyncConfigUpdateRequest,
@@ -315,6 +317,20 @@ export async function syncProvider(
   payload: ProviderSyncRequest,
 ): Promise<ApiResult<ProviderSyncResponse>> {
   return createAqtHealthClient().syncProvider(providerCode, payload);
+}
+
+export async function startProviderSyncJob(
+  providerCode: string,
+  payload: ProviderSyncRequest,
+): Promise<ApiResult<ProviderSyncJobStartResponse>> {
+  return createAqtHealthClient().startProviderSyncJob(providerCode, payload);
+}
+
+export async function getProviderSyncJob(
+  providerCode: string,
+  jobId: string,
+): Promise<ApiResult<ProviderSyncJobStatusResponse>> {
+  return createAqtHealthClient().getProviderSyncJob(providerCode, jobId);
 }
 
 export async function getScheduledSyncConfig(

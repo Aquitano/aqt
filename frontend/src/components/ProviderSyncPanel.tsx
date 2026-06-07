@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useRef, useState, useTransition } from "react";
+import { FormEvent, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type {
   ApiResult,
@@ -14,6 +14,7 @@ import type {
   ScheduledSyncRunResponse,
   ProviderSyncRequest,
   ProviderSyncResponse,
+  ProviderSyncJobStatusResponse,
 } from "@/lib/types";
 import styles from "./ProviderSyncPanel.module.css";
 
@@ -32,18 +33,72 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
   const router = useRouter();
   const [selectedProviderCode, setSelectedProviderCode] = useState("");
   const [result, setResult] = useState<ApiResult<ProviderSyncResponse> | null>(null);
-  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+  const [syncJob, setSyncJob] = useState<ProviderSyncJobStatusResponse | null>(null);
+  const [activeSyncJob, setActiveSyncJob] = useState<ActiveSyncJob | null>(() => readStoredSyncJob());
   const [isSyncing, setIsSyncing] = useState(false);
   const [oauthError, setOAuthError] = useState<string | null>(null);
   const [accountActionError, setAccountActionError] = useState<string | null>(null);
   const [pendingAccountAction, setPendingAccountAction] = useState<string | null>(null);
   const [scheduledResult, setScheduledResult] = useState<ApiResult<ScheduledSyncRunResponse> | null>(null);
   const [scheduledError, setScheduledError] = useState<string | null>(null);
-  const syncAbortRef = useRef<AbortController | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isOAuthPending, startOAuthTransition] = useTransition();
   const [, startAccountActionTransition] = useTransition();
   const [, startScheduledTransition] = useTransition();
+
+  useEffect(() => {
+    if (!activeSyncJob) return;
+
+    const pollingJob = activeSyncJob;
+    let stopped = false;
+    setIsSyncing(true);
+
+    async function poll() {
+      while (!stopped) {
+        try {
+          const response = await fetch(
+            `/api/providers/${encodeURIComponent(pollingJob.providerCode)}/sync-jobs/${encodeURIComponent(pollingJob.jobId)}`,
+          );
+          const body = (await response.json()) as ApiResult<ProviderSyncJobStatusResponse>;
+          if (!body.ok) {
+            setResult(body);
+            setSyncJob(null);
+            setIsSyncing(false);
+            clearStoredSyncJob();
+            setActiveSyncJob(null);
+            return;
+          }
+
+          setSyncJob(body.data);
+          if (isFinishedSyncJob(body.data.status)) {
+            setResult(
+              body.data.summary
+                ? { ok: true, data: body.data.summary }
+                : { ok: false, message: body.data.errorMessage ?? "Provider sync job failed." },
+            );
+            setIsSyncing(false);
+            clearStoredSyncJob();
+            setActiveSyncJob(null);
+            router.refresh();
+            return;
+          }
+        } catch (error) {
+          setResult({
+            ok: false,
+            message: error instanceof Error ? error.message : "Provider sync status check failed.",
+          });
+        }
+
+        await delay(SYNC_JOB_POLL_INTERVAL_MS);
+      }
+    }
+
+    void poll();
+
+    return () => {
+      stopped = true;
+    };
+  }, [activeSyncJob, router]);
 
   if (!catalog.ok || !statuses.ok) {
     return (
@@ -74,10 +129,8 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedProvider || !canSync) return;
-    syncAbortRef.current?.abort();
-    const abortController = new AbortController();
-    syncAbortRef.current = abortController;
     setResult(null);
+    setSyncJob(null);
     setIsSyncing(true);
 
     const formData = new FormData(event.currentTarget);
@@ -90,92 +143,38 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
         ? toPositiveInteger(formData.get("pageSize"))
         : undefined,
     };
-    const syncItems = buildProviderSyncItems(selectedProvider.descriptor, payload);
-    const startedAt = Date.now();
-    setSyncProgress({
-      completed: 0,
-      currentLabel: syncItems[0]?.label ?? "Starting sync",
-      startedAt,
-      total: syncItems.length,
-    });
 
     startTransition(async () => {
-      const summaries: ProviderSyncResponse[] = [];
-      let lastProviderWorkCompletedAt: number | null = null;
-      for (let index = 0; index < syncItems.length; index += 1) {
-        const item = syncItems[index];
-        setSyncProgress({
-          completed: index,
-          currentLabel: item.label,
-          startedAt,
-          total: syncItems.length,
-        });
-        try {
-          await waitForNextProviderSlot(
-            lastProviderWorkCompletedAt,
-            FRONTEND_PROVIDER_REQUEST_INTERVAL_MS,
-            abortController.signal,
-          );
-          const response = await fetch(
-            `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/sync`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(item.payload),
-              signal: abortController.signal,
-            },
-          );
-          const body = (await response.json()) as ApiResult<ProviderSyncResponse>;
-          if (!body.ok) {
-            setResult(body);
-            setSyncProgress(null);
-            setIsSyncing(false);
-            syncAbortRef.current = null;
-            return;
-          }
-          summaries.push(body.data);
-          if (!isCacheOnlySync(body.data)) {
-            lastProviderWorkCompletedAt = Date.now();
-          }
-          setSyncProgress({
-            completed: index + 1,
-            currentLabel: item.label,
-            lastLabel: item.label,
-            startedAt,
-            total: syncItems.length,
-          });
-        } catch (error) {
-          if (abortController.signal.aborted) {
-            setResult({ ok: false, message: "Sync was cancelled." });
-          } else {
-            setResult({
-              ok: false,
-              message: error instanceof Error ? error.message : "Provider sync failed. Try again.",
-            });
-          }
-          setSyncProgress(null);
+      try {
+        const response = await fetch(
+          `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/sync-jobs`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          },
+        );
+        const body = (await response.json()) as ApiResult<{ jobId: string }>;
+        if (!body.ok) {
+          setResult(body);
           setIsSyncing(false);
-          syncAbortRef.current = null;
           return;
         }
+
+        const activeJob = {
+          providerCode: selectedProvider.descriptor.providerCode,
+          jobId: body.data.jobId,
+        };
+        storeSyncJob(activeJob);
+        setActiveSyncJob(activeJob);
+      } catch (error) {
+        setResult({
+          ok: false,
+          message: error instanceof Error ? error.message : "Provider sync failed. Try again.",
+        });
+        setIsSyncing(false);
       }
-
-      const combined = combineSyncResponses(
-        selectedProvider.descriptor.providerCode,
-        payload.from,
-        payload.to,
-        summaries,
-      );
-      setResult({ ok: true, data: combined });
-      setSyncProgress(null);
-      setIsSyncing(false);
-      syncAbortRef.current = null;
-      router.refresh();
     });
-  }
-
-  function onCancelSync() {
-    syncAbortRef.current?.abort();
   }
 
   function onStartOAuth() {
@@ -402,7 +401,7 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
         </form>
       ) : null}
 
-      {syncProgress ? <SyncProgressView progress={syncProgress} onCancel={onCancelSync} /> : null}
+      {syncJob ? <SyncProgressView job={syncJob} /> : null}
       {result ? <SyncResult result={result} /> : null}
       {scheduledError ? <div className={styles.errorNotice}>{scheduledError}</div> : null}
       {scheduledResult ? <ScheduledRunResult result={scheduledResult} /> : null}
@@ -410,12 +409,9 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
   );
 }
 
-type SyncProgress = {
-  completed: number;
-  currentLabel: string;
-  lastLabel?: string;
-  startedAt: number;
-  total: number;
+type ActiveSyncJob = {
+  providerCode: string;
+  jobId: string;
 };
 
 type SyncItem = {
@@ -423,39 +419,38 @@ type SyncItem = {
   payload: ProviderSyncRequest;
 };
 
-function SyncProgressView({
-  onCancel,
-  progress,
-}: {
-  onCancel: () => void;
-  progress: SyncProgress;
-}) {
-  const completedPercent = progress.total > 0
-    ? Math.round((progress.completed / progress.total) * 100)
+function SyncProgressView({ job }: { job: ProviderSyncJobStatusResponse }) {
+  const completedPercent = job.totalItems > 0
+    ? Math.round((job.completedItems / job.totalItems) * 100)
     : 0;
-  const elapsedSeconds = Math.max(0, Math.round((Date.now() - progress.startedAt) / 1000));
+  const startedAt = job.startedAt ?? job.createdAt;
+  const elapsedSeconds = Math.max(0, Math.round((Date.now() - new Date(startedAt).getTime()) / 1000));
+  const currentLabel = job.currentItem
+    ? `${formatDataType(job.currentItem.dataType)} ${formatWindowLabel(new Date(job.currentItem.from), new Date(job.currentItem.to))}`
+    : "Waiting for backend worker";
+  const lastLabel = job.lastCompletedItem
+    ? `${formatDataType(job.lastCompletedItem.dataType)} ${formatWindowLabel(new Date(job.lastCompletedItem.from), new Date(job.lastCompletedItem.to))}`
+    : null;
 
   return (
     <div className={styles.progressPanel}>
       <div className={styles.progressHeader}>
         <div>
-          <strong>Sync in progress</strong>
+          <strong>Sync {formatStatus(job.status)}</strong>
           <span>
-            {progress.completed} of {progress.total} windows complete, {elapsedSeconds}s elapsed
+            {job.completedItems} of {job.totalItems || "?"} windows complete, {elapsedSeconds}s elapsed
           </span>
         </div>
-        <button className={styles.secondaryButton} type="button" onClick={onCancel}>
-          Cancel
-        </button>
       </div>
       <div className={styles.progressTrack} aria-label="Provider sync progress">
         <div className={styles.progressFill} style={{ width: `${completedPercent}%` }} />
       </div>
       <div className={styles.progressMeta}>
         <span>{completedPercent}%</span>
-        <span>{progress.completed === progress.total ? "Finalizing" : progress.currentLabel}</span>
+        <span>{isFinishedSyncJob(job.status) ? "Finished" : currentLabel}</span>
       </div>
-      {progress.lastLabel ? <small>Last completed: {progress.lastLabel}</small> : null}
+      {lastLabel ? <small>Last completed: {lastLabel}</small> : null}
+      <small>Job {job.jobId}</small>
     </div>
   );
 }
@@ -741,29 +736,6 @@ export function buildProviderSyncItems(
   );
 }
 
-function combineSyncResponses(
-  providerCode: string,
-  requestedFrom: string | undefined,
-  requestedTo: string | undefined,
-  summaries: ProviderSyncResponse[],
-): ProviderSyncResponse {
-  const first = summaries[0];
-  return {
-    providerCode: first?.providerCode ?? providerCode,
-    providerInstanceId: first?.providerInstanceId ?? "",
-    requestedFrom: requestedFrom ?? first?.requestedFrom ?? "",
-    requestedTo: requestedTo ?? first?.requestedTo ?? "",
-    status: summaries.some((summary) => summary.status === "failed")
-      ? "failed"
-      : summaries.some((summary) => summary.status === "partial_failed" || summary.errors.length > 0)
-        ? "partial_failed"
-        : "processed",
-    batches: summaries.flatMap((summary) => summary.batches),
-    emptyDataTypes: summaries.flatMap((summary) => summary.emptyDataTypes),
-    errors: summaries.flatMap((summary) => summary.errors),
-  };
-}
-
 function ErrorBlock({ result }: { result: ApiResult<unknown> }) {
   if (result.ok) return null;
 
@@ -894,33 +866,39 @@ function formatWindowLabel(from: Date, to: Date): string {
   return `${formatter.format(from)} - ${formatter.format(to)}`;
 }
 
-function isCacheOnlySync(response: ProviderSyncResponse): boolean {
-  return response.batches.length > 0 &&
-    response.batches.every((batch) => batch.duplicateBatch) &&
-    response.emptyDataTypes.length === 0 &&
-    response.errors.length === 0;
+function isFinishedSyncJob(status: string): boolean {
+  return status === "processed" || status === "partial_failed" || status === "failed";
 }
 
-async function waitForNextProviderSlot(
-  lastProviderWorkCompletedAt: number | null,
-  intervalMs: number,
-  signal: AbortSignal,
-): Promise<void> {
-  if (lastProviderWorkCompletedAt === null) return;
-  const remainingMs = intervalMs - (Date.now() - lastProviderWorkCompletedAt);
-  if (remainingMs <= 0) return;
-  await abortableDelay(remainingMs, signal);
+function readStoredSyncJob(): ActiveSyncJob | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(SYNC_JOB_STORAGE_KEY);
+  if (!raw) return null;
+  return parseStoredSyncJob(raw);
 }
 
-function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return Promise.reject(new DOMException("Sync was cancelled.", "AbortError"));
-  return new Promise((resolve, reject) => {
-    const timeoutId = window.setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
-      window.clearTimeout(timeoutId);
-      reject(new DOMException("Sync was cancelled.", "AbortError"));
-    }, { once: true });
-  });
+function parseStoredSyncJob(raw: string): ActiveSyncJob | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<ActiveSyncJob>;
+    return typeof parsed.providerCode === "string" && typeof parsed.jobId === "string"
+      ? { providerCode: parsed.providerCode, jobId: parsed.jobId }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
-const FRONTEND_PROVIDER_REQUEST_INTERVAL_MS = 500;
+function storeSyncJob(job: ActiveSyncJob) {
+  window.localStorage.setItem(SYNC_JOB_STORAGE_KEY, JSON.stringify(job));
+}
+
+function clearStoredSyncJob() {
+  window.localStorage.removeItem(SYNC_JOB_STORAGE_KEY);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+const SYNC_JOB_STORAGE_KEY = "aqt-health.provider-sync.active-job";
+const SYNC_JOB_POLL_INTERVAL_MS = 1500;

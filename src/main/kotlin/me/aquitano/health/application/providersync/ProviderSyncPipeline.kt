@@ -20,6 +20,7 @@ class ProviderSyncPipeline(
         adapter: ProviderSyncAdapter,
         request: ProviderSyncRequest,
         now: Instant,
+        progress: ProviderSyncProgressSink = ProviderSyncProgressSink.None,
     ): ProviderSyncSummary {
         val plan = adapter.validate(request)
         val account = accounts.selectForSync(
@@ -46,6 +47,7 @@ class ProviderSyncPipeline(
             kv("to", plan.requestedTo.toString()),
             kv("dataTypes", plan.items.map { it.dataType }.distinct()),
         )
+        progress.started(plan.items.size, account.providerInstanceId)
 
         val batches = mutableListOf<ProviderSyncBatch>()
         val errors = mutableListOf<ProviderSyncError>()
@@ -53,6 +55,7 @@ class ProviderSyncPipeline(
         var lastProviderRequestCompletedAtNanos: Long? = null
 
         plan.items.forEach { item ->
+            progress.itemStarted(item)
             val batchExternalId = adapter.batchExternalId(
                 providerInstanceId = account.providerInstanceId,
                 item = item,
@@ -73,6 +76,7 @@ class ProviderSyncPipeline(
                     kv("batchId", existingBatch.id),
                     kv("from", item.from.toString()),
                 )
+                progress.itemCompleted(item)
                 return@forEach
             }
 
@@ -117,6 +121,7 @@ class ProviderSyncPipeline(
                         kv("sourceRecords", fetched.sourceRecordsReceived),
                         kv("normalizedRecords", 0),
                     )
+                    progress.itemCompleted(item)
                     return@forEach
                 }
 
@@ -151,6 +156,7 @@ class ProviderSyncPipeline(
                     kv("batchId", batch.batchId),
                     kv("duplicateBatch", batch.duplicateBatch),
                 )
+                progress.itemCompleted(item)
             } catch (exception: Exception) {
                 if (exception is CancellationException) throw exception
                 val code = adapter.errorCode(exception)
@@ -165,6 +171,7 @@ class ProviderSyncPipeline(
                     code = code,
                     message = exception.message ?: adapter.defaultSyncFailureMessage,
                 )
+                progress.itemCompleted(item)
             }
         }
 

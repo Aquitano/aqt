@@ -49,6 +49,36 @@ object ProviderSyncRunsTable : IntIdTable("provider_sync_runs") {
     val errorMessage = text("error_message").nullable()
 }
 
+object ProviderSyncJobsTable : Table("provider_sync_jobs") {
+    val id = text("id")
+    val providerCode = text("provider_code")
+    val providerInstanceId = text("provider_instance_id").nullable()
+    val requestedFrom = timestampWithTimeZone("requested_from")
+    val requestedTo = timestampWithTimeZone("requested_to")
+    val dataTypes = text("data_types").nullable()
+    val pageSize = integer("page_size").nullable()
+    val status = text("status")
+    val totalItems = integer("total_items")
+    val completedItems = integer("completed_items")
+    val currentDataType = text("current_data_type").nullable()
+    val currentFrom = timestampWithTimeZone("current_from").nullable()
+    val currentTo = timestampWithTimeZone("current_to").nullable()
+    val lastCompletedDataType = text("last_completed_data_type").nullable()
+    val lastCompletedFrom = timestampWithTimeZone("last_completed_from").nullable()
+    val lastCompletedTo = timestampWithTimeZone("last_completed_to").nullable()
+    val batchesCount = integer("batches_count")
+    val emptyCount = integer("empty_count")
+    val errorCount = integer("error_count")
+    val summaryJson = text("summary_json").nullable()
+    val errorMessage = text("error_message").nullable()
+    val createdAt = timestampWithTimeZone("created_at")
+    val startedAt = timestampWithTimeZone("started_at").nullable()
+    val updatedAt = timestampWithTimeZone("updated_at")
+    val finishedAt = timestampWithTimeZone("finished_at").nullable()
+
+    override val primaryKey = PrimaryKey(id)
+}
+
 object ProviderScheduledSyncConfigsTable : IntIdTable("provider_scheduled_sync_configs") {
     val providerCode = text("provider_code")
     val providerInstanceId = text("provider_instance_id")

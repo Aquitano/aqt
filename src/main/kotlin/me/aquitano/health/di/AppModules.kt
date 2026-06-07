@@ -51,6 +51,7 @@ import me.aquitano.health.application.metric.steps.repository.StepRepository
 import me.aquitano.health.infrastructure.config.AppConfig
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
+import me.aquitano.health.infrastructure.repositories.ProviderSyncJobRepository
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.ApiKeyHasher
@@ -71,6 +72,7 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
     single { SupportRepository(database) }
     single { IngestionRepository() }
     single { ProviderOAuthRepository(database) }
+    single { ProviderSyncJobRepository(database) }
     single { ScheduledSyncRepository(database) }
     single { ScheduledSyncRunGuard() }
 
@@ -233,6 +235,14 @@ fun servicesModule(database: Database, config: AppConfig) = module {
             providerRegistry = get(),
             providerOAuthRepository = get(),
             providerStatusService = get(),
+        )
+    }
+    single {
+        ProviderSyncJobService(
+            providerRegistry = get(),
+            workflowService = get(),
+            repository = get(),
+            clock = get(),
         )
     }
     single {

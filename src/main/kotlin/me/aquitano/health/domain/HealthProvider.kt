@@ -1,5 +1,6 @@
 package me.aquitano.health.domain
 
+import me.aquitano.health.application.providersync.ProviderSyncProgressSink
 import java.time.Instant
 
 /**
@@ -44,6 +45,12 @@ interface HealthProvider {
         request: ProviderSyncRequest,
         now: Instant
     ): ProviderSyncSummary
+
+    suspend fun sync(
+        request: ProviderSyncRequest,
+        now: Instant,
+        progress: ProviderSyncProgressSink,
+    ): ProviderSyncSummary = sync(request, now)
 }
 
 data class HealthProviderDescriptor(

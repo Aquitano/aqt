@@ -63,6 +63,7 @@ fun Application.module() {
 
     // Close the shared HTTP client on shutdown
     val httpClient by inject<io.ktor.client.HttpClient>()
+    val clock by inject<UtcClock>()
     monitor.subscribe(ApplicationStopping) {
         httpClient.close()
     }
@@ -72,6 +73,12 @@ fun Application.module() {
     scheduler.start()
     monitor.subscribe(ApplicationStopping) {
         scheduler.stop()
+    }
+
+    val providerSyncJobService by inject<ProviderSyncJobService>()
+    providerSyncJobService.start(clock.now())
+    monitor.subscribe(ApplicationStopping) {
+        providerSyncJobService.stop()
     }
 
     // Bootstrap the API client (creates a default API key if none exists)
@@ -105,6 +112,7 @@ private fun Application.buildApplicationServices(): ApplicationServices {
     val metricCatalogService by inject<MetricCatalogService>()
     val providerStatusService by inject<ProviderStatusService>()
     val providerWorkflowService by inject<ProviderWorkflowService>()
+    val providerSyncJobService by inject<ProviderSyncJobService>()
     val scheduledProviderSyncService by inject<ScheduledProviderSyncService>()
     val trendQueryService by inject<TrendQueryService>()
 
@@ -123,6 +131,7 @@ private fun Application.buildApplicationServices(): ApplicationServices {
         metricCatalogService = metricCatalogService,
         providerStatusService = providerStatusService,
         providerWorkflowService = providerWorkflowService,
+        providerSyncJobService = providerSyncJobService,
         scheduledProviderSyncService = scheduledProviderSyncService,
         trendQueryService = trendQueryService,
     )
@@ -143,6 +152,7 @@ data class ApplicationServices(
     val metricCatalogService: MetricCatalogService,
     val providerStatusService: ProviderStatusService,
     val providerWorkflowService: ProviderWorkflowService,
+    val providerSyncJobService: ProviderSyncJobService,
     val scheduledProviderSyncService: ScheduledProviderSyncService,
     val trendQueryService: TrendQueryService,
 )

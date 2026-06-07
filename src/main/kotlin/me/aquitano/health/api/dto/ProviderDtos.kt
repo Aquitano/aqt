@@ -174,6 +174,53 @@ data class ProviderSyncResponseDto(
 )
 
 @Serializable
+data class ProviderSyncJobStartResponseDto(
+    val jobId: String,
+    val status: String,
+    @JsonSchema.Format("date-time")
+    val createdAt: String,
+)
+
+@Serializable
+data class ProviderSyncJobStatusResponseDto(
+    val jobId: String,
+    val providerCode: String,
+    val providerInstanceId: String? = null,
+    @JsonSchema.Format("date-time")
+    val requestedFrom: String,
+    @JsonSchema.Format("date-time")
+    val requestedTo: String,
+    val dataTypes: List<String>? = null,
+    val status: String,
+    val totalItems: Int,
+    val completedItems: Int,
+    val currentItem: ProviderSyncJobItemResponseDto? = null,
+    val lastCompletedItem: ProviderSyncJobItemResponseDto? = null,
+    val batchesCount: Int,
+    val emptyCount: Int,
+    val errorCount: Int,
+    val errorMessage: String? = null,
+    @JsonSchema.Format("date-time")
+    val createdAt: String,
+    @JsonSchema.Format("date-time")
+    val startedAt: String? = null,
+    @JsonSchema.Format("date-time")
+    val updatedAt: String,
+    @JsonSchema.Format("date-time")
+    val finishedAt: String? = null,
+    val summary: ProviderSyncResponseDto? = null,
+)
+
+@Serializable
+data class ProviderSyncJobItemResponseDto(
+    val dataType: String,
+    @JsonSchema.Format("date-time")
+    val from: String,
+    @JsonSchema.Format("date-time")
+    val to: String,
+)
+
+@Serializable
 data class ProviderSyncBatchResponseDto(
     val dataType: String,
     val batchId: Int,

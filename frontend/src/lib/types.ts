@@ -53,6 +53,38 @@ export type ProviderSyncResponse = ApiSchema<"ProviderSyncResponseDto">;
 export type ProviderSyncBatch = ApiSchema<"ProviderSyncBatchResponseDto">;
 export type ProviderSyncError = ApiSchema<"ProviderSyncErrorResponseDto">;
 export type ProviderSyncEmptyDataType = ApiSchema<"ProviderSyncEmptyDataTypeResponseDto">;
+export type ProviderSyncJobStartResponse = {
+  jobId: string;
+  status: string;
+  createdAt: string;
+};
+export type ProviderSyncJobItem = {
+  dataType: string;
+  from: string;
+  to: string;
+};
+export type ProviderSyncJobStatusResponse = {
+  jobId: string;
+  providerCode: string;
+  providerInstanceId?: string | null;
+  requestedFrom: string;
+  requestedTo: string;
+  dataTypes?: string[] | null;
+  status: string;
+  totalItems: number;
+  completedItems: number;
+  currentItem?: ProviderSyncJobItem | null;
+  lastCompletedItem?: ProviderSyncJobItem | null;
+  batchesCount: number;
+  emptyCount: number;
+  errorCount: number;
+  errorMessage?: string | null;
+  createdAt: string;
+  startedAt?: string | null;
+  updatedAt: string;
+  finishedAt?: string | null;
+  summary?: ProviderSyncResponse | null;
+};
 export type ProviderStatusCatalogResponse = ApiSchema<"ProviderStatusCatalogResponseDto">;
 export type ProviderStatus = ApiSchema<"ProviderStatusResponseDto">;
 export type ProviderAccountStatus = ApiSchema<"ProviderAccountStatusResponseDto">;

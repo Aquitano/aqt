@@ -8,6 +8,8 @@ import type {
   CardiovascularMeasurementsResponse,
   ExtendedBodyMeasurementResponse,
   ExtendedBodyMeasurementsResponse,
+  ProviderSyncJobStartResponse,
+  ProviderSyncJobStatusResponse,
   ScheduledSyncConfig,
   ScheduledSyncConfigUpdateRequest,
   ScheduledSyncRunResponse,
@@ -243,6 +245,32 @@ export function createAqtHealthClient() {
           headers,
           params: { path: { providerCode: providerCode as ProviderPathCode } },
         }),
+      ),
+
+    startProviderSyncJob: (
+      providerCode: string,
+      body: ApiSchema<"ProviderSyncRequestDto">,
+    ) =>
+      call<ProviderSyncJobStartResponse>((headers) =>
+        fetchJson(`${apiBaseUrl}/api/v1/providers/${encodeURIComponent(providerCode)}/sync-jobs`, {
+          method: "POST",
+          headers: {
+            ...headers,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        }),
+      ),
+
+    getProviderSyncJob: (
+      providerCode: string,
+      jobId: string,
+    ) =>
+      call<ProviderSyncJobStatusResponse>((headers) =>
+        fetchJson(
+          `${apiBaseUrl}/api/v1/providers/${encodeURIComponent(providerCode)}/sync-jobs/${encodeURIComponent(jobId)}`,
+          { headers },
+        ),
       ),
 
     getMetricCatalog: () =>

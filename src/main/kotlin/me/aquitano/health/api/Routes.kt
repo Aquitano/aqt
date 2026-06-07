@@ -12,6 +12,7 @@ import io.ktor.server.routing.openapi.*
 import kotlinx.serialization.Serializable
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.application.metric.common.QueryParams
+import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
@@ -407,6 +408,85 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 providerSyncRequestExample()
             )
             errorResponses(notFound = true, conflict = true, upstream = true)
+        }
+        post("/api/v1/providers/{providerCode}/sync-jobs") {
+            call.authenticateProtected(services)
+            val code = call.providerCode()
+            call.respond<ProviderSyncJobStartResponseDto>(
+                HttpStatusCode.Accepted,
+                services.providerSyncJobService.create(
+                    providerCode = code,
+                    request = call.receive<ProviderSyncRequestDto>(),
+                    now = services.clock.now(),
+                )
+            )
+        }.describe {
+            operationId = "startProviderSyncJob"
+            tag("Providers")
+            summary = "Start a background provider sync job"
+            description =
+                "Creates a durable manual provider sync job and returns immediately. The backend processes provider-safe chunks sequentially; clients can poll the job endpoint for progress and final summary after page reloads."
+            requiresBearerAuth()
+            providerCodePath()
+            jsonRequest<ProviderSyncRequestDto>(
+                "Provider sync request. Long historical ranges are accepted for backfill and processed by the backend job worker.",
+                "syncJobRequest",
+                providerSyncRequestExample()
+            )
+            responses {
+                HttpStatusCode.Accepted {
+                    description = "Sync job accepted"
+                    content {
+                        schema = buildSchema(typeOf<ProviderSyncJobStartResponseDto>())
+                    }
+                }
+                commonErrors(notFound = true, conflict = true)
+                defaultError()
+            }
+        }
+        get("/api/v1/providers/{providerCode}/sync-jobs/latest") {
+            call.authenticateProtected(services)
+            val code = call.providerCode()
+            val job = services.providerSyncJobService.latest(code)
+                ?: throw NotFoundException("Provider sync job not found")
+            call.respond(HttpStatusCode.OK, job)
+        }.describe {
+            operationId = "getLatestProviderSyncJob"
+            tag("Providers")
+            summary = "Get latest provider sync job"
+            description = "Returns the latest manual provider sync job for a provider."
+            requiresBearerAuth()
+            providerCodePath()
+            errorResponses(notFound = true)
+        }
+        get("/api/v1/providers/{providerCode}/sync-jobs/{jobId}") {
+            call.authenticateProtected(services)
+            val jobId = call.parameters["jobId"]?.takeIf { it.isNotBlank() }
+                ?: throw RequestValidationException(
+                    listOf(
+                        ValidationIssue(
+                            field = "jobId",
+                            code = ValidationIssueCodes.Required,
+                            message = "is required",
+                        )
+                    )
+                )
+            call.respond(HttpStatusCode.OK, services.providerSyncJobService.get(jobId))
+        }.describe {
+            operationId = "getProviderSyncJob"
+            tag("Providers")
+            summary = "Get provider sync job progress"
+            description =
+                "Returns progress counters, the current provider-safe window, and the final sync summary when the background job has finished."
+            requiresBearerAuth()
+            providerCodePath()
+            parameters {
+                path("jobId") {
+                    description = "Provider sync job id returned by startProviderSyncJob"
+                    schema = buildSchema(typeOf<String>())
+                }
+            }
+            errorResponses(notFound = true)
         }
         get("/api/v1/metrics/catalog") {
             call.authenticateProtected(services)

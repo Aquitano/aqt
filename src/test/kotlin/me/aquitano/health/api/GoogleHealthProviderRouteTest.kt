@@ -62,6 +62,31 @@ class GoogleHealthProviderRouteTest {
     }
 
     @Test
+    fun syncJobLongHistoricalRangeIsAcceptedAndPollable() = testApplication {
+        configureTestApplication()
+
+        val startResponse = client.post("/api/v1/providers/google-health/sync-jobs") {
+            authorized()
+            contentType(ContentType.Application.Json)
+            setBody("""{"from":"2020-01-01T00:00:00Z","to":"2026-01-01T00:00:00Z","dataTypes":["steps"]}""")
+        }
+
+        assertEquals(HttpStatusCode.Accepted, startResponse.status)
+        val startBody = AppJson.parseToJsonElement(startResponse.bodyAsText()).jsonObject
+        val jobId = startBody["jobId"]!!.jsonPrimitive.content
+        assertTrue(jobId.isNotBlank())
+
+        val statusResponse = client.get("/api/v1/providers/google-health/sync-jobs/$jobId") {
+            authorized()
+        }
+
+        assertEquals(HttpStatusCode.OK, statusResponse.status)
+        val statusBody = AppJson.parseToJsonElement(statusResponse.bodyAsText()).jsonObject
+        assertEquals(jobId, statusBody["jobId"]!!.jsonPrimitive.content)
+        assertEquals("google-health", statusBody["providerCode"]!!.jsonPrimitive.content)
+    }
+
+    @Test
     fun syncRejectsInvalidPageSize() = testApplication {
         configureTestApplication()
 
