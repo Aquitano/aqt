@@ -8,6 +8,8 @@ val logstash_logback_encoder_version: String by project
 val okhttp_version: String by project
 val postgresql_jdbc_version: String by project
 val testcontainers_version: String by project
+val kotlinx_coroutines_version: String by project
+val kotlin_logging_version: String by project
 
 plugins {
     kotlin("jvm") version "2.3.0"
@@ -40,6 +42,7 @@ dependencies {
     implementation("io.ktor:ktor-client-cio")
     implementation("io.ktor:ktor-client-content-negotiation")
     implementation("io.ktor:ktor-client-core")
+    implementation("io.ktor:ktor-client-logging")
     implementation("io.ktor:ktor-server-auth")
     implementation("io.ktor:ktor-server-call-id")
     implementation("io.ktor:ktor-server-call-logging")
@@ -62,6 +65,8 @@ dependencies {
 
     implementation("ch.qos.logback:logback-classic:$logback_version")
     implementation("net.logstash.logback:logstash-logback-encoder:$logstash_logback_encoder_version")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-slf4j:$kotlinx_coroutines_version")
+    implementation("io.github.oshai:kotlin-logging-jvm:$kotlin_logging_version")
     implementation("com.squareup.okhttp3:okhttp:$okhttp_version")
 
     implementation("org.jetbrains.exposed:exposed-core:$exposed_version")

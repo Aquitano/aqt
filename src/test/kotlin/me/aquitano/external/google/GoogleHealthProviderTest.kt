@@ -567,6 +567,15 @@ class GoogleHealthProviderTest {
             client = client,
             normalizer = GoogleHealthNormalizer(),
             ingestionService = ingestionService,
+            syncPipeline = me.aquitano.health.application.providersync.ProviderSyncPipeline(
+                accounts = me.aquitano.health.application.providersync.ProviderOAuthSyncAccountPort(
+                    providerRepository,
+                    config.tokenEncryptionKey,
+                ),
+                runs = me.aquitano.health.application.providersync.ProviderOAuthSyncRunPort(providerRepository),
+                ingestion = me.aquitano.health.application.providersync.IngestionProviderSyncPort(ingestionService),
+                currentTime = { now },
+            ),
         )
         private val providerRegistry = HealthProviderRegistry(listOf(provider))
         val providerStatusService = ProviderStatusService(

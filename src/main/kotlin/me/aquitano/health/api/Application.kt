@@ -13,13 +13,13 @@ import me.aquitano.health.infrastructure.database.DatabaseFactory
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.ApiKeyHasher
 import me.aquitano.health.infrastructure.time.UtcClock
-import net.logstash.logback.argument.StructuredArguments.kv
 import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
-import org.slf4j.LoggerFactory
+import io.github.oshai.kotlinlogging.KotlinLogging
+import me.aquitano.health.infrastructure.logging.*
 
-private val logger = LoggerFactory.getLogger("me.aquitano.health.api.Application")
+private val logger = KotlinLogging.logger("me.aquitano.health.api.Application")
 
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)
@@ -27,7 +27,7 @@ fun main(args: Array<String>) {
 
 fun Application.module() {
     val appConfig = environment.config.toAppConfig()
-    logger.info("app_starting {}", kv("databaseDriver", appConfig.database.driver))
+    logger.infoWithContext("app_starting", "databaseDriver" to appConfig.database.driver)
 
     val databaseFactory = DatabaseFactory()
     val database = databaseFactory.initialize(appConfig.database)
@@ -36,19 +36,17 @@ fun Application.module() {
         databaseFactory.close()
     }
 
-    logger.info(
-        "app_configured {} {}",
-        kv(
-            "googleHealthConfigured",
+    logger.infoWithContext(
+        "app_configured",
+        "googleHealthConfigured" to (
             appConfig.googleHealth.clientId.isNotBlank() &&
-                    appConfig.googleHealth.clientSecret.isNotBlank() &&
-                    appConfig.googleHealth.tokenEncryptionKey.isNotBlank(),
+            appConfig.googleHealth.clientSecret.isNotBlank() &&
+            appConfig.googleHealth.tokenEncryptionKey.isNotBlank()
         ),
-        kv(
-            "withingsConfigured",
+        "withingsConfigured" to (
             appConfig.withings.clientId.isNotBlank() &&
-                    appConfig.withings.clientSecret.isNotBlank() &&
-                    appConfig.withings.tokenEncryptionKey.isNotBlank(),
+            appConfig.withings.clientSecret.isNotBlank() &&
+            appConfig.withings.tokenEncryptionKey.isNotBlank()
         ),
     )
 

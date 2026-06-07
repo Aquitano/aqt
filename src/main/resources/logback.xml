@@ -27,6 +27,20 @@
                     <fieldName>stack_trace</fieldName>
                 </stackTrace>
             </providers>
+            <jsonGeneratorDecorator class="net.logstash.logback.mask.MaskingJsonGeneratorDecorator">
+                <path>accessToken</path>
+                <path>refreshToken</path>
+                <path>clientSecret</path>
+                <path>password</path>
+                <path>apiKey</path>
+                <path>Authorization</path>
+                <path>access_token</path>
+                <path>refresh_token</path>
+                <path>client_secret</path>
+                <path>api_key</path>
+                <path>bootstrapApiKey</path>
+                <path>bootstrap_api_key</path>
+            </jsonGeneratorDecorator>
         </encoder>
     </appender>
 
@@ -60,6 +74,20 @@
                     <fieldName>stack_trace</fieldName>
                 </stackTrace>
             </providers>
+            <jsonGeneratorDecorator class="net.logstash.logback.mask.MaskingJsonGeneratorDecorator">
+                <path>accessToken</path>
+                <path>refreshToken</path>
+                <path>clientSecret</path>
+                <path>password</path>
+                <path>apiKey</path>
+                <path>Authorization</path>
+                <path>access_token</path>
+                <path>refresh_token</path>
+                <path>client_secret</path>
+                <path>api_key</path>
+                <path>bootstrapApiKey</path>
+                <path>bootstrap_api_key</path>
+            </jsonGeneratorDecorator>
         </encoder>
     </appender>
 
@@ -89,6 +117,20 @@
                     <fieldName>stack_trace</fieldName>
                 </stackTrace>
             </providers>
+            <jsonGeneratorDecorator class="net.logstash.logback.mask.MaskingJsonGeneratorDecorator">
+                <path>accessToken</path>
+                <path>refreshToken</path>
+                <path>clientSecret</path>
+                <path>password</path>
+                <path>apiKey</path>
+                <path>Authorization</path>
+                <path>access_token</path>
+                <path>refresh_token</path>
+                <path>client_secret</path>
+                <path>api_key</path>
+                <path>bootstrapApiKey</path>
+                <path>bootstrap_api_key</path>
+            </jsonGeneratorDecorator>
         </encoder>
     </appender>
 
@@ -109,4 +151,5 @@
     <logger name="org.eclipse.jetty" level="INFO"/>
     <logger name="org.flywaydb" level="INFO"/>
     <logger name="org.jetbrains.exposed" level="WARN"/>
+    <logger name="me.aquitano.health.database.Sql" level="DEBUG"/>
 </configuration>

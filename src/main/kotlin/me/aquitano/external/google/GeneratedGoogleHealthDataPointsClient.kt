@@ -9,12 +9,11 @@ import com.google.devicesandservices.health.v4.*
 import com.google.protobuf.util.JsonFormat
 import kotlinx.serialization.json.*
 import me.aquitano.health.shared.AppJson
-import net.logstash.logback.argument.StructuredArguments.kv
-import org.slf4j.LoggerFactory
+import io.github.oshai.kotlinlogging.KotlinLogging
+import me.aquitano.health.infrastructure.logging.*
 import java.time.Instant
 
-private val generatedClientLogger =
-    LoggerFactory.getLogger(GeneratedGoogleHealthClient::class.java)
+private val generatedClientLogger = KotlinLogging.logger {}
 
 class GeneratedGoogleHealthClient(
     private val oauthClient: GoogleHealthOAuthClient,
@@ -83,11 +82,11 @@ class GeneratedGoogleHealthClient(
             pageIndex += 1
 
             if (pageIndex == 1 || pageIndex % 25 == 0) {
-                generatedClientLogger.info(
-                    "google_health_generated_page_fetched {} {} {}",
-                    kv("dataType", dataType),
-                    kv("pages", pageIndex),
-                    kv("dataPoints", dataPoints.size),
+                generatedClientLogger.infoWithContext(
+                    "google_health_generated_page_fetched",
+                    "dataType" to dataType,
+                    "pages" to pageIndex,
+                    "dataPoints" to dataPoints.size,
                 )
             }
 

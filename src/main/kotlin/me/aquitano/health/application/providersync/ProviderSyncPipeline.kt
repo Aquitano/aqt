@@ -2,13 +2,13 @@ package me.aquitano.health.application.providersync
 
 import kotlinx.coroutines.delay
 import me.aquitano.health.domain.*
-import net.logstash.logback.argument.StructuredArguments.kv
-import org.slf4j.LoggerFactory
+import io.github.oshai.kotlinlogging.KotlinLogging
+import me.aquitano.health.infrastructure.logging.*
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.CancellationException
 
-private val logger = LoggerFactory.getLogger(ProviderSyncPipeline::class.java)
+private val logger = KotlinLogging.logger {}
 
 class ProviderSyncPipeline(
     private val accounts: ProviderSyncAccountPort,
@@ -40,13 +40,15 @@ class ProviderSyncPipeline(
             requestedTo = plan.requestedTo,
             startedAt = now,
         )
-        logger.info(
-            "provider_sync_started {} {} {} {} {}",
-            kv("provider", adapter.providerCode),
-            kv("providerInstanceId", account.providerInstanceId),
-            kv("from", plan.requestedFrom.toString()),
-            kv("to", plan.requestedTo.toString()),
-            kv("dataTypes", plan.items.map { it.dataType }.distinct()),
+        logger.infoWithContext(
+            "provider_sync_started",
+            mapOf(
+                "provider" to adapter.providerCode,
+                "providerInstanceId" to account.providerInstanceId,
+                "from" to plan.requestedFrom,
+                "to" to plan.requestedTo,
+                "dataTypes" to plan.items.map { it.dataType }.distinct()
+            )
         )
         progress.started(plan.items.size, account.providerInstanceId)
 
@@ -69,13 +71,15 @@ class ProviderSyncPipeline(
             )
             if (existingBatch?.status == "processed") {
                 batches += cachedBatchResponse(item.dataType, existingBatch.id)
-                logger.info(
-                    "provider_sync_cache_hit {} {} {} {} {}",
-                    kv("provider", adapter.providerCode),
-                    kv("providerInstanceId", account.providerInstanceId),
-                    kv("dataType", item.dataType),
-                    kv("batchId", existingBatch.id),
-                    kv("from", item.from.toString()),
+                logger.infoWithContext(
+                    "provider_sync_cache_hit",
+                    mapOf(
+                        "provider" to adapter.providerCode,
+                        "providerInstanceId" to account.providerInstanceId,
+                        "dataType" to item.dataType,
+                        "batchId" to existingBatch.id,
+                        "from" to item.from
+                    )
                 )
                 progress.itemCompleted(item)
                 return@forEach
@@ -114,13 +118,15 @@ class ProviderSyncPipeline(
                             normalizedRecords = 0,
                         )
                     }
-                    logger.info(
-                        "provider_data_type_synced {} {} {} {} {}",
-                        kv("provider", adapter.providerCode),
-                        kv("dataType", item.dataType),
-                        kv("pages", fetched.pagesFetched),
-                        kv("sourceRecords", fetched.sourceRecordsReceived),
-                        kv("normalizedRecords", 0),
+                    logger.infoWithContext(
+                        "provider_data_type_synced",
+                        mapOf(
+                            "provider" to adapter.providerCode,
+                            "dataType" to item.dataType,
+                            "pages" to fetched.pagesFetched,
+                            "sourceRecords" to fetched.sourceRecordsReceived,
+                            "normalizedRecords" to 0
+                        )
                     )
                     progress.itemCompleted(item)
                     return@forEach
@@ -148,14 +154,16 @@ class ProviderSyncPipeline(
                     now = now,
                 )
                 batches += batch
-                logger.info(
-                    "provider_data_type_synced {} {} {} {} {} {}",
-                    kv("provider", adapter.providerCode),
-                    kv("dataType", item.dataType),
-                    kv("pages", fetched.pagesFetched),
-                    kv("records", fetched.records.size),
-                    kv("batchId", batch.batchId),
-                    kv("duplicateBatch", batch.duplicateBatch),
+                logger.infoWithContext(
+                    "provider_data_type_synced",
+                    mapOf(
+                        "provider" to adapter.providerCode,
+                        "dataType" to item.dataType,
+                        "pages" to fetched.pagesFetched,
+                        "records" to fetched.records.size,
+                        "batchId" to batch.batchId,
+                        "duplicateBatch" to batch.duplicateBatch
+                    )
                 )
                 progress.itemCompleted(item)
             } catch (exception: Exception) {
@@ -165,16 +173,19 @@ class ProviderSyncPipeline(
                     ?.take(500)
                     ?: adapter.defaultSyncFailureMessage
                 val providerAttributes = adapter.errorAttributes(exception)
-                logger.warn(
-                    "provider_data_type_failed {} {} {} {} {} {} {} {}",
-                    kv("provider", adapter.providerCode),
-                    kv("dataType", item.dataType),
-                    kv("from", item.from.toString()),
-                    kv("to", item.to.toString()),
-                    kv("errorCode", code),
-                    kv("errorMessage", safeMessage),
-                    kv("exceptionClass", exception::class.qualifiedName ?: exception::class.simpleName),
-                    kv("providerError", providerAttributes),
+                logger.warnWithContext(
+                    "provider_data_type_failed",
+                    mapOf(
+                        "provider" to adapter.providerCode,
+                        "dataType" to item.dataType,
+                        "from" to item.from,
+                        "to" to item.to,
+                        "errorCode" to code,
+                        "errorMessage" to safeMessage,
+                        "exceptionClass" to (exception::class.qualifiedName ?: exception::class.simpleName),
+                        "providerError" to providerAttributes
+                    ),
+                    exception
                 )
                 errors += ProviderSyncError(
                     dataType = item.dataType,
@@ -197,18 +208,17 @@ class ProviderSyncPipeline(
             errorMessage = errors.joinToString("; ") { "${it.dataType}: ${it.message}" }
                 .ifBlank { null },
         )
-        val completionMessage = "provider_sync_completed {} {} {} {} {}"
-        val completionArgs = arrayOf(
-            kv("provider", adapter.providerCode),
-            kv("syncRunId", runId),
-            kv("status", status),
-            kv("batchCount", batches.size),
-            kv("errorCount", errors.size),
+        val context = mapOf(
+            "provider" to adapter.providerCode,
+            "syncRunId" to runId,
+            "status" to status,
+            "batchCount" to batches.size,
+            "errorCount" to errors.size
         )
         when (status) {
-            "processed" -> logger.info(completionMessage, *completionArgs)
-            "partial_failed" -> logger.warn(completionMessage, *completionArgs)
-            else -> logger.error(completionMessage, *completionArgs)
+            "processed" -> logger.infoWithContext("provider_sync_completed", context)
+            "partial_failed" -> logger.warnWithContext("provider_sync_completed", context)
+            else -> logger.errorWithContext("provider_sync_completed", context)
         }
 
         if (batches.isEmpty() && errors.isNotEmpty()) {
@@ -336,3 +346,4 @@ private data class ThrottledFetchResult(
     val batch: ProviderFetchedBatch,
     val completedAtNanos: Long,
 )
+

@@ -16,12 +16,12 @@ import io.ktor.server.routing.*
 import io.micrometer.prometheusmetrics.*
 import kotlinx.coroutines.*
 import me.aquitano.health.infrastructure.config.AppConfig
-import org.slf4j.LoggerFactory
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.xerial.snappy.Snappy
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 
-private val logger = LoggerFactory.getLogger("me.aquitano.health.api.Metrics")
+private val logger = KotlinLogging.logger("me.aquitano.health.api.Metrics")
 
 fun Application.configureMetrics(appConfig: AppConfig, sharedHttpClient: HttpClient? = null) {
     val registry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
@@ -59,7 +59,7 @@ fun Application.configureMetrics(appConfig: AppConfig, sharedHttpClient: HttpCli
     val password = appConfig.openObserve.password
 
     if (url.isBlank()) {
-        logger.warn("OpenObserve metrics pusher not started: url is blank.")
+        logger.warn { "OpenObserve metrics pusher not started: url is blank." }
         return
     }
 
@@ -68,18 +68,18 @@ fun Application.configureMetrics(appConfig: AppConfig, sharedHttpClient: HttpCli
     } else {
         val base = url.trimEnd('/')
         if (org.isBlank()) {
-            logger.warn("OpenObserve metrics pusher not started: url is base path but org is blank.")
+            logger.warn { "OpenObserve metrics pusher not started: url is base path but org is blank." }
             return
         }
         "$base/api/$org/prometheus/api/v1/write"
     }
 
     if (user.isBlank() || password.isBlank()) {
-        logger.warn("OpenObserve metrics pusher not started: missing username or password.")
+        logger.warn { "OpenObserve metrics pusher not started: missing username or password." }
         return
     }
 
-    logger.info("Configuring OpenObserve metrics pusher to $targetUrl every 15s")
+    logger.info { "Configuring OpenObserve metrics pusher to $targetUrl every 15s" }
 
     val client = sharedHttpClient ?: HttpClient(CIO)
 
@@ -103,14 +103,14 @@ fun Application.configureMetrics(appConfig: AppConfig, sharedHttpClient: HttpCli
                             setBody(snappyBytes)
                         }
                         if (response.status.value >= 300) {
-                            logger.warn("Failed to push metrics to OpenObserve. Status: ${response.status}")
+                            logger.warn { "Failed to push metrics to OpenObserve. Status: ${response.status}" }
                         }
                     }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.error("Error while pushing metrics to OpenObserve: ${e.message}", e)
+                logger.error(e) { "Error while pushing metrics to OpenObserve: ${e.message}" }
             }
         }
     }

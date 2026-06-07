@@ -11,11 +11,11 @@ import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.config.GoogleHealthConfig
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
-import net.logstash.logback.argument.StructuredArguments.kv
-import org.slf4j.LoggerFactory
+import io.github.oshai.kotlinlogging.KotlinLogging
+import me.aquitano.health.infrastructure.logging.*
 import java.time.Instant
 
-private val logger = LoggerFactory.getLogger(GoogleHealthProvider::class.java)
+private val logger = KotlinLogging.logger {}
 
 class GoogleHealthProvider(
     private val config: GoogleHealthConfig,
@@ -101,12 +101,12 @@ class GoogleHealthProvider(
             scope = tokens.scope,
             now = now,
         )
-        logger.info(
-            "provider_oauth_connected {} {} {} {}",
-            kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
-            kv("providerInstanceId", defaultProviderInstanceId),
-            kv("expiresAt", tokens.expiresAt.toString()),
-            kv("scopeCount", tokens.scope.split(" ").count { it.isNotBlank() }),
+        logger.infoWithContext(
+            "provider_oauth_connected",
+            "provider" to GOOGLE_HEALTH_PROVIDER_CODE,
+            "providerInstanceId" to defaultProviderInstanceId,
+            "expiresAt" to tokens.expiresAt,
+            "scopeCount" to tokens.scope.split(" ").count { it.isNotBlank() },
         )
         return ProviderConnection(
             providerCode = GOOGLE_HEALTH_PROVIDER_CODE,
@@ -153,10 +153,11 @@ class GoogleHealthProvider(
         try {
             block()
         } catch (throwable: GoogleHealthHttpException) {
-            logger.warn(
-                "provider_token_exchange_failed {} {}",
-                kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
-                kv("errorCode", throwable.code),
+            logger.warnWithContext(
+                "provider_token_exchange_failed",
+                "provider" to GOOGLE_HEALTH_PROVIDER_CODE,
+                "errorCode" to throwable.code,
+                throwable = throwable,
             )
             throw UpstreamProviderException(
                 code = throwable.code,
@@ -165,10 +166,11 @@ class GoogleHealthProvider(
                 cause = throwable,
             )
         } catch (throwable: GoogleHealthUnauthorizedException) {
-            logger.warn(
-                "provider_token_exchange_failed {} {}",
-                kv("provider", GOOGLE_HEALTH_PROVIDER_CODE),
-                kv("errorCode", fallbackCode),
+            logger.warnWithContext(
+                "provider_token_exchange_failed",
+                "provider" to GOOGLE_HEALTH_PROVIDER_CODE,
+                "errorCode" to fallbackCode,
+                throwable = throwable,
             )
             throw UpstreamProviderException(
                 code = fallbackCode,

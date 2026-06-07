@@ -25,15 +25,15 @@ import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.shared.AppJson
-import net.logstash.logback.argument.StructuredArguments.kv
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
-import org.slf4j.LoggerFactory
+import io.github.oshai.kotlinlogging.KotlinLogging
+import me.aquitano.health.infrastructure.logging.*
 import java.time.Instant
 import java.time.LocalDate
 import java.util.concurrent.CancellationException
 
-private val logger = LoggerFactory.getLogger(IngestionService::class.java)
+private val logger = KotlinLogging.logger {}
 
 class IngestionService(
     private val database: Database,
@@ -84,12 +84,12 @@ class IngestionService(
         now: Instant
     ): IngestionSummaryResponse {
         val validated = mappingService.validateAndMap(request)
-        logger.info(
-            "ingestion_batch_received {} {} {} {}",
-            kv("provider", validated.provider),
-            kv("providerInstanceId", validated.providerInstanceId),
-            kv("recordCount", validated.records.size),
-            kv("hasExternalId", validated.batchExternalId != null),
+        logger.infoWithContext(
+            "ingestion_batch_received",
+            "provider" to validated.provider,
+            "providerInstanceId" to validated.providerInstanceId,
+            "recordCount" to validated.records.size,
+            "hasExternalId" to (validated.batchExternalId != null),
         )
         val transactionResult =
             suspendTransaction(db = database) {
@@ -108,10 +108,10 @@ class IngestionService(
                         )
                     }
                 if (existingBatch?.status == "processed") {
-                    logger.info(
-                        "ingestion_batch_duplicate {} {}",
-                        kv("batchId", existingBatch.id),
-                        kv("recordCount", validated.records.size),
+                    logger.infoWithContext(
+                        "ingestion_batch_duplicate",
+                        "batchId" to existingBatch.id,
+                        "recordCount" to validated.records.size,
                     )
                     return@suspendTransaction IngestionTransactionResult.Success(
                         IngestionSummaryResponse(
@@ -152,10 +152,10 @@ class IngestionService(
                         batchExternalId = existingBatchExternalId,
                         releasedAt = now,
                     )
-                    logger.info(
-                        "ingestion_batch_failed_external_id_released {} {}",
-                        kv("batchId", existingBatch.id),
-                        kv("batchExternalId", existingBatchExternalId),
+                    logger.infoWithContext(
+                        "ingestion_batch_failed_external_id_released",
+                        "batchId" to existingBatch.id,
+                        "batchExternalId" to existingBatchExternalId,
                     )
                 } else if (existingBatch != null) {
                     throw ConflictException(
@@ -237,10 +237,10 @@ class IngestionService(
                         now,
                         exception.message ?: "Unknown ingestion error"
                     )
-                    logger.error(
-                        "ingestion_batch_failed {}",
-                        kv("batchId", batchId),
-                        exception,
+                    logger.errorWithContext(
+                        "ingestion_batch_failed",
+                        "batchId" to batchId,
+                        throwable = exception,
                     )
                     return@suspendTransaction IngestionTransactionResult.Failure(
                         exception
@@ -280,62 +280,23 @@ class IngestionService(
             is IngestionTransactionResult.Success -> {
                 val response = transactionResult.response
                 if (!response.duplicateBatch) {
-                    logger.info(
-                        "ingestion_batch_processed {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
-                        kv("batchId", response.batchId),
-                        kv("recordsStored", response.ingestionRecordsStored),
-                        kv(
-                            "stepSamplesCreated",
-                            response.metricsCreated.stepSamples
-                        ),
-                        kv(
-                            "sleepSessionsCreated",
-                            response.metricsCreated.sleepSessions
-                        ),
-                        kv(
-                            "sleepStagesCreated",
-                            response.metricsCreated.sleepStages
-                        ),
-                        kv(
-                            "bodyMeasurementsCreated",
-                            response.metricsCreated.bodyMeasurements
-                        ),
-                        kv(
-                            "heartRateSamplesCreated",
-                            response.metricsCreated.heartRateSamples
-                        ),
-                        kv(
-                            "activitySummariesCreated",
-                            response.metricsCreated.activitySummaries
-                        ),
-                        kv(
-                            "sleepSummariesCreated",
-                            response.metricsCreated.sleepSummaries
-                        ),
-                        kv(
-                            "respiratoryRateSamplesCreated",
-                            response.metricsCreated.respiratoryRateSamples
-                        ),
-                        kv(
-                            "hrvSamplesCreated",
-                            response.metricsCreated.hrvSamples
-                        ),
-                        kv(
-                            "bloodPressureCreated",
-                            response.metricsCreated.bloodPressureMeasurements
-                        ),
-                        kv(
-                            "cardiovascularCreated",
-                            response.metricsCreated.cardiovascularMeasurements
-                        ),
-                        kv(
-                            "extendedBodyMeasurementsCreated",
-                            response.metricsCreated.extendedBodyMeasurements
-                        ),
-                        kv(
-                            "duplicateSkips",
-                            response.metricsSkipped.duplicates
-                        ),
+                    logger.infoWithContext(
+                        "ingestion_batch_processed",
+                        "batchId" to response.batchId,
+                        "recordsStored" to response.ingestionRecordsStored,
+                        "stepSamplesCreated" to response.metricsCreated.stepSamples,
+                        "sleepSessionsCreated" to response.metricsCreated.sleepSessions,
+                        "sleepStagesCreated" to response.metricsCreated.sleepStages,
+                        "bodyMeasurementsCreated" to response.metricsCreated.bodyMeasurements,
+                        "heartRateSamplesCreated" to response.metricsCreated.heartRateSamples,
+                        "activitySummariesCreated" to response.metricsCreated.activitySummaries,
+                        "sleepSummariesCreated" to response.metricsCreated.sleepSummaries,
+                        "respiratoryRateSamplesCreated" to response.metricsCreated.respiratoryRateSamples,
+                        "hrvSamplesCreated" to response.metricsCreated.hrvSamples,
+                        "bloodPressureCreated" to response.metricsCreated.bloodPressureMeasurements,
+                        "cardiovascularCreated" to response.metricsCreated.cardiovascularMeasurements,
+                        "extendedBodyMeasurementsCreated" to response.metricsCreated.extendedBodyMeasurements,
+                        "duplicateSkips" to response.metricsSkipped.duplicates,
                     )
                 }
                 response

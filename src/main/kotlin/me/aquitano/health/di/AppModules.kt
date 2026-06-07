@@ -4,6 +4,7 @@ import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.logging.*
 import io.ktor.serialization.kotlinx.json.*
 import me.aquitano.external.google.*
 import me.aquitano.external.withings.KtorWithingsClient
@@ -104,6 +105,10 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
                 connectTimeoutMillis = 10_000
                 socketTimeoutMillis = 60_000
                 requestTimeoutMillis = 120_000
+            }
+            install(Logging) {
+                logger = Logger.DEFAULT
+                level = LogLevel.INFO
             }
         }
     }

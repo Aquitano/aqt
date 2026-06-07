@@ -6,17 +6,16 @@ import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncCheckpointRecord
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncConfigRecord
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncRepository
-import net.logstash.logback.argument.StructuredArguments.kv
 import kotlinx.coroutines.sync.Mutex
-import org.slf4j.LoggerFactory
+import io.github.oshai.kotlinlogging.KotlinLogging
+import me.aquitano.health.infrastructure.logging.*
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
 import kotlin.math.pow
 
-private val scheduledSyncLogger =
-    LoggerFactory.getLogger(ScheduledProviderSyncService::class.java)
+private val scheduledSyncLogger = KotlinLogging.logger {}
 
 class ScheduledSyncRunGuard {
     // This is intentionally process-local. Multiple scheduler processes sharing one DB need a DB-backed claim.
@@ -218,11 +217,11 @@ class ScheduledProviderSyncService(
                 errorMessage = errors.joinToString("; "),
                 now = now,
             )
-            scheduledSyncLogger.warn(
-                "scheduled_provider_sync_failed {} {} {}",
-                kv("provider", config.providerCode),
-                kv("providerInstanceId", config.providerInstanceId),
-                kv("errorCount", errors.size),
+            scheduledSyncLogger.warnWithContext(
+                "scheduled_provider_sync_failed",
+                "provider" to config.providerCode,
+                "providerInstanceId" to config.providerInstanceId,
+                "errorCount" to errors.size,
             )
             ScheduledSyncExecutionResult("failed", earliestFrom, latestTo, errors, summaries)
         }

@@ -442,6 +442,15 @@ class WithingsProviderTest {
             client = client,
             normalizer = WithingsNormalizer(),
             ingestionService = ingestionService,
+            syncPipeline = me.aquitano.health.application.providersync.ProviderSyncPipeline(
+                accounts = me.aquitano.health.application.providersync.ProviderOAuthSyncAccountPort(
+                    providerRepository,
+                    config.tokenEncryptionKey,
+                ),
+                runs = me.aquitano.health.application.providersync.ProviderOAuthSyncRunPort(providerRepository),
+                ingestion = me.aquitano.health.application.providersync.IngestionProviderSyncPort(ingestionService),
+                currentTime = { now },
+            ),
         )
         private val providerRegistry = HealthProviderRegistry(listOf(provider))
         val providerStatusService = ProviderStatusService(
@@ -624,6 +633,7 @@ class WithingsProviderTest {
                 throw WithingsHttpException(
                     "withings_data_request_failed",
                     "Withings data request failed with 401",
+                    providerStatus = 401,
                 )
             }
         }

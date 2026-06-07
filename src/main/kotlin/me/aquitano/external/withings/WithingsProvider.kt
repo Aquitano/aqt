@@ -11,11 +11,11 @@ import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.config.WithingsConfig
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
-import net.logstash.logback.argument.StructuredArguments.kv
-import org.slf4j.LoggerFactory
+import io.github.oshai.kotlinlogging.KotlinLogging
+import me.aquitano.health.infrastructure.logging.*
 import java.time.Instant
 
-private val logger = LoggerFactory.getLogger(WithingsProvider::class.java)
+private val logger = KotlinLogging.logger {}
 
 class WithingsProvider(
     private val config: WithingsConfig,
@@ -77,10 +77,11 @@ class WithingsProvider(
         val tokens = try {
             client.exchangeCode(code, now)
         } catch (exception: WithingsHttpException) {
-            logger.warn(
-                "provider_token_exchange_failed {} {}",
-                kv("provider", WITHINGS_PROVIDER_CODE),
-                kv("errorCode", exception.code),
+            logger.warnWithContext(
+                "provider_token_exchange_failed",
+                "provider" to WITHINGS_PROVIDER_CODE,
+                "errorCode" to exception.code,
+                throwable = exception,
             )
             throw UpstreamProviderException(
                 code = exception.code,
@@ -110,12 +111,12 @@ class WithingsProvider(
             scope = tokens.scope,
             now = now,
         )
-        logger.info(
-            "provider_oauth_connected {} {} {} {}",
-            kv("provider", WITHINGS_PROVIDER_CODE),
-            kv("providerInstanceId", providerInstanceId),
-            kv("expiresAt", tokens.expiresAt.toString()),
-            kv("scopeCount", tokens.scope.split(",").count { it.isNotBlank() }),
+        logger.infoWithContext(
+            "provider_oauth_connected",
+            "provider" to WITHINGS_PROVIDER_CODE,
+            "providerInstanceId" to providerInstanceId,
+            "expiresAt" to tokens.expiresAt,
+            "scopeCount" to tokens.scope.split(",").count { it.isNotBlank() },
         )
         return ProviderConnection(
             providerCode = WITHINGS_PROVIDER_CODE,

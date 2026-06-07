@@ -19,12 +19,12 @@ import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.infrastructure.repositories.ProviderSyncJobRecord
 import me.aquitano.health.infrastructure.repositories.ProviderSyncJobRepository
 import me.aquitano.health.shared.AppJson
-import net.logstash.logback.argument.StructuredArguments.kv
-import org.slf4j.LoggerFactory
+import io.github.oshai.kotlinlogging.KotlinLogging
+import me.aquitano.health.infrastructure.logging.*
 import java.time.Instant
 import java.util.UUID
 
-private val providerSyncJobLogger = LoggerFactory.getLogger(ProviderSyncJobService::class.java)
+private val providerSyncJobLogger = KotlinLogging.logger {}
 
 class ProviderSyncJobService(
     private val providerRegistry: HealthProviderRegistry,
@@ -90,10 +90,10 @@ class ProviderSyncJobService(
         request: ProviderSyncRequest,
     ) {
         repository.markRunning(jobId, clock.now())
-        providerSyncJobLogger.info(
-            "provider_sync_job_started {} {}",
-            kv("provider", providerCode),
-            kv("jobId", jobId),
+        providerSyncJobLogger.infoWithContext(
+            "provider_sync_job_started",
+            "provider" to providerCode,
+            "jobId" to jobId,
         )
 
         try {
@@ -114,11 +114,11 @@ class ProviderSyncJobService(
                     .ifBlank { null },
                 now = clock.now(),
             )
-            providerSyncJobLogger.info(
-                "provider_sync_job_completed {} {} {}",
-                kv("provider", providerCode),
-                kv("jobId", jobId),
-                kv("status", summary.status),
+            providerSyncJobLogger.infoWithContext(
+                "provider_sync_job_completed",
+                "provider" to providerCode,
+                "jobId" to jobId,
+                "status" to summary.status,
             )
         } catch (exception: Exception) {
             repository.finish(
@@ -131,11 +131,11 @@ class ProviderSyncJobService(
                 errorMessage = exception.message ?: "Provider sync failed.",
                 now = clock.now(),
             )
-            providerSyncJobLogger.warn(
-                "provider_sync_job_failed {} {}",
-                kv("provider", providerCode),
-                kv("jobId", jobId),
-                exception,
+            providerSyncJobLogger.warnWithContext(
+                "provider_sync_job_failed",
+                "provider" to providerCode,
+                "jobId" to jobId,
+                throwable = exception,
             )
         }
     }

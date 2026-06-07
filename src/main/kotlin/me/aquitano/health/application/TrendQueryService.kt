@@ -14,7 +14,7 @@ import me.aquitano.health.application.metric.sleep.repository.SleepRepository
 import me.aquitano.health.application.metric.body.repository.BodyMeasurementRepository
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
-import org.slf4j.LoggerFactory
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -27,7 +27,7 @@ class TrendQueryService(
     private val sleepRepository: SleepRepository,
     private val bodyMeasurementRepository: BodyMeasurementRepository,
 ) {
-    private val logger = LoggerFactory.getLogger(TrendQueryService::class.java)
+    private val logger = KotlinLogging.logger {}
 
     suspend fun dashboardTrends(
         params: QueryParams,
@@ -129,7 +129,7 @@ class TrendQueryService(
         val previous = current.measuredAt.let { measuredAt ->
             val instant = runCatching { Instant.parse(measuredAt) }.getOrNull()
             if (instant == null) {
-                logger.warn("Failed to parse measuredAt for weight trend: {}", measuredAt)
+                logger.warn { "Failed to parse measuredAt for weight trend: $measuredAt" }
             }
             instant?.let {
                 bodyMeasurementRepository.latestBodyMeasurementBefore(

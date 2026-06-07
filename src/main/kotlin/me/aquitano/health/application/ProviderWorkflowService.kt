@@ -5,15 +5,14 @@ import me.aquitano.health.application.providersync.ProviderSyncProgressSink
 import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthStateConsumeResult
-import net.logstash.logback.argument.StructuredArguments.kv
-import org.slf4j.LoggerFactory
+import io.github.oshai.kotlinlogging.KotlinLogging
+import me.aquitano.health.infrastructure.logging.*
 import java.security.SecureRandom
 import java.time.Duration
 import java.time.Instant
 import java.util.*
 
-private val logger =
-    LoggerFactory.getLogger(ProviderWorkflowService::class.java)
+private val logger = KotlinLogging.logger {}
 
 class ProviderWorkflowService(
     private val providerRegistry: HealthProviderRegistry,
@@ -38,10 +37,10 @@ class ProviderWorkflowService(
             now,
             expiresAt
         )
-        logger.info(
-            "provider_oauth_start_created {} {}",
-            kv("provider", provider.providerCode),
-            kv("expiresAt", expiresAt.toString()),
+        logger.infoWithContext(
+            "provider_oauth_start_created",
+            "provider" to provider.providerCode,
+            "expiresAt" to expiresAt,
         )
 
         return ProviderOAuthStartResponse(
@@ -62,10 +61,10 @@ class ProviderWorkflowService(
             ?: throw NotFoundException("Provider '$providerCode' not found")
 
         if (!error.isNullOrBlank()) {
-            logger.warn(
-                "provider_oauth_callback_rejected {} {}",
-                kv("provider", provider.providerCode),
-                kv("error", error),
+            logger.warnWithContext(
+                "provider_oauth_callback_rejected",
+                "provider" to provider.providerCode,
+                "error" to error,
             )
             throw RequestValidationException(
                 listOf(
