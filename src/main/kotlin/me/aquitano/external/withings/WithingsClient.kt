@@ -147,6 +147,8 @@ class KtorWithingsClient(
             throw WithingsHttpException(
                 "withings_nonce_request_failed",
                 "Withings nonce request failed with ${response.status.value}",
+                providerAction = action,
+                providerEndpoint = signatureEndpoint(),
             )
         }
 
@@ -157,12 +159,17 @@ class KtorWithingsClient(
             throw WithingsHttpException(
                 "withings_nonce_request_failed",
                 "Withings nonce request failed with status ${withingsStatus ?: "missing"}",
+                providerStatus = withingsStatus,
+                providerAction = action,
+                providerEndpoint = signatureEndpoint(),
             )
         }
         return payload["body"]?.jsonObject?.stringOrNull("nonce")
             ?: throw WithingsHttpException(
                 "withings_nonce_request_failed",
-                "Withings nonce response did not include nonce"
+                "Withings nonce response did not include nonce",
+                providerAction = action,
+                providerEndpoint = signatureEndpoint(),
             )
     }
 
@@ -267,6 +274,8 @@ class KtorWithingsClient(
             throw WithingsHttpException(
                 "withings_token_request_failed",
                 "Withings OAuth token request failed with ${status.value}",
+                providerAction = "requesttoken",
+                providerEndpoint = config.oauthTokenUrl,
             )
         }
 
@@ -277,31 +286,41 @@ class KtorWithingsClient(
                 "withings_token_request_failed",
                 "Withings OAuth token request failed with status ${withingsStatus ?: "missing"}",
                 providerStatus = withingsStatus,
+                providerAction = "requesttoken",
+                providerEndpoint = config.oauthTokenUrl,
             )
         }
 
         val body = payload["body"]?.jsonObject
             ?: throw WithingsHttpException(
                 "withings_token_request_failed",
-                "Withings OAuth token response did not include body"
+                "Withings OAuth token response did not include body",
+                providerAction = "requesttoken",
+                providerEndpoint = config.oauthTokenUrl,
             )
         val accessToken = body.stringOrNull("access_token")
             ?: throw WithingsHttpException(
                 "withings_missing_access_token",
-                "Withings OAuth token response did not include access_token"
+                "Withings OAuth token response did not include access_token",
+                providerAction = "requesttoken",
+                providerEndpoint = config.oauthTokenUrl,
             )
         val refreshToken =
             body.stringOrNull("refresh_token") ?: existingRefreshToken
             ?: throw WithingsHttpException(
                 "withings_missing_refresh_token",
-                "Withings OAuth token response did not include refresh_token"
+                "Withings OAuth token response did not include refresh_token",
+                providerAction = "requesttoken",
+                providerEndpoint = config.oauthTokenUrl,
             )
         val providerUserId =
             body["userid"]?.jsonPrimitive?.contentOrNull.orEmpty()
         if (requireUserId && providerUserId.isBlank()) {
             throw WithingsHttpException(
                 "withings_missing_userid",
-                "Withings OAuth token response did not include userid"
+                "Withings OAuth token response did not include userid",
+                providerAction = "requesttoken",
+                providerEndpoint = config.oauthTokenUrl,
             )
         }
         val tokenType = body.stringOrNull("token_type") ?: "Bearer"
@@ -338,6 +357,8 @@ class KtorWithingsClient(
                 throw WithingsHttpException(
                     "withings_page_limit_exceeded",
                     "Withings $action pagination exceeded $MAX_WITHINGS_PAGES pages",
+                    providerAction = action,
+                    providerEndpoint = endpoint,
                 )
             }
             val response = httpClient.submitForm(
@@ -354,11 +375,13 @@ class KtorWithingsClient(
             }
 
             val payload =
-                parseDataResponse(action, response.status, response.body())
+                parseDataResponse(action, endpoint, response.status, response.body())
             val body = payload["body"]?.jsonObject
                 ?: throw WithingsHttpException(
                     "withings_malformed_response",
-                    "Withings $action response did not include body"
+                    "Withings $action response did not include body",
+                    providerAction = action,
+                    providerEndpoint = endpoint,
                 )
             pages.add(WithingsPage(endpoint, action, pageIndex, payload))
             records.addAll(body.records(recordsKey))
@@ -371,13 +394,17 @@ class KtorWithingsClient(
             if (hasMore && nextOffset.isNullOrBlank()) {
                 throw WithingsHttpException(
                     "withings_malformed_response",
-                    "Withings $action response did not include next offset"
+                    "Withings $action response did not include next offset",
+                    providerAction = action,
+                    providerEndpoint = endpoint,
                 )
             }
             if (hasMore && !seenOffsets.add(nextOffset!!)) {
                 throw WithingsHttpException(
                     "withings_pagination_loop",
-                    "Withings $action returned a repeated offset"
+                    "Withings $action returned a repeated offset",
+                    providerAction = action,
+                    providerEndpoint = endpoint,
                 )
             }
             offset = nextOffset.takeIf { hasMore }
@@ -389,6 +416,7 @@ class KtorWithingsClient(
 
     private fun parseDataResponse(
         action: String,
+        endpoint: String,
         status: HttpStatusCode,
         text: String
     ): JsonObject {
@@ -396,6 +424,8 @@ class KtorWithingsClient(
             throw WithingsHttpException(
                 "withings_data_request_failed",
                 "Withings $action request failed with ${status.value}",
+                providerAction = action,
+                providerEndpoint = endpoint,
             )
         }
         val payload = AppJson.parseToJsonElement(text).jsonObject
@@ -407,6 +437,9 @@ class KtorWithingsClient(
                 "Withings $action request failed with status ${withingsStatus ?: "missing"}${
                     detail?.let { ": $it" }.orEmpty()
                 }",
+                providerStatus = withingsStatus,
+                providerAction = action,
+                providerEndpoint = endpoint,
             )
         }
         return payload

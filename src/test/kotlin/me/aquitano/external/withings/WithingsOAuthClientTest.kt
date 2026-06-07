@@ -294,6 +294,9 @@ class WithingsOAuthClientTest {
         }
 
         assertEquals("withings_data_request_failed", error.code)
+        assertEquals(293, error.providerStatus)
+        assertEquals("getactivity", error.providerAction)
+        assertEquals("https://wbsapi.withings.net/v2/measure", error.providerEndpoint)
     }
 
     @Test

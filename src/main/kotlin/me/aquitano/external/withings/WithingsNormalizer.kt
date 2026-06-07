@@ -593,22 +593,22 @@ class WithingsNormalizer {
             rrMax != null
 
     private fun JsonObject.string(key: String): String? =
-        this[key]?.jsonPrimitive?.contentOrNull
+        this[key]?.primitiveOrNull()?.contentOrNull
 
     private fun JsonObject.int(key: String): Int? {
-        val primitive = this[key]?.jsonPrimitive ?: return null
+        val primitive = this[key]?.primitiveOrNull() ?: return null
         primitive.intOrNull?.let { return it }
         return primitive.contentOrNull?.toIntOrNull()
     }
 
     private fun JsonObject.long(key: String): Long? =
-        this[key]?.jsonPrimitive?.longOrNull
+        this[key]?.primitiveOrNull()?.longOrNull
 
     private fun JsonObject.double(key: String): Double? =
-        this[key]?.jsonPrimitive?.doubleOrNull
+        this[key]?.primitiveOrNull()?.doubleOrNull
 
     private fun JsonObject.instant(key: String): Instant? {
-        val primitive = this[key]?.jsonPrimitive ?: return null
+        val primitive = this[key]?.primitiveOrNull() ?: return null
         primitive.longOrNull?.let { return Instant.ofEpochSecond(it) }
         return primitive.contentOrNull?.let { value ->
             value.toLongOrNull()?.let { Instant.ofEpochSecond(it) }
@@ -621,6 +621,8 @@ class WithingsNormalizer {
             ?: int("value")
             ?: (this["data"] as? JsonObject)?.int("state")
             ?: (this["data"] as? JsonObject)?.int("value")
+            ?: (this["value"] as? JsonObject)?.int("state")
+            ?: (this["value"] as? JsonObject)?.int("value")
 
     private fun JsonObject.sleepHeartRate(): Int? =
         int("hr") ?: (this["data"] as? JsonObject)?.int("hr")
@@ -645,4 +647,7 @@ class WithingsNormalizer {
 
     private fun JsonObject.validHeartRate(key: String): Int? =
         int(key)?.takeIf { it in 25..250 }
+
+    private fun JsonElement.primitiveOrNull(): JsonPrimitive? =
+        this as? JsonPrimitive
 }

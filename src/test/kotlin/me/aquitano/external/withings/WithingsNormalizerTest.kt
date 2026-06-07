@@ -269,6 +269,33 @@ class WithingsNormalizerTest {
     }
 
     @Test
+    fun sleepSeriesIgnoresNestedValueObjects() {
+        val result = normalizer.normalize(
+            fetchResult(
+                "sleep",
+                buildJsonObject {
+                    put("timestamp", 1775001600)
+                    put("value", buildJsonObject {
+                        put("state", 1)
+                    })
+                    put("data", buildJsonObject {
+                        put("hr", 58)
+                    })
+                },
+                buildJsonObject {
+                    put("timestamp", 1775005200)
+                    put("value", 2)
+                },
+            )
+        )
+
+        val sessions = result.records.filterIsInstance<SleepSessionDto>()
+        assertEquals(1, sessions.size)
+        assertEquals("light", sessions.first().stages.first().stage)
+        assertEquals(1, result.records.filterIsInstance<HeartRateDto>().size)
+    }
+
+    @Test
     fun sleepSeriesUsesStartDateAsTimestampWhenEndDateMissing() {
         val result = normalizer.normalize(
             fetchResult(

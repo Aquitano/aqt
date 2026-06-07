@@ -131,7 +131,9 @@ class WithingsSyncAdapter(
     ): String = batchExternalId(providerInstanceId, item.dataType, item.from, item.to)
 
     override fun isUnauthorized(error: Throwable): Boolean =
-        error is WithingsHttpException && error.code == "withings_data_request_failed"
+        error is WithingsHttpException &&
+                error.code == "withings_data_request_failed" &&
+                error.providerStatus == 401
 
     override fun isInvalidRefreshToken(error: Throwable): Boolean =
         error is WithingsHttpException &&
@@ -143,6 +145,17 @@ class WithingsSyncAdapter(
             is WithingsHttpException -> error.code
             is UpstreamProviderException -> error.code
             else -> "withings_sync_failed"
+        }
+
+    override fun errorAttributes(error: Throwable): Map<String, String> =
+        when (error) {
+            is WithingsHttpException -> buildMap {
+                error.providerStatus?.let { put("providerStatus", it.toString()) }
+                error.providerAction?.let { put("providerAction", it) }
+                error.providerEndpoint?.let { put("providerEndpoint", it) }
+            }
+
+            else -> emptyMap()
         }
 
     private suspend fun fetchDataType(

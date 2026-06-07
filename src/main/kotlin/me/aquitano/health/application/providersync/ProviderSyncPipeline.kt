@@ -15,6 +15,7 @@ class ProviderSyncPipeline(
     private val runs: ProviderSyncRunPort,
     private val ingestion: ProviderSyncIngestionPort,
     private val throttleDelay: suspend (Duration) -> Unit = { delay(it.toMillis()) },
+    private val currentTime: () -> Instant = { Instant.now() },
 ) {
     suspend fun sync(
         adapter: ProviderSyncAdapter,
@@ -31,7 +32,7 @@ class ProviderSyncPipeline(
             accounts.findAnyForStatusHint(adapter.providerCode, plan.providerInstanceId),
         )
 
-        var token = freshAccessToken(adapter, account, now)
+        var token = freshAccessToken(adapter, account, currentTime())
         val runId = runs.start(
             providerCode = adapter.providerCode,
             providerInstanceId = account.providerInstanceId,
@@ -88,19 +89,19 @@ class ProviderSyncPipeline(
                         accessToken = token.accessToken,
                         account = account,
                         item = item,
-                        now = now,
+                        now = currentTime(),
                     ).also { lastProviderRequestCompletedAtNanos = it.completedAtNanos }.batch
                 } catch (exception: Throwable) {
                     if (exception is CancellationException) throw exception
                     if (!adapter.isUnauthorized(exception)) throw exception
-                    token = refreshAccessToken(adapter, account, token.refreshToken, now)
+                    token = refreshAccessToken(adapter, account, token.refreshToken, currentTime())
                     throttledFetch(
                         adapter = adapter,
                         lastCompletedAtNanos = lastProviderRequestCompletedAtNanos,
                         accessToken = token.accessToken,
                         account = account,
                         item = item,
-                        now = now,
+                        now = currentTime(),
                     ).also { lastProviderRequestCompletedAtNanos = it.completedAtNanos }.batch
                 }
 
@@ -160,16 +161,25 @@ class ProviderSyncPipeline(
             } catch (exception: Exception) {
                 if (exception is CancellationException) throw exception
                 val code = adapter.errorCode(exception)
+                val safeMessage = exception.message
+                    ?.take(500)
+                    ?: adapter.defaultSyncFailureMessage
+                val providerAttributes = adapter.errorAttributes(exception)
                 logger.warn(
-                    "provider_data_type_failed {} {} {}",
+                    "provider_data_type_failed {} {} {} {} {} {} {} {}",
                     kv("provider", adapter.providerCode),
                     kv("dataType", item.dataType),
+                    kv("from", item.from.toString()),
+                    kv("to", item.to.toString()),
                     kv("errorCode", code),
+                    kv("errorMessage", safeMessage),
+                    kv("exceptionClass", exception::class.qualifiedName ?: exception::class.simpleName),
+                    kv("providerError", providerAttributes),
                 )
                 errors += ProviderSyncError(
                     dataType = item.dataType,
                     code = code,
-                    message = exception.message ?: adapter.defaultSyncFailureMessage,
+                    message = safeMessage,
                 )
                 progress.itemCompleted(item)
             }

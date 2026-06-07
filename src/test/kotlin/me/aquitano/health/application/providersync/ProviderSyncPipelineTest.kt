@@ -61,7 +61,12 @@ class ProviderSyncPipelineTest {
         val accountPort = FakeAccountPort()
         val adapter = FakeAdapter(throwUnauthorizedOnce = true)
         val ingestion = FakeIngestionPort()
-        val pipeline = ProviderSyncPipeline(accountPort, FakeRunPort(), ingestion)
+        val pipeline = ProviderSyncPipeline(
+            accountPort,
+            FakeRunPort(),
+            ingestion,
+            currentTime = { now },
+        )
 
         val summary = pipeline.sync(adapter, request, now)
 

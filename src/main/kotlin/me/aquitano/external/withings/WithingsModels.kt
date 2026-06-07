@@ -137,4 +137,6 @@ class WithingsHttpException(
     val code: String,
     message: String,
     val providerStatus: Int? = null,
+    val providerAction: String? = null,
+    val providerEndpoint: String? = null,
 ) : RuntimeException(message)

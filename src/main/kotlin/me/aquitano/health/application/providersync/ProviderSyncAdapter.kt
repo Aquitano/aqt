@@ -50,4 +50,6 @@ interface ProviderSyncAdapter {
     fun isInvalidRefreshToken(error: Throwable): Boolean
 
     fun errorCode(error: Throwable): String
+
+    fun errorAttributes(error: Throwable): Map<String, String> = emptyMap()
 }
