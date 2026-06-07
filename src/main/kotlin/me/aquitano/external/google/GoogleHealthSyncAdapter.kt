@@ -31,6 +31,7 @@ class GoogleHealthSyncAdapter(
     override val tokenRefreshFailureMessage: String = "Google OAuth token refresh failed"
     override val needsReauthCode: String = "google_health_needs_reauth"
     override val needsReauthMessage: String = "Google Health needs reconnect before syncing"
+    override val providerRequestInterval: Duration = PROVIDER_REQUEST_INTERVAL
 
     override fun validate(request: ProviderSyncRequest): ProviderSyncPlan {
         val issues = mutableListOf<ValidationIssue>()
@@ -161,7 +162,7 @@ class GoogleHealthSyncAdapter(
         to: Instant,
     ): List<SyncWindow> {
         val windowSize =
-            if (dataType == "heart-rate") Duration.ofDays(1) else Duration.between(from, to)
+            if (dataType == "heart-rate") Duration.ofDays(1) else PROVIDER_SAFE_WINDOW
         val windows = mutableListOf<SyncWindow>()
         var windowFrom = from
         while (windowFrom.isBefore(to)) {
@@ -184,3 +185,6 @@ class GoogleHealthSyncAdapter(
         val to: Instant,
     )
 }
+
+private val PROVIDER_SAFE_WINDOW: Duration = Duration.ofDays(31)
+private val PROVIDER_REQUEST_INTERVAL: Duration = Duration.ofMillis(500)

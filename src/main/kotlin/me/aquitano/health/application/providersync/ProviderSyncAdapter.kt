@@ -2,6 +2,7 @@ package me.aquitano.health.application.providersync
 
 import kotlinx.serialization.json.JsonObject
 import me.aquitano.health.domain.ProviderSyncRequest
+import java.time.Duration
 import java.time.Instant
 
 interface ProviderSyncAdapter {
@@ -13,6 +14,8 @@ interface ProviderSyncAdapter {
     val needsReauthMessage: String
     val recordEmptyDataTypes: Boolean
         get() = false
+    val providerRequestInterval: Duration
+        get() = Duration.ZERO
 
     fun validate(request: ProviderSyncRequest): ProviderSyncPlan
 

@@ -357,7 +357,7 @@ curl -X POST http://localhost:8080/api/v1/providers/google-health/sync \
   }'
 ```
 
-If `dataTypes` is omitted, the sync reads `steps`, `sleep`, `heart-rate`, `weight`, and `body-fat`. If both `from` and `to` are omitted, the sync defaults to the last seven days. Explicit ranges must be no longer than 31 days. Completed windows are skipped on repeated syncs over the same range, and heart-rate syncs are fetched in one-day windows.
+If `dataTypes` is omitted, the sync reads `steps`, `sleep`, `heart-rate`, `weight`, and `body-fat`. If both `from` and `to` are omitted, the sync defaults to the last seven days. Long explicit ranges are accepted for historical backfill and are split into provider-safe internal windows before fetching. Completed windows are skipped on repeated syncs over the same range; heart-rate syncs are fetched in one-day windows, and other Google Health data types are fetched in 31-day windows.
 
 Google Health may return overlapping step intervals with different provider record IDs. To avoid inflated future totals, overlapping Google Health step intervals for the same account are skipped as duplicate metrics during ingestion. This guard is forward-looking only; it does not repair or remove historical rows that were ingested before the guard existed.
 
@@ -399,7 +399,7 @@ curl -X POST http://localhost:8080/api/v1/providers/withings/sync \
   }'
 ```
 
-If `dataTypes` is omitted, the sync reads `activity`, `measures`, `sleep-summary`, and `sleep`. Withings fields from the listed Measure, Activity, Sleep, and Sleep Summary APIs are preserved in the ingestion source payload. The current normalized metric tables store steps, supported body measurements, heart-rate samples, and sleep sessions; unsupported Withings metrics such as blood pressure, SpO2, temperature, ECG intervals, BMR, metabolic age, bone mass, vascular age, segmental body composition, and conductance values remain available in source payloads until matching metric tables exist.
+If `dataTypes` is omitted, the sync reads `activity`, `measures`, `sleep-summary`, and `sleep`. Long explicit ranges are accepted for historical backfill and are fetched in sequential 31-day windows per data type. Withings fields from the listed Measure, Activity, Sleep, and Sleep Summary APIs are preserved in the ingestion source payload. The current normalized metric tables store steps, supported body measurements, heart-rate samples, and sleep sessions; unsupported Withings metrics such as blood pressure, SpO2, temperature, ECG intervals, BMR, metabolic age, bone mass, vascular age, segmental body composition, and conductance values remain available in source payloads until matching metric tables exist.
 
 ## Read Data
 

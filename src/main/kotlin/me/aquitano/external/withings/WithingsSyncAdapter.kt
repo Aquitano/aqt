@@ -18,6 +18,7 @@ import me.aquitano.health.domain.UpstreamProviderException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.repositories.ACCOUNT_STATUS_NEEDS_REAUTH
+import java.time.Duration
 import java.time.Instant
 
 class WithingsSyncAdapter(
@@ -31,6 +32,7 @@ class WithingsSyncAdapter(
     override val needsReauthCode: String = "withings_needs_reauth"
     override val needsReauthMessage: String = "Withings needs reconnect before syncing"
     override val recordEmptyDataTypes: Boolean = true
+    override val providerRequestInterval: Duration = PROVIDER_REQUEST_INTERVAL
 
     override fun validate(request: ProviderSyncRequest): ProviderSyncPlan {
         val issues = mutableListOf<ValidationIssue>()
@@ -51,12 +53,14 @@ class WithingsSyncAdapter(
             providerInstanceId = request.providerInstanceId,
             requestedFrom = request.from,
             requestedTo = request.to,
-            items = dataTypes.distinct().map { dataType ->
-                ProviderSyncItem(
-                    dataType = dataType,
-                    from = request.from,
-                    to = request.to,
-                )
+            items = dataTypes.distinct().flatMap { dataType ->
+                syncWindows(request.from, request.to).map { window ->
+                    ProviderSyncItem(
+                        dataType = dataType,
+                        from = window.from,
+                        to = window.to,
+                    )
+                }
             },
         )
     }
@@ -189,4 +193,26 @@ class WithingsSyncAdapter(
         from: Instant,
         to: Instant,
     ): String = "withings:$providerInstanceId:$dataType:$from:$to"
+
+    private fun syncWindows(
+        from: Instant,
+        to: Instant,
+    ): List<SyncWindow> {
+        val windows = mutableListOf<SyncWindow>()
+        var windowFrom = from
+        while (windowFrom.isBefore(to)) {
+            val windowTo = listOf(windowFrom.plus(PROVIDER_SAFE_WINDOW), to).minOrNull()!!
+            windows += SyncWindow(windowFrom, windowTo)
+            windowFrom = windowTo
+        }
+        return windows
+    }
+
+    private data class SyncWindow(
+        val from: Instant,
+        val to: Instant,
+    )
 }
+
+private val PROVIDER_SAFE_WINDOW: Duration = Duration.ofDays(31)
+private val PROVIDER_REQUEST_INTERVAL: Duration = Duration.ofMillis(500)

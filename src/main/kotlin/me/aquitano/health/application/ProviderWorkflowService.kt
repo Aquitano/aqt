@@ -247,15 +247,6 @@ class ProviderWorkflowService(
                 )
             )
         }
-        if (Duration.between(resolvedFrom, resolvedTo) > Duration.ofDays(31)) {
-            issues.add(
-                ValidationIssue(
-                    field = "to",
-                    code = ValidationIssueCodes.OutOfRange,
-                    message = "range must not exceed 31 days",
-                )
-            )
-        }
         if (pageSize != null && pageSize <= 0) {
             issues.add(
                 ValidationIssue(

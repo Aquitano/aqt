@@ -402,7 +402,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             requiresBearerAuth()
             providerCodePath()
             jsonRequest<ProviderSyncRequestDto>(
-                "Provider sync request. Provider adapters may enforce max range and page-size constraints advertised by the provider catalog.",
+                "Provider sync request. Long historical ranges are accepted for backfill; providers split work into safe internal windows and may enforce page-size constraints advertised by the provider catalog.",
                 "syncRequest",
                 providerSyncRequestExample()
             )

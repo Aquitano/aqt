@@ -323,6 +323,68 @@
   cursor: not-allowed;
 }
 
+.progressPanel {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0 var(--s-4) var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
+}
+
+.progressHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.progressHeader div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.progressHeader strong {
+  color: var(--fg);
+  font-size: 0.86rem;
+}
+
+.progressHeader span,
+.progressPanel small {
+  color: var(--fg-muted);
+  font-size: 0.76rem;
+}
+
+.progressTrack {
+  position: relative;
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-input);
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 220ms ease;
+}
+
+.progressMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+  color: var(--fg-muted);
+  font-size: 0.78rem;
+}
+
+.progressMeta span:last-child {
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
 /* spinner */
 .spinner {
   display: inline-block;

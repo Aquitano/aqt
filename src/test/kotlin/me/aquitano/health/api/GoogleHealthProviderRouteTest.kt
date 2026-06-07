@@ -48,6 +48,35 @@ class GoogleHealthProviderRouteTest {
     }
 
     @Test
+    fun syncLongHistoricalRangeIsNotRejectedByRangeValidation() = testApplication {
+        configureTestApplication()
+
+        val response = client.post("/api/v1/providers/google-health/sync") {
+            authorized()
+            contentType(ContentType.Application.Json)
+            setBody("""{"from":"2020-01-01T00:00:00Z","to":"2026-01-01T00:00:00Z","dataTypes":["steps"]}""")
+        }
+
+        assertEquals(HttpStatusCode.Conflict, response.status)
+        assertTrue(response.bodyAsText().contains("google_health_not_connected"))
+    }
+
+    @Test
+    fun syncRejectsInvalidPageSize() = testApplication {
+        configureTestApplication()
+
+        val response = client.post("/api/v1/providers/google-health/sync") {
+            authorized()
+            contentType(ContentType.Application.Json)
+            setBody("""{"from":"2026-04-01T00:00:00Z","to":"2026-04-02T00:00:00Z","pageSize":0}""")
+        }
+
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        val error = AppJson.parseToJsonElement(response.bodyAsText()).jsonObject["error"]!!.jsonObject
+        assertEquals("validation_failed", error["code"]!!.jsonPrimitive.content)
+    }
+
+    @Test
     fun missingProviderConfigReturnsInternalServerErrorWithoutLeakingConfigFields() = testApplication {
         configureTestApplication(withClientSecret = false)
 

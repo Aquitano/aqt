@@ -4,10 +4,12 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import me.aquitano.health.api.dto.StepIntervalDto
 import me.aquitano.health.domain.*
+import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class ProviderSyncPipelineTest {
     private val now: Instant = Instant.parse("2026-04-20T10:00:00Z")
@@ -70,9 +72,33 @@ class ProviderSyncPipelineTest {
         assertEquals("processed", summary.status)
     }
 
+    @Test
+    fun providerFetchesAreThrottledBetweenUncachedItems() = runBlocking {
+        val delays = mutableListOf<Duration>()
+        val adapter = FakeAdapter(
+            itemCount = 2,
+            providerRequestInterval = Duration.ofSeconds(5),
+        )
+        val pipeline = ProviderSyncPipeline(
+            FakeAccountPort(),
+            FakeRunPort(),
+            FakeIngestionPort(),
+            throttleDelay = { delays += it },
+        )
+
+        val summary = pipeline.sync(adapter, request, now)
+
+        assertEquals(2, adapter.fetchCalls)
+        assertEquals(2, summary.batches.size)
+        assertEquals(1, delays.size)
+        assertTrue(delays.single() > Duration.ZERO)
+    }
+
     private class FakeAdapter(
         private val refreshFailure: RuntimeException? = null,
         private var throwUnauthorizedOnce: Boolean = false,
+        private val itemCount: Int = 1,
+        override val providerRequestInterval: Duration = Duration.ZERO,
     ) : ProviderSyncAdapter {
         var fetchCalls = 0
         var refreshCalls = 0
@@ -89,13 +115,13 @@ class ProviderSyncPipelineTest {
                 providerInstanceId = request.providerInstanceId,
                 requestedFrom = request.from,
                 requestedTo = request.to,
-                items = listOf(
+                items = (1..itemCount).map { index ->
                     ProviderSyncItem(
                         dataType = "steps",
-                        from = request.from,
-                        to = request.to,
+                        from = request.from.plusSeconds((index - 1).toLong()),
+                        to = request.to.plusSeconds((index - 1).toLong()),
                     )
-                ),
+                },
             )
 
         override fun accountUnavailable(

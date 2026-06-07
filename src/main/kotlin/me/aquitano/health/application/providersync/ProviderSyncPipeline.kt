@@ -1,8 +1,10 @@
 package me.aquitano.health.application.providersync
 
+import kotlinx.coroutines.delay
 import me.aquitano.health.domain.*
 import net.logstash.logback.argument.StructuredArguments.kv
 import org.slf4j.LoggerFactory
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.CancellationException
 
@@ -12,6 +14,7 @@ class ProviderSyncPipeline(
     private val accounts: ProviderSyncAccountPort,
     private val runs: ProviderSyncRunPort,
     private val ingestion: ProviderSyncIngestionPort,
+    private val throttleDelay: suspend (Duration) -> Unit = { delay(it.toMillis()) },
 ) {
     suspend fun sync(
         adapter: ProviderSyncAdapter,
@@ -47,6 +50,7 @@ class ProviderSyncPipeline(
         val batches = mutableListOf<ProviderSyncBatch>()
         val errors = mutableListOf<ProviderSyncError>()
         val emptyDataTypes = mutableListOf<ProviderSyncEmptyDataType>()
+        var lastProviderRequestCompletedAtNanos: Long? = null
 
         plan.items.forEach { item ->
             val batchExternalId = adapter.batchExternalId(
@@ -74,22 +78,26 @@ class ProviderSyncPipeline(
 
             try {
                 val fetched = try {
-                    adapter.fetch(
+                    throttledFetch(
+                        adapter = adapter,
+                        lastCompletedAtNanos = lastProviderRequestCompletedAtNanos,
                         accessToken = token.accessToken,
                         account = account,
                         item = item,
                         now = now,
-                    )
+                    ).also { lastProviderRequestCompletedAtNanos = it.completedAtNanos }.batch
                 } catch (exception: Throwable) {
                     if (exception is CancellationException) throw exception
                     if (!adapter.isUnauthorized(exception)) throw exception
                     token = refreshAccessToken(adapter, account, token.refreshToken, now)
-                    adapter.fetch(
+                    throttledFetch(
+                        adapter = adapter,
+                        lastCompletedAtNanos = lastProviderRequestCompletedAtNanos,
                         accessToken = token.accessToken,
                         account = account,
                         item = item,
                         now = now,
-                    )
+                    ).also { lastProviderRequestCompletedAtNanos = it.completedAtNanos }.batch
                 }
 
                 if (fetched.records.isEmpty()) {
@@ -203,6 +211,31 @@ class ProviderSyncPipeline(
         )
     }
 
+    private suspend fun throttledFetch(
+        adapter: ProviderSyncAdapter,
+        lastCompletedAtNanos: Long?,
+        accessToken: String,
+        account: SyncAccount,
+        item: ProviderSyncItem,
+        now: Instant,
+    ): ThrottledFetchResult {
+        val interval = adapter.providerRequestInterval
+        if (!interval.isZero && !interval.isNegative && lastCompletedAtNanos != null) {
+            val elapsedNanos = System.nanoTime() - lastCompletedAtNanos
+            val remainingNanos = interval.toNanos() - elapsedNanos
+            if (remainingNanos > 0) {
+                throttleDelay(Duration.ofNanos(remainingNanos))
+            }
+        }
+        val batch = adapter.fetch(
+            accessToken = accessToken,
+            account = account,
+            item = item,
+            now = now,
+        )
+        return ThrottledFetchResult(batch, System.nanoTime())
+    }
+
     private suspend fun freshAccessToken(
         adapter: ProviderSyncAdapter,
         account: SyncAccount,
@@ -281,3 +314,8 @@ class ProviderSyncPipeline(
             affectedStepSummaryDates = emptyList(),
         )
 }
+
+private data class ThrottledFetchResult(
+    val batch: ProviderFetchedBatch,
+    val completedAtNanos: Long,
+)

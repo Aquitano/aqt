@@ -379,6 +379,34 @@ class WithingsProviderTest {
         assertEquals(1, countRows(fixture.dbPath, "ingestion_batches"))
     }
 
+    @Test
+    fun syncChunksLongRangesAndSkipsCachedChunks() = runBlocking {
+        val fixture = Fixture()
+        fixture.seedAccount()
+        val request = ProviderSyncRequest(
+            from = Instant.parse("2026-04-01T00:00:00Z"),
+            to = Instant.parse("2026-07-01T00:00:00Z"),
+            dataTypes = listOf("activity"),
+        )
+
+        val first = fixture.provider.sync(request, fixture.now)
+        val second = fixture.provider.sync(request, fixture.now.plusSeconds(1))
+
+        assertEquals("2026-04-01T00:00:00Z", first.requestedFrom.toString())
+        assertEquals("2026-07-01T00:00:00Z", first.requestedTo.toString())
+        assertEquals(3, first.batches.size)
+        assertEquals(3, second.batches.size)
+        assertTrue(second.batches.all { it.duplicateBatch })
+        assertEquals(
+            listOf(
+                WithingsFetchRequest("activity", Instant.parse("2026-04-01T00:00:00Z"), Instant.parse("2026-05-02T00:00:00Z")),
+                WithingsFetchRequest("activity", Instant.parse("2026-05-02T00:00:00Z"), Instant.parse("2026-06-02T00:00:00Z")),
+                WithingsFetchRequest("activity", Instant.parse("2026-06-02T00:00:00Z"), Instant.parse("2026-07-01T00:00:00Z")),
+            ),
+            fixture.client.fetchRequests,
+        )
+    }
+
     private class Fixture(
         val dbPath: DatabaseConfig = PostgresTestDatabase.config(),
         val now: Instant = Instant.parse("2026-04-20T10:00:00Z"),
@@ -457,6 +485,7 @@ class WithingsProviderTest {
         var failuresRemaining = 0
         val emptyDataTypes = mutableSetOf<String>()
         val accessTokensUsed = mutableListOf<String>()
+        val fetchRequests = mutableListOf<WithingsFetchRequest>()
 
         override suspend fun exchangeCode(code: String, now: Instant): WithingsTokenSet {
             nextExchangeFailure?.let { throw it }
@@ -494,6 +523,7 @@ class WithingsProviderTest {
             category: Int,
         ): WithingsFetchResult {
             accessTokensUsed.add(accessToken)
+            fetchRequests.add(WithingsFetchRequest("measures", from, to))
             failDataRequestIfConfigured(accessToken)
             if ("measures" in emptyDataTypes) return emptyFetchResult("measures")
             return WithingsFetchResult(
@@ -522,6 +552,7 @@ class WithingsProviderTest {
             dataFields: List<String>,
         ): WithingsFetchResult {
             accessTokensUsed.add(accessToken)
+            fetchRequests.add(WithingsFetchRequest("activity", from, to))
             failDataRequestIfConfigured(accessToken)
             if ("activity" in emptyDataTypes) return emptyFetchResult("activity")
             return WithingsFetchResult(
@@ -543,6 +574,7 @@ class WithingsProviderTest {
             dataFields: List<String>,
         ): WithingsFetchResult {
             accessTokensUsed.add(accessToken)
+            fetchRequests.add(WithingsFetchRequest("sleep", from, to))
             failDataRequestIfConfigured(accessToken)
             if ("sleep" in emptyDataTypes) return emptyFetchResult("sleep")
             return WithingsFetchResult(
@@ -570,6 +602,7 @@ class WithingsProviderTest {
             dataFields: List<String>,
         ): WithingsFetchResult {
             accessTokensUsed.add(accessToken)
+            fetchRequests.add(WithingsFetchRequest("sleep-summary", from, to))
             failDataRequestIfConfigured(accessToken)
             if ("sleep-summary" in emptyDataTypes) return emptyFetchResult("sleep-summary")
             return WithingsFetchResult(
@@ -618,6 +651,12 @@ class WithingsProviderTest {
             )
         }
     }
+
+    private data class WithingsFetchRequest(
+        val dataType: String,
+        val from: Instant,
+        val to: Instant,
+    )
 }
 
 private fun singleString(dbPath: DatabaseConfig, sql: String): String =

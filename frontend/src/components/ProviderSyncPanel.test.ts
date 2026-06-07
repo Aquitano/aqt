@@ -7,6 +7,7 @@ import type {
 import {
   actionLabel,
   actionDetail,
+  buildProviderSyncItems,
   primaryOAuthLabel,
   formatStatus,
 } from "./ProviderSyncPanel";
@@ -204,5 +205,75 @@ describe("formatStatus", () => {
 
   it("handles disconnected", () => {
     expect(formatStatus("disconnected")).toBe("Disconnected");
+  });
+});
+
+describe("buildProviderSyncItems", () => {
+  it("splits Google heart-rate into provider-safe progress windows", () => {
+    const items = buildProviderSyncItems(descriptor({
+      supportedDataTypes: ["heart-rate"],
+      defaultDataTypes: ["heart-rate"],
+    }), {
+      from: "2026-04-01T00:00:00.000Z",
+      to: "2026-06-15T00:00:00.000Z",
+      dataTypes: ["heart-rate"],
+    });
+
+    expect(items.map((item) => item.payload)).toEqual([
+      {
+        from: "2026-04-01T00:00:00.000Z",
+        to: "2026-05-02T00:00:00.000Z",
+        dataTypes: ["heart-rate"],
+      },
+      {
+        from: "2026-05-02T00:00:00.000Z",
+        to: "2026-06-02T00:00:00.000Z",
+        dataTypes: ["heart-rate"],
+      },
+      {
+        from: "2026-06-02T00:00:00.000Z",
+        to: "2026-06-15T00:00:00.000Z",
+        dataTypes: ["heart-rate"],
+      },
+    ]);
+  });
+
+  it("splits other provider data into 31-day windows per data type", () => {
+    const items = buildProviderSyncItems(descriptor({
+      supportedDataTypes: ["steps", "sleep"],
+      defaultDataTypes: ["steps", "sleep"],
+    }), {
+      from: "2026-04-01T00:00:00.000Z",
+      to: "2026-07-01T00:00:00.000Z",
+      dataTypes: ["steps", "sleep"],
+      pageSize: 5000,
+    });
+
+    expect(items).toHaveLength(6);
+    expect(items[0].payload).toEqual({
+      from: "2026-04-01T00:00:00.000Z",
+      to: "2026-05-02T00:00:00.000Z",
+      dataTypes: ["steps"],
+      pageSize: 5000,
+    });
+    expect(items[3].payload).toEqual({
+      from: "2026-04-01T00:00:00.000Z",
+      to: "2026-05-02T00:00:00.000Z",
+      dataTypes: ["sleep"],
+      pageSize: 5000,
+    });
+  });
+
+  it("keeps default sync as one backend request when dates are omitted", () => {
+    const items = buildProviderSyncItems(descriptor(), {
+      dataTypes: ["steps"],
+    });
+
+    expect(items).toEqual([{
+      label: "Default sync window",
+      payload: {
+        dataTypes: ["steps"],
+      },
+    }]);
   });
 });

@@ -448,6 +448,37 @@ class GoogleHealthProviderTest {
     }
 
     @Test
+    fun syncChunksLongGoogleRangesByProviderSafeWindowAndSkipsCachedChunks() = runBlocking {
+        val fixture = Fixture()
+        fixture.storeAccount(accessToken = "access-token", refreshToken = "refresh-token")
+        fixture.client.fetchResults += listOf(stepsFetchResult())
+        fixture.client.fetchResults += listOf(stepsFetchResult())
+        fixture.client.fetchResults += listOf(stepsFetchResult())
+
+        val request = ProviderSyncRequest(
+            from = Instant.parse("2026-04-01T00:00:00Z"),
+            to = Instant.parse("2026-07-01T00:00:00Z"),
+            dataTypes = listOf("steps"),
+        )
+        val first = fixture.provider.sync(request, fixture.now)
+        val second = fixture.provider.sync(request, fixture.now.plusSeconds(60))
+
+        assertEquals("2026-04-01T00:00:00Z", first.requestedFrom.toString())
+        assertEquals("2026-07-01T00:00:00Z", first.requestedTo.toString())
+        assertEquals(3, first.batches.size)
+        assertEquals(3, second.batches.size)
+        assertTrue(second.batches.all { it.duplicateBatch })
+        assertEquals(
+            listOf(
+                FetchRequest("steps", Instant.parse("2026-04-01T00:00:00Z"), Instant.parse("2026-05-02T00:00:00Z")),
+                FetchRequest("steps", Instant.parse("2026-05-02T00:00:00Z"), Instant.parse("2026-06-02T00:00:00Z")),
+                FetchRequest("steps", Instant.parse("2026-06-02T00:00:00Z"), Instant.parse("2026-07-01T00:00:00Z")),
+            ),
+            fixture.client.fetchRequests,
+        )
+    }
+
+    @Test
     fun syncRefreshesExpiredTokenAndRetriesUnauthorizedFetch() = runBlocking {
         val fixture = Fixture()
         fixture.storeAccount(
