@@ -151,6 +151,13 @@ class IngestionRepository {
         }
     }
 
+    fun markDerivedRebuildFailed(batchId: Int, failedAt: Instant, error: String) {
+        IngestionBatchesTable.update({ IngestionBatchesTable.id eq batchId }) {
+            it[updatedAt] = failedAt.toDbTimestamp()
+            it[errorMessage] = "Derived rebuild failed: ${error.take(1976)}"
+        }
+    }
+
     fun listBatches(
         status: String?,
         from: Instant?,

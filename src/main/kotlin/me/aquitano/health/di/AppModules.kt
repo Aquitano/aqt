@@ -148,16 +148,9 @@ fun servicesModule(database: Database, config: AppConfig) = module {
     single { CanonicalSleepSummaryDerivationService(get<CanonicalSleepSummaryDerivationRepository>()) }
     single { CanonicalSleepSessionDerivationService(get<CanonicalSleepSessionDerivationRepository>()) }
     single { CanonicalActivitySummaryDerivationService(get<CanonicalActivitySummaryDerivationRepository>()) }
-    single {
-        IngestionMappingService()
-    }
-    single {
-        IngestionService(
+    single<DerivedRebuildExecutor> {
+        TransactionalDerivedRebuildExecutor(
             database = database,
-            mappingService = get(),
-            supportRepository = get(),
-            ingestionRepository = get(),
-            metricWriteService = get(),
             stepSummaryService = get(),
             sleepNightService = get(),
             canonicalHeartRateService = get(),
@@ -168,6 +161,19 @@ fun servicesModule(database: Database, config: AppConfig) = module {
             canonicalSleepSummaryService = get(),
             canonicalSleepSessionService = get(),
             canonicalActivitySummaryService = get(),
+        )
+    }
+    single {
+        IngestionMappingService()
+    }
+    single {
+        IngestionService(
+            database = database,
+            mappingService = get(),
+            supportRepository = get(),
+            ingestionRepository = get(),
+            metricWriteService = get(),
+            derivedRebuildExecutor = get(),
         )
     }
 

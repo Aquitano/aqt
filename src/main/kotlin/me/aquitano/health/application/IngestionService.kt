@@ -4,23 +4,7 @@ import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
 import me.aquitano.health.api.dto.MetricCreatedCountsResponse
 import me.aquitano.health.api.dto.MetricSkippedCountsResponse
-import me.aquitano.health.application.metric.activity.derived.CanonicalActivitySummaryDerivationService
-import me.aquitano.health.application.metric.activity.repository.CanonicalActivitySummaryDerivationRepository
-import me.aquitano.health.application.metric.body.derived.CanonicalBodyMeasurementDerivationService
-import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementDerivationRepository
-import me.aquitano.health.application.metric.heart.derived.CanonicalHeartRateDerivationService
-import me.aquitano.health.application.metric.heart.repository.CanonicalHeartRateDerivationRepository
-import me.aquitano.health.application.metric.hrv.derived.CanonicalHrvDerivationService
-import me.aquitano.health.application.metric.hrv.repository.CanonicalHrvDerivationRepository
 import me.aquitano.health.application.metric.common.MetricWriteService
-import me.aquitano.health.application.metric.respiratory.derived.CanonicalRespiratoryRateDerivationService
-import me.aquitano.health.application.metric.respiratory.repository.CanonicalRespiratoryRateDerivationRepository
-import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSessionDerivationService
-import me.aquitano.health.application.metric.sleep.repository.CanonicalSleepSessionDerivationRepository
-import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSummaryDerivationService
-import me.aquitano.health.application.metric.sleep.repository.CanonicalSleepSummaryDerivationRepository
-import me.aquitano.health.application.metric.steps.derived.CanonicalStepDerivationService
-import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
 import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
@@ -41,24 +25,7 @@ class IngestionService(
     private val supportRepository: SupportRepository,
     private val ingestionRepository: IngestionRepository,
     private val metricWriteService: MetricWriteService,
-    private val stepSummaryService: StepSummaryService,
-    private val sleepNightService: SleepNightService,
-    private val canonicalHeartRateService: CanonicalHeartRateDerivationService =
-        CanonicalHeartRateDerivationService(CanonicalHeartRateDerivationRepository()),
-    private val canonicalRespiratoryRateService: CanonicalRespiratoryRateDerivationService =
-        CanonicalRespiratoryRateDerivationService(CanonicalRespiratoryRateDerivationRepository()),
-    private val canonicalHrvService: CanonicalHrvDerivationService =
-        CanonicalHrvDerivationService(CanonicalHrvDerivationRepository()),
-    private val canonicalStepService: CanonicalStepDerivationService =
-        CanonicalStepDerivationService(CanonicalStepDerivationRepository()),
-    private val canonicalBodyMeasurementService: CanonicalBodyMeasurementDerivationService =
-        CanonicalBodyMeasurementDerivationService(CanonicalBodyMeasurementDerivationRepository()),
-    private val canonicalSleepSummaryService: CanonicalSleepSummaryDerivationService =
-        CanonicalSleepSummaryDerivationService(CanonicalSleepSummaryDerivationRepository()),
-    private val canonicalSleepSessionService: CanonicalSleepSessionDerivationService =
-        CanonicalSleepSessionDerivationService(CanonicalSleepSessionDerivationRepository()),
-    private val canonicalActivitySummaryService: CanonicalActivitySummaryDerivationService =
-        CanonicalActivitySummaryDerivationService(CanonicalActivitySummaryDerivationRepository()),
+    private val derivedRebuildExecutor: DerivedRebuildExecutor,
 ) {
     suspend fun findExistingBatch(
         provider: String,
@@ -139,6 +106,18 @@ class IngestionService(
                             ),
                             affectedStepSummaryDates = emptyList(),
                         ),
+                        DerivedRebuildRequest(
+                            sourceInstanceId = sourceInstance.id,
+                            stepSummaryDates = emptySet(),
+                            sleepNightDates = emptySet(),
+                            sleepSessionCanonicalDates = emptySet(),
+                            heartRateCanonicalDates = emptySet(),
+                            respiratoryRateCanonicalDates = emptySet(),
+                            hrvCanonicalDates = emptySet(),
+                            bodyMeasurementCanonicalDates = emptySet(),
+                            sleepSummaryCanonicalDates = emptySet(),
+                            activitySummaryCanonicalDates = emptySet(),
+                        ),
                     )
                 }
                 if (existingBatch?.status == "failed") {
@@ -211,24 +190,6 @@ class IngestionService(
                         affectedSleepSummaryCanonicalDates.addAll(result.affectedSleepSummaryCanonicalDates)
                         affectedActivitySummaryCanonicalDates.addAll(result.affectedActivitySummaryCanonicalDates)
                     }
-                    stepSummaryService.recompute(
-                        sourceInstance.id,
-                        affectedStepDates,
-                        now
-                    )
-                    canonicalStepService.recompute(affectedStepDates, now)
-                    sleepNightService.recomputeUtc(
-                        sourceInstance.id,
-                        affectedSleepNightDates,
-                        now
-                    )
-                    canonicalHeartRateService.recompute(affectedHeartRateCanonicalDates, now)
-                    canonicalRespiratoryRateService.recompute(affectedRespiratoryRateCanonicalDates, now)
-                    canonicalHrvService.recompute(affectedHrvCanonicalDates, now)
-                    canonicalBodyMeasurementService.recompute(affectedBodyMeasurementCanonicalDates, now)
-                    canonicalSleepSummaryService.recompute(affectedSleepSummaryCanonicalDates, now)
-                    canonicalSleepSessionService.recompute(affectedSleepSessionCanonicalDates, now)
-                    canonicalActivitySummaryService.recompute(affectedActivitySummaryCanonicalDates, now)
                     ingestionRepository.markProcessed(batchId, now)
                 } catch (exception: Exception) {
                     if (exception is CancellationException) throw exception
@@ -247,32 +208,46 @@ class IngestionService(
                     )
                 }
 
-                IngestionTransactionResult.Success(
-                    IngestionSummaryResponse(
-                        batchId = batchId,
-                        status = "processed",
-                        duplicateBatch = false,
-                        recordsReceived = validated.records.size,
-                        ingestionRecordsStored = ingestionRecords.size,
-                        metricsCreated = MetricCreatedCountsResponse(
-                            stepSamples = created.stepSamples,
-                            sleepSessions = created.sleepSessions,
-                            sleepStages = created.sleepStages,
-                            bodyMeasurements = created.bodyMeasurements,
-                            heartRateSamples = created.heartRateSamples,
-                            activitySummaries = created.activitySummaries,
-                            sleepSummaries = created.sleepSummaries,
-                            respiratoryRateSamples = created.respiratoryRateSamples,
-                            hrvSamples = created.hrvSamples,
-                            bloodPressureMeasurements = created.bloodPressureMeasurements,
-                            cardiovascularMeasurements = created.cardiovascularMeasurements,
-                            extendedBodyMeasurements = created.extendedBodyMeasurements,
-                        ),
-                        metricsSkipped = MetricSkippedCountsResponse(
-                            duplicates = duplicateSkipped
-                        ),
-                        affectedStepSummaryDates = affectedStepDates.map { it.toString() },
+                val response = IngestionSummaryResponse(
+                    batchId = batchId,
+                    status = "processed",
+                    duplicateBatch = false,
+                    recordsReceived = validated.records.size,
+                    ingestionRecordsStored = ingestionRecords.size,
+                    metricsCreated = MetricCreatedCountsResponse(
+                        stepSamples = created.stepSamples,
+                        sleepSessions = created.sleepSessions,
+                        sleepStages = created.sleepStages,
+                        bodyMeasurements = created.bodyMeasurements,
+                        heartRateSamples = created.heartRateSamples,
+                        activitySummaries = created.activitySummaries,
+                        sleepSummaries = created.sleepSummaries,
+                        respiratoryRateSamples = created.respiratoryRateSamples,
+                        hrvSamples = created.hrvSamples,
+                        bloodPressureMeasurements = created.bloodPressureMeasurements,
+                        cardiovascularMeasurements = created.cardiovascularMeasurements,
+                        extendedBodyMeasurements = created.extendedBodyMeasurements,
                     ),
+                    metricsSkipped = MetricSkippedCountsResponse(
+                        duplicates = duplicateSkipped
+                    ),
+                    affectedStepSummaryDates = affectedStepDates.map { it.toString() },
+                )
+                val rebuildRequest = DerivedRebuildRequest(
+                    sourceInstanceId = sourceInstance.id,
+                    stepSummaryDates = affectedStepDates.toSet(),
+                    sleepNightDates = affectedSleepNightDates.toSet(),
+                    sleepSessionCanonicalDates = affectedSleepSessionCanonicalDates.toSet(),
+                    heartRateCanonicalDates = affectedHeartRateCanonicalDates.toSet(),
+                    respiratoryRateCanonicalDates = affectedRespiratoryRateCanonicalDates.toSet(),
+                    hrvCanonicalDates = affectedHrvCanonicalDates.toSet(),
+                    bodyMeasurementCanonicalDates = affectedBodyMeasurementCanonicalDates.toSet(),
+                    sleepSummaryCanonicalDates = affectedSleepSummaryCanonicalDates.toSet(),
+                    activitySummaryCanonicalDates = affectedActivitySummaryCanonicalDates.toSet(),
+                )
+                IngestionTransactionResult.Success(
+                    response,
+                    rebuildRequest,
                 )
             }
 
@@ -280,6 +255,26 @@ class IngestionService(
             is IngestionTransactionResult.Success -> {
                 val response = transactionResult.response
                 if (!response.duplicateBatch) {
+                    try {
+                        derivedRebuildExecutor.rebuild(
+                            transactionResult.derivedRebuildRequest,
+                            now,
+                        )
+                    } catch (exception: Exception) {
+                        if (exception is CancellationException) throw exception
+                        suspendTransaction(db = database) {
+                            ingestionRepository.markDerivedRebuildFailed(
+                                response.batchId,
+                                now,
+                                exception.message ?: "Unknown derived rebuild error",
+                            )
+                        }
+                        logger.errorWithContext(
+                            "ingestion_derived_rebuild_failed",
+                            "batchId" to response.batchId,
+                            throwable = exception,
+                        )
+                    }
                     logger.infoWithContext(
                         "ingestion_batch_processed",
                         "batchId" to response.batchId,
@@ -308,7 +303,10 @@ class IngestionService(
 }
 
 private sealed interface IngestionTransactionResult {
-    data class Success(val response: IngestionSummaryResponse) :
+    data class Success(
+        val response: IngestionSummaryResponse,
+        val derivedRebuildRequest: DerivedRebuildRequest,
+    ) :
         IngestionTransactionResult
 
     data class Failure(val throwable: Throwable) : IngestionTransactionResult

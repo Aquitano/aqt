@@ -9,11 +9,7 @@ import me.aquitano.health.application.IngestionMappingService
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.application.ProviderWorkflowService
 import me.aquitano.health.application.ProviderStatusService
-import me.aquitano.health.application.SleepNightService
-import me.aquitano.health.application.StepSummaryService
 import me.aquitano.health.application.metric.common.MetricWriteService
-import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
-import me.aquitano.health.application.metric.steps.repository.StepDailySummaryDerivationRepository
 import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.domain.RequestValidationException
@@ -25,6 +21,7 @@ import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
+import me.aquitano.health.test.NoOpDerivedRebuildExecutor
 import me.aquitano.health.test.PostgresTestDatabase
 import org.jetbrains.exposed.v1.jdbc.Database
 import java.time.Instant
@@ -430,10 +427,7 @@ class WithingsProviderTest {
             supportRepository = SupportRepository(database),
             ingestionRepository = IngestionRepository(),
             metricWriteService = MetricWriteService(),
-            stepSummaryService = StepSummaryService(
-                StepDailySummaryDerivationRepository()
-            ),
-            sleepNightService = SleepNightService(SleepNightDerivationRepository()),
+            derivedRebuildExecutor = NoOpDerivedRebuildExecutor,
         )
         val client = FakeWithingsClient()
         val provider = WithingsProvider(
