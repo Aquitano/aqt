@@ -5,7 +5,6 @@ import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.application.metric.heart.derived.CanonicalHeartRateOutput
 import me.aquitano.health.infrastructure.database.tables.CanonicalHeartRateSamplesTable
 import me.aquitano.health.infrastructure.database.tables.HeartRateSamplesTable
-import me.aquitano.health.infrastructure.database.toApiString
 import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
 import org.jetbrains.exposed.v1.core.*
@@ -151,7 +150,7 @@ class CanonicalHeartRateDerivationRepository : BaseMetricRepository() {
         HeartRateSampleRow(
             id = row[HeartRateSamplesTable.id].value,
             sourceInstanceId = row[HeartRateSamplesTable.sourceInstanceId],
-            measuredAt = row[HeartRateSamplesTable.measuredAt].toApiString(),
+            measuredAt = row[HeartRateSamplesTable.measuredAt].toInstant(),
             bpm = row[HeartRateSamplesTable.bpm],
             context = row[HeartRateSamplesTable.context] ?: "unknown",
         )
@@ -160,7 +159,7 @@ class CanonicalHeartRateDerivationRepository : BaseMetricRepository() {
         HeartRateSampleRow(
             id = row[HeartRateSamplesTable.id].value,
             sourceInstanceId = row[HeartRateSamplesTable.sourceInstanceId],
-            measuredAt = row[HeartRateSamplesTable.measuredAt].toApiString(),
+            measuredAt = row[HeartRateSamplesTable.measuredAt].toInstant(),
             bpm = row[HeartRateSamplesTable.bpm],
             context = row[HeartRateSamplesTable.context] ?: "unknown",
         )

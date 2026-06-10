@@ -308,7 +308,7 @@ class ScheduledProviderSyncService(
             duplicateBatch = duplicateBatch,
             recordsReceived = recordsReceived,
             ingestionRecordsStored = ingestionRecordsStored,
-            metricsCreated = metricsCreated.toDto(),
+            metricsCreated = metricsCreated.toResponse(),
             duplicateMetricsSkipped = duplicateMetricsSkipped,
             affectedStepSummaryDates = affectedStepSummaryDates,
         )
@@ -319,22 +319,6 @@ class ScheduledProviderSyncService(
             pagesFetched = pagesFetched,
             sourceRecordsReceived = sourceRecordsReceived,
             normalizedRecords = normalizedRecords,
-        )
-
-    private fun MetricCreatedCounts.toDto(): MetricCreatedCountsResponse =
-        MetricCreatedCountsResponse(
-            stepSamples = stepSamples,
-            sleepSessions = sleepSessions,
-            sleepStages = sleepStages,
-            bodyMeasurements = bodyMeasurements,
-            heartRateSamples = heartRateSamples,
-            activitySummaries = activitySummaries,
-            sleepSummaries = sleepSummaries,
-            respiratoryRateSamples = respiratoryRateSamples,
-            hrvSamples = hrvSamples,
-            bloodPressureMeasurements = bloodPressureMeasurements,
-            cardiovascularMeasurements = cardiovascularMeasurements,
-            extendedBodyMeasurements = extendedBodyMeasurements,
         )
 }
 

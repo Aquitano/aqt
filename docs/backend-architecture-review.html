@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>aqt-health — Backend Architecture Review</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --ink: #1c1917;
+    --ink-soft: #57534e;
+    --ink-faint: #a8a29e;
+    --line: #e7e5e4;
+    --accent: #0f766e;
+    --accent-soft: #f0fdfa;
+    --critical: #b91c1c; --critical-bg: #fef2f2;
+    --high: #c2410c;     --high-bg: #fff7ed;
+    --medium: #a16207;   --medium-bg: #fefce8;
+    --low: #15803d;      --low-bg: #f0fdf4;
+    --info: #1d4ed8;     --info-bg: #eff6ff;
+    --code-bg: #f5f5f4;
+    --mono: ui-monospace, "Cascadia Code", "Segoe UI Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.65 -apple-system, "Segoe UI", system-ui, Roboto, sans-serif;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 48px 28px 96px; }
+  header.doc { border-bottom: 2px solid var(--ink); padding-bottom: 24px; margin-bottom: 32px; }
+  header.doc h1 { font-size: 34px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  header.doc .sub { color: var(--ink-soft); font-size: 15px; }
+  header.doc .facts { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 13.5px; color: var(--ink-soft); }
+  header.doc .facts span b { color: var(--ink); font-weight: 600; }
+
+  h2 { font-size: 24px; margin: 56px 0 16px; padding-top: 18px; border-top: 1px solid var(--line); letter-spacing: -0.01em; }
+  h2 .secno { color: var(--accent); margin-right: 10px; }
+  h3 { font-size: 18px; margin: 34px 0 10px; }
+  p, li { color: var(--ink); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  pre { background: #1c1917; color: #e7e5e4; border-radius: 8px; padding: 16px 18px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+  pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+  pre .cm { color: #78716c; }
+  pre .kw { color: #7dd3fc; }
+  pre .str { color: #bef264; }
+  pre .hl { color: #fda4af; }
+
+  .pill { display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border-radius: 99px; padding: 2px 10px; vertical-align: 2px; margin-left: 8px; }
+  .pill.critical { color: var(--critical); background: var(--critical-bg); border: 1px solid #fecaca; }
+  .pill.high { color: var(--high); background: var(--high-bg); border: 1px solid #fed7aa; }
+  .pill.medium { color: var(--medium); background: var(--medium-bg); border: 1px solid #fde68a; }
+  .pill.low { color: var(--low); background: var(--low-bg); border: 1px solid #bbf7d0; }
+  .pill.info { color: var(--info); background: var(--info-bg); border: 1px solid #bfdbfe; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px; margin: 18px 0; }
+  .card.finding { border-left: 4px solid var(--ink-faint); }
+  .card.finding.critical { border-left-color: var(--critical); }
+  .card.finding.high { border-left-color: var(--high); }
+  .card.finding.medium { border-left-color: var(--medium); }
+  .card.finding.low { border-left-color: var(--low); }
+  .card.finding.info { border-left-color: var(--info); }
+  .card h4 { margin: 0 0 8px; font-size: 16.5px; }
+  .card .where { font-family: var(--mono); font-size: 12.5px; color: var(--ink-soft); margin-bottom: 12px; }
+  .card p { margin: 10px 0; font-size: 15px; }
+  .fix { background: var(--accent-soft); border: 1px solid #ccfbf1; border-radius: 6px; padding: 10px 14px; font-size: 14.5px; margin-top: 12px; }
+  .fix b { color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 14px; background: var(--surface); }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); border-bottom: 2px solid var(--ink); padding: 8px 12px; }
+  td { border-bottom: 1px solid var(--line); padding: 9px 12px; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  .toc { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 26px; column-count: 2; column-gap: 40px; font-size: 14.5px; }
+  .toc ol { margin: 0; padding-left: 18px; }
+  .toc li { margin: 4px 0; break-inside: avoid; }
+
+  .good { background: var(--low-bg); border: 1px solid #bbf7d0; border-radius: 8px; padding: 4px 18px; margin: 14px 0; }
+  .good ul { margin: 10px 0; }
+  .verdict { background: var(--surface); border: 2px solid var(--ink); border-radius: 10px; padding: 20px 26px; margin: 24px 0; }
+  .verdict p:first-child { margin-top: 0; }
+
+  .arch { font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 18px 22px; overflow-x: auto; white-space: pre; color: var(--ink-soft); }
+  .arch b { color: var(--ink); }
+  .arch .bad { color: var(--critical); font-weight: 700; }
+
+  @media (max-width: 700px) { .toc { column-count: 1; } }
+  @media print { body { background: #fff; } .wrap { padding: 0; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <h1>aqt-health — Backend Architecture Review</h1>
+  <div class="sub">Code review of the Ktor/Kotlin backend: readability, performance, and long-term design — including breaking changes and a from-scratch redesign sketch.</div>
+  <div class="facts">
+    <span><b>Date:</b> 2026-06-10</span>
+    <span><b>Scope:</b> <code>src/main/kotlin</code> (147 files, ~20,900 lines)</span>
+    <span><b>Stack:</b> Kotlin 2.3 · Ktor 3.5 · Exposed v1 · PostgreSQL · Flyway · Koin</span>
+    <span><b>Branch:</b> main @ f7bcddf</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <ol>
+    <li><a href="#summary">Executive summary</a></li>
+    <li><a href="#overview">Architecture as it stands</a></li>
+    <li><a href="#arch-findings">Architecture findings</a></li>
+    <li><a href="#perf">Performance findings</a></li>
+    <li><a href="#correctness">Correctness &amp; robustness</a></li>
+    <li><a href="#security">Security &amp; API surface</a></li>
+    <li><a href="#readability">Readability cleanups</a></li>
+    <li><a href="#redesign">If I redesigned it (breaking changes)</a></li>
+    <li><a href="#roadmap">Prioritized roadmap</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="summary"><span class="secno">1</span>Executive summary</h2>
+
+<p>This is a carefully engineered codebase with strong operational instincts: ingestion is idempotent end-to-end, raw provider payloads are stored for replay, OAuth tokens are encrypted with a versioned format, production config is validated at startup, and logging is structured throughout. The provider-sync subsystem (<code>ProviderSyncAdapter</code> + <code>ProviderSyncPipeline</code>) is genuinely good design — ports and adapters done right.</p>
+
+<p>The dominant problem is <b>structural repetition that grows linearly with every new metric</b>. Eleven metric families each carry their own models, write repository, read repository, canonical-derivation repository, derivation service, and query service — and every cross-cutting type (<code>MetricCreatedCounts</code>, <code>MetricWriteResult</code>, <code>DerivedRebuildRequest</code>, the DI modules, the response DTOs) has one hand-written field or branch per family. Adding one metric today touches roughly 15 files. This is the thing to fix before the codebase doubles again.</p>
+
+<p>The second theme is <b>performance debt in the derivation hot path</b> that directly contradicts the repo's own <code>AGENTS.md</code> guidance: timestamps are carried as <code>String</code> in row models and re-parsed (including inside sort comparators), and the canonical bucketing algorithm is quadratic per key. For a single user today this is invisible; on a multi-year backfill it will not be.</p>
+
+<p>Top five actions, in order of leverage:</p>
+<table>
+  <tr><th>#</th><th>Action</th><th>Why</th></tr>
+  <tr><td>1</td><td>Introduce a <b>metric-module registry</b> and collapse the per-metric field/branch explosion into <code>Map&lt;MetricKind, …&gt;</code></td><td>Cuts ~40% of the code that must be touched per new metric; removes the largest source of future bugs</td></tr>
+  <tr><td>2</td><td>Make row models carry <code>Instant</code>, not <code>String</code>; fix the quadratic bucket scan</td><td>Hot-path correctness with your own stated rules; large backfill speedup</td></tr>
+  <tr><td>3</td><td>Replace per-route manual auth with Ktor's <code>Authentication</code> plugin and <code>authenticate {}</code> blocks</td><td>One forgotten <code>authenticateProtected()</code> call = a silently public endpoint</td></tr>
+  <tr><td>4</td><td>Give failed derived rebuilds a <b>repair path</b> (pending-rebuild table + sweeper)</td><td>Today a failed rebuild leaves canonical tables silently stale until unrelated data arrives</td></tr>
+  <tr><td>5</td><td>Batch metric inserts during ingestion; batch rebuild dates per transaction</td><td>Removes N+1 round trips on the two write-heavy paths</td></tr>
+</table>
+
+<div class="good">
+  <p><b>What's already good (keep it):</b></p>
+  <ul>
+    <li>Idempotent ingestion: <code>batchExternalId</code> + unique indexes + failed-batch external-ID release for retries</li>
+    <li>Raw <code>sourcePayload</code> + normalized payload stored per batch — replay/audit is possible by design</li>
+    <li><code>ProviderSyncPipeline</code> with adapter ports: token refresh, throttling, caching, partial failure handling all provider-agnostic</li>
+    <li><code>algorithmVersion</code> on all canonical tables — derivations are versioned and re-runnable</li>
+    <li>Startup config validation that actively rejects placeholder/local values in production (<code>AppConfig.kt</code>)</li>
+    <li>AES-GCM token encryption with a <code>v1:</code> format prefix (rotation-ready), constant-time API-key comparison</li>
+    <li>Derived rebuilds moved <i>out</i> of the ingestion transaction (recent commit) — the right call</li>
+    <li>Testcontainers-backed integration tests split from fast unit tests; OpenAPI exported as a build artifact</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="overview"><span class="secno">2</span>Architecture as it stands</h2>
+
+<div class="arch"><b>api/</b>          Routes.kt (907) · OpenApi.kt (1138) · Errors.kt · Auth.kt · dto/
+   ↓ calls
+<b>application/</b>  IngestionService → IngestionMappingService (1095) → MetricWriteService
+              DerivedRebuildExecutor → 9 × Canonical*DerivationService
+              metric/&lt;family&gt;/ {QueryService, derived/, repository/}   ← <span class="bad">Exposed DSL lives here</span>
+              providersync/ {Pipeline, Ports, Adapters}
+              Scheduled sync · Sync jobs · Provider workflow/status/catalog
+   ↓
+<b>infrastructure/</b> database/ (tables, Hikari, Flyway) · repositories/ (support, oauth, jobs)
+              security/ (ApiKeyHasher, TokenCipher) · config/ · logging/
+<b>domain/</b>       HealthRecord (sealed) · MetricTypes · HealthProvider ← <span class="bad">imports application.*</span>
+<b>external/</b>     google/ · withings/  (clients, normalizers, providers, sync adapters)</div>
+
+<p>Data flow: trusted scripts or provider adapters POST normalized batches → batch + records + raw payload persisted in one transaction → per-record metric writes with duplicate skipping → affected UTC dates collected → after commit, canonical/derived tables are rebuilt per date (delete-and-reinsert, keyed by <code>algorithmVersion</code>). Reads go almost exclusively through the canonical tables.</p>
+
+<!-- ============================================================ -->
+<h2 id="arch-findings"><span class="secno">3</span>Architecture findings</h2>
+
+<div class="card finding critical">
+  <h4>A1 · Adding a metric requires shotgun surgery across ~15 files <span class="pill critical">Critical</span></h4>
+  <div class="where">application/metric/** · MetricWriteService.kt · DerivedRebuildExecutor.kt:20–42 · IngestionService.kt:160–246 · di/AppModules.kt · domain/IngestionModels.kt</div>
+  <p>Every metric family is hand-instantiated everywhere it appears. The pattern is plainly visible in the "affected dates" plumbing — nine parallel <code>linkedSetOf&lt;LocalDate&gt;()</code> accumulators in <code>IngestionService.ingestBatch</code>, nine parallel fields on <code>MetricWriteResult</code>, nine on <code>DerivedRebuildRequest</code>, nine <code>if (… .isNotEmpty())</code> blocks in <code>TransactionalDerivedRebuildExecutor</code>, twelve fields on <code>MetricCreatedCounts</code> and its DTO twin, and a 12-arm <code>when</code> in <code>MetricWriteService.write</code>. The same expansion repeats in the DI modules, the catalog service, and the OpenAPI descriptors.</p>
+  <p>This is the single biggest long-term cost in the codebase: each new metric multiplies boilerplate, and each cross-cutting change (e.g. "track affected dates differently") must be edited eleven times, with the compiler only partially able to help.</p>
+  <div class="fix"><b>Fix:</b> introduce a <code>MetricKind</code> enum and a <code>MetricModule</code> interface that bundles what a family contributes: <code>writer</code>, <code>derivation</code>, <code>catalogDescriptor</code>, and <code>readService</code>. Register modules in a list (mirroring the existing — and well-done — <code>HealthDayModuleRegistry</code> and <code>HealthProviderRegistry</code> patterns). Then:
+  <pre><code><span class="kw">data class</span> MetricWriteResult(
+    <span class="kw">val</span> created: Map&lt;MetricKind, Int&gt; = emptyMap(),
+    <span class="kw">val</span> duplicateSkipped: Int = <span class="str">0</span>,
+    <span class="kw">val</span> affectedDates: Map&lt;MetricKind, Set&lt;LocalDate&gt;&gt; = emptyMap(),
+)
+
+<span class="kw">class</span> TransactionalDerivedRebuildExecutor(<span class="kw">val</span> modules: List&lt;MetricModule&gt;) {
+    <span class="kw">override suspend fun</span> rebuild(request: DerivedRebuildRequest, at: Instant) =
+        modules.forEach { m -&gt;
+            request.affectedDates[m.kind]?.takeIf { it.isNotEmpty() }?.let { dates -&gt;
+                suspendTransaction(db) { m.derivation.recompute(dates, at) }
+            }
+        }
+}</code></pre>
+  Adding a metric becomes: one module class + one table + one migration + one registry entry. <code>MetricCreatedCountsResponse</code> can stay a typed DTO for API stability — build it from the map at the boundary.</div>
+</div>
+
+<div class="card finding high">
+  <h4>A2 · The layering is inverted in three places — either enforce it or simplify it <span class="pill high">High</span></h4>
+  <div class="where">domain/HealthProvider.kt:3 · application/IngestionService.kt:3–6 · application/metric/*/repository/*</div>
+  <p>The package names promise hexagonal layering (<code>domain</code> ← <code>application</code> ← <code>infrastructure</code>/<code>api</code>), but the dependencies don't hold:</p>
+  <ul>
+    <li><code>domain/HealthProvider.kt</code> imports <code>application.providersync.ProviderSyncProgressSink</code> — the innermost layer depends outward.</li>
+    <li><code>IngestionService</code> (application) consumes and produces <code>api.dto</code> types (<code>IngestionBatchRequest</code>, <code>IngestionSummaryResponse</code>) — the use-case layer is welded to the HTTP contract.</li>
+    <li>Repositories full of Exposed DSL live under <code>application/metric/*/repository</code>, while other repositories live in <code>infrastructure/repositories</code>. Same role, two homes, and "application" now hard-depends on Exposed.</li>
+  </ul>
+  <p>Half-enforced layering is worse than none: it misleads readers about what is safe to import where.</p>
+  <div class="fix"><b>Fix:</b> pick one of two honest options. <b>(a)</b> Enforce it: move <code>ProviderSyncProgressSink</code> into domain (it's a pure interface), have ingestion accept a domain command object mapped from the DTO at the route layer, and move all Exposed repositories under <code>infrastructure</code>. <b>(b)</b> Accept that a single-user service doesn't need four layers and reorganize by <i>feature</i> (<code>ingestion/</code>, <code>metrics/steps/</code>, <code>providers/withings/</code>…), each feature owning its routes, service, and repository. Given the codebase already groups metric code by family, (b) is the smaller step and reads better. Either way, add a lightweight architecture test (e.g. Konsist) so the chosen rule is mechanical, not aspirational.</div>
+</div>
+
+<div class="card finding medium">
+  <h4>A3 · Routes.kt (907 lines) and the 17-field service bag <span class="pill medium">Medium</span></h4>
+  <div class="where">api/Routes.kt · api/Application.kt:98–156 · api/OpenApi.kt (1138 lines)</div>
+  <p>Every endpoint, its handler, and its inline OpenAPI <code>.describe</code> block live in one file, and every handler receives the full <code>ApplicationServices</code> bag (17 services + the database) regardless of what it needs. The bag is assembled by hand from Koin in <code>buildApplicationServices()</code> — 17 <code>inject</code> lines mirrored by 17 constructor arguments mirrored by 17 fields.</p>
+  <div class="fix"><b>Fix:</b> split routing into per-resource extension functions — <code>Route.ingestionRoutes(ingestion: IngestionService)</code>, <code>Route.providerRoutes(…)</code>, <code>Route.metricReadRoutes(…)</code>, <code>Route.adminRoutes(…)</code> — each taking only its own dependencies (resolved by <code>inject()</code> inside each module, which deletes the bag entirely). Keep the <code>.describe</code> DSL but move shared descriptor builders next to the routes they document.</div>
+</div>
+
+<div class="card finding medium">
+  <h4>A4 · Two dependency-injection idioms fight each other <span class="pill medium">Medium</span></h4>
+  <div class="where">di/AppModules.kt:139 · MetricWriteService.kt:29–37 · HeartRateQueryService.kt:18 · all *WriteRepository</div>
+  <p>Koin is the declared container, but many classes also default-construct their own dependencies: <code>MetricWriteService()</code> news up all eight write repositories (which are not registered in Koin at all), and query services default-create canonical repositories (<code>= CanonicalHeartRateDerivationRepository()</code>) that <i>are</i> registered as singletons. The result is two object graphs — the Koin one and the shadow one created by default args — and it is luck, not design, which instance a given code path uses. Because the repositories are stateless this is currently harmless, but it makes substitution in tests inconsistent and will bite the first time a repository gains state (a cache, a metric counter).</p>
+  <div class="fix"><b>Fix:</b> delete every default-argument instantiation; require constructor injection and register everything in the modules. As a rule: <code>= SomeClass()</code> in a constructor signature is allowed only in test fixtures.</div>
+</div>
+
+<div class="card finding low">
+  <h4>A5 · A job-queue abstraction that nothing uses <span class="pill low">Low</span></h4>
+  <div class="where">application/metric/common/MetricDerivedBuilder.kt · CanonicalHeartRateDerivation.kt:44–57</div>
+  <p><code>DerivationJobInput</code> carries <code>attemptCount</code>, <code>lastError</code>, <code>lockedAt</code>, and <code>reason</code> — the vocabulary of a persistent job queue — but every implementation hard-codes them (<code>attemptCount = 0</code>, <code>lastError = null</code>, <code>lockedAt = null</code>). Every derivation also constructs a <code>Clock.fixed(computedAt, UTC)</code> just to thread a timestamp through the builder. This is speculative generality: the machinery of a queue with none of its behavior.</p>
+  <div class="fix"><b>Fix:</b> either delete the unused fields and pass <code>computedAt</code> directly (smallest change), or actually build the queue — which finding C1 argues you want anyway. Don't keep the husk.</div>
+</div>
+
+<div class="card finding low">
+  <h4>A6 · Three clock abstractions <span class="pill low">Low</span></h4>
+  <div class="where">infrastructure/time/UtcClock.kt · ProviderSyncPipeline.kt:18 (<code>() -&gt; Instant</code> defaulting to <code>Instant.now()</code>) · derivation builders (<code>java.time.Clock</code>)</div>
+  <p>Services use <code>UtcClock</code>, the sync pipeline takes a <code>() -&gt; Instant</code> lambda whose default bypasses <code>UtcClock</code> entirely, and the derivation layer uses <code>java.time.Clock</code>. Time is the classic source of flaky tests; one seam is enough.</p>
+  <div class="fix"><b>Fix:</b> standardize on <code>java.time.Clock</code> (it's the JDK seam, <code>Clock.fixed</code> ships with it) or on <code>UtcClock</code> everywhere, injected — never defaulted to a real clock inside the class.</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="perf"><span class="secno">4</span>Performance findings</h2>
+
+<div class="card finding high">
+  <h4>P1 · Row models carry timestamps as String and re-parse them in hot loops <span class="pill high">High</span></h4>
+  <div class="where">HeartRateModels.kt:6 (and every sibling *Models.kt) · CanonicalHeartRateDerivation.kt:106,126 · CanonicalTimestampBuckets.kt:28 · PostgresTypes.kt:13</div>
+  <p>The database hands back <code>OffsetDateTime</code>; repositories immediately stringify it (<code>toApiString()</code>) into row models like <code>HeartRateSampleRow(measuredAt: String)</code>; the derivation layer then parses it back with <code>Instant.parse</code> — inside a sort comparator:</p>
+  <pre><code><span class="cm">// CanonicalTimestampBuckets.kt — measuredAt(it) is { Instant.parse(it.measuredAt) }</span>
+<span class="kw">val</span> timedRows = rows
+    .sortedWith(compareBy&lt;T&gt; { <span class="hl">measuredAt(it)</span> })  <span class="cm">// parses O(n log n) times</span>
+    .map { row -&gt; CanonicalTimedRow(row, groupKey(row), <span class="hl">measuredAt(row)</span>) } <span class="cm">// parses again</span>
+…
+    .sortedBy(<span class="hl">measuredAt</span>)  <span class="cm">// and again on the way out</span></code></pre>
+  <p>A day with 10,000 heart-rate samples performs on the order of 150,000+ <code>Instant.parse</code> calls per rebuild — and rebuilds run per affected date, per metric, on every ingest. This is exactly the "repeated expensive conversions" your <code>AGENTS.md</code> forbids. Strings exist in these models only because the same row type is reused as a quasi-DTO.</p>
+  <div class="fix"><b>Fix:</b> repository row models keep <code>Instant</code> (the DB already gives you the typed value — <code>row[…].toInstant()</code>); convert to ISO strings only in <code>MetricResponseMappers</code> at the DTO boundary. In <code>canonicalTimestampRows</code>, map to <code>CanonicalTimedRow</code> <i>first</i>, then sort by the precomputed field. This is mechanical and removes parsing from the hot path entirely.</div>
+</div>
+
+<div class="card finding high">
+  <h4>P2 · Quadratic bucket scan in canonical timestamp dedup <span class="pill high">High</span></h4>
+  <div class="where">CanonicalTimestampBuckets.kt:41–53</div>
+  <p>For each row, the algorithm linearly scans <i>all</i> existing buckets for its key (<code>bucketsForKey.firstOrNull { abs(…) &lt;= 30s }</code>). With one source and one context — the common case — a dense day degenerates to O(n²): 10k samples ≈ 50M duration comparisons. The input is already sorted by time, which makes the scan unnecessary.</p>
+  <div class="fix"><b>Fix:</b> since rows arrive time-ordered, only the <i>last</i> bucket per key can possibly be within tolerance (any earlier bucket's representative is even further in the past). Replace the scan with a check against <code>bucketsForKey.lastOrNull()</code> — O(n) total. (This also subtly changes semantics from "first matching bucket" to "most recent bucket", which is the more defensible clustering anyway; note it in the algorithm version if you care about byte-stable output.)</div>
+</div>
+
+<div class="card finding medium">
+  <h4>P3 · Ingestion writes metrics one row, one statement at a time <span class="pill medium">Medium</span></h4>
+  <div class="where">IngestionService.kt:173–192 · MetricWriteService.kt · all *WriteRepository</div>
+  <p>The ingest loop dispatches each record to a per-record <code>insertIgnoreAndGetId</code>. A Withings backfill batch with 5,000 samples issues 5,000 sequential INSERT round trips inside one transaction (plus the overlap SELECTs of P4). The duplicate-detection already lives in unique indexes, so nothing requires row-at-a-time execution.</p>
+  <div class="fix"><b>Fix:</b> group records by type up front (<code>records.groupBy { it::class }</code>), then have each writer accept a list and use Exposed's <code>batchInsert(ignore = true)</code> (ON CONFLICT DO NOTHING). Created-vs-skipped counts come from the returned row count. The "affected dates" computation is pure and stays as is.</div>
+</div>
+
+<div class="card finding medium">
+  <h4>P4 · Per-record overlap query for Google step samples, with a redundant in-memory recheck <span class="pill medium">Medium</span></h4>
+  <div class="where">StepWriteRepository.kt:41–59</div>
+  <p>Every Google step interval triggers a SELECT scanning candidate rows, then re-verifies overlap in Kotlin — but the SQL predicate (<code>startAt &lt; candidateEnd AND endAt &gt; candidateStart</code>, with the ±1s widening) already implies the Kotlin condition, so rows are materialized just to confirm what the WHERE clause proved. It's also an N+1 against the ingest batch.</p>
+  <div class="fix"><b>Fix:</b> short term, replace the fetch-and-check with an EXISTS/<code>empty()</code> probe and drop the ±1s widening so SQL and intent match exactly. Long term, you already have a GiST index on the time range (<code>step_samples_source_instance_time_range_gist_idx</code>) — promote the rule to a Postgres <b>exclusion constraint</b> (<code>EXCLUDE USING gist (source_instance_id WITH =, tstzrange(start_at, end_at) WITH &amp;&amp;)</code> scoped to that source) and let inserts fail-fast instead of pre-querying.</div>
+</div>
+
+<div class="card finding medium">
+  <h4>P5 · Derived rebuild: one transaction per metric group, one job per date, all sequential <span class="pill medium">Medium</span></h4>
+  <div class="where">DerivedRebuildExecutor.kt:57–132 · CanonicalHeartRateDerivation.kt:27–33</div>
+  <p>After a backfill touching 90 days, the executor runs up to 9 metric groups × 90 dates of delete-and-reinsert work as ~9 sequential transactions whose bodies loop dates one at a time (and <code>recompute</code> itself loops <code>dates.forEach { builder(...).processJob(...) }</code>, constructing a fresh builder per date). Each date's input load is a separate full-day SELECT.</p>
+  <div class="fix"><b>Fix:</b> three cheap wins, in order: (1) pass the whole date set into one delete (<code>date inList dates</code>) + one batched insert per metric; (2) reuse one builder across dates; (3) since the rebuild already runs post-commit, run independent metric groups concurrently with a small <code>Semaphore</code>-bounded <code>coroutineScope</code>. Pairs naturally with the queue in C1.</div>
+</div>
+
+<div class="card finding medium">
+  <h4>P6 · Blocking JDBC runs on whatever dispatcher calls it <span class="pill medium">Medium</span></h4>
+  <div class="where">BaseReadService.kt:19–22 · IngestionService.kt:62 · all <code>suspendTransaction(db = database)</code> call sites</div>
+  <p><code>suspendTransaction</code> is called without a coroutine context, so the blocking JDBC work executes on the caller's dispatcher — Ktor's request worker pool for HTTP paths, <code>Dispatchers.Default</code> for the scheduler. A handful of slow queries (a long backfill read, a lock wait) can occupy CPU-pool threads and stall unrelated request handling. With <code>maxPoolSize</code> connections, there is also no backpressure alignment between coroutines admitted and connections available.</p>
+  <div class="fix"><b>Fix:</b> define one shared dispatcher sized to the pool — <code>Dispatchers.IO.limitedParallelism(config.maxPoolSize)</code> — and pass it at the single wrapper: <code>suspendTransaction(dbDispatcher, db = database) { … }</code>. Route every transaction through that wrapper (you already have <code>dbQuery</code>; ingestion and the executors should use the same one).</div>
+</div>
+
+<div class="card finding low">
+  <h4>P7 · Source-instance filter resolved by an extra query on every read <span class="pill low">Low</span></h4>
+  <div class="where">BaseMetricRepository.kt:51–68</div>
+  <p>Any read filtered by <code>provider</code>/<code>providerInstanceId</code> first runs a separate SELECT to resolve matching source-instance IDs, then injects them as <code>inList</code>. That's one extra round trip per request for data that is tiny and nearly immutable (you create a source instance once per provider account).</p>
+  <div class="fix"><b>Fix:</b> cache the <code>(provider, providerInstanceId) → sourceInstanceId</code> map in memory with invalidation on <code>resolveOrCreateSourceInstanceInTransaction</code> — or just inline the join into each query. The cache is ~20 lines and removes the round trip everywhere at once.</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="correctness"><span class="secno">5</span>Correctness &amp; robustness</h2>
+
+<div class="card finding high">
+  <h4>C1 · A failed derived rebuild leaves canonical tables silently stale <span class="pill high">High</span></h4>
+  <div class="where">IngestionService.kt:254–301 · IngestionRepository.markDerivedRebuildFailed</div>
+  <p>Moving the rebuild out of the ingestion transaction was correct, but the failure path only marks the batch (<code>derived_rebuild_failed</code>) and logs. Nothing retries: raw metric rows are committed, canonical tables for those dates keep yesterday's contents, and every read endpoint (which reads canonical) serves stale data until some <i>future</i> ingest happens to touch the same dates. The same applies to the partial-failure design inside the transaction: a mid-batch exception commits the already-written metric rows (reasonable — retries dedupe), but those rows never get a rebuild either.</p>
+  <div class="fix"><b>Fix:</b> persist the work. Write a <code>pending_derived_rebuilds(metric_kind, date, attempt_count, last_error, locked_at)</code> row set in the ingestion transaction itself (it's tiny), have the executor delete rows it completes, and add a sweeper to the existing scheduler loop that retries leftovers with backoff. This is precisely the shape <code>DerivationJobInput</code> already models (A5) — build it for real. Bonus: an admin endpoint "rebuild date range" becomes trivial and gives you a manual repair tool.</div>
+</div>
+
+<div class="card finding medium">
+  <h4>C2 · Retryability decided by substring-matching error messages <span class="pill medium">Medium</span></h4>
+  <div class="where">ScheduledProviderSyncService.kt:206–211</div>
+  <pre><code><span class="kw">val</span> nonRetryable = errors.any { error -&gt;
+    error.contains(<span class="str">"validation"</span>, ignoreCase = <span class="kw">true</span>) ||
+    error.contains(<span class="str">"not configured"</span>, ignoreCase = <span class="kw">true</span>) || …</code></pre>
+  <p>The pipeline goes to real effort to produce structured <code>ProviderSyncError(dataType, code, message)</code> — and then this code flattens errors to strings (<code>joinToString</code>) and greps the prose. Reword one message ("needs reconnect" → "requires re-authentication") and a permanent failure becomes an infinite retry loop.</p>
+  <div class="fix"><b>Fix:</b> keep <code>ProviderSyncError</code> objects through <code>executeConfig</code> and classify on <code>code</code> (e.g. a <code>NonRetryableCodes</code> set, or better: a <code>retryable: Boolean</code> the adapter sets, since the adapter is the only party that knows). Flatten to a string only for the persisted <code>lastErrorMessage</code>.</div>
+</div>
+
+<div class="card finding medium">
+  <h4>C3 · Lifecycle states are stringly-typed everywhere <span class="pill medium">Medium</span></h4>
+  <div class="where">"processed" / "failed" / "partial_failed" in IngestionService, ProviderSyncPipeline:199–203, repositories, DTOs · account statuses in ProviderOAuthRepository</div>
+  <p>Batch status, sync status, job status, and account status are raw strings compared with <code>==</code> at every decision point (<code>existingBatch?.status == "processed"</code>). A typo compiles; an enum wouldn't. The set of states and their transitions is real domain logic currently living in nobody's head but the grep index.</p>
+  <div class="fix"><b>Fix:</b> one enum per lifecycle (<code>BatchStatus</code>, <code>SyncStatus</code>, <code>AccountStatus</code>) with <code>fromDb</code>/<code>dbValue</code> mapping at the repository boundary. Serialize the same wire strings so the API is unchanged.</div>
+</div>
+
+<div class="card finding info">
+  <h4>C4 · Single-process assumptions are documented — keep them deliberate <span class="pill info">Info</span></h4>
+  <div class="where">ScheduledProviderSyncService.kt:21 · ProviderSyncJobService (in-memory CoroutineScope)</div>
+  <p>The run guard is an in-process mutex (the comment says so honestly), and background sync jobs execute on an in-memory scope with interrupted-job marking at startup — good. This is all fine for a single-instance deployment; just be aware that the moment a second replica appears, you need a DB-backed claim (<code>SELECT … FOR UPDATE SKIP LOCKED</code> on due configs/jobs) rather than the mutex. The schema already supports it; only the guard changes.</p>
+</div>
+
+<div class="card finding low">
+  <h4>C5 · Scheduled sync re-fetches the full lookback window every run <span class="pill low">Low</span></h4>
+  <div class="where">ScheduledProviderSyncService.kt:230–241</div>
+  <p><code>syncWindow</code> starts at <code>checkpoint − lookbackDays</code>, so with the default 7-day lookback and daily cadence, each run re-downloads ~7 days that are already ingested. Idempotent batch caching absorbs most of the cost, but the provider API calls still happen, and the batch-external-ID granularity means a window shifted by hours produces new batch IDs (cache misses) every run.</p>
+  <div class="fix"><b>Fix:</b> separate the concerns: sync forward from <code>checkpoint</code> normally, and run the lookback re-scan on a slower cadence (e.g. once daily) or align windows to day boundaries so the batch cache actually hits.</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="security"><span class="secno">6</span>Security &amp; API surface</h2>
+
+<div class="card finding high">
+  <h4>S1 · Auth is opt-in per route — one missed line publishes an endpoint <span class="pill high">High</span></h4>
+  <div class="where">Routes.kt:890–898 · every handler's first line</div>
+  <p>Authentication is a manual <code>call.authenticateProtected(services)</code> call at the top of each of ~40 handlers. Nothing structural prevents the next endpoint from omitting it — and the codebase already shows how routine drift happens (S2). For a health-data service, "secure by default" should be a property of the routing tree, not of developer discipline.</p>
+  <div class="fix"><b>Fix:</b> install Ktor's <code>Authentication</code> plugin with a <code>bearer</code> provider that wraps the existing <code>SupportRepository</code>/<code>ApiKeyHasher</code> lookup, then group routes:
+  <pre><code>routing {
+    healthRoutes()                          <span class="cm">// public: /admin/health, oauth callback</span>
+    authenticate(<span class="str">"api-key"</span>) {              <span class="cm">// everything else, by construction</span>
+        ingestionRoutes(); providerRoutes(); metricReadRoutes(); adminRoutes()
+    }
+}</code></pre>
+  This composes with the per-resource split in A3 and deletes ~40 boilerplate lines. While you're there, consider a tiny <code>RateLimit</code> install on the auth failure path; SHA-256 for high-entropy generated keys is fine, but unlimited guessing is free today.</div>
+</div>
+
+<div class="card finding low">
+  <h4>S2 · Newer endpoints are missing OpenAPI documentation <span class="pill low">Low</span></h4>
+  <div class="where">Routes.kt:735–775 (blood-pressure, cardiovascular, extended-body-measurements)</div>
+  <p>Six read endpoints have no <code>.describe</code> block, so they appear in the generated contract only via code inference (if at all) — while every older endpoint is documented. Classic drift, and evidence for moving docs closer to route modules (A3) where a missing description is conspicuous.</p>
+  <div class="fix"><b>Fix:</b> add the six <code>.describeReadOperation(…)</code> calls; optionally add a test that walks the routing tree and asserts every non-hidden route has an operationId — you already have the OpenAPI export test to hang it on.</div>
+</div>
+
+<div class="card finding medium">
+  <h4>S3 · List endpoints cannot paginate — <code>nextCursor</code> is hardwired null <span class="pill medium">Medium</span></h4>
+  <div class="where">ReadDtos.kt:19 · MetricCatalogService ("no cursor for now") · QueryParams.limit</div>
+  <p>Reads accept <code>limit</code> (cap 1000 presumably) with no offset or cursor; the response meta even declares a <code>nextCursor</code> field that is always null. A client wanting a full year of heart-rate samples must shard by time ranges manually and guess whether a window was truncated.</p>
+  <div class="fix"><b>Fix:</b> keyset pagination is nearly free given the existing ordering: cursor = base64 of <code>(measuredAt, id)</code> of the last row, decoded into a <code>(col &gt; ts) OR (col = ts AND id &gt; lastId)</code> predicate in <code>BaseMetricRepository</code>. The DTO field already exists, so this isn't even a breaking change.</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="readability"><span class="secno">7</span>Readability cleanups</h2>
+
+<div class="card finding medium">
+  <h4>R1 · IngestionMappingService: 1,095 lines of hand-unrolled validation <span class="pill medium">Medium</span></h4>
+  <div class="where">application/IngestionMappingService.kt</div>
+  <p>Eleven <code>mapXxx</code> functions repeat the same five moves: parse instants, check start&lt;end, range-check numbers, collect issues, rebuild the success condition by hand (<code>if (startAt != null &amp;&amp; endAt != null &amp;&amp; steps &gt; 0 &amp;&amp; startAt.isBefore(endAt))</code> — restating checks already performed above, a divergence bug waiting to happen). The trailing <code>provider!!</code>/<code>ingestedAt!!</code> after the issues check works but reads as a leap of faith.</p>
+  <div class="fix"><b>Fix:</b> a ~50-line validation helper pays for itself eleven times: a <code>FieldValidator</code> accumulating issues with combinators like <code>instant(name)</code>, <code>orderedRange(start, end)</code>, <code>positive(name, value)</code>, and a final <code>buildIfClean { … }</code> so the success condition is "no issues for this record" rather than a re-derived boolean. Also consider serializing <code>normalizedRecordJson</code> once per DTO instead of inside each mapper.</div>
+</div>
+
+<div class="card finding low">
+  <h4>R2 · Zero-filled response boilerplate <span class="pill low">Low</span></h4>
+  <div class="where">IngestionService.kt:84–121 · ScheduledProviderSyncService.toDto mappers</div>
+  <p>The duplicate-batch response spells out twelve zeroed count fields and nine empty date sets. Defaults on the DTO (<code>stepSamples: Int = 0</code>) or a <code>MetricCreatedCountsResponse.ZERO</code> constant collapse ~40 lines to three — and the A1 map refactor deletes the problem class entirely. Similarly, the hand-written <code>toDto()</code> mappers in the scheduled-sync service duplicate mappers that exist elsewhere; one shared mapping file per DTO family avoids drift.</p>
+</div>
+
+<div class="card finding low">
+  <h4>R3 · GoogleHealthConfig and WithingsConfig are the same class twice <span class="pill low">Low</span></h4>
+  <div class="where">AppConfig.kt:56–74, 187–205</div>
+  <p>Identical seven fields, identical validation functions duplicated per provider. One <code>OAuthProviderConfig</code> + a <code>Map&lt;String, OAuthProviderConfig&gt;</code> keyed by provider code makes the third provider a config entry instead of a new data class, new validator, and new <code>AppConfig</code> field.</p>
+</div>
+
+<div class="card finding low">
+  <h4>R4 · MetricsQueryService is 109 lines of pure delegation <span class="pill low">Low</span></h4>
+  <div class="where">application/metric/common/MetricsQueryService.kt</div>
+  <p>Every method forwards verbatim to a per-metric service. After the route split (A3), each route module can inject its per-metric service directly and the facade can be deleted — one less hop for readers tracing a request.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="redesign"><span class="secno">8</span>If I redesigned it — breaking changes I'd make</h2>
+
+<div class="verdict">
+<p><b>Would I rewrite this application? No.</b> The bones are good: the ingestion contract, the provider pipeline, and the schema are all worth keeping. But if I were starting from the same requirements — a personal, single-user health hub — I would make five decisions differently, and four of them are reachable from here as deliberate breaking changes.</p>
+</div>
+
+<h3>8.1 · Name the actual architecture: an event log with projections</h3>
+<p>The system already <i>is</i> event-sourced in disguise: <code>ingestion_batches</code> + raw payloads are an append-only event log; metric tables are a projection; canonical tables are a projection of the projection. But the code treats projections as precious mutable state to be patched per ingest, which is why C1 (drift) and the per-date rebuild plumbing exist. I would make <b>replay a first-class operation</b>: every projection rebuildable from raw batches for any date range with one admin call. Once replay is cheap and trusted, rebuild failures stop being scary (re-run it), the <code>algorithmVersion</code> bump workflow becomes "replay everything at v2", and the pending-rebuild queue (C1) is just the incremental special case of replay. Most of the code for this exists; what's missing is the unifying operation and the confidence to lean on it.</p>
+
+<h3>8.2 · Question eager canonicalization itself</h3>
+<p>Eight canonical tables exist to answer one question at read time: "when two sources report the same moment, which sample wins?" For a single user, the raw tables hold maybe a few million rows — small for Postgres. I would benchmark a read-time alternative before maintaining eight materializations forever: bucket timestamps in SQL (<code>date_bin('30 seconds', measured_at)</code> as a first approximation of the tolerance rule) and pick winners with <code>DISTINCT ON</code> over a provider-rank join. If that holds p95 under target on a year-range query — likely with the indexes already in place — the entire derivation layer for timestamp metrics (~25 files, the rebuild executor, the drift failure mode) disappears, and "canonical" becomes a view definition you can change without rebuilding history. Keep materialization only where the computation is genuinely heavy (sleep-night assembly, step day-bucket contributions). <b>This is the single highest-leverage simplification available</b>, and it's breaking only internally — the API shape stays.</p>
+
+<h3>8.3 · One generic samples table per value shape, not one table per metric family</h3>
+<p>Greenfield, I would not create <code>heart_rate_samples</code>, <code>respiratory_rate_samples</code>, <code>hrv_samples</code>, <code>cardiovascular_measurements</code>, <code>extended_body_measurements</code>… — they are all <code>(source_instance_id, provider_record_id, measured_at, metric_type, value, unit, context)</code> with minor variations; three of them literally share that exact shape already. I'd keep <i>structurally distinct</i> shapes separate (step intervals, sleep sessions+stages, daily activity summaries) and fold the point-in-time scalars into one <code>scalar_samples</code> table partitioned by metric type if needed. That single change is what makes A1's metric-module registry natural instead of forced: a new scalar metric becomes a row in a catalog, not a migration + table + five repositories. <i>From here</i>, this is a real migration with real risk; I'd only do it riding on the 8.2 simplification, and it's defensible to skip — but it's what I'd do differently from scratch.</p>
+
+<h3>8.4 · Decide single-user out loud (and what multi-user would cost)</h3>
+<p>There is no <code>user_id</code> anywhere — correct for the stated scope, and adding speculative tenancy now would be waste. But make it an explicit recorded decision (an ADR in <code>docs/</code>): if this ever serves two people, every metric table, every canonical table, every unique index, the API-key model (keys ↔ user), and the OAuth account model change. The cheap insurance available today is keeping <code>source_instance_id</code> as the universal scoping column it already is — a future <code>user_id</code> can hang off <code>source_instances</code> alone, which is exactly one table away from everything.</p>
+
+<h3>8.5 · API v2 hygiene, batched for one deliberate break</h3>
+<p>When a v2 is warranted, bundle the contract-level fixes in one go rather than dribbling breaks: enum-typed status fields (C3); cursor pagination as the default list shape (S3); <code>metricsCreated</code> as a map keyed by metric kind instead of a twelve-field object (so new metrics stop being API-breaking at all); and ISO-8601 fields formally typed as <code>format: date-time</code> in the schema. Everything else about the API — resource naming, error envelope with <code>requestId</code> and field details, discovery endpoints — I would keep exactly as is; it's a well-designed surface.</p>
+
+<h3>What I would explicitly keep</h3>
+<ul>
+  <li><b>Ktor + Exposed + Flyway + Koin</b> — right-sized; a heavier framework buys nothing here.</li>
+  <li><b>The ingestion contract</b> — normalized batches + raw payload + idempotency keys is the best part of the design.</li>
+  <li><b>The provider adapter pipeline</b> — adding provider #3 is already cheap; don't touch it.</li>
+  <li><b>Dedicated typed tables for steps, sleep, and activity</b> — their shapes genuinely differ.</li>
+  <li><b>The operational posture</b> — config validation, structured logs, Prometheus, request IDs, integration-test split.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="roadmap"><span class="secno">9</span>Prioritized roadmap</h2>
+
+<table>
+  <tr><th>Order</th><th>Item</th><th>Findings</th><th>Effort</th><th>Risk</th><th>Payoff</th></tr>
+  <tr><td>1</td><td>Typed <code>Instant</code> row models + O(n) bucketing</td><td>P1, P2</td><td>S</td><td>Low (pure refactor, covered by derivation tests)</td><td>Hot-path perf; honors AGENTS.md</td></tr>
+  <tr><td>2</td><td>Ktor Authentication plugin + route grouping</td><td>S1, A3</td><td>S–M</td><td>Low</td><td>Secure-by-construction; deletes the service bag</td></tr>
+  <tr><td>3</td><td>Pending-rebuild table + sweeper + admin replay endpoint</td><td>C1, A5, P5</td><td>M</td><td>Low</td><td>Eliminates silent canonical drift; manual repair tool</td></tr>
+  <tr><td>4</td><td>Metric-module registry; <code>Map&lt;MetricKind,…&gt;</code> internals</td><td>A1, R2, R4</td><td>M–L</td><td>Medium (wide but mechanical; API DTOs unchanged)</td><td>New metric ≈ 3 files instead of 15</td></tr>
+  <tr><td>5</td><td>Batched inserts; overlap check → EXISTS / exclusion constraint</td><td>P3, P4</td><td>S–M</td><td>Low–Medium</td><td>Backfill throughput</td></tr>
+  <tr><td>6</td><td>DB dispatcher (<code>IO.limitedParallelism(poolSize)</code>)</td><td>P6</td><td>S</td><td>Low</td><td>Predictable latency under load</td></tr>
+  <tr><td>7</td><td>Status enums; typed retryability; one Clock</td><td>C2, C3, A6</td><td>S</td><td>Low</td><td>Bug class removal</td></tr>
+  <tr><td>8</td><td>Layering decision + Konsist test; DI cleanup</td><td>A2, A4</td><td>M</td><td>Low</td><td>The structure tells the truth</td></tr>
+  <tr><td>9</td><td>Cursor pagination; document the six bare endpoints</td><td>S3, S2</td><td>S</td><td>Low</td><td>API completeness, non-breaking</td></tr>
+  <tr><td>10</td><td>Spike: read-time canonicalization (<code>DISTINCT ON</code> + <code>date_bin</code>)</td><td>§8.2</td><td>M (spike) / L (adopt)</td><td>Medium</td><td>Potentially deletes ~25 files and a failure mode</td></tr>
+</table>
+
+<p style="color:var(--ink-soft); font-size:13.5px; margin-top:40px;">Generated by Claude Code on 2026-06-10. File references are to <code>src/main/kotlin/me/aquitano/</code> at commit <code>f7bcddf</code>; line numbers may drift with subsequent edits.</p>
+
+</div>
+</body>
+</html>

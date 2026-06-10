@@ -5,7 +5,6 @@ import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.application.metric.hrv.derived.CanonicalHrvOutput
 import me.aquitano.health.infrastructure.database.tables.CanonicalHrvSamplesTable
 import me.aquitano.health.infrastructure.database.tables.HrvSamplesTable
-import me.aquitano.health.infrastructure.database.toApiString
 import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
 import org.jetbrains.exposed.v1.core.*
@@ -89,7 +88,7 @@ class CanonicalHrvDerivationRepository : BaseMetricRepository() {
         HrvSampleRow(
             id = row[HrvSamplesTable.id].value,
             sourceInstanceId = row[HrvSamplesTable.sourceInstanceId],
-            measuredAt = row[HrvSamplesTable.measuredAt].toApiString(),
+            measuredAt = row[HrvSamplesTable.measuredAt].toInstant(),
             metricType = row[HrvSamplesTable.metricType],
             value = row[HrvSamplesTable.value],
             unit = row[HrvSamplesTable.unit],
@@ -100,7 +99,7 @@ class CanonicalHrvDerivationRepository : BaseMetricRepository() {
         HrvSampleRow(
             id = row[HrvSamplesTable.id].value,
             sourceInstanceId = row[HrvSamplesTable.sourceInstanceId],
-            measuredAt = row[HrvSamplesTable.measuredAt].toApiString(),
+            measuredAt = row[HrvSamplesTable.measuredAt].toInstant(),
             metricType = row[HrvSamplesTable.metricType],
             value = row[HrvSamplesTable.value],
             unit = row[HrvSamplesTable.unit],

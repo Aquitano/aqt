@@ -2,7 +2,6 @@ package me.aquitano.health.application.metric.common
 
 import java.time.Duration
 import java.time.Instant
-import kotlin.math.abs
 
 private const val SameTimestampToleranceSeconds = 30L
 
@@ -25,7 +24,6 @@ fun <T, K> canonicalTimestampRows(
     choosePreferred: (List<T>) -> T,
 ): List<T> {
     val timedRows = rows
-        .sortedWith(compareBy<T> { measuredAt(it) })
         .map { row ->
             CanonicalTimedRow(
                 row = row,
@@ -33,22 +31,24 @@ fun <T, K> canonicalTimestampRows(
                 measuredAt = measuredAt(row),
             )
         }
+        .sortedBy { it.measuredAt }
 
     val bucketsByKey = mutableMapOf<K, MutableList<CanonicalTimestampBucket<T>>>()
 
     for (timedRow in timedRows) {
         val bucketsForKey = bucketsByKey.getOrPut(timedRow.key) { mutableListOf() }
-        val bucket = bucketsForKey.firstOrNull { bucket ->
-            abs(Duration.between(bucket.representativeAt, timedRow.measuredAt).seconds) <= SameTimestampToleranceSeconds
-        }
-
-        if (bucket == null) {
+        // Rows arrive time-sorted, so representatives of consecutive buckets for a key are
+        // more than the tolerance apart; a row within tolerance can only match the last bucket.
+        val lastBucket = bucketsForKey.lastOrNull()
+        if (lastBucket != null &&
+            Duration.between(lastBucket.representativeAt, timedRow.measuredAt).seconds <= SameTimestampToleranceSeconds
+        ) {
+            lastBucket.rows += timedRow.row
+        } else {
             bucketsForKey += CanonicalTimestampBucket(
                 representativeAt = timedRow.measuredAt,
                 rows = mutableListOf(timedRow.row),
             )
-        } else {
-            bucket.rows += timedRow.row
         }
     }
 

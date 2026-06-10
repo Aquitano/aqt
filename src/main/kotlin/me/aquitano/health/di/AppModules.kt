@@ -151,16 +151,20 @@ fun servicesModule(database: Database, config: AppConfig) = module {
     single<DerivedRebuildExecutor> {
         TransactionalDerivedRebuildExecutor(
             database = database,
-            stepSummaryService = get(),
-            sleepNightService = get(),
-            canonicalHeartRateService = get(),
-            canonicalRespiratoryRateService = get(),
-            canonicalHrvService = get(),
-            canonicalStepService = get(),
-            canonicalBodyMeasurementService = get(),
-            canonicalSleepSummaryService = get(),
-            canonicalSleepSessionService = get(),
-            canonicalActivitySummaryService = get(),
+            registry = DerivedRebuildModuleRegistry(
+                derivedRebuildModules(
+                    stepSummaryService = get(),
+                    canonicalStepService = get(),
+                    sleepNightService = get(),
+                    canonicalHeartRateService = get(),
+                    canonicalRespiratoryRateService = get(),
+                    canonicalHrvService = get(),
+                    canonicalBodyMeasurementService = get(),
+                    canonicalSleepSummaryService = get(),
+                    canonicalSleepSessionService = get(),
+                    canonicalActivitySummaryService = get(),
+                )
+            ),
         )
     }
     single {

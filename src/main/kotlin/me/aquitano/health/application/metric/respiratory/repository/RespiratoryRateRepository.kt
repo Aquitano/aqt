@@ -2,7 +2,6 @@ package me.aquitano.health.application.metric.respiratory.repository
 
 import me.aquitano.health.application.metric.common.repository.*
 import me.aquitano.health.infrastructure.database.tables.*
-import me.aquitano.health.infrastructure.database.toApiString
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
@@ -74,7 +73,7 @@ class RespiratoryRateRepository : BaseMetricRepository() {
         RespiratoryRateSampleRow(
             id = row[RespiratoryRateSamplesTable.id].value,
             sourceInstanceId = row[RespiratoryRateSamplesTable.sourceInstanceId],
-            measuredAt = row[RespiratoryRateSamplesTable.measuredAt].toApiString(),
+            measuredAt = row[RespiratoryRateSamplesTable.measuredAt].toInstant(),
             breathsPerMinute = row[RespiratoryRateSamplesTable.breathsPerMinute],
             context = row[RespiratoryRateSamplesTable.context] ?: "unknown",
         )

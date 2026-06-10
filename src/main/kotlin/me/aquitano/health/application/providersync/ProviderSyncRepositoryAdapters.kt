@@ -2,7 +2,7 @@ package me.aquitano.health.application.providersync
 
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.application.IngestionService
-import me.aquitano.health.domain.MetricCreatedCounts
+import me.aquitano.health.application.toDomain
 import me.aquitano.health.domain.ProviderSyncBatch
 import me.aquitano.health.infrastructure.repositories.ACCOUNT_STATUS_NEEDS_REAUTH
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthAccount
@@ -144,17 +144,7 @@ class IngestionProviderSyncPort(
             duplicateBatch = summary.duplicateBatch,
             recordsReceived = summary.recordsReceived,
             ingestionRecordsStored = summary.ingestionRecordsStored,
-            metricsCreated = MetricCreatedCounts(
-                stepSamples = summary.metricsCreated.stepSamples,
-                sleepSessions = summary.metricsCreated.sleepSessions,
-                sleepStages = summary.metricsCreated.sleepStages,
-                bodyMeasurements = summary.metricsCreated.bodyMeasurements,
-                heartRateSamples = summary.metricsCreated.heartRateSamples,
-                activitySummaries = summary.metricsCreated.activitySummaries,
-                sleepSummaries = summary.metricsCreated.sleepSummaries,
-                respiratoryRateSamples = summary.metricsCreated.respiratoryRateSamples,
-                hrvSamples = summary.metricsCreated.hrvSamples,
-            ),
+            metricsCreated = summary.metricsCreated.toDomain(),
             duplicateMetricsSkipped = summary.metricsSkipped.duplicates,
             affectedStepSummaryDates = summary.affectedStepSummaryDates,
         )

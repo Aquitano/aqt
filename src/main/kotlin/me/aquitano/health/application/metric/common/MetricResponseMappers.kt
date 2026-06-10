@@ -101,7 +101,7 @@ internal fun HeartRateSampleRow.toResponse(
 ): HeartRateSampleResponse =
     HeartRateSampleResponse(
         id = id,
-        measuredAt = measuredAt,
+        measuredAt = measuredAt.toString(),
         bpm = bpm,
         context = context,
         source = sourceMetadata[sourceInstanceId].toResponse(),
@@ -112,7 +112,7 @@ internal fun RespiratoryRateSampleRow.toResponse(
 ): RespiratoryRateSampleResponse =
     RespiratoryRateSampleResponse(
         id = id,
-        measuredAt = measuredAt,
+        measuredAt = measuredAt.toString(),
         breathsPerMinute = breathsPerMinute,
         context = context,
         source = sourceMetadata[sourceInstanceId].toResponse(),
@@ -123,7 +123,7 @@ internal fun HrvSampleRow.toResponse(
 ): HrvSampleResponse =
     HrvSampleResponse(
         id = id,
-        measuredAt = measuredAt,
+        measuredAt = measuredAt.toString(),
         metricType = metricType,
         value = value,
         unit = unit,

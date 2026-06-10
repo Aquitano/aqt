@@ -8,6 +8,7 @@ import me.aquitano.health.application.metric.respiratory.derived.CanonicalRespir
 import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSessionDerivationService
 import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSummaryDerivationService
 import me.aquitano.health.application.metric.steps.derived.CanonicalStepDerivationService
+import me.aquitano.health.domain.DerivedKind
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import java.time.Instant
@@ -19,114 +20,92 @@ interface DerivedRebuildExecutor {
 
 data class DerivedRebuildRequest(
     val sourceInstanceId: Int,
-    val stepSummaryDates: Set<LocalDate>,
-    val sleepNightDates: Set<LocalDate>,
-    val sleepSessionCanonicalDates: Set<LocalDate>,
-    val heartRateCanonicalDates: Set<LocalDate>,
-    val respiratoryRateCanonicalDates: Set<LocalDate>,
-    val hrvCanonicalDates: Set<LocalDate>,
-    val bodyMeasurementCanonicalDates: Set<LocalDate>,
-    val sleepSummaryCanonicalDates: Set<LocalDate>,
-    val activitySummaryCanonicalDates: Set<LocalDate>,
+    val affectedDates: Map<DerivedKind, Set<LocalDate>> = emptyMap(),
 ) {
-    fun hasWork(): Boolean =
-        stepSummaryDates.isNotEmpty() ||
-            sleepNightDates.isNotEmpty() ||
-            sleepSessionCanonicalDates.isNotEmpty() ||
-            heartRateCanonicalDates.isNotEmpty() ||
-            respiratoryRateCanonicalDates.isNotEmpty() ||
-            hrvCanonicalDates.isNotEmpty() ||
-            bodyMeasurementCanonicalDates.isNotEmpty() ||
-            sleepSummaryCanonicalDates.isNotEmpty() ||
-            activitySummaryCanonicalDates.isNotEmpty()
+    operator fun get(kind: DerivedKind): Set<LocalDate> = affectedDates[kind] ?: emptySet()
+
+    fun hasWork(): Boolean = affectedDates.values.any { it.isNotEmpty() }
 }
+
+fun interface DerivedRebuildAction {
+    suspend fun rebuild(sourceInstanceId: Int, dates: Set<LocalDate>, computedAt: Instant)
+}
+
+class DerivedRebuildModule(
+    val kind: DerivedKind,
+    val action: DerivedRebuildAction,
+)
+
+/**
+ * Ordered registry of derived rebuilds, mirroring HealthDayModuleRegistry. Every DerivedKind
+ * must be covered so a new kind cannot silently skip its rebuild.
+ */
+class DerivedRebuildModuleRegistry(val modules: List<DerivedRebuildModule>) {
+    init {
+        val kinds = modules.map { it.kind }
+        require(kinds.size == kinds.toSet().size) {
+            "Duplicate DerivedRebuildModule kinds: ${kinds.groupBy { it }.filterValues { it.size > 1 }.keys}"
+        }
+        val missing = DerivedKind.entries.toSet() - kinds.toSet()
+        require(missing.isEmpty()) { "Missing DerivedRebuildModule for: $missing" }
+    }
+}
+
+/** The canonical post-ingestion rebuild wiring; order is the execution order. */
+fun derivedRebuildModules(
+    stepSummaryService: StepSummaryService,
+    canonicalStepService: CanonicalStepDerivationService,
+    sleepNightService: SleepNightService,
+    canonicalHeartRateService: CanonicalHeartRateDerivationService,
+    canonicalRespiratoryRateService: CanonicalRespiratoryRateDerivationService,
+    canonicalHrvService: CanonicalHrvDerivationService,
+    canonicalBodyMeasurementService: CanonicalBodyMeasurementDerivationService,
+    canonicalSleepSummaryService: CanonicalSleepSummaryDerivationService,
+    canonicalSleepSessionService: CanonicalSleepSessionDerivationService,
+    canonicalActivitySummaryService: CanonicalActivitySummaryDerivationService,
+): List<DerivedRebuildModule> =
+    listOf(
+        DerivedRebuildModule(DerivedKind.STEP_SUMMARY) { sourceInstanceId, dates, computedAt ->
+            stepSummaryService.recompute(sourceInstanceId, dates, computedAt)
+            canonicalStepService.recompute(dates, computedAt)
+        },
+        DerivedRebuildModule(DerivedKind.SLEEP_NIGHT) { sourceInstanceId, dates, computedAt ->
+            sleepNightService.recomputeUtc(sourceInstanceId, dates, computedAt)
+        },
+        DerivedRebuildModule(DerivedKind.HEART_RATE_CANONICAL) { _, dates, computedAt ->
+            canonicalHeartRateService.recompute(dates, computedAt)
+        },
+        DerivedRebuildModule(DerivedKind.RESPIRATORY_RATE_CANONICAL) { _, dates, computedAt ->
+            canonicalRespiratoryRateService.recompute(dates, computedAt)
+        },
+        DerivedRebuildModule(DerivedKind.HRV_CANONICAL) { _, dates, computedAt ->
+            canonicalHrvService.recompute(dates, computedAt)
+        },
+        DerivedRebuildModule(DerivedKind.BODY_MEASUREMENT_CANONICAL) { _, dates, computedAt ->
+            canonicalBodyMeasurementService.recompute(dates, computedAt)
+        },
+        DerivedRebuildModule(DerivedKind.SLEEP_SUMMARY_CANONICAL) { _, dates, computedAt ->
+            canonicalSleepSummaryService.recompute(dates, computedAt)
+        },
+        DerivedRebuildModule(DerivedKind.SLEEP_SESSION_CANONICAL) { _, dates, computedAt ->
+            canonicalSleepSessionService.recompute(dates, computedAt)
+        },
+        DerivedRebuildModule(DerivedKind.ACTIVITY_SUMMARY_CANONICAL) { _, dates, computedAt ->
+            canonicalActivitySummaryService.recompute(dates, computedAt)
+        },
+    )
 
 class TransactionalDerivedRebuildExecutor(
     private val database: Database,
-    private val stepSummaryService: StepSummaryService,
-    private val sleepNightService: SleepNightService,
-    private val canonicalHeartRateService: CanonicalHeartRateDerivationService,
-    private val canonicalRespiratoryRateService: CanonicalRespiratoryRateDerivationService,
-    private val canonicalHrvService: CanonicalHrvDerivationService,
-    private val canonicalStepService: CanonicalStepDerivationService,
-    private val canonicalBodyMeasurementService: CanonicalBodyMeasurementDerivationService,
-    private val canonicalSleepSummaryService: CanonicalSleepSummaryDerivationService,
-    private val canonicalSleepSessionService: CanonicalSleepSessionDerivationService,
-    private val canonicalActivitySummaryService: CanonicalActivitySummaryDerivationService,
+    private val registry: DerivedRebuildModuleRegistry,
 ) : DerivedRebuildExecutor {
     override suspend fun rebuild(request: DerivedRebuildRequest, computedAt: Instant) {
-        if (!request.hasWork()) return
-
-        if (request.stepSummaryDates.isNotEmpty()) {
-            suspendTransaction(db = database) {
-                stepSummaryService.recompute(
-                    request.sourceInstanceId,
-                    request.stepSummaryDates,
-                    computedAt,
-                )
-                canonicalStepService.recompute(request.stepSummaryDates, computedAt)
-            }
-        }
-        if (request.sleepNightDates.isNotEmpty()) {
-            suspendTransaction(db = database) {
-                sleepNightService.recomputeUtc(
-                    request.sourceInstanceId,
-                    request.sleepNightDates,
-                    computedAt,
-                )
-            }
-        }
-        if (request.heartRateCanonicalDates.isNotEmpty()) {
-            suspendTransaction(db = database) {
-                canonicalHeartRateService.recompute(
-                    request.heartRateCanonicalDates,
-                    computedAt,
-                )
-            }
-        }
-        if (request.respiratoryRateCanonicalDates.isNotEmpty()) {
-            suspendTransaction(db = database) {
-                canonicalRespiratoryRateService.recompute(
-                    request.respiratoryRateCanonicalDates,
-                    computedAt,
-                )
-            }
-        }
-        if (request.hrvCanonicalDates.isNotEmpty()) {
-            suspendTransaction(db = database) {
-                canonicalHrvService.recompute(request.hrvCanonicalDates, computedAt)
-            }
-        }
-        if (request.bodyMeasurementCanonicalDates.isNotEmpty()) {
-            suspendTransaction(db = database) {
-                canonicalBodyMeasurementService.recompute(
-                    request.bodyMeasurementCanonicalDates,
-                    computedAt,
-                )
-            }
-        }
-        if (request.sleepSummaryCanonicalDates.isNotEmpty()) {
-            suspendTransaction(db = database) {
-                canonicalSleepSummaryService.recompute(
-                    request.sleepSummaryCanonicalDates,
-                    computedAt,
-                )
-            }
-        }
-        if (request.sleepSessionCanonicalDates.isNotEmpty()) {
-            suspendTransaction(db = database) {
-                canonicalSleepSessionService.recompute(
-                    request.sleepSessionCanonicalDates,
-                    computedAt,
-                )
-            }
-        }
-        if (request.activitySummaryCanonicalDates.isNotEmpty()) {
-            suspendTransaction(db = database) {
-                canonicalActivitySummaryService.recompute(
-                    request.activitySummaryCanonicalDates,
-                    computedAt,
-                )
+        registry.modules.forEach { module ->
+            val dates = request[module.kind]
+            if (dates.isNotEmpty()) {
+                suspendTransaction(db = database) {
+                    module.action.rebuild(request.sourceInstanceId, dates, computedAt)
+                }
             }
         }
     }

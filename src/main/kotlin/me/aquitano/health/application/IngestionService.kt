@@ -2,7 +2,6 @@ package me.aquitano.health.application
 
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
-import me.aquitano.health.api.dto.MetricCreatedCountsResponse
 import me.aquitano.health.api.dto.MetricSkippedCountsResponse
 import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.domain.*
@@ -87,37 +86,14 @@ class IngestionService(
                             duplicateBatch = true,
                             recordsReceived = validated.records.size,
                             ingestionRecordsStored = 0,
-                            metricsCreated = MetricCreatedCountsResponse(
-                                stepSamples = 0,
-                                sleepSessions = 0,
-                                sleepStages = 0,
-                                bodyMeasurements = 0,
-                                heartRateSamples = 0,
-                                activitySummaries = 0,
-                                sleepSummaries = 0,
-                                respiratoryRateSamples = 0,
-                                hrvSamples = 0,
-                                bloodPressureMeasurements = 0,
-                                cardiovascularMeasurements = 0,
-                                extendedBodyMeasurements = 0,
-                            ),
+                            metricsCreated = MetricCreatedCounts().toResponse(),
                             metricsSkipped = MetricSkippedCountsResponse(
                                 duplicates = 0
                             ),
                             affectedStepSummaryDates = emptyList(),
                         ),
-                        DerivedRebuildRequest(
-                            sourceInstanceId = sourceInstance.id,
-                            stepSummaryDates = emptySet(),
-                            sleepNightDates = emptySet(),
-                            sleepSessionCanonicalDates = emptySet(),
-                            heartRateCanonicalDates = emptySet(),
-                            respiratoryRateCanonicalDates = emptySet(),
-                            hrvCanonicalDates = emptySet(),
-                            bodyMeasurementCanonicalDates = emptySet(),
-                            sleepSummaryCanonicalDates = emptySet(),
-                            activitySummaryCanonicalDates = emptySet(),
-                        ),
+                        DerivedRebuildRequest(sourceInstanceId = sourceInstance.id),
+                        MetricCreatedCounts(),
                     )
                 }
                 if (existingBatch?.status == "failed") {
@@ -159,15 +135,7 @@ class IngestionService(
 
                 var created = MetricCreatedCounts()
                 var duplicateSkipped = 0
-                val affectedStepDates = linkedSetOf<LocalDate>()
-                val affectedSleepNightDates = linkedSetOf<LocalDate>()
-                val affectedSleepSessionCanonicalDates = linkedSetOf<LocalDate>()
-                val affectedHeartRateCanonicalDates = linkedSetOf<LocalDate>()
-                val affectedRespiratoryRateCanonicalDates = linkedSetOf<LocalDate>()
-                val affectedHrvCanonicalDates = linkedSetOf<LocalDate>()
-                val affectedBodyMeasurementCanonicalDates = linkedSetOf<LocalDate>()
-                val affectedSleepSummaryCanonicalDates = linkedSetOf<LocalDate>()
-                val affectedActivitySummaryCanonicalDates = linkedSetOf<LocalDate>()
+                val affectedDates = mutableMapOf<DerivedKind, MutableSet<LocalDate>>()
 
                 try {
                     ingestionRecords.forEach { ingestionRecord ->
@@ -180,15 +148,9 @@ class IngestionService(
                         )
                         created += result.created
                         duplicateSkipped += result.duplicateSkipped
-                        affectedStepDates.addAll(result.affectedStepSummaryDates)
-                        affectedSleepNightDates.addAll(result.affectedSleepNightDates)
-                        affectedSleepSessionCanonicalDates.addAll(result.affectedSleepSessionCanonicalDates)
-                        affectedHeartRateCanonicalDates.addAll(result.affectedHeartRateCanonicalDates)
-                        affectedRespiratoryRateCanonicalDates.addAll(result.affectedRespiratoryRateCanonicalDates)
-                        affectedHrvCanonicalDates.addAll(result.affectedHrvCanonicalDates)
-                        affectedBodyMeasurementCanonicalDates.addAll(result.affectedBodyMeasurementCanonicalDates)
-                        affectedSleepSummaryCanonicalDates.addAll(result.affectedSleepSummaryCanonicalDates)
-                        affectedActivitySummaryCanonicalDates.addAll(result.affectedActivitySummaryCanonicalDates)
+                        result.affectedDates.forEach { (kind, dates) ->
+                            affectedDates.getOrPut(kind) { linkedSetOf() }.addAll(dates)
+                        }
                     }
                     ingestionRepository.markProcessed(batchId, now)
                 } catch (exception: Exception) {
@@ -214,40 +176,22 @@ class IngestionService(
                     duplicateBatch = false,
                     recordsReceived = validated.records.size,
                     ingestionRecordsStored = ingestionRecords.size,
-                    metricsCreated = MetricCreatedCountsResponse(
-                        stepSamples = created.stepSamples,
-                        sleepSessions = created.sleepSessions,
-                        sleepStages = created.sleepStages,
-                        bodyMeasurements = created.bodyMeasurements,
-                        heartRateSamples = created.heartRateSamples,
-                        activitySummaries = created.activitySummaries,
-                        sleepSummaries = created.sleepSummaries,
-                        respiratoryRateSamples = created.respiratoryRateSamples,
-                        hrvSamples = created.hrvSamples,
-                        bloodPressureMeasurements = created.bloodPressureMeasurements,
-                        cardiovascularMeasurements = created.cardiovascularMeasurements,
-                        extendedBodyMeasurements = created.extendedBodyMeasurements,
-                    ),
+                    metricsCreated = created.toResponse(),
                     metricsSkipped = MetricSkippedCountsResponse(
                         duplicates = duplicateSkipped
                     ),
-                    affectedStepSummaryDates = affectedStepDates.map { it.toString() },
+                    affectedStepSummaryDates = affectedDates[DerivedKind.STEP_SUMMARY]
+                        .orEmpty()
+                        .map { it.toString() },
                 )
                 val rebuildRequest = DerivedRebuildRequest(
                     sourceInstanceId = sourceInstance.id,
-                    stepSummaryDates = affectedStepDates.toSet(),
-                    sleepNightDates = affectedSleepNightDates.toSet(),
-                    sleepSessionCanonicalDates = affectedSleepSessionCanonicalDates.toSet(),
-                    heartRateCanonicalDates = affectedHeartRateCanonicalDates.toSet(),
-                    respiratoryRateCanonicalDates = affectedRespiratoryRateCanonicalDates.toSet(),
-                    hrvCanonicalDates = affectedHrvCanonicalDates.toSet(),
-                    bodyMeasurementCanonicalDates = affectedBodyMeasurementCanonicalDates.toSet(),
-                    sleepSummaryCanonicalDates = affectedSleepSummaryCanonicalDates.toSet(),
-                    activitySummaryCanonicalDates = affectedActivitySummaryCanonicalDates.toSet(),
+                    affectedDates = affectedDates.mapValues { it.value.toSet() },
                 )
                 IngestionTransactionResult.Success(
                     response,
                     rebuildRequest,
+                    created,
                 )
             }
 
@@ -279,18 +223,8 @@ class IngestionService(
                         "ingestion_batch_processed",
                         "batchId" to response.batchId,
                         "recordsStored" to response.ingestionRecordsStored,
-                        "stepSamplesCreated" to response.metricsCreated.stepSamples,
-                        "sleepSessionsCreated" to response.metricsCreated.sleepSessions,
-                        "sleepStagesCreated" to response.metricsCreated.sleepStages,
-                        "bodyMeasurementsCreated" to response.metricsCreated.bodyMeasurements,
-                        "heartRateSamplesCreated" to response.metricsCreated.heartRateSamples,
-                        "activitySummariesCreated" to response.metricsCreated.activitySummaries,
-                        "sleepSummariesCreated" to response.metricsCreated.sleepSummaries,
-                        "respiratoryRateSamplesCreated" to response.metricsCreated.respiratoryRateSamples,
-                        "hrvSamplesCreated" to response.metricsCreated.hrvSamples,
-                        "bloodPressureCreated" to response.metricsCreated.bloodPressureMeasurements,
-                        "cardiovascularCreated" to response.metricsCreated.cardiovascularMeasurements,
-                        "extendedBodyMeasurementsCreated" to response.metricsCreated.extendedBodyMeasurements,
+                        "metricsCreated" to transactionResult.createdCounts.counts
+                            .mapKeys { it.key.name.lowercase() },
                         "duplicateSkips" to response.metricsSkipped.duplicates,
                     )
                 }
@@ -306,6 +240,7 @@ private sealed interface IngestionTransactionResult {
     data class Success(
         val response: IngestionSummaryResponse,
         val derivedRebuildRequest: DerivedRebuildRequest,
+        val createdCounts: MetricCreatedCounts,
     ) :
         IngestionTransactionResult
 

@@ -103,7 +103,7 @@ private class CanonicalHeartRateCalculator(
         val densityBySource = input.samples.groupingBy { it.sourceInstanceId }.eachCount()
         val canonical = canonicalTimestampRows(
             rows = input.samples,
-            measuredAt = { Instant.parse(it.measuredAt) },
+            measuredAt = { it.measuredAt },
             groupKey = { it.context },
             sourceInstanceId = { it.sourceInstanceId },
             choosePreferred = { candidates ->
@@ -123,7 +123,7 @@ private class CanonicalHeartRateCalculator(
                 CanonicalHeartRateSampleOutput(
                     sampleId = it.id,
                     sourceInstanceId = it.sourceInstanceId,
-                    measuredAt = Instant.parse(it.measuredAt),
+                    measuredAt = it.measuredAt,
                     context = it.context,
                 )
             },

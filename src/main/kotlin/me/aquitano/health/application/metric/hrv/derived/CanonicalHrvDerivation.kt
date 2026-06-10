@@ -104,7 +104,7 @@ private class CanonicalHrvCalculator(
         val metadata = repository.sourceMetadataFor(input.samples.map { it.sourceInstanceId }.toSet())
         val canonical = canonicalTimestampRows(
             rows = input.samples,
-            measuredAt = { Instant.parse(it.measuredAt) },
+            measuredAt = { it.measuredAt },
             groupKey = { it.metricType to it.context },
             sourceInstanceId = { it.sourceInstanceId },
             choosePreferred = { candidates ->
@@ -124,7 +124,7 @@ private class CanonicalHrvCalculator(
                 CanonicalHrvSampleOutput(
                     sampleId = it.id,
                     sourceInstanceId = it.sourceInstanceId,
-                    measuredAt = Instant.parse(it.measuredAt),
+                    measuredAt = it.measuredAt,
                     metricType = it.metricType,
                     context = it.context,
                 )

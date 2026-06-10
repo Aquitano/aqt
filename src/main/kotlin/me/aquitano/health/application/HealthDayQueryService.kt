@@ -208,8 +208,7 @@ class HeartRateDayModule(
         val counts = IntArray(buckets.size)
 
         samples.forEach { sample ->
-            val measuredAt = Instant.parse(sample.measuredAt)
-            val index = Duration.between(context.from, measuredAt).toMinutes().toInt() / 15
+            val index = Duration.between(context.from, sample.measuredAt).toMinutes().toInt() / 15
             if (index in buckets.indices) {
                 totals[index] += sample.bpm.toDouble()
                 counts[index] += 1
@@ -384,7 +383,7 @@ private fun HeartRateSampleRow.toResponse(
 ): HeartRateSampleResponse =
     HeartRateSampleResponse(
         id = id,
-        measuredAt = measuredAt,
+        measuredAt = measuredAt.toString(),
         bpm = bpm,
         context = context,
         source = sourceMetadata[sourceInstanceId].toResponse(),

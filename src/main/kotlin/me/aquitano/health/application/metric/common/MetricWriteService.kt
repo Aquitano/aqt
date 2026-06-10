@@ -12,11 +12,13 @@ import me.aquitano.health.domain.ActivitySummaryRecord
 import me.aquitano.health.domain.BloodPressureRecord
 import me.aquitano.health.domain.BodyMeasurementRecord
 import me.aquitano.health.domain.CardiovascularRecord
+import me.aquitano.health.domain.DerivedKind
 import me.aquitano.health.domain.ExtendedBodyMeasurementRecord
 import me.aquitano.health.domain.HealthRecord
 import me.aquitano.health.domain.HeartRateRecord
 import me.aquitano.health.domain.HrvRecord
 import me.aquitano.health.domain.MetricCreatedCounts
+import me.aquitano.health.domain.MetricKind
 import me.aquitano.health.domain.RespiratoryRateRecord
 import me.aquitano.health.domain.SleepSessionRecord
 import me.aquitano.health.domain.SleepSummaryRecord
@@ -138,10 +140,12 @@ class MetricWriteService(
         )
         return if (inserted) {
             MetricWriteResult(
-                created = MetricCreatedCounts(stepSamples = 1),
-                affectedStepSummaryDates = affectedUtcDates(
-                    record.startAt,
-                    record.endAt,
+                created = MetricCreatedCounts.of(MetricKind.STEP_SAMPLES to 1),
+                affectedDates = mapOf(
+                    DerivedKind.STEP_SUMMARY to affectedUtcDates(
+                        record.startAt,
+                        record.endAt,
+                    ),
                 ),
             )
         } else {
@@ -163,12 +167,14 @@ class MetricWriteService(
         )
         return if (sessionId != null) {
             MetricWriteResult(
-                created = MetricCreatedCounts(
-                    sleepSessions = 1,
-                    sleepStages = record.stages.size,
+                created = MetricCreatedCounts.of(
+                    MetricKind.SLEEP_SESSIONS to 1,
+                    MetricKind.SLEEP_STAGES to record.stages.size,
                 ),
-                affectedSleepNightDates = setOf(record.endAt.utcDate()),
-                affectedSleepSessionCanonicalDates = setOf(record.startAt.utcDate()),
+                affectedDates = mapOf(
+                    DerivedKind.SLEEP_NIGHT to setOf(record.endAt.utcDate()),
+                    DerivedKind.SLEEP_SESSION_CANONICAL to setOf(record.startAt.utcDate()),
+                ),
             )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
@@ -188,10 +194,13 @@ class MetricWriteService(
             now,
         )
         return MetricWriteResult(
-            created = MetricCreatedCounts(bodyMeasurements = inserted),
+            created = MetricCreatedCounts.of(MetricKind.BODY_MEASUREMENTS to inserted),
             duplicateSkipped = record.measurements.size - inserted,
-            affectedBodyMeasurementCanonicalDates =
-                if (inserted > 0) setOf(record.measuredAt.utcDate()) else emptySet(),
+            affectedDates = if (inserted > 0) {
+                mapOf(DerivedKind.BODY_MEASUREMENT_CANONICAL to setOf(record.measuredAt.utcDate()))
+            } else {
+                emptyMap()
+            },
         )
     }
 
@@ -209,8 +218,10 @@ class MetricWriteService(
         )
         return if (inserted) {
             MetricWriteResult(
-                created = MetricCreatedCounts(heartRateSamples = 1),
-                affectedHeartRateCanonicalDates = setOf(record.measuredAt.utcDate()),
+                created = MetricCreatedCounts.of(MetricKind.HEART_RATE_SAMPLES to 1),
+                affectedDates = mapOf(
+                    DerivedKind.HEART_RATE_CANONICAL to setOf(record.measuredAt.utcDate()),
+                ),
             )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
@@ -231,8 +242,10 @@ class MetricWriteService(
         )
         return if (inserted) {
             MetricWriteResult(
-                created = MetricCreatedCounts(activitySummaries = 1),
-                affectedActivitySummaryCanonicalDates = setOf(record.date),
+                created = MetricCreatedCounts.of(MetricKind.ACTIVITY_SUMMARIES to 1),
+                affectedDates = mapOf(
+                    DerivedKind.ACTIVITY_SUMMARY_CANONICAL to setOf(record.date),
+                ),
             )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
@@ -253,8 +266,10 @@ class MetricWriteService(
         )
         return if (inserted) {
             MetricWriteResult(
-                created = MetricCreatedCounts(sleepSummaries = 1),
-                affectedSleepSummaryCanonicalDates = setOf(record.startAt.utcDate()),
+                created = MetricCreatedCounts.of(MetricKind.SLEEP_SUMMARIES to 1),
+                affectedDates = mapOf(
+                    DerivedKind.SLEEP_SUMMARY_CANONICAL to setOf(record.startAt.utcDate()),
+                ),
             )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
@@ -275,8 +290,10 @@ class MetricWriteService(
         )
         return if (inserted) {
             MetricWriteResult(
-                created = MetricCreatedCounts(respiratoryRateSamples = 1),
-                affectedRespiratoryRateCanonicalDates = setOf(record.measuredAt.utcDate()),
+                created = MetricCreatedCounts.of(MetricKind.RESPIRATORY_RATE_SAMPLES to 1),
+                affectedDates = mapOf(
+                    DerivedKind.RESPIRATORY_RATE_CANONICAL to setOf(record.measuredAt.utcDate()),
+                ),
             )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
@@ -297,8 +314,10 @@ class MetricWriteService(
         )
         return if (inserted) {
             MetricWriteResult(
-                created = MetricCreatedCounts(hrvSamples = 1),
-                affectedHrvCanonicalDates = setOf(record.measuredAt.utcDate()),
+                created = MetricCreatedCounts.of(MetricKind.HRV_SAMPLES to 1),
+                affectedDates = mapOf(
+                    DerivedKind.HRV_CANONICAL to setOf(record.measuredAt.utcDate()),
+                ),
             )
         } else {
             MetricWriteResult(duplicateSkipped = 1)
@@ -318,7 +337,7 @@ class MetricWriteService(
             now,
         )
         return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(bloodPressureMeasurements = 1))
+            MetricWriteResult(created = MetricCreatedCounts.of(MetricKind.BLOOD_PRESSURE_MEASUREMENTS to 1))
         } else {
             MetricWriteResult(duplicateSkipped = 1)
         }
@@ -337,7 +356,7 @@ class MetricWriteService(
             now,
         )
         return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts(cardiovascularMeasurements = 1))
+            MetricWriteResult(created = MetricCreatedCounts.of(MetricKind.CARDIOVASCULAR_MEASUREMENTS to 1))
         } else {
             MetricWriteResult(duplicateSkipped = 1)
         }
@@ -356,7 +375,7 @@ class MetricWriteService(
             now,
         )
         return MetricWriteResult(
-            created = MetricCreatedCounts(extendedBodyMeasurements = inserted),
+            created = MetricCreatedCounts.of(MetricKind.EXTENDED_BODY_MEASUREMENTS to inserted),
             duplicateSkipped = record.measurements.size - inserted,
         )
     }
@@ -365,15 +384,7 @@ class MetricWriteService(
 data class MetricWriteResult(
     val created: MetricCreatedCounts = MetricCreatedCounts(),
     val duplicateSkipped: Int = 0,
-    val affectedStepSummaryDates: Set<LocalDate> = emptySet(),
-    val affectedSleepNightDates: Set<LocalDate> = emptySet(),
-    val affectedSleepSessionCanonicalDates: Set<LocalDate> = emptySet(),
-    val affectedHeartRateCanonicalDates: Set<LocalDate> = emptySet(),
-    val affectedRespiratoryRateCanonicalDates: Set<LocalDate> = emptySet(),
-    val affectedHrvCanonicalDates: Set<LocalDate> = emptySet(),
-    val affectedBodyMeasurementCanonicalDates: Set<LocalDate> = emptySet(),
-    val affectedSleepSummaryCanonicalDates: Set<LocalDate> = emptySet(),
-    val affectedActivitySummaryCanonicalDates: Set<LocalDate> = emptySet(),
+    val affectedDates: Map<DerivedKind, Set<LocalDate>> = emptyMap(),
 )
 
 private fun affectedUtcDates(

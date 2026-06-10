@@ -2,7 +2,6 @@ package me.aquitano.health.application.metric.heart.repository
 
 import me.aquitano.health.application.metric.common.repository.*
 import me.aquitano.health.infrastructure.database.tables.*
-import me.aquitano.health.infrastructure.database.toApiString
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
@@ -26,7 +25,7 @@ class HeartRateRepository : BaseMetricRepository() {
                 HeartRateSampleRow(
                     id = it[HeartRateSamplesTable.id].value,
                     sourceInstanceId = it[HeartRateSamplesTable.sourceInstanceId],
-                    measuredAt = it[HeartRateSamplesTable.measuredAt].toApiString(),
+                    measuredAt = it[HeartRateSamplesTable.measuredAt].toInstant(),
                     bpm = it[HeartRateSamplesTable.bpm],
                     context = it[HeartRateSamplesTable.context] ?: "unknown",
                 )
@@ -64,7 +63,7 @@ class HeartRateRepository : BaseMetricRepository() {
                 HeartRateSampleRow(
                     id = it[HeartRateSamplesTable.id].value,
                     sourceInstanceId = it[HeartRateSamplesTable.sourceInstanceId],
-                    measuredAt = it[HeartRateSamplesTable.measuredAt].toApiString(),
+                    measuredAt = it[HeartRateSamplesTable.measuredAt].toInstant(),
                     bpm = it[HeartRateSamplesTable.bpm],
                     context = it[HeartRateSamplesTable.context] ?: "unknown",
                 )

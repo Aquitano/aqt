@@ -2,7 +2,6 @@ package me.aquitano.health.application.metric.hrv.repository
 
 import me.aquitano.health.application.metric.common.repository.*
 import me.aquitano.health.infrastructure.database.tables.*
-import me.aquitano.health.infrastructure.database.toApiString
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.core.eq
@@ -75,7 +74,7 @@ class HrvRepository : BaseMetricRepository() {
         HrvSampleRow(
             id = row[HrvSamplesTable.id].value,
             sourceInstanceId = row[HrvSamplesTable.sourceInstanceId],
-            measuredAt = row[HrvSamplesTable.measuredAt].toApiString(),
+            measuredAt = row[HrvSamplesTable.measuredAt].toInstant(),
             metricType = row[HrvSamplesTable.metricType],
             value = row[HrvSamplesTable.value],
             unit = row[HrvSamplesTable.unit],
