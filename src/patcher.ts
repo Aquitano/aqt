@@ -75,3 +75,43 @@ export const NEXT_CONFIG_PATCH: Patch = {
   search: `/* config options here */`,
   replace: `reactCompiler: true,`,
 };
+
+/**
+ * Patches applied to `src/app/layout.tsx` when next-themes is enabled.
+ * Applied after LAYOUT_PATCHES, so they assume the base patches have run.
+ */
+export const THEME_LAYOUT_PATCHES: Patch[] = [
+  {
+    name: 'theme-import',
+    search: `import "./globals.css";`,
+    replace: `import "./globals.css";\nimport { ThemeProvider } from "@/components/theme-provider";`,
+  },
+  {
+    name: 'theme-suppress-hydration',
+    search: `lang="en"`,
+    replace: `lang="en"\n      suppressHydrationWarning`,
+  },
+  {
+    name: 'theme-provider-wrap',
+    search: `{children}`,
+    replace:
+      `<ThemeProvider\n` +
+      `          attribute="class"\n` +
+      `          defaultTheme="system"\n` +
+      `          enableSystem\n` +
+      `          disableTransitionOnChange\n` +
+      `        >\n` +
+      `          {children}\n` +
+      `        </ThemeProvider>`,
+  },
+];
+
+/**
+ * Patch applied to `.gitignore` so `.env.example` is committed even though
+ * create-next-app ignores all `.env*` files.
+ */
+export const GITIGNORE_ENV_PATCH: Patch = {
+  name: 'gitignore-env-example',
+  search: `.env*`,
+  replace: `.env*\n!.env.example`,
+};

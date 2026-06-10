@@ -25,6 +25,9 @@ async function main(): Promise<void> {
   log.info(`  Prettier:   ${config.prettier ? config.prettierPreset : 'no'}`);
   log.info(`  shadcn/ui:  ${config.shadcn ? `${config.shadcnComponents.length} components` : 'no'}`);
   log.info(`  Hono.js:    ${config.hono ? 'yes' : 'no'}`);
+  log.info(`  Themes:     ${config.themes ? 'yes' : 'no'}`);
+  log.info(`  Testing:    ${config.testing ? 'yes' : 'no'}`);
+  log.info(`  CI:         ${config.ci ? 'yes' : 'no'}`);
 
   const proceed = unwrap(
     await confirm({

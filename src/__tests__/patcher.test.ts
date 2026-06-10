@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { applyPatches, LAYOUT_PATCHES, NEXT_CONFIG_PATCH, type Patch } from '../patcher.ts';
+import {
+  applyPatches,
+  GITIGNORE_ENV_PATCH,
+  LAYOUT_PATCHES,
+  NEXT_CONFIG_PATCH,
+  THEME_LAYOUT_PATCHES,
+  type Patch,
+} from '../patcher.ts';
 
 describe('applyPatches', () => {
   test('applies a single patch', () => {
@@ -107,14 +114,38 @@ export default function RootLayout({
   });
 
   test('LAYOUT_PATCHES report missed when content is completely different', () => {
-    // Use content that won't match ANY patch (no <body>, no title, no className)
     const nonstandard = '<html lang="fr"><div>bonjour</div></html>';
     const result = applyPatches(nonstandard, LAYOUT_PATCHES);
 
     expect(result.missed.length).toBeGreaterThan(0);
-    // Only body-tag patch should miss since there's no <body> tag;
-    // but title/description also won't match since they're absent.
-    // The content should be unchanged for missed patches.
     expect(result.applied.length).toBeLessThan(LAYOUT_PATCHES.length);
+  });
+
+  test('THEME_LAYOUT_PATCHES inject ThemeProvider and suppressHydrationWarning', () => {
+    // Simulate layout after base LAYOUT_PATCHES have already run
+    const layout = `import "./globals.css";
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en" className="h-full antialiased">
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
+}`;
+    const result = applyPatches(layout, THEME_LAYOUT_PATCHES);
+
+    expect(result.applied).toContain('theme-import');
+    expect(result.applied).toContain('theme-suppress-hydration');
+    expect(result.applied).toContain('theme-provider-wrap');
+    expect(result.content).toContain('ThemeProvider');
+    expect(result.content).toContain('suppressHydrationWarning');
+    expect(result.content).toContain('attribute="class"');
+  });
+
+  test('GITIGNORE_ENV_PATCH carves out .env.example from .env* glob', () => {
+    const gitignore = `# env files (can opt-in for committing if needed)\n.env*\n`;
+    const result = applyPatches(gitignore, [GITIGNORE_ENV_PATCH]);
+
+    expect(result.applied).toContain('gitignore-env-example');
+    expect(result.content).toContain('!.env.example');
   });
 });

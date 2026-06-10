@@ -62,6 +62,18 @@ export async function promptConfig(): Promise<Config> {
 
   const useHono = unwrap(await confirm({ message: 'Add Hono.js API backend?', initialValue: true }));
 
+  const useThemes = unwrap(
+    await confirm({ message: 'Add dark mode (next-themes + toggle)?', initialValue: true }),
+  );
+
+  const useTesting = unwrap(
+    await confirm({ message: 'Add testing (Vitest + Testing Library)?', initialValue: true }),
+  );
+
+  const useCi = unwrap(
+    await confirm({ message: 'Add GitHub Actions CI workflow?', initialValue: true }),
+  );
+
   return {
     projectName: projectName as string,
     eslint,
@@ -70,5 +82,8 @@ export async function promptConfig(): Promise<Config> {
     shadcn: useShadcn,
     shadcnComponents,
     hono: useHono,
+    themes: useThemes,
+    testing: useTesting,
+    ci: useCi,
   };
 }

@@ -56,6 +56,13 @@ export const SHADCN_COMPONENTS = [
 
 export const DEFAULT_SHADCN_COMPONENTS = ['button', 'input', 'label', 'card', 'separator'];
 
+/**
+ * Components the generated landing page imports. When shadcn is enabled these
+ * are force-installed (unioned with the user's selection) so the landing page
+ * always compiles, regardless of which components were ticked.
+ */
+export const REQUIRED_LANDING_COMPONENTS = ['button', 'card', 'badge', 'separator'];
+
 // ── Config type ──────────────────────────────────────────────────
 
 export interface Config {
@@ -66,4 +73,10 @@ export interface Config {
   shadcn: boolean;
   shadcnComponents: string[];
   hono: boolean;
+  /** next-themes dark/light mode with a toggle. */
+  themes: boolean;
+  /** Vitest + Testing Library setup with a sample test. */
+  testing: boolean;
+  /** GitHub Actions CI workflow. */
+  ci: boolean;
 }
