@@ -3,6 +3,7 @@ package me.aquitano.health.domain
 import kotlinx.serialization.json.JsonObject
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 sealed interface HealthRecord {
     val providerRecordId: String?
@@ -88,8 +89,10 @@ data class ActivitySummaryRecord(
     val maxHeartRateBpm: Int?,
 ) : HealthRecord {
     override val recordType: String = RecordTypes.ACTIVITY_SUMMARY
-    override val recordStartAt: Instant? = null
-    override val recordEndAt: Instant? = null
+
+    // Day window in UTC so date-ranged replay can find activity summaries.
+    override val recordStartAt: Instant = date.atStartOfDay(ZoneOffset.UTC).toInstant()
+    override val recordEndAt: Instant = date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant()
 }
 
 data class SleepSummaryRecord(

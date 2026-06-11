@@ -82,6 +82,13 @@ class IngestionMappingService {
         )
     }
 
+    /**
+     * Maps a single already-stored normalized record back to a HealthRecord, for replay.
+     * Returns null when the record no longer passes current validation rules.
+     */
+    fun mapRecord(dto: IngestionRecordDto): HealthRecord? =
+        mapRecord(index = 0, dto = dto, issues = mutableListOf())
+
     private fun mapRecord(
         index: Int,
         dto: IngestionRecordDto,

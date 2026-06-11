@@ -79,6 +79,12 @@ fun Application.module() {
         providerSyncJobService.stop()
     }
 
+    val replayService by inject<ReplayService>()
+    replayService.start(clock.now())
+    monitor.subscribe(ApplicationStopping) {
+        replayService.stop()
+    }
+
     // Bootstrap the API client (creates a default API key if none exists)
     val bootstrapService by inject<ApiClientBootstrapService>()
     bootstrapService.bootstrap()
@@ -113,6 +119,7 @@ private fun Application.buildApplicationServices(): ApplicationServices {
     val providerSyncJobService by inject<ProviderSyncJobService>()
     val scheduledProviderSyncService by inject<ScheduledProviderSyncService>()
     val trendQueryService by inject<TrendQueryService>()
+    val replayService by inject<ReplayService>()
 
     return ApplicationServices(
         database = database,
@@ -132,6 +139,7 @@ private fun Application.buildApplicationServices(): ApplicationServices {
         providerSyncJobService = providerSyncJobService,
         scheduledProviderSyncService = scheduledProviderSyncService,
         trendQueryService = trendQueryService,
+        replayService = replayService,
     )
 }
 
@@ -153,4 +161,5 @@ data class ApplicationServices(
     val providerSyncJobService: ProviderSyncJobService,
     val scheduledProviderSyncService: ScheduledProviderSyncService,
     val trendQueryService: TrendQueryService,
+    val replayService: ReplayService,
 )

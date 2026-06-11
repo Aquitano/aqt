@@ -59,3 +59,51 @@ data class IngestionRecordAdminResponse(
     val createdAt: String,
     val normalizedRecord: JsonElement? = null,
 )
+
+@Serializable
+data class ReplayRequest(
+    val scope: String = "all",
+    val metricTypes: List<String>? = null,
+    @JsonSchema.Format("date")
+    val fromDate: String? = null,
+    @JsonSchema.Format("date")
+    val toDate: String? = null,
+    val wipe: Boolean = false,
+)
+
+@Serializable
+data class ReplayJobStartResponse(
+    val jobId: String,
+    val status: String,
+    @JsonSchema.Format("date-time")
+    val createdAt: String,
+)
+
+@Serializable
+data class ReplayJobStatusResponse(
+    val jobId: String,
+    val scope: String,
+    val metricTypes: List<String>?,
+    @JsonSchema.Format("date")
+    val fromDate: String?,
+    @JsonSchema.Format("date")
+    val toDate: String?,
+    val wipe: Boolean,
+    val status: String,
+    val totalItems: Int,
+    val completedItems: Int,
+    val currentItem: String?,
+    val recordsReplayed: Int,
+    val metricsWritten: Int,
+    val duplicatesSkipped: Int,
+    val mappingFailures: Int,
+    val errorMessage: String?,
+    @JsonSchema.Format("date-time")
+    val createdAt: String,
+    @JsonSchema.Format("date-time")
+    val startedAt: String?,
+    @JsonSchema.Format("date-time")
+    val updatedAt: String,
+    @JsonSchema.Format("date-time")
+    val finishedAt: String?,
+)

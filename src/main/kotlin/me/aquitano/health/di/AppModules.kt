@@ -51,8 +51,10 @@ import me.aquitano.health.application.metric.steps.repository.StepDailySummaryDe
 import me.aquitano.health.application.metric.steps.repository.StepRepository
 import me.aquitano.health.infrastructure.config.AppConfig
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
+import me.aquitano.health.infrastructure.repositories.ProjectionWipeRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.ProviderSyncJobRepository
+import me.aquitano.health.infrastructure.repositories.ReplayJobRepository
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.ApiKeyHasher
@@ -74,6 +76,8 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
     single { IngestionRepository() }
     single { ProviderOAuthRepository(database) }
     single { ProviderSyncJobRepository(database) }
+    single { ReplayJobRepository(database) }
+    single { ProjectionWipeRepository() }
     single { ScheduledSyncRepository(database) }
     single { ScheduledSyncRunGuard() }
 
@@ -257,6 +261,18 @@ fun servicesModule(database: Database, config: AppConfig) = module {
             providerRegistry = get(),
             workflowService = get(),
             repository = get(),
+            clock = get(),
+        )
+    }
+    single {
+        ReplayService(
+            database = database,
+            ingestionRepository = get(),
+            mappingService = get(),
+            metricWriteService = get(),
+            derivedRebuildExecutor = get(),
+            replayJobRepository = get(),
+            projectionWipeRepository = get(),
             clock = get(),
         )
     }

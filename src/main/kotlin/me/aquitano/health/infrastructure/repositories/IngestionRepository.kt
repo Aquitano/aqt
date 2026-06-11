@@ -63,6 +63,16 @@ data class AdminIngestionRecordRow(
     val createdAt: String,
 )
 
+data class ReplayRecordRow(
+    val id: Int,
+    val recordType: String,
+    val provider: String,
+    val sourceInstanceId: Int,
+    val normalizedRecordJson: String,
+    val recordStartAt: Instant,
+    val recordEndAt: Instant?,
+)
+
 class IngestionRepository {
     fun findBatchByExternalId(
         sourceInstanceId: Int,
@@ -237,6 +247,61 @@ class IngestionRepository {
                     createdAt = it[IngestionRecordsTable.createdAt].toApiString(),
                 )
             }
+
+    /**
+     * Bounds of record_start_at across processed batches, used to plan replay day items.
+     * Records without a record_start_at are not replayable by date and are excluded.
+     */
+    fun replayDateBounds(recordTypes: Set<String>?): Pair<Instant, Instant>? {
+        val minStart = IngestionRecordsTable.recordStartAt.min()
+        val maxStart = IngestionRecordsTable.recordStartAt.max()
+        val conditions = mutableListOf<Op<Boolean>>(
+            IngestionBatchesTable.status eq "processed",
+        )
+        recordTypes?.let { conditions.add(IngestionRecordsTable.recordType inList it) }
+        return IngestionRecordsTable
+            .innerJoin(IngestionBatchesTable)
+            .select(minStart, maxStart)
+            .where(combineConditions(conditions))
+            .firstOrNull()
+            ?.let { row ->
+                val min = row[minStart]?.toInstant() ?: return null
+                val max = row[maxStart]?.toInstant() ?: return null
+                min to max
+            }
+    }
+
+    /** Records of processed batches whose record_start_at falls in [dayStart, dayEnd). */
+    fun listRecordsForReplay(
+        dayStart: Instant,
+        dayEnd: Instant,
+        recordTypes: Set<String>?,
+    ): List<ReplayRecordRow> {
+        val conditions = mutableListOf<Op<Boolean>>(
+            IngestionBatchesTable.status eq "processed",
+            IngestionRecordsTable.recordStartAt greaterEq dayStart.toDbTimestamp(),
+            IngestionRecordsTable.recordStartAt less dayEnd.toDbTimestamp(),
+        )
+        recordTypes?.let { conditions.add(IngestionRecordsTable.recordType inList it) }
+        return IngestionRecordsTable
+            .innerJoin(IngestionBatchesTable)
+            .innerJoin(SourceInstancesTable)
+            .innerJoin(SourcesTable)
+            .selectAll()
+            .where(combineConditions(conditions))
+            .orderBy(IngestionRecordsTable.id to SortOrder.ASC)
+            .map {
+                ReplayRecordRow(
+                    id = it[IngestionRecordsTable.id].value,
+                    recordType = it[IngestionRecordsTable.recordType],
+                    provider = it[SourcesTable.code],
+                    sourceInstanceId = it[IngestionBatchesTable.sourceInstanceId],
+                    normalizedRecordJson = it[IngestionRecordsTable.normalizedRecordJson],
+                    recordStartAt = it[IngestionRecordsTable.recordStartAt]!!.toInstant(),
+                    recordEndAt = it[IngestionRecordsTable.recordEndAt]?.toInstant(),
+                )
+            }
+    }
 
     private fun recordCounts(batchIds: List<Int>): Map<Int, Int> {
         if (batchIds.isEmpty()) return emptyMap()

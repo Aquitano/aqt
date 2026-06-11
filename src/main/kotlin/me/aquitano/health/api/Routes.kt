@@ -877,6 +877,77 @@ fun Application.configureRoutes(services: ApplicationServices) {
             adminQueryParameters()
             errorResponses()
         }
+        post("/api/v1/admin/replay") {
+            call.authenticateProtected(services)
+            call.respond<ReplayJobStartResponse>(
+                HttpStatusCode.Accepted,
+                services.replayService.create(
+                    request = call.receive<ReplayRequest>(),
+                    now = services.clock.now(),
+                )
+            )
+        }.describe {
+            operationId = "startReplay"
+            tag("Admin")
+            summary = "Replay projections from the raw event log"
+            description =
+                "Starts a background job that rebuilds metric projections and/or derived tables from stored ingestion records for the requested date range. Replay is idempotent; with wipe=true the affected projection rows are deleted and rewritten, without it the job acts as a verification pass whose counters report how many writes would have been missing."
+            requiresBearerAuth()
+            jsonRequest<ReplayRequest>(
+                "Replay request. scope selects the projections stage, the derived rebuild stage, or both; metricTypes limits the replay to specific record types; omitting the date range replays all stored history.",
+            )
+            responses {
+                HttpStatusCode.Accepted {
+                    description = "Replay job accepted"
+                    content {
+                        schema = buildSchema(typeOf<ReplayJobStartResponse>())
+                    }
+                }
+                commonErrors()
+                defaultError()
+            }
+        }
+        get("/api/v1/admin/replay/latest") {
+            call.authenticateProtected(services)
+            val job = services.replayService.latest()
+                ?: throw NotFoundException("Replay job not found")
+            call.respond(HttpStatusCode.OK, job)
+        }.describe {
+            operationId = "getLatestReplayJob"
+            tag("Admin")
+            summary = "Get latest replay job"
+            description = "Returns the most recently created replay job."
+            requiresBearerAuth()
+            errorResponses(notFound = true)
+        }
+        get("/api/v1/admin/replay/{jobId}") {
+            call.authenticateProtected(services)
+            val jobId = call.parameters["jobId"]?.takeIf { it.isNotBlank() }
+                ?: throw RequestValidationException(
+                    listOf(
+                        ValidationIssue(
+                            field = "jobId",
+                            code = ValidationIssueCodes.Required,
+                            message = "is required",
+                        )
+                    )
+                )
+            call.respond(HttpStatusCode.OK, services.replayService.get(jobId))
+        }.describe {
+            operationId = "getReplayJob"
+            tag("Admin")
+            summary = "Get replay job progress"
+            description =
+                "Returns progress counters (records replayed, metrics written, duplicates skipped, mapping failures) and the current day item of a replay job."
+            requiresBearerAuth()
+            parameters {
+                path("jobId") {
+                    description = "Replay job id returned by startReplay"
+                    schema = buildSchema(typeOf<String>())
+                }
+            }
+            errorResponses(notFound = true)
+        }
     }
 }
 

@@ -387,7 +387,7 @@ data class MetricWriteResult(
     val affectedDates: Map<DerivedKind, Set<LocalDate>> = emptyMap(),
 )
 
-private fun affectedUtcDates(
+internal fun affectedUtcDates(
     start: Instant,
     exclusiveEnd: Instant,
 ): Set<LocalDate> {
