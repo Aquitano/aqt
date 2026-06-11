@@ -58,6 +58,7 @@ private val replayableRecordTypes = setOf(
     RecordTypes.BLOOD_PRESSURE,
     RecordTypes.CARDIOVASCULAR,
     RecordTypes.EXTENDED_BODY_MEASUREMENT,
+    RecordTypes.SCALAR,
 )
 
 /**
@@ -284,22 +285,6 @@ class ReplayService(
             RecordTypes.SLEEP_SESSION -> mapOf(
                 DerivedKind.SLEEP_NIGHT to setOf((row.recordEndAt ?: row.recordStartAt).utcDate()),
                 DerivedKind.SLEEP_SESSION_CANONICAL to setOf(row.recordStartAt.utcDate()),
-            )
-
-            RecordTypes.HEART_RATE -> mapOf(
-                DerivedKind.HEART_RATE_CANONICAL to setOf(row.recordStartAt.utcDate()),
-            )
-
-            RecordTypes.RESPIRATORY_RATE -> mapOf(
-                DerivedKind.RESPIRATORY_RATE_CANONICAL to setOf(row.recordStartAt.utcDate()),
-            )
-
-            RecordTypes.HRV -> mapOf(
-                DerivedKind.HRV_CANONICAL to setOf(row.recordStartAt.utcDate()),
-            )
-
-            RecordTypes.BODY_MEASUREMENT -> mapOf(
-                DerivedKind.BODY_MEASUREMENT_CANONICAL to setOf(row.recordStartAt.utcDate()),
             )
 
             RecordTypes.SLEEP_SUMMARY -> mapOf(

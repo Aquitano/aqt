@@ -39,11 +39,9 @@ class DatabaseFactoryTest {
         assertContains(tableNames, "step_daily_summaries")
         assertContains(tableNames, "sleep_sessions")
         assertContains(tableNames, "sleep_stages")
-        assertContains(tableNames, "body_measurements")
-        assertContains(tableNames, "heart_rate_samples")
-        assertContains(tableNames, "canonical_heart_rate_samples")
-        assertContains(tableNames, "canonical_respiratory_rate_samples")
-        assertContains(tableNames, "canonical_hrv_samples")
+        assertContains(tableNames, "scalar_samples")
+        assertContains(tableNames, "metric_catalog")
+        assertContains(tableNames, "provider_ranks")
         assertContains(tableNames, "canonical_sleep_summaries")
         assertContains(tableNames, "provider_oauth_accounts")
         assertContains(tableNames, "provider_oauth_states")
@@ -232,25 +230,32 @@ class DatabaseFactoryTest {
                 )
             }
 
+            // scalar_samples rejects metric types missing from metric_catalog
             assertFailsWith<Exception> {
                 exec(
                     """
-                    INSERT INTO heart_rate_samples (
+                    INSERT INTO scalar_samples (
                         source_instance_id,
                         ingestion_record_id,
                         provider_record_id,
                         measured_at,
-                        bpm,
+                        metric_type,
+                        value,
+                        unit,
                         context,
+                        segment,
                         created_at
                     )
                     VALUES (
                         1,
                         NULL,
-                        'hr-invalid',
+                        'scalar-invalid',
                         '2026-04-19T10:00:00Z',
-                        400,
+                        'not_a_metric',
+                        64,
+                        'bpm',
                         'resting',
+                        NULL,
                         '2026-04-19T10:00:00Z'
                     )
                     """.trimIndent()

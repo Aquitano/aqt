@@ -214,8 +214,18 @@ class GoogleHealthProviderTest {
         assertEquals(1, countRows(fixture.dbPath, "step_samples"))
         assertEquals(1, countRows(fixture.dbPath, "sleep_sessions"))
         assertEquals(2, countRows(fixture.dbPath, "sleep_stages"))
-        assertEquals(1, countRows(fixture.dbPath, "heart_rate_samples"))
-        assertEquals(2, countRows(fixture.dbPath, "body_measurements"))
+        assertEquals(
+            1,
+            singleInt(fixture.dbPath, "SELECT COUNT(*) FROM scalar_samples WHERE metric_type = 'heart_rate'")
+        )
+        assertEquals(
+            2,
+            singleInt(
+                fixture.dbPath,
+                "SELECT COUNT(*) FROM scalar_samples WHERE metric_type IN " +
+                    "('weight', 'body_fat', 'muscle', 'water', 'visceral_fat')"
+            )
+        )
     }
 
     @Test

@@ -1,6 +1,8 @@
 package me.aquitano.health.infrastructure.database.tables
 
+import org.jetbrains.exposed.v1.core.Table
 import org.jetbrains.exposed.v1.core.dao.id.IntIdTable
+import org.jetbrains.exposed.v1.core.dao.id.LongIdTable
 import org.jetbrains.exposed.v1.javatime.date
 import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
 
@@ -147,7 +149,26 @@ object CanonicalSleepNightsTable : IntIdTable("canonical_sleep_nights") {
     }
 }
 
-object BodyMeasurementsTable : IntIdTable("body_measurements") {
+object MetricCatalogTable : Table("metric_catalog") {
+    val metricType = text("metric_type")
+    val family = text("family")
+    val unit = text("unit")
+    val minValue = double("min_value").nullable()
+    val maxValue = double("max_value").nullable()
+    val supportsSegment = bool("supports_segment")
+
+    override val primaryKey = PrimaryKey(metricType)
+}
+
+object ProviderRanksTable : Table("provider_ranks") {
+    val family = text("family")
+    val providerCode = text("provider_code")
+    val rank = integer("rank")
+
+    override val primaryKey = PrimaryKey(family, providerCode)
+}
+
+object ScalarSamplesTable : LongIdTable("scalar_samples") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)
     val ingestionRecordId =
@@ -158,52 +179,24 @@ object BodyMeasurementsTable : IntIdTable("body_measurements") {
     val metricType = text("metric_type")
     val value = double("value")
     val unit = text("unit")
+    val context = text("context").nullable()
+    val segment = text("segment").nullable()
     val createdAt = timestampWithTimeZone("created_at")
 }
 
-object CanonicalBodyMeasurementsTable : IntIdTable("canonical_body_measurements") {
-    val date = date("date")
-    val sourceInstanceId =
-        integer("source_instance_id").references(SourceInstancesTable.id)
-    val bodyMeasurementId =
-        integer("body_measurement_id").references(BodyMeasurementsTable.id)
-    val measuredAt = timestampWithTimeZone("measured_at")
-    val metricType = text("metric_type")
-    val algorithmVersion = integer("algorithm_version")
-    val computedAt = timestampWithTimeZone("computed_at")
-
-    init {
-        uniqueIndex(date, bodyMeasurementId, algorithmVersion)
-    }
-}
-
-object HeartRateSamplesTable : IntIdTable("heart_rate_samples") {
-    val sourceInstanceId =
-        integer("source_instance_id").references(SourceInstancesTable.id)
-    val ingestionRecordId =
-        integer("ingestion_record_id").references(IngestionRecordsTable.id)
-            .nullable()
+/** Read-only mapping of the canonical_scalar_samples view (see V14). */
+object CanonicalScalarSamplesView : Table("canonical_scalar_samples") {
+    val id = long("id")
+    val sourceInstanceId = integer("source_instance_id")
+    val ingestionRecordId = integer("ingestion_record_id").nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val measuredAt = timestampWithTimeZone("measured_at")
-    val bpm = integer("bpm")
+    val metricType = text("metric_type")
+    val value = double("value")
+    val unit = text("unit")
     val context = text("context").nullable()
+    val segment = text("segment").nullable()
     val createdAt = timestampWithTimeZone("created_at")
-}
-
-object CanonicalHeartRateSamplesTable : IntIdTable("canonical_heart_rate_samples") {
-    val date = date("date")
-    val sourceInstanceId =
-        integer("source_instance_id").references(SourceInstancesTable.id)
-    val heartRateSampleId =
-        integer("heart_rate_sample_id").references(HeartRateSamplesTable.id)
-    val measuredAt = timestampWithTimeZone("measured_at")
-    val context = text("context")
-    val algorithmVersion = integer("algorithm_version")
-    val computedAt = timestampWithTimeZone("computed_at")
-
-    init {
-        uniqueIndex(date, heartRateSampleId, algorithmVersion)
-    }
 }
 
 object ActivitySummariesTable : IntIdTable("activity_summaries") {
@@ -298,67 +291,6 @@ object CanonicalSleepSummariesTable : IntIdTable("canonical_sleep_summaries") {
     }
 }
 
-object RespiratoryRateSamplesTable : IntIdTable("respiratory_rate_samples") {
-    val sourceInstanceId =
-        integer("source_instance_id").references(SourceInstancesTable.id)
-    val ingestionRecordId =
-        integer("ingestion_record_id").references(IngestionRecordsTable.id)
-            .nullable()
-    val providerRecordId = text("provider_record_id").nullable()
-    val measuredAt = timestampWithTimeZone("measured_at")
-    val breathsPerMinute = integer("breaths_per_minute")
-    val context = text("context").nullable()
-    val createdAt = timestampWithTimeZone("created_at")
-}
-
-object CanonicalRespiratoryRateSamplesTable : IntIdTable("canonical_respiratory_rate_samples") {
-    val date = date("date")
-    val sourceInstanceId =
-        integer("source_instance_id").references(SourceInstancesTable.id)
-    val respiratoryRateSampleId =
-        integer("respiratory_rate_sample_id").references(RespiratoryRateSamplesTable.id)
-    val measuredAt = timestampWithTimeZone("measured_at")
-    val context = text("context")
-    val algorithmVersion = integer("algorithm_version")
-    val computedAt = timestampWithTimeZone("computed_at")
-
-    init {
-        uniqueIndex(date, respiratoryRateSampleId, algorithmVersion)
-    }
-}
-
-object HrvSamplesTable : IntIdTable("hrv_samples") {
-    val sourceInstanceId =
-        integer("source_instance_id").references(SourceInstancesTable.id)
-    val ingestionRecordId =
-        integer("ingestion_record_id").references(IngestionRecordsTable.id)
-            .nullable()
-    val providerRecordId = text("provider_record_id").nullable()
-    val measuredAt = timestampWithTimeZone("measured_at")
-    val metricType = text("metric_type")
-    val value = double("value")
-    val unit = text("unit")
-    val context = text("context").nullable()
-    val createdAt = timestampWithTimeZone("created_at")
-}
-
-object CanonicalHrvSamplesTable : IntIdTable("canonical_hrv_samples") {
-    val date = date("date")
-    val sourceInstanceId =
-        integer("source_instance_id").references(SourceInstancesTable.id)
-    val hrvSampleId =
-        integer("hrv_sample_id").references(HrvSamplesTable.id)
-    val measuredAt = timestampWithTimeZone("measured_at")
-    val metricType = text("metric_type")
-    val context = text("context")
-    val algorithmVersion = integer("algorithm_version")
-    val computedAt = timestampWithTimeZone("computed_at")
-
-    init {
-        uniqueIndex(date, hrvSampleId, algorithmVersion)
-    }
-}
-
 object BloodPressureMeasurementsTable : IntIdTable("blood_pressure_measurements") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)
@@ -370,34 +302,5 @@ object BloodPressureMeasurementsTable : IntIdTable("blood_pressure_measurements"
     val systolicMmhg = integer("systolic_mmhg")
     val diastolicMmhg = integer("diastolic_mmhg")
     val heartRateBpm = integer("heart_rate_bpm").nullable()
-    val createdAt = timestampWithTimeZone("created_at")
-}
-
-object CardiovascularMeasurementsTable : IntIdTable("cardiovascular_measurements") {
-    val sourceInstanceId =
-        integer("source_instance_id").references(SourceInstancesTable.id)
-    val ingestionRecordId =
-        integer("ingestion_record_id").references(IngestionRecordsTable.id)
-            .nullable()
-    val providerRecordId = text("provider_record_id").nullable()
-    val measuredAt = timestampWithTimeZone("measured_at")
-    val metricType = text("metric_type")
-    val value = double("value")
-    val unit = text("unit")
-    val createdAt = timestampWithTimeZone("created_at")
-}
-
-object ExtendedBodyMeasurementsTable : IntIdTable("extended_body_measurements") {
-    val sourceInstanceId =
-        integer("source_instance_id").references(SourceInstancesTable.id)
-    val ingestionRecordId =
-        integer("ingestion_record_id").references(IngestionRecordsTable.id)
-            .nullable()
-    val providerRecordId = text("provider_record_id").nullable()
-    val measuredAt = timestampWithTimeZone("measured_at")
-    val metricType = text("metric_type")
-    val value = double("value")
-    val unit = text("unit")
-    val segment = text("segment").nullable()
     val createdAt = timestampWithTimeZone("created_at")
 }

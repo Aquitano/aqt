@@ -6,20 +6,18 @@ import me.aquitano.health.domain.BodyMetricTypes
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
-import me.aquitano.health.application.metric.heart.repository.HeartRateSummaryRow
-import me.aquitano.health.application.metric.heart.derived.CANONICAL_HEART_RATE_ALGORITHM_VERSION
-import me.aquitano.health.application.metric.heart.repository.CanonicalHeartRateDerivationRepository
 import me.aquitano.health.application.metric.steps.derived.CANONICAL_STEP_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
-import me.aquitano.health.application.metric.body.derived.CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION
-import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementDerivationRepository
 import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
+import me.aquitano.health.application.metric.scalar.ScalarSampleReadRepository
+import me.aquitano.health.application.metric.scalar.ScalarSampleRow
+import me.aquitano.health.application.metric.scalar.toBodyMeasurementResponse
+import me.aquitano.health.application.metric.scalar.toHeartRateResponse
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
 import me.aquitano.health.application.metric.sleep.repository.SleepStageRow
-import me.aquitano.health.application.metric.body.repository.BodyMeasurementRow
-import me.aquitano.health.application.metric.heart.repository.HeartRateSampleRow
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
+import me.aquitano.health.domain.ScalarMetricTypes
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.sourceInstanceIds
 import org.jetbrains.exposed.v1.jdbc.Database
@@ -28,6 +26,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.math.roundToInt
 
 data class HealthDayQueryContext(
     val date: LocalDate,
@@ -188,21 +187,21 @@ class StepsDayModule(
 }
 
 class HeartRateDayModule(
-    private val canonicalRepository: CanonicalHeartRateDerivationRepository = CanonicalHeartRateDerivationRepository(),
+    private val scalarRepository: ScalarSampleReadRepository = ScalarSampleReadRepository(),
 ) : HealthDayModule<HealthDayHeartRateResponse> {
     override val name = "heartRate"
 
+    private val metricTypes = setOf(ScalarMetricTypes.HEART_RATE)
+
     override suspend fun read(context: HealthDayQueryContext): HealthDayHeartRateResponse {
         val filters = context.filters()
-        val (samples, sourceMetadata) = canonicalRepository.listCanonicalHeartRateSamples(
+        val (samples, sourceMetadata) = scalarRepository.list(
             filters.copy(limit = Int.MAX_VALUE, sort = "measuredAt", order = "asc"),
-            CANONICAL_HEART_RATE_ALGORITHM_VERSION,
+            metricTypes,
+            canonical = true,
         )
-        val summary = canonicalRepository.summarizeCanonicalHeartRate(
-            filters,
-            CANONICAL_HEART_RATE_ALGORITHM_VERSION,
-        )
-        val latest = samples.maxWithOrNull(compareBy<HeartRateSampleRow> { it.measuredAt }.thenBy { it.id })
+        val summary = scalarRepository.summarize(filters, metricTypes, canonical = true)
+        val latest = samples.maxWithOrNull(compareBy<ScalarSampleRow> { it.measuredAt }.thenBy { it.id })
         val buckets = buckets(context)
         val totals = DoubleArray(buckets.size)
         val counts = IntArray(buckets.size)
@@ -210,17 +209,17 @@ class HeartRateDayModule(
         samples.forEach { sample ->
             val index = Duration.between(context.from, sample.measuredAt).toMinutes().toInt() / 15
             if (index in buckets.indices) {
-                totals[index] += sample.bpm.toDouble()
+                totals[index] += sample.value
                 counts[index] += 1
             }
         }
 
         return HealthDayHeartRateResponse(
             count = summary.count,
-            minBpm = summary.minBpm,
-            maxBpm = summary.maxBpm,
-            avgBpm = summary.avgBpm,
-            latest = latest?.toResponse(sourceMetadata),
+            minBpm = summary.minValue?.roundToInt(),
+            maxBpm = summary.maxValue?.roundToInt(),
+            avgBpm = summary.avgValue,
+            latest = latest?.toHeartRateResponse(sourceMetadata),
             buckets = buckets.mapIndexed { index, (start, end) ->
                 HealthDayBucketResponse(
                     startAt = start.toString(),
@@ -234,31 +233,25 @@ class HeartRateDayModule(
 }
 
 class WeightDayModule(
-    private val canonicalRepository: CanonicalBodyMeasurementDerivationRepository =
-        CanonicalBodyMeasurementDerivationRepository(),
+    private val scalarRepository: ScalarSampleReadRepository = ScalarSampleReadRepository(),
 ) : HealthDayModule<HealthDayWeightResponse> {
     override val name = "weight"
 
+    private val metricTypes = setOf(BodyMetricTypes.WEIGHT)
+
     override suspend fun read(context: HealthDayQueryContext): HealthDayWeightResponse {
         val filters = context.filters()
-        val (points, pointSourceMetadata) = canonicalRepository.listCanonicalBodyMeasurements(
-            filters,
-            BodyMetricTypes.WEIGHT,
-            CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
-        )
-        val (previous, previousSourceMetadata) = canonicalRepository.latestCanonicalBodyMeasurementBefore(
-            filters,
-            BodyMetricTypes.WEIGHT,
-            CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
-        )
-        val latest = points.maxWithOrNull(compareBy<BodyMeasurementRow> { it.measuredAt }.thenBy { it.id })
+        val (points, pointSourceMetadata) = scalarRepository.list(filters, metricTypes, canonical = true)
+        val (previous, previousSourceMetadata) =
+            scalarRepository.latestBefore(filters, metricTypes, canonical = true)
+        val latest = points.maxWithOrNull(compareBy<ScalarSampleRow> { it.measuredAt }.thenBy { it.id })
         val sourceMetadata = pointSourceMetadata + previousSourceMetadata
 
         return HealthDayWeightResponse(
-            latest = latest?.toResponse(sourceMetadata),
-            previous = previous?.toResponse(sourceMetadata),
+            latest = latest?.toBodyMeasurementResponse(sourceMetadata),
+            previous = previous?.toBodyMeasurementResponse(sourceMetadata),
             delta = if (latest != null && previous != null) latest.value - previous.value else null,
-            points = points.map { it.toResponse(sourceMetadata) },
+            points = points.map { it.toBodyMeasurementResponse(sourceMetadata) },
         )
     }
 }
@@ -365,29 +358,6 @@ private fun overlapSeconds(
         0
     }
 }
-
-private fun BodyMeasurementRow.toResponse(
-    sourceMetadata: Map<Int, SourceMetadata>
-): BodyMeasurementResponse =
-    BodyMeasurementResponse(
-        id = id,
-        measuredAt = measuredAt,
-        metricType = metricType,
-        value = value,
-        unit = unit,
-        source = sourceMetadata[sourceInstanceId].toResponse(),
-    )
-
-private fun HeartRateSampleRow.toResponse(
-    sourceMetadata: Map<Int, SourceMetadata>
-): HeartRateSampleResponse =
-    HeartRateSampleResponse(
-        id = id,
-        measuredAt = measuredAt.toString(),
-        bpm = bpm,
-        context = context,
-        source = sourceMetadata[sourceInstanceId].toResponse(),
-    )
 
 private fun SleepSessionRow.toResponse(
     stagesBySession: Map<Int, List<SleepStageRow>>,

@@ -3,18 +3,17 @@ package me.aquitano.health.application
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.domain.BodyMetricTypes
-import me.aquitano.health.application.metric.body.repository.BodyMeasurementRow
+import me.aquitano.health.domain.ScalarMetricTypes
 import me.aquitano.health.application.metric.common.repository.DailyReadFilters
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.shared.utcDate
 import me.aquitano.health.application.metric.steps.repository.StepRepository
-import me.aquitano.health.application.metric.heart.repository.HeartRateRepository
+import me.aquitano.health.application.metric.scalar.ScalarSampleReadRepository
+import me.aquitano.health.application.metric.scalar.ScalarSampleRow
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
-import me.aquitano.health.application.metric.body.repository.BodyMeasurementRepository
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
-import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -23,11 +22,9 @@ import kotlin.math.roundToInt
 class TrendQueryService(
     private val database: Database,
     private val stepRepository: StepRepository,
-    private val heartRateRepository: HeartRateRepository,
     private val sleepRepository: SleepRepository,
-    private val bodyMeasurementRepository: BodyMeasurementRepository,
+    private val scalarRepository: ScalarSampleReadRepository = ScalarSampleReadRepository(),
 ) {
-    private val logger = KotlinLogging.logger {}
 
     suspend fun dashboardTrends(
         params: QueryParams,
@@ -82,15 +79,19 @@ class TrendQueryService(
         previousFrom: LocalDate,
         previousTo: LocalDate,
     ): HeartRateTrend? {
-        val currentSummary = heartRateRepository.summarizeHeartRate(
-            readFilters(currentFrom, currentTo)
+        val currentSummary = scalarRepository.summarize(
+            readFilters(currentFrom, currentTo),
+            setOf(ScalarMetricTypes.HEART_RATE),
+            canonical = false,
         )
-        val previousSummary = heartRateRepository.summarizeHeartRate(
-            readFilters(previousFrom, previousTo)
+        val previousSummary = scalarRepository.summarize(
+            readFilters(previousFrom, previousTo),
+            setOf(ScalarMetricTypes.HEART_RATE),
+            canonical = false,
         )
         if (currentSummary.count == 0 && previousSummary.count == 0) return null
-        val currentAvg = currentSummary.avgBpm ?: 0.0
-        val previousAvg = previousSummary.avgBpm ?: 0.0
+        val currentAvg = currentSummary.avgValue ?: 0.0
+        val previousAvg = previousSummary.avgValue ?: 0.0
         return HeartRateTrend(
             currentAvg = roundToOneDecimal(currentAvg),
             previousAvg = roundToOneDecimal(previousAvg),
@@ -121,29 +122,21 @@ class TrendQueryService(
     }
 
     private fun weightTrend(toDate: LocalDate): WeightTrend? {
-        val current = bodyMeasurementRepository.latestBodyMeasurementBefore(
+        val current = scalarRepository.latestBefore(
             before = toDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant(),
             metricType = BodyMetricTypes.WEIGHT,
         )
         if (current == null) return null
-        val previous = current.measuredAt.let { measuredAt ->
-            val instant = runCatching { Instant.parse(measuredAt) }.getOrNull()
-            if (instant == null) {
-                logger.warn { "Failed to parse measuredAt for weight trend: $measuredAt" }
-            }
-            instant?.let {
-                bodyMeasurementRepository.latestBodyMeasurementBefore(
-                    before = it,
-                    metricType = BodyMetricTypes.WEIGHT,
-                )
-            }
-        }
+        val previous = scalarRepository.latestBefore(
+            before = current.measuredAt,
+            metricType = BodyMetricTypes.WEIGHT,
+        )
         val delta = if (previous != null) roundToOneDecimal(current.value - previous.value) else null
         val percentChange = if (previous != null && previous.value != 0.0) {
             percentChange(current.value, previous.value)
         } else null
 
-        val sourceMetadata = bodyMeasurementRepository.sourceMetadataFor(
+        val sourceMetadata = scalarRepository.sourceMetadataFor(
             setOf(current.sourceInstanceId)
         )
         val currentResponse = current.toResponse(sourceMetadata)
@@ -189,12 +182,12 @@ class TrendQueryService(
     private fun roundToOneDecimal(value: Double): Double =
         (value * 10.0).roundToInt() / 10.0
 
-    private fun BodyMeasurementRow.toResponse(
+    private fun ScalarSampleRow.toResponse(
         sourceMetadata: Map<Int, SourceMetadata>
     ): BodyMeasurementResponse =
         BodyMeasurementResponse(
-            id = id,
-            measuredAt = measuredAt,
+            id = id.toInt(),
+            measuredAt = measuredAt.toString(),
             metricType = metricType,
             value = value,
             unit = unit,

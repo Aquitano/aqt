@@ -2,26 +2,24 @@ package me.aquitano.health.application.metric.respiratory
 
 import me.aquitano.health.api.dto.RespiratoryRateSamplesResponse
 import me.aquitano.health.api.dto.RespiratoryRateSummaryResponse
-import me.aquitano.health.application.metric.respiratory.derived.CANONICAL_RESPIRATORY_RATE_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.common.BaseReadService
-import me.aquitano.health.application.metric.common.Orders
 import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.application.metric.common.SortFields
 import me.aquitano.health.application.metric.common.meta
 import me.aquitano.health.application.metric.common.readFilters
-import me.aquitano.health.application.metric.common.respiratoryRateSummary
-import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.application.metric.common.summaryFilters
-import me.aquitano.health.application.metric.common.toResponse
-import me.aquitano.health.application.metric.respiratory.repository.CanonicalRespiratoryRateDerivationRepository
-import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateSampleRow
+import me.aquitano.health.application.metric.scalar.ScalarSampleReadRepository
+import me.aquitano.health.application.metric.scalar.toRespiratoryRateResponse
+import me.aquitano.health.domain.ScalarMetricTypes
 import org.jetbrains.exposed.v1.jdbc.Database
+import kotlin.math.roundToInt
 
 class RespiratoryRateQueryService(
     database: Database,
-    private val canonicalRepository: CanonicalRespiratoryRateDerivationRepository =
-        CanonicalRespiratoryRateDerivationRepository(),
+    private val scalarRepository: ScalarSampleReadRepository = ScalarSampleReadRepository(),
 ) : BaseReadService(database) {
+    private val metricTypes = setOf(ScalarMetricTypes.RESPIRATORY_RATE)
+
     suspend fun listRespiratoryRateSamples(params: QueryParams): RespiratoryRateSamplesResponse =
         dbQuery {
             val filters = params.readFilters(
@@ -29,12 +27,9 @@ class RespiratoryRateQueryService(
                 allowedSorts = setOf(SortFields.MEASURED_AT),
                 latestSupported = true,
             )
-            val (rows, sourceMetadata) = canonicalRepository.listCanonicalRespiratoryRateSamples(
-                filters,
-                CANONICAL_RESPIRATORY_RATE_ALGORITHM_VERSION,
-            )
+            val (rows, sourceMetadata) = scalarRepository.list(filters, metricTypes, canonical = true)
             RespiratoryRateSamplesResponse(
-                items = rows.map { it.toResponse(sourceMetadata) },
+                items = rows.map { it.toRespiratoryRateResponse(sourceMetadata) },
                 meta = rows.meta(filters),
             )
         }
@@ -42,21 +37,14 @@ class RespiratoryRateQueryService(
     suspend fun respiratoryRateSummary(params: QueryParams): RespiratoryRateSummaryResponse =
         dbQuery {
             val filters = params.summaryFilters(SortFields.MEASURED_AT)
-            val canonicalFilters = filters.copy(limit = Int.MAX_VALUE, order = Orders.ASC)
-            val (canonicalRows, sourceMetadata) = canonicalRepository.listCanonicalRespiratoryRateSamples(
-                canonicalFilters,
-                CANONICAL_RESPIRATORY_RATE_ALGORITHM_VERSION,
-            )
-            val summary = canonicalRows.respiratoryRateSummary()
-            val latest =
-                canonicalRows.maxWithOrNull(compareBy<RespiratoryRateSampleRow> { it.measuredAt }.thenBy { it.id })
+            val summary = scalarRepository.summarize(filters, metricTypes, canonical = true)
+            val (latest, sourceMetadata) = scalarRepository.latest(filters, metricTypes, canonical = true)
             RespiratoryRateSummaryResponse(
                 count = summary.count,
-                minBreathsPerMinute = summary.minBreathsPerMinute,
-                maxBreathsPerMinute = summary.maxBreathsPerMinute,
-                avgBreathsPerMinute = summary.avgBreathsPerMinute,
-                latest = latest?.toResponse(sourceMetadata),
+                minBreathsPerMinute = summary.minValue?.roundToInt(),
+                maxBreathsPerMinute = summary.maxValue?.roundToInt(),
+                avgBreathsPerMinute = summary.avgValue,
+                latest = latest?.toRespiratoryRateResponse(sourceMetadata),
             )
         }
 }
-

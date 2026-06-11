@@ -9,12 +9,12 @@ import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.application.metric.common.SortFields
 import me.aquitano.health.application.metric.common.toResponse
 import me.aquitano.health.application.metric.common.validateDateRange
-import me.aquitano.health.application.metric.heart.derived.CANONICAL_HEART_RATE_ALGORITHM_VERSION
-import me.aquitano.health.application.metric.body.derived.CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION
-import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementDerivationRepository
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
-import me.aquitano.health.application.metric.heart.repository.CanonicalHeartRateDerivationRepository
+import me.aquitano.health.application.metric.scalar.ScalarSampleReadRepository
+import me.aquitano.health.application.metric.scalar.toBodyMeasurementResponse
+import me.aquitano.health.application.metric.scalar.toHeartRateResponse
 import me.aquitano.health.domain.BodyMetricTypes
+import me.aquitano.health.domain.ScalarMetricTypes
 import me.aquitano.health.application.metric.common.repository.DailyReadFilters
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
@@ -29,9 +29,7 @@ class DashboardQueryService(
     database: Database,
     private val canonicalStepRepository: CanonicalStepDerivationRepository,
     private val sleepRepository: SleepRepository,
-    private val canonicalHeartRateRepository: CanonicalHeartRateDerivationRepository = CanonicalHeartRateDerivationRepository(),
-    private val canonicalBodyMeasurementRepository: CanonicalBodyMeasurementDerivationRepository =
-        CanonicalBodyMeasurementDerivationRepository(),
+    private val scalarRepository: ScalarSampleReadRepository = ScalarSampleReadRepository(),
     private val sleepNightService: SleepNightService,
 ) : BaseReadService(database) {
     suspend fun dashboardSummary(
@@ -109,22 +107,23 @@ class DashboardQueryService(
     private fun latestWeight(
         filters: ReadFilters,
     ) = run {
-        val (row, metadata) = canonicalBodyMeasurementRepository.latestCanonicalBodyMeasurement(
+        val (row, metadata) = scalarRepository.latest(
             filters,
-            BodyMetricTypes.WEIGHT,
-            CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
+            setOf(BodyMetricTypes.WEIGHT),
+            canonical = true,
         )
-        row?.toResponse(metadata)
+        row?.toBodyMeasurementResponse(metadata)
     }
 
-    private suspend fun latestHeartRate(
+    private fun latestHeartRate(
         filters: ReadFilters,
     ) = run {
-        val (row, metadata) = canonicalHeartRateRepository.latestCanonicalHeartRateSample(
+        val (row, metadata) = scalarRepository.latest(
             filters,
-            CANONICAL_HEART_RATE_ALGORITHM_VERSION,
+            setOf(ScalarMetricTypes.HEART_RATE),
+            canonical = true,
         )
-        row?.toResponse(metadata)
+        row?.toHeartRateResponse(metadata)
     }
 
     private fun lastSleepSession(

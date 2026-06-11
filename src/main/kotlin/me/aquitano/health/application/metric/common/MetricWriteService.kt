@@ -1,25 +1,18 @@
 package me.aquitano.health.application.metric.common
 
 import me.aquitano.health.application.metric.activity.repository.ActivitySummaryWriteRepository
-import me.aquitano.health.application.metric.body.repository.BodyMeasurementWriteRepository
 import me.aquitano.health.application.metric.cardiovascular.repository.CardiovascularWriteRepository
-import me.aquitano.health.application.metric.heart.repository.HeartRateWriteRepository
-import me.aquitano.health.application.metric.hrv.repository.HrvWriteRepository
-import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateWriteRepository
+import me.aquitano.health.application.metric.scalar.ScalarSampleWriteRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepWriteRepository
 import me.aquitano.health.application.metric.steps.repository.StepWriteRepository
 import me.aquitano.health.domain.ActivitySummaryRecord
 import me.aquitano.health.domain.BloodPressureRecord
-import me.aquitano.health.domain.BodyMeasurementRecord
-import me.aquitano.health.domain.CardiovascularRecord
 import me.aquitano.health.domain.DerivedKind
-import me.aquitano.health.domain.ExtendedBodyMeasurementRecord
 import me.aquitano.health.domain.HealthRecord
-import me.aquitano.health.domain.HeartRateRecord
-import me.aquitano.health.domain.HrvRecord
 import me.aquitano.health.domain.MetricCreatedCounts
 import me.aquitano.health.domain.MetricKind
-import me.aquitano.health.domain.RespiratoryRateRecord
+import me.aquitano.health.domain.ScalarMetricRegistry
+import me.aquitano.health.domain.ScalarSampleRecord
 import me.aquitano.health.domain.SleepSessionRecord
 import me.aquitano.health.domain.SleepSummaryRecord
 import me.aquitano.health.domain.StepIntervalRecord
@@ -30,12 +23,9 @@ import java.time.LocalDate
 class MetricWriteService(
     private val stepWriteRepository: StepWriteRepository = StepWriteRepository(),
     private val sleepWriteRepository: SleepWriteRepository = SleepWriteRepository(),
-    private val bodyMeasurementWriteRepository: BodyMeasurementWriteRepository = BodyMeasurementWriteRepository(),
-    private val heartRateWriteRepository: HeartRateWriteRepository = HeartRateWriteRepository(),
     private val activitySummaryWriteRepository: ActivitySummaryWriteRepository = ActivitySummaryWriteRepository(),
-    private val respiratoryRateWriteRepository: RespiratoryRateWriteRepository = RespiratoryRateWriteRepository(),
-    private val hrvWriteRepository: HrvWriteRepository = HrvWriteRepository(),
     private val cardiovascularWriteRepository: CardiovascularWriteRepository = CardiovascularWriteRepository(),
+    private val scalarSampleWriteRepository: ScalarSampleWriteRepository = ScalarSampleWriteRepository(),
 ) {
     fun write(
         provider: String,
@@ -60,20 +50,6 @@ class MetricWriteService(
                 now,
             )
 
-            is BodyMeasurementRecord -> writeBodyMeasurement(
-                sourceInstanceId,
-                ingestionRecordId,
-                record,
-                now,
-            )
-
-            is HeartRateRecord -> writeHeartRate(
-                sourceInstanceId,
-                ingestionRecordId,
-                record,
-                now,
-            )
-
             is ActivitySummaryRecord -> writeActivitySummary(
                 sourceInstanceId,
                 ingestionRecordId,
@@ -88,20 +64,6 @@ class MetricWriteService(
                 now,
             )
 
-            is RespiratoryRateRecord -> writeRespiratoryRate(
-                sourceInstanceId,
-                ingestionRecordId,
-                record,
-                now,
-            )
-
-            is HrvRecord -> writeHrv(
-                sourceInstanceId,
-                ingestionRecordId,
-                record,
-                now,
-            )
-
             is BloodPressureRecord -> writeBloodPressure(
                 sourceInstanceId,
                 ingestionRecordId,
@@ -109,14 +71,7 @@ class MetricWriteService(
                 now,
             )
 
-            is CardiovascularRecord -> writeCardiovascular(
-                sourceInstanceId,
-                ingestionRecordId,
-                record,
-                now,
-            )
-
-            is ExtendedBodyMeasurementRecord -> writeExtendedBodyMeasurement(
+            is ScalarSampleRecord -> writeScalarSamples(
                 sourceInstanceId,
                 ingestionRecordId,
                 record,
@@ -181,53 +136,6 @@ class MetricWriteService(
         }
     }
 
-    private fun writeBodyMeasurement(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: BodyMeasurementRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = bodyMeasurementWriteRepository.insertBodyMeasurements(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now,
-        )
-        return MetricWriteResult(
-            created = MetricCreatedCounts.of(MetricKind.BODY_MEASUREMENTS to inserted),
-            duplicateSkipped = record.measurements.size - inserted,
-            affectedDates = if (inserted > 0) {
-                mapOf(DerivedKind.BODY_MEASUREMENT_CANONICAL to setOf(record.measuredAt.utcDate()))
-            } else {
-                emptyMap()
-            },
-        )
-    }
-
-    private fun writeHeartRate(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: HeartRateRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = heartRateWriteRepository.insertHeartRateSample(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now,
-        )
-        return if (inserted) {
-            MetricWriteResult(
-                created = MetricCreatedCounts.of(MetricKind.HEART_RATE_SAMPLES to 1),
-                affectedDates = mapOf(
-                    DerivedKind.HEART_RATE_CANONICAL to setOf(record.measuredAt.utcDate()),
-                ),
-            )
-        } else {
-            MetricWriteResult(duplicateSkipped = 1)
-        }
-    }
-
     private fun writeActivitySummary(
         sourceInstanceId: Int,
         ingestionRecordId: Int,
@@ -276,54 +184,6 @@ class MetricWriteService(
         }
     }
 
-    private fun writeRespiratoryRate(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: RespiratoryRateRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = respiratoryRateWriteRepository.insertRespiratoryRateSample(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now,
-        )
-        return if (inserted) {
-            MetricWriteResult(
-                created = MetricCreatedCounts.of(MetricKind.RESPIRATORY_RATE_SAMPLES to 1),
-                affectedDates = mapOf(
-                    DerivedKind.RESPIRATORY_RATE_CANONICAL to setOf(record.measuredAt.utcDate()),
-                ),
-            )
-        } else {
-            MetricWriteResult(duplicateSkipped = 1)
-        }
-    }
-
-    private fun writeHrv(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: HrvRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = hrvWriteRepository.insertHrvSample(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now,
-        )
-        return if (inserted) {
-            MetricWriteResult(
-                created = MetricCreatedCounts.of(MetricKind.HRV_SAMPLES to 1),
-                affectedDates = mapOf(
-                    DerivedKind.HRV_CANONICAL to setOf(record.measuredAt.utcDate()),
-                ),
-            )
-        } else {
-            MetricWriteResult(duplicateSkipped = 1)
-        }
-    }
-
     private fun writeBloodPressure(
         sourceInstanceId: Int,
         ingestionRecordId: Int,
@@ -343,40 +203,24 @@ class MetricWriteService(
         }
     }
 
-    private fun writeCardiovascular(
+    private fun writeScalarSamples(
         sourceInstanceId: Int,
         ingestionRecordId: Int,
-        record: CardiovascularRecord,
+        record: ScalarSampleRecord,
         now: Instant,
     ): MetricWriteResult {
-        val inserted = cardiovascularWriteRepository.insertCardiovascular(
+        val insertedTypes = scalarSampleWriteRepository.insertScalarSamples(
             sourceInstanceId,
             ingestionRecordId,
             record,
             now,
         )
-        return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts.of(MetricKind.CARDIOVASCULAR_MEASUREMENTS to 1))
-        } else {
-            MetricWriteResult(duplicateSkipped = 1)
-        }
-    }
-
-    private fun writeExtendedBodyMeasurement(
-        sourceInstanceId: Int,
-        ingestionRecordId: Int,
-        record: ExtendedBodyMeasurementRecord,
-        now: Instant,
-    ): MetricWriteResult {
-        val inserted = bodyMeasurementWriteRepository.insertExtendedBodyMeasurements(
-            sourceInstanceId,
-            ingestionRecordId,
-            record,
-            now,
-        )
+        val counts = insertedTypes
+            .groupingBy { ScalarMetricRegistry.get(it).countsKind }
+            .eachCount()
         return MetricWriteResult(
-            created = MetricCreatedCounts.of(MetricKind.EXTENDED_BODY_MEASUREMENTS to inserted),
-            duplicateSkipped = record.measurements.size - inserted,
+            created = MetricCreatedCounts(counts),
+            duplicateSkipped = record.values.size - insertedTypes.size,
         )
     }
 }

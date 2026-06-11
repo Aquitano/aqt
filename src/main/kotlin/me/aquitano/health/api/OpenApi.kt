@@ -59,6 +59,10 @@ private const val ActivitySummarySchemaName = "ActivitySummaryDto"
 private const val SleepSummarySchemaName = "SleepSummaryDto"
 private const val RespiratoryRateSchemaName = "RespiratoryRateDto"
 private const val HrvSchemaName = "HrvDto"
+private const val BloodPressureSchemaName = "BloodPressureDto"
+private const val CardiovascularSchemaName = "CardiovascularDto"
+private const val ExtendedBodyMeasurementSchemaName = "ExtendedBodyMeasurementDto"
+private const val ScalarSampleSchemaName = "ScalarSampleDto"
 
 internal fun openApiInfo(): OpenApiInfo =
     OpenApiInfo(
@@ -172,6 +176,11 @@ private fun ingestionRecordComponentSchemas(): Map<String, JsonSchema> =
         SleepSummarySchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<SleepSummaryDto>()),
         RespiratoryRateSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<RespiratoryRateDto>()),
         HrvSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<HrvDto>()),
+        BloodPressureSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<BloodPressureDto>()),
+        CardiovascularSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<CardiovascularDto>()),
+        ExtendedBodyMeasurementSchemaName to
+            KotlinxJsonSchemaInference.buildSchema(typeOf<ExtendedBodyMeasurementDto>()),
+        ScalarSampleSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<ScalarSampleDto>()),
     )
 
 internal fun Operation.Builder.publicEndpoint() {
@@ -1169,6 +1178,10 @@ internal fun ingestionRecordSchema(): JsonSchema =
             ReferenceOr.schema(SleepSummarySchemaName),
             ReferenceOr.schema(RespiratoryRateSchemaName),
             ReferenceOr.schema(HrvSchemaName),
+            ReferenceOr.schema(BloodPressureSchemaName),
+            ReferenceOr.schema(CardiovascularSchemaName),
+            ReferenceOr.schema(ExtendedBodyMeasurementSchemaName),
+            ReferenceOr.schema(ScalarSampleSchemaName),
         ),
         discriminator = JsonSchemaDiscriminator(
             propertyName = "type",
@@ -1193,6 +1206,16 @@ internal fun ingestionRecordSchema(): JsonSchema =
                     RespiratoryRateSchemaName
                 ),
                 RecordTypes.HRV to componentSchemaRef(HrvSchemaName),
+                RecordTypes.BLOOD_PRESSURE to componentSchemaRef(
+                    BloodPressureSchemaName
+                ),
+                RecordTypes.CARDIOVASCULAR to componentSchemaRef(
+                    CardiovascularSchemaName
+                ),
+                RecordTypes.EXTENDED_BODY_MEASUREMENT to componentSchemaRef(
+                    ExtendedBodyMeasurementSchemaName
+                ),
+                RecordTypes.SCALAR to componentSchemaRef(ScalarSampleSchemaName),
             )
         ),
     )

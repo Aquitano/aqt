@@ -2,25 +2,21 @@ package me.aquitano.health.application.metric.hrv
 
 import me.aquitano.health.api.dto.HrvSamplesResponse
 import me.aquitano.health.api.dto.HrvSummaryResponse
-import me.aquitano.health.application.metric.hrv.derived.CANONICAL_HRV_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.common.BaseReadService
-import me.aquitano.health.application.metric.common.Orders
 import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.application.metric.common.SortFields
-import me.aquitano.health.application.metric.common.hrvSummary
 import me.aquitano.health.application.metric.common.meta
 import me.aquitano.health.application.metric.common.readFilters
 import me.aquitano.health.application.metric.common.summaryFilters
-import me.aquitano.health.application.metric.common.toResponse
 import me.aquitano.health.application.metric.common.validateHrvMetricType
-import me.aquitano.health.application.metric.hrv.repository.CanonicalHrvDerivationRepository
-import me.aquitano.health.application.metric.hrv.repository.HrvSampleRow
+import me.aquitano.health.application.metric.scalar.ScalarSampleReadRepository
+import me.aquitano.health.application.metric.scalar.toHrvResponse
 import me.aquitano.health.domain.HrvMetricTypes
 import org.jetbrains.exposed.v1.jdbc.Database
 
 class HrvQueryService(
     database: Database,
-    private val canonicalRepository: CanonicalHrvDerivationRepository = CanonicalHrvDerivationRepository(),
+    private val scalarRepository: ScalarSampleReadRepository = ScalarSampleReadRepository(),
 ) : BaseReadService(database) {
     suspend fun listHrvSamples(params: QueryParams): HrvSamplesResponse {
         val metricType = params.optional("metricType") ?: HrvMetricTypes.RMSSD
@@ -31,13 +27,10 @@ class HrvQueryService(
                 allowedSorts = setOf(SortFields.MEASURED_AT),
                 latestSupported = true,
             )
-            val (rows, sourceMetadata) = canonicalRepository.listCanonicalHrvSamples(
-                filters,
-                metricType,
-                CANONICAL_HRV_ALGORITHM_VERSION,
-            )
+            val (rows, sourceMetadata) =
+                scalarRepository.list(filters, setOf("hrv_$metricType"), canonical = true)
             HrvSamplesResponse(
-                items = rows.map { it.toResponse(sourceMetadata) },
+                items = rows.map { it.toHrvResponse(sourceMetadata) },
                 meta = rows.meta(filters),
             )
         }
@@ -48,23 +41,17 @@ class HrvQueryService(
         validateHrvMetricType(metricType)
         return dbQuery {
             val filters = params.summaryFilters(SortFields.MEASURED_AT)
-            val canonicalFilters = filters.copy(limit = Int.MAX_VALUE, order = Orders.ASC)
-            val (canonicalRows, sourceMetadata) = canonicalRepository.listCanonicalHrvSamples(
-                canonicalFilters,
-                metricType,
-                CANONICAL_HRV_ALGORITHM_VERSION,
-            )
-            val summary = canonicalRows.hrvSummary()
-            val latest = canonicalRows.maxWithOrNull(compareBy<HrvSampleRow> { it.measuredAt }.thenBy { it.id })
+            val scalarTypes = setOf("hrv_$metricType")
+            val summary = scalarRepository.summarize(filters, scalarTypes, canonical = true)
+            val (latest, sourceMetadata) = scalarRepository.latest(filters, scalarTypes, canonical = true)
             HrvSummaryResponse(
                 count = summary.count,
                 metricType = metricType,
                 minValue = summary.minValue,
                 maxValue = summary.maxValue,
                 avgValue = summary.avgValue,
-                latest = latest?.toResponse(sourceMetadata),
+                latest = latest?.toHrvResponse(sourceMetadata),
             )
         }
     }
 }
-

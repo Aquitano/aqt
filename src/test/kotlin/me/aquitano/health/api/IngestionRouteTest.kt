@@ -105,9 +105,18 @@ class IngestionRouteTest {
         )
         assertEquals(1, countRows(dbPath, "sleep_sessions"))
         assertEquals(2, countRows(dbPath, "sleep_stages"))
-        assertEquals(5, countRows(dbPath, "body_measurements"))
-        assertEquals(5, countRows(dbPath, "canonical_body_measurements"))
-        assertEquals(1, countRows(dbPath, "heart_rate_samples"))
+        assertEquals(
+            5,
+            singleInt(
+                dbPath,
+                "SELECT COUNT(*) FROM scalar_samples WHERE metric_type IN " +
+                    "('weight', 'body_fat', 'muscle', 'water', 'visceral_fat')"
+            )
+        )
+        assertEquals(
+            1,
+            singleInt(dbPath, "SELECT COUNT(*) FROM scalar_samples WHERE metric_type = 'heart_rate'")
+        )
         assertEquals(1, countRows(dbPath, "sleep_summaries"))
         assertEquals(1, countRows(dbPath, "canonical_sleep_summaries"))
         assertEquals(
@@ -116,7 +125,7 @@ class IngestionRouteTest {
         )
         assertEquals(
             "unknown",
-            singleString(dbPath, "SELECT context FROM heart_rate_samples")
+            singleString(dbPath, "SELECT context FROM scalar_samples WHERE metric_type = 'heart_rate'")
         )
     }
 

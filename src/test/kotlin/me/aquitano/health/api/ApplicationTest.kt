@@ -246,6 +246,10 @@ class ApplicationTest {
             "SleepSummaryDto",
             "RespiratoryRateDto",
             "HrvDto",
+            "BloodPressureDto",
+            "CardiovascularDto",
+            "ExtendedBodyMeasurementDto",
+            "ScalarSampleDto",
         ).forEach { schemaName ->
             assertNotNull(schemas[schemaName], "Missing OpenAPI component schema $schemaName")
         }
@@ -265,6 +269,10 @@ class ApplicationTest {
                 "#/components/schemas/SleepSummaryDto",
                 "#/components/schemas/RespiratoryRateDto",
                 "#/components/schemas/HrvDto",
+                "#/components/schemas/BloodPressureDto",
+                "#/components/schemas/CardiovascularDto",
+                "#/components/schemas/ExtendedBodyMeasurementDto",
+                "#/components/schemas/ScalarSampleDto",
             ),
             recordRefs,
         )

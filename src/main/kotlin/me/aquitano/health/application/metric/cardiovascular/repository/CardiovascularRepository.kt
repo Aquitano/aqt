@@ -46,50 +46,6 @@ class CardiovascularRepository : BaseMetricRepository() {
         return row to sourceMetadata(listOfNotNull(row?.sourceInstanceId).toSet(), filters.includeSource)
     }
 
-    fun listCardiovascular(
-        filters: ReadFilters,
-        metricType: String?
-    ): Pair<List<CardiovascularMeasurementRow>, Map<Int, SourceMetadata>> {
-        var where = timestampConditions(
-            filters = filters,
-            sourceInstanceIdColumn = CardiovascularMeasurementsTable.sourceInstanceId,
-            fromColumn = CardiovascularMeasurementsTable.measuredAt,
-        ).whereOrNull() ?: return emptyReadResult()
-        metricType?.let { where = where and (CardiovascularMeasurementsTable.metricType eq it) }
-
-        val rows = CardiovascularMeasurementsTable.selectAll()
-            .where(where)
-            .orderBy(
-                CardiovascularMeasurementsTable.measuredAt to filters.sortOrder(),
-                CardiovascularMeasurementsTable.id to filters.sortOrder(),
-            )
-            .limit(filters.limit)
-            .map(::toCardiovascularMeasurementRow)
-        return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
-    }
-
-    fun latestCardiovascular(
-        filters: ReadFilters,
-        metricType: String
-    ): Pair<CardiovascularMeasurementRow?, Map<Int, SourceMetadata>> {
-        val where = timestampConditions(
-            filters = filters,
-            sourceInstanceIdColumn = CardiovascularMeasurementsTable.sourceInstanceId,
-            fromColumn = CardiovascularMeasurementsTable.measuredAt,
-        ).whereOrNull() ?: return emptyLatestResult()
-
-        val row = CardiovascularMeasurementsTable.selectAll()
-            .where(where and (CardiovascularMeasurementsTable.metricType eq metricType))
-            .orderBy(
-                CardiovascularMeasurementsTable.measuredAt to SortOrder.DESC,
-                CardiovascularMeasurementsTable.id to SortOrder.DESC,
-            )
-            .limit(1)
-            .map(::toCardiovascularMeasurementRow)
-            .singleOrNull()
-        return row to sourceMetadata(listOfNotNull(row?.sourceInstanceId).toSet(), filters.includeSource)
-    }
-
     private fun toBloodPressureMeasurementRow(row: ResultRow): BloodPressureMeasurementRow =
         BloodPressureMeasurementRow(
             id = row[BloodPressureMeasurementsTable.id].value,
@@ -99,15 +55,4 @@ class CardiovascularRepository : BaseMetricRepository() {
             diastolicMmhg = row[BloodPressureMeasurementsTable.diastolicMmhg],
             heartRateBpm = row[BloodPressureMeasurementsTable.heartRateBpm],
         )
-
-    private fun toCardiovascularMeasurementRow(row: ResultRow): CardiovascularMeasurementRow =
-        CardiovascularMeasurementRow(
-            id = row[CardiovascularMeasurementsTable.id].value,
-            sourceInstanceId = row[CardiovascularMeasurementsTable.sourceInstanceId],
-            measuredAt = row[CardiovascularMeasurementsTable.measuredAt].toApiString(),
-            metricType = row[CardiovascularMeasurementsTable.metricType],
-            value = row[CardiovascularMeasurementsTable.value],
-            unit = row[CardiovascularMeasurementsTable.unit],
-        )
-
 }

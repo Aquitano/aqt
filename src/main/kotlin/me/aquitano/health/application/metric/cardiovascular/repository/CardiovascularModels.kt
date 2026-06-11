@@ -9,12 +9,3 @@ data class BloodPressureMeasurementRow(
     val heartRateBpm: Int?,
 )
 
-data class CardiovascularMeasurementRow(
-    val id: Int,
-    val sourceInstanceId: Int,
-    val measuredAt: String,
-    val metricType: String,
-    val value: Double,
-    val unit: String,
-)
-

@@ -36,19 +36,19 @@ class ReplayServiceTest {
         val fixture = Fixture()
         fixture.ingestMixedBatch()
 
-        assertEquals(1, fixture.count("heart_rate_samples"))
-        assertEquals(1, fixture.count("canonical_heart_rate_samples"))
-        fixture.execute("DELETE FROM heart_rate_samples")
-        assertEquals(0, fixture.count("heart_rate_samples"))
-        assertEquals(0, fixture.count("canonical_heart_rate_samples"))
+        assertEquals(1, fixture.count("scalar_samples"))
+        assertEquals(1, fixture.count("canonical_scalar_samples"))
+        fixture.execute("DELETE FROM scalar_samples")
+        assertEquals(0, fixture.count("scalar_samples"))
+        assertEquals(0, fixture.count("canonical_scalar_samples"))
 
         val job = fixture.runReplay(ReplayRequest(scope = "all"))
 
         assertEquals("completed", job.status)
         assertTrue(job.metricsWritten >= 1, "expected restored metrics, got ${job.metricsWritten}")
         assertEquals(0, job.mappingFailures)
-        assertEquals(1, fixture.count("heart_rate_samples"))
-        assertEquals(1, fixture.count("canonical_heart_rate_samples"))
+        assertEquals(1, fixture.count("scalar_samples"))
+        assertEquals(1, fixture.count("canonical_scalar_samples"))
         assertEquals(1, fixture.count("step_samples"))
         assertEquals(1, fixture.count("canonical_activity_summaries"))
     }
@@ -71,14 +71,12 @@ class ReplayServiceTest {
         val fixture = Fixture()
         fixture.ingestMixedBatch()
 
-        fixture.execute("DELETE FROM canonical_heart_rate_samples")
         fixture.execute("DELETE FROM canonical_activity_summaries")
 
         val job = fixture.runReplay(ReplayRequest(scope = "derived"))
 
         assertEquals("completed", job.status)
         assertEquals(0, job.recordsReplayed)
-        assertEquals(1, fixture.count("canonical_heart_rate_samples"))
         assertEquals(1, fixture.count("canonical_activity_summaries"))
     }
 
@@ -86,7 +84,7 @@ class ReplayServiceTest {
     fun wipeReplayRewritesProjectionRowsInRange() = runBlocking {
         val fixture = Fixture()
         fixture.ingestMixedBatch()
-        val originalId = fixture.singleInt("SELECT id FROM heart_rate_samples")
+        val originalId = fixture.singleInt("SELECT id FROM scalar_samples")
 
         val job = fixture.runReplay(
             ReplayRequest(
@@ -101,10 +99,10 @@ class ReplayServiceTest {
         assertEquals("completed", job.status)
         assertEquals(1, job.recordsReplayed)
         assertEquals(1, job.metricsWritten)
-        assertEquals(1, fixture.count("heart_rate_samples"))
-        assertEquals(1, fixture.count("canonical_heart_rate_samples"))
+        assertEquals(1, fixture.count("scalar_samples"))
+        assertEquals(1, fixture.count("canonical_scalar_samples"))
         assertTrue(
-            fixture.singleInt("SELECT id FROM heart_rate_samples") != originalId,
+            fixture.singleInt("SELECT id FROM scalar_samples") != originalId,
             "wipe should rewrite the row under a new id",
         )
         // Untouched record types survive a scoped wipe.

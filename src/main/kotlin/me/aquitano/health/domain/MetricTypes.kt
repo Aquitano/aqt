@@ -12,6 +12,9 @@ object RecordTypes {
     const val BLOOD_PRESSURE = "blood_pressure"
     const val CARDIOVASCULAR = "cardiovascular"
     const val EXTENDED_BODY_MEASUREMENT = "extended_body_measurement"
+
+    /** Generic scalar record carrying an explicit metric type from the scalar registry. */
+    const val SCALAR = "scalar"
 }
 
 object SleepStages {

@@ -31,6 +31,7 @@ data class IngestionBatchRequest(
     BloodPressureDto::class,
     CardiovascularDto::class,
     ExtendedBodyMeasurementDto::class,
+    ScalarSampleDto::class,
 )
 @JsonSchema.Discriminator(
     "type",
@@ -51,6 +52,7 @@ data class IngestionBatchRequest(
         "extended_body_measurement",
         ExtendedBodyMeasurementDto::class
     ),
+    JsonSchema.Discriminator.Mapping("scalar", ScalarSampleDto::class),
 )
 sealed class IngestionRecordDto {
     abstract val providerRecordId: String?
@@ -222,6 +224,19 @@ data class ExtendedBodyMeasurementDto(
     val metricType: String,
     val value: Double,
     val unit: String,
+    val segment: String? = null,
+) : IngestionRecordDto()
+
+@Serializable
+@SerialName("scalar")
+data class ScalarSampleDto(
+    override val providerRecordId: String? = null,
+    @JsonSchema.Format("date-time")
+    val measuredAt: String,
+    val metricType: String,
+    val value: Double,
+    val unit: String,
+    val context: String? = null,
     val segment: String? = null,
 ) : IngestionRecordDto()
 

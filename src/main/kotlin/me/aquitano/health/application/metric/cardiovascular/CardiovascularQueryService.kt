@@ -1,5 +1,4 @@
 package me.aquitano.health.application.metric.cardiovascular
-import me.aquitano.health.domain.NotFoundException
 
 import me.aquitano.health.api.dto.BloodPressureLatestResponse
 import me.aquitano.health.api.dto.BloodPressureMeasurementsResponse
@@ -14,11 +13,16 @@ import me.aquitano.health.application.metric.common.readFilters
 import me.aquitano.health.application.metric.common.summaryFilters
 import me.aquitano.health.application.metric.common.toResponse
 import me.aquitano.health.application.metric.common.validateCardiovascularMetricType
+import me.aquitano.health.application.metric.scalar.ScalarSampleReadRepository
+import me.aquitano.health.application.metric.scalar.toCardiovascularResponse
+import me.aquitano.health.domain.NotFoundException
+import me.aquitano.health.domain.ScalarMetricRegistry
 import org.jetbrains.exposed.v1.jdbc.Database
 
 class CardiovascularQueryService(
     database: Database,
     private val cardiovascularRepository: CardiovascularRepository,
+    private val scalarRepository: ScalarSampleReadRepository = ScalarSampleReadRepository(),
 ) : BaseReadService(database) {
     suspend fun listBloodPressure(params: QueryParams): BloodPressureMeasurementsResponse =
         dbQuery {
@@ -44,16 +48,17 @@ class CardiovascularQueryService(
     suspend fun listCardiovascular(params: QueryParams): CardiovascularMeasurementsResponse {
         val metricType = params.optional("metricType")
         if (metricType != null) validateCardiovascularMetricType(metricType)
+        val metricTypes = metricType?.let { setOf(it) } ?: ScalarMetricRegistry.cardiovascularMetricTypes
         return dbQuery {
             val filters = params.readFilters(
                 defaultSort = SortFields.MEASURED_AT,
                 allowedSorts = setOf(SortFields.MEASURED_AT),
                 latestSupported = true,
             )
-            val (rawRows, sourceMetadata) = cardiovascularRepository.listCardiovascular(filters, metricType)
+            val (rows, sourceMetadata) = scalarRepository.list(filters, metricTypes, canonical = false)
             CardiovascularMeasurementsResponse(
-                items = rawRows.map { it.toResponse(sourceMetadata) },
-                meta = rawRows.meta(filters),
+                items = rows.map { it.toCardiovascularResponse(sourceMetadata) },
+                meta = rows.meta(filters),
             )
         }
     }
@@ -63,10 +68,10 @@ class CardiovascularQueryService(
         validateCardiovascularMetricType(metricType)
         return dbQuery {
             val filters = params.summaryFilters(SortFields.MEASURED_AT)
-            val (row, sourceMetadata) = cardiovascularRepository.latestCardiovascular(filters, metricType)
-            row?.toResponse(sourceMetadata)
+            val (row, sourceMetadata) =
+                scalarRepository.latest(filters, setOf(metricType), canonical = false)
+            row?.toCardiovascularResponse(sourceMetadata)
                 ?: throw NotFoundException("No cardiovascular measurement found")
         }
     }
 }
-

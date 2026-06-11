@@ -85,6 +85,10 @@ fun Application.module() {
         replayService.stop()
     }
 
+    // Re-upsert metric_catalog and provider_ranks from the Kotlin registry
+    val metricCatalogBootstrap by inject<MetricCatalogBootstrap>()
+    metricCatalogBootstrap.run()
+
     // Bootstrap the API client (creates a default API key if none exists)
     val bootstrapService by inject<ApiClientBootstrapService>()
     bootstrapService.bootstrap()

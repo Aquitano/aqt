@@ -1,10 +1,6 @@
 package me.aquitano.health.application
 
 import me.aquitano.health.application.metric.activity.derived.CanonicalActivitySummaryDerivationService
-import me.aquitano.health.application.metric.body.derived.CanonicalBodyMeasurementDerivationService
-import me.aquitano.health.application.metric.heart.derived.CanonicalHeartRateDerivationService
-import me.aquitano.health.application.metric.hrv.derived.CanonicalHrvDerivationService
-import me.aquitano.health.application.metric.respiratory.derived.CanonicalRespiratoryRateDerivationService
 import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSessionDerivationService
 import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSummaryDerivationService
 import me.aquitano.health.application.metric.steps.derived.CanonicalStepDerivationService
@@ -56,10 +52,6 @@ fun derivedRebuildModules(
     stepSummaryService: StepSummaryService,
     canonicalStepService: CanonicalStepDerivationService,
     sleepNightService: SleepNightService,
-    canonicalHeartRateService: CanonicalHeartRateDerivationService,
-    canonicalRespiratoryRateService: CanonicalRespiratoryRateDerivationService,
-    canonicalHrvService: CanonicalHrvDerivationService,
-    canonicalBodyMeasurementService: CanonicalBodyMeasurementDerivationService,
     canonicalSleepSummaryService: CanonicalSleepSummaryDerivationService,
     canonicalSleepSessionService: CanonicalSleepSessionDerivationService,
     canonicalActivitySummaryService: CanonicalActivitySummaryDerivationService,
@@ -71,18 +63,6 @@ fun derivedRebuildModules(
         },
         DerivedRebuildModule(DerivedKind.SLEEP_NIGHT) { sourceInstanceId, dates, computedAt ->
             sleepNightService.recomputeUtc(sourceInstanceId, dates, computedAt)
-        },
-        DerivedRebuildModule(DerivedKind.HEART_RATE_CANONICAL) { _, dates, computedAt ->
-            canonicalHeartRateService.recompute(dates, computedAt)
-        },
-        DerivedRebuildModule(DerivedKind.RESPIRATORY_RATE_CANONICAL) { _, dates, computedAt ->
-            canonicalRespiratoryRateService.recompute(dates, computedAt)
-        },
-        DerivedRebuildModule(DerivedKind.HRV_CANONICAL) { _, dates, computedAt ->
-            canonicalHrvService.recompute(dates, computedAt)
-        },
-        DerivedRebuildModule(DerivedKind.BODY_MEASUREMENT_CANONICAL) { _, dates, computedAt ->
-            canonicalBodyMeasurementService.recompute(dates, computedAt)
         },
         DerivedRebuildModule(DerivedKind.SLEEP_SUMMARY_CANONICAL) { _, dates, computedAt ->
             canonicalSleepSummaryService.recompute(dates, computedAt)

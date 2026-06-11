@@ -107,6 +107,7 @@ class IngestionMappingService {
             is BloodPressureDto -> mapBloodPressure(field, dto, issues)
             is CardiovascularDto -> mapCardiovascular(field, dto, issues)
             is ExtendedBodyMeasurementDto -> mapExtendedBodyMeasurement(field, dto, issues)
+            is ScalarSampleDto -> mapScalar(field, dto, issues)
         }
     }
 
@@ -256,7 +257,7 @@ class IngestionMappingService {
         field: String,
         dto: BodyMeasurementDto,
         issues: MutableList<ValidationIssue>
-    ): BodyMeasurementRecord? {
+    ): ScalarSampleRecord? {
         val measuredAt =
             parseInstant(dto.measuredAt, "$field.measuredAt", issues)
         val values = buildList {
@@ -268,7 +269,7 @@ class IngestionMappingService {
                         message = "must be greater than 0",
                     )
                 )
-                else add(BodyMeasurementValue(BodyMetricTypes.WEIGHT, it, "kg"))
+                else add(ScalarValue(BodyMetricTypes.WEIGHT, it, "kg"))
             }
             dto.bodyFatPercent?.let {
                 if (it !in 0.0..100.0) issues.add(
@@ -279,7 +280,7 @@ class IngestionMappingService {
                     )
                 )
                 else add(
-                    BodyMeasurementValue(
+                    ScalarValue(
                         BodyMetricTypes.BODY_FAT,
                         it,
                         "percent"
@@ -294,7 +295,7 @@ class IngestionMappingService {
                         message = "must be greater than 0",
                     )
                 )
-                else add(BodyMeasurementValue(BodyMetricTypes.MUSCLE, it, "kg"))
+                else add(ScalarValue(BodyMetricTypes.MUSCLE, it, "kg"))
             }
             dto.bodyWaterPercent?.let {
                 if (it !in 0.0..100.0) issues.add(
@@ -305,7 +306,7 @@ class IngestionMappingService {
                     )
                 )
                 else add(
-                    BodyMeasurementValue(
+                    ScalarValue(
                         BodyMetricTypes.WATER,
                         it,
                         "percent"
@@ -321,7 +322,7 @@ class IngestionMappingService {
                     )
                 )
                 else add(
-                    BodyMeasurementValue(
+                    ScalarValue(
                         BodyMetricTypes.VISCERAL_FAT,
                         it,
                         "rating"
@@ -341,14 +342,15 @@ class IngestionMappingService {
         }
 
         return if (measuredAt != null && values.isNotEmpty()) {
-            BodyMeasurementRecord(
+            ScalarSampleRecord(
                 providerRecordId = dto.providerRecordId,
                 normalizedRecordJson = AppJson.encodeToJsonElement(
                     IngestionRecordDto.serializer(),
                     dto
                 ).jsonObject,
+                recordType = RecordTypes.BODY_MEASUREMENT,
                 measuredAt = measuredAt,
-                measurements = values
+                values = values
             )
         } else {
             null
@@ -359,7 +361,7 @@ class IngestionMappingService {
         field: String,
         dto: HeartRateDto,
         issues: MutableList<ValidationIssue>
-    ): HeartRateRecord? {
+    ): ScalarSampleRecord? {
         val measuredAt =
             parseInstant(dto.measuredAt, "$field.measuredAt", issues)
         val bpm = dto.bpm
@@ -385,15 +387,22 @@ class IngestionMappingService {
         }
 
         return if (measuredAt != null && bpm in 25..250 && context in HeartRateContexts.supported) {
-            HeartRateRecord(
+            ScalarSampleRecord(
                 providerRecordId = dto.providerRecordId,
                 normalizedRecordJson = AppJson.encodeToJsonElement(
                     IngestionRecordDto.serializer(),
                     dto
                 ).jsonObject,
+                recordType = RecordTypes.HEART_RATE,
                 measuredAt = measuredAt,
-                bpm = bpm,
-                context = context
+                values = listOf(
+                    ScalarValue(
+                        metricType = ScalarMetricTypes.HEART_RATE,
+                        value = bpm.toDouble(),
+                        unit = "bpm",
+                        context = context,
+                    )
+                )
             )
         } else {
             null
@@ -711,7 +720,7 @@ class IngestionMappingService {
         field: String,
         dto: RespiratoryRateDto,
         issues: MutableList<ValidationIssue>
-    ): RespiratoryRateRecord? {
+    ): ScalarSampleRecord? {
         val measuredAt =
             parseInstant(dto.measuredAt, "$field.measuredAt", issues)
         val context = dto.context ?: "unknown"
@@ -735,15 +744,22 @@ class IngestionMappingService {
         }
 
         return if (measuredAt != null && dto.breathsPerMinute in 5..80 && context in RespiratoryRateContexts.supported) {
-            RespiratoryRateRecord(
+            ScalarSampleRecord(
                 providerRecordId = dto.providerRecordId,
                 normalizedRecordJson = AppJson.encodeToJsonElement(
                     IngestionRecordDto.serializer(),
                     dto
                 ).jsonObject,
+                recordType = RecordTypes.RESPIRATORY_RATE,
                 measuredAt = measuredAt,
-                breathsPerMinute = dto.breathsPerMinute,
-                context = context,
+                values = listOf(
+                    ScalarValue(
+                        metricType = ScalarMetricTypes.RESPIRATORY_RATE,
+                        value = dto.breathsPerMinute.toDouble(),
+                        unit = "breaths_per_minute",
+                        context = context,
+                    )
+                )
             )
         } else {
             null
@@ -754,7 +770,7 @@ class IngestionMappingService {
         field: String,
         dto: HrvDto,
         issues: MutableList<ValidationIssue>
-    ): HrvRecord? {
+    ): ScalarSampleRecord? {
         val measuredAt =
             parseInstant(dto.measuredAt, "$field.measuredAt", issues)
         val context = dto.context ?: "unknown"
@@ -796,17 +812,22 @@ class IngestionMappingService {
         }
 
         return if (measuredAt != null && dto.metricType in HrvMetricTypes.supported && dto.unit == "ms" && dto.value > 0.0 && dto.value <= 500.0 && context in HrvContexts.supported) {
-            HrvRecord(
+            ScalarSampleRecord(
                 providerRecordId = dto.providerRecordId,
                 normalizedRecordJson = AppJson.encodeToJsonElement(
                     IngestionRecordDto.serializer(),
                     dto
                 ).jsonObject,
+                recordType = RecordTypes.HRV,
                 measuredAt = measuredAt,
-                metricType = dto.metricType,
-                value = dto.value,
-                unit = dto.unit,
-                context = context,
+                values = listOf(
+                    ScalarValue(
+                        metricType = "hrv_${dto.metricType}",
+                        value = dto.value,
+                        unit = dto.unit,
+                        context = context,
+                    )
+                )
             )
         } else {
             null
@@ -870,7 +891,7 @@ class IngestionMappingService {
         field: String,
         dto: CardiovascularDto,
         issues: MutableList<ValidationIssue>
-    ): CardiovascularRecord? {
+    ): ScalarSampleRecord? {
         val measuredAt =
             parseInstant(dto.measuredAt, "$field.measuredAt", issues)
         if (dto.metricType !in CardiovascularMetricTypes.supported) {
@@ -902,16 +923,21 @@ class IngestionMappingService {
         }
 
         return if (measuredAt != null && dto.metricType in CardiovascularMetricTypes.supported && dto.value > 0.0) {
-            CardiovascularRecord(
+            ScalarSampleRecord(
                 providerRecordId = dto.providerRecordId,
                 normalizedRecordJson = AppJson.encodeToJsonElement(
                     IngestionRecordDto.serializer(),
                     dto
                 ).jsonObject,
+                recordType = RecordTypes.CARDIOVASCULAR,
                 measuredAt = measuredAt,
-                metricType = dto.metricType,
-                value = dto.value,
-                unit = dto.unit,
+                values = listOf(
+                    ScalarValue(
+                        metricType = dto.metricType,
+                        value = dto.value,
+                        unit = dto.unit,
+                    )
+                ),
             )
         } else {
             null
@@ -922,7 +948,7 @@ class IngestionMappingService {
         field: String,
         dto: ExtendedBodyMeasurementDto,
         issues: MutableList<ValidationIssue>
-    ): ExtendedBodyMeasurementRecord? {
+    ): ScalarSampleRecord? {
         val measuredAt =
             parseInstant(dto.measuredAt, "$field.measuredAt", issues)
         if (dto.metricType !in BodyMetricTypes.supported) {
@@ -963,18 +989,123 @@ class IngestionMappingService {
         }
 
         return if (measuredAt != null && dto.metricType in BodyMetricTypes.supported) {
-            ExtendedBodyMeasurementRecord(
+            ScalarSampleRecord(
                 providerRecordId = dto.providerRecordId,
                 normalizedRecordJson = AppJson.encodeToJsonElement(
                     IngestionRecordDto.serializer(),
                     dto
                 ).jsonObject,
+                recordType = RecordTypes.EXTENDED_BODY_MEASUREMENT,
                 measuredAt = measuredAt,
-                measurements = listOf(
-                    ExtendedBodyMeasurementValue(
+                values = listOf(
+                    ScalarValue(
                         metricType = dto.metricType,
                         value = dto.value,
                         unit = dto.unit,
+                        segment = dto.segment,
+                    )
+                ),
+            )
+        } else {
+            null
+        }
+    }
+
+    private fun mapScalar(
+        field: String,
+        dto: ScalarSampleDto,
+        issues: MutableList<ValidationIssue>
+    ): ScalarSampleRecord? {
+        val measuredAt =
+            parseInstant(dto.measuredAt, "$field.measuredAt", issues)
+        val descriptor = ScalarMetricRegistry.find(dto.metricType)
+        if (descriptor == null) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.metricType",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "unsupported scalar metric type",
+                )
+            )
+            return null
+        }
+        if (dto.unit != descriptor.unit) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.unit",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "must be ${descriptor.unit}",
+                )
+            )
+        }
+        if (!descriptor.valueIsValid(dto.value)) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.value",
+                    code = ValidationIssueCodes.OutOfRange,
+                    message = "out of range for ${descriptor.metricType}",
+                )
+            )
+        }
+        val allowedContexts = descriptor.allowedContexts
+        val context = dto.context ?: if (allowedContexts != null) "unknown" else null
+        if (allowedContexts != null && context !in allowedContexts) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.context",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "unsupported context for ${descriptor.metricType}",
+                )
+            )
+        }
+        if (allowedContexts == null && dto.context != null) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.context",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "${descriptor.metricType} does not support a context",
+                )
+            )
+        }
+        if (dto.segment != null && !descriptor.supportsSegment) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.segment",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "${descriptor.metricType} does not support a segment",
+                )
+            )
+        }
+        if (dto.segment != null && dto.segment !in BodySegments.supported) {
+            issues.add(
+                ValidationIssue(
+                    field = "$field.segment",
+                    code = ValidationIssueCodes.UnsupportedValue,
+                    message = "unsupported body segment",
+                )
+            )
+        }
+
+        val valid = measuredAt != null &&
+            dto.unit == descriptor.unit &&
+            descriptor.valueIsValid(dto.value) &&
+            (allowedContexts == null && dto.context == null || allowedContexts != null && context in allowedContexts) &&
+            (dto.segment == null || descriptor.supportsSegment && dto.segment in BodySegments.supported)
+        return if (valid) {
+            ScalarSampleRecord(
+                providerRecordId = dto.providerRecordId,
+                normalizedRecordJson = AppJson.encodeToJsonElement(
+                    IngestionRecordDto.serializer(),
+                    dto
+                ).jsonObject,
+                recordType = RecordTypes.SCALAR,
+                measuredAt = measuredAt!!,
+                values = listOf(
+                    ScalarValue(
+                        metricType = descriptor.metricType,
+                        value = dto.value,
+                        unit = dto.unit,
+                        context = context,
                         segment = dto.segment,
                     )
                 ),

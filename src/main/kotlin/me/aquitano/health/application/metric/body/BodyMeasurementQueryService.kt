@@ -4,41 +4,35 @@ import me.aquitano.health.api.dto.BodyMeasurementLatestResponse
 import me.aquitano.health.api.dto.BodyMeasurementsResponse
 import me.aquitano.health.api.dto.ExtendedBodyMeasurementResponse
 import me.aquitano.health.api.dto.ExtendedBodyMeasurementsResponse
-import me.aquitano.health.application.metric.body.repository.BodyMeasurementRepository
-import me.aquitano.health.application.metric.body.derived.CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION
-import me.aquitano.health.application.metric.body.repository.CanonicalBodyMeasurementDerivationRepository
 import me.aquitano.health.application.metric.common.BaseReadService
 import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.application.metric.common.SortFields
 import me.aquitano.health.application.metric.common.meta
 import me.aquitano.health.application.metric.common.readFilters
 import me.aquitano.health.application.metric.common.summaryFilters
-import me.aquitano.health.application.metric.common.toResponse
 import me.aquitano.health.application.metric.common.validateBodyMetricType
+import me.aquitano.health.application.metric.scalar.ScalarSampleReadRepository
+import me.aquitano.health.application.metric.scalar.toBodyMeasurementResponse
+import me.aquitano.health.application.metric.scalar.toExtendedBodyMeasurementResponse
 import me.aquitano.health.domain.NotFoundException
+import me.aquitano.health.domain.ScalarMetricRegistry
 import org.jetbrains.exposed.v1.jdbc.Database
 
 class BodyMeasurementQueryService(
     database: Database,
-    private val bodyMeasurementRepository: BodyMeasurementRepository,
-    private val canonicalRepository: CanonicalBodyMeasurementDerivationRepository,
+    private val scalarRepository: ScalarSampleReadRepository = ScalarSampleReadRepository(),
 ) : BaseReadService(database) {
     suspend fun listBodyMeasurements(params: QueryParams): BodyMeasurementsResponse {
-        val metricType = params.optional("metricType")
-        if (metricType != null) validateBodyMetricType(metricType)
+        val metricTypes = scalarTypes(params.optional("metricType"), ScalarMetricRegistry.bodyMetricTypes)
         return dbQuery {
             val filters = params.readFilters(
                 defaultSort = SortFields.MEASURED_AT,
                 allowedSorts = setOf(SortFields.MEASURED_AT),
                 latestSupported = true,
             )
-            val (rows, sourceMetadata) = canonicalRepository.listCanonicalBodyMeasurements(
-                filters,
-                metricType,
-                CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
-            )
+            val (rows, sourceMetadata) = scalarRepository.list(filters, metricTypes, canonical = true)
             BodyMeasurementsResponse(
-                items = rows.map { it.toResponse(sourceMetadata) },
+                items = rows.map { it.toBodyMeasurementResponse(sourceMetadata) },
                 meta = rows.meta(filters),
             )
         }
@@ -49,29 +43,25 @@ class BodyMeasurementQueryService(
         validateBodyMetricType(metricType)
         return dbQuery {
             val filters = params.summaryFilters(SortFields.MEASURED_AT)
-            val (row, sourceMetadata) = canonicalRepository.latestCanonicalBodyMeasurement(
-                filters,
-                metricType,
-                CANONICAL_BODY_MEASUREMENT_ALGORITHM_VERSION,
-            )
-            BodyMeasurementLatestResponse(item = row?.toResponse(sourceMetadata))
+            val (row, sourceMetadata) =
+                scalarRepository.latest(filters, setOf(metricType), canonical = true)
+            BodyMeasurementLatestResponse(item = row?.toBodyMeasurementResponse(sourceMetadata))
         }
     }
 
     suspend fun listExtendedBodyMeasurements(params: QueryParams): ExtendedBodyMeasurementsResponse {
-        val metricType = params.optional("metricType")
-        if (metricType != null) validateBodyMetricType(metricType)
+        val metricTypes =
+            scalarTypes(params.optional("metricType"), ScalarMetricRegistry.extendedBodyMetricTypes)
         return dbQuery {
             val filters = params.readFilters(
                 defaultSort = SortFields.MEASURED_AT,
                 allowedSorts = setOf(SortFields.MEASURED_AT),
                 latestSupported = true,
             )
-            val (rawRows, sourceMetadata) =
-                bodyMeasurementRepository.listExtendedBodyMeasurements(filters, metricType)
+            val (rows, sourceMetadata) = scalarRepository.list(filters, metricTypes, canonical = false)
             ExtendedBodyMeasurementsResponse(
-                items = rawRows.map { it.toResponse(sourceMetadata) },
-                meta = rawRows.meta(filters),
+                items = rows.map { it.toExtendedBodyMeasurementResponse(sourceMetadata) },
+                meta = rows.meta(filters),
             )
         }
     }
@@ -82,9 +72,16 @@ class BodyMeasurementQueryService(
         return dbQuery {
             val filters = params.summaryFilters(SortFields.MEASURED_AT)
             val (row, sourceMetadata) =
-                bodyMeasurementRepository.latestExtendedBodyMeasurementBefore(filters, metricType)
-            row?.toResponse(sourceMetadata) ?: throw NotFoundException("No extended body measurement found")
+                scalarRepository.latestBefore(filters, setOf(metricType), canonical = false)
+            row?.toExtendedBodyMeasurementResponse(sourceMetadata)
+                ?: throw NotFoundException("No extended body measurement found")
         }
     }
-}
 
+    /** Resolves the optional metricType filter against the endpoint's family default. */
+    private fun scalarTypes(metricType: String?, familyDefault: Set<String>): Set<String> {
+        if (metricType == null) return familyDefault
+        validateBodyMetricType(metricType)
+        return setOf(metricType)
+    }
+}

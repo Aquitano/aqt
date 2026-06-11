@@ -5,15 +5,9 @@ import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.DailyReadFilters
 import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
-import me.aquitano.health.application.metric.body.repository.BodyMeasurementRow
 import me.aquitano.health.application.metric.activity.repository.ActivitySummaryRow
 import me.aquitano.health.application.metric.sleep.repository.SleepSummaryRow
-import me.aquitano.health.application.metric.heart.repository.HeartRateSampleRow
-import me.aquitano.health.application.metric.respiratory.repository.RespiratoryRateSampleRow
-import me.aquitano.health.application.metric.hrv.repository.HrvSampleRow
 import me.aquitano.health.application.metric.cardiovascular.repository.BloodPressureMeasurementRow
-import me.aquitano.health.application.metric.cardiovascular.repository.CardiovascularMeasurementRow
-import me.aquitano.health.application.metric.body.repository.ExtendedBodyMeasurementRow
 import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
 import me.aquitano.health.application.metric.sleep.repository.SleepStageRow
 import me.aquitano.health.application.metric.sleep.repository.SleepNightRow
@@ -25,18 +19,6 @@ internal fun SourceMetadata?.toResponse(): SourceMetadataResponse? =
             providerInstanceId = it.providerInstanceId,
         )
     }
-
-internal fun BodyMeasurementRow.toResponse(
-    sourceMetadata: Map<Int, SourceMetadata>,
-): BodyMeasurementResponse =
-    BodyMeasurementResponse(
-        id = id,
-        measuredAt = measuredAt,
-        metricType = metricType,
-        value = value,
-        unit = unit,
-        source = sourceMetadata[sourceInstanceId].toResponse(),
-    )
 
 internal fun ActivitySummaryRow.toResponse(
     sourceMetadata: Map<Int, SourceMetadata>,
@@ -96,41 +78,6 @@ internal fun SleepSummaryRow.toResponse(
         source = sourceMetadata[sourceInstanceId].toResponse(),
     )
 
-internal fun HeartRateSampleRow.toResponse(
-    sourceMetadata: Map<Int, SourceMetadata>,
-): HeartRateSampleResponse =
-    HeartRateSampleResponse(
-        id = id,
-        measuredAt = measuredAt.toString(),
-        bpm = bpm,
-        context = context,
-        source = sourceMetadata[sourceInstanceId].toResponse(),
-    )
-
-internal fun RespiratoryRateSampleRow.toResponse(
-    sourceMetadata: Map<Int, SourceMetadata>,
-): RespiratoryRateSampleResponse =
-    RespiratoryRateSampleResponse(
-        id = id,
-        measuredAt = measuredAt.toString(),
-        breathsPerMinute = breathsPerMinute,
-        context = context,
-        source = sourceMetadata[sourceInstanceId].toResponse(),
-    )
-
-internal fun HrvSampleRow.toResponse(
-    sourceMetadata: Map<Int, SourceMetadata>,
-): HrvSampleResponse =
-    HrvSampleResponse(
-        id = id,
-        measuredAt = measuredAt.toString(),
-        metricType = metricType,
-        value = value,
-        unit = unit,
-        context = context,
-        source = sourceMetadata[sourceInstanceId].toResponse(),
-    )
-
 internal fun BloodPressureMeasurementRow.toResponse(
     sourceMetadata: Map<Int, SourceMetadata>,
 ): BloodPressureMeasurementResponse =
@@ -140,31 +87,6 @@ internal fun BloodPressureMeasurementRow.toResponse(
         systolicMmhg = systolicMmhg,
         diastolicMmhg = diastolicMmhg,
         heartRateBpm = heartRateBpm,
-        source = sourceMetadata[sourceInstanceId].toResponse(),
-    )
-
-internal fun CardiovascularMeasurementRow.toResponse(
-    sourceMetadata: Map<Int, SourceMetadata>,
-): CardiovascularMeasurementResponse =
-    CardiovascularMeasurementResponse(
-        id = id,
-        measuredAt = measuredAt,
-        metricType = metricType,
-        value = value,
-        unit = unit,
-        source = sourceMetadata[sourceInstanceId].toResponse(),
-    )
-
-internal fun ExtendedBodyMeasurementRow.toResponse(
-    sourceMetadata: Map<Int, SourceMetadata>,
-): ExtendedBodyMeasurementResponse =
-    ExtendedBodyMeasurementResponse(
-        id = id,
-        measuredAt = measuredAt,
-        metricType = metricType,
-        value = value,
-        unit = unit,
-        segment = segment,
         source = sourceMetadata[sourceInstanceId].toResponse(),
     )
 

@@ -43,34 +43,29 @@ data class SleepStageRecord(
     val endAt: Instant,
 )
 
-data class BodyMeasurementRecord(
+/**
+ * One point-in-time scalar metric record destined for scalar_samples. The wire-level
+ * record type is preserved so ingestion_records keeps the original discriminator
+ * (heart_rate, body_measurement, scalar, ...) for replay filtering.
+ */
+data class ScalarSampleRecord(
     override val providerRecordId: String?,
     override val normalizedRecordJson: JsonObject,
+    override val recordType: String,
     val measuredAt: Instant,
-    val measurements: List<BodyMeasurementValue>,
+    val values: List<ScalarValue>,
 ) : HealthRecord {
-    override val recordType: String = RecordTypes.BODY_MEASUREMENT
     override val recordStartAt: Instant = measuredAt
     override val recordEndAt: Instant? = null
 }
 
-data class BodyMeasurementValue(
+data class ScalarValue(
     val metricType: String,
     val value: Double,
     val unit: String,
+    val context: String? = null,
+    val segment: String? = null,
 )
-
-data class HeartRateRecord(
-    override val providerRecordId: String?,
-    override val normalizedRecordJson: JsonObject,
-    val measuredAt: Instant,
-    val bpm: Int,
-    val context: String,
-) : HealthRecord {
-    override val recordType: String = RecordTypes.HEART_RATE
-    override val recordStartAt: Instant = measuredAt
-    override val recordEndAt: Instant? = null
-}
 
 data class ActivitySummaryRecord(
     override val providerRecordId: String?,
@@ -134,32 +129,6 @@ data class SleepSummaryRecord(
     override val recordEndAt: Instant = endAt
 }
 
-data class RespiratoryRateRecord(
-    override val providerRecordId: String?,
-    override val normalizedRecordJson: JsonObject,
-    val measuredAt: Instant,
-    val breathsPerMinute: Int,
-    val context: String,
-) : HealthRecord {
-    override val recordType: String = RecordTypes.RESPIRATORY_RATE
-    override val recordStartAt: Instant = measuredAt
-    override val recordEndAt: Instant? = null
-}
-
-data class HrvRecord(
-    override val providerRecordId: String?,
-    override val normalizedRecordJson: JsonObject,
-    val measuredAt: Instant,
-    val metricType: String,
-    val value: Double,
-    val unit: String,
-    val context: String,
-) : HealthRecord {
-    override val recordType: String = RecordTypes.HRV
-    override val recordStartAt: Instant = measuredAt
-    override val recordEndAt: Instant? = null
-}
-
 data class BloodPressureRecord(
     override val providerRecordId: String?,
     override val normalizedRecordJson: JsonObject,
@@ -173,33 +142,3 @@ data class BloodPressureRecord(
     override val recordEndAt: Instant? = null
 }
 
-data class CardiovascularRecord(
-    override val providerRecordId: String?,
-    override val normalizedRecordJson: JsonObject,
-    val measuredAt: Instant,
-    val metricType: String,
-    val value: Double,
-    val unit: String,
-) : HealthRecord {
-    override val recordType: String = RecordTypes.CARDIOVASCULAR
-    override val recordStartAt: Instant = measuredAt
-    override val recordEndAt: Instant? = null
-}
-
-data class ExtendedBodyMeasurementRecord(
-    override val providerRecordId: String?,
-    override val normalizedRecordJson: JsonObject,
-    val measuredAt: Instant,
-    val measurements: List<ExtendedBodyMeasurementValue>,
-) : HealthRecord {
-    override val recordType: String = RecordTypes.EXTENDED_BODY_MEASUREMENT
-    override val recordStartAt: Instant = measuredAt
-    override val recordEndAt: Instant? = null
-}
-
-data class ExtendedBodyMeasurementValue(
-    val metricType: String,
-    val value: Double,
-    val unit: String,
-    val segment: String?,
-)
