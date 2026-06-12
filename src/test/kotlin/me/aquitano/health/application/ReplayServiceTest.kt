@@ -7,6 +7,7 @@ import kotlinx.serialization.json.buildJsonObject
 import me.aquitano.health.api.dto.ActivitySummaryDto
 import me.aquitano.health.api.dto.HeartRateDto
 import me.aquitano.health.api.dto.IngestionBatchRequest
+import me.aquitano.health.api.dto.ReplayJobStatus
 import me.aquitano.health.api.dto.ReplayJobStatusResponse
 import me.aquitano.health.api.dto.ReplayRequest
 import me.aquitano.health.api.dto.SleepSessionDto
@@ -44,7 +45,7 @@ class ReplayServiceTest {
 
         val job = fixture.runReplay(ReplayRequest(scope = "all"))
 
-        assertEquals("completed", job.status)
+        assertEquals(ReplayJobStatus.Completed, job.status)
         assertTrue(job.metricsWritten >= 1, "expected restored metrics, got ${job.metricsWritten}")
         assertEquals(0, job.mappingFailures)
         assertEquals(1, fixture.count("scalar_samples"))
@@ -60,23 +61,28 @@ class ReplayServiceTest {
 
         val job = fixture.runReplay(ReplayRequest(scope = "projections"))
 
-        assertEquals("completed", job.status)
+        assertEquals(ReplayJobStatus.Completed, job.status)
         assertEquals(0, job.metricsWritten)
         assertTrue(job.duplicatesSkipped >= 4, "expected duplicates, got ${job.duplicatesSkipped}")
         assertEquals(0, job.mappingFailures)
     }
 
     @Test
-    fun derivedOnlyReplayRebuildsCanonicalTablesWithoutTouchingProjections() = runBlocking {
+    fun derivedOnlyReplayRebuildsDerivedTablesWithoutTouchingProjections() = runBlocking {
         val fixture = Fixture()
         fixture.ingestMixedBatch()
 
-        fixture.execute("DELETE FROM canonical_activity_summaries")
+        fixture.execute("DELETE FROM step_daily_summaries")
+        fixture.execute("DELETE FROM sleep_nights")
 
         val job = fixture.runReplay(ReplayRequest(scope = "derived"))
 
-        assertEquals("completed", job.status)
+        assertEquals(ReplayJobStatus.Completed, job.status)
         assertEquals(0, job.recordsReplayed)
+        assertEquals(1, fixture.count("step_daily_summaries"))
+        assertEquals(1, fixture.count("sleep_nights"))
+        // canonical views need no rebuild: they reflect the underlying tables directly
+        assertEquals(1, fixture.count("canonical_step_daily_summaries"))
         assertEquals(1, fixture.count("canonical_activity_summaries"))
     }
 
@@ -96,7 +102,7 @@ class ReplayServiceTest {
             )
         )
 
-        assertEquals("completed", job.status)
+        assertEquals(ReplayJobStatus.Completed, job.status)
         assertEquals(1, job.recordsReplayed)
         assertEquals(1, job.metricsWritten)
         assertEquals(1, fixture.count("scalar_samples"))
@@ -197,7 +203,7 @@ class ReplayServiceTest {
             val start = replayService.create(request, clock.now())
             return withTimeout(60_000) {
                 var job = replayService.get(start.jobId)
-                while (job.status == "queued" || job.status == "running") {
+                while (!job.status.terminal) {
                     delay(100)
                     job = replayService.get(start.jobId)
                 }

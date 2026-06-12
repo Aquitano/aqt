@@ -8,6 +8,7 @@ import me.aquitano.health.application.metric.common.BaseReadService
 import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.application.metric.common.SortFields
 import me.aquitano.health.application.metric.common.dailyReadFilters
+import me.aquitano.health.application.metric.common.keysetPage
 import me.aquitano.health.application.metric.common.meta
 import me.aquitano.health.application.metric.common.readFilters
 import me.aquitano.health.application.metric.common.sourceInstanceIds
@@ -33,8 +34,15 @@ class StepQueryService(
             )
             val (rows, sourceMetadata) =
                 canonicalRepository.listCanonicalStepSamples(filters, CANONICAL_STEP_ALGORITHM_VERSION)
+            val page = rows.keysetPage(
+                limit = filters.limit,
+                sort = filters.sort,
+                order = filters.order,
+                sortValue = { it.startAt },
+                id = { it.id.toLong() },
+            )
             StepSamplesResponse(
-                items = rows.map {
+                items = page.items.map {
                     StepSampleResponse(
                         id = it.id,
                         startAt = it.startAt,
@@ -43,7 +51,7 @@ class StepQueryService(
                         source = sourceMetadata[it.sourceInstanceId].toResponse(),
                     )
                 },
-                meta = rows.meta(filters),
+                meta = page.items.meta(filters, page.nextCursor),
             )
         }
 
@@ -54,9 +62,16 @@ class StepQueryService(
         dbQuery {
             params.rejectLatest()
             val filters = params.dailyReadFilters(now)
-            val (rows, sourceMetadata) = canonicalRepository.listCanonicalStepDailySummaries(filters, CANONICAL_STEP_ALGORITHM_VERSION)
+            val (rows, sourceMetadata) = canonicalRepository.listCanonicalStepDailySummaries(filters)
+            val page = rows.keysetPage(
+                limit = filters.limit,
+                sort = filters.sort,
+                order = filters.order,
+                sortValue = { it.date },
+                id = { it.id.toLong() },
+            )
             StepDailySummariesResponse(
-                items = rows.map {
+                items = page.items.map {
                     StepDailySummaryResponse(
                         date = it.date,
                         steps = it.steps,
@@ -64,7 +79,7 @@ class StepQueryService(
                         source = sourceMetadata[it.sourceInstanceId].toResponse(),
                     )
                 },
-                meta = rows.meta(filters),
+                meta = page.items.meta(filters, page.nextCursor),
             )
         }
 }

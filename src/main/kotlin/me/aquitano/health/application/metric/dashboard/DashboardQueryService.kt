@@ -11,8 +11,7 @@ import me.aquitano.health.application.metric.common.toResponse
 import me.aquitano.health.application.metric.common.validateDateRange
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.application.metric.scalar.ScalarSampleReadRepository
-import me.aquitano.health.application.metric.scalar.toBodyMeasurementResponse
-import me.aquitano.health.application.metric.scalar.toHeartRateResponse
+import me.aquitano.health.application.metric.scalar.toScalarResponse
 import me.aquitano.health.domain.BodyMetricTypes
 import me.aquitano.health.domain.ScalarMetricTypes
 import me.aquitano.health.application.metric.common.repository.DailyReadFilters
@@ -66,7 +65,7 @@ class DashboardQueryService(
                 order = Orders.ASC,
             )
 
-            sleepNightService.materializeCanonical(sleepNightFilters, now)
+            sleepNightService.materialize(sleepNightFilters, now)
             DashboardSummaryResponse(
                 fromDate = fromDate.toString(),
                 toDate = toDate.toString(),
@@ -112,7 +111,7 @@ class DashboardQueryService(
             setOf(BodyMetricTypes.WEIGHT),
             canonical = true,
         )
-        row?.toBodyMeasurementResponse(metadata)
+        row?.toScalarResponse(metadata)
     }
 
     private fun latestHeartRate(
@@ -123,7 +122,7 @@ class DashboardQueryService(
             setOf(ScalarMetricTypes.HEART_RATE),
             canonical = true,
         )
-        row?.toHeartRateResponse(metadata)
+        row?.toScalarResponse(metadata)
     }
 
     private fun lastSleepSession(

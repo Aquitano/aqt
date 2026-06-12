@@ -123,7 +123,7 @@ class ScheduledProviderSyncService(
         return ScheduledSyncRunResponseDto(
             providerCode = provider.providerCode,
             providerInstanceId = providerInstanceId,
-            status = result.status,
+            status = SyncStatus.fromStored(result.status),
             requestedFrom = result.requestedFrom?.toString(),
             requestedTo = result.requestedTo?.toString(),
             errors = result.errors,
@@ -295,7 +295,7 @@ class ScheduledProviderSyncService(
             providerInstanceId = providerInstanceId,
             requestedFrom = requestedFrom.toString(),
             requestedTo = requestedTo.toString(),
-            status = status,
+            status = SyncStatus.fromStored(status),
             batches = batches.map { it.toDto() },
             emptyDataTypes = emptyDataTypes.map { it.toDto() },
             errors = errors.map { ProviderSyncErrorResponseDto(it.dataType, it.code, it.message) },
@@ -308,7 +308,7 @@ class ScheduledProviderSyncService(
             duplicateBatch = duplicateBatch,
             recordsReceived = recordsReceived,
             ingestionRecordsStored = ingestionRecordsStored,
-            metricsCreated = metricsCreated.toResponse(),
+            metricsCreated = metricsCreated.counts,
             duplicateMetricsSkipped = duplicateMetricsSkipped,
             affectedStepSummaryDates = affectedStepSummaryDates,
         )

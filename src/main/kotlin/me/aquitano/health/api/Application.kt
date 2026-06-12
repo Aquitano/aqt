@@ -117,7 +117,7 @@ private fun Application.buildApplicationServices(): ApplicationServices {
     val adminService by inject<AdminService>()
     val providerRegistry by inject<HealthProviderRegistry>()
     val providerDiscoveryService by inject<ProviderDiscoveryService>()
-    val metricCatalogService by inject<MetricCatalogService>()
+    val scalarMetricQueryService by inject<me.aquitano.health.application.metric.scalar.ScalarMetricQueryService>()
     val providerStatusService by inject<ProviderStatusService>()
     val providerWorkflowService by inject<ProviderWorkflowService>()
     val providerSyncJobService by inject<ProviderSyncJobService>()
@@ -137,7 +137,7 @@ private fun Application.buildApplicationServices(): ApplicationServices {
         adminService = adminService,
         providerRegistry = providerRegistry,
         providerDiscoveryService = providerDiscoveryService,
-        metricCatalogService = metricCatalogService,
+        scalarMetricQueryService = scalarMetricQueryService,
         providerStatusService = providerStatusService,
         providerWorkflowService = providerWorkflowService,
         providerSyncJobService = providerSyncJobService,
@@ -159,7 +159,7 @@ data class ApplicationServices(
     val adminService: AdminService,
     val providerRegistry: HealthProviderRegistry,
     val providerDiscoveryService: ProviderDiscoveryService,
-    val metricCatalogService: MetricCatalogService,
+    val scalarMetricQueryService: me.aquitano.health.application.metric.scalar.ScalarMetricQueryService,
     val providerStatusService: ProviderStatusService,
     val providerWorkflowService: ProviderWorkflowService,
     val providerSyncJobService: ProviderSyncJobService,

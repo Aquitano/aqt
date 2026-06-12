@@ -32,6 +32,8 @@ internal fun QueryParams.readFilters(
     val from = instant("from")
     val to = instant("to")
     validateRange(from, to, "from", "to")
+    val sort = if (latest) defaultSort else sort(allowedSorts, defaultSort)
+    val order = if (latest) Orders.DESC else order()
     return ReadFilters(
         from = from,
         to = to,
@@ -39,8 +41,9 @@ internal fun QueryParams.readFilters(
         providerInstanceId = optional("providerInstanceId"),
         includeSource = boolean("includeSource", default = false),
         limit = if (latest) 1 else limit(default = 500, max = 5000),
-        sort = if (latest) defaultSort else sort(allowedSorts, defaultSort),
-        order = if (latest) Orders.DESC else order(),
+        sort = sort,
+        order = order,
+        cursor = if (latest) null else cursor(sort, order),
     )
 }
 
@@ -74,6 +77,7 @@ internal fun QueryParams.dailyReadFilters(now: Instant): DailyReadFilters {
         ),
         sort = sort(setOf(SortFields.DATE), SortFields.DATE),
         order = order(),
+        cursor = cursor(sort(setOf(SortFields.DATE), SortFields.DATE), order()),
     )
 }
 
@@ -122,6 +126,7 @@ internal fun QueryParams.sleepNightReadFilters(now: Instant): SleepNightReadFilt
         ),
         sort = sort(setOf(SortFields.DATE), SortFields.DATE),
         order = order(),
+        cursor = cursor(sort(setOf(SortFields.DATE), SortFields.DATE), order()),
     )
 }
 

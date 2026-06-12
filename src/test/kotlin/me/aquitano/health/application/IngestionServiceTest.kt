@@ -2,6 +2,7 @@ package me.aquitano.health.application
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
+import me.aquitano.health.api.dto.BatchStatus
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.StepIntervalDto
 import me.aquitano.health.application.metric.common.MetricWriteService
@@ -48,7 +49,7 @@ class IngestionServiceTest {
             Instant.parse("2026-04-19T10:01:00Z"),
         )
 
-        assertEquals("processed", response.status)
+        assertEquals(BatchStatus.Processed, response.status)
         assertEquals("processed", singleString(dbConfig, "SELECT status FROM ingestion_batches"))
         assertEquals(1, singleInt(dbConfig, "SELECT COUNT(*) FROM ingestion_records"))
         assertEquals(1, singleInt(dbConfig, "SELECT COUNT(*) FROM step_samples"))

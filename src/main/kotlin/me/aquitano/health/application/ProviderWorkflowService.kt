@@ -320,7 +320,7 @@ class ProviderWorkflowService(
             providerInstanceId = providerInstanceId,
             requestedFrom = requestedFrom.toString(),
             requestedTo = requestedTo.toString(),
-            status = status,
+            status = SyncStatus.fromStored(status),
             batches = batches.map { it.toDto() },
             emptyDataTypes = emptyDataTypes.map { it.toDto() },
             errors = errors.map { it.toDto() },
@@ -333,7 +333,7 @@ class ProviderWorkflowService(
             duplicateBatch = duplicateBatch,
             recordsReceived = recordsReceived,
             ingestionRecordsStored = ingestionRecordsStored,
-            metricsCreated = metricsCreated.toResponse(),
+            metricsCreated = metricsCreated.counts,
             duplicateMetricsSkipped = duplicateMetricsSkipped,
             affectedStepSummaryDates = affectedStepSummaryDates,
         )

@@ -1,8 +1,5 @@
 package me.aquitano.health.application
 
-import me.aquitano.health.application.metric.activity.derived.CanonicalActivitySummaryDerivationService
-import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSessionDerivationService
-import me.aquitano.health.application.metric.sleep.derived.CanonicalSleepSummaryDerivationService
 import me.aquitano.health.application.metric.steps.derived.CanonicalStepDerivationService
 import me.aquitano.health.domain.DerivedKind
 import org.jetbrains.exposed.v1.jdbc.Database
@@ -52,9 +49,6 @@ fun derivedRebuildModules(
     stepSummaryService: StepSummaryService,
     canonicalStepService: CanonicalStepDerivationService,
     sleepNightService: SleepNightService,
-    canonicalSleepSummaryService: CanonicalSleepSummaryDerivationService,
-    canonicalSleepSessionService: CanonicalSleepSessionDerivationService,
-    canonicalActivitySummaryService: CanonicalActivitySummaryDerivationService,
 ): List<DerivedRebuildModule> =
     listOf(
         DerivedRebuildModule(DerivedKind.STEP_SUMMARY) { sourceInstanceId, dates, computedAt ->
@@ -63,15 +57,6 @@ fun derivedRebuildModules(
         },
         DerivedRebuildModule(DerivedKind.SLEEP_NIGHT) { sourceInstanceId, dates, computedAt ->
             sleepNightService.recomputeUtc(sourceInstanceId, dates, computedAt)
-        },
-        DerivedRebuildModule(DerivedKind.SLEEP_SUMMARY_CANONICAL) { _, dates, computedAt ->
-            canonicalSleepSummaryService.recompute(dates, computedAt)
-        },
-        DerivedRebuildModule(DerivedKind.SLEEP_SESSION_CANONICAL) { _, dates, computedAt ->
-            canonicalSleepSessionService.recompute(dates, computedAt)
-        },
-        DerivedRebuildModule(DerivedKind.ACTIVITY_SUMMARY_CANONICAL) { _, dates, computedAt ->
-            canonicalActivitySummaryService.recompute(dates, computedAt)
         },
     )
 

@@ -10,7 +10,7 @@ import me.aquitano.health.domain.BloodPressureRecord
 import me.aquitano.health.domain.DerivedKind
 import me.aquitano.health.domain.HealthRecord
 import me.aquitano.health.domain.MetricCreatedCounts
-import me.aquitano.health.domain.MetricKind
+import me.aquitano.health.domain.StructuralMetricKinds
 import me.aquitano.health.domain.ScalarMetricRegistry
 import me.aquitano.health.domain.ScalarSampleRecord
 import me.aquitano.health.domain.SleepSessionRecord
@@ -95,7 +95,7 @@ class MetricWriteService(
         )
         return if (inserted) {
             MetricWriteResult(
-                created = MetricCreatedCounts.of(MetricKind.STEP_SAMPLES to 1),
+                created = MetricCreatedCounts.of(StructuralMetricKinds.STEP_SAMPLES to 1),
                 affectedDates = mapOf(
                     DerivedKind.STEP_SUMMARY to affectedUtcDates(
                         record.startAt,
@@ -123,12 +123,11 @@ class MetricWriteService(
         return if (sessionId != null) {
             MetricWriteResult(
                 created = MetricCreatedCounts.of(
-                    MetricKind.SLEEP_SESSIONS to 1,
-                    MetricKind.SLEEP_STAGES to record.stages.size,
+                    StructuralMetricKinds.SLEEP_SESSIONS to 1,
+                    StructuralMetricKinds.SLEEP_STAGES to record.stages.size,
                 ),
                 affectedDates = mapOf(
                     DerivedKind.SLEEP_NIGHT to setOf(record.endAt.utcDate()),
-                    DerivedKind.SLEEP_SESSION_CANONICAL to setOf(record.startAt.utcDate()),
                 ),
             )
         } else {
@@ -149,12 +148,7 @@ class MetricWriteService(
             now,
         )
         return if (inserted) {
-            MetricWriteResult(
-                created = MetricCreatedCounts.of(MetricKind.ACTIVITY_SUMMARIES to 1),
-                affectedDates = mapOf(
-                    DerivedKind.ACTIVITY_SUMMARY_CANONICAL to setOf(record.date),
-                ),
-            )
+            MetricWriteResult(created = MetricCreatedCounts.of(StructuralMetricKinds.ACTIVITY_SUMMARIES to 1))
         } else {
             MetricWriteResult(duplicateSkipped = 1)
         }
@@ -173,12 +167,7 @@ class MetricWriteService(
             now,
         )
         return if (inserted) {
-            MetricWriteResult(
-                created = MetricCreatedCounts.of(MetricKind.SLEEP_SUMMARIES to 1),
-                affectedDates = mapOf(
-                    DerivedKind.SLEEP_SUMMARY_CANONICAL to setOf(record.startAt.utcDate()),
-                ),
-            )
+            MetricWriteResult(created = MetricCreatedCounts.of(StructuralMetricKinds.SLEEP_SUMMARIES to 1))
         } else {
             MetricWriteResult(duplicateSkipped = 1)
         }
@@ -197,7 +186,7 @@ class MetricWriteService(
             now,
         )
         return if (inserted) {
-            MetricWriteResult(created = MetricCreatedCounts.of(MetricKind.BLOOD_PRESSURE_MEASUREMENTS to 1))
+            MetricWriteResult(created = MetricCreatedCounts.of(StructuralMetricKinds.BLOOD_PRESSURE_MEASUREMENTS to 1))
         } else {
             MetricWriteResult(duplicateSkipped = 1)
         }
@@ -216,7 +205,7 @@ class MetricWriteService(
             now,
         )
         val counts = insertedTypes
-            .groupingBy { ScalarMetricRegistry.get(it).countsKind }
+            .groupingBy { it }
             .eachCount()
         return MetricWriteResult(
             created = MetricCreatedCounts(counts),

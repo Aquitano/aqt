@@ -5,62 +5,14 @@ import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.infrastructure.database.tables.CanonicalSleepSummariesTable
 import me.aquitano.health.infrastructure.database.tables.SleepSummariesTable
 import me.aquitano.health.infrastructure.database.toApiString
-import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
 import org.jetbrains.exposed.v1.core.*
-import org.jetbrains.exposed.v1.jdbc.batchInsert
-import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.selectAll
-import java.time.Instant
-import java.time.LocalDate
 
-data class CanonicalSleepSummaryRowOutput(
-    val sleepSummaryId: Int,
-    val sourceInstanceId: Int,
-    val startAt: Instant,
-    val endAt: Instant,
-)
-
-data class CanonicalSleepSummaryOutput(
-    val date: LocalDate,
-    val algorithmVersion: Int,
-    val computedAt: Instant,
-    val summaries: List<CanonicalSleepSummaryRowOutput>,
-)
-
+/** Reads through the canonical_sleep_summaries view (rank winner per UTC start date, see V15). */
 class CanonicalSleepSummaryDerivationRepository : BaseMetricRepository() {
-    fun listRawSummariesForDay(dayStart: Instant, dayEnd: Instant): List<SleepSummaryRow> =
-        SleepSummariesTable.selectAll()
-            .where {
-                (SleepSummariesTable.startAt greaterEq dayStart.toDbTimestamp()) and
-                    (SleepSummariesTable.startAt less dayEnd.toDbTimestamp())
-            }
-            .orderBy(SleepSummariesTable.startAt to SortOrder.ASC, SleepSummariesTable.id to SortOrder.ASC)
-            .map(::toSleepSummaryRow)
-
-    fun persistCanonicalOutput(output: CanonicalSleepSummaryOutput): Int {
-        CanonicalSleepSummariesTable.deleteWhere {
-            (CanonicalSleepSummariesTable.date eq output.date) and
-                (CanonicalSleepSummariesTable.algorithmVersion eq output.algorithmVersion)
-        }
-        if (output.summaries.isEmpty()) {
-            return 0
-        }
-        CanonicalSleepSummariesTable.batchInsert(output.summaries) { summary ->
-            this[CanonicalSleepSummariesTable.date] = output.date
-            this[CanonicalSleepSummariesTable.sourceInstanceId] = summary.sourceInstanceId
-            this[CanonicalSleepSummariesTable.sleepSummaryId] = summary.sleepSummaryId
-            this[CanonicalSleepSummariesTable.startAt] = summary.startAt.toDbTimestamp()
-            this[CanonicalSleepSummariesTable.endAt] = summary.endAt.toDbTimestamp()
-            this[CanonicalSleepSummariesTable.algorithmVersion] = output.algorithmVersion
-            this[CanonicalSleepSummariesTable.computedAt] = output.computedAt.toDbTimestamp()
-        }
-        return output.summaries.size
-    }
-
     fun listCanonicalSleepSummaries(
         filters: ReadFilters,
-        algorithmVersion: Int,
     ): Pair<List<SleepSummaryRow>, Map<Int, SourceMetadata>> {
         val where = timestampConditions(
             filters = filters,
@@ -68,28 +20,23 @@ class CanonicalSleepSummaryDerivationRepository : BaseMetricRepository() {
             fromColumn = CanonicalSleepSummariesTable.startAt,
         ).whereOrNull() ?: return emptyReadResult()
 
+        val keyset = timestampKeyset(
+            filters.cursor,
+            filters.order,
+            CanonicalSleepSummariesTable.endAt,
+            SleepSummariesTable.id,
+        )
         val rows = CanonicalSleepSummariesTable
             .innerJoin(SleepSummariesTable, { sleepSummaryId }, { SleepSummariesTable.id })
             .selectAll()
-            .where(where and (CanonicalSleepSummariesTable.algorithmVersion eq algorithmVersion))
+            .where(keyset?.let { where and it } ?: where)
             .orderBy(
                 CanonicalSleepSummariesTable.endAt to filters.sortOrder(),
                 SleepSummariesTable.id to filters.sortOrder(),
             )
-            .limit(filters.limit)
+            .limit(filters.limit + 1)
             .map(::toJoinedSleepSummaryRow)
         return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
-    }
-
-    fun latestCanonicalSleepSummary(
-        filters: ReadFilters,
-        algorithmVersion: Int,
-    ): Pair<SleepSummaryRow?, Map<Int, SourceMetadata>> {
-        val (rows, sourceMetadata) = listCanonicalSleepSummaries(
-            filters.copy(limit = 1, order = "desc"),
-            algorithmVersion,
-        )
-        return rows.singleOrNull() to sourceMetadata
     }
 
     private fun toJoinedSleepSummaryRow(row: ResultRow): SleepSummaryRow =

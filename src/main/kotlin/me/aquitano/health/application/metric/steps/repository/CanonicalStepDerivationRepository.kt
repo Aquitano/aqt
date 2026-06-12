@@ -25,13 +25,6 @@ data class CanonicalStepSampleOutput(
     val steps: Int,
 )
 
-data class CanonicalStepDailySummaryOutput(
-    val stepDailySummaryId: Int,
-    val sourceInstanceId: Int,
-    val date: LocalDate,
-    val steps: Int,
-)
-
 data class CanonicalStepBucketContributionOutput(
     val date: LocalDate,
     val sourceInstanceId: Int,
@@ -46,7 +39,6 @@ data class CanonicalStepOutput(
     val date: LocalDate,
     val algorithmVersion: Int,
     val computedAt: Instant,
-    val dailySummary: CanonicalStepDailySummaryOutput?,
     val samples: List<CanonicalStepSampleOutput>,
     val bucketContributions: List<CanonicalStepBucketContributionOutput>,
 )
@@ -75,21 +67,6 @@ class CanonicalStepDerivationRepository : BaseMetricRepository() {
             .orderBy(StepSamplesTable.startAt to SortOrder.ASC, StepSamplesTable.id to SortOrder.ASC)
             .map(::toStepSampleRow)
 
-    fun listRawDailySummariesForDay(date: LocalDate): List<StepDailySummaryRow> =
-        me.aquitano.health.infrastructure.database.tables.StepDailySummariesTable.selectAll()
-            .where {
-                me.aquitano.health.infrastructure.database.tables.StepDailySummariesTable.date eq date
-            }
-            .map { row ->
-                StepDailySummaryRow(
-                    id = row[me.aquitano.health.infrastructure.database.tables.StepDailySummariesTable.id].value,
-                    date = row[me.aquitano.health.infrastructure.database.tables.StepDailySummariesTable.date].toString(),
-                    steps = row[me.aquitano.health.infrastructure.database.tables.StepDailySummariesTable.steps],
-                    sourceInstanceId = row[me.aquitano.health.infrastructure.database.tables.StepDailySummariesTable.sourceInstanceId],
-                    sampleCount = row[me.aquitano.health.infrastructure.database.tables.StepDailySummariesTable.sampleCount],
-                )
-            }
-
     fun persistCanonicalOutput(output: CanonicalStepOutput): Int {
         CanonicalStepDayBucketContributionsTable.deleteWhere {
             (CanonicalStepDayBucketContributionsTable.date eq output.date) and
@@ -98,20 +75,6 @@ class CanonicalStepDerivationRepository : BaseMetricRepository() {
         CanonicalStepSamplesTable.deleteWhere {
             (CanonicalStepSamplesTable.date eq output.date) and
                 (CanonicalStepSamplesTable.algorithmVersion eq output.algorithmVersion)
-        }
-        me.aquitano.health.infrastructure.database.tables.CanonicalStepDailySummariesTable.deleteWhere {
-            (me.aquitano.health.infrastructure.database.tables.CanonicalStepDailySummariesTable.date eq output.date) and
-                (me.aquitano.health.infrastructure.database.tables.CanonicalStepDailySummariesTable.algorithmVersion eq output.algorithmVersion)
-        }
-        output.dailySummary?.let { summary ->
-            me.aquitano.health.infrastructure.database.tables.CanonicalStepDailySummariesTable.insert {
-                it[date] = summary.date
-                it[sourceInstanceId] = summary.sourceInstanceId
-                it[stepDailySummaryId] = summary.stepDailySummaryId
-                it[steps] = summary.steps
-                it[algorithmVersion] = output.algorithmVersion
-                it[computedAt] = output.computedAt.toDbTimestamp()
-            }
         }
         CanonicalStepSamplesTable.batchInsert(output.samples) { sample ->
             this[CanonicalStepSamplesTable.date] = output.date
@@ -149,22 +112,30 @@ class CanonicalStepDerivationRepository : BaseMetricRepository() {
             mode = if (overlapsWindow) TimeFilterMode.OVERLAPS_WINDOW else TimeFilterMode.START_AT_IN_RANGE,
         ).whereOrNull() ?: return emptyReadResult()
 
+        val keyset = timestampKeyset(
+            filters.cursor,
+            filters.order,
+            CanonicalStepSamplesTable.startAt,
+            StepSamplesTable.id,
+        )
         val rows = CanonicalStepSamplesTable
             .innerJoin(StepSamplesTable, { stepSampleId }, { StepSamplesTable.id })
             .selectAll()
-            .where(where and (CanonicalStepSamplesTable.algorithmVersion eq algorithmVersion))
+            .where(
+                where and (CanonicalStepSamplesTable.algorithmVersion eq algorithmVersion) and
+                    (keyset ?: Op.TRUE)
+            )
             .orderBy(
                 CanonicalStepSamplesTable.startAt to filters.sortOrder(),
                 StepSamplesTable.id to filters.sortOrder(),
             )
-            .limit(filters.limit)
+            .limit(filters.limit + 1)
             .map(::toJoinedStepSampleRow)
         return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
     }
 
     fun listCanonicalStepDailySummaries(
         filters: DailyReadFilters,
-        algorithmVersion: Int,
     ): Pair<List<StepDailySummaryRow>, Map<Int, SourceMetadata>> {
         val where = dateConditions(
             filters = filters,
@@ -172,15 +143,21 @@ class CanonicalStepDerivationRepository : BaseMetricRepository() {
             dateColumn = CanonicalStepDailySummariesTable.date,
         ).whereOrNull() ?: return emptyReadResult()
 
+        val keyset = dateKeyset(
+            filters.cursor,
+            filters.order,
+            StepDailySummariesTable.date,
+            StepDailySummariesTable.id,
+        )
         val rows = CanonicalStepDailySummariesTable
             .innerJoin(StepDailySummariesTable, onColumn = { stepDailySummaryId }, otherColumn = { id })
             .selectAll()
-            .where { where and (CanonicalStepDailySummariesTable.algorithmVersion eq algorithmVersion) }
+            .where(keyset?.let { where and it } ?: where)
             .orderBy(
                 StepDailySummariesTable.date to filters.sortOrder(),
-                StepDailySummariesTable.sourceInstanceId to filters.sortOrder(),
+                StepDailySummariesTable.id to filters.sortOrder(),
             )
-            .limit(filters.limit)
+            .limit(filters.limit + 1)
             .map {
                 StepDailySummaryRow(
                     id = it[StepDailySummariesTable.id].value,

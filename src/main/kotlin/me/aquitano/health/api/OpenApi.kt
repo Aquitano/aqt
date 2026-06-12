@@ -1019,24 +1019,20 @@ internal fun ingestionSummaryExample(duplicate: Boolean = false): ExampleObject 
         summary = if (duplicate) "Duplicate batch" else "Created batch",
         value = IngestionSummaryResponse(
             batchId = 42,
-            status = "accepted",
+            status = BatchStatus.Processed,
             duplicateBatch = duplicate,
             recordsReceived = 4,
             ingestionRecordsStored = if (duplicate) 0 else 4,
-            metricsCreated = MetricCreatedCountsResponse(
-                stepSamples = if (duplicate) 0 else 1,
-                sleepSessions = if (duplicate) 0 else 1,
-                sleepStages = if (duplicate) 0 else 1,
-                bodyMeasurements = if (duplicate) 0 else 1,
-                heartRateSamples = if (duplicate) 0 else 1,
-                activitySummaries = if (duplicate) 0 else 1,
-                sleepSummaries = if (duplicate) 0 else 1,
-                respiratoryRateSamples = if (duplicate) 0 else 1,
-                hrvSamples = if (duplicate) 0 else 1,
-                bloodPressureMeasurements = if (duplicate) 0 else 1,
-                cardiovascularMeasurements = if (duplicate) 0 else 1,
-                extendedBodyMeasurements = if (duplicate) 0 else 1,
-            ),
+            metricsCreated = if (duplicate) {
+                emptyMap()
+            } else {
+                mapOf(
+                    "step_samples" to 1,
+                    "sleep_sessions" to 1,
+                    "sleep_stages" to 1,
+                    "heart_rate" to 1,
+                )
+            },
             metricsSkipped = MetricSkippedCountsResponse(
                 duplicates = if (duplicate) 4 else 0,
             ),

@@ -7,6 +7,7 @@ import me.aquitano.health.infrastructure.database.tables.ScalarSamplesTable
 import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
 import me.aquitano.health.infrastructure.repositories.common.TimeFilterMode
+import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
@@ -39,14 +40,15 @@ class ScalarSampleReadRepository : BaseMetricRepository() {
             fromColumn = table.measuredAt,
         ).whereOrNull() ?: return emptyReadResult()
 
+        val keyset = timestampKeyset(filters.cursor, filters.order, table.measuredAt, table.idColumn)
         val rows = table.query
             .selectAll()
-            .where(where and (table.metricType inList metricTypes))
+            .where(where and (table.metricType inList metricTypes) and (keyset ?: Op.TRUE))
             .orderBy(
                 table.measuredAt to filters.sortOrder(),
                 table.idColumn to filters.sortOrder(),
             )
-            .limit(filters.limit)
+            .limit(filters.limit + 1)
             .map(table::toRow)
         return rows to sourceMetadata(
             rows.map { it.sourceInstanceId }.toSet(),

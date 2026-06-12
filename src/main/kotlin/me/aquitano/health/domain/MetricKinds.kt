@@ -1,23 +1,17 @@
 package me.aquitano.health.domain
 
 /**
- * One entry per metric family whose created rows are counted in ingestion summaries.
- * Adding a metric family means adding an entry here plus a write arm in MetricWriteService;
- * counts, accumulators, and DTO mapping pick it up from the map shape.
+ * metricsCreated map keys for the structural (non-scalar) metric tables. Scalar samples
+ * are counted under their metric_type value directly; together they form the key space of
+ * the wire-level metricsCreated map.
  */
-enum class MetricKind {
-    STEP_SAMPLES,
-    SLEEP_SESSIONS,
-    SLEEP_STAGES,
-    BODY_MEASUREMENTS,
-    HEART_RATE_SAMPLES,
-    ACTIVITY_SUMMARIES,
-    SLEEP_SUMMARIES,
-    RESPIRATORY_RATE_SAMPLES,
-    HRV_SAMPLES,
-    BLOOD_PRESSURE_MEASUREMENTS,
-    CARDIOVASCULAR_MEASUREMENTS,
-    EXTENDED_BODY_MEASUREMENTS,
+object StructuralMetricKinds {
+    const val STEP_SAMPLES = "step_samples"
+    const val SLEEP_SESSIONS = "sleep_sessions"
+    const val SLEEP_STAGES = "sleep_stages"
+    const val SLEEP_SUMMARIES = "sleep_summaries"
+    const val ACTIVITY_SUMMARIES = "activity_summaries"
+    const val BLOOD_PRESSURE_MEASUREMENTS = "blood_pressure_measurements"
 }
 
 /**
@@ -27,7 +21,4 @@ enum class MetricKind {
 enum class DerivedKind {
     STEP_SUMMARY,
     SLEEP_NIGHT,
-    SLEEP_SUMMARY_CANONICAL,
-    SLEEP_SESSION_CANONICAL,
-    ACTIVITY_SUMMARY_CANONICAL,
 }

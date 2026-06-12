@@ -38,7 +38,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             remotePath = "../openapi"
         }
 
-        get("/api/v1/admin/health") {
+        get("/api/v2/admin/health") {
             call.respond(
                 HealthResponse(
                     status = "ok",
@@ -69,7 +69,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 defaultError()
             }
         }
-        post("/api/v1/ingestion/batches") {
+        post("/api/v2/ingestion/batches") {
             call.requireApiClient(
                 supportRepository = services.supportRepository,
                 apiKeyHasher = services.apiKeyHasher,
@@ -112,7 +112,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 commonErrors(conflict = true)
             }
         }
-        get("/api/v1/providers") {
+        get("/api/v2/providers") {
             call.authenticateProtected(services)
             call.respond<ProviderCatalogResponseDto>(services.providerDiscoveryService.listProviders())
         }.describe {
@@ -124,7 +124,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             requiresBearerAuth()
             errorResponses()
         }
-        get("/api/v1/providers/status") {
+        get("/api/v2/providers/status") {
             call.authenticateProtected(services)
             call.respond<ProviderStatusCatalogResponseDto>(
                 services.providerStatusService.listProviderStatuses(
@@ -140,7 +140,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             requiresBearerAuth()
             errorResponses()
         }
-        get("/api/v1/providers/{providerCode}") {
+        get("/api/v2/providers/{providerCode}") {
             call.authenticateProtected(services)
             val code = call.providerCode()
             call.respond<ProviderDescriptorResponseDto>(
@@ -157,7 +157,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             providerCodePath()
             errorResponses(notFound = true)
         }
-        get("/api/v1/providers/{providerCode}/status") {
+        get("/api/v2/providers/{providerCode}/status") {
             call.authenticateProtected(services)
             val code = call.providerCode()
             call.respond<ProviderStatusResponseDto>(
@@ -176,7 +176,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             providerCodePath()
             errorResponses(notFound = true)
         }
-        get("/api/v1/providers/{providerCode}/accounts") {
+        get("/api/v2/providers/{providerCode}/accounts") {
             call.authenticateProtected(services)
             val code = call.providerCode()
             call.respond<ProviderAccountListResponseDto>(
@@ -195,7 +195,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             providerCodePath()
             errorResponses(notFound = true)
         }
-        get("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}") {
+        get("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}") {
             call.authenticateProtected(services)
             val code = call.providerCode()
             val providerInstanceId = call.parameters["providerInstanceId"]
@@ -217,7 +217,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             providerCodePath()
             errorResponses(notFound = true)
         }
-        get("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync") {
+        get("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync") {
             call.authenticateProtected(services)
             val code = call.providerCode()
             val providerInstanceId = call.parameters["providerInstanceId"]
@@ -236,7 +236,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             providerCodePath()
             errorResponses(notFound = true)
         }
-        put("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync") {
+        put("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync") {
             call.authenticateProtected(services)
             val code = call.providerCode()
             val providerInstanceId = call.parameters["providerInstanceId"]
@@ -260,7 +260,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             )
             errorResponses(notFound = true)
         }
-        post("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync/run") {
+        post("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync/run") {
             call.authenticateProtected(services)
             val code = call.providerCode()
             val providerInstanceId = call.parameters["providerInstanceId"]
@@ -280,7 +280,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             providerCodePath()
             errorResponses(notFound = true, conflict = true, upstream = true)
         }
-        post("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/disconnect") {
+        post("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/disconnect") {
             call.authenticateProtected(services)
             val code = call.providerCode()
             val providerInstanceId = call.parameters["providerInstanceId"]
@@ -302,7 +302,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             providerCodePath()
             errorResponses(notFound = true, conflict = true)
         }
-        post("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/reconnect") {
+        post("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/reconnect") {
             call.authenticateProtected(services)
             val code = call.providerCode()
             val providerInstanceId = call.parameters["providerInstanceId"]
@@ -324,7 +324,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             providerCodePath()
             errorResponses(notFound = true)
         }
-        get("/api/v1/providers/{providerCode}/oauth/start") {
+        get("/api/v2/providers/{providerCode}/oauth/start") {
             call.authenticateProtected(services)
             val code = call.providerCode()
             call.respond<ProviderOAuthStartResponse>(
@@ -343,7 +343,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             providerCodePath()
             errorResponses(notFound = true)
         }
-        get("/api/v1/providers/{providerCode}/oauth/callback") {
+        get("/api/v2/providers/{providerCode}/oauth/callback") {
             val code = call.providerCode()
             call.respond(
                 HttpStatusCode.OK,
@@ -383,7 +383,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 upstream = true
             )
         }
-        post("/api/v1/providers/{providerCode}/sync") {
+        post("/api/v2/providers/{providerCode}/sync") {
             call.authenticateProtected(services)
             val code = call.providerCode()
             call.respond<ProviderSyncResponseDto>(
@@ -409,7 +409,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             )
             errorResponses(notFound = true, conflict = true, upstream = true)
         }
-        post("/api/v1/providers/{providerCode}/sync-jobs") {
+        post("/api/v2/providers/{providerCode}/sync-jobs") {
             call.authenticateProtected(services)
             val code = call.providerCode()
             call.respond<ProviderSyncJobStartResponseDto>(
@@ -444,7 +444,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 defaultError()
             }
         }
-        get("/api/v1/providers/{providerCode}/sync-jobs/latest") {
+        get("/api/v2/providers/{providerCode}/sync-jobs/latest") {
             call.authenticateProtected(services)
             val code = call.providerCode()
             val job = services.providerSyncJobService.latest(code)
@@ -459,7 +459,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             providerCodePath()
             errorResponses(notFound = true)
         }
-        get("/api/v1/providers/{providerCode}/sync-jobs/{jobId}") {
+        get("/api/v2/providers/{providerCode}/sync-jobs/{jobId}") {
             call.authenticateProtected(services)
             val jobId = call.parameters["jobId"]?.takeIf { it.isNotBlank() }
                 ?: throw RequestValidationException(
@@ -488,19 +488,55 @@ fun Application.configureRoutes(services: ApplicationServices) {
             }
             errorResponses(notFound = true)
         }
-        get("/api/v1/metrics/catalog") {
+        get("/api/v2/metrics") {
             call.authenticateProtected(services)
-            call.respond<MetricCatalogResponseDto>(services.metricCatalogService.catalog())
+            call.respond<MetricTypeCatalogResponse>(services.scalarMetricQueryService.catalog())
         }.describe {
-            operationId = "getMetricCatalog"
+            operationId = "getMetricTypeCatalog"
             tag("Read")
-            summary = "Get metric read catalog"
+            summary = "List readable scalar metric types"
             description =
-                "Discovery endpoint for metric families, supported query parameters, response DTO names, aggregation modes, and provider data-type mappings. OpenAPI remains the formal schema contract; this endpoint helps clients decide which workflow to use."
+                "Returns every scalar metric type the API can serve, with family, unit, segment support, and allowed context values. Structural metrics (steps, sleep, activity, blood pressure) have dedicated endpoints."
             requiresBearerAuth()
             errorResponses()
         }
-        get("/api/v1/health/day") {
+        get("/api/v2/metrics/{metricType}") {
+            call.authenticateProtected(services)
+            call.respond<ScalarSamplesResponse>(
+                services.scalarMetricQueryService.list(
+                    call.metricTypePath(),
+                    call.queryParams(),
+                )
+            )
+        }.describe {
+            operationId = "listScalarSamples"
+            tag("Read")
+            summary = "List scalar samples for one metric type"
+            description =
+                "Returns canonical (cross-provider deduplicated) samples for the metric type; `raw=true` returns every stored sample instead. Supports `latest=true` for the newest matching sample and opaque `cursor` keyset pagination via `meta.nextCursor`. Unknown metric types return 404."
+            requiresBearerAuth()
+            scalarMetricQueryParameters()
+            errorResponses(notFound = true)
+        }
+        get("/api/v2/metrics/{metricType}/summary") {
+            call.authenticateProtected(services)
+            call.respond<ScalarSummaryResponse>(
+                services.scalarMetricQueryService.summary(
+                    call.metricTypePath(),
+                    call.queryParams(),
+                )
+            )
+        }.describe {
+            operationId = "summarizeScalarSamples"
+            tag("Read")
+            summary = "Summarize scalar samples for one metric type"
+            description =
+                "Returns count, minimum, maximum, average, and the latest canonical sample for the metric type within the requested timestamp and source filters. Unknown metric types return 404."
+            requiresBearerAuth()
+            scalarSummaryQueryParameters()
+            errorResponses(notFound = true)
+        }
+        get("/api/v2/health/day") {
             call.authenticateProtected(services)
             call.respond<HealthDayResponse>(
                 HttpStatusCode.OK,
@@ -528,7 +564,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 defaultError()
             }
         }
-        get("/api/v1/metrics/steps") {
+        get("/api/v2/steps") {
             call.authenticateProtected(services)
             call.respond<StepSamplesResponse>(
                 services.metricsQueryService.listStepSamples(
@@ -543,7 +579,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             sortValues = listOf("startAt"),
             defaultSort = "startAt",
         )
-        get("/api/v1/metrics/steps/daily") {
+        get("/api/v2/steps/daily") {
             call.authenticateProtected(services)
             call.respond<StepDailySummariesResponse>(
                 HttpStatusCode.OK,
@@ -553,17 +589,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 )
             )
         }.describeDailyStepReadOperation()
-        get("/api/v1/activity/summaries/latest") {
-            call.authenticateProtected(services)
-            call.respond<ActivitySummaryLatestResponse>(
-                HttpStatusCode.OK,
-                services.metricsQueryService.latestActivitySummary(
-                    call.queryParams(),
-                    services.clock.now()
-                )
-            )
-        }.describeActivitySummaryLatestReadOperation()
-        get("/api/v1/activity/summaries") {
+        get("/api/v2/activity/summaries") {
             call.authenticateProtected(services)
             call.respond<ActivitySummariesResponse>(
                 HttpStatusCode.OK,
@@ -573,7 +599,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 )
             )
         }.describeActivitySummaryReadOperation()
-        get("/api/v1/sleep/sessions") {
+        get("/api/v2/sleep/sessions") {
             call.authenticateProtected(services)
             call.respond<SleepSessionsResponse>(
                 services.metricsQueryService.listSleepSessions(
@@ -588,7 +614,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             sortValues = listOf("startAt"),
             defaultSort = "startAt",
         )
-        get("/api/v1/sleep/nights") {
+        get("/api/v2/sleep/nights") {
             call.authenticateProtected(services)
             call.respond<SleepNightsResponse>(
                 HttpStatusCode.OK,
@@ -598,16 +624,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 )
             )
         }.describeSleepNightReadOperation()
-        get("/api/v1/sleep/summaries/latest") {
-            call.authenticateProtected(services)
-            call.respond<SleepSummaryLatestResponse>(
-                HttpStatusCode.OK,
-                services.sleepSummaryReadService.latest(
-                    call.queryParams()
-                )
-            )
-        }.describeSleepSummaryLatestReadOperation()
-        get("/api/v1/sleep/summaries") {
+        get("/api/v2/sleep/summaries") {
             call.authenticateProtected(services)
             call.respond<SleepSummariesResponse>(
                 services.sleepSummaryReadService.list(
@@ -622,158 +639,21 @@ fun Application.configureRoutes(services: ApplicationServices) {
             sortValues = listOf("endAt"),
             defaultSort = "endAt",
         )
-        get("/api/v1/body/measurements/latest") {
-            call.authenticateProtected(services)
-            call.respond<BodyMeasurementLatestResponse>(
-                HttpStatusCode.OK,
-                services.metricsQueryService.latestBodyMeasurement(
-                    call.queryParams()
-                )
-            )
-        }.describe {
-            operationId = "getLatestBodyMeasurement"
-            tag("Read")
-            summary = "Get latest body measurement"
-            description =
-                "Returns the latest matching body measurement for a required `metricType` filter. This is a single-item alias for `latest=true` body measurement reads."
-            requiresBearerAuth()
-            bodyMeasurementLatestQueryParameters()
-            errorResponses()
-        }
-        get("/api/v1/body/measurements") {
-            call.authenticateProtected(services)
-            call.respond<BodyMeasurementsResponse>(
-                services.metricsQueryService.listBodyMeasurements(
-                    call.queryParams()
-                )
-            )
-        }.describe {
-            operationId = "listBodyMeasurements"
-            tag("Read")
-            summary = "List body measurements"
-            description =
-                "Returns body measurements filtered by timestamp, source, and optional `metricType`. Use `latest=true` to return the latest matching measurement only."
-            requiresBearerAuth()
-            bodyMeasurementQueryParameters()
-            errorResponses()
-        }
-        get("/api/v1/metrics/heart-rate/summary") {
-            call.authenticateProtected(services)
-            call.respond<HeartRateSummaryResponse>(
-                HttpStatusCode.OK,
-                services.metricsQueryService.heartRateSummary(
-                    call.queryParams()
-                )
-            )
-        }.describe {
-            operationId = "summarizeHeartRate"
-            tag("Read")
-            summary = "Summarize heart rate samples"
-            description =
-                "Returns count, minimum, maximum, average, and latest heart-rate sample for the requested timestamp and source filters."
-            requiresBearerAuth()
-            heartRateSummaryQueryParameters()
-            errorResponses()
-        }
-        get("/api/v1/metrics/heart-rate") {
-            call.authenticateProtected(services)
-            call.respond<HeartRateSamplesResponse>(
-                services.metricsQueryService.listHeartRateSamples(
-                    call.queryParams()
-                )
-            )
-        }.describeReadOperation(
-            operationId = "listHeartRateSamples",
-            summary = "List heart rate samples",
-            descriptionText = "Returns heart-rate samples filtered by timestamp and source. Use `latest=true` to return the latest matching sample only.",
-            includeLatest = true,
-            sortValues = listOf("measuredAt"),
-            defaultSort = "measuredAt",
-        )
-        get("/api/v1/metrics/respiratory-rate/summary") {
-            call.authenticateProtected(services)
-            call.respond<RespiratoryRateSummaryResponse>(
-                HttpStatusCode.OK,
-                services.metricsQueryService.respiratoryRateSummary(
-                    call.queryParams()
-                )
-            )
-        }.describeRespiratoryRateSummaryOperation()
-        get("/api/v1/metrics/respiratory-rate") {
-            call.authenticateProtected(services)
-            call.respond<RespiratoryRateSamplesResponse>(
-                services.metricsQueryService.listRespiratoryRateSamples(
-                    call.queryParams()
-                )
-            )
-        }.describeReadOperation(
-            operationId = "listRespiratoryRateSamples",
-            summary = "List respiratory rate samples",
-            descriptionText = "Returns timestamped respiratory-rate samples filtered by timestamp and source. Use `latest=true` to return the latest matching sample only.",
-            includeLatest = true,
-            sortValues = listOf("measuredAt"),
-            defaultSort = "measuredAt",
-        )
-        get("/api/v1/metrics/hrv/summary") {
-            call.authenticateProtected(services)
-            call.respond<HrvSummaryResponse>(
-                HttpStatusCode.OK,
-                services.metricsQueryService.hrvSummary(
-                    call.queryParams()
-                )
-            )
-        }.describeHrvSummaryOperation()
-        get("/api/v1/metrics/hrv") {
-            call.authenticateProtected(services)
-            call.respond<HrvSamplesResponse>(
-                services.metricsQueryService.listHrvSamples(
-                    call.queryParams()
-                )
-            )
-        }.describeHrvReadOperation()
-
-        // Blood pressure
-        get("/api/v1/metrics/blood-pressure") {
+        get("/api/v2/blood-pressure") {
             call.authenticateProtected(services)
             call.respond<BloodPressureMeasurementsResponse>(
                 services.metricsQueryService.listBloodPressure(call.queryParams())
             )
-        }
-        get("/api/v1/metrics/blood-pressure/latest") {
-            call.authenticateProtected(services)
-            call.respond<BloodPressureLatestResponse>(
-                services.metricsQueryService.latestBloodPressure(call.queryParams())
-            )
-        }
+        }.describeReadOperation(
+            operationId = "listBloodPressureMeasurements",
+            summary = "List blood pressure measurements",
+            descriptionText = "Returns paired systolic/diastolic blood-pressure measurements filtered by timestamp and source. Use `latest=true` to return the latest matching measurement only.",
+            includeLatest = true,
+            sortValues = listOf("measuredAt"),
+            defaultSort = "measuredAt",
+        )
 
-        // Cardiovascular
-        get("/api/v1/metrics/cardiovascular") {
-            call.authenticateProtected(services)
-            call.respond<CardiovascularMeasurementsResponse>(
-                services.metricsQueryService.listCardiovascular(call.queryParams())
-            )
-        }
-        get("/api/v1/metrics/cardiovascular/latest") {
-            call.authenticateProtected(services)
-            call.respond<CardiovascularMeasurementResponse>(
-                services.metricsQueryService.latestCardiovascular(call.queryParams())
-            )
-        }
-
-        // Extended body measurements
-        get("/api/v1/metrics/extended-body-measurements") {
-            call.authenticateProtected(services)
-            call.respond<ExtendedBodyMeasurementsResponse>(
-                services.metricsQueryService.listExtendedBodyMeasurements(call.queryParams())
-            )
-        }
-        get("/api/v1/metrics/extended-body-measurements/latest") {
-            call.authenticateProtected(services)
-            call.respond<ExtendedBodyMeasurementResponse>(
-                services.metricsQueryService.latestExtendedBodyMeasurement(call.queryParams())
-            )
-        }
-        get("/api/v1/dashboard/summary") {
+        get("/api/v2/dashboard/summary") {
             call.authenticateProtected(services)
             call.respond<DashboardSummaryResponse>(
                 HttpStatusCode.OK,
@@ -791,7 +671,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             requiresBearerAuth()
             dashboardQueryParameters()
         }
-        get("/api/v1/dashboard/trends") {
+        get("/api/v2/dashboard/trends") {
             call.authenticateProtected(services)
             call.respond<DashboardTrendsResponse>(
                 HttpStatusCode.OK,
@@ -819,7 +699,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             }
             errorResponses()
         }
-        get("/api/v1/admin/ingestion/batches") {
+        get("/api/v2/admin/ingestion/batches") {
             call.authenticateProtected(services)
             call.respond<IngestionBatchesResponse>(
                 services.adminService.listBatches(
@@ -836,7 +716,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             adminQueryParameters()
             errorResponses()
         }
-        get("/api/v1/admin/ingestion/batches/{id}") {
+        get("/api/v2/admin/ingestion/batches/{id}") {
             call.authenticateProtected(services)
             call.respond<IngestionBatchDetailResponse>(
                 HttpStatusCode.OK,
@@ -860,7 +740,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             }
             errorResponses(notFound = true)
         }
-        get("/api/v1/admin/ingestion/failures") {
+        get("/api/v2/admin/ingestion/failures") {
             call.authenticateProtected(services)
             call.respond<IngestionBatchesResponse>(
                 services.adminService.listFailures(
@@ -877,7 +757,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             adminQueryParameters()
             errorResponses()
         }
-        post("/api/v1/admin/replay") {
+        post("/api/v2/admin/replay") {
             call.authenticateProtected(services)
             call.respond<ReplayJobStartResponse>(
                 HttpStatusCode.Accepted,
@@ -907,7 +787,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
                 defaultError()
             }
         }
-        get("/api/v1/admin/replay/latest") {
+        get("/api/v2/admin/replay/latest") {
             call.authenticateProtected(services)
             val job = services.replayService.latest()
                 ?: throw NotFoundException("Replay job not found")
@@ -920,7 +800,7 @@ fun Application.configureRoutes(services: ApplicationServices) {
             requiresBearerAuth()
             errorResponses(notFound = true)
         }
-        get("/api/v1/admin/replay/{jobId}") {
+        get("/api/v2/admin/replay/{jobId}") {
             call.authenticateProtected(services)
             val jobId = call.parameters["jobId"]?.takeIf { it.isNotBlank() }
                 ?: throw RequestValidationException(
@@ -972,6 +852,22 @@ private fun ApplicationCall.queryParams(): QueryParams =
     QueryParams(
         request.queryParameters.entries()
             .associate { it.key to it.value.firstOrNull() })
+
+private fun ApplicationCall.metricTypePath(): String {
+    val metricType = parameters["metricType"]
+    if (metricType.isNullOrBlank()) {
+        throw RequestValidationException(
+            listOf(
+                ValidationIssue(
+                    field = "metricType",
+                    code = ValidationIssueCodes.InvalidFormat,
+                    message = "must not be blank",
+                )
+            )
+        )
+    }
+    return metricType
+}
 
 private fun ApplicationCall.providerCode(): String {
     val code = parameters["providerCode"]

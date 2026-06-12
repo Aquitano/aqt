@@ -3,6 +3,7 @@ package me.aquitano.health.application.metric.common
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
+import me.aquitano.health.shared.Cursor
 import me.aquitano.health.shared.utcDate
 import java.time.Instant
 import java.time.LocalDate
@@ -190,6 +191,10 @@ class QueryParams(
         return value
     }
 
+    /** Decodes the cursor parameter, rejecting cursors issued under a different sort/order. */
+    fun cursor(sort: String, order: String): Cursor? =
+        optional("cursor")?.let { Cursor.decode(it, expectedField = sort, expectedOrder = order) }
+
     fun rejectLatest() {
         if (boolean("latest", default = false)) {
             throw RequestValidationException(
@@ -205,7 +210,7 @@ class QueryParams(
     }
 
     fun validateLatestOverrides() {
-        val invalidFields = listOf("limit", "sort", "order")
+        val invalidFields = listOf("limit", "sort", "order", "cursor")
             .filter { optional(it) != null }
         if (invalidFields.isNotEmpty()) {
             throw RequestValidationException(
@@ -221,7 +226,7 @@ class QueryParams(
     }
 
     fun rejectLatestEndpointOverrides() {
-        val invalidFields = listOf("limit", "sort", "order")
+        val invalidFields = listOf("limit", "sort", "order", "cursor")
             .filter { optional(it) != null }
         if (invalidFields.isNotEmpty()) {
             throw RequestValidationException(

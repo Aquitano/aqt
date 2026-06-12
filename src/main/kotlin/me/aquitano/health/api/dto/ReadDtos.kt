@@ -94,31 +94,9 @@ data class SleepStageResponse(
 )
 
 @Serializable
-data class BodyMeasurementsResponse(
-    val items: List<BodyMeasurementResponse>,
-    val meta: ReadResponseMeta,
-)
-
-@Serializable
-data class BodyMeasurementResponse(
-    val id: Int,
-    @JsonSchema.Format("date-time")
-    val measuredAt: String,
-    val metricType: String,
-    val value: Double,
-    val unit: String,
-    val source: SourceMetadataResponse? = null,
-)
-
-@Serializable
 data class ActivitySummariesResponse(
     val items: List<ActivitySummaryResponse>,
     val meta: ReadResponseMeta,
-)
-
-@Serializable
-data class ActivitySummaryLatestResponse(
-    val item: ActivitySummaryResponse? = null,
 )
 
 @Serializable
@@ -141,39 +119,9 @@ data class ActivitySummaryResponse(
 )
 
 @Serializable
-data class HeartRateSamplesResponse(
-    val items: List<HeartRateSampleResponse>,
-    val meta: ReadResponseMeta,
-)
-
-@Serializable
-data class HeartRateSampleResponse(
-    val id: Int,
-    @JsonSchema.Format("date-time")
-    val measuredAt: String,
-    val bpm: Int,
-    val context: String,
-    val source: SourceMetadataResponse? = null,
-)
-
-@Serializable
-data class HeartRateSummaryResponse(
-    val count: Int,
-    val minBpm: Int? = null,
-    val maxBpm: Int? = null,
-    val avgBpm: Double? = null,
-    val latest: HeartRateSampleResponse? = null,
-)
-
-@Serializable
 data class SleepSummariesResponse(
     val items: List<SleepSummaryResponse>,
     val meta: ReadResponseMeta,
-)
-
-@Serializable
-data class SleepSummaryLatestResponse(
-    val item: SleepSummaryResponse? = null,
 )
 
 @Serializable
@@ -215,56 +163,46 @@ data class SleepSummaryResponse(
 )
 
 @Serializable
-data class RespiratoryRateSamplesResponse(
-    val items: List<RespiratoryRateSampleResponse>,
+data class ScalarSamplesResponse(
+    val items: List<ScalarSampleResponse>,
     val meta: ReadResponseMeta,
 )
 
 @Serializable
-data class RespiratoryRateSampleResponse(
-    val id: Int,
-    @JsonSchema.Format("date-time")
-    val measuredAt: String,
-    val breathsPerMinute: Int,
-    val context: String,
-    val source: SourceMetadataResponse? = null,
-)
-
-@Serializable
-data class RespiratoryRateSummaryResponse(
-    val count: Int,
-    val minBreathsPerMinute: Int? = null,
-    val maxBreathsPerMinute: Int? = null,
-    val avgBreathsPerMinute: Double? = null,
-    val latest: RespiratoryRateSampleResponse? = null,
-)
-
-@Serializable
-data class HrvSamplesResponse(
-    val items: List<HrvSampleResponse>,
-    val meta: ReadResponseMeta,
-)
-
-@Serializable
-data class HrvSampleResponse(
-    val id: Int,
+data class ScalarSampleResponse(
+    val id: Long,
     @JsonSchema.Format("date-time")
     val measuredAt: String,
     val metricType: String,
     val value: Double,
     val unit: String,
-    val context: String,
+    val context: String? = null,
+    val segment: String? = null,
     val source: SourceMetadataResponse? = null,
 )
 
 @Serializable
-data class HrvSummaryResponse(
-    val count: Int,
+data class ScalarSummaryResponse(
     val metricType: String,
+    val count: Int,
     val minValue: Double? = null,
     val maxValue: Double? = null,
     val avgValue: Double? = null,
-    val latest: HrvSampleResponse? = null,
+    val latest: ScalarSampleResponse? = null,
+)
+
+@Serializable
+data class MetricCatalogEntryResponse(
+    val metricType: String,
+    val family: String,
+    val unit: String,
+    val supportsSegment: Boolean,
+    val contexts: List<String>? = null,
+)
+
+@Serializable
+data class MetricTypeCatalogResponse(
+    val items: List<MetricCatalogEntryResponse>,
 )
 
 @Serializable
@@ -285,59 +223,14 @@ data class BloodPressureMeasurementResponse(
 )
 
 @Serializable
-data class BloodPressureLatestResponse(
-    val item: BloodPressureMeasurementResponse? = null,
-)
-
-@Serializable
-data class CardiovascularMeasurementsResponse(
-    val items: List<CardiovascularMeasurementResponse>,
-    val meta: ReadResponseMeta,
-)
-
-@Serializable
-data class CardiovascularMeasurementResponse(
-    val id: Int,
-    @JsonSchema.Format("date-time")
-    val measuredAt: String,
-    val metricType: String,
-    val value: Double,
-    val unit: String,
-    val source: SourceMetadataResponse? = null,
-)
-
-@Serializable
-data class ExtendedBodyMeasurementsResponse(
-    val items: List<ExtendedBodyMeasurementResponse>,
-    val meta: ReadResponseMeta,
-)
-
-@Serializable
-data class ExtendedBodyMeasurementResponse(
-    val id: Int,
-    @JsonSchema.Format("date-time")
-    val measuredAt: String,
-    val metricType: String,
-    val value: Double,
-    val unit: String,
-    val segment: String? = null,
-    val source: SourceMetadataResponse? = null,
-)
-
-@Serializable
-data class BodyMeasurementLatestResponse(
-    val item: BodyMeasurementResponse? = null,
-)
-
-@Serializable
 data class DashboardSummaryResponse(
     @JsonSchema.Format("date")
     val fromDate: String,
     @JsonSchema.Format("date")
     val toDate: String,
     val steps: DashboardStepsSummaryResponse,
-    val latestWeight: BodyMeasurementResponse?,
-    val latestHeartRate: HeartRateSampleResponse?,
+    val latestWeight: ScalarSampleResponse?,
+    val latestHeartRate: ScalarSampleResponse?,
     val lastSleepSession: SleepSessionResponse?,
 )
 
@@ -408,16 +301,16 @@ data class HealthDayHeartRateResponse(
     val minBpm: Int? = null,
     val maxBpm: Int? = null,
     val avgBpm: Double? = null,
-    val latest: HeartRateSampleResponse? = null,
+    val latest: ScalarSampleResponse? = null,
     val buckets: List<HealthDayBucketResponse>,
 )
 
 @Serializable
 data class HealthDayWeightResponse(
-    val latest: BodyMeasurementResponse? = null,
-    val previous: BodyMeasurementResponse? = null,
+    val latest: ScalarSampleResponse? = null,
+    val previous: ScalarSampleResponse? = null,
     val delta: Double? = null,
-    val points: List<BodyMeasurementResponse>,
+    val points: List<ScalarSampleResponse>,
 )
 
 @Serializable

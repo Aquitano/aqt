@@ -11,6 +11,7 @@ import me.aquitano.health.application.metric.cardiovascular.repository.BloodPres
 import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
 import me.aquitano.health.application.metric.sleep.repository.SleepStageRow
 import me.aquitano.health.application.metric.sleep.repository.SleepNightRow
+import me.aquitano.health.shared.Cursor
 
 internal fun SourceMetadata?.toResponse(): SourceMetadataResponse? =
     this?.let {
@@ -120,27 +121,51 @@ internal fun SleepNightRow.toResponse(
         session = session.toResponse(stagesBySession, sourceMetadata),
     )
 
-internal fun <T> List<T>.meta(filters: ReadFilters): ReadResponseMeta =
+internal fun <T> List<T>.meta(filters: ReadFilters, nextCursor: String? = null): ReadResponseMeta =
     ReadResponseMeta(
         count = size,
         limit = filters.limit,
         sort = filters.sort,
         order = filters.order,
+        nextCursor = nextCursor,
     )
 
-internal fun <T> List<T>.meta(filters: DailyReadFilters): ReadResponseMeta =
+internal fun <T> List<T>.meta(filters: DailyReadFilters, nextCursor: String? = null): ReadResponseMeta =
     ReadResponseMeta(
         count = size,
         limit = filters.limit,
         sort = filters.sort,
         order = filters.order,
+        nextCursor = nextCursor,
     )
 
-internal fun <T> List<T>.meta(filters: SleepNightReadFilters): ReadResponseMeta =
+internal fun <T> List<T>.meta(filters: SleepNightReadFilters, nextCursor: String? = null): ReadResponseMeta =
     ReadResponseMeta(
         count = size,
         limit = filters.limit,
         sort = filters.sort,
         order = filters.order,
+        nextCursor = nextCursor,
     )
+
+/**
+ * One page of a keyset-paginated list. Repositories fetch limit+1 rows; the extra row only
+ * signals that a next page exists and is dropped from [items].
+ */
+internal data class KeysetPage<T>(val items: List<T>, val nextCursor: String?)
+
+internal fun <T> List<T>.keysetPage(
+    limit: Int,
+    sort: String,
+    order: String,
+    sortValue: (T) -> String,
+    id: (T) -> Long,
+): KeysetPage<T> =
+    if (size > limit) {
+        val items = take(limit)
+        val last = items.last()
+        KeysetPage(items, Cursor.encode(sortValue(last), id(last), order = order, field = sort))
+    } else {
+        KeysetPage(this, null)
+    }
 

@@ -42,10 +42,26 @@ class DatabaseFactoryTest {
         assertContains(tableNames, "scalar_samples")
         assertContains(tableNames, "metric_catalog")
         assertContains(tableNames, "provider_ranks")
-        assertContains(tableNames, "canonical_sleep_summaries")
         assertContains(tableNames, "provider_oauth_accounts")
         assertContains(tableNames, "provider_oauth_states")
         assertContains(tableNames, "provider_sync_runs")
+
+        val viewNames = transaction(database) {
+            val names = mutableSetOf<String>()
+            exec("SELECT viewname FROM pg_views WHERE schemaname = current_schema()") { resultSet ->
+                while (resultSet.next()) {
+                    names.add(resultSet.getString("viewname"))
+                }
+            }
+            names
+        }
+
+        assertContains(viewNames, "canonical_scalar_samples")
+        assertContains(viewNames, "canonical_activity_summaries")
+        assertContains(viewNames, "canonical_step_daily_summaries")
+        assertContains(viewNames, "canonical_sleep_summaries")
+        assertContains(viewNames, "canonical_sleep_sessions")
+        assertContains(viewNames, "canonical_sleep_nights")
     }
 
     @Test

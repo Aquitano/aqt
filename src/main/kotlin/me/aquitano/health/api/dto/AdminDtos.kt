@@ -15,7 +15,7 @@ data class IngestionBatchAdminResponse(
     val provider: String,
     val providerInstanceId: String,
     val batchExternalId: String?,
-    val status: String,
+    val status: BatchStatus,
     @JsonSchema.Format("date-time")
     val ingestedAt: String,
     @JsonSchema.Format("date-time")
@@ -32,7 +32,7 @@ data class IngestionBatchDetailResponse(
     val provider: String,
     val providerInstanceId: String,
     val batchExternalId: String?,
-    val status: String,
+    val status: BatchStatus,
     @JsonSchema.Format("date-time")
     val ingestedAt: String,
     @JsonSchema.Format("date-time")
@@ -74,7 +74,7 @@ data class ReplayRequest(
 @Serializable
 data class ReplayJobStartResponse(
     val jobId: String,
-    val status: String,
+    val status: ReplayJobStatus,
     @JsonSchema.Format("date-time")
     val createdAt: String,
 )
@@ -89,7 +89,7 @@ data class ReplayJobStatusResponse(
     @JsonSchema.Format("date")
     val toDate: String?,
     val wipe: Boolean,
-    val status: String,
+    val status: ReplayJobStatus,
     val totalItems: Int,
     val completedItems: Int,
     val currentItem: String?,

@@ -7,6 +7,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import me.aquitano.health.api.dto.IngestionRecordDto
+import me.aquitano.health.api.dto.ReplayJobStatus
 import me.aquitano.health.api.dto.ReplayJobStartResponse
 import me.aquitano.health.api.dto.ReplayJobStatusResponse
 import me.aquitano.health.api.dto.ReplayRequest
@@ -105,7 +106,7 @@ class ReplayService(
 
         return ReplayJobStartResponse(
             jobId = job.id,
-            status = job.status,
+            status = ReplayJobStatus.fromStored(job.status),
             createdAt = job.createdAt.toString(),
         )
     }
@@ -284,15 +285,6 @@ class ReplayService(
 
             RecordTypes.SLEEP_SESSION -> mapOf(
                 DerivedKind.SLEEP_NIGHT to setOf((row.recordEndAt ?: row.recordStartAt).utcDate()),
-                DerivedKind.SLEEP_SESSION_CANONICAL to setOf(row.recordStartAt.utcDate()),
-            )
-
-            RecordTypes.SLEEP_SUMMARY -> mapOf(
-                DerivedKind.SLEEP_SUMMARY_CANONICAL to setOf(row.recordStartAt.utcDate()),
-            )
-
-            RecordTypes.ACTIVITY_SUMMARY -> mapOf(
-                DerivedKind.ACTIVITY_SUMMARY_CANONICAL to setOf(row.recordStartAt.utcDate()),
             )
 
             else -> emptyMap()
@@ -378,7 +370,7 @@ class ReplayService(
             fromDate = fromDate?.toString(),
             toDate = toDate?.toString(),
             wipe = wipe,
-            status = status,
+            status = ReplayJobStatus.fromStored(status),
             totalItems = totalItems,
             completedItems = completedItems,
             currentItem = currentItem,

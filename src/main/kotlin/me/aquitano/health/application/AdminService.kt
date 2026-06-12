@@ -1,5 +1,6 @@
 package me.aquitano.health.application
 
+import me.aquitano.health.api.dto.BatchStatus
 import me.aquitano.health.api.dto.IngestionBatchAdminResponse
 import me.aquitano.health.api.dto.IngestionBatchDetailResponse
 import me.aquitano.health.api.dto.IngestionBatchesResponse
@@ -50,7 +51,7 @@ class AdminService(
                             provider = it.provider,
                             providerInstanceId = it.providerInstanceId,
                             batchExternalId = it.batchExternalId,
-                            status = it.status,
+                            status = BatchStatus.fromStored(it.status),
                             ingestedAt = it.ingestedAt,
                             receivedAt = it.receivedAt,
                             processedAt = it.processedAt,
@@ -94,7 +95,7 @@ class AdminService(
                 provider = batch.provider,
                 providerInstanceId = batch.providerInstanceId,
                 batchExternalId = batch.batchExternalId,
-                status = batch.status,
+                status = BatchStatus.fromStored(batch.status),
                 ingestedAt = batch.ingestedAt,
                 receivedAt = batch.receivedAt,
                 processedAt = batch.processedAt,

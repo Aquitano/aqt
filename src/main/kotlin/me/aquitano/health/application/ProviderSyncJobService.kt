@@ -12,6 +12,7 @@ import me.aquitano.health.api.dto.ProviderSyncJobStartResponseDto
 import me.aquitano.health.api.dto.ProviderSyncJobStatusResponseDto
 import me.aquitano.health.api.dto.ProviderSyncRequestDto
 import me.aquitano.health.api.dto.ProviderSyncResponseDto
+import me.aquitano.health.api.dto.SyncJobStatus
 import me.aquitano.health.application.providersync.ProviderSyncItem
 import me.aquitano.health.application.providersync.ProviderSyncProgressSink
 import me.aquitano.health.domain.NotFoundException
@@ -68,7 +69,7 @@ class ProviderSyncJobService(
 
         return ProviderSyncJobStartResponseDto(
             jobId = job.id,
-            status = job.status,
+            status = SyncJobStatus.fromStored(job.status),
             createdAt = job.createdAt.toString(),
         )
     }
@@ -105,7 +106,7 @@ class ProviderSyncJobService(
             )
             repository.finish(
                 id = jobId,
-                status = summary.status,
+                status = summary.status.stored,
                 batchesCount = summary.batches.size,
                 emptyCount = summary.emptyDataTypes.size,
                 errorCount = summary.errors.size,
@@ -166,7 +167,7 @@ class ProviderSyncJobService(
             requestedFrom = requestedFrom.toString(),
             requestedTo = requestedTo.toString(),
             dataTypes = dataTypes,
-            status = status,
+            status = SyncJobStatus.fromStored(status),
             totalItems = totalItems,
             completedItems = completedItems,
             currentItem = itemDto(currentDataType, currentFrom, currentTo),

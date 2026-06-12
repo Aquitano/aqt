@@ -16,13 +16,19 @@ class CardiovascularRepository : BaseMetricRepository() {
             fromColumn = BloodPressureMeasurementsTable.measuredAt,
         ).whereOrNull() ?: return emptyReadResult()
 
+        val keyset = timestampKeyset(
+            filters.cursor,
+            filters.order,
+            BloodPressureMeasurementsTable.measuredAt,
+            BloodPressureMeasurementsTable.id,
+        )
         val rows = BloodPressureMeasurementsTable.selectAll()
-            .where(where)
+            .where(where and (keyset ?: Op.TRUE))
             .orderBy(
                 BloodPressureMeasurementsTable.measuredAt to filters.sortOrder(),
                 BloodPressureMeasurementsTable.id to filters.sortOrder(),
             )
-            .limit(filters.limit)
+            .limit(filters.limit + 1)
             .map(::toBloodPressureMeasurementRow)
         return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
     }

@@ -1,5 +1,6 @@
 package me.aquitano.health.application
 
+import me.aquitano.health.api.dto.BatchStatus
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
 import me.aquitano.health.api.dto.MetricSkippedCountsResponse
@@ -82,11 +83,11 @@ class IngestionService(
                     return@suspendTransaction IngestionTransactionResult.Success(
                         IngestionSummaryResponse(
                             batchId = existingBatch.id,
-                            status = existingBatch.status,
+                            status = BatchStatus.fromStored(existingBatch.status),
                             duplicateBatch = true,
                             recordsReceived = validated.records.size,
                             ingestionRecordsStored = 0,
-                            metricsCreated = MetricCreatedCounts().toResponse(),
+                            metricsCreated = emptyMap(),
                             metricsSkipped = MetricSkippedCountsResponse(
                                 duplicates = 0
                             ),
@@ -172,11 +173,11 @@ class IngestionService(
 
                 val response = IngestionSummaryResponse(
                     batchId = batchId,
-                    status = "processed",
+                    status = BatchStatus.Processed,
                     duplicateBatch = false,
                     recordsReceived = validated.records.size,
                     ingestionRecordsStored = ingestionRecords.size,
-                    metricsCreated = created.toResponse(),
+                    metricsCreated = created.counts,
                     metricsSkipped = MetricSkippedCountsResponse(
                         duplicates = duplicateSkipped
                     ),
@@ -223,8 +224,7 @@ class IngestionService(
                         "ingestion_batch_processed",
                         "batchId" to response.batchId,
                         "recordsStored" to response.ingestionRecordsStored,
-                        "metricsCreated" to transactionResult.createdCounts.counts
-                            .mapKeys { it.key.name.lowercase() },
+                        "metricsCreated" to transactionResult.createdCounts.counts,
                         "duplicateSkips" to response.metricsSkipped.duplicates,
                     )
                 }

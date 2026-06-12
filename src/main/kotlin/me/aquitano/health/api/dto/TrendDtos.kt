@@ -35,8 +35,8 @@ data class SleepTrend(
 
 @Serializable
 data class WeightTrend(
-    val latest: BodyMeasurementResponse? = null,
-    val previous: BodyMeasurementResponse? = null,
+    val latest: ScalarSampleResponse? = null,
+    val previous: ScalarSampleResponse? = null,
     val delta: Double? = null,
     val percentChange: Double? = null,
 )

@@ -6,8 +6,6 @@ import me.aquitano.health.application.metric.steps.repository.CanonicalStepDeriv
 import me.aquitano.health.application.metric.steps.repository.CanonicalStepOutput
 import me.aquitano.health.application.metric.steps.repository.CanonicalStepSampleOutput
 import me.aquitano.health.application.metric.steps.repository.StepSampleRow
-import me.aquitano.health.application.metric.steps.repository.StepDailySummaryRow
-import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -49,24 +47,11 @@ class CanonicalStepDerivationService(
             )
             val selectedPreparedSamples = canonicalSamples
 
-            val rawSummaries = repository.listRawDailySummariesForDay(date)
-            val summaryMetadata = repository.sourceMetadataFor(rawSummaries.map { it.sourceInstanceId }.toSet())
-            val canonicalSummary = canonicalStepDailySummary(rawSummaries, summaryMetadata)
-            val dailySummaryOutput = canonicalSummary?.let { summary ->
-                me.aquitano.health.application.metric.steps.repository.CanonicalStepDailySummaryOutput(
-                    stepDailySummaryId = summary.id,
-                    sourceInstanceId = summary.sourceInstanceId,
-                    date = date,
-                    steps = summary.steps,
-                )
-            }
-
             repository.persistCanonicalOutput(
                 CanonicalStepOutput(
                     date = date,
                     algorithmVersion = CANONICAL_STEP_ALGORITHM_VERSION,
                     computedAt = computedAt,
-                    dailySummary = dailySummaryOutput,
                     samples = selectedPreparedSamples.map {
                         CanonicalStepSampleOutput(
                             sampleId = it.candidate.row.id,
@@ -83,22 +68,6 @@ class CanonicalStepDerivationService(
             )
         }
     }
-
-    fun canonicalStepDailySummary(
-        rows: List<StepDailySummaryRow>,
-        metadata: Map<Int, SourceMetadata>,
-    ): StepDailySummaryRow? =
-        rows.minWithOrNull(
-            compareBy<StepDailySummaryRow> {
-                policy.rank(
-                    me.aquitano.health.application.CanonicalMetricFamily.STEPS,
-                    metadata[it.sourceInstanceId]?.provider,
-                )
-            }
-                .thenByDescending { it.sampleCount }
-                .thenByDescending { it.steps }
-                .thenBy { it.sourceInstanceId }
-        )
 
     private fun bucketContributions(
         date: LocalDate,

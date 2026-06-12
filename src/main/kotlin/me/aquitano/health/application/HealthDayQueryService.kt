@@ -11,8 +11,7 @@ import me.aquitano.health.application.metric.steps.repository.CanonicalStepDeriv
 import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
 import me.aquitano.health.application.metric.scalar.ScalarSampleReadRepository
 import me.aquitano.health.application.metric.scalar.ScalarSampleRow
-import me.aquitano.health.application.metric.scalar.toBodyMeasurementResponse
-import me.aquitano.health.application.metric.scalar.toHeartRateResponse
+import me.aquitano.health.application.metric.scalar.toScalarResponse
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
 import me.aquitano.health.application.metric.sleep.repository.SleepStageRow
@@ -219,7 +218,7 @@ class HeartRateDayModule(
             minBpm = summary.minValue?.roundToInt(),
             maxBpm = summary.maxValue?.roundToInt(),
             avgBpm = summary.avgValue,
-            latest = latest?.toHeartRateResponse(sourceMetadata),
+            latest = latest?.toScalarResponse(sourceMetadata),
             buckets = buckets.mapIndexed { index, (start, end) ->
                 HealthDayBucketResponse(
                     startAt = start.toString(),
@@ -248,10 +247,10 @@ class WeightDayModule(
         val sourceMetadata = pointSourceMetadata + previousSourceMetadata
 
         return HealthDayWeightResponse(
-            latest = latest?.toBodyMeasurementResponse(sourceMetadata),
-            previous = previous?.toBodyMeasurementResponse(sourceMetadata),
+            latest = latest?.toScalarResponse(sourceMetadata),
+            previous = previous?.toScalarResponse(sourceMetadata),
             delta = if (latest != null && previous != null) latest.value - previous.value else null,
-            points = points.map { it.toBodyMeasurementResponse(sourceMetadata) },
+            points = points.map { it.toScalarResponse(sourceMetadata) },
         )
     }
 }
@@ -274,7 +273,7 @@ class SleepDayModule(
             sort = "date",
             order = "asc",
         )
-        sleepNightService.materializeCanonical(filters, context.computedAt)
+        sleepNightService.materialize(filters, context.computedAt)
 
         val (nights, stagesBySession, sourceMetadata) =
             sleepRepository.listCanonicalSleepNights(filters)

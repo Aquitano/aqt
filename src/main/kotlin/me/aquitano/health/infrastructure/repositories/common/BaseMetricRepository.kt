@@ -5,13 +5,19 @@ import me.aquitano.health.application.metric.common.repository.DailyReadFilters
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
+import me.aquitano.health.domain.RequestValidationException
+import me.aquitano.health.domain.ValidationIssue
+import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.database.tables.SourceInstancesTable
 import me.aquitano.health.infrastructure.database.tables.SourcesTable
 import me.aquitano.health.infrastructure.database.toDbTimestamp
+import me.aquitano.health.shared.Cursor
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.select
+import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
 
 /**
  * Base class for metric-specific read repositories.
@@ -222,6 +228,64 @@ abstract class BaseMetricRepository : MetricReadRepository {
      */
     protected fun combineConditions(conditions: List<Op<Boolean>>): Op<Boolean> =
         conditions.reduceOrNull { left, right -> left and right } ?: Op.TRUE
+
+    /**
+     * Keyset predicate for cursor pagination over a timestamp sort column:
+     * `(sortCol, id) > (cursor.sortValue, cursor.lastId)` (mirrored for desc).
+     */
+    protected fun timestampKeyset(
+        cursor: Cursor?,
+        order: String,
+        sortColumn: Column<OffsetDateTime>,
+        idExpression: Expression<*>,
+    ): Op<Boolean>? {
+        if (cursor == null) return null
+        val sortValue = runCatching {
+            Instant.parse(cursor.sortValue).atOffset(ZoneOffset.UTC)
+        }.getOrElse { throw invalidCursor() }
+        return keyset(order, sortColumn, LiteralOp(sortColumn.columnType, sortValue), idExpression, cursor.lastId)
+    }
+
+    /** Keyset predicate for cursor pagination over a date sort column. */
+    protected fun dateKeyset(
+        cursor: Cursor?,
+        order: String,
+        sortColumn: Column<LocalDate>,
+        idExpression: Expression<*>,
+    ): Op<Boolean>? {
+        if (cursor == null) return null
+        val sortValue = runCatching { LocalDate.parse(cursor.sortValue) }
+            .getOrElse { throw invalidCursor() }
+        return keyset(order, sortColumn, LiteralOp(sortColumn.columnType, sortValue), idExpression, cursor.lastId)
+    }
+
+    private fun keyset(
+        order: String,
+        sortExpression: Expression<*>,
+        sortValue: Expression<*>,
+        idExpression: Expression<*>,
+        lastId: Long,
+    ): Op<Boolean> {
+        val idValue = longParam(lastId)
+        return if (sortOrder(order) == SortOrder.DESC) {
+            LessOp(sortExpression, sortValue) or
+                (EqOp(sortExpression, sortValue) and LessOp(idExpression, idValue))
+        } else {
+            GreaterOp(sortExpression, sortValue) or
+                (EqOp(sortExpression, sortValue) and GreaterOp(idExpression, idValue))
+        }
+    }
+
+    private fun invalidCursor(): RequestValidationException =
+        RequestValidationException(
+            listOf(
+                ValidationIssue(
+                    field = "cursor",
+                    code = ValidationIssueCodes.InvalidFormat,
+                    message = "is not a valid cursor",
+                )
+            )
+        )
 
     /**
      * Converts a string order ("asc" / "desc") into an Exposed [SortOrder].

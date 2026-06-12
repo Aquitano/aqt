@@ -4,54 +4,14 @@ import me.aquitano.health.application.metric.common.repository.DailyReadFilters
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.infrastructure.database.tables.ActivitySummariesTable
 import me.aquitano.health.infrastructure.database.tables.CanonicalActivitySummariesTable
-import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
 import org.jetbrains.exposed.v1.core.*
-import org.jetbrains.exposed.v1.jdbc.deleteWhere
-import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
-import java.time.Instant
-import java.time.LocalDate
 
-data class CanonicalActivitySummaryOutput(
-    val activitySummaryId: Int,
-    val sourceInstanceId: Int,
-    val date: LocalDate,
-)
-
-data class CanonicalActivityOutput(
-    val date: LocalDate,
-    val algorithmVersion: Int,
-    val computedAt: Instant,
-    val summary: CanonicalActivitySummaryOutput?,
-)
-
+/** Reads through the canonical_activity_summaries view (rank winner per date, see V15). */
 class CanonicalActivitySummaryDerivationRepository : BaseMetricRepository() {
-    fun listRawSummariesForDay(date: LocalDate): List<ActivitySummaryRow> =
-        ActivitySummariesTable.selectAll()
-            .where { ActivitySummariesTable.date eq date }
-            .orderBy(ActivitySummariesTable.id to SortOrder.ASC)
-            .map(::toActivitySummaryRow)
-
-    fun persistCanonicalOutput(output: CanonicalActivityOutput): Int {
-        CanonicalActivitySummariesTable.deleteWhere {
-            (CanonicalActivitySummariesTable.date eq output.date) and
-                (CanonicalActivitySummariesTable.algorithmVersion eq output.algorithmVersion)
-        }
-        val summary = output.summary ?: return 0
-        CanonicalActivitySummariesTable.insert {
-            it[date] = summary.date
-            it[sourceInstanceId] = summary.sourceInstanceId
-            it[activitySummaryId] = summary.activitySummaryId
-            it[algorithmVersion] = output.algorithmVersion
-            it[computedAt] = output.computedAt.toDbTimestamp()
-        }
-        return 1
-    }
-
     fun listCanonicalActivitySummaries(
         filters: DailyReadFilters,
-        algorithmVersion: Int,
     ): Pair<List<ActivitySummaryRow>, Map<Int, SourceMetadata>> {
         val where = dateConditions(
             filters = filters,
@@ -59,15 +19,21 @@ class CanonicalActivitySummaryDerivationRepository : BaseMetricRepository() {
             dateColumn = CanonicalActivitySummariesTable.date,
         ).whereOrNull() ?: return emptyReadResult()
 
+        val keyset = dateKeyset(
+            filters.cursor,
+            filters.order,
+            ActivitySummariesTable.date,
+            ActivitySummariesTable.id,
+        )
         val rows = CanonicalActivitySummariesTable
             .innerJoin(ActivitySummariesTable, { activitySummaryId }, { ActivitySummariesTable.id })
             .selectAll()
-            .where { where and (CanonicalActivitySummariesTable.algorithmVersion eq algorithmVersion) }
+            .where(keyset?.let { where and it } ?: where)
             .orderBy(
                 ActivitySummariesTable.date to filters.sortOrder(),
                 ActivitySummariesTable.id to filters.sortOrder(),
             )
-            .limit(filters.limit)
+            .limit(filters.limit + 1)
             .map(::toActivitySummaryRow)
         return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
     }

@@ -167,7 +167,7 @@ data class ProviderSyncResponseDto(
     val requestedFrom: String,
     @JsonSchema.Format("date-time")
     val requestedTo: String,
-    val status: String,
+    val status: SyncStatus,
     val batches: List<ProviderSyncBatchResponseDto>,
     val emptyDataTypes: List<ProviderSyncEmptyDataTypeResponseDto>,
     val errors: List<ProviderSyncErrorResponseDto>,
@@ -176,7 +176,7 @@ data class ProviderSyncResponseDto(
 @Serializable
 data class ProviderSyncJobStartResponseDto(
     val jobId: String,
-    val status: String,
+    val status: SyncJobStatus,
     @JsonSchema.Format("date-time")
     val createdAt: String,
 )
@@ -191,7 +191,7 @@ data class ProviderSyncJobStatusResponseDto(
     @JsonSchema.Format("date-time")
     val requestedTo: String,
     val dataTypes: List<String>? = null,
-    val status: String,
+    val status: SyncJobStatus,
     val totalItems: Int,
     val completedItems: Int,
     val currentItem: ProviderSyncJobItemResponseDto? = null,
@@ -227,7 +227,8 @@ data class ProviderSyncBatchResponseDto(
     val duplicateBatch: Boolean,
     val recordsReceived: Int,
     val ingestionRecordsStored: Int,
-    val metricsCreated: MetricCreatedCountsResponse,
+    /** Created-row counts keyed by structural table kind or scalar metric_type. */
+    val metricsCreated: Map<String, Int>,
     val duplicateMetricsSkipped: Int,
     val affectedStepSummaryDates: List<String>,
 )
@@ -295,7 +296,7 @@ data class ScheduledSyncCheckpointResponseDto(
 data class ScheduledSyncRunResponseDto(
     val providerCode: String,
     val providerInstanceId: String,
-    val status: String,
+    val status: SyncStatus,
     @JsonSchema.Format("date-time")
     val requestedFrom: String? = null,
     @JsonSchema.Format("date-time")

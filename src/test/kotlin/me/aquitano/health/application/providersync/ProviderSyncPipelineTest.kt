@@ -284,7 +284,7 @@ class ProviderSyncPipelineTest {
                 duplicateBatch = false,
                 recordsReceived = command.records.size,
                 ingestionRecordsStored = command.records.size,
-                metricsCreated = MetricCreatedCounts.of(MetricKind.STEP_SAMPLES to command.records.size),
+                metricsCreated = MetricCreatedCounts.of(StructuralMetricKinds.STEP_SAMPLES to command.records.size),
                 duplicateMetricsSkipped = 0,
                 affectedStepSummaryDates = listOf("2026-04-01"),
             )

@@ -184,13 +184,15 @@ class TrendQueryService(
 
     private fun ScalarSampleRow.toResponse(
         sourceMetadata: Map<Int, SourceMetadata>
-    ): BodyMeasurementResponse =
-        BodyMeasurementResponse(
-            id = id.toInt(),
+    ): ScalarSampleResponse =
+        ScalarSampleResponse(
+            id = id,
             measuredAt = measuredAt.toString(),
             metricType = metricType,
             value = value,
             unit = unit,
+            context = context,
+            segment = segment,
             source = sourceMetadata[sourceInstanceId]?.let {
                 SourceMetadataResponse(
                     provider = it.provider,

@@ -243,30 +243,15 @@ data class ScalarSampleDto(
 @Serializable
 data class IngestionSummaryResponse(
     val batchId: Int,
-    val status: String,
+    val status: BatchStatus,
     val duplicateBatch: Boolean,
     val recordsReceived: Int,
     val ingestionRecordsStored: Int,
-    val metricsCreated: MetricCreatedCountsResponse,
+    /** Created-row counts keyed by structural table kind or scalar metric_type. */
+    val metricsCreated: Map<String, Int>,
     val metricsSkipped: MetricSkippedCountsResponse,
     @JsonSchema.ItemsRef(String::class)
     val affectedStepSummaryDates: List<String>,
-)
-
-@Serializable
-data class MetricCreatedCountsResponse(
-    val stepSamples: Int,
-    val sleepSessions: Int,
-    val sleepStages: Int,
-    val bodyMeasurements: Int,
-    val heartRateSamples: Int,
-    val activitySummaries: Int,
-    val sleepSummaries: Int,
-    val respiratoryRateSamples: Int,
-    val hrvSamples: Int,
-    val bloodPressureMeasurements: Int,
-    val cardiovascularMeasurements: Int,
-    val extendedBodyMeasurements: Int,
 )
 
 @Serializable

@@ -9,7 +9,7 @@ import me.aquitano.health.application.ProviderWorkflowService
 import me.aquitano.health.application.ProviderStatusService
 import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.domain.ConflictException
-import me.aquitano.health.domain.MetricKind
+import me.aquitano.health.domain.StructuralMetricKinds
 import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.domain.ServerConfigurationException
 import me.aquitano.health.domain.UpstreamProviderException
@@ -276,7 +276,7 @@ class GoogleHealthProviderTest {
 
         assertEquals(1, fixture.client.fetchRequests.size)
         assertEquals(false, response.batches.single().duplicateBatch)
-        assertEquals(1, response.batches.single().metricsCreated[MetricKind.STEP_SAMPLES])
+        assertEquals(1, response.batches.single().metricsCreated[StructuralMetricKinds.STEP_SAMPLES])
         assertEquals(2, countRows(fixture.dbPath, "ingestion_batches"))
         assertEquals(
             1,
@@ -318,8 +318,8 @@ class GoogleHealthProviderTest {
             fixture.now.plusSeconds(60),
         )
 
-        assertEquals(1, first.batches.single().metricsCreated[MetricKind.STEP_SAMPLES])
-        assertEquals(0, second.batches.single().metricsCreated[MetricKind.STEP_SAMPLES])
+        assertEquals(1, first.batches.single().metricsCreated[StructuralMetricKinds.STEP_SAMPLES])
+        assertEquals(0, second.batches.single().metricsCreated[StructuralMetricKinds.STEP_SAMPLES])
         assertEquals(1, second.batches.single().duplicateMetricsSkipped)
         assertEquals(2, fixture.client.fetchRequests.size)
         assertEquals(1, countRows(fixture.dbPath, "step_samples"))
@@ -370,8 +370,8 @@ class GoogleHealthProviderTest {
             fixture.now.plusSeconds(60),
         )
 
-        assertEquals(1, first.batches.single().metricsCreated[MetricKind.STEP_SAMPLES])
-        assertEquals(0, second.batches.single().metricsCreated[MetricKind.STEP_SAMPLES])
+        assertEquals(1, first.batches.single().metricsCreated[StructuralMetricKinds.STEP_SAMPLES])
+        assertEquals(0, second.batches.single().metricsCreated[StructuralMetricKinds.STEP_SAMPLES])
         assertEquals(1, second.batches.single().duplicateMetricsSkipped)
         assertEquals(1, countRows(fixture.dbPath, "step_samples"))
         assertEquals(20, singleInt(fixture.dbPath, "SELECT steps FROM step_daily_summaries"))
@@ -421,8 +421,8 @@ class GoogleHealthProviderTest {
             fixture.now.plusSeconds(60),
         )
 
-        assertEquals(1, first.batches.single().metricsCreated[MetricKind.STEP_SAMPLES])
-        assertEquals(1, second.batches.single().metricsCreated[MetricKind.STEP_SAMPLES])
+        assertEquals(1, first.batches.single().metricsCreated[StructuralMetricKinds.STEP_SAMPLES])
+        assertEquals(1, second.batches.single().metricsCreated[StructuralMetricKinds.STEP_SAMPLES])
         assertEquals(0, second.batches.single().duplicateMetricsSkipped)
         assertEquals(2, countRows(fixture.dbPath, "step_samples"))
         assertEquals(2000, singleInt(fixture.dbPath, "SELECT steps FROM step_daily_summaries"))

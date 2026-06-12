@@ -1,5 +1,6 @@
 package me.aquitano.health.application.metric.common.repository
 
+import me.aquitano.health.shared.Cursor
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -18,6 +19,7 @@ data class ReadFilters(
     val limit: Int,
     val sort: String,
     val order: String,
+    val cursor: Cursor? = null,
 )
 
 data class DailyReadFilters(
@@ -29,6 +31,7 @@ data class DailyReadFilters(
     val limit: Int,
     val sort: String,
     val order: String,
+    val cursor: Cursor? = null,
 )
 
 data class SleepNightReadFilters(
@@ -41,4 +44,5 @@ data class SleepNightReadFilters(
     val limit: Int,
     val sort: String,
     val order: String,
+    val cursor: Cursor? = null,
 )

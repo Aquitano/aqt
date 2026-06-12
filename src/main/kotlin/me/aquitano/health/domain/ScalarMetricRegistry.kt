@@ -37,7 +37,8 @@ data class ScalarMetricDescriptor(
     val valueRange: ScalarValueRange,
     val allowedContexts: Set<String>? = null,
     val supportsSegment: Boolean = false,
-    val countsKind: MetricKind,
+    /** The legacy per-family ingestion record type whose records write this metric. */
+    val recordType: String,
 ) {
     fun valueIsValid(value: Double): Boolean {
         val aboveMin =
@@ -56,7 +57,7 @@ object ScalarMetricRegistry {
                 unit = "bpm",
                 valueRange = ScalarValueRange(25.0, 250.0),
                 allowedContexts = HeartRateContexts.supported,
-                countsKind = MetricKind.HEART_RATE_SAMPLES,
+                recordType = RecordTypes.HEART_RATE,
             )
         )
         add(
@@ -66,7 +67,7 @@ object ScalarMetricRegistry {
                 unit = "breaths_per_minute",
                 valueRange = ScalarValueRange(5.0, 80.0),
                 allowedContexts = RespiratoryRateContexts.supported,
-                countsKind = MetricKind.RESPIRATORY_RATE_SAMPLES,
+                recordType = RecordTypes.RESPIRATORY_RATE,
             )
         )
         add(
@@ -76,7 +77,7 @@ object ScalarMetricRegistry {
                 unit = "ms",
                 valueRange = ScalarValueRange(0.0, 500.0, minInclusive = false),
                 allowedContexts = HrvContexts.supported,
-                countsKind = MetricKind.HRV_SAMPLES,
+                recordType = RecordTypes.HRV,
             )
         )
 
@@ -86,7 +87,7 @@ object ScalarMetricRegistry {
                 family = MetricFamilies.BODY_MEASUREMENT,
                 unit = unit,
                 valueRange = range,
-                countsKind = MetricKind.BODY_MEASUREMENTS,
+                recordType = RecordTypes.BODY_MEASUREMENT,
             )
         )
         body(BodyMetricTypes.WEIGHT, "kg", ScalarValueRange(0.0, null, minInclusive = false))
@@ -107,7 +108,7 @@ object ScalarMetricRegistry {
                 unit = unit,
                 valueRange = range,
                 supportsSegment = supportsSegment,
-                countsKind = MetricKind.EXTENDED_BODY_MEASUREMENTS,
+                recordType = RecordTypes.EXTENDED_BODY_MEASUREMENT,
             )
         )
         extendedBody(BodyMetricTypes.FAT_MASS, "kg", ScalarValueRange(0.0, null, minInclusive = false))
@@ -141,7 +142,7 @@ object ScalarMetricRegistry {
                 family = MetricFamilies.CARDIOVASCULAR,
                 unit = unit,
                 valueRange = ScalarValueRange(0.0, null, minInclusive = false),
-                countsKind = MetricKind.CARDIOVASCULAR_MEASUREMENTS,
+                recordType = RecordTypes.CARDIOVASCULAR,
             )
         )
         cardiovascular(CardiovascularMetricTypes.PULSE_WAVE_VELOCITY, "m/s")
@@ -167,19 +168,19 @@ object ScalarMetricRegistry {
 
     val bodyMetricTypes: Set<String> =
         descriptors
-            .filter { it.countsKind == MetricKind.BODY_MEASUREMENTS }
+            .filter { it.recordType == RecordTypes.BODY_MEASUREMENT }
             .map { it.metricType }
             .toSet()
 
     val extendedBodyMetricTypes: Set<String> =
         descriptors
-            .filter { it.countsKind == MetricKind.EXTENDED_BODY_MEASUREMENTS }
+            .filter { it.recordType == RecordTypes.EXTENDED_BODY_MEASUREMENT }
             .map { it.metricType }
             .toSet()
 
     val cardiovascularMetricTypes: Set<String> =
         descriptors
-            .filter { it.countsKind == MetricKind.CARDIOVASCULAR_MEASUREMENTS }
+            .filter { it.recordType == RecordTypes.CARDIOVASCULAR }
             .map { it.metricType }
             .toSet()
 

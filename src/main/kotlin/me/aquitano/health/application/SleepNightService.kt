@@ -2,7 +2,6 @@ package me.aquitano.health.application
 
 import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
 import me.aquitano.health.application.metric.common.sourceInstanceIds
-import me.aquitano.health.application.metric.sleep.derived.CANONICAL_SLEEP_NIGHT_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.sleep.derived.SLEEP_NIGHT_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.sleep.derived.SleepNightDerivation
 import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
@@ -48,39 +47,6 @@ class SleepNightService(
                 dates = datesToRecompute,
                 timezone = filters.timezone,
                 computedAt = computedAt,
-            )
-        }
-    }
-
-    suspend fun materializeCanonical(
-        filters: SleepNightReadFilters,
-        computedAt: Instant,
-    ) {
-        materialize(filters, computedAt)
-        val dates = requestedDates(filters) ?: return
-        val sourceInstanceIds = repository.sourceInstanceIds(
-            provider = filters.provider,
-            providerInstanceId = filters.providerInstanceId,
-        )
-        val datesToRecompute = repository.findCanonicalDatesNeedingRecompute(
-            sourceInstanceIds = sourceInstanceIds,
-            dates = dates,
-            timezone = filters.timezone,
-            algorithmVersion = CANONICAL_SLEEP_NIGHT_ALGORITHM_VERSION,
-        )
-        datesToRecompute.forEach { date ->
-            val canonicalSessions = repository.listCanonicalSleepSessionsForCanonicalNights(
-                sourceInstanceIds = sourceInstanceIds,
-                timezone = filters.timezone,
-                date = date,
-            )
-            repository.replaceCanonicalSleepNights(
-                date = date,
-                timezone = filters.timezone,
-                sourceInstanceIds = sourceInstanceIds,
-                algorithmVersion = CANONICAL_SLEEP_NIGHT_ALGORITHM_VERSION,
-                computedAt = computedAt,
-                sessions = canonicalSessions,
             )
         }
     }

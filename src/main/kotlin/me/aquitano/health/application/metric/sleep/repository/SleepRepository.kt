@@ -1,7 +1,6 @@
 package me.aquitano.health.application.metric.sleep.repository
 
 import me.aquitano.health.application.metric.common.repository.*
-import me.aquitano.health.application.metric.sleep.derived.CANONICAL_SLEEP_NIGHT_ALGORITHM_VERSION
 import me.aquitano.health.infrastructure.database.tables.*
 import me.aquitano.health.infrastructure.database.toApiString
 import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
@@ -115,11 +114,17 @@ class SleepRepository : BaseMetricRepository() {
 
         val conditions = mutableListOf<Op<Boolean>>(
             CanonicalSleepNightsTable.timezone eq filters.timezone.id,
-            CanonicalSleepNightsTable.algorithmVersion eq CANONICAL_SLEEP_NIGHT_ALGORITHM_VERSION,
         )
         filters.fromDate?.let { conditions.add(CanonicalSleepNightsTable.date greaterEq it) }
         filters.toDate?.let { conditions.add(CanonicalSleepNightsTable.date lessEq it) }
         sourceIds?.let { conditions.add(CanonicalSleepNightsTable.sourceInstanceId inList it) }
+
+        dateKeyset(
+            filters.cursor,
+            filters.order,
+            CanonicalSleepNightsTable.date,
+            CanonicalSleepNightsTable.sleepSessionId,
+        )?.let { conditions.add(it) }
 
         val nights = CanonicalSleepNightsTable
             .innerJoin(SleepSessionsTable)
@@ -127,9 +132,9 @@ class SleepRepository : BaseMetricRepository() {
             .where { combineConditions(conditions) }
             .orderBy(
                 CanonicalSleepNightsTable.date to filters.sortOrder(),
-                CanonicalSleepNightsTable.id to filters.sortOrder(),
+                CanonicalSleepNightsTable.sleepSessionId to filters.sortOrder(),
             )
-            .limit(filters.limit)
+            .limit(filters.limit + 1)
             .map {
                 val session = SleepSessionRow(
                     id = it[SleepSessionsTable.id].value,
