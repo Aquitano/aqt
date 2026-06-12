@@ -120,6 +120,7 @@ data class ProviderSyncError(
     val dataType: String,
     val code: String,
     val message: String,
+    val retryable: Boolean = true,
 )
 
 data class ProviderSyncEmptyDataType(

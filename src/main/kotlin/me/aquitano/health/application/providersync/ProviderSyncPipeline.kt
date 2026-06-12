@@ -191,6 +191,7 @@ class ProviderSyncPipeline(
                     dataType = item.dataType,
                     code = code,
                     message = safeMessage,
+                    retryable = isRetryableSyncFailure(exception),
                 )
                 progress.itemCompleted(item)
             }
@@ -223,7 +224,7 @@ class ProviderSyncPipeline(
 
         if (batches.isEmpty() && errors.isNotEmpty()) {
             val first = errors.first()
-            throw UpstreamProviderException(first.code, first.message, 502)
+            throw UpstreamProviderException(first.code, first.message, 502, retryable = first.retryable)
         }
 
         return ProviderSyncSummary(

@@ -164,6 +164,7 @@ class ScheduledProviderSyncService(
         val checkpoints = repository.checkpoints(config.id).associateBy { it.dataType }
         val summaries = mutableListOf<ProviderSyncSummary>()
         val errors = mutableListOf<String>()
+        var hasNonRetryableError = false
         var earliestFrom: Instant? = null
         var latestTo: Instant? = null
 
@@ -186,10 +187,12 @@ class ScheduledProviderSyncService(
                     repository.markDataTypeSuccess(config.id, dataType, from, to, now)
                 } else {
                     errors += summary.errors.joinToString("; ") { "${it.dataType}: ${it.message}" }
+                    if (summary.errors.any { !it.retryable }) hasNonRetryableError = true
                 }
             } catch (exception: Exception) {
                 if (exception is CancellationException) throw exception
                 errors += "${dataType}: ${exception.message ?: "Scheduled sync failed"}"
+                if (!isRetryableSyncFailure(exception)) hasNonRetryableError = true
             }
         }
 
@@ -203,17 +206,11 @@ class ScheduledProviderSyncService(
             )
             ScheduledSyncExecutionResult("processed", earliestFrom, latestTo, emptyList(), summaries)
         } else {
-            val nonRetryable = errors.any { error ->
-                error.contains("validation", ignoreCase = true) ||
-                        error.contains("not configured", ignoreCase = true) ||
-                        error.contains("not connected", ignoreCase = true) ||
-                        error.contains("needs reconnect", ignoreCase = true)
-            }
             val failureCount = config.failureCount + 1
             repository.markFailure(
                 configId = config.id,
                 failureCount = failureCount,
-                nextRunAt = if (nonRetryable) null else ScheduledSyncPolicy.nextRunAfterFailure(now, failureCount),
+                nextRunAt = if (hasNonRetryableError) null else ScheduledSyncPolicy.nextRunAfterFailure(now, failureCount),
                 errorMessage = errors.joinToString("; "),
                 now = now,
             )
