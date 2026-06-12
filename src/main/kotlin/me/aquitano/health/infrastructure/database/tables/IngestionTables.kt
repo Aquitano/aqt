@@ -2,6 +2,7 @@ package me.aquitano.health.infrastructure.database.tables
 
 import me.aquitano.health.infrastructure.database.jsonb
 import org.jetbrains.exposed.v1.core.dao.id.IntIdTable
+import org.jetbrains.exposed.v1.javatime.date
 import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
 
 object IngestionBatchesTable : IntIdTable("ingestion_batches") {
@@ -27,4 +28,20 @@ object IngestionRecordsTable : IntIdTable("ingestion_records") {
     val recordStartAt = timestampWithTimeZone("record_start_at").nullable()
     val recordEndAt = timestampWithTimeZone("record_end_at").nullable()
     val createdAt = timestampWithTimeZone("created_at")
+}
+
+object PendingDerivedRebuildsTable : IntIdTable("pending_derived_rebuilds") {
+    val sourceInstanceId =
+        integer("source_instance_id").references(SourceInstancesTable.id)
+    val derivedKind = text("derived_kind")
+    val affectedDate = date("affected_date")
+    val attempts = integer("attempts")
+    val nextAttemptAt = timestampWithTimeZone("next_attempt_at")
+    val lastErrorMessage = text("last_error_message").nullable()
+    val createdAt = timestampWithTimeZone("created_at")
+    val updatedAt = timestampWithTimeZone("updated_at")
+
+    init {
+        uniqueIndex(sourceInstanceId, derivedKind, affectedDate)
+    }
 }

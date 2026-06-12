@@ -9,6 +9,7 @@ import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
+import me.aquitano.health.infrastructure.repositories.PendingDerivedRebuildRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.test.PostgresTestDatabase
 import java.time.Instant
@@ -28,6 +29,7 @@ class IngestionServiceTest {
             ingestionRepository = IngestionRepository(),
             metricWriteService = MetricWriteService(),
             derivedRebuildExecutor = FailingDerivedRebuildExecutor,
+            pendingDerivedRebuildRepository = PendingDerivedRebuildRepository(database),
         )
 
         val response = service.ingestBatch(
@@ -57,6 +59,16 @@ class IngestionServiceTest {
         assertTrue(
             singleString(dbConfig, "SELECT error_message FROM ingestion_batches")
                 .startsWith("Derived rebuild failed: test derived failure")
+        )
+        // The failed rebuild must be queued for the sweeper, not just marked on the batch.
+        assertEquals(1, singleInt(dbConfig, "SELECT COUNT(*) FROM pending_derived_rebuilds"))
+        assertEquals(
+            "STEP_SUMMARY",
+            singleString(dbConfig, "SELECT derived_kind FROM pending_derived_rebuilds"),
+        )
+        assertEquals(
+            "2026-04-19",
+            singleString(dbConfig, "SELECT affected_date::text FROM pending_derived_rebuilds"),
         )
     }
 

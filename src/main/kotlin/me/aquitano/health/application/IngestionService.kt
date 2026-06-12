@@ -7,10 +7,11 @@ import me.aquitano.health.api.dto.MetricSkippedCountsResponse
 import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
+import me.aquitano.health.infrastructure.repositories.PendingDerivedRebuildRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.shared.AppJson
 import org.jetbrains.exposed.v1.jdbc.Database
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import io.github.oshai.kotlinlogging.KotlinLogging
 import me.aquitano.health.infrastructure.logging.*
 import java.time.Instant
@@ -26,6 +27,7 @@ class IngestionService(
     private val ingestionRepository: IngestionRepository,
     private val metricWriteService: MetricWriteService,
     private val derivedRebuildExecutor: DerivedRebuildExecutor,
+    private val pendingDerivedRebuildRepository: PendingDerivedRebuildRepository,
 ) {
     suspend fun findExistingBatch(
         provider: String,
@@ -33,7 +35,7 @@ class IngestionService(
         batchExternalId: String,
         now: Instant,
     ) =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             val sourceInstance =
                 supportRepository.resolveOrCreateSourceInstanceInTransaction(
                     provider = provider,
@@ -59,7 +61,7 @@ class IngestionService(
             "hasExternalId" to (validated.batchExternalId != null),
         )
         val transactionResult =
-            suspendTransaction(db = database) {
+            suspendDbTransaction(db = database) {
                 val sourceInstance =
                     supportRepository.resolveOrCreateSourceInstanceInTransaction(
                         provider = validated.provider,
@@ -80,7 +82,7 @@ class IngestionService(
                         "batchId" to existingBatch.id,
                         "recordCount" to validated.records.size,
                     )
-                    return@suspendTransaction IngestionTransactionResult.Success(
+                    return@suspendDbTransaction IngestionTransactionResult.Success(
                         IngestionSummaryResponse(
                             batchId = existingBatch.id,
                             status = BatchStatus.fromStored(existingBatch.status),
@@ -166,7 +168,7 @@ class IngestionService(
                         "batchId" to batchId,
                         throwable = exception,
                     )
-                    return@suspendTransaction IngestionTransactionResult.Failure(
+                    return@suspendDbTransaction IngestionTransactionResult.Failure(
                         exception
                     )
                 }
@@ -207,11 +209,17 @@ class IngestionService(
                         )
                     } catch (exception: Exception) {
                         if (exception is CancellationException) throw exception
-                        suspendTransaction(db = database) {
+                        val rebuildError = exception.message ?: "Unknown derived rebuild error"
+                        suspendDbTransaction(db = database) {
                             ingestionRepository.markDerivedRebuildFailed(
                                 response.batchId,
                                 now,
-                                exception.message ?: "Unknown derived rebuild error",
+                                rebuildError,
+                            )
+                            pendingDerivedRebuildRepository.enqueueInTransaction(
+                                transactionResult.derivedRebuildRequest,
+                                error = rebuildError,
+                                now = now,
                             )
                         }
                         logger.errorWithContext(

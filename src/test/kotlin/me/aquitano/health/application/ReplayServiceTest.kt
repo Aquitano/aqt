@@ -18,6 +18,7 @@ import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
+import me.aquitano.health.infrastructure.repositories.PendingDerivedRebuildRepository
 import me.aquitano.health.infrastructure.repositories.ProjectionWipeRepository
 import me.aquitano.health.infrastructure.repositories.ReplayJobRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
@@ -149,6 +150,7 @@ class ReplayServiceTest {
             ingestionRepository = IngestionRepository(),
             metricWriteService = metricWriteService,
             derivedRebuildExecutor = derivedRebuildExecutor,
+            pendingDerivedRebuildRepository = PendingDerivedRebuildRepository(database),
         )
         val replayService = ReplayService(
             database = database,

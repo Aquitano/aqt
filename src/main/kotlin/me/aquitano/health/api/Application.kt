@@ -73,6 +73,13 @@ fun Application.module() {
         scheduler.stop()
     }
 
+    // Retry derived rebuilds that failed after their ingestion batch committed
+    val pendingDerivedRebuildSweeper by inject<PendingDerivedRebuildSweeper>()
+    pendingDerivedRebuildSweeper.start()
+    monitor.subscribe(ApplicationStopping) {
+        pendingDerivedRebuildSweeper.stop()
+    }
+
     val providerSyncJobService by inject<ProviderSyncJobService>()
     providerSyncJobService.start(clock.now())
     monitor.subscribe(ApplicationStopping) {

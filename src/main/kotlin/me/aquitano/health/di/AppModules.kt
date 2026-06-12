@@ -35,6 +35,7 @@ import me.aquitano.health.application.metric.steps.repository.StepDailySummaryDe
 import me.aquitano.health.application.metric.steps.repository.StepRepository
 import me.aquitano.health.infrastructure.config.AppConfig
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
+import me.aquitano.health.infrastructure.repositories.PendingDerivedRebuildRepository
 import me.aquitano.health.infrastructure.repositories.ProjectionWipeRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
 import me.aquitano.health.infrastructure.repositories.ProviderSyncJobRepository
@@ -61,6 +62,7 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
     single { ProviderOAuthRepository(database) }
     single { ProviderSyncJobRepository(database) }
     single { ReplayJobRepository(database) }
+    single { PendingDerivedRebuildRepository(database) }
     single { ProjectionWipeRepository() }
     single { ScheduledSyncRepository(database) }
     single { ScheduledSyncRunGuard() }
@@ -147,6 +149,14 @@ fun servicesModule(database: Database, config: AppConfig) = module {
             ingestionRepository = get(),
             metricWriteService = get(),
             derivedRebuildExecutor = get(),
+            pendingDerivedRebuildRepository = get(),
+        )
+    }
+    single {
+        PendingDerivedRebuildSweeper(
+            repository = get(),
+            derivedRebuildExecutor = get(),
+            clock = get(),
         )
     }
 

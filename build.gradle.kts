@@ -91,6 +91,7 @@ val integrationTestClasses = listOf(
     "**/GoogleHealthProviderTest.class",
     "**/GoogleHealthProviderRouteTest.class",
     "**/IngestionRouteTest.class",
+    "**/PendingDerivedRebuildSweeperTest.class",
     "**/ProviderStatusRouteTest.class",
     "**/ReadApiRouteTest.class",
     "**/ReplayServiceTest.class",
