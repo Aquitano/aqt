@@ -1,24 +1,24 @@
 {
-  "name": "@aqt-gallery/auth",
-  "type": "module",
-  "exports": {
-    ".": {
-      "default": "./src/index.ts"
-    },
-    "./*": {
-      "default": "./src/*.ts"
-    }
-  },
-  "scripts": {},
-  "dependencies": {
-    "@aqt-gallery/db": "workspace:*",
-    "@aqt-gallery/env": "workspace:*",
-    "better-auth": "catalog:",
-    "dotenv": "catalog:",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@aqt-gallery/config": "workspace:*",
-    "typescript": "catalog:"
-  }
+	"name": "@aqt-gallery/auth",
+	"type": "module",
+	"exports": {
+		".": {
+			"default": "./src/index.ts"
+		},
+		"./*": {
+			"default": "./src/*.ts"
+		}
+	},
+	"scripts": {},
+	"dependencies": {
+		"@aqt-gallery/db": "workspace:*",
+		"@aqt-gallery/env": "workspace:*",
+		"better-auth": "catalog:",
+		"dotenv": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@aqt-gallery/config": "workspace:*",
+		"typescript": "catalog:"
+	}
 }

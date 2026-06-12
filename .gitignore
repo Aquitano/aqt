@@ -7,6 +7,8 @@ node_modules
 dist
 build
 *.tsbuildinfo
+uploads
+apps/server/uploads
 
 # Environment variables
 .env
@@ -49,3 +51,4 @@ coverage
 .cache
 tmp
 temp
+.claude/settings.local.json
