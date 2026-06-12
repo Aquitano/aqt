@@ -11,6 +11,8 @@
 		"@aqt-gallery/auth": "workspace:*",
 		"@aqt-gallery/env": "workspace:*",
 		"@aqt-gallery/ui": "workspace:*",
+		"@react-three/drei": "^10.7.7",
+		"@react-three/fiber": "^9.6.1",
 		"@tailwindcss/vite": "^4.2.2",
 		"@tanstack/react-form": "^1.28.0",
 		"@tanstack/react-query": "^5.99.0",
@@ -26,10 +28,12 @@
 		"next-themes": "catalog:",
 		"react": "^19.2.5",
 		"react-dom": "^19.2.5",
+		"server": "workspace:*",
 		"sonner": "^2.0.7",
 		"tailwindcss": "^4.2.2",
-		"server": "workspace:*",
-		"zod": "catalog:"
+		"three": "^0.184.0",
+		"zod": "catalog:",
+		"zustand": "^5.0.14"
 	},
 	"devDependencies": {
 		"@aqt-gallery/config": "workspace:*",
@@ -39,6 +43,7 @@
 		"@testing-library/react": "^16.3.2",
 		"@types/react": "^19.2.14",
 		"@types/react-dom": "catalog:",
+		"@types/three": "^0.184.1",
 		"@vitejs/plugin-react": "^6.0.1",
 		"jsdom": "^29.0.2",
 		"typescript": "catalog:",

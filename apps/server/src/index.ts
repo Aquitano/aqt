@@ -12,6 +12,11 @@ import { logger } from "hono/logger";
 
 import { createContext } from "./api/context";
 import { appRouter } from "./api/routers/index";
+import {
+	isEntity,
+	isVariant,
+	servePublicImage,
+} from "./media/public-image";
 import { uploadErrorResponse, uploadMedia } from "./media/upload";
 
 const app = new Hono();
@@ -104,6 +109,15 @@ app.get("/media/:assetId/:variant", async (c) => {
 			"Content-Type": variant === "thumb" ? "image/webp" : asset.mimeType,
 		},
 	});
+});
+
+// Public museum imagery, cached server-side from the stored source URLs.
+app.get("/public-image/:entity/:id/:variant", async (c) => {
+	const { entity, id, variant } = c.req.param();
+	if (!isEntity(entity) || !isVariant(variant)) {
+		return c.notFound();
+	}
+	return servePublicImage({ uploadRoot: uploadRoot(), entity, id, variant });
 });
 
 app.use(

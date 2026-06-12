@@ -1,7 +1,9 @@
 import { relations } from "drizzle-orm";
 import {
+	boolean,
 	index,
 	integer,
+	jsonb,
 	pgTable,
 	primaryKey,
 	text,
@@ -19,6 +21,22 @@ const timestamps = {
 		.notNull(),
 };
 
+export const artist = pgTable(
+	"artist",
+	{
+		id: text("id").primaryKey(),
+		slug: text("slug").notNull(),
+		name: text("name").notNull(),
+		bio: text("bio"),
+		birthYear: integer("birth_year"),
+		deathYear: integer("death_year"),
+		nationality: text("nationality"),
+		portraitUrl: text("portrait_url"),
+		...timestamps,
+	},
+	(table) => [uniqueIndex("artist_slug_idx").on(table.slug)],
+);
+
 export const artwork = pgTable(
 	"artwork",
 	{
@@ -28,14 +46,27 @@ export const artwork = pgTable(
 			.references(() => user.id, { onDelete: "cascade" }),
 		title: text("title").notNull(),
 		artist: text("artist"),
+		artistId: text("artist_id").references(() => artist.id, {
+			onDelete: "set null",
+		}),
 		artworkType: text("artwork_type").default("other").notNull(),
 		year: text("year"),
+		medium: text("medium"),
+		dimensions: text("dimensions"),
 		seenAt: timestamp("seen_at"),
 		rating: integer("rating"),
 		review: text("review"),
 		thoughts: text("thoughts"),
 		description: text("description"),
+		story: text("story"),
+		funFacts: jsonb("fun_facts").$type<string[]>(),
 		sourceUrl: text("source_url"),
+		imageUrl: text("image_url"),
+		thumbnailUrl: text("thumbnail_url"),
+		/** Aspect ratio metadata for external images (px). */
+		imageWidth: integer("image_width"),
+		imageHeight: integer("image_height"),
+		isPublished: boolean("is_published").default(false).notNull(),
 		primaryAssetId: text("primary_asset_id"),
 		archivedAt: timestamp("archived_at").defaultNow().notNull(),
 		...timestamps,
@@ -43,6 +74,8 @@ export const artwork = pgTable(
 	(table) => [
 		index("artwork_user_id_idx").on(table.userId),
 		index("artwork_primary_asset_id_idx").on(table.primaryAssetId),
+		index("artwork_artist_id_idx").on(table.artistId),
+		index("artwork_is_published_idx").on(table.isPublished),
 	],
 );
 
@@ -153,7 +186,11 @@ export const artworkTag = pgTable(
 	],
 );
 
-export const artworkRelations = relations(artwork, ({ many }) => ({
+export const artworkRelations = relations(artwork, ({ one, many }) => ({
+	artistRef: one(artist, {
+		fields: [artwork.artistId],
+		references: [artist.id],
+	}),
 	mediaAssets: many(mediaAsset),
 	customFields: many(artworkCustomField),
 	galleryArtworks: many(galleryArtwork),
