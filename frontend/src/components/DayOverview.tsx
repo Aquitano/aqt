@@ -56,7 +56,9 @@ export function DayOverview({ day, weightDelta7d, weightDelta7dUnit }: DayOvervi
               : "n/a"}
           </span>
         </div>
-        <div className={styles.value}>{day?.heartRate?.latest ? `${day.heartRate.latest.bpm} bpm` : "n/a"}</div>
+        <div className={styles.value}>
+          {day?.heartRate?.latest ? `${day.heartRate.latest.value} ${day.heartRate.latest.unit}` : "n/a"}
+        </div>
         <div className={styles.subvalue}>
           avg {day?.heartRate?.avgBpm ? `${Math.round(day.heartRate.avgBpm)} bpm` : "n/a"}
         </div>

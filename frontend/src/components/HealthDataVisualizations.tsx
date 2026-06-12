@@ -539,14 +539,14 @@ function buildRespiratoryRateChart(items: RespiratoryRateSamplesResponse["items"
       at: item.measuredAt,
       metricKey: "respiratory_rate",
       label: "Respiratory rate",
-      value: item.breathsPerMinute,
-      unit: "br/min",
+      value: item.value,
+      unit: item.unit,
       source: sourceLabel(item.source),
     }));
 
   return detailsToChart(
     details,
-    [{ key: "respiratory_rate", label: "Respiratory rate", color: "#67c7e8", unit: "br/min" }],
+    [{ key: "respiratory_rate", label: "Respiratory rate", color: "#67c7e8", unit: items[0]?.unit }],
     ["respiratory_rate"],
   );
 }

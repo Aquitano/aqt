@@ -75,7 +75,7 @@ export function DashboardCards({ summary, trends }: DashboardCardsProps) {
     {
       kind: "heart" as const,
       label: "Heart rate",
-      value: summary?.latestHeartRate ? `${summary.latestHeartRate.bpm} bpm` : "n/a",
+      value: formatMeasurement(summary?.latestHeartRate?.value, summary?.latestHeartRate?.unit),
       detail: summary?.latestHeartRate?.context ?? "No data",
       trend: trends?.heartRate?.percentChange,
       icon: <HeartIcon />,

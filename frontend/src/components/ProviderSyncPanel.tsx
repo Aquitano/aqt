@@ -35,7 +35,7 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
   const [result, setResult] = useState<ApiResult<ProviderSyncResponse> | null>(null);
   const [syncJob, setSyncJob] = useState<ProviderSyncJobStatusResponse | null>(null);
   const [activeSyncJob, setActiveSyncJob] = useState<ActiveSyncJob | null>(() => readStoredSyncJob());
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(() => activeSyncJob != null);
   const [oauthError, setOAuthError] = useState<string | null>(null);
   const [accountActionError, setAccountActionError] = useState<string | null>(null);
   const [pendingAccountAction, setPendingAccountAction] = useState<string | null>(null);
@@ -51,7 +51,6 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
 
     const pollingJob = activeSyncJob;
     let stopped = false;
-    setIsSyncing(true);
 
     async function poll() {
       while (!stopped) {
@@ -424,7 +423,7 @@ function SyncProgressView({ job }: { job: ProviderSyncJobStatusResponse }) {
     ? Math.round((job.completedItems / job.totalItems) * 100)
     : 0;
   const startedAt = job.startedAt ?? job.createdAt;
-  const elapsedSeconds = Math.max(0, Math.round((Date.now() - new Date(startedAt).getTime()) / 1000));
+  const elapsedSeconds = Math.max(0, Math.round((new Date(job.updatedAt).getTime() - new Date(startedAt).getTime()) / 1000));
   const currentLabel = job.currentItem
     ? `${formatDataType(job.currentItem.dataType)} ${formatWindowLabel(new Date(job.currentItem.from), new Date(job.currentItem.to))}`
     : "Waiting for backend worker";

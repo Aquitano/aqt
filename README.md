@@ -79,14 +79,14 @@ Environment variables:
 - `AQT_HEALTH_BOOTSTRAP_API_KEY`: optional plaintext bootstrap key
 - `AQT_HEALTH_GOOGLE_CLIENT_ID`: Google OAuth web client ID for Google Health
 - `AQT_HEALTH_GOOGLE_CLIENT_SECRET`: Google OAuth web client secret
-- `AQT_HEALTH_GOOGLE_REDIRECT_URI`: OAuth callback URL, default `http://localhost:8080/api/v1/providers/google-health/oauth/callback`
+- `AQT_HEALTH_GOOGLE_REDIRECT_URI`: OAuth callback URL, default `http://localhost:8080/api/v2/providers/google-health/oauth/callback`
 - `AQT_HEALTH_GOOGLE_TOKEN_ENCRYPTION_KEY`: required before connecting Google Health; used to encrypt stored OAuth tokens
 - `AQT_HEALTH_GOOGLE_API_BASE_URL`: Google Health API base URL, default `https://health.googleapis.com`
 - `AQT_HEALTH_GOOGLE_OAUTH_TOKEN_URL`: Google OAuth token URL, default `https://oauth2.googleapis.com/token`
 - `AQT_HEALTH_GOOGLE_OAUTH_AUTH_URL`: Google OAuth authorization URL, default `https://accounts.google.com/o/oauth2/v2/auth`
 - `AQT_HEALTH_WITHINGS_CLIENT_ID`: Withings OAuth client ID
 - `AQT_HEALTH_WITHINGS_CLIENT_SECRET`: Withings OAuth client secret
-- `AQT_HEALTH_WITHINGS_REDIRECT_URI`: OAuth callback URL, default `http://localhost:8080/api/v1/providers/withings/oauth/callback`
+- `AQT_HEALTH_WITHINGS_REDIRECT_URI`: OAuth callback URL, default `http://localhost:8080/api/v2/providers/withings/oauth/callback`
 - `AQT_HEALTH_WITHINGS_TOKEN_ENCRYPTION_KEY`: required before connecting Withings; used to encrypt stored OAuth tokens
 - `AQT_HEALTH_WITHINGS_API_BASE_URL`: Withings API base URL, default `https://wbsapi.withings.net`
 - `AQT_HEALTH_WITHINGS_OAUTH_TOKEN_URL`: Withings OAuth token URL, default `https://wbsapi.withings.net/v2/oauth2`
@@ -185,13 +185,13 @@ Set these variables in the frontend runtime:
 Unauthenticated:
 
 ```bash
-curl http://localhost:8080/api/v1/admin/health
+curl http://localhost:8080/api/v2/admin/health
 ```
 
 ## Ingest A Batch
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/ingestion/batches \
+curl -X POST http://localhost:8080/api/v2/ingestion/batches \
   -H "Authorization: Bearer local-dev-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -260,14 +260,14 @@ All provider discovery endpoints require `Authorization: Bearer <api-key>`.
 List registered providers and their sync capabilities:
 
 ```bash
-curl "http://localhost:8080/api/v1/providers" \
+curl "http://localhost:8080/api/v2/providers" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
 Get metadata for one provider:
 
 ```bash
-curl "http://localhost:8080/api/v1/providers/google-health" \
+curl "http://localhost:8080/api/v2/providers/google-health" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
@@ -280,35 +280,35 @@ Provider OAuth accounts have first-class lifecycle state. Status responses expos
 List provider readiness:
 
 ```bash
-curl "http://localhost:8080/api/v1/providers/status" \
+curl "http://localhost:8080/api/v2/providers/status" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
 List accounts for one provider:
 
 ```bash
-curl "http://localhost:8080/api/v1/providers/google-health/accounts" \
+curl "http://localhost:8080/api/v2/providers/google-health/accounts" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
 Connect starts the normal provider OAuth flow:
 
 ```bash
-curl "http://localhost:8080/api/v1/providers/google-health/oauth/start" \
+curl "http://localhost:8080/api/v2/providers/google-health/oauth/start" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
 Reconnect/re-consent validates an existing local account and starts the same OAuth flow again:
 
 ```bash
-curl -X POST "http://localhost:8080/api/v1/providers/google-health/accounts/google-health-me/reconnect" \
+curl -X POST "http://localhost:8080/api/v2/providers/google-health/accounts/google-health-me/reconnect" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
 Disconnect is local-only. It clears locally stored OAuth token ciphertext, marks the account `disconnected`, preserves account metadata and sync history, and does not revoke tokens at Google or Withings:
 
 ```bash
-curl -X POST "http://localhost:8080/api/v1/providers/google-health/accounts/google-health-me/disconnect" \
+curl -X POST "http://localhost:8080/api/v2/providers/google-health/accounts/google-health-me/disconnect" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
@@ -325,7 +325,7 @@ Google Cloud setup:
 1. Create or choose a Google Cloud project.
 2. Configure an OAuth consent screen.
 3. Create an OAuth web client.
-4. Add this authorized redirect URI: `http://localhost:8080/api/v1/providers/google-health/oauth/callback`
+4. Add this authorized redirect URI: `http://localhost:8080/api/v2/providers/google-health/oauth/callback`
 5. Put the client ID, client secret, redirect URI, and token encryption key in `.env`.
 
 Required Google Health OAuth scopes:
@@ -337,16 +337,16 @@ Required Google Health OAuth scopes:
 Start the OAuth flow:
 
 ```bash
-curl "http://localhost:8080/api/v1/providers/google-health/oauth/start" \
+curl "http://localhost:8080/api/v2/providers/google-health/oauth/start" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
-Open the returned `authorizationUrl` in a browser. Google redirects back to `/api/v1/providers/google-health/oauth/callback`, which stores encrypted tokens for future syncs.
+Open the returned `authorizationUrl` in a browser. Google redirects back to `/api/v2/providers/google-health/oauth/callback`, which stores encrypted tokens for future syncs.
 
 Sync Google Health data:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/providers/google-health/sync \
+curl -X POST http://localhost:8080/api/v2/providers/google-health/sync \
   -H "Authorization: Bearer local-dev-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -362,7 +362,7 @@ If `dataTypes` is omitted, the sync reads `steps`, `sleep`, `heart-rate`, `weigh
 For longer historical backfills, prefer the background job endpoint so the browser or client does not need to keep the request open:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/providers/google-health/sync-jobs \
+curl -X POST http://localhost:8080/api/v2/providers/google-health/sync-jobs \
   -H "Authorization: Bearer local-dev-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -372,7 +372,7 @@ curl -X POST http://localhost:8080/api/v1/providers/google-health/sync-jobs \
   }'
 ```
 
-Poll `/api/v1/providers/google-health/sync-jobs/{jobId}` for progress and the final summary. The backend owns the provider-safe sequential work after the job is accepted, so frontend reloads or browser closes do not stop the sync job.
+Poll `/api/v2/providers/google-health/sync-jobs/{jobId}` for progress and the final summary. The backend owns the provider-safe sequential work after the job is accepted, so frontend reloads or browser closes do not stop the sync job.
 
 Google Health may return overlapping step intervals with different provider record IDs. To avoid inflated future totals, overlapping Google Health step intervals for the same account are skipped as duplicate metrics during ingestion. This guard is forward-looking only; it does not repair or remove historical rows that were ingested before the guard existed.
 
@@ -383,7 +383,7 @@ The Withings provider is a server-owned OAuth integration. It starts the Withing
 Withings developer setup:
 
 1. Create or choose a Withings developer application.
-2. Add this callback URL: `http://localhost:8080/api/v1/providers/withings/oauth/callback`
+2. Add this callback URL: `http://localhost:8080/api/v2/providers/withings/oauth/callback`
 3. Put the client ID, client secret, redirect URI, and token encryption key in `.env`.
 
 Required Withings OAuth scopes:
@@ -395,16 +395,16 @@ Required Withings OAuth scopes:
 Start the OAuth flow:
 
 ```bash
-curl "http://localhost:8080/api/v1/providers/withings/oauth/start" \
+curl "http://localhost:8080/api/v2/providers/withings/oauth/start" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
-Open the returned `authorizationUrl` in a browser. Withings redirects back to `/api/v1/providers/withings/oauth/callback`, which stores encrypted tokens for future syncs. Withings authorization codes are valid for only 30 seconds, so the callback must reach this backend immediately.
+Open the returned `authorizationUrl` in a browser. Withings redirects back to `/api/v2/providers/withings/oauth/callback`, which stores encrypted tokens for future syncs. Withings authorization codes are valid for only 30 seconds, so the callback must reach this backend immediately.
 
 Sync Withings data:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/providers/withings/sync \
+curl -X POST http://localhost:8080/api/v2/providers/withings/sync \
   -H "Authorization: Bearer local-dev-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -416,60 +416,60 @@ curl -X POST http://localhost:8080/api/v1/providers/withings/sync \
 
 If `dataTypes` is omitted, the sync reads `activity`, `measures`, `sleep-summary`, and `sleep`. Long explicit ranges are accepted for historical backfill and are fetched in sequential 31-day windows per data type. Withings fields from the listed Measure, Activity, Sleep, and Sleep Summary APIs are preserved in the ingestion source payload. The current normalized metric tables store steps, supported body measurements, heart-rate samples, and sleep sessions; unsupported Withings metrics such as blood pressure, SpO2, temperature, ECG intervals, BMR, metabolic age, bone mass, vascular age, segmental body composition, and conductance values remain available in source payloads until matching metric tables exist.
 
-Use `/api/v1/providers/withings/sync-jobs` for long Withings backfills. Poll `/api/v1/providers/withings/sync-jobs/{jobId}` for progress; the backend continues processing provider-safe windows even if the frontend disconnects.
+Use `/api/v2/providers/withings/sync-jobs` for long Withings backfills. Poll `/api/v2/providers/withings/sync-jobs/{jobId}` for progress; the backend continues processing provider-safe windows even if the frontend disconnects.
 
 ## Read Data
 
 All read endpoints require `Authorization: Bearer <api-key>`.
 
-Clients that need runtime discovery can call the compact metric catalog:
+Clients that need runtime discovery can call the scalar metric catalog:
 
 ```bash
-curl "http://localhost:8080/api/v1/metrics/catalog" \
+curl "http://localhost:8080/api/v2/metrics" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
-The catalog lists the supported metric families, read endpoint paths, common query parameters, aggregation modes, body measurement `metricType` values, response DTO names, and related provider data types. OpenAPI remains the formal schema contract for request and response shapes; the catalog is intentionally smaller and is meant for clients that need workflow decisions without hardcoding every metric surface.
+The catalog lists scalar `metricType` values, families, units, segment support, and allowed contexts. Structural metrics such as steps, sleep, activity summaries, and blood pressure have dedicated endpoints. OpenAPI remains the formal schema contract for request and response shapes.
 
 ```bash
-curl "http://localhost:8080/api/v1/metrics/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z" \
+curl "http://localhost:8080/api/v2/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z" \
   -H "Authorization: Bearer local-dev-key"
 
-curl "http://localhost:8080/api/v1/metrics/steps?latest=true&includeSource=true" \
+curl "http://localhost:8080/api/v2/steps?latest=true&includeSource=true" \
   -H "Authorization: Bearer local-dev-key"
 
-curl "http://localhost:8080/api/v1/metrics/steps/daily?fromDate=2026-04-19&toDate=2026-04-19" \
+curl "http://localhost:8080/api/v2/steps/daily?fromDate=2026-04-19&toDate=2026-04-19" \
   -H "Authorization: Bearer local-dev-key"
 
-curl "http://localhost:8080/api/v1/sleep/sessions?includeSource=true" \
+curl "http://localhost:8080/api/v2/sleep/sessions?includeSource=true" \
   -H "Authorization: Bearer local-dev-key"
 
-curl "http://localhost:8080/api/v1/sleep/nights?date=2026-04-20&timezone=Europe/Berlin&includeSource=true" \
+curl "http://localhost:8080/api/v2/sleep/nights?date=2026-04-20&timezone=Europe/Berlin&includeSource=true" \
   -H "Authorization: Bearer local-dev-key"
 
-curl "http://localhost:8080/api/v1/body/measurements?metricType=weight" \
+curl "http://localhost:8080/api/v2/metrics/weight" \
   -H "Authorization: Bearer local-dev-key"
 
-curl "http://localhost:8080/api/v1/body/measurements/latest?metricType=weight&includeSource=true" \
+curl "http://localhost:8080/api/v2/metrics/weight?latest=true&includeSource=true" \
   -H "Authorization: Bearer local-dev-key"
 
-curl "http://localhost:8080/api/v1/metrics/heart-rate" \
+curl "http://localhost:8080/api/v2/metrics/heart_rate" \
   -H "Authorization: Bearer local-dev-key"
 
-curl "http://localhost:8080/api/v1/metrics/heart-rate?order=desc&limit=100" \
+curl "http://localhost:8080/api/v2/metrics/heart_rate?order=desc&limit=100" \
   -H "Authorization: Bearer local-dev-key"
 
-curl "http://localhost:8080/api/v1/metrics/heart-rate/summary?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z" \
+curl "http://localhost:8080/api/v2/metrics/heart_rate/summary?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
 Admin ingestion views:
 
 ```bash
-curl "http://localhost:8080/api/v1/admin/ingestion/batches" \
+curl "http://localhost:8080/api/v2/admin/ingestion/batches" \
   -H "Authorization: Bearer local-dev-key"
 
-curl "http://localhost:8080/api/v1/admin/ingestion/failures" \
+curl "http://localhost:8080/api/v2/admin/ingestion/failures" \
   -H "Authorization: Bearer local-dev-key"
 ```
 
@@ -498,14 +498,14 @@ Metric list responses include an `items` array plus a `meta` object:
 }
 ```
 
-Cursor pagination is intentionally not exposed yet. `nextCursor` is part of the response metadata contract but remains `null` and is omitted from JSON responses until real cursor pagination is added.
+Cursor pagination is exposed through the `cursor` query parameter. When `meta.nextCursor` is present, pass it back with the same `sort` and `order` values to fetch the next page.
 
-`latest=true` is supported on step samples, sleep sessions, body measurements, and heart-rate samples. It cannot be combined with `limit`, `sort`, or `order`; unsupported combinations return `400 validation_failed` with field-level details. Daily step summaries and sleep nights do not support `latest=true`; use `date` or descending `order` where appropriate.
+`latest=true` is supported on timestamp-based list endpoints, scalar metric reads, activity summaries, sleep summaries, and blood pressure. It cannot be combined with `limit`, `sort`, `order`, or `cursor`; unsupported combinations return `400 validation_failed` with field-level details. Daily step summaries and sleep nights do not support `latest=true`; use `date` or descending `order` where appropriate.
 
 Sleep reads have two modes:
 
-- `/api/v1/sleep/sessions` is the instant-based read. Its `from` and `to` filters apply to session `startAt`.
-- `/api/v1/sleep/nights` is the calendar sleep-night read. It returns complete sessions, including all stages, and classifies each session by the localized date of `endAt`. `timezone` is an IANA timezone and defaults to `UTC`; pass it when clients need local calendar behavior. For example, `date=2026-04-20&timezone=Europe/Berlin` returns a session that starts at `2026-04-19T22:00:00Z` and ends at `2026-04-20T06:00:00Z` as the `2026-04-20` sleep night in `Europe/Berlin`. A session from the evening of April 20 to the morning of April 21 is returned for `date=2026-04-21`, not April 20, under those semantics.
+- `/api/v2/sleep/sessions` is the instant-based read. Its `from` and `to` filters apply to session `startAt`.
+- `/api/v2/sleep/nights` is the calendar sleep-night read. It returns complete sessions, including all stages, and classifies each session by the localized date of `endAt`. `timezone` is an IANA timezone and defaults to `UTC`; pass it when clients need local calendar behavior. For example, `date=2026-04-20&timezone=Europe/Berlin` returns a session that starts at `2026-04-19T22:00:00Z` and ends at `2026-04-20T06:00:00Z` as the `2026-04-20` sleep night in `Europe/Berlin`. A session from the evening of April 20 to the morning of April 21 is returned for `date=2026-04-21`, not April 20, under those semantics.
 
 ## Storage Model
 
@@ -554,4 +554,3 @@ export AQT_HEALTH_TEST_DB_PASSWORD="aqt_health"
 ## Contributing
 
 For coding standards, development workflows, and conventional commit guidelines used in this project, please see the [CONTRIBUTING.md](CONTRIBUTING.md) guide.
-

@@ -25,12 +25,12 @@ function descriptor(
     maxSyncRangeDays: 90,
     supportsPageSize: true,
     workflowEndpoints: {
-      oauthStart: "/api/v1/providers/google-health/oauth/start",
-      oauthCallback: "/api/v1/providers/google-health/oauth/callback",
-      accounts: "/api/v1/providers/google-health/accounts",
-      disconnect: "/api/v1/providers/google-health/accounts/{id}/disconnect",
-      reconnect: "/api/v1/providers/google-health/accounts/{id}/reconnect",
-      sync: "/api/v1/providers/google-health/sync",
+      oauthStart: "/api/v2/providers/google-health/oauth/start",
+      oauthCallback: "/api/v2/providers/google-health/oauth/callback",
+      accounts: "/api/v2/providers/google-health/accounts",
+      disconnect: "/api/v2/providers/google-health/accounts/{id}/disconnect",
+      reconnect: "/api/v2/providers/google-health/accounts/{id}/reconnect",
+      sync: "/api/v2/providers/google-health/sync",
     },
     ...overrides,
   };

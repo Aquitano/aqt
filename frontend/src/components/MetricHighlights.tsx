@@ -22,11 +22,11 @@ export function MetricHighlights({
   latestHrv,
   latestBloodPressure,
 }: MetricHighlightsProps) {
-  const activity = latestActivity?.item;
-  const sleep = latestSleepSummary?.item;
+  const activity = latestActivity?.items[0];
+  const sleep = latestSleepSummary?.items[0];
   const respiratoryRate = latestRespiratoryRate?.items[0];
   const hrv = latestHrv?.items[0];
-  const bp = latestBloodPressure?.item;
+  const bp = latestBloodPressure?.items[0];
 
   const cards = [
     {
@@ -58,7 +58,7 @@ export function MetricHighlights({
     {
       kind: "respiratory",
       label: "Respiratory rate",
-      value: respiratoryRate ? `${respiratoryRate.breathsPerMinute} br/min` : "n/a",
+      value: respiratoryRate ? formatMeasurement(respiratoryRate.value, respiratoryRate.unit) : "n/a",
       detail: respiratoryRate
         ? `${respiratoryRate.context} - ${formatDateTime(respiratoryRate.measuredAt)}`
         : "No respiratory-rate sample",

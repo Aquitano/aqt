@@ -25,7 +25,7 @@ export function HeartRateTable({ items }: Props) {
           {items.map((item) => (
             <tr key={item.id}>
               <td>{formatDateTime(item.measuredAt)}</td>
-              <td>{item.bpm}</td>
+              <td>{item.value}</td>
               <td className={styles.muted}>{item.context}</td>
               <td className={styles.muted}>{sourceLabel(item.source)}</td>
             </tr>

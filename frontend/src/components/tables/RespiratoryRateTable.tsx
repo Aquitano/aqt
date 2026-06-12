@@ -25,7 +25,7 @@ export function RespiratoryRateTable({ items }: Props) {
           {items.map((item) => (
             <tr key={item.id}>
               <td>{formatDateTime(item.measuredAt)}</td>
-              <td>{formatMeasurement(item.breathsPerMinute, "br/min")}</td>
+              <td>{formatMeasurement(item.value, item.unit)}</td>
               <td className={styles.muted}>{item.context}</td>
               <td className={styles.muted}>{sourceLabel(item.source)}</td>
             </tr>

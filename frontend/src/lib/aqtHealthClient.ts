@@ -2,12 +2,8 @@ import createClient from "openapi-fetch";
 import type {
   ApiResult,
   ApiSchema,
-  BloodPressureLatestResponse,
   BloodPressureMeasurementsResponse,
-  CardiovascularMeasurementResponse,
-  CardiovascularMeasurementsResponse,
   ExtendedBodyMeasurementResponse,
-  ExtendedBodyMeasurementsResponse,
   ProviderSyncJobStartResponse,
   ProviderSyncJobStatusResponse,
   ScheduledSyncConfig,
@@ -25,53 +21,54 @@ type ClientResponse<T> = {
 type ClientOptions = {
   protected?: boolean;
 };
+type AqtOpenApiClient = ReturnType<typeof createClient<paths>>;
 
 type IngestionBatchQuery = NonNullable<
-  paths["/api/v1/admin/ingestion/batches"]["get"]["parameters"]["query"]
+  paths["/api/v2/admin/ingestion/batches"]["get"]["parameters"]["query"]
 >;
 type IngestionFailuresQuery = NonNullable<
-  paths["/api/v1/admin/ingestion/failures"]["get"]["parameters"]["query"]
+  paths["/api/v2/admin/ingestion/failures"]["get"]["parameters"]["query"]
 >;
 type ProviderPathCode =
-  paths["/api/v1/providers/{providerCode}/sync"]["post"]["parameters"]["path"]["providerCode"];
-type HealthDayQuery = NonNullable<paths["/api/v1/health/day"]["get"]["parameters"]["query"]>;
+  paths["/api/v2/providers/{providerCode}/sync"]["post"]["parameters"]["path"]["providerCode"];
+type HealthDayQuery = NonNullable<paths["/api/v2/health/day"]["get"]["parameters"]["query"]>;
 type DailyStepsQuery = NonNullable<
-  paths["/api/v1/metrics/steps/daily"]["get"]["parameters"]["query"]
+  paths["/api/v2/steps/daily"]["get"]["parameters"]["query"]
 >;
 type ActivitySummariesQuery = NonNullable<
-  paths["/api/v1/activity/summaries"]["get"]["parameters"]["query"]
+  paths["/api/v2/activity/summaries"]["get"]["parameters"]["query"]
 >;
-type ActivitySummaryLatestQuery = NonNullable<
-  paths["/api/v1/activity/summaries/latest"]["get"]["parameters"]["query"]
+type ScalarSamplesQuery = NonNullable<
+  paths["/api/v2/metrics/{metricType}"]["get"]["parameters"]["query"]
 >;
-type HeartRateSamplesQuery = NonNullable<
-  paths["/api/v1/metrics/heart-rate"]["get"]["parameters"]["query"]
->;
-type RespiratoryRateSamplesQuery = NonNullable<
-  paths["/api/v1/metrics/respiratory-rate"]["get"]["parameters"]["query"]
->;
-type HrvSamplesQuery = NonNullable<
-  paths["/api/v1/metrics/hrv"]["get"]["parameters"]["query"]
->;
-type SleepNightsQuery = NonNullable<paths["/api/v1/sleep/nights"]["get"]["parameters"]["query"]>;
+type SleepNightsQuery = NonNullable<paths["/api/v2/sleep/nights"]["get"]["parameters"]["query"]>;
 type SleepSummariesQuery = NonNullable<
-  paths["/api/v1/sleep/summaries"]["get"]["parameters"]["query"]
->;
-type SleepSummaryLatestQuery = NonNullable<
-  paths["/api/v1/sleep/summaries/latest"]["get"]["parameters"]["query"]
->;
-type LatestBodyMeasurementQuery = NonNullable<
-  paths["/api/v1/body/measurements/latest"]["get"]["parameters"]["query"]
->;
-type BodyMeasurementsQuery = NonNullable<
-  paths["/api/v1/body/measurements"]["get"]["parameters"]["query"]
+  paths["/api/v2/sleep/summaries"]["get"]["parameters"]["query"]
 >;
 type DashboardSummaryQuery = NonNullable<
-  paths["/api/v1/dashboard/summary"]["get"]["parameters"]["query"]
+  paths["/api/v2/dashboard/summary"]["get"]["parameters"]["query"]
 >;
 type DashboardTrendsQuery = NonNullable<
-  paths["/api/v1/dashboard/trends"]["get"]["parameters"]["query"]
+  paths["/api/v2/dashboard/trends"]["get"]["parameters"]["query"]
 >;
+type BloodPressureQuery = NonNullable<
+  paths["/api/v2/blood-pressure"]["get"]["parameters"]["query"]
+>;
+
+const bodyMetricTypes = ["weight", "body_fat", "muscle", "water", "visceral_fat"];
+const cardiovascularMetricTypes = ["pulse_wave_velocity", "vascular_age", "standing_heart_rate"];
+const extendedBodyMetricTypes = [
+  "fat_mass",
+  "fat_free_mass",
+  "bone_mass",
+  "intracellular_water",
+  "extracellular_water",
+  "basal_metabolic_rate",
+  "segmental_fat_mass",
+  "segmental_muscle_mass",
+  "segmental_fat_free_mass",
+];
+
 const defaultBaseUrl = "http://localhost:8080";
 const backendRequestTimeoutMs = 8_000;
 const longRunningBackendRequestTimeoutMs = 300_000;
@@ -95,14 +92,14 @@ export function createAqtHealthClient() {
     apiBaseUrl,
 
     getHealth: () =>
-      call<ApiSchema<"HealthResponse">>(() => rawClient.GET("/api/v1/admin/health"), {
+      call<ApiSchema<"HealthResponse">>(() => rawClient.GET("/api/v2/admin/health"), {
         protected: false,
       }),
 
     listIngestionBatches: (query: IngestionBatchQuery) =>
       call<ApiSchema<"IngestionBatchesResponse">>(
         (headers) =>
-          rawClient.GET("/api/v1/admin/ingestion/batches", {
+          rawClient.GET("/api/v2/admin/ingestion/batches", {
             headers,
             params: { query },
           }),
@@ -111,7 +108,7 @@ export function createAqtHealthClient() {
     getIngestionBatch: (id: number) =>
       call<ApiSchema<"IngestionBatchDetailResponse">>(
         (headers) =>
-          rawClient.GET("/api/v1/admin/ingestion/batches/{id}", {
+          rawClient.GET("/api/v2/admin/ingestion/batches/{id}", {
             headers,
             params: { path: { id } },
           }),
@@ -120,7 +117,7 @@ export function createAqtHealthClient() {
     listIngestionFailures: (query: IngestionFailuresQuery) =>
       call<ApiSchema<"IngestionBatchesResponse">>(
         (headers) =>
-          rawClient.GET("/api/v1/admin/ingestion/failures", {
+          rawClient.GET("/api/v2/admin/ingestion/failures", {
             headers,
             params: { query },
           }),
@@ -128,17 +125,17 @@ export function createAqtHealthClient() {
 
     listProviders: () =>
       call<ApiSchema<"ProviderCatalogResponseDto">>((headers) =>
-        rawClient.GET("/api/v1/providers", { headers }),
+        rawClient.GET("/api/v2/providers", { headers }),
       ),
 
     listProviderStatuses: () =>
       call<ApiSchema<"ProviderStatusCatalogResponseDto">>((headers) =>
-        rawClient.GET("/api/v1/providers/status", { headers }),
+        rawClient.GET("/api/v2/providers/status", { headers }),
       ),
 
     startProviderOAuth: (providerCode: string) =>
       call<ApiSchema<"ProviderOAuthStartResponse">>((headers) =>
-        rawClient.GET("/api/v1/providers/{providerCode}/oauth/start", {
+        rawClient.GET("/api/v2/providers/{providerCode}/oauth/start", {
           headers,
           params: { path: { providerCode: providerCode as ProviderPathCode } },
         }),
@@ -146,7 +143,7 @@ export function createAqtHealthClient() {
 
     listProviderAccounts: (providerCode: string) =>
       call<ApiSchema<"ProviderAccountListResponseDto">>((headers) =>
-        rawClient.GET("/api/v1/providers/{providerCode}/accounts", {
+        rawClient.GET("/api/v2/providers/{providerCode}/accounts", {
           headers,
           params: { path: { providerCode: providerCode as ProviderPathCode } },
         }),
@@ -154,7 +151,7 @@ export function createAqtHealthClient() {
 
     getProviderAccount: (providerCode: string, providerInstanceId: string) =>
       call<ApiSchema<"ProviderAccountStatusResponseDto">>((headers) =>
-        rawClient.GET("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}", {
+        rawClient.GET("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}", {
           headers,
           params: {
             path: {
@@ -167,7 +164,7 @@ export function createAqtHealthClient() {
 
     disconnectProviderAccount: (providerCode: string, providerInstanceId: string) =>
       call<ApiSchema<"ProviderDisconnectResponseDto">>((headers) =>
-        rawClient.POST("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/disconnect", {
+        rawClient.POST("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/disconnect", {
           headers,
           params: {
             path: {
@@ -180,7 +177,7 @@ export function createAqtHealthClient() {
 
     reconnectProviderAccount: (providerCode: string, providerInstanceId: string) =>
       call<ApiSchema<"ProviderOAuthStartResponse">>((headers) =>
-        rawClient.POST("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/reconnect", {
+        rawClient.POST("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/reconnect", {
           headers,
           params: {
             path: {
@@ -193,7 +190,7 @@ export function createAqtHealthClient() {
 
     getScheduledSyncConfig: (providerCode: string, providerInstanceId: string) =>
       call<ScheduledSyncConfig>((headers) =>
-        rawClient.GET("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync", {
+        rawClient.GET("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync", {
           headers,
           params: {
             path: {
@@ -210,7 +207,7 @@ export function createAqtHealthClient() {
       body: ScheduledSyncConfigUpdateRequest,
     ) =>
       call<ScheduledSyncConfig>((headers) =>
-        rawClient.PUT("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync", {
+        rawClient.PUT("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync", {
           body,
           headers,
           params: {
@@ -224,7 +221,7 @@ export function createAqtHealthClient() {
 
     runScheduledSyncNow: (providerCode: string, providerInstanceId: string) =>
       call<ScheduledSyncRunResponse>((headers) =>
-        longRunningClient.POST("/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync/run", {
+        longRunningClient.POST("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync/run", {
           headers,
           params: {
             path: {
@@ -240,7 +237,7 @@ export function createAqtHealthClient() {
       body: ApiSchema<"ProviderSyncRequestDto">,
     ) =>
       call<ApiSchema<"ProviderSyncResponseDto">>((headers) =>
-        longRunningClient.POST("/api/v1/providers/{providerCode}/sync", {
+        longRunningClient.POST("/api/v2/providers/{providerCode}/sync", {
           body,
           headers,
           params: { path: { providerCode: providerCode as ProviderPathCode } },
@@ -252,7 +249,7 @@ export function createAqtHealthClient() {
       body: ApiSchema<"ProviderSyncRequestDto">,
     ) =>
       call<ProviderSyncJobStartResponse>((headers) =>
-        fetchJson(`${apiBaseUrl}/api/v1/providers/${encodeURIComponent(providerCode)}/sync-jobs`, {
+        fetchJson(`${apiBaseUrl}/api/v2/providers/${encodeURIComponent(providerCode)}/sync-jobs`, {
           method: "POST",
           headers: {
             ...headers,
@@ -268,19 +265,19 @@ export function createAqtHealthClient() {
     ) =>
       call<ProviderSyncJobStatusResponse>((headers) =>
         fetchJson(
-          `${apiBaseUrl}/api/v1/providers/${encodeURIComponent(providerCode)}/sync-jobs/${encodeURIComponent(jobId)}`,
+          `${apiBaseUrl}/api/v2/providers/${encodeURIComponent(providerCode)}/sync-jobs/${encodeURIComponent(jobId)}`,
           { headers },
         ),
       ),
 
     getMetricCatalog: () =>
-      call<ApiSchema<"MetricCatalogResponseDto">>((headers) =>
-        rawClient.GET("/api/v1/metrics/catalog", { headers }),
+      call<ApiSchema<"MetricTypeCatalogResponse">>((headers) =>
+        rawClient.GET("/api/v2/metrics", { headers }),
       ),
 
     getHealthDay: (query: HealthDayQuery) =>
       call<ApiSchema<"HealthDayResponse">>((headers) =>
-        rawClient.GET("/api/v1/health/day", {
+        rawClient.GET("/api/v2/health/day", {
           headers,
           params: { query },
         }),
@@ -288,7 +285,7 @@ export function createAqtHealthClient() {
 
     listDailyStepSummaries: (query: DailyStepsQuery) =>
       call<ApiSchema<"StepDailySummariesResponse">>((headers) =>
-        rawClient.GET("/api/v1/metrics/steps/daily", {
+        rawClient.GET("/api/v2/steps/daily", {
           headers,
           params: { query },
         }),
@@ -296,47 +293,32 @@ export function createAqtHealthClient() {
 
     listActivitySummaries: (query: ActivitySummariesQuery) =>
       call<ApiSchema<"ActivitySummariesResponse">>((headers) =>
-        rawClient.GET("/api/v1/activity/summaries", {
+        rawClient.GET("/api/v2/activity/summaries", {
           headers,
           params: { query },
         }),
       ),
 
-    getLatestActivitySummary: (query: ActivitySummaryLatestQuery) =>
-      call<ApiSchema<"ActivitySummaryLatestResponse">>((headers) =>
-        rawClient.GET("/api/v1/activity/summaries/latest", {
+    getLatestActivitySummary: (query: ActivitySummariesQuery) =>
+      call<ApiSchema<"ActivitySummariesResponse">>((headers) =>
+        rawClient.GET("/api/v2/activity/summaries", {
           headers,
-          params: { query },
+          params: { query: { ...query, latest: true } },
         }),
       ),
 
-    listHeartRateSamples: (query: HeartRateSamplesQuery) =>
-      call<ApiSchema<"HeartRateSamplesResponse">>((headers) =>
-        rawClient.GET("/api/v1/metrics/heart-rate", {
-          headers,
-          params: { query },
-        }),
-      ),
+    listHeartRateSamples: (query: ScalarSamplesQuery) =>
+      listScalarMetric(rawClient, "heart_rate", query),
 
-    listRespiratoryRateSamples: (query: RespiratoryRateSamplesQuery) =>
-      call<ApiSchema<"RespiratoryRateSamplesResponse">>((headers) =>
-        rawClient.GET("/api/v1/metrics/respiratory-rate", {
-          headers,
-          params: { query },
-        }),
-      ),
+    listRespiratoryRateSamples: (query: ScalarSamplesQuery) =>
+      listScalarMetric(rawClient, "respiratory_rate", query),
 
-    listHrvSamples: (query: HrvSamplesQuery) =>
-      call<ApiSchema<"HrvSamplesResponse">>((headers) =>
-        rawClient.GET("/api/v1/metrics/hrv", {
-          headers,
-          params: { query },
-        }),
-      ),
+    listHrvSamples: (query: ScalarSamplesQuery) =>
+      listScalarMetric(rawClient, "hrv_rmssd", query),
 
     listSleepNights: (query: SleepNightsQuery) =>
       call<ApiSchema<"SleepNightsResponse">>((headers) =>
-        rawClient.GET("/api/v1/sleep/nights", {
+        rawClient.GET("/api/v2/sleep/nights", {
           headers,
           params: { query },
         }),
@@ -344,91 +326,137 @@ export function createAqtHealthClient() {
 
     listSleepSummaries: (query: SleepSummariesQuery) =>
       call<ApiSchema<"SleepSummariesResponse">>((headers) =>
-        rawClient.GET("/api/v1/sleep/summaries", {
+        rawClient.GET("/api/v2/sleep/summaries", {
           headers,
           params: { query },
         }),
       ),
 
-    getLatestSleepSummary: (query: SleepSummaryLatestQuery) =>
-      call<ApiSchema<"SleepSummaryLatestResponse">>((headers) =>
-        rawClient.GET("/api/v1/sleep/summaries/latest", {
+    getLatestSleepSummary: (query: SleepSummariesQuery) =>
+      call<ApiSchema<"SleepSummariesResponse">>((headers) =>
+        rawClient.GET("/api/v2/sleep/summaries", {
           headers,
-          params: { query },
+          params: { query: { ...query, latest: true } },
         }),
       ),
 
-    getLatestBodyMeasurement: (query: LatestBodyMeasurementQuery) =>
-      call<ApiSchema<"BodyMeasurementLatestResponse">>((headers) =>
-        rawClient.GET("/api/v1/body/measurements/latest", {
-          headers,
-          params: { query },
-        }),
-      ),
+    getLatestBodyMeasurement: (query: ScalarSamplesQuery) =>
+      listScalarMetric(rawClient, "weight", { ...query, latest: true }),
 
-    listBodyMeasurements: (query: BodyMeasurementsQuery) =>
-      call<ApiSchema<"BodyMeasurementsResponse">>((headers) =>
-        rawClient.GET("/api/v1/body/measurements", {
-          headers,
-          params: { query },
-        }),
-      ),
+    listBodyMeasurements: (query: ScalarSamplesQuery) =>
+      listScalarMetrics(rawClient, bodyMetricTypes, query),
     getDashboardSummary: (query: DashboardSummaryQuery) =>
       call<ApiSchema<"DashboardSummaryResponse">>((headers) =>
-        rawClient.GET("/api/v1/dashboard/summary", {
+        rawClient.GET("/api/v2/dashboard/summary", {
           headers,
           params: { query },
         }),
       ),
     getDashboardTrends: (query: DashboardTrendsQuery) =>
       call<ApiSchema<"DashboardTrendsResponse">>((headers) =>
-        rawClient.GET("/api/v1/dashboard/trends", {
+        rawClient.GET("/api/v2/dashboard/trends", {
           headers,
           params: { query },
         }),
       ),
 
-    listBloodPressure: (query: LooseQuery) =>
-      call<BloodPressureMeasurementsResponse>(
-        (headers) => fetchJson(`${apiBaseUrl}/api/v1/metrics/blood-pressure${queryString(query)}`, { headers }),
+    listBloodPressure: (query: BloodPressureQuery) =>
+      call<BloodPressureMeasurementsResponse>((headers) =>
+        rawClient.GET("/api/v2/blood-pressure", {
+          headers,
+          params: { query },
+        }),
       ),
 
-    getLatestBloodPressure: (query: LooseQuery) =>
-      call<BloodPressureLatestResponse>(
-        (headers) => fetchJson(`${apiBaseUrl}/api/v1/metrics/blood-pressure/latest${queryString(query)}`, { headers }),
+    getLatestBloodPressure: (query: BloodPressureQuery) =>
+      call<BloodPressureMeasurementsResponse>((headers) =>
+        rawClient.GET("/api/v2/blood-pressure", {
+          headers,
+          params: { query: { ...query, latest: true } },
+        }),
       ),
 
-    listCardiovascular: (query: LooseQuery) =>
-      call<CardiovascularMeasurementsResponse>(
-        (headers) => fetchJson(`${apiBaseUrl}/api/v1/metrics/cardiovascular${queryString(query)}`, { headers }),
-      ),
+    listCardiovascular: (query: ScalarSamplesQuery) =>
+      listScalarMetrics(rawClient, cardiovascularMetricTypes, query),
 
-    getLatestCardiovascular: (query: LooseQuery) =>
-      call<CardiovascularMeasurementResponse>(
-        (headers) => fetchJson(`${apiBaseUrl}/api/v1/metrics/cardiovascular/latest${queryString(query)}`, { headers }),
-      ),
+    getLatestCardiovascular: (query: ScalarSamplesQuery) =>
+      listScalarMetrics(rawClient, cardiovascularMetricTypes, { ...query, latest: true }),
 
-    listExtendedBodyMeasurements: (query: LooseQuery) =>
-      call<ExtendedBodyMeasurementsResponse>(
-        (headers) => fetchJson(`${apiBaseUrl}/api/v1/metrics/extended-body-measurements${queryString(query)}`, { headers }),
-      ),
+    listExtendedBodyMeasurements: (query: ScalarSamplesQuery) =>
+      listScalarMetrics(rawClient, extendedBodyMetricTypes, query),
 
-    getLatestExtendedBodyMeasurement: (query: LooseQuery) =>
-      call<ExtendedBodyMeasurementResponse>(
-        (headers) => fetchJson(`${apiBaseUrl}/api/v1/metrics/extended-body-measurements/latest${queryString(query)}`, { headers }),
-      ),
+    getLatestExtendedBodyMeasurement: (query: ScalarSamplesQuery) =>
+      listScalarMetrics(rawClient, extendedBodyMetricTypes, { ...query, latest: true }) as Promise<
+        ApiResult<ExtendedBodyMeasurementResponse>
+      >,
   };
 }
 
-type LooseQuery = Record<string, string | boolean | number | undefined>;
+function listScalarMetric(
+  client: AqtOpenApiClient,
+  metricType: string,
+  query: ScalarSamplesQuery,
+): Promise<ApiResult<ApiSchema<"ScalarSamplesResponse">>> {
+  return call<ApiSchema<"ScalarSamplesResponse">>((headers) =>
+    client.GET("/api/v2/metrics/{metricType}", {
+      headers,
+      params: { path: { metricType }, query },
+    }),
+  );
+}
 
-function queryString(query: LooseQuery): string {
-  const params = new URLSearchParams();
-  Object.entries(query).forEach(([key, value]) => {
-    if (value !== undefined) params.set(key, String(value));
-  });
-  const encoded = params.toString();
-  return encoded ? `?${encoded}` : "";
+function listScalarMetrics(
+  client: AqtOpenApiClient,
+  metricTypes: string[],
+  query: ScalarSamplesQuery,
+): Promise<ApiResult<ApiSchema<"ScalarSamplesResponse">>> {
+  return call<ApiSchema<"ScalarSamplesResponse">>((headers) =>
+    mergedScalarMetrics(client, metricTypes, query, headers),
+  );
+}
+
+async function mergedScalarMetrics(
+  client: AqtOpenApiClient,
+  metricTypes: string[],
+  query: ScalarSamplesQuery,
+  headers: HeadersInit,
+): Promise<ClientResponse<ApiSchema<"ScalarSamplesResponse">>> {
+  const responses = await Promise.all(
+    metricTypes.map((metricType) =>
+      client.GET("/api/v2/metrics/{metricType}", {
+        headers,
+        params: { path: { metricType }, query },
+      }),
+    ),
+  );
+  const failed = responses.find((result) => result.error || !result.response.ok);
+  if (failed) return failed as ClientResponse<ApiSchema<"ScalarSamplesResponse">>;
+
+  const order = query.order ?? (query.latest ? "desc" : "asc");
+  const requestedLimit = query.limit ?? 500;
+  const mergedItems = responses
+    .flatMap((result) => result.data?.items ?? [])
+    .sort((left, right) => {
+      const measured = left.measuredAt.localeCompare(right.measuredAt);
+      const byTime = order === "desc" ? -measured : measured;
+      if (byTime !== 0) return byTime;
+      return order === "desc" ? right.id - left.id : left.id - right.id;
+    });
+  const items = query.latest ? mergedItems : mergedItems.slice(0, requestedLimit);
+  const firstMeta = responses[0]?.data?.meta;
+
+  return {
+    data: {
+      items,
+      meta: {
+        count: items.length,
+        limit: requestedLimit,
+        sort: firstMeta?.sort ?? "measuredAt",
+        order,
+      },
+    },
+    response: responses[0]?.response,
+  };
 }
 
 async function fetchJson<T>(

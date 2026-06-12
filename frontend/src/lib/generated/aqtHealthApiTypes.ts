@@ -38,7 +38,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/health": {
+    "/api/v2/admin/health": {
         parameters: {
             query?: never;
             header?: never;
@@ -58,7 +58,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/ingestion/batches": {
+    "/api/v2/admin/ingestion/batches": {
         parameters: {
             query?: never;
             header?: never;
@@ -78,7 +78,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/ingestion/batches/{id}": {
+    "/api/v2/admin/ingestion/batches/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -98,7 +98,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/ingestion/failures": {
+    "/api/v2/admin/ingestion/failures": {
         parameters: {
             query?: never;
             header?: never;
@@ -118,7 +118,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/ingestion/batches": {
+    "/api/v2/admin/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay projections from the raw event log
+         * @description Starts a background job that rebuilds metric projections and/or derived tables from stored ingestion records for the requested date range. Replay is idempotent; with wipe=true the affected projection rows are deleted and rewritten, without it the job acts as a verification pass whose counters report how many writes would have been missing.
+         */
+        post: operations["startReplay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/admin/replay/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get latest replay job
+         * @description Returns the most recently created replay job.
+         */
+        get: operations["getLatestReplayJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/admin/replay/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get replay job progress
+         * @description Returns progress counters (records replayed, metrics written, duplicates skipped, mapping failures) and the current day item of a replay job.
+         */
+        get: operations["getReplayJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/ingestion/batches": {
         parameters: {
             query?: never;
             header?: never;
@@ -138,7 +198,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers": {
+    "/api/v2/providers": {
         parameters: {
             query?: never;
             header?: never;
@@ -158,7 +218,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers/status": {
+    "/api/v2/providers/status": {
         parameters: {
             query?: never;
             header?: never;
@@ -178,7 +238,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers/{providerCode}": {
+    "/api/v2/providers/{providerCode}": {
         parameters: {
             query?: never;
             header?: never;
@@ -198,7 +258,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers/{providerCode}/status": {
+    "/api/v2/providers/{providerCode}/status": {
         parameters: {
             query?: never;
             header?: never;
@@ -218,7 +278,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers/{providerCode}/accounts": {
+    "/api/v2/providers/{providerCode}/accounts": {
         parameters: {
             query?: never;
             header?: never;
@@ -238,7 +298,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}": {
+    "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -258,7 +318,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync": {
+    "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync": {
         parameters: {
             query?: never;
             header?: never;
@@ -276,7 +336,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync/run": {
+    "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync/run": {
         parameters: {
             query?: never;
             header?: never;
@@ -293,7 +353,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/disconnect": {
+    "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/disconnect": {
         parameters: {
             query?: never;
             header?: never;
@@ -313,7 +373,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/reconnect": {
+    "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/reconnect": {
         parameters: {
             query?: never;
             header?: never;
@@ -333,7 +393,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers/{providerCode}/oauth/start": {
+    "/api/v2/providers/{providerCode}/oauth/start": {
         parameters: {
             query?: never;
             header?: never;
@@ -353,7 +413,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers/{providerCode}/oauth/callback": {
+    "/api/v2/providers/{providerCode}/oauth/callback": {
         parameters: {
             query?: never;
             header?: never;
@@ -373,7 +433,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers/{providerCode}/sync": {
+    "/api/v2/providers/{providerCode}/sync": {
         parameters: {
             query?: never;
             header?: never;
@@ -393,7 +453,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/metrics/catalog": {
+    "/api/v2/providers/{providerCode}/sync-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a background provider sync job
+         * @description Creates a durable manual provider sync job and returns immediately. The backend processes provider-safe chunks sequentially; clients can poll the job endpoint for progress and final summary after page reloads.
+         */
+        post: operations["startProviderSyncJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/providers/{providerCode}/sync-jobs/latest": {
         parameters: {
             query?: never;
             header?: never;
@@ -401,10 +481,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get metric read catalog
-         * @description Discovery endpoint for metric families, supported query parameters, response DTO names, aggregation modes, and provider data-type mappings. OpenAPI remains the formal schema contract; this endpoint helps clients decide which workflow to use.
+         * Get latest provider sync job
+         * @description Returns the latest manual provider sync job for a provider.
          */
-        get: operations["getMetricCatalog"];
+        get: operations["getLatestProviderSyncJob"];
         put?: never;
         post?: never;
         delete?: never;
@@ -413,7 +493,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/metrics/steps": {
+    "/api/v2/providers/{providerCode}/sync-jobs/{jobId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -421,10 +501,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List step samples
-         * @description Returns canonical step samples filtered by timestamp range, source provider, provider instance, source metadata inclusion, item limit, and sort order. Use `latest=true` to return the latest matching sample only.
+         * Get provider sync job progress
+         * @description Returns progress counters, the current provider-safe window, and the final sync summary when the background job has finished.
          */
-        get: operations["listStepSamples"];
+        get: operations["getProviderSyncJob"];
         put?: never;
         post?: never;
         delete?: never;
@@ -433,7 +513,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/metrics/steps/daily": {
+    "/api/v2/metrics": {
         parameters: {
             query?: never;
             header?: never;
@@ -441,10 +521,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List daily step summaries
-         * @description Returns daily UTC step totals. Use `date` for one day, or `fromDate` and `toDate` for an inclusive date range.
+         * List readable scalar metric types
+         * @description Returns every scalar metric type the API can serve, with family, unit, segment support, and allowed context values. Structural metrics (steps, sleep, activity, blood pressure) have dedicated endpoints.
          */
-        get: operations["listDailyStepSummaries"];
+        get: operations["getMetricTypeCatalog"];
         put?: never;
         post?: never;
         delete?: never;
@@ -453,7 +533,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/metrics/heart-rate/summary": {
+    "/api/v2/metrics/{metricType}": {
         parameters: {
             query?: never;
             header?: never;
@@ -461,10 +541,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Summarize heart rate samples
-         * @description Returns count, minimum, maximum, average, and latest heart-rate sample for the requested timestamp and source filters.
+         * List scalar samples for one metric type
+         * @description Returns canonical (cross-provider deduplicated) samples for the metric type; `raw=true` returns every stored sample instead. Supports `latest=true` for the newest matching sample and opaque `cursor` keyset pagination via `meta.nextCursor`. Unknown metric types return 404.
          */
-        get: operations["summarizeHeartRate"];
+        get: operations["listScalarSamples"];
         put?: never;
         post?: never;
         delete?: never;
@@ -473,7 +553,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/metrics/heart-rate": {
+    "/api/v2/metrics/{metricType}/summary": {
         parameters: {
             query?: never;
             header?: never;
@@ -481,10 +561,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List heart rate samples
-         * @description Returns heart-rate samples filtered by timestamp and source. Use `latest=true` to return the latest matching sample only.
+         * Summarize scalar samples for one metric type
+         * @description Returns count, minimum, maximum, average, and the latest canonical sample for the metric type within the requested timestamp and source filters. Unknown metric types return 404.
          */
-        get: operations["listHeartRateSamples"];
+        get: operations["summarizeScalarSamples"];
         put?: never;
         post?: never;
         delete?: never;
@@ -493,294 +573,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/metrics/respiratory-rate/summary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Summarize respiratory rate samples
-         * @description Returns count, minimum, maximum, average, and latest respiratory-rate sample for the requested timestamp and source filters.
-         */
-        get: operations["summarizeRespiratoryRate"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/metrics/respiratory-rate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List respiratory rate samples
-         * @description Returns timestamped respiratory-rate samples filtered by timestamp and source. Use `latest=true` to return the latest matching sample only.
-         */
-        get: operations["listRespiratoryRateSamples"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/metrics/hrv/summary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Summarize HRV samples
-         * @description Returns count, minimum, maximum, average, and latest HRV sample for the requested metric type, timestamp, and source filters.
-         */
-        get: operations["summarizeHrv"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/metrics/hrv": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List HRV samples
-         * @description Returns timestamped HRV samples filtered by timestamp, source, and metric type. Use `latest=true` to return the latest matching sample only.
-         */
-        get: operations["listHrvSamples"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/metrics/blood-pressure": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Blood pressure */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["BloodPressureMeasurementsResponse"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/metrics/blood-pressure/latest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["BloodPressureLatestResponse"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/metrics/cardiovascular": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Cardiovascular */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["CardiovascularMeasurementsResponse"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/metrics/cardiovascular/latest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["CardiovascularMeasurementResponse"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/metrics/extended-body-measurements": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Extended body measurements */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ExtendedBodyMeasurementsResponse"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/metrics/extended-body-measurements/latest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ExtendedBodyMeasurementResponse"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/health/day": {
+    "/api/v2/health/day": {
         parameters: {
             query?: never;
             header?: never;
@@ -800,7 +593,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/activity/summaries/latest": {
+    "/api/v2/steps": {
         parameters: {
             query?: never;
             header?: never;
@@ -808,10 +601,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get latest activity summary
-         * @description Returns the latest matching daily activity summary for optional date and source filters.
+         * List step samples
+         * @description Returns canonical step samples filtered by timestamp range, source provider, provider instance, source metadata inclusion, item limit, and sort order. Use `latest=true` to return the latest matching sample only.
          */
-        get: operations["getLatestActivitySummary"];
+        get: operations["listStepSamples"];
         put?: never;
         post?: never;
         delete?: never;
@@ -820,7 +613,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/activity/summaries": {
+    "/api/v2/steps/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List daily step summaries
+         * @description Returns daily UTC step totals. Use `date` for one day, or `fromDate` and `toDate` for an inclusive date range.
+         */
+        get: operations["listDailyStepSummaries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/activity/summaries": {
         parameters: {
             query?: never;
             header?: never;
@@ -840,7 +653,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/sleep/sessions": {
+    "/api/v2/sleep/sessions": {
         parameters: {
             query?: never;
             header?: never;
@@ -860,7 +673,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/sleep/nights": {
+    "/api/v2/sleep/nights": {
         parameters: {
             query?: never;
             header?: never;
@@ -880,27 +693,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/sleep/summaries/latest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get latest sleep summary
-         * @description Returns the latest matching aggregate sleep summary for optional timestamp and source filters.
-         */
-        get: operations["getLatestSleepSummary"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/sleep/summaries": {
+    "/api/v2/sleep/summaries": {
         parameters: {
             query?: never;
             header?: never;
@@ -920,7 +713,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/body/measurements/latest": {
+    "/api/v2/blood-pressure": {
         parameters: {
             query?: never;
             header?: never;
@@ -928,10 +721,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get latest body measurement
-         * @description Returns the latest matching body measurement for a required `metricType` filter. This is a single-item alias for `latest=true` body measurement reads.
+         * List blood pressure measurements
+         * @description Returns paired systolic/diastolic blood-pressure measurements filtered by timestamp and source. Use `latest=true` to return the latest matching measurement only.
          */
-        get: operations["getLatestBodyMeasurement"];
+        get: operations["listBloodPressureMeasurements"];
         put?: never;
         post?: never;
         delete?: never;
@@ -940,27 +733,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/body/measurements": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List body measurements
-         * @description Returns body measurements filtered by timestamp, source, and optional `metricType`. Use `latest=true` to return the latest matching measurement only.
-         */
-        get: operations["listBodyMeasurements"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/dashboard/summary": {
+    "/api/v2/dashboard/summary": {
         parameters: {
             query?: never;
             header?: never;
@@ -980,7 +753,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/dashboard/trends": {
+    "/api/v2/dashboard/trends": {
         parameters: {
             query?: never;
             header?: never;
@@ -1158,6 +931,65 @@ export interface components {
              */
             type: "hrv";
         };
+        /** blood_pressure */
+        BloodPressureDto: {
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            measuredAt: string;
+            systolicMmhg: number;
+            diastolicMmhg: number;
+            heartRateBpm?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "blood_pressure";
+        };
+        /** cardiovascular */
+        CardiovascularDto: {
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            measuredAt: string;
+            metricType: string;
+            value: number;
+            unit: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "cardiovascular";
+        };
+        /** extended_body_measurement */
+        ExtendedBodyMeasurementDto: {
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            measuredAt: string;
+            metricType: string;
+            value: number;
+            unit: string;
+            segment?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "extended_body_measurement";
+        };
+        /** scalar */
+        ScalarSampleDto: {
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            measuredAt: string;
+            metricType: string;
+            value: number;
+            unit: string;
+            context?: string | null;
+            segment?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "scalar";
+        };
         /** HealthResponse */
         HealthResponse: {
             status: string;
@@ -1187,7 +1019,8 @@ export interface components {
             provider: string;
             providerInstanceId: string;
             batchExternalId?: string | null;
-            status: string;
+            /** @enum {string} */
+            status: "received" | "processed" | "failed";
             /** Format: date-time */
             ingestedAt: string;
             /** Format: date-time */
@@ -1197,9 +1030,18 @@ export interface components {
             errorMessage?: string | null;
             recordCount: number;
         };
+        /** ReadResponseMeta */
+        ReadResponseMeta: {
+            count: number;
+            limit: number;
+            sort: string;
+            order: string;
+            nextCursor?: string | null;
+        };
         /** IngestionBatchesResponse */
         IngestionBatchesResponse: {
             items: components["schemas"]["IngestionBatchAdminResponse"][];
+            meta: components["schemas"]["ReadResponseMeta"];
         };
         /** JsonElement? */
         "JsonElement?": Record<string, never> | null;
@@ -1222,7 +1064,8 @@ export interface components {
             provider: string;
             providerInstanceId: string;
             batchExternalId?: string | null;
-            status: string;
+            /** @enum {string} */
+            status: "received" | "processed" | "failed";
             /** Format: date-time */
             ingestedAt: string;
             /** Format: date-time */
@@ -1235,20 +1078,52 @@ export interface components {
             sourcePayload?: components["schemas"]["JsonElement?"];
             normalizedPayload?: components["schemas"]["JsonElement?"];
         };
-        /** MetricCreatedCountsResponse */
-        MetricCreatedCountsResponse: {
-            stepSamples: number;
-            sleepSessions: number;
-            sleepStages: number;
-            bodyMeasurements: number;
-            heartRateSamples: number;
-            activitySummaries: number;
-            sleepSummaries: number;
-            respiratoryRateSamples: number;
-            hrvSamples: number;
-            bloodPressureMeasurements: number;
-            cardiovascularMeasurements: number;
-            extendedBodyMeasurements: number;
+        /** ReplayRequest */
+        ReplayRequest: {
+            scope?: string;
+            metricTypes?: string[] | null;
+            /** Format: date */
+            fromDate?: string | null;
+            /** Format: date */
+            toDate?: string | null;
+            wipe?: boolean;
+        };
+        /** ReplayJobStartResponse */
+        ReplayJobStartResponse: {
+            jobId: string;
+            /** @enum {string} */
+            status: "queued" | "running" | "completed" | "failed";
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** ReplayJobStatusResponse */
+        ReplayJobStatusResponse: {
+            jobId: string;
+            scope: string;
+            metricTypes?: string[] | null;
+            /** Format: date */
+            fromDate?: string | null;
+            /** Format: date */
+            toDate?: string | null;
+            wipe: boolean;
+            /** @enum {string} */
+            status: "queued" | "running" | "completed" | "failed";
+            totalItems: number;
+            completedItems: number;
+            currentItem?: string | null;
+            recordsReplayed: number;
+            metricsWritten: number;
+            duplicatesSkipped: number;
+            mappingFailures: number;
+            errorMessage?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            startedAt?: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            finishedAt?: string | null;
         };
         /** MetricSkippedCountsResponse */
         MetricSkippedCountsResponse: {
@@ -1257,11 +1132,14 @@ export interface components {
         /** IngestionSummaryResponse */
         IngestionSummaryResponse: {
             batchId: number;
-            status: string;
+            /** @enum {string} */
+            status: "received" | "processed" | "failed";
             duplicateBatch: boolean;
             recordsReceived: number;
             ingestionRecordsStored: number;
-            metricsCreated: components["schemas"]["MetricCreatedCountsResponse"];
+            metricsCreated: {
+                [key: string]: number;
+            };
             metricsSkipped: components["schemas"]["MetricSkippedCountsResponse"];
             affectedStepSummaryDates: string[];
         };
@@ -1379,7 +1257,9 @@ export interface components {
             duplicateBatch: boolean;
             recordsReceived: number;
             ingestionRecordsStored: number;
-            metricsCreated: components["schemas"]["MetricCreatedCountsResponse"];
+            metricsCreated: {
+                [key: string]: number;
+            };
             duplicateMetricsSkipped: number;
             affectedStepSummaryDates: string[];
         };
@@ -1404,7 +1284,8 @@ export interface components {
             requestedFrom: string;
             /** Format: date-time */
             requestedTo: string;
-            status: string;
+            /** @enum {string} */
+            status: "processed" | "partial_failed" | "failed";
             batches: components["schemas"]["ProviderSyncBatchResponseDto"][];
             emptyDataTypes: components["schemas"]["ProviderSyncEmptyDataTypeResponseDto"][];
             errors: components["schemas"]["ProviderSyncErrorResponseDto"][];
@@ -1413,7 +1294,8 @@ export interface components {
         ScheduledSyncRunResponseDto: {
             providerCode: string;
             providerInstanceId: string;
-            status: string;
+            /** @enum {string} */
+            status: "processed" | "partial_failed" | "failed";
             /** Format: date-time */
             requestedFrom?: string | null;
             /** Format: date-time */
@@ -1452,207 +1334,94 @@ export interface components {
             dataTypes?: string[] | null;
             pageSize?: number | null;
         };
-        /** MetricReadEndpointDto */
-        MetricReadEndpointDto: {
-            mode: string;
-            method: string;
-            path?: string | null;
-            available?: boolean;
-            responseDto?: string | null;
+        /** ProviderSyncJobStartResponseDto */
+        ProviderSyncJobStartResponseDto: {
+            jobId: string;
+            /** @enum {string} */
+            status: "queued" | "running" | "processed" | "partial_failed" | "failed";
+            /** Format: date-time */
+            createdAt: string;
         };
-        /** MetricQueryParameterDto */
-        MetricQueryParameterDto: {
-            name: string;
-            type: string;
-            required?: boolean;
-            description: string;
-            values?: string[];
+        /** ProviderSyncJobItemResponseDto */
+        ProviderSyncJobItemResponseDto: {
+            dataType: string;
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
         };
-        /** MetricAggregationModeDto */
-        MetricAggregationModeDto: {
-            name: string;
-            available: boolean;
-            endpoint?: string | null;
-        };
-        /** MetricProviderDataTypesDto */
-        MetricProviderDataTypesDto: {
+        /** ProviderSyncJobStatusResponseDto */
+        ProviderSyncJobStatusResponseDto: {
+            jobId: string;
             providerCode: string;
-            dataTypes: string[];
+            providerInstanceId?: string | null;
+            /** Format: date-time */
+            requestedFrom: string;
+            /** Format: date-time */
+            requestedTo: string;
+            dataTypes?: string[] | null;
+            /** @enum {string} */
+            status: "queued" | "running" | "processed" | "partial_failed" | "failed";
+            totalItems: number;
+            completedItems: number;
+            currentItem?: components["schemas"]["ProviderSyncJobItemResponseDto"] | null;
+            lastCompletedItem?: components["schemas"]["ProviderSyncJobItemResponseDto"] | null;
+            batchesCount: number;
+            emptyCount: number;
+            errorCount: number;
+            errorMessage?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            startedAt?: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            finishedAt?: string | null;
+            summary?: components["schemas"]["ProviderSyncResponseDto"] | null;
         };
-        /** MetricFamilyCatalogDto */
-        MetricFamilyCatalogDto: {
-            name: string;
-            readEndpoints: components["schemas"]["MetricReadEndpointDto"][];
-            queryParameters: components["schemas"]["MetricQueryParameterDto"][];
-            aggregationModes: components["schemas"]["MetricAggregationModeDto"][];
-            metricTypes?: string[];
-            responseDtos: string[];
-            providerDataTypes: components["schemas"]["MetricProviderDataTypesDto"][];
-            schemaHint: string;
+        /** MetricCatalogEntryResponse */
+        MetricCatalogEntryResponse: {
+            metricType: string;
+            family: string;
+            unit: string;
+            supportsSegment: boolean;
+            contexts?: string[] | null;
         };
-        /** MetricCatalogResponseDto */
-        MetricCatalogResponseDto: {
-            families: components["schemas"]["MetricFamilyCatalogDto"][];
+        /** MetricTypeCatalogResponse */
+        MetricTypeCatalogResponse: {
+            items: components["schemas"]["MetricCatalogEntryResponse"][];
         };
         /** SourceMetadataResponse */
         SourceMetadataResponse: {
             provider: string;
             providerInstanceId: string;
         };
-        /** StepSampleResponse */
-        StepSampleResponse: {
-            id: number;
-            /** Format: date-time */
-            startAt: string;
-            /** Format: date-time */
-            endAt: string;
-            steps: number;
-            source?: components["schemas"]["SourceMetadataResponse"] | null;
-        };
-        /** ReadResponseMeta */
-        ReadResponseMeta: {
-            count: number;
-            limit: number;
-            sort: string;
-            order: string;
-            nextCursor?: string | null;
-        };
-        /** StepSamplesResponse */
-        StepSamplesResponse: {
-            items: components["schemas"]["StepSampleResponse"][];
-            meta: components["schemas"]["ReadResponseMeta"];
-        };
-        /** StepDailySummaryResponse */
-        StepDailySummaryResponse: {
-            /** Format: date */
-            date: string;
-            steps: number;
-            sampleCount: number;
-            source?: components["schemas"]["SourceMetadataResponse"] | null;
-        };
-        /** StepDailySummariesResponse */
-        StepDailySummariesResponse: {
-            items: components["schemas"]["StepDailySummaryResponse"][];
-            meta: components["schemas"]["ReadResponseMeta"];
-        };
-        /** HeartRateSampleResponse */
-        HeartRateSampleResponse: {
-            id: number;
-            /** Format: date-time */
-            measuredAt: string;
-            bpm: number;
-            context: string;
-            source?: components["schemas"]["SourceMetadataResponse"] | null;
-        };
-        /** HeartRateSummaryResponse */
-        HeartRateSummaryResponse: {
-            count: number;
-            minBpm?: number | null;
-            maxBpm?: number | null;
-            avgBpm?: number | null;
-            latest?: components["schemas"]["HeartRateSampleResponse"] | null;
-        };
-        /** HeartRateSamplesResponse */
-        HeartRateSamplesResponse: {
-            items: components["schemas"]["HeartRateSampleResponse"][];
-            meta: components["schemas"]["ReadResponseMeta"];
-        };
-        /** RespiratoryRateSampleResponse */
-        RespiratoryRateSampleResponse: {
-            id: number;
-            /** Format: date-time */
-            measuredAt: string;
-            breathsPerMinute: number;
-            context: string;
-            source?: components["schemas"]["SourceMetadataResponse"] | null;
-        };
-        /** RespiratoryRateSummaryResponse */
-        RespiratoryRateSummaryResponse: {
-            count: number;
-            minBreathsPerMinute?: number | null;
-            maxBreathsPerMinute?: number | null;
-            avgBreathsPerMinute?: number | null;
-            latest?: components["schemas"]["RespiratoryRateSampleResponse"] | null;
-        };
-        /** RespiratoryRateSamplesResponse */
-        RespiratoryRateSamplesResponse: {
-            items: components["schemas"]["RespiratoryRateSampleResponse"][];
-            meta: components["schemas"]["ReadResponseMeta"];
-        };
-        /** HrvSampleResponse */
-        HrvSampleResponse: {
+        /** ScalarSampleResponse */
+        ScalarSampleResponse: {
             id: number;
             /** Format: date-time */
             measuredAt: string;
             metricType: string;
             value: number;
             unit: string;
-            context: string;
-            source?: components["schemas"]["SourceMetadataResponse"] | null;
-        };
-        /** HrvSummaryResponse */
-        HrvSummaryResponse: {
-            count: number;
-            metricType: string;
-            minValue?: number | null;
-            maxValue?: number | null;
-            avgValue?: number | null;
-            latest?: components["schemas"]["HrvSampleResponse"] | null;
-        };
-        /** HrvSamplesResponse */
-        HrvSamplesResponse: {
-            items: components["schemas"]["HrvSampleResponse"][];
-            meta: components["schemas"]["ReadResponseMeta"];
-        };
-        /** BloodPressureMeasurementResponse */
-        BloodPressureMeasurementResponse: {
-            id: number;
-            /** Format: date-time */
-            measuredAt: string;
-            systolicMmhg: number;
-            diastolicMmhg: number;
-            heartRateBpm?: number | null;
-            source?: components["schemas"]["SourceMetadataResponse"] | null;
-        };
-        /** BloodPressureMeasurementsResponse */
-        BloodPressureMeasurementsResponse: {
-            items: components["schemas"]["BloodPressureMeasurementResponse"][];
-            meta: components["schemas"]["ReadResponseMeta"];
-        };
-        /** BloodPressureLatestResponse */
-        BloodPressureLatestResponse: {
-            item?: components["schemas"]["BloodPressureMeasurementResponse"] | null;
-        };
-        /** CardiovascularMeasurementResponse */
-        CardiovascularMeasurementResponse: {
-            id: number;
-            /** Format: date-time */
-            measuredAt: string;
-            metricType: string;
-            value: number;
-            unit: string;
-            source?: components["schemas"]["SourceMetadataResponse"] | null;
-        };
-        /** CardiovascularMeasurementsResponse */
-        CardiovascularMeasurementsResponse: {
-            items: components["schemas"]["CardiovascularMeasurementResponse"][];
-            meta: components["schemas"]["ReadResponseMeta"];
-        };
-        /** ExtendedBodyMeasurementResponse */
-        ExtendedBodyMeasurementResponse: {
-            id: number;
-            /** Format: date-time */
-            measuredAt: string;
-            metricType: string;
-            value: number;
-            unit: string;
+            context?: string | null;
             segment?: string | null;
             source?: components["schemas"]["SourceMetadataResponse"] | null;
         };
-        /** ExtendedBodyMeasurementsResponse */
-        ExtendedBodyMeasurementsResponse: {
-            items: components["schemas"]["ExtendedBodyMeasurementResponse"][];
+        /** ScalarSamplesResponse */
+        ScalarSamplesResponse: {
+            items: components["schemas"]["ScalarSampleResponse"][];
             meta: components["schemas"]["ReadResponseMeta"];
+        };
+        /** ScalarSummaryResponse */
+        ScalarSummaryResponse: {
+            metricType: string;
+            count: number;
+            minValue?: number | null;
+            maxValue?: number | null;
+            avgValue?: number | null;
+            latest?: components["schemas"]["ScalarSampleResponse"] | null;
         };
         /** HealthDayBucketResponse */
         HealthDayBucketResponse: {
@@ -1676,25 +1445,15 @@ export interface components {
             minBpm?: number | null;
             maxBpm?: number | null;
             avgBpm?: number | null;
-            latest?: components["schemas"]["HeartRateSampleResponse"] | null;
+            latest?: components["schemas"]["ScalarSampleResponse"] | null;
             buckets: components["schemas"]["HealthDayBucketResponse"][];
-        };
-        /** BodyMeasurementResponse */
-        BodyMeasurementResponse: {
-            id: number;
-            /** Format: date-time */
-            measuredAt: string;
-            metricType: string;
-            value: number;
-            unit: string;
-            source?: components["schemas"]["SourceMetadataResponse"] | null;
         };
         /** HealthDayWeightResponse */
         HealthDayWeightResponse: {
-            latest?: components["schemas"]["BodyMeasurementResponse"] | null;
-            previous?: components["schemas"]["BodyMeasurementResponse"] | null;
+            latest?: components["schemas"]["ScalarSampleResponse"] | null;
+            previous?: components["schemas"]["ScalarSampleResponse"] | null;
             delta?: number | null;
-            points: components["schemas"]["BodyMeasurementResponse"][];
+            points: components["schemas"]["ScalarSampleResponse"][];
         };
         /** SleepStageResponse */
         SleepStageResponse: {
@@ -1751,6 +1510,34 @@ export interface components {
             weight?: components["schemas"]["HealthDayWeightResponse"] | null;
             sleep?: components["schemas"]["HealthDaySleepResponse"] | null;
         };
+        /** StepSampleResponse */
+        StepSampleResponse: {
+            id: number;
+            /** Format: date-time */
+            startAt: string;
+            /** Format: date-time */
+            endAt: string;
+            steps: number;
+            source?: components["schemas"]["SourceMetadataResponse"] | null;
+        };
+        /** StepSamplesResponse */
+        StepSamplesResponse: {
+            items: components["schemas"]["StepSampleResponse"][];
+            meta: components["schemas"]["ReadResponseMeta"];
+        };
+        /** StepDailySummaryResponse */
+        StepDailySummaryResponse: {
+            /** Format: date */
+            date: string;
+            steps: number;
+            sampleCount: number;
+            source?: components["schemas"]["SourceMetadataResponse"] | null;
+        };
+        /** StepDailySummariesResponse */
+        StepDailySummariesResponse: {
+            items: components["schemas"]["StepDailySummaryResponse"][];
+            meta: components["schemas"]["ReadResponseMeta"];
+        };
         /** ActivitySummaryResponse */
         ActivitySummaryResponse: {
             id: number;
@@ -1768,10 +1555,6 @@ export interface components {
             minHeartRateBpm?: number | null;
             maxHeartRateBpm?: number | null;
             source?: components["schemas"]["SourceMetadataResponse"] | null;
-        };
-        /** ActivitySummaryLatestResponse */
-        ActivitySummaryLatestResponse: {
-            item?: components["schemas"]["ActivitySummaryResponse"] | null;
         };
         /** ActivitySummariesResponse */
         ActivitySummariesResponse: {
@@ -1832,22 +1615,24 @@ export interface components {
             rrMax?: number | null;
             source?: components["schemas"]["SourceMetadataResponse"] | null;
         };
-        /** SleepSummaryLatestResponse */
-        SleepSummaryLatestResponse: {
-            item?: components["schemas"]["SleepSummaryResponse"] | null;
-        };
         /** SleepSummariesResponse */
         SleepSummariesResponse: {
             items: components["schemas"]["SleepSummaryResponse"][];
             meta: components["schemas"]["ReadResponseMeta"];
         };
-        /** BodyMeasurementLatestResponse */
-        BodyMeasurementLatestResponse: {
-            item?: components["schemas"]["BodyMeasurementResponse"] | null;
+        /** BloodPressureMeasurementResponse */
+        BloodPressureMeasurementResponse: {
+            id: number;
+            /** Format: date-time */
+            measuredAt: string;
+            systolicMmhg: number;
+            diastolicMmhg: number;
+            heartRateBpm?: number | null;
+            source?: components["schemas"]["SourceMetadataResponse"] | null;
         };
-        /** BodyMeasurementsResponse */
-        BodyMeasurementsResponse: {
-            items: components["schemas"]["BodyMeasurementResponse"][];
+        /** BloodPressureMeasurementsResponse */
+        BloodPressureMeasurementsResponse: {
+            items: components["schemas"]["BloodPressureMeasurementResponse"][];
             meta: components["schemas"]["ReadResponseMeta"];
         };
         /** DashboardStepsSummaryResponse */
@@ -1863,8 +1648,8 @@ export interface components {
             /** Format: date */
             toDate: string;
             steps: components["schemas"]["DashboardStepsSummaryResponse"];
-            latestWeight?: components["schemas"]["BodyMeasurementResponse"] | null;
-            latestHeartRate?: components["schemas"]["HeartRateSampleResponse"] | null;
+            latestWeight?: components["schemas"]["ScalarSampleResponse"] | null;
+            latestHeartRate?: components["schemas"]["ScalarSampleResponse"] | null;
             lastSleepSession?: components["schemas"]["SleepSessionResponse"] | null;
         };
         /** StepsTrend */
@@ -1888,8 +1673,8 @@ export interface components {
         };
         /** WeightTrend */
         WeightTrend: {
-            latest?: components["schemas"]["BodyMeasurementResponse"] | null;
-            previous?: components["schemas"]["BodyMeasurementResponse"] | null;
+            latest?: components["schemas"]["ScalarSampleResponse"] | null;
+            previous?: components["schemas"]["ScalarSampleResponse"] | null;
             delta?: number | null;
             percentChange?: number | null;
         };
@@ -1964,13 +1749,15 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Batch status filter. */
-                status?: "processed" | "failed";
+                status?: "received" | "processed" | "failed";
                 /** @description Inclusive received-at start timestamp. */
                 from?: string;
                 /** @description Exclusive received-at end timestamp. */
                 to?: string;
                 /** @description Maximum number of items. Defaults to 100 and cannot exceed 1000 for admin list endpoints. */
                 limit?: number;
+                /** @description Opaque cursor from `meta.nextCursor` for the next page. Admin batch lists are sorted by receivedAt desc. */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -2119,13 +1906,15 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Batch status filter. */
-                status?: "processed" | "failed";
+                status?: "received" | "processed" | "failed";
                 /** @description Inclusive received-at start timestamp. */
                 from?: string;
                 /** @description Exclusive received-at end timestamp. */
                 to?: string;
                 /** @description Maximum number of items. Defaults to 100 and cannot exceed 1000 for admin list endpoints. */
                 limit?: number;
+                /** @description Opaque cursor from `meta.nextCursor` for the next page. Admin batch lists are sorted by receivedAt desc. */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -2191,6 +1980,234 @@ export interface operations {
             };
         };
     };
+    startReplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Replay request. scope selects the projections stage, the derived rebuild stage, or both; metricTypes limits the replay to specific record types; omitting the date range replays all stored history. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Replay job accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayJobStartResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getLatestReplayJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayJobStatusResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getReplayJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Replay job id returned by startReplay */
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayJobStatusResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
     ingestBatch: {
         parameters: {
             query?: never;
@@ -2214,7 +2231,7 @@ export interface operations {
                      */
                     ingestedAt?: string;
                     sourcePayload?: Record<string, never>;
-                    records?: (components["schemas"]["StepIntervalDto"] | components["schemas"]["SleepSessionDto"] | components["schemas"]["BodyMeasurementDto"] | components["schemas"]["HeartRateDto"] | components["schemas"]["ActivitySummaryDto"] | components["schemas"]["SleepSummaryDto"] | components["schemas"]["RespiratoryRateDto"] | components["schemas"]["HrvDto"])[];
+                    records?: (components["schemas"]["StepIntervalDto"] | components["schemas"]["SleepSessionDto"] | components["schemas"]["BodyMeasurementDto"] | components["schemas"]["HeartRateDto"] | components["schemas"]["ActivitySummaryDto"] | components["schemas"]["SleepSummaryDto"] | components["schemas"]["RespiratoryRateDto"] | components["schemas"]["HrvDto"] | components["schemas"]["BloodPressureDto"] | components["schemas"]["CardiovascularDto"] | components["schemas"]["ExtendedBodyMeasurementDto"] | components["schemas"]["ScalarSampleDto"])[];
                 };
             };
         };
@@ -3333,7 +3350,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        /** @description Provider sync request. Provider adapters may enforce max range and page-size constraints advertised by the provider catalog. */
+        /** @description Provider sync request. Long historical ranges are accepted for backfill; providers split work into safe internal windows and may enforce page-size constraints advertised by the provider catalog. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ProviderSyncRequestDto"];
@@ -3425,7 +3442,261 @@ export interface operations {
             };
         };
     };
-    getMetricCatalog: {
+    startProviderSyncJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider code. Current examples are `google-health` and `withings`. */
+                providerCode: "google-health" | "withings";
+            };
+            cookie?: never;
+        };
+        /** @description Provider sync request. Long historical ranges are accepted for backfill and processed by the backend job worker. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderSyncRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Sync job accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSyncJobStartResponseDto"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request conflicts with current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getLatestProviderSyncJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider code. Current examples are `google-health` and `withings`. */
+                providerCode: "google-health" | "withings";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSyncJobStatusResponseDto"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getProviderSyncJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider code. Current examples are `google-health` and `withings`. */
+                providerCode: "google-health" | "withings";
+                /** @description Provider sync job id returned by startProviderSyncJob */
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSyncJobStatusResponseDto"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getMetricTypeCatalog: {
         parameters: {
             query?: never;
             header?: never;
@@ -3439,7 +3710,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MetricCatalogResponseDto"];
+                    "application/json": components["schemas"]["MetricTypeCatalogResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -3492,257 +3763,7 @@ export interface operations {
             };
         };
     };
-    listStepSamples: {
-        parameters: {
-            query?: {
-                /** @description Inclusive start timestamp or date. Date-only values are interpreted by the endpoint's query service. */
-                from?: string;
-                /** @description Exclusive end timestamp or date. Date-only values are interpreted by the endpoint's query service. */
-                to?: string;
-                /** @description Source provider filter. */
-                provider?: string;
-                /** @description Source provider account or instance filter. */
-                providerInstanceId?: string;
-                /** @description Include source provider metadata in each item. Defaults to false. */
-                includeSource?: boolean;
-                /** @description Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order. */
-                latest?: boolean;
-                /** @description Sort field for this endpoint. Each metric endpoint supports its documented default temporal or date field. */
-                sort?: "startAt";
-                /** @description Sort direction. Defaults to asc. Use desc for newest-first reads. */
-                order?: "asc" | "desc";
-                /** @description Maximum number of items. Defaults to 500 and cannot exceed 5000. */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StepSamplesResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    listDailyStepSummaries: {
-        parameters: {
-            query?: {
-                /** @description Source provider filter. */
-                provider?: string;
-                /** @description Source provider account or instance filter. */
-                providerInstanceId?: string;
-                /** @description Include source provider metadata in each item. Defaults to false. */
-                includeSource?: boolean;
-                /** @description Sort field. Daily endpoints support date. */
-                sort?: "date";
-                /** @description Sort direction. Defaults to asc. Use desc for newest-first reads. */
-                order?: "asc" | "desc";
-                /** @description Maximum number of items. Defaults to 500 and cannot exceed 5000. */
-                limit?: number;
-                /** @description Exact UTC date or `today`. Cannot be combined with fromDate or toDate. */
-                date?: string;
-                /** @description Inclusive UTC date start date. */
-                fromDate?: string;
-                /** @description Inclusive UTC date end date. */
-                toDate?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StepDailySummariesResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    summarizeHeartRate: {
-        parameters: {
-            query?: {
-                /** @description Inclusive start timestamp. */
-                from?: string;
-                /** @description Exclusive end timestamp. */
-                to?: string;
-                /** @description Source provider filter. */
-                provider?: string;
-                /** @description Source provider account or instance filter. */
-                providerInstanceId?: string;
-                /** @description Include source provider metadata in the nested latest item. Defaults to false. */
-                includeSource?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HeartRateSummaryResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    listHeartRateSamples: {
+    listScalarSamples: {
         parameters: {
             query?: {
                 /** @description Inclusive start timestamp or date. Date-only values are interpreted by the endpoint's query service. */
@@ -3763,9 +3784,16 @@ export interface operations {
                 order?: "asc" | "desc";
                 /** @description Maximum number of items. Defaults to 500 and cannot exceed 5000. */
                 limit?: number;
+                /** @description Opaque cursor from `meta.nextCursor` for the next page. Must be used with the same sort and order. */
+                cursor?: string;
+                /** @description Return raw stored samples instead of canonical cross-provider samples. Defaults to false. */
+                raw?: boolean;
             };
             header?: never;
-            path?: never;
+            path: {
+                /** @description Scalar metric type from the metric catalog. */
+                metricType: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3775,7 +3803,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HeartRateSamplesResponse"];
+                    "application/json": components["schemas"]["ScalarSamplesResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -3789,6 +3817,15 @@ export interface operations {
             };
             /** @description Missing or invalid API key */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3828,7 +3865,7 @@ export interface operations {
             };
         };
     };
-    summarizeRespiratoryRate: {
+    summarizeScalarSamples: {
         parameters: {
             query?: {
                 /** @description Inclusive start timestamp. */
@@ -3843,7 +3880,10 @@ export interface operations {
                 includeSource?: boolean;
             };
             header?: never;
-            path?: never;
+            path: {
+                /** @description Scalar metric type from the metric catalog. */
+                metricType: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3853,7 +3893,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RespiratoryRateSummaryResponse"];
+                    "application/json": components["schemas"]["ScalarSummaryResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -3874,253 +3914,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    listRespiratoryRateSamples: {
-        parameters: {
-            query?: {
-                /** @description Inclusive start timestamp or date. Date-only values are interpreted by the endpoint's query service. */
-                from?: string;
-                /** @description Exclusive end timestamp or date. Date-only values are interpreted by the endpoint's query service. */
-                to?: string;
-                /** @description Source provider filter. */
-                provider?: string;
-                /** @description Source provider account or instance filter. */
-                providerInstanceId?: string;
-                /** @description Include source provider metadata in each item. Defaults to false. */
-                includeSource?: boolean;
-                /** @description Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order. */
-                latest?: boolean;
-                /** @description Sort field for this endpoint. Each metric endpoint supports its documented default temporal or date field. */
-                sort?: "measuredAt";
-                /** @description Sort direction. Defaults to asc. Use desc for newest-first reads. */
-                order?: "asc" | "desc";
-                /** @description Maximum number of items. Defaults to 500 and cannot exceed 5000. */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RespiratoryRateSamplesResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    summarizeHrv: {
-        parameters: {
-            query?: {
-                /** @description Inclusive start timestamp. */
-                from?: string;
-                /** @description Exclusive end timestamp. */
-                to?: string;
-                /** @description Source provider filter. */
-                provider?: string;
-                /** @description Source provider account or instance filter. */
-                providerInstanceId?: string;
-                /** @description Include source provider metadata in the nested latest item. Defaults to false. */
-                includeSource?: boolean;
-                /** @description HRV metric type filter. Defaults to rmssd. */
-                metricType?: "rmssd";
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HrvSummaryResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    listHrvSamples: {
-        parameters: {
-            query?: {
-                /** @description Inclusive start timestamp or date. Date-only values are interpreted by the endpoint's query service. */
-                from?: string;
-                /** @description Exclusive end timestamp or date. Date-only values are interpreted by the endpoint's query service. */
-                to?: string;
-                /** @description Source provider filter. */
-                provider?: string;
-                /** @description Source provider account or instance filter. */
-                providerInstanceId?: string;
-                /** @description Include source provider metadata in each item. Defaults to false. */
-                includeSource?: boolean;
-                /** @description Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order. */
-                latest?: boolean;
-                /** @description Sort field for this endpoint. Each metric endpoint supports its documented default temporal or date field. */
-                sort?: "measuredAt";
-                /** @description Sort direction. Defaults to asc. Use desc for newest-first reads. */
-                order?: "asc" | "desc";
-                /** @description Maximum number of items. Defaults to 500 and cannot exceed 5000. */
-                limit?: number;
-                /** @description HRV metric type filter. Defaults to rmssd. */
-                metricType?: "rmssd";
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HrvSamplesResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4241,21 +4036,29 @@ export interface operations {
             };
         };
     };
-    getLatestActivitySummary: {
+    listStepSamples: {
         parameters: {
             query?: {
+                /** @description Inclusive start timestamp or date. Date-only values are interpreted by the endpoint's query service. */
+                from?: string;
+                /** @description Exclusive end timestamp or date. Date-only values are interpreted by the endpoint's query service. */
+                to?: string;
                 /** @description Source provider filter. */
                 provider?: string;
                 /** @description Source provider account or instance filter. */
                 providerInstanceId?: string;
                 /** @description Include source provider metadata in each item. Defaults to false. */
                 includeSource?: boolean;
-                /** @description Exact UTC date or `today`. Cannot be combined with fromDate or toDate. */
-                date?: string;
-                /** @description Inclusive UTC date start date. */
-                fromDate?: string;
-                /** @description Inclusive UTC date end date. */
-                toDate?: string;
+                /** @description Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order. */
+                latest?: boolean;
+                /** @description Sort field for this endpoint. Each metric endpoint supports its documented default temporal or date field. */
+                sort?: "startAt";
+                /** @description Sort direction. Defaults to asc. Use desc for newest-first reads. */
+                order?: "asc" | "desc";
+                /** @description Maximum number of items. Defaults to 500 and cannot exceed 5000. */
+                limit?: number;
+                /** @description Opaque cursor from `meta.nextCursor` for the next page. Must be used with the same sort and order. */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -4268,7 +4071,97 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ActivitySummaryLatestResponse"];
+                    "application/json": components["schemas"]["StepSamplesResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    listDailyStepSummaries: {
+        parameters: {
+            query?: {
+                /** @description Source provider filter. */
+                provider?: string;
+                /** @description Source provider account or instance filter. */
+                providerInstanceId?: string;
+                /** @description Include source provider metadata in each item. Defaults to false. */
+                includeSource?: boolean;
+                /** @description Sort field. Daily endpoints support date. */
+                sort?: "date";
+                /** @description Sort direction. Defaults to asc. Use desc for newest-first reads. */
+                order?: "asc" | "desc";
+                /** @description Maximum number of items. Defaults to 500 and cannot exceed 5000. */
+                limit?: number;
+                /** @description Opaque cursor from `meta.nextCursor` for the next page. Must be used with the same sort and order. */
+                cursor?: string;
+                /** @description Exact UTC date or `today`. Cannot be combined with fromDate or toDate. */
+                date?: string;
+                /** @description Inclusive UTC date start date. */
+                fromDate?: string;
+                /** @description Inclusive UTC date end date. */
+                toDate?: string;
+                /** @description Return the latest matching daily step summary when true. Defaults to false. Cannot be combined with limit, sort, order, or cursor. */
+                latest?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StepDailySummariesResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -4336,12 +4229,16 @@ export interface operations {
                 order?: "asc" | "desc";
                 /** @description Maximum number of items. Defaults to 500 and cannot exceed 5000. */
                 limit?: number;
+                /** @description Opaque cursor from `meta.nextCursor` for the next page. Must be used with the same sort and order. */
+                cursor?: string;
                 /** @description Exact UTC date or `today`. Cannot be combined with fromDate or toDate. */
                 date?: string;
                 /** @description Inclusive UTC date start date. */
                 fromDate?: string;
                 /** @description Inclusive UTC date end date. */
                 toDate?: string;
+                /** @description Return the latest matching activity summary when true. Defaults to false. Cannot be combined with limit, sort, order, or cursor. */
+                latest?: boolean;
             };
             header?: never;
             path?: never;
@@ -4428,6 +4325,8 @@ export interface operations {
                 order?: "asc" | "desc";
                 /** @description Maximum number of items. Defaults to 500 and cannot exceed 5000. */
                 limit?: number;
+                /** @description Opaque cursor from `meta.nextCursor` for the next page. Must be used with the same sort and order. */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -4516,6 +4415,8 @@ export interface operations {
                 sort?: "date";
                 /** @description Sort direction. Defaults to asc. Use desc for most recent sleep nights first. */
                 order?: "asc" | "desc";
+                /** @description Opaque cursor from `meta.nextCursor` for the next page. Must be used with the same sort and order. */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -4529,84 +4430,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SleepNightsResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    getLatestSleepSummary: {
-        parameters: {
-            query?: {
-                /** @description Inclusive start timestamp. */
-                from?: string;
-                /** @description Exclusive end timestamp. */
-                to?: string;
-                /** @description Source provider filter. */
-                provider?: string;
-                /** @description Source provider account or instance filter. */
-                providerInstanceId?: string;
-                /** @description Include source provider metadata in the nested latest item. Defaults to false. */
-                includeSource?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SleepSummaryLatestResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -4680,6 +4503,8 @@ export interface operations {
                 order?: "asc" | "desc";
                 /** @description Maximum number of items. Defaults to 500 and cannot exceed 5000. */
                 limit?: number;
+                /** @description Opaque cursor from `meta.nextCursor` for the next page. Must be used with the same sort and order. */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -4745,87 +4570,7 @@ export interface operations {
             };
         };
     };
-    getLatestBodyMeasurement: {
-        parameters: {
-            query: {
-                /** @description Inclusive start timestamp. */
-                from?: string;
-                /** @description Exclusive end timestamp. */
-                to?: string;
-                /** @description Source provider filter. */
-                provider?: string;
-                /** @description Source provider account or instance filter. */
-                providerInstanceId?: string;
-                /** @description Include source provider metadata in the returned item. Defaults to false. */
-                includeSource?: boolean;
-                /** @description Required body measurement type filter. */
-                metricType: "basal_metabolic_rate" | "body_fat" | "bone_mass" | "extracellular_water" | "fat_free_mass" | "fat_mass" | "intracellular_water" | "muscle" | "segmental_fat_free_mass" | "segmental_fat_mass" | "segmental_muscle_mass" | "visceral_fat" | "water" | "weight";
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BodyMeasurementLatestResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    listBodyMeasurements: {
+    listBloodPressureMeasurements: {
         parameters: {
             query?: {
                 /** @description Inclusive start timestamp or date. Date-only values are interpreted by the endpoint's query service. */
@@ -4846,8 +4591,8 @@ export interface operations {
                 order?: "asc" | "desc";
                 /** @description Maximum number of items. Defaults to 500 and cannot exceed 5000. */
                 limit?: number;
-                /** @description Body measurement type filter. */
-                metricType?: "basal_metabolic_rate" | "body_fat" | "bone_mass" | "extracellular_water" | "fat_free_mass" | "fat_mass" | "intracellular_water" | "muscle" | "segmental_fat_free_mass" | "segmental_fat_mass" | "segmental_muscle_mass" | "visceral_fat" | "water" | "weight";
+                /** @description Opaque cursor from `meta.nextCursor` for the next page. Must be used with the same sort and order. */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -4860,7 +4605,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BodyMeasurementsResponse"];
+                    "application/json": components["schemas"]["BloodPressureMeasurementsResponse"];
                 };
             };
             /** @description Request validation failed */

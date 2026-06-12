@@ -2,6 +2,7 @@
   "name": "aqt-health-frontend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "generate:api": "openapi-typescript ../build/openapi/openapi.json -o src/lib/generated/aqtHealthApiTypes.ts",

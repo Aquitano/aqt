@@ -12,27 +12,29 @@ export type SourceMetadata = ApiSchema<"SourceMetadataResponse">;
 export type ReadResponseMeta = ApiSchema<"ReadResponseMeta">;
 export type StepDailySummary = ApiSchema<"StepDailySummaryResponse">;
 export type StepDailySummariesResponse = ApiSchema<"StepDailySummariesResponse">;
-export type BodyMeasurement = ApiSchema<"BodyMeasurementResponse">;
-export type BodyMeasurementsResponse = ApiSchema<"BodyMeasurementsResponse">;
-export type BodyMeasurementLatestResponse = ApiSchema<"BodyMeasurementLatestResponse">;
+export type ScalarSample = ApiSchema<"ScalarSampleResponse">;
+export type ScalarSamplesResponse = ApiSchema<"ScalarSamplesResponse">;
+export type BodyMeasurement = ScalarSample;
+export type BodyMeasurementsResponse = ScalarSamplesResponse;
+export type BodyMeasurementLatestResponse = ScalarSamplesResponse;
 export type ActivitySummary = ApiSchema<"ActivitySummaryResponse">;
 export type ActivitySummariesResponse = ApiSchema<"ActivitySummariesResponse">;
-export type ActivitySummaryLatestResponse = ApiSchema<"ActivitySummaryLatestResponse">;
-export type HeartRateSample = ApiSchema<"HeartRateSampleResponse">;
-export type HeartRateSamplesResponse = ApiSchema<"HeartRateSamplesResponse">;
-export type HeartRateSummaryResponse = ApiSchema<"HeartRateSummaryResponse">;
-export type RespiratoryRateSample = ApiSchema<"RespiratoryRateSampleResponse">;
-export type RespiratoryRateSamplesResponse = ApiSchema<"RespiratoryRateSamplesResponse">;
-export type RespiratoryRateSummaryResponse = ApiSchema<"RespiratoryRateSummaryResponse">;
-export type HrvSample = ApiSchema<"HrvSampleResponse">;
-export type HrvSamplesResponse = ApiSchema<"HrvSamplesResponse">;
-export type HrvSummaryResponse = ApiSchema<"HrvSummaryResponse">;
+export type ActivitySummaryLatestResponse = ActivitySummariesResponse;
+export type HeartRateSample = ScalarSample;
+export type HeartRateSamplesResponse = ScalarSamplesResponse;
+export type HeartRateSummaryResponse = ApiSchema<"ScalarSummaryResponse">;
+export type RespiratoryRateSample = ScalarSample;
+export type RespiratoryRateSamplesResponse = ScalarSamplesResponse;
+export type RespiratoryRateSummaryResponse = ApiSchema<"ScalarSummaryResponse">;
+export type HrvSample = ScalarSample;
+export type HrvSamplesResponse = ScalarSamplesResponse;
+export type HrvSummaryResponse = ApiSchema<"ScalarSummaryResponse">;
 export type SleepStage = ApiSchema<"SleepStageResponse">;
 export type SleepSession = ApiSchema<"SleepSessionResponse">;
 export type SleepSessionsResponse = ApiSchema<"SleepSessionsResponse">;
 export type SleepSummary = ApiSchema<"SleepSummaryResponse">;
 export type SleepSummariesResponse = ApiSchema<"SleepSummariesResponse">;
-export type SleepSummaryLatestResponse = ApiSchema<"SleepSummaryLatestResponse">;
+export type SleepSummaryLatestResponse = SleepSummariesResponse;
 export type SleepNight = ApiSchema<"SleepNightResponse">;
 export type SleepNightsResponse = ApiSchema<"SleepNightsResponse">;
 export type DashboardSummaryResponse = ApiSchema<"DashboardSummaryResponse">;
@@ -92,12 +94,7 @@ export type ScheduledSyncConfigUpdateRequest = ApiSchema<"ScheduledSyncConfigUpd
 export type ScheduledSyncCheckpoint = ApiSchema<"ScheduledSyncCheckpointResponseDto">;
 export type ScheduledSyncConfig = ApiSchema<"ScheduledSyncConfigResponseDto">;
 export type ScheduledSyncRunResponse = ApiSchema<"ScheduledSyncRunResponseDto">;
-export type MetricCatalogResponse = ApiSchema<"MetricCatalogResponseDto">;
-export type MetricFamilyCatalog = ApiSchema<"MetricFamilyCatalogDto">;
-export type MetricReadEndpoint = ApiSchema<"MetricReadEndpointDto">;
-export type MetricQueryParameter = ApiSchema<"MetricQueryParameterDto">;
-export type MetricAggregationMode = ApiSchema<"MetricAggregationModeDto">;
-export type MetricProviderDataTypes = ApiSchema<"MetricProviderDataTypesDto">;
+export type MetricCatalogResponse = ApiSchema<"MetricTypeCatalogResponse">;
 export type DashboardTrendsResponse = ApiSchema<"DashboardTrendsResponse">;
 
 // New expanded metric types (will be part of generated API after codegen)
@@ -114,44 +111,17 @@ export interface BloodPressureMeasurementsResponse {
   items: BloodPressureMeasurement[];
   meta: ReadResponseMeta;
 }
-export interface BloodPressureLatestResponse {
-  item?: BloodPressureMeasurement | null;
-}
+export type BloodPressureLatestResponse = BloodPressureMeasurementsResponse;
 
-export interface CardiovascularMeasurement {
-  id: number;
-  measuredAt: string;
-  metricType: string;
-  value: number;
-  unit: string;
-  source?: SourceMetadata | null;
-}
-export interface CardiovascularMeasurementsResponse {
-  items: CardiovascularMeasurement[];
-  meta: ReadResponseMeta;
-}
+export type CardiovascularMeasurement = ScalarSample;
+export type CardiovascularMeasurementsResponse = ScalarSamplesResponse;
 
-export interface CardiovascularMeasurementResponse {
-  item?: CardiovascularMeasurement | null;
-}
+export type CardiovascularMeasurementResponse = ScalarSamplesResponse;
 
-export interface ExtendedBodyMeasurement {
-  id: number;
-  measuredAt: string;
-  metricType: string;
-  value: number;
-  unit: string;
-  segment?: string | null;
-  source?: SourceMetadata | null;
-}
-export interface ExtendedBodyMeasurementsResponse {
-  items: ExtendedBodyMeasurement[];
-  meta: ReadResponseMeta;
-}
+export type ExtendedBodyMeasurement = ScalarSample;
+export type ExtendedBodyMeasurementsResponse = ScalarSamplesResponse;
 
-export interface ExtendedBodyMeasurementResponse {
-  item?: ExtendedBodyMeasurement | null;
-}
+export type ExtendedBodyMeasurementResponse = ScalarSamplesResponse;
 
 export type HealthDayModuleName = HealthDayResponse["modules"][number];
 export type HealthStatusData = {
