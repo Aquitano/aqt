@@ -17,7 +17,7 @@ import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.shared.AppJson
 import org.jetbrains.exposed.v1.jdbc.Database
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 
 class AdminService(
     private val database: Database,
@@ -153,7 +153,7 @@ class AdminService(
     }
 
     private suspend fun <T> dbQuery(block: () -> T): T =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             block()
         }
 }

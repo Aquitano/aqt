@@ -8,7 +8,7 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import org.jetbrains.exposed.v1.jdbc.update
 import java.time.Instant
 
@@ -51,7 +51,7 @@ class ProviderSyncJobRepository(private val database: Database) {
         pageSize: Int?,
         now: Instant,
     ): ProviderSyncJobRecord =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderSyncJobsTable.insert {
                 it[this.id] = id
                 it[this.providerCode] = providerCode
@@ -73,10 +73,10 @@ class ProviderSyncJobRepository(private val database: Database) {
         }
 
     suspend fun get(id: String): ProviderSyncJobRecord? =
-        suspendTransaction(db = database) { getByIdInTransaction(id) }
+        suspendDbTransaction(db = database) { getByIdInTransaction(id) }
 
     suspend fun latest(providerCode: String? = null): ProviderSyncJobRecord? =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderSyncJobsTable
                 .selectAll()
                 .let { query ->
@@ -91,7 +91,7 @@ class ProviderSyncJobRepository(private val database: Database) {
         }
 
     suspend fun markRunning(id: String, now: Instant) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderSyncJobsTable.update({ ProviderSyncJobsTable.id eq id }) {
                 it[status] = "running"
                 it[startedAt] = now.toDbTimestamp()
@@ -107,7 +107,7 @@ class ProviderSyncJobRepository(private val database: Database) {
         totalItems: Int,
         now: Instant,
     ) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderSyncJobsTable.update({ ProviderSyncJobsTable.id eq id }) {
                 it[this.providerInstanceId] = providerInstanceId
                 it[this.totalItems] = totalItems
@@ -123,7 +123,7 @@ class ProviderSyncJobRepository(private val database: Database) {
         to: Instant,
         now: Instant,
     ) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderSyncJobsTable.update({ ProviderSyncJobsTable.id eq id }) {
                 it[currentDataType] = dataType
                 it[currentFrom] = from.toDbTimestamp()
@@ -140,8 +140,8 @@ class ProviderSyncJobRepository(private val database: Database) {
         to: Instant,
         now: Instant,
     ) {
-        suspendTransaction(db = database) {
-            val existing = getByIdInTransaction(id) ?: return@suspendTransaction
+        suspendDbTransaction(db = database) {
+            val existing = getByIdInTransaction(id) ?: return@suspendDbTransaction
             ProviderSyncJobsTable.update({ ProviderSyncJobsTable.id eq id }) {
                 it[completedItems] = existing.completedItems + 1
                 it[lastCompletedDataType] = dataType
@@ -162,7 +162,7 @@ class ProviderSyncJobRepository(private val database: Database) {
         errorMessage: String?,
         now: Instant,
     ) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderSyncJobsTable.update({ ProviderSyncJobsTable.id eq id }) {
                 it[this.status] = status
                 it[this.batchesCount] = batchesCount
@@ -180,7 +180,7 @@ class ProviderSyncJobRepository(private val database: Database) {
     }
 
     suspend fun markInterruptedUnfinishedJobs(now: Instant) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             listOf("queued", "running").forEach { interruptedStatus ->
                 ProviderSyncJobsTable.update({
                     ProviderSyncJobsTable.status eq interruptedStatus

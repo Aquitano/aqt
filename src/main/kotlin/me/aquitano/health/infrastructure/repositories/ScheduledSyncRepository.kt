@@ -5,7 +5,7 @@ import me.aquitano.health.infrastructure.database.tables.ProviderScheduledSyncCo
 import me.aquitano.health.infrastructure.database.toDbTimestamp
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import java.time.Instant
 
 data class ScheduledSyncConfigRecord(
@@ -43,7 +43,7 @@ class ScheduledSyncRepository(private val database: Database) {
         providerCode: String,
         providerInstanceId: String,
     ): ScheduledSyncConfigRecord? =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderScheduledSyncConfigsTable
                 .selectAll()
                 .where {
@@ -65,7 +65,7 @@ class ScheduledSyncRepository(private val database: Database) {
         nextRunAt: Instant?,
         now: Instant,
     ): ScheduledSyncConfigRecord =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             val encodedDataTypes = encodeDataTypes(dataTypes)
             val nowTimestamp = now.toDbTimestamp()
             val existing = ProviderScheduledSyncConfigsTable
@@ -117,7 +117,7 @@ class ScheduledSyncRepository(private val database: Database) {
         now: Instant,
         limit: Int = 10,
     ): List<ScheduledSyncConfigRecord> =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderScheduledSyncConfigsTable
                 .selectAll()
                 .where {
@@ -130,7 +130,7 @@ class ScheduledSyncRepository(private val database: Database) {
         }
 
     suspend fun checkpoints(configId: Int): List<ScheduledSyncCheckpointRecord> =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderScheduledSyncCheckpointsTable
                 .selectAll()
                 .where { ProviderScheduledSyncCheckpointsTable.configId eq configId }
@@ -139,7 +139,7 @@ class ScheduledSyncRepository(private val database: Database) {
         }
 
     suspend fun markAttempt(configId: Int, attemptedAt: Instant) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderScheduledSyncConfigsTable.update({ ProviderScheduledSyncConfigsTable.id eq configId }) {
                 it[lastAttemptedAt] = attemptedAt.toDbTimestamp()
                 it[updatedAt] = attemptedAt.toDbTimestamp()
@@ -154,7 +154,7 @@ class ScheduledSyncRepository(private val database: Database) {
         to: Instant,
         now: Instant,
     ) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             val existing = ProviderScheduledSyncCheckpointsTable
                 .selectAll()
                 .where {
@@ -194,7 +194,7 @@ class ScheduledSyncRepository(private val database: Database) {
         nextRunAt: Instant,
         now: Instant,
     ) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderScheduledSyncConfigsTable.update({ ProviderScheduledSyncConfigsTable.id eq configId }) {
                 it[lastSuccessfulFrom] = from.toDbTimestamp()
                 it[lastSuccessfulTo] = to.toDbTimestamp()
@@ -214,7 +214,7 @@ class ScheduledSyncRepository(private val database: Database) {
         errorMessage: String,
         now: Instant,
     ) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderScheduledSyncConfigsTable.update({ ProviderScheduledSyncConfigsTable.id eq configId }) {
                 it[this.failureCount] = failureCount
                 it[this.nextRunAt] = nextRunAt?.toDbTimestamp()

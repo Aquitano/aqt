@@ -20,7 +20,7 @@ import me.aquitano.health.domain.ScalarMetricTypes
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.sourceInstanceIds
 import org.jetbrains.exposed.v1.jdbc.Database
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -97,7 +97,7 @@ class HealthDayQueryService(
             computedAt = now,
         )
 
-        return suspendTransaction(db = database) {
+        return suspendDbTransaction(db = database) {
             val results = modules.associate { it.name to it.read(context) }
             HealthDayResponse(
                 date = date.toString(),

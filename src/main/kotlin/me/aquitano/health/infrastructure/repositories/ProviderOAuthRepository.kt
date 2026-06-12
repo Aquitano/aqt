@@ -6,7 +6,7 @@ import me.aquitano.health.infrastructure.database.tables.ProviderOAuthStatesTabl
 import me.aquitano.health.infrastructure.database.tables.ProviderSyncRunsTable
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import java.time.Instant
 
 data class ProviderOAuthAccount(
@@ -69,7 +69,7 @@ class ProviderOAuthRepository(private val database: Database) {
         createdAt: Instant,
         expiresAt: Instant,
     ) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderOAuthStatesTable.insert {
                 it[this.state] = state
                 it[this.providerCode] = providerCode
@@ -85,7 +85,7 @@ class ProviderOAuthRepository(private val database: Database) {
         providerCode: String,
         now: Instant,
     ): ProviderOAuthStateConsumeResult =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             val nowTimestamp = now.toDbTimestamp()
             val updated = ProviderOAuthStatesTable.update({
                 (ProviderOAuthStatesTable.state eq state) and
@@ -105,8 +105,8 @@ class ProviderOAuthRepository(private val database: Database) {
                     }
                     .limit(1)
                     .singleOrNull()
-                    ?: return@suspendTransaction ProviderOAuthStateConsumeResult.NotFound
-                return@suspendTransaction ProviderOAuthStateConsumeResult.Consumed(
+                    ?: return@suspendDbTransaction ProviderOAuthStateConsumeResult.NotFound
+                return@suspendDbTransaction ProviderOAuthStateConsumeResult.Consumed(
                     consumedRow.toOAuthState()
                 )
             }
@@ -119,10 +119,10 @@ class ProviderOAuthRepository(private val database: Database) {
                 }
                 .limit(1)
                 .singleOrNull()
-                ?: return@suspendTransaction ProviderOAuthStateConsumeResult.NotFound
+                ?: return@suspendDbTransaction ProviderOAuthStateConsumeResult.NotFound
 
             val existing = existingRow.toOAuthState()
-            return@suspendTransaction when {
+            return@suspendDbTransaction when {
                 existing.consumedAt != null -> ProviderOAuthStateConsumeResult.AlreadyUsed(
                     existing
                 )
@@ -146,7 +146,7 @@ class ProviderOAuthRepository(private val database: Database) {
         scope: String,
         now: Instant,
     ) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             val nowTimestamp = now.toDbTimestamp()
             val existing = ProviderOAuthAccountsTable
                 .selectAll()
@@ -217,7 +217,7 @@ class ProviderOAuthRepository(private val database: Database) {
         scope: String?,
         now: Instant,
     ) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderOAuthAccountsTable.update({ ProviderOAuthAccountsTable.id eq accountId }) {
                 it[this.accessTokenCiphertext] = accessTokenCiphertext
                 refreshTokenCiphertext?.let { value ->
@@ -242,7 +242,7 @@ class ProviderOAuthRepository(private val database: Database) {
         errorMessage: String,
         now: Instant,
     ) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderOAuthAccountsTable.update({ ProviderOAuthAccountsTable.id eq accountId }) {
                 it[accountStatus] = ACCOUNT_STATUS_NEEDS_REAUTH
                 it[lastTokenRefreshAt] = now.toDbTimestamp()
@@ -260,7 +260,7 @@ class ProviderOAuthRepository(private val database: Database) {
         errorMessage: String,
         now: Instant,
     ) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderOAuthAccountsTable.update({ ProviderOAuthAccountsTable.id eq accountId }) {
                 it[lastTokenRefreshAt] = now.toDbTimestamp()
                 it[lastTokenRefreshStatus] = TOKEN_REFRESH_STATUS_FAILED
@@ -276,7 +276,7 @@ class ProviderOAuthRepository(private val database: Database) {
         providerInstanceId: String,
         now: Instant,
     ): Boolean =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             val updated = ProviderOAuthAccountsTable.update({
                 (ProviderOAuthAccountsTable.providerCode eq providerCode) and
                         (ProviderOAuthAccountsTable.providerInstanceId eq providerInstanceId)
@@ -295,7 +295,7 @@ class ProviderOAuthRepository(private val database: Database) {
         }
 
     suspend fun latestAccount(providerCode: String): ProviderOAuthAccount? =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderOAuthAccountsTable
                 .selectAll()
                 .where {
@@ -314,7 +314,7 @@ class ProviderOAuthRepository(private val database: Database) {
         providerCode: String,
         includeDisconnected: Boolean = true,
     ): List<ProviderOAuthAccount> =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderOAuthAccountsTable
                 .selectAll()
                 .where {
@@ -333,7 +333,7 @@ class ProviderOAuthRepository(private val database: Database) {
         providerCode: String,
         providerInstanceId: String,
     ): ProviderOAuthAccount? =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderOAuthAccountsTable
                 .selectAll()
                 .where {
@@ -352,7 +352,7 @@ class ProviderOAuthRepository(private val database: Database) {
         providerCode: String,
         providerInstanceId: String,
     ): ProviderOAuthAccount? =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderOAuthAccountsTable
                 .selectAll()
                 .where {
@@ -368,7 +368,7 @@ class ProviderOAuthRepository(private val database: Database) {
         providerCode: String,
         providerInstanceId: String
     ): Instant? =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderSyncRunsTable
                 .select(ProviderSyncRunsTable.finishedAt)
                 .where {
@@ -390,7 +390,7 @@ class ProviderOAuthRepository(private val database: Database) {
         requestedTo: Instant,
         startedAt: Instant,
     ): Int =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderSyncRunsTable.insertAndGetId {
                 it[this.providerCode] = providerCode
                 it[this.providerInstanceId] = providerInstanceId
@@ -409,7 +409,7 @@ class ProviderOAuthRepository(private val database: Database) {
         finishedAt: Instant,
         errorMessage: String?,
     ) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ProviderSyncRunsTable.update({ ProviderSyncRunsTable.id eq runId }) {
                 it[this.status] = status
                 it[this.finishedAt] = finishedAt.toDbTimestamp()

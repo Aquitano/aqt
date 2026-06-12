@@ -8,7 +8,7 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import org.jetbrains.exposed.v1.jdbc.update
 import java.time.Instant
 import java.time.LocalDate
@@ -45,7 +45,7 @@ class ReplayJobRepository(private val database: Database) {
         wipe: Boolean,
         now: Instant,
     ): ReplayJobRecord =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ReplayJobsTable.insert {
                 it[this.id] = id
                 it[this.scope] = scope
@@ -67,10 +67,10 @@ class ReplayJobRepository(private val database: Database) {
         }
 
     suspend fun get(id: String): ReplayJobRecord? =
-        suspendTransaction(db = database) { getByIdInTransaction(id) }
+        suspendDbTransaction(db = database) { getByIdInTransaction(id) }
 
     suspend fun latest(): ReplayJobRecord? =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ReplayJobsTable
                 .selectAll()
                 .orderBy(ReplayJobsTable.createdAt to SortOrder.DESC)
@@ -80,7 +80,7 @@ class ReplayJobRepository(private val database: Database) {
         }
 
     suspend fun markRunning(id: String, totalItems: Int, now: Instant) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ReplayJobsTable.update({ ReplayJobsTable.id eq id }) {
                 it[status] = "running"
                 it[this.totalItems] = totalItems
@@ -92,7 +92,7 @@ class ReplayJobRepository(private val database: Database) {
     }
 
     suspend fun markItemStarted(id: String, item: String, now: Instant) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ReplayJobsTable.update({ ReplayJobsTable.id eq id }) {
                 it[currentItem] = item
                 it[updatedAt] = now.toDbTimestamp()
@@ -108,8 +108,8 @@ class ReplayJobRepository(private val database: Database) {
         mappingFailures: Int,
         now: Instant,
     ) {
-        suspendTransaction(db = database) {
-            val existing = getByIdInTransaction(id) ?: return@suspendTransaction
+        suspendDbTransaction(db = database) {
+            val existing = getByIdInTransaction(id) ?: return@suspendDbTransaction
             ReplayJobsTable.update({ ReplayJobsTable.id eq id }) {
                 it[completedItems] = existing.completedItems + 1
                 it[this.recordsReplayed] = existing.recordsReplayed + recordsReplayed
@@ -122,7 +122,7 @@ class ReplayJobRepository(private val database: Database) {
     }
 
     suspend fun finish(id: String, status: String, errorMessage: String?, now: Instant) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             ReplayJobsTable.update({ ReplayJobsTable.id eq id }) {
                 it[this.status] = status
                 it[this.errorMessage] = errorMessage?.take(2000)
@@ -134,7 +134,7 @@ class ReplayJobRepository(private val database: Database) {
     }
 
     suspend fun markInterruptedUnfinishedJobs(now: Instant) {
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             listOf("queued", "running").forEach { interruptedStatus ->
                 ReplayJobsTable.update({ ReplayJobsTable.status eq interruptedStatus }) {
                     it[status] = "failed"

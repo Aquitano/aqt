@@ -10,7 +10,7 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.insertIgnoreAndGetId
 import org.jetbrains.exposed.v1.jdbc.select
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -119,7 +119,7 @@ class SupportRepository(
     }
 
     private suspend fun <T> dbQuery(block: () -> T): T =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             block()
         }
 

@@ -1,7 +1,7 @@
 package me.aquitano.health.application.metric.common
 
 import org.jetbrains.exposed.v1.jdbc.Database
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 
 /**
  * Base class for metric read services.
@@ -17,7 +17,7 @@ abstract class BaseReadService(
      * consistent transaction scope and to support suspension.
      */
     protected suspend fun <T> dbQuery(block: suspend () -> T): T =
-        suspendTransaction(db = database) {
+        suspendDbTransaction(db = database) {
             block()
         }
 }

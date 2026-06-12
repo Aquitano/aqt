@@ -30,7 +30,7 @@ import me.aquitano.health.infrastructure.time.UtcClock
 import me.aquitano.health.shared.AppJson
 import me.aquitano.health.shared.utcDate
 import org.jetbrains.exposed.v1.jdbc.Database
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -166,7 +166,7 @@ class ReplayService(
     }
 
     private suspend fun planDays(plan: ReplayPlan): List<LocalDate> {
-        val bounds = suspendTransaction(db = database) {
+        val bounds = suspendDbTransaction(db = database) {
             ingestionRepository.replayDateBounds(plan.recordTypes)
         } ?: return emptyList()
         val firstDay = maxOf(bounds.first.utcDate(), plan.fromDate ?: bounds.first.utcDate())
@@ -184,7 +184,7 @@ class ReplayService(
         val affectedBySource =
             mutableMapOf<Int, MutableMap<DerivedKind, MutableSet<LocalDate>>>()
 
-        val result = suspendTransaction(db = database) {
+        val result = suspendDbTransaction(db = database) {
             val rows = ingestionRepository.listRecordsForReplay(
                 dayStart = dayStart,
                 dayEnd = dayEnd,

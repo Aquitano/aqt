@@ -13,7 +13,7 @@ import me.aquitano.health.application.metric.scalar.ScalarSampleReadRepository
 import me.aquitano.health.application.metric.scalar.ScalarSampleRow
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
 import org.jetbrains.exposed.v1.jdbc.Database
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -202,5 +202,5 @@ class TrendQueryService(
         )
 
     private suspend fun <T> dbQuery(block: suspend () -> T): T =
-        suspendTransaction(db = database) { block() }
+        suspendDbTransaction(db = database) { block() }
 }

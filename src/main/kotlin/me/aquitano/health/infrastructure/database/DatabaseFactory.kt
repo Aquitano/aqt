@@ -31,7 +31,9 @@ class DatabaseFactory(
         val dbConfig = DatabaseConfig {
             sqlLogger = Slf4jSqlLogger
         }
-        return Database.connect(newDataSource, databaseConfig = dbConfig)
+        val database = Database.connect(newDataSource, databaseConfig = dbConfig)
+        DatabaseDispatchers.register(database, config.maxPoolSize)
+        return database
     }
 
     override fun close() {

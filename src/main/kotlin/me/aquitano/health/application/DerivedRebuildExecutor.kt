@@ -3,7 +3,7 @@ package me.aquitano.health.application
 import me.aquitano.health.application.metric.steps.derived.CanonicalStepDerivationService
 import me.aquitano.health.domain.DerivedKind
 import org.jetbrains.exposed.v1.jdbc.Database
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import java.time.Instant
 import java.time.LocalDate
 
@@ -68,7 +68,7 @@ class TransactionalDerivedRebuildExecutor(
         registry.modules.forEach { module ->
             val dates = request[module.kind]
             if (dates.isNotEmpty()) {
-                suspendTransaction(db = database) {
+                suspendDbTransaction(db = database) {
                     module.action.rebuild(request.sourceInstanceId, dates, computedAt)
                 }
             }
