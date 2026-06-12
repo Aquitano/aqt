@@ -1,7 +1,6 @@
 package me.aquitano.health.application.metric.steps.derived
 
-import me.aquitano.health.application.metric.common.DerivationJobInput
-import me.aquitano.health.application.metric.common.DerivedRebuildReason
+import me.aquitano.health.application.metric.common.DerivationJob
 import me.aquitano.health.application.metric.common.MetricDerivationCalculator
 import me.aquitano.health.application.metric.common.MetricDerivationInput
 import me.aquitano.health.application.metric.common.MetricDerivedBuilder
@@ -9,7 +8,6 @@ import me.aquitano.health.application.metric.common.MetricDerivedOutput
 import me.aquitano.health.application.metric.common.MetricDerivedOutputWriter
 import me.aquitano.health.application.metric.common.MetricInputLoader
 import me.aquitano.health.application.metric.steps.repository.StepDailySummaryDerivationRepository
-import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -28,22 +26,15 @@ class StepDailySummaryDerivation(
         computedAt: Instant,
     ) {
         dates.forEach { date ->
-            builder(
-                sourceInstanceId = sourceInstanceId,
-                clock = Clock.fixed(computedAt, ZoneOffset.UTC),
-            ).processJob(
-                StepDailySummaryJob(
-                    date = date,
-                    createdAt = computedAt,
-                    updatedAt = computedAt,
-                )
+            builder(sourceInstanceId).processJob(
+                DerivationJob.forDate(date, ZoneOffset.UTC, STEP_DAILY_SUMMARY_ALGORITHM_VERSION),
+                computedAt,
             )
         }
     }
 
     private fun builder(
         sourceInstanceId: Int,
-        clock: Clock,
     ): MetricDerivedBuilder<StepDailySummaryInput, StepDailySummaryOutput> =
         MetricDerivedBuilder(
             inputLoader = StepDailySummaryInputLoader(
@@ -52,25 +43,7 @@ class StepDailySummaryDerivation(
             ),
             calculator = StepDailySummaryCalculator(),
             outputWriter = StepDailySummaryOutputWriter(repository),
-            clock = clock,
         )
-}
-
-private data class StepDailySummaryJob(
-    private val date: LocalDate,
-    override val createdAt: Instant,
-    override val updatedAt: Instant,
-) : DerivationJobInput {
-    override val range: ClosedRange<Instant> =
-        date.atStartOfDay().toInstant(ZoneOffset.UTC)..date.plusDays(1)
-            .atStartOfDay()
-            .toInstant(ZoneOffset.UTC)
-    override val timezone: ZoneId = ZoneOffset.UTC
-    override val algorithmVersion: Int = STEP_DAILY_SUMMARY_ALGORITHM_VERSION
-    override val reason: DerivedRebuildReason = DerivedRebuildReason.INGESTION
-    override val attemptCount: Int = 0
-    override val lastError: String? = null
-    override val lockedAt: Instant? = null
 }
 
 private class StepDailySummaryInputLoader(

@@ -1,7 +1,6 @@
 package me.aquitano.health.application.metric.sleep.derived
 
-import me.aquitano.health.application.metric.common.DerivationJobInput
-import me.aquitano.health.application.metric.common.DerivedRebuildReason
+import me.aquitano.health.application.metric.common.DerivationJob
 import me.aquitano.health.application.metric.common.MetricDerivationCalculator
 import me.aquitano.health.application.metric.common.MetricDerivationInput
 import me.aquitano.health.application.metric.common.MetricDerivedBuilder
@@ -9,7 +8,6 @@ import me.aquitano.health.application.metric.common.MetricDerivedOutput
 import me.aquitano.health.application.metric.common.MetricDerivedOutputWriter
 import me.aquitano.health.application.metric.common.MetricInputLoader
 import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
-import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -34,34 +32,12 @@ class SleepNightDerivation(
                 ),
                 calculator = SleepNightCalculator(),
                 outputWriter = SleepNightOutputWriter(repository),
-                clock = Clock.fixed(computedAt, timezone),
             ).processJob(
-                SleepNightJob(
-                    date = date,
-                    timezone = timezone,
-                    createdAt = computedAt,
-                    updatedAt = computedAt,
-                )
+                DerivationJob.forDate(date, timezone, SLEEP_NIGHT_ALGORITHM_VERSION),
+                computedAt,
             )
         }
     }
-}
-
-private data class SleepNightJob(
-    private val date: LocalDate,
-    override val timezone: ZoneId,
-    override val createdAt: Instant,
-    override val updatedAt: Instant,
-) : DerivationJobInput {
-    override val range: ClosedRange<Instant> =
-        date.atStartOfDay(timezone).toInstant()..date.plusDays(1)
-            .atStartOfDay(timezone)
-            .toInstant()
-    override val algorithmVersion: Int = SLEEP_NIGHT_ALGORITHM_VERSION
-    override val reason: DerivedRebuildReason = DerivedRebuildReason.INGESTION
-    override val attemptCount: Int = 0
-    override val lastError: String? = null
-    override val lockedAt: Instant? = null
 }
 
 private class SleepNightInputLoader(

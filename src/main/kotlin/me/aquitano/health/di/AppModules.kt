@@ -13,9 +13,11 @@ import me.aquitano.external.withings.WithingsProvider
 import me.aquitano.health.application.*
 import me.aquitano.health.application.metric.activity.ActivityQueryService
 import me.aquitano.health.application.metric.activity.repository.ActivitySummaryRepository
+import me.aquitano.health.application.metric.activity.repository.ActivitySummaryWriteRepository
 import me.aquitano.health.application.metric.activity.repository.CanonicalActivitySummaryDerivationRepository
 import me.aquitano.health.application.metric.cardiovascular.CardiovascularQueryService
 import me.aquitano.health.application.metric.cardiovascular.repository.CardiovascularRepository
+import me.aquitano.health.application.metric.cardiovascular.repository.CardiovascularWriteRepository
 import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.application.metric.common.MetricsQueryService
 import me.aquitano.health.application.metric.dashboard.DashboardQueryService
@@ -28,11 +30,13 @@ import me.aquitano.health.application.metric.sleep.repository.CanonicalSleepSess
 import me.aquitano.health.application.metric.sleep.repository.CanonicalSleepSummaryDerivationRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepNightDerivationRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
+import me.aquitano.health.application.metric.sleep.repository.SleepWriteRepository
 import me.aquitano.health.application.metric.steps.StepQueryService
 import me.aquitano.health.application.metric.steps.derived.CanonicalStepDerivationService
 import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
 import me.aquitano.health.application.metric.steps.repository.StepDailySummaryDerivationRepository
 import me.aquitano.health.application.metric.steps.repository.StepRepository
+import me.aquitano.health.application.metric.steps.repository.StepWriteRepository
 import me.aquitano.health.infrastructure.config.AppConfig
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.PendingDerivedRebuildRepository
@@ -69,11 +73,15 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
 
     // Metric repositories (stateless, no constructor args needed)
     single { ActivitySummaryRepository() }
+    single { ActivitySummaryWriteRepository() }
     single { CanonicalActivitySummaryDerivationRepository() }
     single { CardiovascularRepository() }
+    single { CardiovascularWriteRepository() }
     single { ScalarSampleReadRepository() }
     single { ScalarSampleWriteRepository() }
     single { SleepRepository() }
+    single { SleepWriteRepository() }
+    single { StepWriteRepository() }
     single { CanonicalSleepSessionDerivationRepository() }
     single { CanonicalSleepSummaryDerivationRepository() }
     single { StepRepository() }
@@ -120,7 +128,15 @@ fun servicesModule(database: Database, config: AppConfig) = module {
     single { ApiKeyHasher() }
     single { SleepNightDerivation(get<SleepNightDerivationRepository>()) }
     single { SleepNightService(get<SleepNightDerivationRepository>(), get()) }
-    single { MetricWriteService(scalarSampleWriteRepository = get()) }
+    single {
+        MetricWriteService(
+            stepWriteRepository = get(),
+            sleepWriteRepository = get(),
+            activitySummaryWriteRepository = get(),
+            cardiovascularWriteRepository = get(),
+            scalarSampleWriteRepository = get(),
+        )
+    }
     single { MetricCatalogBootstrap(database) }
     single {
         StepSummaryService(get<StepDailySummaryDerivationRepository>())

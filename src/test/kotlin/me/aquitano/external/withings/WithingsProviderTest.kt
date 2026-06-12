@@ -1,5 +1,6 @@
 package me.aquitano.external.withings
 
+import me.aquitano.health.infrastructure.time.UtcClock
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -9,7 +10,7 @@ import me.aquitano.health.application.IngestionMappingService
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.application.ProviderWorkflowService
 import me.aquitano.health.application.ProviderStatusService
-import me.aquitano.health.application.metric.common.MetricWriteService
+import me.aquitano.health.test.metricWriteService
 import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.domain.RequestValidationException
@@ -437,7 +438,7 @@ class WithingsProviderTest {
             mappingService = IngestionMappingService(),
             supportRepository = SupportRepository(database),
             ingestionRepository = IngestionRepository(),
-            metricWriteService = MetricWriteService(),
+            metricWriteService = metricWriteService(),
             derivedRebuildExecutor = NoOpDerivedRebuildExecutor,
             pendingDerivedRebuildRepository = PendingDerivedRebuildRepository(database),
         )
@@ -455,7 +456,7 @@ class WithingsProviderTest {
                 ),
                 runs = me.aquitano.health.application.providersync.ProviderOAuthSyncRunPort(providerRepository),
                 ingestion = me.aquitano.health.application.providersync.IngestionProviderSyncPort(ingestionService),
-                currentTime = { now },
+                clock = UtcClock.fixed(now),
             ),
         )
         private val providerRegistry = HealthProviderRegistry(listOf(provider))

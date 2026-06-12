@@ -2,6 +2,7 @@ package me.aquitano.health.application.providersync
 
 import kotlinx.coroutines.delay
 import me.aquitano.health.domain.*
+import me.aquitano.health.infrastructure.time.UtcClock
 import io.github.oshai.kotlinlogging.KotlinLogging
 import me.aquitano.health.infrastructure.logging.*
 import java.time.Duration
@@ -15,7 +16,7 @@ class ProviderSyncPipeline(
     private val runs: ProviderSyncRunPort,
     private val ingestion: ProviderSyncIngestionPort,
     private val throttleDelay: suspend (Duration) -> Unit = { delay(it.toMillis()) },
-    private val currentTime: () -> Instant = { Instant.now() },
+    private val clock: UtcClock = UtcClock(),
 ) {
     suspend fun sync(
         adapter: ProviderSyncAdapter,
@@ -32,7 +33,7 @@ class ProviderSyncPipeline(
             accounts.findAnyForStatusHint(adapter.providerCode, plan.providerInstanceId),
         )
 
-        var token = freshAccessToken(adapter, account, currentTime())
+        var token = freshAccessToken(adapter, account, clock.now())
         val runId = runs.start(
             providerCode = adapter.providerCode,
             providerInstanceId = account.providerInstanceId,
@@ -93,19 +94,19 @@ class ProviderSyncPipeline(
                         accessToken = token.accessToken,
                         account = account,
                         item = item,
-                        now = currentTime(),
+                        now = clock.now(),
                     ).also { lastProviderRequestCompletedAtNanos = it.completedAtNanos }.batch
                 } catch (exception: Throwable) {
                     if (exception is CancellationException) throw exception
                     if (!adapter.isUnauthorized(exception)) throw exception
-                    token = refreshAccessToken(adapter, account, token.refreshToken, currentTime())
+                    token = refreshAccessToken(adapter, account, token.refreshToken, clock.now())
                     throttledFetch(
                         adapter = adapter,
                         lastCompletedAtNanos = lastProviderRequestCompletedAtNanos,
                         accessToken = token.accessToken,
                         account = account,
                         item = item,
-                        now = currentTime(),
+                        now = clock.now(),
                     ).also { lastProviderRequestCompletedAtNanos = it.completedAtNanos }.batch
                 }
 

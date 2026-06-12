@@ -5,7 +5,7 @@ import kotlinx.serialization.json.buildJsonObject
 import me.aquitano.health.api.dto.BatchStatus
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.StepIntervalDto
-import me.aquitano.health.application.metric.common.MetricWriteService
+import me.aquitano.health.test.metricWriteService
 import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
@@ -27,7 +27,7 @@ class IngestionServiceTest {
             mappingService = IngestionMappingService(),
             supportRepository = SupportRepository(database),
             ingestionRepository = IngestionRepository(),
-            metricWriteService = MetricWriteService(),
+            metricWriteService = metricWriteService(),
             derivedRebuildExecutor = FailingDerivedRebuildExecutor,
             pendingDerivedRebuildRepository = PendingDerivedRebuildRepository(database),
         )

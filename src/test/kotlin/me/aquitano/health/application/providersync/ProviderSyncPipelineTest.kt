@@ -1,5 +1,6 @@
 package me.aquitano.health.application.providersync
 
+import me.aquitano.health.infrastructure.time.UtcClock
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import me.aquitano.health.api.dto.StepIntervalDto
@@ -65,7 +66,7 @@ class ProviderSyncPipelineTest {
             accountPort,
             FakeRunPort(),
             ingestion,
-            currentTime = { now },
+            clock = UtcClock.fixed(now),
         )
 
         val summary = pipeline.sync(adapter, request, now)

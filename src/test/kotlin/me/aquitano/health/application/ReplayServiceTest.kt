@@ -12,7 +12,7 @@ import me.aquitano.health.api.dto.ReplayJobStatusResponse
 import me.aquitano.health.api.dto.ReplayRequest
 import me.aquitano.health.api.dto.SleepSessionDto
 import me.aquitano.health.api.dto.StepIntervalDto
-import me.aquitano.health.application.metric.common.MetricWriteService
+import me.aquitano.health.test.metricWriteService
 import me.aquitano.health.domain.RecordTypes
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.infrastructure.config.DatabaseConfig
@@ -141,7 +141,7 @@ class ReplayServiceTest {
         val database: Database = DatabaseFactory().initialize(dbConfig)
         val clock = UtcClock()
         private val mappingService = IngestionMappingService()
-        private val metricWriteService = MetricWriteService()
+        private val metricWriteService = metricWriteService()
         private val derivedRebuildExecutor = realDerivedRebuildExecutor(database)
         private val ingestionService = IngestionService(
             database = database,

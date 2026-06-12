@@ -1,7 +1,5 @@
 package me.aquitano.health.application.metric.common
 
-import java.time.Clock
-import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -23,23 +21,20 @@ class MetricDerivedBuilder<I : MetricDerivationInput, O : MetricDerivedOutput>(
     private val inputLoader: MetricInputLoader<I>,
     private val calculator: MetricDerivationCalculator<I, O>,
     private val outputWriter: MetricDerivedOutputWriter<O>,
-    private val clock: Clock,
 ) {
 
     /**
-     * Executes a single derivation [job].
+     * Executes a single derivation [job] stamped with [computedAt].
      *
      * Returns a [DerivedRebuildResult] describing the work performed. Failures
      * in any stage are propagated as exceptions so that callers can apply
      * back-off and retry logic.
      */
-    suspend fun processJob(job: DerivationJobInput): DerivedRebuildResult {
-        val startedAt = clock.instant()
-
+    suspend fun processJob(job: DerivationJob, computedAt: Instant): DerivedRebuildResult {
         val input = inputLoader.loadInput(
             range = job.range,
             timezone = job.timezone,
-            computedAt = startedAt,
+            computedAt = computedAt,
         )
 
         val output = calculator.derive(input)
@@ -51,7 +46,6 @@ class MetricDerivedBuilder<I : MetricDerivationInput, O : MetricDerivedOutput>(
             timezone = job.timezone,
             algorithmVersion = job.algorithmVersion,
             derivedRowsWritten = rowsWritten,
-            duration = Duration.between(startedAt, clock.instant()),
         )
     }
 }
@@ -59,37 +53,24 @@ class MetricDerivedBuilder<I : MetricDerivationInput, O : MetricDerivedOutput>(
 /**
  * Describes a request to rebuild derived metric data for a specific time range.
  */
-interface DerivationJobInput {
+data class DerivationJob(
     /** Time range the derivation covers. */
-    val range: ClosedRange<Instant>
+    val range: ClosedRange<Instant>,
     /** Target timezone for date-based grouping. */
-    val timezone: ZoneId
+    val timezone: ZoneId,
     /** Version of the derivation algorithm; bumps force re-derivation. */
-    val algorithmVersion: Int
-    /** Why this job was created. */
-    val reason: DerivedRebuildReason
-    /** Number of times this job has been attempted. */
-    val attemptCount: Int
-    /** Error message from the last failed attempt, if any. */
-    val lastError: String?
-    /** When the job was locked by a worker, or null if not yet processed. */
-    val lockedAt: Instant?
-    /** When the job was first created. */
-    val createdAt: Instant
-    /** When the job was last updated. */
-    val updatedAt: Instant
-}
-
-/** Reasons a derived-metric rebuild can be triggered. */
-enum class DerivedRebuildReason {
-    /** Raw data was ingested that overlaps this range. */
-    INGESTION,
-    /** An operator or user manually requested a rebuild. */
-    MANUAL_REBUILD,
-    /** The derivation algorithm version changed. */
-    ALGORITHM_UPGRADE,
-    /** Historical data is being back-filled. */
-    BACKFILL,
+    val algorithmVersion: Int,
+) {
+    companion object {
+        /** The derivation job covering one local [date] in [timezone]. */
+        fun forDate(date: LocalDate, timezone: ZoneId, algorithmVersion: Int): DerivationJob =
+            DerivationJob(
+                range = date.atStartOfDay(timezone).toInstant()..
+                        date.plusDays(1).atStartOfDay(timezone).toInstant(),
+                timezone = timezone,
+                algorithmVersion = algorithmVersion,
+            )
+    }
 }
 
 /**
@@ -104,8 +85,6 @@ data class DerivedRebuildResult(
     val algorithmVersion: Int,
     /** Number of derived rows written. */
     val derivedRowsWritten: Int,
-    /** Wall-clock duration of the job. */
-    val duration: Duration,
 )
 
 /** Loads raw input for a metric derivation. */

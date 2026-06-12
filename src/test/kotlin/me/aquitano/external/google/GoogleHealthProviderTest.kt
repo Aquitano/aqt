@@ -1,5 +1,6 @@
 package me.aquitano.external.google
 
+import me.aquitano.health.infrastructure.time.UtcClock
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import me.aquitano.health.application.HealthProviderRegistry
@@ -7,7 +8,7 @@ import me.aquitano.health.application.IngestionMappingService
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.application.ProviderWorkflowService
 import me.aquitano.health.application.ProviderStatusService
-import me.aquitano.health.application.metric.common.MetricWriteService
+import me.aquitano.health.test.metricWriteService
 import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.StructuralMetricKinds
 import me.aquitano.health.domain.ProviderSyncRequest
@@ -564,7 +565,7 @@ class GoogleHealthProviderTest {
             mappingService = IngestionMappingService(),
             supportRepository = SupportRepository(database),
             ingestionRepository = IngestionRepository(),
-            metricWriteService = MetricWriteService(),
+            metricWriteService = metricWriteService(),
             derivedRebuildExecutor = realDerivedRebuildExecutor(database),
             pendingDerivedRebuildRepository = PendingDerivedRebuildRepository(database),
         )
@@ -581,7 +582,7 @@ class GoogleHealthProviderTest {
                 ),
                 runs = me.aquitano.health.application.providersync.ProviderOAuthSyncRunPort(providerRepository),
                 ingestion = me.aquitano.health.application.providersync.IngestionProviderSyncPort(ingestionService),
-                currentTime = { now },
+                clock = UtcClock.fixed(now),
             ),
         )
         private val providerRegistry = HealthProviderRegistry(listOf(provider))

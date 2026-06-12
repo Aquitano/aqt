@@ -21,11 +21,11 @@ import java.time.Instant
 import java.time.LocalDate
 
 class MetricWriteService(
-    private val stepWriteRepository: StepWriteRepository = StepWriteRepository(),
-    private val sleepWriteRepository: SleepWriteRepository = SleepWriteRepository(),
-    private val activitySummaryWriteRepository: ActivitySummaryWriteRepository = ActivitySummaryWriteRepository(),
-    private val cardiovascularWriteRepository: CardiovascularWriteRepository = CardiovascularWriteRepository(),
-    private val scalarSampleWriteRepository: ScalarSampleWriteRepository = ScalarSampleWriteRepository(),
+    private val stepWriteRepository: StepWriteRepository,
+    private val sleepWriteRepository: SleepWriteRepository,
+    private val activitySummaryWriteRepository: ActivitySummaryWriteRepository,
+    private val cardiovascularWriteRepository: CardiovascularWriteRepository,
+    private val scalarSampleWriteRepository: ScalarSampleWriteRepository,
 ) {
     fun write(
         provider: String,
