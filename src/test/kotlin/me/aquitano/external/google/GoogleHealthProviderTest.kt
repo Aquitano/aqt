@@ -550,7 +550,7 @@ class GoogleHealthProviderTest {
         val config = GoogleHealthConfig(
             clientId = "client-id",
             clientSecret = clientSecret,
-            redirectUri = "http://localhost:8080/api/v1/providers/google-health/oauth/callback",
+            redirectUri = "http://localhost:8080/api/v2/providers/google-health/oauth/callback",
             tokenEncryptionKey = "test-token-encryption-key-with-32-bytes",
             apiBaseUrl = "https://health.googleapis.com",
             oauthTokenUrl = "https://oauth2.googleapis.com/token",

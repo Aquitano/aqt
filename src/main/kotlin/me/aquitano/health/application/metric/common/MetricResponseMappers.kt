@@ -154,6 +154,9 @@ internal fun <T> List<T>.meta(filters: SleepNightReadFilters, nextCursor: String
  */
 internal data class KeysetPage<T>(val items: List<T>, val nextCursor: String?)
 
+internal fun keysetFetchLimit(limit: Int): Int =
+    if (limit == Int.MAX_VALUE) Int.MAX_VALUE else limit + 1
+
 internal fun <T> List<T>.keysetPage(
     limit: Int,
     sort: String,
@@ -168,4 +171,3 @@ internal fun <T> List<T>.keysetPage(
     } else {
         KeysetPage(this, null)
     }
-

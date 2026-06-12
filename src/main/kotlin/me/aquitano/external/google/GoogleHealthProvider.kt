@@ -46,12 +46,12 @@ class GoogleHealthProvider(
             maxSyncRangeDays = 31,
             supportsPageSize = true,
             workflowEndpoints = ProviderWorkflowEndpoints(
-                oauthStart = "/api/v1/providers/google-health/oauth/start",
-                oauthCallback = "/api/v1/providers/google-health/oauth/callback",
-                accounts = "/api/v1/providers/google-health/accounts",
-                disconnect = "/api/v1/providers/google-health/accounts/{providerInstanceId}/disconnect",
-                reconnect = "/api/v1/providers/google-health/accounts/{providerInstanceId}/reconnect",
-                sync = "/api/v1/providers/google-health/sync",
+                oauthStart = "/api/v2/providers/google-health/oauth/start",
+                oauthCallback = "/api/v2/providers/google-health/oauth/callback",
+                accounts = "/api/v2/providers/google-health/accounts",
+                disconnect = "/api/v2/providers/google-health/accounts/{providerInstanceId}/disconnect",
+                reconnect = "/api/v2/providers/google-health/accounts/{providerInstanceId}/reconnect",
+                sync = "/api/v2/providers/google-health/sync",
             ),
             aliases = listOf(GOOGLE_HEALTH_PROVIDER_CODE),
         )

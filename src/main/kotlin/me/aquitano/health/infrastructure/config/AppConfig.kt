@@ -105,7 +105,7 @@ fun ApplicationConfig.toAppConfig(): AppConfig =
             clientSecret = optional("aqtHealth.googleHealth.clientSecret"),
             redirectUri = optional(
                 "aqtHealth.googleHealth.redirectUri",
-                "http://localhost:8080/api/v1/providers/google-health/oauth/callback",
+                "http://localhost:8080/api/v2/providers/google-health/oauth/callback",
             ),
             tokenEncryptionKey = optional("aqtHealth.googleHealth.tokenEncryptionKey"),
             apiBaseUrl = optional(
@@ -126,7 +126,7 @@ fun ApplicationConfig.toAppConfig(): AppConfig =
             clientSecret = optional("aqtHealth.withings.clientSecret"),
             redirectUri = optional(
                 "aqtHealth.withings.redirectUri",
-                "http://localhost:8080/api/v1/providers/withings/oauth/callback",
+                "http://localhost:8080/api/v2/providers/withings/oauth/callback",
             ),
             tokenEncryptionKey = optional("aqtHealth.withings.tokenEncryptionKey"),
             apiBaseUrl = optional(

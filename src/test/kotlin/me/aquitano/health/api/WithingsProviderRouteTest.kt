@@ -26,7 +26,7 @@ class WithingsProviderRouteTest {
     fun oauthStartReturnsAuthorizationUrlWithDefaultScopes() = testApplication {
         configureTestApplication()
 
-        val response = client.get("/api/v1/providers/withings/oauth/start") {
+        val response = client.get("/api/v2/providers/withings/oauth/start") {
             authorized()
         }
 
@@ -43,7 +43,7 @@ class WithingsProviderRouteTest {
     fun syncReturnsNotConnectedConflict() = testApplication {
         configureTestApplication()
 
-        val response = client.post("/api/v1/providers/withings/sync") {
+        val response = client.post("/api/v2/providers/withings/sync") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody("""{"from":"2026-04-01T00:00:00Z","to":"2026-04-02T00:00:00Z"}""")
@@ -58,7 +58,7 @@ class WithingsProviderRouteTest {
         configureTestApplication()
 
         val response = client.get(
-            "/api/v1/providers/withings/oauth/callback?code=authorization-code&state=missing-state"
+            "/api/v2/providers/withings/oauth/callback?code=authorization-code&state=missing-state"
         )
 
         assertEquals(HttpStatusCode.BadRequest, response.status)
@@ -70,7 +70,7 @@ class WithingsProviderRouteTest {
     fun missingProviderConfigReturnsInternalServerErrorWithoutLeakingConfigFields() = testApplication {
         configureTestApplication(withClientSecret = false)
 
-        val response = client.get("/api/v1/providers/withings/oauth/start") {
+        val response = client.get("/api/v2/providers/withings/oauth/start") {
             authorized()
             header(HttpHeaders.XRequestId, "withings-config-test")
         }
@@ -94,7 +94,7 @@ class WithingsProviderRouteTest {
             "aqtHealth.auth.bootstrapClientName" to "test-client",
             "aqtHealth.auth.bootstrapApiKey" to "test-key",
             "aqtHealth.withings.clientId" to "withings-client-id",
-            "aqtHealth.withings.redirectUri" to "http://localhost:8080/api/v1/providers/withings/oauth/callback",
+            "aqtHealth.withings.redirectUri" to "http://localhost:8080/api/v2/providers/withings/oauth/callback",
             "aqtHealth.withings.tokenEncryptionKey" to "test-token-encryption-key-with-32-bytes",
             "aqtHealth.withings.apiBaseUrl" to "https://wbsapi.withings.net",
             "aqtHealth.withings.oauthTokenUrl" to "https://wbsapi.withings.net/v2/oauth2",

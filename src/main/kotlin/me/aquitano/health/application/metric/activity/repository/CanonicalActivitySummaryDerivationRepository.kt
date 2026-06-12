@@ -1,5 +1,6 @@
 package me.aquitano.health.application.metric.activity.repository
 
+import me.aquitano.health.application.metric.common.keysetFetchLimit
 import me.aquitano.health.application.metric.common.repository.DailyReadFilters
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.infrastructure.database.tables.ActivitySummariesTable
@@ -33,7 +34,7 @@ class CanonicalActivitySummaryDerivationRepository : BaseMetricRepository() {
                 ActivitySummariesTable.date to filters.sortOrder(),
                 ActivitySummariesTable.id to filters.sortOrder(),
             )
-            .limit(filters.limit + 1)
+            .limit(keysetFetchLimit(filters.limit))
             .map(::toActivitySummaryRow)
         return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
     }

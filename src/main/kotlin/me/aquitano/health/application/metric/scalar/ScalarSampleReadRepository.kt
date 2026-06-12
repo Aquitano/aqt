@@ -1,5 +1,6 @@
 package me.aquitano.health.application.metric.scalar
 
+import me.aquitano.health.application.metric.common.keysetFetchLimit
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.infrastructure.database.tables.CanonicalScalarSamplesView
@@ -48,7 +49,7 @@ class ScalarSampleReadRepository : BaseMetricRepository() {
                 table.measuredAt to filters.sortOrder(),
                 table.idColumn to filters.sortOrder(),
             )
-            .limit(filters.limit + 1)
+            .limit(keysetFetchLimit(filters.limit))
             .map(table::toRow)
         return rows to sourceMetadata(
             rows.map { it.sourceInstanceId }.toSet(),

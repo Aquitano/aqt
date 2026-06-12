@@ -26,7 +26,7 @@ class ReadApiRouteTest {
         ingestMixedBatch()
 
         val steps =
-            authorizedGet("/api/v1/metrics/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z&includeSource=true")
+            authorizedGet("/api/v2/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z&includeSource=true")
         assertEquals(HttpStatusCode.OK, steps.status)
         assertEquals(1, steps.items().size)
         assertEquals(
@@ -39,66 +39,67 @@ class ReadApiRouteTest {
         )
 
         val daily =
-            authorizedGet("/api/v1/metrics/steps/daily?fromDate=2026-04-19&toDate=2026-04-19")
+            authorizedGet("/api/v2/steps/daily?fromDate=2026-04-19&toDate=2026-04-19")
         assertEquals(
             1200,
             daily.items()[0].jsonObject["steps"]!!.jsonPrimitive.int
         )
 
-        val sleep = authorizedGet("/api/v1/sleep/sessions")
+        val sleep = authorizedGet("/api/v2/sleep/sessions")
         assertEquals(1, sleep.items().size)
         assertEquals(2, sleep.items()[0].jsonObject["stages"]!!.jsonArray.size)
 
-        val body = authorizedGet("/api/v1/body/measurements?metricType=weight")
+        val body = authorizedGet("/api/v2/metrics/weight")
         assertEquals(1, body.items().size)
         assertEquals(
             "weight",
             body.items()[0].jsonObject["metricType"]!!.jsonPrimitive.content
         )
 
-        val heartRate = authorizedGet("/api/v1/metrics/heart-rate")
+        val heartRate = authorizedGet("/api/v2/metrics/heart_rate")
         assertEquals(1, heartRate.items().size)
         assertEquals(
             "unknown",
             heartRate.items()[0].jsonObject["context"]!!.jsonPrimitive.content
         )
+        assertEquals(62.0, heartRate.items()[0].jsonObject["value"]!!.jsonPrimitive.double)
 
-        val activity = authorizedGet("/api/v1/activity/summaries?fromDate=2026-04-19&toDate=2026-04-19")
+        val activity = authorizedGet("/api/v2/activity/summaries?fromDate=2026-04-19&toDate=2026-04-19")
         assertEquals(1, activity.items().size)
         assertEquals(
             800.5,
             activity.items()[0].jsonObject["distanceMeters"]!!.jsonPrimitive.double,
         )
 
-        val sleepSummary = authorizedGet("/api/v1/sleep/summaries")
+        val sleepSummary = authorizedGet("/api/v2/sleep/summaries")
         assertEquals(1, sleepSummary.items().size)
         assertEquals(
             88,
             sleepSummary.items()[0].jsonObject["sleepScore"]!!.jsonPrimitive.int,
         )
 
-        val respiratoryRate = authorizedGet("/api/v1/metrics/respiratory-rate")
+        val respiratoryRate = authorizedGet("/api/v2/metrics/respiratory_rate")
         assertEquals(1, respiratoryRate.items().size)
         assertEquals(
-            14,
-            respiratoryRate.items()[0].jsonObject["breathsPerMinute"]!!.jsonPrimitive.int,
+            14.0,
+            respiratoryRate.items()[0].jsonObject["value"]!!.jsonPrimitive.double,
         )
 
-        val hrv = authorizedGet("/api/v1/metrics/hrv")
+        val hrv = authorizedGet("/api/v2/metrics/hrv_rmssd")
         assertEquals(1, hrv.items().size)
         assertEquals(
-            "rmssd",
+            "hrv_rmssd",
             hrv.items()[0].jsonObject["metricType"]!!.jsonPrimitive.content,
         )
 
-        val batches = authorizedGet("/api/v1/admin/ingestion/batches")
+        val batches = authorizedGet("/api/v2/admin/ingestion/batches")
         assertEquals(1, batches.items().size)
         assertEquals(
             8,
             batches.items()[0].jsonObject["recordCount"]!!.jsonPrimitive.int
         )
 
-        val failures = authorizedGet("/api/v1/admin/ingestion/failures")
+        val failures = authorizedGet("/api/v2/admin/ingestion/failures")
         assertEquals(0, failures.items().size)
     }
 
@@ -106,11 +107,11 @@ class ReadApiRouteTest {
     fun readEndpointsValidateRangesAndRequireAuth() = testApplication {
         configureTestApplication()
 
-        val unauthorized = client.get("/api/v1/metrics/steps")
+        val unauthorized = client.get("/api/v2/steps")
         assertEquals(HttpStatusCode.Unauthorized, unauthorized.status)
 
         val invalidRange =
-            authorizedGet("/api/v1/metrics/steps?from=2026-04-20T00:00:00Z&to=2026-04-19T00:00:00Z")
+            authorizedGet("/api/v2/steps?from=2026-04-20T00:00:00Z&to=2026-04-19T00:00:00Z")
         assertEquals(HttpStatusCode.BadRequest, invalidRange.status)
         assertEquals(
             "validation_failed",
@@ -122,94 +123,30 @@ class ReadApiRouteTest {
     fun metricCatalogDescribesCurrentReadSurfaces() = testApplication {
         configureTestApplication()
 
-        val unauthorized = client.get("/api/v1/metrics/catalog")
+        val unauthorized = client.get("/api/v2/metrics")
         assertEquals(HttpStatusCode.Unauthorized, unauthorized.status)
 
-        val response = authorizedGet("/api/v1/metrics/catalog")
+        val response = authorizedGet("/api/v2/metrics")
         assertEquals(HttpStatusCode.OK, response.status)
-        val families = response.jsonBody()["families"]!!.jsonArray
-        assertEquals(
-            setOf(
-                "steps",
-                "sleep",
-                "body_measurements",
-                "heart_rate",
-                "activity",
-                "sleep_summary",
-                "respiratory_rate",
-                "hrv",
-                "trends",
-            ),
-            families.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet(),
+        val items = response.jsonBody()["items"]!!.jsonArray.map { it.jsonObject }
+        val metricTypes = items.map { it["metricType"]!!.jsonPrimitive.content }.toSet()
+        assertContains(metricTypes, "heart_rate")
+        assertContains(metricTypes, "respiratory_rate")
+        assertContains(metricTypes, "hrv_rmssd")
+        BodyMetricTypes.supported.forEach { assertContains(metricTypes, it) }
+
+        val weight = items.single { it["metricType"]!!.jsonPrimitive.content == "weight" }
+        assertEquals("body_measurement", weight["family"]!!.jsonPrimitive.content)
+        assertEquals("kg", weight["unit"]!!.jsonPrimitive.content)
+        assertEquals(false, weight["supportsSegment"]!!.jsonPrimitive.boolean)
+
+        val heartRate = items.single { it["metricType"]!!.jsonPrimitive.content == "heart_rate" }
+        assertEquals("heart_rate", heartRate["family"]!!.jsonPrimitive.content)
+        assertEquals("bpm", heartRate["unit"]!!.jsonPrimitive.content)
+        assertContains(
+            heartRate["contexts"]!!.jsonArray.map { it.jsonPrimitive.content },
+            "sleep",
         )
-
-        val steps = families.family("steps")
-        assertContains(steps.endpointPaths(), "/api/v1/metrics/steps")
-        assertContains(steps.endpointPaths(), "/api/v1/metrics/steps/daily")
-        assertContains(steps.queryParameterNames(), "from")
-        assertContains(steps.queryParameterNames(), "to")
-        assertContains(steps.queryParameterNames(), "includeSource")
-        assertFalse("canonical" in steps.queryParameterNames())
-        assertContains(steps.queryParameterNames(), "sort")
-        assertContains(steps.queryParameterNames(), "order")
-        assertContains(steps.modeNames(), "samples")
-        assertContains(steps.modeNames(), "daily")
-        assertContains(steps.modeNames(), "summary")
-        assertContains(steps.modeNames(), "day")
-        assertContains(steps.endpointPaths(), "/api/v1/health/day")
-
-        val body = families.family("body_measurements")
-        assertEquals(
-            BodyMetricTypes.supported.sorted(),
-            body["metricTypes"]!!.jsonArray.map { it.jsonPrimitive.content },
-        )
-        assertEquals(
-            BodyMetricTypes.supported.sorted(),
-            body.queryParameterValues("metricType"),
-        )
-        assertContains(body.endpointPaths(), "/api/v1/body/measurements")
-        assertContains(body.endpointPaths(), "/api/v1/body/measurements/latest")
-        assertFalse("canonical" in body.queryParameterNames())
-
-        val sleep = families.family("sleep")
-        val nightMode = sleep["aggregationModes"]!!.jsonArray
-            .map { it.jsonObject }
-            .single { it["name"]!!.jsonPrimitive.content == "night" }
-        assertEquals(true, nightMode["available"]!!.jsonPrimitive.boolean)
-        assertContains(sleep.endpointPaths(), "/api/v1/sleep/nights")
-        assertContains(sleep.queryParameterNames(), "date")
-        assertContains(sleep.queryParameterNames(), "fromDate")
-        assertContains(sleep.queryParameterNames(), "toDate")
-        assertContains(sleep.queryParameterNames(), "timezone")
-
-        val heartRate = families.family("heart_rate")
-        assertContains(heartRate.endpointPaths(), "/api/v1/metrics/heart-rate")
-        assertContains(heartRate.endpointPaths(), "/api/v1/metrics/heart-rate/summary")
-        assertContains(heartRate.modeNames(), "latest")
-        assertContains(heartRate.modeNames(), "day")
-        assertFalse("canonical" in heartRate.queryParameterNames())
-
-        val activity = families.family("activity")
-        assertContains(activity.endpointPaths(), "/api/v1/activity/summaries")
-        assertContains(activity.endpointPaths(), "/api/v1/activity/summaries/latest")
-
-        val sleepSummary = families.family("sleep_summary")
-        assertContains(sleepSummary.endpointPaths(), "/api/v1/sleep/summaries")
-        assertContains(sleepSummary.endpointPaths(), "/api/v1/sleep/summaries/latest")
-
-        val respiratoryRate = families.family("respiratory_rate")
-        assertContains(respiratoryRate.endpointPaths(), "/api/v1/metrics/respiratory-rate")
-        assertContains(respiratoryRate.endpointPaths(), "/api/v1/metrics/respiratory-rate/summary")
-
-        val hrv = families.family("hrv")
-        assertContains(hrv.endpointPaths(), "/api/v1/metrics/hrv")
-        assertContains(hrv.endpointPaths(), "/api/v1/metrics/hrv/summary")
-        assertContains(hrv.queryParameterNames(), "metricType")
-
-        val trends = families.family("trends")
-        assertContains(trends.endpointPaths(), "/api/v1/dashboard/trends")
-        assertContains(trends.queryParameterNames(), "periodDays")
-        assertContains(trends.queryParameterNames(), "toDate")
     }
 
     @Test
@@ -219,11 +156,11 @@ class ReadApiRouteTest {
         ingestLaterBatch()
 
         val unauthorized =
-            client.get("/api/v1/health/day?date=2026-04-19&modules=steps")
+            client.get("/api/v2/health/day?date=2026-04-19&modules=steps")
         assertEquals(HttpStatusCode.Unauthorized, unauthorized.status)
 
         val invalid =
-            authorizedGet("/api/v1/health/day?date=bad&timezone=Not/AZone&modules=steps,nope")
+            authorizedGet("/api/v2/health/day?date=bad&timezone=Not/AZone&modules=steps,nope")
         assertEquals(HttpStatusCode.BadRequest, invalid.status)
         assertEquals(
             "validation_failed",
@@ -231,7 +168,7 @@ class ReadApiRouteTest {
         )
 
         val stepsOnly =
-            authorizedGet("/api/v1/health/day?date=2026-04-19&timezone=UTC&modules=steps")
+            authorizedGet("/api/v2/health/day?date=2026-04-19&timezone=UTC&modules=steps")
         assertEquals(HttpStatusCode.OK, stepsOnly.status)
         assertNotNull(stepsOnly.jsonBody()["steps"])
         assertFalse(stepsOnly.jsonBody().containsKey("heartRate"))
@@ -239,7 +176,7 @@ class ReadApiRouteTest {
         assertFalse(stepsOnly.jsonBody().containsKey("sleep"))
 
         val response =
-            authorizedGet("/api/v1/health/day?date=2026-04-19&timezone=UTC&modules=steps,heartRate,weight,sleep&includeSource=true")
+            authorizedGet("/api/v2/health/day?date=2026-04-19&timezone=UTC&modules=steps,heartRate,weight,sleep&includeSource=true")
         assertEquals(HttpStatusCode.OK, response.status)
         val body = response.jsonBody()
         assertEquals("2026-04-19", body["date"]!!.jsonPrimitive.content)
@@ -249,7 +186,7 @@ class ReadApiRouteTest {
         assertEquals(96, body["steps"]!!.jsonObject["buckets"]!!.jsonArray.size)
         assertEquals(2, body["heartRate"]!!.jsonObject["count"]!!.jsonPrimitive.int)
         assertEquals(62, body["heartRate"]!!.jsonObject["minBpm"]!!.jsonPrimitive.int)
-        assertEquals(67, body["heartRate"]!!.jsonObject["latest"]!!.jsonObject["bpm"]!!.jsonPrimitive.int)
+        assertEquals(67.0, body["heartRate"]!!.jsonObject["latest"]!!.jsonObject["value"]!!.jsonPrimitive.double)
         assertEquals(
             "health_connect",
             body["heartRate"]!!.jsonObject["latest"]!!.jsonObject["source"]!!.jsonObject["provider"]!!.jsonPrimitive.content
@@ -264,7 +201,7 @@ class ReadApiRouteTest {
         )
 
         val berlin =
-            authorizedGet("/api/v1/health/day?date=2026-04-20&timezone=Europe/Berlin&modules=sleep")
+            authorizedGet("/api/v2/health/day?date=2026-04-20&timezone=Europe/Berlin&modules=sleep")
         assertEquals("2026-04-19T22:00:00Z", berlin.jsonBody()["from"]!!.jsonPrimitive.content)
         assertEquals("2026-04-20T22:00:00Z", berlin.jsonBody()["to"]!!.jsonPrimitive.content)
     }
@@ -276,7 +213,7 @@ class ReadApiRouteTest {
         ingestLaterBatch()
 
         val latestWeight =
-            authorizedGet("/api/v1/body/measurements?metricType=weight&latest=true")
+            authorizedGet("/api/v2/metrics/weight?latest=true")
         assertEquals(HttpStatusCode.OK, latestWeight.status)
         assertEquals(1, latestWeight.items().size)
         assertEquals(
@@ -289,29 +226,23 @@ class ReadApiRouteTest {
         )
 
         val latestHeartRate =
-            authorizedGet("/api/v1/metrics/heart-rate?latest=true")
+            authorizedGet("/api/v2/metrics/heart_rate?latest=true")
         assertEquals(1, latestHeartRate.items().size)
         assertEquals(
-            67,
-            latestHeartRate.items()[0].jsonObject["bpm"]!!.jsonPrimitive.int
+            67.0,
+            latestHeartRate.items()[0].jsonObject["value"]!!.jsonPrimitive.double
         )
 
         val latestSleepSummary =
-            authorizedGet("/api/v1/sleep/summaries?latest=true")
-        val latestSleepSummaryAlias =
-            authorizedGet("/api/v1/sleep/summaries/latest")
+            authorizedGet("/api/v2/sleep/summaries?latest=true")
         assertEquals(1, latestSleepSummary.items().size)
         assertEquals(
             91,
             latestSleepSummary.items()[0].jsonObject["sleepScore"]!!.jsonPrimitive.int
         )
-        assertEquals(
-            latestSleepSummary.items()[0].jsonObject["sleepScore"]!!.jsonPrimitive.int,
-            latestSleepSummaryAlias.jsonBody()["item"]!!.jsonObject["sleepScore"]!!.jsonPrimitive.int
-        )
 
         val datedSteps =
-            authorizedGet("/api/v1/metrics/steps/daily?date=2026-04-19")
+            authorizedGet("/api/v2/steps/daily?date=2026-04-19")
         assertEquals(1, datedSteps.items().size)
         assertEquals(
             "2026-04-19",
@@ -323,14 +254,14 @@ class ReadApiRouteTest {
         )
 
         val invalidDateCombination =
-            authorizedGet("/api/v1/metrics/steps/daily?date=2026-04-19&fromDate=2026-04-19")
+            authorizedGet("/api/v2/steps/daily?date=2026-04-19&fromDate=2026-04-19")
         assertEquals(HttpStatusCode.BadRequest, invalidDateCombination.status)
         assertEquals(
             "validation_failed",
             invalidDateCombination.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
         )
 
-        val latestSleep = authorizedGet("/api/v1/sleep/sessions?latest=true")
+        val latestSleep = authorizedGet("/api/v2/sleep/sessions?latest=true")
         assertEquals(1, latestSleep.items().size)
         assertEquals(
             "2026-04-19T22:00:00Z",
@@ -346,25 +277,25 @@ class ReadApiRouteTest {
         ingestLaterBatch()
 
         val descendingHeartRate =
-            authorizedGet("/api/v1/metrics/heart-rate?order=desc&limit=1")
+            authorizedGet("/api/v2/metrics/heart_rate?order=desc&limit=1")
         assertEquals(HttpStatusCode.OK, descendingHeartRate.status)
         assertEquals(1, descendingHeartRate.items().size)
         assertEquals(
-            67,
-            descendingHeartRate.items()[0].jsonObject["bpm"]!!.jsonPrimitive.int
+            67.0,
+            descendingHeartRate.items()[0].jsonObject["value"]!!.jsonPrimitive.double
         )
         val meta = descendingHeartRate.meta()
         assertEquals(1, meta["count"]!!.jsonPrimitive.int)
         assertEquals(1, meta["limit"]!!.jsonPrimitive.int)
         assertEquals("measuredAt", meta["sort"]!!.jsonPrimitive.content)
         assertEquals("desc", meta["order"]!!.jsonPrimitive.content)
-        assertFalse(meta.containsKey("nextCursor"))
+        assertNotNull(meta["nextCursor"])
 
         val ascendingHeartRate =
-            authorizedGet("/api/v1/metrics/heart-rate?order=asc&limit=1")
-        assertEquals(62, ascendingHeartRate.items()[0].jsonObject["bpm"]!!.jsonPrimitive.int)
+            authorizedGet("/api/v2/metrics/heart_rate?order=asc&limit=1")
+        assertEquals(62.0, ascendingHeartRate.items()[0].jsonObject["value"]!!.jsonPrimitive.double)
 
-        val latestSteps = authorizedGet("/api/v1/metrics/steps?latest=true")
+        val latestSteps = authorizedGet("/api/v2/steps?latest=true")
         assertEquals(HttpStatusCode.OK, latestSteps.status)
         assertEquals(1, latestSteps.items().size)
         assertEquals(
@@ -374,17 +305,17 @@ class ReadApiRouteTest {
         assertEquals("desc", latestSteps.meta()["order"]!!.jsonPrimitive.content)
         assertEquals(1, latestSteps.meta()["limit"]!!.jsonPrimitive.int)
 
-        val invalidLimit = authorizedGet("/api/v1/metrics/heart-rate?limit=0")
+        val invalidLimit = authorizedGet("/api/v2/metrics/heart_rate?limit=0")
         assertEquals(HttpStatusCode.BadRequest, invalidLimit.status)
 
-        val invalidOrder = authorizedGet("/api/v1/metrics/heart-rate?order=newest")
+        val invalidOrder = authorizedGet("/api/v2/metrics/heart_rate?order=newest")
         assertEquals(HttpStatusCode.BadRequest, invalidOrder.status)
         assertEquals(
             "order",
             invalidOrder.errorDetails()[0].jsonObject["field"]!!.jsonPrimitive.content
         )
 
-        val invalidSort = authorizedGet("/api/v1/metrics/heart-rate?sort=startAt")
+        val invalidSort = authorizedGet("/api/v2/metrics/heart_rate?sort=startAt")
         assertEquals(HttpStatusCode.BadRequest, invalidSort.status)
         assertEquals(
             "sort",
@@ -392,11 +323,11 @@ class ReadApiRouteTest {
         )
 
         val validSleepSummarySort =
-            authorizedGet("/api/v1/sleep/summaries?sort=endAt&order=desc")
+            authorizedGet("/api/v2/sleep/summaries?sort=endAt&order=desc")
         assertEquals(HttpStatusCode.OK, validSleepSummarySort.status)
 
         val invalidSleepSummarySort =
-            authorizedGet("/api/v1/sleep/summaries?sort=startAt")
+            authorizedGet("/api/v2/sleep/summaries?sort=startAt")
         assertEquals(HttpStatusCode.BadRequest, invalidSleepSummarySort.status)
         assertEquals(
             "sort",
@@ -404,7 +335,7 @@ class ReadApiRouteTest {
         )
 
         val unsupportedLatest =
-            authorizedGet("/api/v1/metrics/steps/daily?latest=true")
+            authorizedGet("/api/v2/steps/daily?latest=true")
         assertEquals(HttpStatusCode.BadRequest, unsupportedLatest.status)
         assertEquals(
             "latest",
@@ -412,7 +343,7 @@ class ReadApiRouteTest {
         )
 
         val latestWithLimit =
-            authorizedGet("/api/v1/metrics/heart-rate?latest=true&limit=1")
+            authorizedGet("/api/v2/metrics/heart_rate?latest=true&limit=1")
         assertEquals(HttpStatusCode.BadRequest, latestWithLimit.status)
         assertEquals(
             "limit",
@@ -420,7 +351,7 @@ class ReadApiRouteTest {
         )
 
         val latestActivityWithLimit =
-            authorizedGet("/api/v1/activity/summaries/latest?limit=10")
+            authorizedGet("/api/v2/activity/summaries?latest=true&limit=10")
         assertEquals(HttpStatusCode.BadRequest, latestActivityWithLimit.status)
         assertEquals(
             "limit",
@@ -435,40 +366,40 @@ class ReadApiRouteTest {
         ingestLaterBatch()
 
         val summary =
-            authorizedGet("/api/v1/metrics/heart-rate/summary?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z")
+            authorizedGet("/api/v2/metrics/heart_rate/summary?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z")
         assertEquals(HttpStatusCode.OK, summary.status)
         val summaryBody = summary.jsonBody()
         assertEquals(2, summaryBody["count"]!!.jsonPrimitive.int)
-        assertEquals(62, summaryBody["minBpm"]!!.jsonPrimitive.int)
-        assertEquals(67, summaryBody["maxBpm"]!!.jsonPrimitive.int)
-        assertEquals(64.5, summaryBody["avgBpm"]!!.jsonPrimitive.double)
+        assertEquals(62.0, summaryBody["minValue"]!!.jsonPrimitive.double)
+        assertEquals(67.0, summaryBody["maxValue"]!!.jsonPrimitive.double)
+        assertEquals(64.5, summaryBody["avgValue"]!!.jsonPrimitive.double)
         assertEquals(
-            67,
-            summaryBody["latest"]!!.jsonObject["bpm"]!!.jsonPrimitive.int
+            67.0,
+            summaryBody["latest"]!!.jsonObject["value"]!!.jsonPrimitive.double
         )
 
         val emptySummary =
-            authorizedGet("/api/v1/metrics/heart-rate/summary?from=2026-04-18T00:00:00Z&to=2026-04-18T01:00:00Z")
+            authorizedGet("/api/v2/metrics/heart_rate/summary?from=2026-04-18T00:00:00Z&to=2026-04-18T01:00:00Z")
         val emptyBody = emptySummary.jsonBody()
         assertEquals(0, emptyBody["count"]!!.jsonPrimitive.int)
-        assertFalse(emptyBody.containsKey("minBpm"))
-        assertFalse(emptyBody.containsKey("maxBpm"))
-        assertFalse(emptyBody.containsKey("avgBpm"))
+        assertFalse(emptyBody.containsKey("minValue"))
+        assertFalse(emptyBody.containsKey("maxValue"))
+        assertFalse(emptyBody.containsKey("avgValue"))
         assertFalse(emptyBody.containsKey("latest"))
 
         val latestWeight =
-            authorizedGet("/api/v1/body/measurements/latest?metricType=weight")
+            authorizedGet("/api/v2/metrics/weight?latest=true")
         assertEquals(HttpStatusCode.OK, latestWeight.status)
         assertEquals(
             83.1,
-            latestWeight.jsonBody()["item"]!!.jsonObject["value"]!!.jsonPrimitive.double
+            latestWeight.items()[0].jsonObject["value"]!!.jsonPrimitive.double
         )
 
-        val missingMetricType = authorizedGet("/api/v1/body/measurements/latest")
-        assertEquals(HttpStatusCode.BadRequest, missingMetricType.status)
+        val missingMetricType = authorizedGet("/api/v2/metrics/not_a_metric")
+        assertEquals(HttpStatusCode.NotFound, missingMetricType.status)
         assertEquals(
-            "metricType",
-            missingMetricType.errorDetails()[0].jsonObject["field"]!!.jsonPrimitive.content
+            "not_found",
+            missingMetricType.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
         )
     }
 
@@ -478,7 +409,7 @@ class ReadApiRouteTest {
         ingestSleepNightBatch()
 
         val april20 =
-            authorizedGet("/api/v1/sleep/nights?date=2026-04-20&timezone=Europe/Berlin")
+            authorizedGet("/api/v2/sleep/nights?date=2026-04-20&timezone=Europe/Berlin")
         assertEquals(HttpStatusCode.OK, april20.status)
         assertEquals(1, april20.items().size)
         val april20Night = april20.items()[0].jsonObject
@@ -496,7 +427,7 @@ class ReadApiRouteTest {
         assertEquals(1, april20Session["stages"]!!.jsonArray.size)
 
         val april21 =
-            authorizedGet("/api/v1/sleep/nights?date=2026-04-21&timezone=Europe/Berlin")
+            authorizedGet("/api/v2/sleep/nights?date=2026-04-21&timezone=Europe/Berlin")
         assertEquals(HttpStatusCode.OK, april21.status)
         assertEquals(1, april21.items().size)
         val april21Session = april21.items()[0].jsonObject["session"]!!.jsonObject
@@ -510,7 +441,7 @@ class ReadApiRouteTest {
         )
 
         val rawApril20 =
-            authorizedGet("/api/v1/sleep/sessions?from=2026-04-20T00:00:00Z&to=2026-04-21T00:00:00Z")
+            authorizedGet("/api/v2/sleep/sessions?from=2026-04-20T00:00:00Z&to=2026-04-21T00:00:00Z")
         assertEquals(HttpStatusCode.OK, rawApril20.status)
         assertEquals(1, rawApril20.items().size)
         assertEquals(
@@ -523,7 +454,7 @@ class ReadApiRouteTest {
     fun sleepNightReadsValidateDateAndTimezoneParameters() = testApplication {
         configureTestApplication()
 
-        val invalidTimezone = authorizedGet("/api/v1/sleep/nights?date=2026-04-20&timezone=Not/AZone")
+        val invalidTimezone = authorizedGet("/api/v2/sleep/nights?date=2026-04-20&timezone=Not/AZone")
         assertEquals(HttpStatusCode.BadRequest, invalidTimezone.status)
         assertEquals(
             "validation_failed",
@@ -531,7 +462,7 @@ class ReadApiRouteTest {
         )
 
         val invalidCombination =
-            authorizedGet("/api/v1/sleep/nights?date=2026-04-20&fromDate=2026-04-20")
+            authorizedGet("/api/v2/sleep/nights?date=2026-04-20&fromDate=2026-04-20")
         assertEquals(HttpStatusCode.BadRequest, invalidCombination.status)
         assertEquals(
             "validation_failed",
@@ -539,7 +470,7 @@ class ReadApiRouteTest {
         )
 
         val invalidRange =
-            authorizedGet("/api/v1/sleep/nights?fromDate=2026-04-21&toDate=2026-04-20")
+            authorizedGet("/api/v2/sleep/nights?fromDate=2026-04-21&toDate=2026-04-20")
         assertEquals(HttpStatusCode.BadRequest, invalidRange.status)
         assertEquals(
             "validation_failed",
@@ -554,7 +485,7 @@ class ReadApiRouteTest {
         ingestLaterBatch()
 
         val response =
-            authorizedGet("/api/v1/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19")
+            authorizedGet("/api/v2/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19")
         assertEquals(HttpStatusCode.OK, response.status)
         val body = response.jsonBody()
         assertEquals(
@@ -570,15 +501,15 @@ class ReadApiRouteTest {
             body["latestWeight"]!!.jsonObject["value"]!!.jsonPrimitive.double
         )
         assertEquals(
-            67,
-            body["latestHeartRate"]!!.jsonObject["bpm"]!!.jsonPrimitive.int
+            67.0,
+            body["latestHeartRate"]!!.jsonObject["value"]!!.jsonPrimitive.double
         )
         assertEquals(
             "2026-04-18T22:30:00Z",
             body["lastSleepSession"]!!.jsonObject["startAt"]!!.jsonPrimitive.content
         )
 
-        val unauthorized = client.get("/api/v1/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19")
+        val unauthorized = client.get("/api/v2/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19")
         assertEquals(HttpStatusCode.Unauthorized, unauthorized.status)
     }
 
@@ -588,7 +519,7 @@ class ReadApiRouteTest {
         ingestSleepNightBatch()
 
         val april20 =
-            authorizedGet("/api/v1/dashboard/summary?fromDate=2026-04-20&toDate=2026-04-20&timezone=Europe/Berlin")
+            authorizedGet("/api/v2/dashboard/summary?fromDate=2026-04-20&toDate=2026-04-20&timezone=Europe/Berlin")
         assertEquals(HttpStatusCode.OK, april20.status)
         assertEquals(
             "2026-04-19T22:00:00Z",
@@ -596,7 +527,7 @@ class ReadApiRouteTest {
         )
 
         val april19 =
-            authorizedGet("/api/v1/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19&timezone=Europe/Berlin")
+            authorizedGet("/api/v2/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19&timezone=Europe/Berlin")
         assertEquals(HttpStatusCode.OK, april19.status)
         assertFalse(april19.jsonBody().containsKey("lastSleepSession"))
     }
@@ -607,7 +538,7 @@ class ReadApiRouteTest {
         ingestCanonicalConflictBatches()
 
         val steps =
-            authorizedGet("/api/v1/metrics/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z&includeSource=true")
+            authorizedGet("/api/v2/steps?from=2026-04-19T00:00:00Z&to=2026-04-20T00:00:00Z&includeSource=true")
         assertEquals(HttpStatusCode.OK, steps.status)
         assertEquals(1, steps.items().size)
         assertEquals(1000, steps.items()[0].jsonObject["steps"]!!.jsonPrimitive.int)
@@ -617,7 +548,7 @@ class ReadApiRouteTest {
         )
 
         val dashboard =
-            authorizedGet("/api/v1/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19&includeSource=true")
+            authorizedGet("/api/v2/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19&includeSource=true")
         assertEquals(1000, dashboard.jsonBody()["steps"]!!.jsonObject["steps"]!!.jsonPrimitive.int)
         assertEquals(
             "health_connect",
@@ -628,12 +559,12 @@ class ReadApiRouteTest {
             dashboard.jsonBody()["latestWeight"]!!.jsonObject["value"]!!.jsonPrimitive.double
         )
         assertEquals(
-            58,
-            dashboard.jsonBody()["latestHeartRate"]!!.jsonObject["bpm"]!!.jsonPrimitive.int
+            58.0,
+            dashboard.jsonBody()["latestHeartRate"]!!.jsonObject["value"]!!.jsonPrimitive.double
         )
 
         val day =
-            authorizedGet("/api/v1/health/day?date=2026-04-19&timezone=UTC&modules=steps,heartRate,weight,sleep&includeSource=true")
+            authorizedGet("/api/v2/health/day?date=2026-04-19&timezone=UTC&modules=steps,heartRate,weight,sleep&includeSource=true")
         assertEquals(1000, day.jsonBody()["steps"]!!.jsonObject["total"]!!.jsonPrimitive.int)
         assertEquals(
             "health_connect",
@@ -646,7 +577,7 @@ class ReadApiRouteTest {
         )
 
         val nextDayWeight =
-            authorizedGet("/api/v1/health/day?date=2026-04-20&timezone=UTC&modules=weight&includeSource=true")
+            authorizedGet("/api/v2/health/day?date=2026-04-20&timezone=UTC&modules=weight&includeSource=true")
         val previousWeight = nextDayWeight.jsonBody()["weight"]!!.jsonObject["previous"]!!.jsonObject
         assertEquals(81.8, previousWeight["value"]!!.jsonPrimitive.double)
         assertEquals(
@@ -655,7 +586,7 @@ class ReadApiRouteTest {
         )
 
         val body =
-            authorizedGet("/api/v1/body/measurements?metricType=weight")
+            authorizedGet("/api/v2/metrics/weight")
         assertEquals(1, body.items().size)
         assertEquals(81.8, body.items()[0].jsonObject["value"]!!.jsonPrimitive.double)
     }
@@ -667,13 +598,13 @@ class ReadApiRouteTest {
         ingestLaterBatch()
 
         val paths = listOf(
-            "/api/v1/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19",
-            "/api/v1/metrics/steps/daily?fromDate=2026-04-19&toDate=2026-04-19&includeSource=true",
-            "/api/v1/body/measurements?metricType=weight&latest=true&includeSource=true",
-            "/api/v1/metrics/heart-rate?latest=true&includeSource=true",
-            "/api/v1/sleep/sessions?latest=true&includeSource=true",
-            "/api/v1/admin/ingestion/batches?limit=10",
-            "/api/v1/admin/ingestion/failures?limit=10",
+            "/api/v2/dashboard/summary?fromDate=2026-04-19&toDate=2026-04-19",
+            "/api/v2/steps/daily?fromDate=2026-04-19&toDate=2026-04-19&includeSource=true",
+            "/api/v2/metrics/weight?latest=true&includeSource=true",
+            "/api/v2/metrics/heart_rate?latest=true&includeSource=true",
+            "/api/v2/sleep/sessions?latest=true&includeSource=true",
+            "/api/v2/admin/ingestion/batches?limit=10",
+            "/api/v2/admin/ingestion/failures?limit=10",
         )
 
         val responses = coroutineScope {
@@ -694,7 +625,7 @@ class ReadApiRouteTest {
         val batchId = ingestMixedBatch()
 
         val detail =
-            authorizedGet("/api/v1/admin/ingestion/batches/$batchId")
+            authorizedGet("/api/v2/admin/ingestion/batches/$batchId")
         assertEquals(HttpStatusCode.OK, detail.status)
         val body = detail.jsonBody()
         assertEquals(batchId, body["id"]!!.jsonPrimitive.int)
@@ -707,14 +638,14 @@ class ReadApiRouteTest {
         )
 
         val withSource =
-            authorizedGet("/api/v1/admin/ingestion/batches/$batchId?includeSourcePayload=true")
+            authorizedGet("/api/v2/admin/ingestion/batches/$batchId?includeSourcePayload=true")
         assertEquals(
             "read-batch-1",
             withSource.jsonBody()["sourcePayload"]!!.jsonObject["exportId"]!!.jsonPrimitive.content
         )
 
         val withNormalized =
-            authorizedGet("/api/v1/admin/ingestion/batches/$batchId?includeNormalizedPayload=true")
+            authorizedGet("/api/v2/admin/ingestion/batches/$batchId?includeNormalizedPayload=true")
         assertEquals(
             "health_connect",
             withNormalized.jsonBody()["normalizedPayload"]!!.jsonObject["provider"]!!.jsonPrimitive.content
@@ -724,14 +655,14 @@ class ReadApiRouteTest {
             withNormalized.jsonBody()["records"]!!.jsonArray[0].jsonObject["normalizedRecord"]!!.jsonObject["type"]!!.jsonPrimitive.content
         )
 
-        val missing = authorizedGet("/api/v1/admin/ingestion/batches/999999")
+        val missing = authorizedGet("/api/v2/admin/ingestion/batches/999999")
         assertEquals(HttpStatusCode.NotFound, missing.status)
         assertEquals(
             "not_found",
             missing.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
         )
 
-        val invalid = authorizedGet("/api/v1/admin/ingestion/batches/not-an-int")
+        val invalid = authorizedGet("/api/v2/admin/ingestion/batches/not-an-int")
         assertEquals(HttpStatusCode.BadRequest, invalid.status)
         assertEquals(
             "validation_failed",
@@ -754,7 +685,7 @@ class ReadApiRouteTest {
     }
 
     private suspend fun ApplicationTestBuilder.ingestMixedBatch(): Int {
-        val response = client.post("/api/v1/ingestion/batches") {
+        val response = client.post("/api/v2/ingestion/batches") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody(mixedPayload())
@@ -764,7 +695,7 @@ class ReadApiRouteTest {
     }
 
     private suspend fun ApplicationTestBuilder.ingestSleepNightBatch(): Int {
-        val response = client.post("/api/v1/ingestion/batches") {
+        val response = client.post("/api/v2/ingestion/batches") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody(sleepNightPayload())
@@ -774,7 +705,7 @@ class ReadApiRouteTest {
     }
 
     private suspend fun ApplicationTestBuilder.ingestLaterBatch(): Int {
-        val response = client.post("/api/v1/ingestion/batches") {
+        val response = client.post("/api/v2/ingestion/batches") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody(laterPayload())
@@ -785,7 +716,7 @@ class ReadApiRouteTest {
 
     private suspend fun ApplicationTestBuilder.ingestCanonicalConflictBatches() {
         listOf(canonicalHealthConnectPayload(), canonicalWithingsPayload()).forEach { payload ->
-            val response = client.post("/api/v1/ingestion/batches") {
+            val response = client.post("/api/v2/ingestion/batches") {
                 authorized()
                 contentType(ContentType.Application.Json)
                 setBody(payload)

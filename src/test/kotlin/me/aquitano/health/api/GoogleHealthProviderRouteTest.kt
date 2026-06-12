@@ -18,7 +18,7 @@ class GoogleHealthProviderRouteTest {
     fun oauthStartReturnsAuthorizationUrlWithReadonlyScopes() = testApplication {
         configureTestApplication()
 
-        val response = client.get("/api/v1/providers/google-health/oauth/start") {
+        val response = client.get("/api/v2/providers/google-health/oauth/start") {
             authorized()
         }
 
@@ -36,7 +36,7 @@ class GoogleHealthProviderRouteTest {
     fun syncRejectsInvalidDateRange() = testApplication {
         configureTestApplication()
 
-        val response = client.post("/api/v1/providers/google-health/sync") {
+        val response = client.post("/api/v2/providers/google-health/sync") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody("""{"from":"2026-04-02T00:00:00Z","to":"2026-04-01T00:00:00Z"}""")
@@ -51,7 +51,7 @@ class GoogleHealthProviderRouteTest {
     fun syncLongHistoricalRangeIsNotRejectedByRangeValidation() = testApplication {
         configureTestApplication()
 
-        val response = client.post("/api/v1/providers/google-health/sync") {
+        val response = client.post("/api/v2/providers/google-health/sync") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody("""{"from":"2020-01-01T00:00:00Z","to":"2026-01-01T00:00:00Z","dataTypes":["steps"]}""")
@@ -65,7 +65,7 @@ class GoogleHealthProviderRouteTest {
     fun syncJobLongHistoricalRangeIsAcceptedAndPollable() = testApplication {
         configureTestApplication()
 
-        val startResponse = client.post("/api/v1/providers/google-health/sync-jobs") {
+        val startResponse = client.post("/api/v2/providers/google-health/sync-jobs") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody("""{"from":"2020-01-01T00:00:00Z","to":"2026-01-01T00:00:00Z","dataTypes":["steps"]}""")
@@ -76,7 +76,7 @@ class GoogleHealthProviderRouteTest {
         val jobId = startBody["jobId"]!!.jsonPrimitive.content
         assertTrue(jobId.isNotBlank())
 
-        val statusResponse = client.get("/api/v1/providers/google-health/sync-jobs/$jobId") {
+        val statusResponse = client.get("/api/v2/providers/google-health/sync-jobs/$jobId") {
             authorized()
         }
 
@@ -90,7 +90,7 @@ class GoogleHealthProviderRouteTest {
     fun syncRejectsInvalidPageSize() = testApplication {
         configureTestApplication()
 
-        val response = client.post("/api/v1/providers/google-health/sync") {
+        val response = client.post("/api/v2/providers/google-health/sync") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody("""{"from":"2026-04-01T00:00:00Z","to":"2026-04-02T00:00:00Z","pageSize":0}""")
@@ -105,7 +105,7 @@ class GoogleHealthProviderRouteTest {
     fun missingProviderConfigReturnsInternalServerErrorWithoutLeakingConfigFields() = testApplication {
         configureTestApplication(withClientSecret = false)
 
-        val response = client.get("/api/v1/providers/google-health/oauth/start") {
+        val response = client.get("/api/v2/providers/google-health/oauth/start") {
             authorized()
             header(HttpHeaders.XRequestId, "google-config-test")
         }
@@ -129,7 +129,7 @@ class GoogleHealthProviderRouteTest {
             "aqtHealth.auth.bootstrapClientName" to "test-client",
             "aqtHealth.auth.bootstrapApiKey" to "test-key",
             "aqtHealth.googleHealth.clientId" to "client-id",
-            "aqtHealth.googleHealth.redirectUri" to "http://localhost:8080/api/v1/providers/google-health/oauth/callback",
+            "aqtHealth.googleHealth.redirectUri" to "http://localhost:8080/api/v2/providers/google-health/oauth/callback",
             "aqtHealth.googleHealth.tokenEncryptionKey" to "test-token-encryption-key-with-32-bytes",
             "aqtHealth.googleHealth.apiBaseUrl" to "https://health.googleapis.com",
             "aqtHealth.googleHealth.oauthTokenUrl" to "https://oauth2.googleapis.com/token",

@@ -55,7 +55,7 @@ class WithingsOAuthClientTest {
         assertEquals(listOf("authorization_code"), form["grant_type"])
         assertEquals(listOf("client-id"), form["client_id"])
         assertEquals(listOf("auth-code"), form["code"])
-        assertEquals(listOf("http://localhost:8080/api/v1/providers/withings/oauth/callback"), form["redirect_uri"])
+        assertEquals(listOf("http://localhost:8080/api/v2/providers/withings/oauth/callback"), form["redirect_uri"])
         assertEquals(listOf("test-nonce"), form["nonce"])
         assertTrue(!form["signature"].isNullOrEmpty())
         assertEquals("363", tokens.providerUserId)
@@ -366,7 +366,7 @@ class WithingsOAuthClientTest {
         WithingsConfig(
             clientId = "client-id",
             clientSecret = "client-secret",
-            redirectUri = "http://localhost:8080/api/v1/providers/withings/oauth/callback",
+            redirectUri = "http://localhost:8080/api/v2/providers/withings/oauth/callback",
             tokenEncryptionKey = "test-token-encryption-key-with-32-bytes",
             apiBaseUrl = "https://wbsapi.withings.net",
             oauthTokenUrl = "https://wbsapi.withings.net/v2/oauth2",

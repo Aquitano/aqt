@@ -435,6 +435,66 @@ internal fun Operation.Builder.readQueryParameters(
                 example = 100
             )
         }
+        query("cursor") {
+            description =
+                "Opaque cursor from `meta.nextCursor` for the next page. Must be used with the same sort and order."
+            schema = stringSchema(example = "eyJzIjoiMjAyNi0wNC0wMlQwODowNTowMFoiLCJpZCI6MTIzLCJvIjoiYXNjIiwiZiI6Im1lYXN1cmVkQXQifQ")
+        }
+    }
+}
+
+internal fun Operation.Builder.scalarMetricQueryParameters() {
+    parameters {
+        path("metricType") {
+            description = "Scalar metric type from the metric catalog."
+            schema = stringSchema(example = RecordTypes.HEART_RATE)
+        }
+    }
+    readQueryParameters(
+        includeLatest = true,
+        sortValues = listOf("measuredAt"),
+        defaultSort = "measuredAt",
+    )
+    parameters {
+        query("raw") {
+            description =
+                "Return raw stored samples instead of canonical cross-provider samples. Defaults to false."
+            schema = booleanSchema(default = false, example = false)
+        }
+    }
+}
+
+internal fun Operation.Builder.scalarSummaryQueryParameters() {
+    parameters {
+        path("metricType") {
+            description = "Scalar metric type from the metric catalog."
+            schema = stringSchema(example = RecordTypes.HEART_RATE)
+        }
+        query("from") {
+            description = "Inclusive start timestamp."
+            schema = stringSchema(
+                format = JsonFormatDateTime,
+                example = ExampleFromAt
+            )
+        }
+        query("to") {
+            description = "Exclusive end timestamp."
+            schema =
+                stringSchema(format = JsonFormatDateTime, example = ExampleToAt)
+        }
+        query("provider") {
+            description = "Source provider filter."
+            schema = stringSchema(example = WITHINGS_PROVIDER_CODE)
+        }
+        query("providerInstanceId") {
+            description = "Source provider account or instance filter."
+            schema = stringSchema(example = ExampleProviderInstanceId)
+        }
+        query("includeSource") {
+            description =
+                "Include source provider metadata in the nested latest item. Defaults to false."
+            schema = booleanSchema(default = false, example = false)
+        }
     }
 }
 
@@ -490,6 +550,11 @@ private fun Operation.Builder.dailyReadQueryParameters(includeListControls: Bool
                     maximum = 5000.0,
                     example = 100
                 )
+            }
+            query("cursor") {
+                description =
+                    "Opaque cursor from `meta.nextCursor` for the next page. Must be used with the same sort and order."
+                schema = stringSchema(example = "eyJzIjoiMjAyNi0wNC0wMiIsImlkIjoxMjMsIm8iOiJhc2MiLCJmIjoiZGF0ZSJ9")
             }
         }
     }
@@ -559,6 +624,11 @@ internal fun Operation.Builder.sleepNightQueryParameters() {
                 default = "asc",
                 example = "desc",
             )
+        }
+        query("cursor") {
+            description =
+                "Opaque cursor from `meta.nextCursor` for the next page. Must be used with the same sort and order."
+            schema = stringSchema(example = "eyJzIjoiMjAyNi0wNC0wMiIsImlkIjoxMjMsIm8iOiJhc2MiLCJmIjoiZGF0ZSJ9")
         }
     }
 }
@@ -749,6 +819,7 @@ internal fun Operation.Builder.adminQueryParameters() {
             description = "Batch status filter."
             schema = stringSchema(
                 enumValues = listOf(
+                    "received",
                     "processed",
                     "failed",
                 ), example = "failed"
@@ -775,6 +846,11 @@ internal fun Operation.Builder.adminQueryParameters() {
                 maximum = 1000.0,
                 example = 50
             )
+        }
+        query("cursor") {
+            description =
+                "Opaque cursor from `meta.nextCursor` for the next page. Admin batch lists are sorted by receivedAt desc."
+            schema = stringSchema(example = "eyJzIjoiMjAyNi0wNC0wMlQwODoxNTozMFoiLCJpZCI6MTIzLCJvIjoiZGVzYyIsImYiOiJyZWNlaXZlZEF0In0")
         }
     }
 }
@@ -831,6 +907,13 @@ internal fun Route.describeDailyStepReadOperation(): Route = describe {
         "Returns daily UTC step totals. Use `date` for one day, or `fromDate` and `toDate` for an inclusive date range."
     requiresBearerAuth()
     dailyStepQueryParameters()
+    parameters {
+        query("latest") {
+            description =
+                "Return the latest matching daily step summary when true. Defaults to false. Cannot be combined with limit, sort, order, or cursor."
+            schema = booleanSchema(default = false, example = true)
+        }
+    }
     errorResponses()
 }
 
@@ -842,6 +925,13 @@ internal fun Route.describeActivitySummaryReadOperation(): Route = describe {
         "Returns daily activity summary metrics such as distance, calories, elevation, activity minutes, and daily heart-rate summary values."
     requiresBearerAuth()
     dailyStepQueryParameters()
+    parameters {
+        query("latest") {
+            description =
+                "Return the latest matching activity summary when true. Defaults to false. Cannot be combined with limit, sort, order, or cursor."
+            schema = booleanSchema(default = false, example = true)
+        }
+    }
     errorResponses()
 }
 

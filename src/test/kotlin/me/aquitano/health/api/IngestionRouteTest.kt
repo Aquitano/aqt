@@ -21,7 +21,7 @@ class IngestionRouteTest {
     fun ingestionRequiresBearerToken() = testApplication {
         val dbPath = configureTestApplication()
 
-        val response = client.post("/api/v1/ingestion/batches") {
+        val response = client.post("/api/v2/ingestion/batches") {
             contentType(ContentType.Application.Json)
             setBody(minimalStepPayload())
         }
@@ -34,7 +34,7 @@ class IngestionRouteTest {
     fun ingestionRejectsInvalidRequest() = testApplication {
         configureTestApplication()
 
-        val response = client.post("/api/v1/ingestion/batches") {
+        val response = client.post("/api/v2/ingestion/batches") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody(
@@ -58,7 +58,7 @@ class IngestionRouteTest {
     fun mixedBatchPersistsIngestionAndMetricRecords() = testApplication {
         val dbPath = configureTestApplication()
 
-        val response = client.post("/api/v1/ingestion/batches") {
+        val response = client.post("/api/v2/ingestion/batches") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody(mixedPayload(batchExternalId = "mixed-1"))
@@ -70,27 +70,27 @@ class IngestionRouteTest {
         assertEquals(5, body["ingestionRecordsStored"]!!.jsonPrimitive.int)
         assertEquals(
             1,
-            body["metricsCreated"]!!.jsonObject["stepSamples"]!!.jsonPrimitive.int
+            body["metricsCreated"]!!.jsonObject["step_samples"]!!.jsonPrimitive.int
         )
         assertEquals(
             1,
-            body["metricsCreated"]!!.jsonObject["sleepSessions"]!!.jsonPrimitive.int
+            body["metricsCreated"]!!.jsonObject["sleep_sessions"]!!.jsonPrimitive.int
         )
         assertEquals(
             2,
-            body["metricsCreated"]!!.jsonObject["sleepStages"]!!.jsonPrimitive.int
-        )
-        assertEquals(
-            5,
-            body["metricsCreated"]!!.jsonObject["bodyMeasurements"]!!.jsonPrimitive.int
+            body["metricsCreated"]!!.jsonObject["sleep_stages"]!!.jsonPrimitive.int
         )
         assertEquals(
             1,
-            body["metricsCreated"]!!.jsonObject["heartRateSamples"]!!.jsonPrimitive.int
+            body["metricsCreated"]!!.jsonObject["weight"]!!.jsonPrimitive.int
         )
         assertEquals(
             1,
-            body["metricsCreated"]!!.jsonObject["sleepSummaries"]!!.jsonPrimitive.int
+            body["metricsCreated"]!!.jsonObject["heart_rate"]!!.jsonPrimitive.int
+        )
+        assertEquals(
+            1,
+            body["metricsCreated"]!!.jsonObject["sleep_summaries"]!!.jsonPrimitive.int
         )
 
         assertEquals(1, countRows(dbPath, "ingestion_batches"))
@@ -133,12 +133,12 @@ class IngestionRouteTest {
     fun batchExternalIdIsIdempotentPerSourceInstance() = testApplication {
         val dbPath = configureTestApplication()
 
-        val first = client.post("/api/v1/ingestion/batches") {
+        val first = client.post("/api/v2/ingestion/batches") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody(minimalStepPayload(batchExternalId = "dupe-batch"))
         }
-        val second = client.post("/api/v1/ingestion/batches") {
+        val second = client.post("/api/v2/ingestion/batches") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody(minimalStepPayload(batchExternalId = "dupe-batch"))
@@ -162,7 +162,7 @@ class IngestionRouteTest {
     @Test
     fun failedBatchExternalIdCanBeRetried() = testApplication {
         val dbPath = configureTestApplication()
-        client.get("/api/v1/admin/health")
+        client.get("/api/v2/admin/health")
         insertFailedBatch(
             dbPath = dbPath,
             provider = "health_connect",
@@ -170,7 +170,7 @@ class IngestionRouteTest {
             batchExternalId = "retry-batch",
         )
 
-        val response = client.post("/api/v1/ingestion/batches") {
+        val response = client.post("/api/v2/ingestion/batches") {
             authorized()
             contentType(ContentType.Application.Json)
             setBody(minimalStepPayload(batchExternalId = "retry-batch"))
@@ -201,7 +201,7 @@ class IngestionRouteTest {
             val dbPath = configureTestApplication()
 
             repeat(2) {
-                val response = client.post("/api/v1/ingestion/batches") {
+                val response = client.post("/api/v2/ingestion/batches") {
                     authorized()
                     contentType(ContentType.Application.Json)
                     setBody(minimalStepPayload(batchExternalId = null))
@@ -223,7 +223,7 @@ class IngestionRouteTest {
         testApplication {
             val dbPath = configureTestApplication()
 
-            val first = client.post("/api/v1/ingestion/batches") {
+            val first = client.post("/api/v2/ingestion/batches") {
                 authorized()
                 contentType(ContentType.Application.Json)
                 setBody(
@@ -237,7 +237,7 @@ class IngestionRouteTest {
                     )
                 )
             }
-            val second = client.post("/api/v1/ingestion/batches") {
+            val second = client.post("/api/v2/ingestion/batches") {
                 authorized()
                 contentType(ContentType.Application.Json)
                 setBody(
@@ -266,7 +266,7 @@ class IngestionRouteTest {
         testApplication {
             val dbPath = configureTestApplication()
 
-            val response = client.post("/api/v1/ingestion/batches") {
+            val response = client.post("/api/v2/ingestion/batches") {
                 authorized()
                 contentType(ContentType.Application.Json)
                 setBody(

@@ -1,5 +1,6 @@
 package me.aquitano.health.application.metric.sleep.repository
 
+import me.aquitano.health.application.metric.common.keysetFetchLimit
 import me.aquitano.health.application.metric.common.repository.*
 import me.aquitano.health.infrastructure.database.tables.*
 import me.aquitano.health.infrastructure.database.toApiString
@@ -134,7 +135,7 @@ class SleepRepository : BaseMetricRepository() {
                 CanonicalSleepNightsTable.date to filters.sortOrder(),
                 CanonicalSleepNightsTable.sleepSessionId to filters.sortOrder(),
             )
-            .limit(filters.limit + 1)
+            .limit(keysetFetchLimit(filters.limit))
             .map {
                 val session = SleepSessionRow(
                     id = it[SleepSessionsTable.id].value,

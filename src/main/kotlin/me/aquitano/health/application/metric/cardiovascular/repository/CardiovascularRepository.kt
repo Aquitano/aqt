@@ -1,5 +1,6 @@
 package me.aquitano.health.application.metric.cardiovascular.repository
 
+import me.aquitano.health.application.metric.common.keysetFetchLimit
 import me.aquitano.health.application.metric.common.repository.*
 import me.aquitano.health.infrastructure.database.tables.*
 import me.aquitano.health.infrastructure.database.toApiString
@@ -28,7 +29,7 @@ class CardiovascularRepository : BaseMetricRepository() {
                 BloodPressureMeasurementsTable.measuredAt to filters.sortOrder(),
                 BloodPressureMeasurementsTable.id to filters.sortOrder(),
             )
-            .limit(filters.limit + 1)
+            .limit(keysetFetchLimit(filters.limit))
             .map(::toBloodPressureMeasurementRow)
         return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
     }

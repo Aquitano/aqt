@@ -1,6 +1,9 @@
 package me.aquitano.health.infrastructure.repositories
 
 import me.aquitano.health.domain.HealthRecord
+import me.aquitano.health.domain.RequestValidationException
+import me.aquitano.health.domain.ValidationIssue
+import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.database.toApiString
 import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.infrastructure.database.tables.IngestionBatchesTable
@@ -8,12 +11,14 @@ import me.aquitano.health.infrastructure.database.tables.IngestionRecordsTable
 import me.aquitano.health.infrastructure.database.tables.SourceInstancesTable
 import me.aquitano.health.infrastructure.database.tables.SourcesTable
 import me.aquitano.health.shared.AppJson
+import me.aquitano.health.shared.Cursor
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greaterEq
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.jdbc.*
 import java.time.Instant
+import java.time.ZoneOffset
 
 data class ExistingBatch(
     val id: Int,
@@ -172,19 +177,24 @@ class IngestionRepository {
         status: String?,
         from: Instant?,
         to: Instant?,
-        limit: Int
+        limit: Int,
+        cursor: Cursor? = null,
     ): List<AdminBatchRow> {
         val conditions = mutableListOf<Op<Boolean>>()
         status?.let { conditions.add(IngestionBatchesTable.status eq it) }
         from?.let { conditions.add(IngestionBatchesTable.receivedAt greaterEq it.toDbTimestamp()) }
         to?.let { conditions.add(IngestionBatchesTable.receivedAt less it.toDbTimestamp()) }
+        cursor?.let { conditions.add(receivedAtKeyset(it)) }
 
         val batches = IngestionBatchesTable
             .innerJoin(SourceInstancesTable)
             .innerJoin(SourcesTable)
             .selectAll()
             .where(combineConditions(conditions))
-            .orderBy(IngestionBatchesTable.receivedAt to SortOrder.DESC)
+            .orderBy(
+                IngestionBatchesTable.receivedAt to SortOrder.DESC,
+                IngestionBatchesTable.id to SortOrder.DESC,
+            )
             .limit(limit)
             .toList()
 
@@ -205,6 +215,26 @@ class IngestionRepository {
                     ?: 0,
             )
         }
+    }
+
+    private fun receivedAtKeyset(cursor: Cursor): Op<Boolean> {
+        val receivedAt = runCatching {
+            Instant.parse(cursor.sortValue).atOffset(ZoneOffset.UTC)
+        }.getOrElse {
+            throw RequestValidationException(
+                listOf(
+                    ValidationIssue(
+                        field = "cursor",
+                        code = ValidationIssueCodes.InvalidFormat,
+                        message = "is not a valid cursor",
+                    )
+                )
+            )
+        }
+        val sortValue = LiteralOp(IngestionBatchesTable.receivedAt.columnType, receivedAt)
+        val idValue = intParam(cursor.lastId.toInt())
+        return LessOp(IngestionBatchesTable.receivedAt, sortValue) or
+            (EqOp(IngestionBatchesTable.receivedAt, sortValue) and LessOp(IngestionBatchesTable.id, idValue))
     }
 
     fun findBatchDetail(batchId: Int): AdminBatchDetailRow? =

@@ -46,12 +46,12 @@ class WithingsProvider(
             maxSyncRangeDays = 31,
             supportsPageSize = false,
             workflowEndpoints = ProviderWorkflowEndpoints(
-                oauthStart = "/api/v1/providers/withings/oauth/start",
-                oauthCallback = "/api/v1/providers/withings/oauth/callback",
-                accounts = "/api/v1/providers/withings/accounts",
-                disconnect = "/api/v1/providers/withings/accounts/{providerInstanceId}/disconnect",
-                reconnect = "/api/v1/providers/withings/accounts/{providerInstanceId}/reconnect",
-                sync = "/api/v1/providers/withings/sync",
+                oauthStart = "/api/v2/providers/withings/oauth/start",
+                oauthCallback = "/api/v2/providers/withings/oauth/callback",
+                accounts = "/api/v2/providers/withings/accounts",
+                disconnect = "/api/v2/providers/withings/accounts/{providerInstanceId}/disconnect",
+                reconnect = "/api/v2/providers/withings/accounts/{providerInstanceId}/reconnect",
+                sync = "/api/v2/providers/withings/sync",
             ),
         )
     override val defaultProviderInstanceId: String = "withings-me"

@@ -40,7 +40,7 @@ class SleepQueryService(
                 limit = filters.limit,
                 sort = filters.sort,
                 order = filters.order,
-                sortValue = { it.endAt },
+                sortValue = { it.startAt },
                 id = { it.id.toLong() },
             )
             val stagesBySession =
@@ -78,4 +78,3 @@ class SleepQueryService(
             )
         }
 }
-

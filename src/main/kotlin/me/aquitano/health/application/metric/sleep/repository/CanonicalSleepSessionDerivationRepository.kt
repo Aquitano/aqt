@@ -1,5 +1,6 @@
 package me.aquitano.health.application.metric.sleep.repository
 
+import me.aquitano.health.application.metric.common.keysetFetchLimit
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.infrastructure.database.tables.CanonicalSleepSessionsTable
@@ -39,7 +40,7 @@ class CanonicalSleepSessionDerivationRepository : BaseMetricRepository() {
         val keyset = timestampKeyset(
             filters.cursor,
             filters.order,
-            CanonicalSleepSessionsTable.endAt,
+            CanonicalSleepSessionsTable.startAt,
             SleepSessionsTable.id,
         )
         val rows = CanonicalSleepSessionsTable
@@ -47,10 +48,10 @@ class CanonicalSleepSessionDerivationRepository : BaseMetricRepository() {
             .selectAll()
             .where(keyset?.let { where and it } ?: where)
             .orderBy(
-                CanonicalSleepSessionsTable.endAt to filters.sortOrder(),
+                CanonicalSleepSessionsTable.startAt to filters.sortOrder(),
                 SleepSessionsTable.id to filters.sortOrder(),
             )
-            .limit(filters.limit + 1)
+            .limit(keysetFetchLimit(filters.limit))
             .map(::toJoinedSleepSessionRow)
         return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
     }

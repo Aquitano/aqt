@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonElement
 @Serializable
 data class IngestionBatchesResponse(
     val items: List<IngestionBatchAdminResponse>,
+    val meta: ReadResponseMeta,
 )
 
 @Serializable

@@ -26,7 +26,7 @@ class ProviderStatusRouteTest {
         val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
 
-        val response = client.get("/api/v1/providers/status")
+        val response = client.get("/api/v2/providers/status")
 
         assertEquals(HttpStatusCode.Unauthorized, response.status)
     }
@@ -36,7 +36,7 @@ class ProviderStatusRouteTest {
         val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath, googleConfigured = false)
 
-        val response = client.get("/api/v1/providers/google-health/status") {
+        val response = client.get("/api/v2/providers/google-health/status") {
             authorized()
         }
 
@@ -56,7 +56,7 @@ class ProviderStatusRouteTest {
         val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
 
-        val response = client.get("/api/v1/providers/google-health/status") {
+        val response = client.get("/api/v2/providers/google-health/status") {
             authorized()
         }
 
@@ -73,7 +73,7 @@ class ProviderStatusRouteTest {
     fun connectedProviderReportsValidAccountAndLastSync() = testApplication {
         val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
-        client.get("/api/v1/admin/health")
+        client.get("/api/v2/admin/health")
         insertGoogleAccount(
             dbPath = dbPath,
             expiresAt = "2099-01-01T00:00:00Z",
@@ -87,7 +87,7 @@ class ProviderStatusRouteTest {
             finishedAt = null,
         )
 
-        val response = client.get("/api/v1/providers/status") {
+        val response = client.get("/api/v2/providers/status") {
             authorized()
         }
 
@@ -113,13 +113,13 @@ class ProviderStatusRouteTest {
     fun connectedExpiredProviderCanStillSyncWithRefreshToken() = testApplication {
         val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
-        client.get("/api/v1/admin/health")
+        client.get("/api/v2/admin/health")
         insertGoogleAccount(
             dbPath = dbPath,
             expiresAt = "2000-01-01T00:00:00Z",
         )
 
-        val response = client.get("/api/v1/providers/google_health/status") {
+        val response = client.get("/api/v2/providers/google_health/status") {
             authorized()
         }
 
@@ -138,7 +138,7 @@ class ProviderStatusRouteTest {
     fun needsReauthProviderReportsReconnectAction() = testApplication {
         val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
-        client.get("/api/v1/admin/health")
+        client.get("/api/v2/admin/health")
         insertGoogleAccount(
             dbPath = dbPath,
             expiresAt = "2099-01-01T00:00:00Z",
@@ -146,7 +146,7 @@ class ProviderStatusRouteTest {
             lastAuthErrorCode = "google_health_needs_reauth",
         )
 
-        val response = client.get("/api/v1/providers/google-health/status") {
+        val response = client.get("/api/v2/providers/google-health/status") {
             authorized()
         }
 
@@ -165,7 +165,7 @@ class ProviderStatusRouteTest {
     fun providerWithSyncableAndNeedsReauthAccountsStillReportsSyncAction() = testApplication {
         val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
-        client.get("/api/v1/admin/health")
+        client.get("/api/v2/admin/health")
         insertGoogleAccount(
             dbPath = dbPath,
             providerUserId = "syncable-user",
@@ -181,7 +181,7 @@ class ProviderStatusRouteTest {
             lastAuthErrorCode = "google_health_needs_reauth",
         )
 
-        val response = client.get("/api/v1/providers/google-health/status") {
+        val response = client.get("/api/v2/providers/google-health/status") {
             authorized()
         }
 
@@ -199,7 +199,7 @@ class ProviderStatusRouteTest {
     fun disconnectedProviderReportsConnectAction() = testApplication {
         val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
-        client.get("/api/v1/admin/health")
+        client.get("/api/v2/admin/health")
         insertGoogleAccount(
             dbPath = dbPath,
             expiresAt = "2099-01-01T00:00:00Z",
@@ -209,7 +209,7 @@ class ProviderStatusRouteTest {
             disconnectedAt = "2026-05-16T10:00:00Z",
         )
 
-        val response = client.get("/api/v1/providers/google-health/status") {
+        val response = client.get("/api/v2/providers/google-health/status") {
             authorized()
         }
 
@@ -231,11 +231,11 @@ class ProviderStatusRouteTest {
 
         assertEquals(
             HttpStatusCode.Unauthorized,
-            client.get("/api/v1/providers/google-health/accounts").status,
+            client.get("/api/v2/providers/google-health/accounts").status,
         )
         assertEquals(
             HttpStatusCode.Unauthorized,
-            client.post("/api/v1/providers/google-health/accounts/google-health-me/disconnect").status,
+            client.post("/api/v2/providers/google-health/accounts/google-health-me/disconnect").status,
         )
     }
 
@@ -243,13 +243,13 @@ class ProviderStatusRouteTest {
     fun providerAccountLifecycleRoutesListDisconnectAndReconnect() = testApplication {
         val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
-        client.get("/api/v1/admin/health")
+        client.get("/api/v2/admin/health")
         insertGoogleAccount(
             dbPath = dbPath,
             expiresAt = "2099-01-01T00:00:00Z",
         )
 
-        val listResponse = client.get("/api/v1/providers/google-health/accounts") {
+        val listResponse = client.get("/api/v2/providers/google-health/accounts") {
             authorized()
         }
         assertEquals(HttpStatusCode.OK, listResponse.status)
@@ -260,13 +260,13 @@ class ProviderStatusRouteTest {
             listBody["accounts"]!!.jsonArray.single().jsonObject.string("providerInstanceId"),
         )
 
-        val getResponse = client.get("/api/v1/providers/google-health/accounts/google-health-me") {
+        val getResponse = client.get("/api/v2/providers/google-health/accounts/google-health-me") {
             authorized()
         }
         assertEquals(HttpStatusCode.OK, getResponse.status)
         assertEquals("connected", getResponse.bodyAsJsonObject().string("status"))
 
-        val disconnectResponse = client.post("/api/v1/providers/google-health/accounts/google-health-me/disconnect") {
+        val disconnectResponse = client.post("/api/v2/providers/google-health/accounts/google-health-me/disconnect") {
             authorized()
         }
         assertEquals(HttpStatusCode.OK, disconnectResponse.status)
@@ -274,7 +274,7 @@ class ProviderStatusRouteTest {
         assertEquals("", singleString(dbPath, "SELECT access_token_ciphertext FROM provider_oauth_accounts"))
         assertEquals("", singleString(dbPath, "SELECT refresh_token_ciphertext FROM provider_oauth_accounts"))
 
-        val reconnectResponse = client.post("/api/v1/providers/google-health/accounts/google-health-me/reconnect") {
+        val reconnectResponse = client.post("/api/v2/providers/google-health/accounts/google-health-me/reconnect") {
             authorized()
         }
         assertEquals(HttpStatusCode.OK, reconnectResponse.status)
@@ -288,7 +288,7 @@ class ProviderStatusRouteTest {
         val dbPath = PostgresTestDatabase.config()
         configureTestApplication(dbPath)
 
-        val response = client.get("/api/v1/providers/not-real/status") {
+        val response = client.get("/api/v2/providers/not-real/status") {
             authorized()
         }
 
@@ -305,14 +305,14 @@ class ProviderStatusRouteTest {
             "aqtHealth.auth.bootstrapClientName" to "test-client",
             "aqtHealth.auth.bootstrapApiKey" to "test-key",
             "aqtHealth.googleHealth.clientId" to "client-id",
-            "aqtHealth.googleHealth.redirectUri" to "http://localhost:8080/api/v1/providers/google-health/oauth/callback",
+            "aqtHealth.googleHealth.redirectUri" to "http://localhost:8080/api/v2/providers/google-health/oauth/callback",
             "aqtHealth.googleHealth.tokenEncryptionKey" to "test-token-encryption-key-with-32-bytes",
             "aqtHealth.googleHealth.apiBaseUrl" to "https://health.googleapis.com",
             "aqtHealth.googleHealth.oauthTokenUrl" to "https://oauth2.googleapis.com/token",
             "aqtHealth.googleHealth.oauthAuthUrl" to "https://accounts.google.com/o/oauth2/v2/auth",
             "aqtHealth.withings.clientId" to "withings-client-id",
             "aqtHealth.withings.clientSecret" to "withings-client-secret",
-            "aqtHealth.withings.redirectUri" to "http://localhost:8080/api/v1/providers/withings/oauth/callback",
+            "aqtHealth.withings.redirectUri" to "http://localhost:8080/api/v2/providers/withings/oauth/callback",
             "aqtHealth.withings.tokenEncryptionKey" to "test-token-encryption-key-with-32-bytes",
             "aqtHealth.withings.apiBaseUrl" to "https://wbsapi.withings.net",
             "aqtHealth.withings.oauthTokenUrl" to "https://wbsapi.withings.net/v2/oauth2",

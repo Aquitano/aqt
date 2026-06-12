@@ -1,5 +1,6 @@
 package me.aquitano.health.application.metric.sleep.repository
 
+import me.aquitano.health.application.metric.common.keysetFetchLimit
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.infrastructure.database.tables.CanonicalSleepSummariesTable
@@ -34,7 +35,7 @@ class CanonicalSleepSummaryDerivationRepository : BaseMetricRepository() {
                 CanonicalSleepSummariesTable.endAt to filters.sortOrder(),
                 SleepSummariesTable.id to filters.sortOrder(),
             )
-            .limit(filters.limit + 1)
+            .limit(keysetFetchLimit(filters.limit))
             .map(::toJoinedSleepSummaryRow)
         return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
     }

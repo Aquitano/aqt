@@ -41,7 +41,7 @@ class WithingsProviderTest {
         assertTrue(start.authorizationUrl.contains("response_type=code"))
         assertTrue(start.authorizationUrl.contains("client_id=client-id"))
         assertTrue(start.authorizationUrl.contains("scope=user.info%2Cuser.metrics%2Cuser.activity"))
-        assertTrue(start.authorizationUrl.contains("redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fapi%2Fv1%2Fproviders%2Fwithings%2Foauth%2Fcallback"))
+        assertTrue(start.authorizationUrl.contains("redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fapi%2Fv2%2Fproviders%2Fwithings%2Foauth%2Fcallback"))
         assertTrue(start.authorizationUrl.contains("state="))
     }
 
@@ -421,7 +421,7 @@ class WithingsProviderTest {
         val config = WithingsConfig(
             clientId = "client-id",
             clientSecret = "client-secret",
-            redirectUri = "http://localhost:8080/api/v1/providers/withings/oauth/callback",
+            redirectUri = "http://localhost:8080/api/v2/providers/withings/oauth/callback",
             tokenEncryptionKey = "test-token-encryption-key-with-32-bytes",
             apiBaseUrl = "https://wbsapi.withings.net",
             oauthTokenUrl = "https://wbsapi.withings.net/v2/oauth2",

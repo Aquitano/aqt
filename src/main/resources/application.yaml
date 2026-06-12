@@ -27,7 +27,7 @@ aqtHealth:
   withings:
     clientId: "$AQT_HEALTH_WITHINGS_CLIENT_ID:"
     clientSecret: "$AQT_HEALTH_WITHINGS_CLIENT_SECRET:"
-    redirectUri: "$AQT_HEALTH_WITHINGS_REDIRECT_URI:http://localhost:8080/api/v1/providers/withings/oauth/callback"
+    redirectUri: "$AQT_HEALTH_WITHINGS_REDIRECT_URI:http://localhost:8080/api/v2/providers/withings/oauth/callback"
     tokenEncryptionKey: "$AQT_HEALTH_WITHINGS_TOKEN_ENCRYPTION_KEY:"
     apiBaseUrl: "$AQT_HEALTH_WITHINGS_API_BASE_URL:https://wbsapi.withings.net"
     oauthTokenUrl: "$AQT_HEALTH_WITHINGS_OAUTH_TOKEN_URL:https://wbsapi.withings.net/v2/oauth2"

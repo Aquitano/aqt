@@ -24,7 +24,7 @@ class ApplicationTest {
     @Test
     fun healthEndpointResponds() = testApplication {
         configureTestApplication()
-        val response = client.get("/api/v1/admin/health")
+        val response = client.get("/api/v2/admin/health")
 
         assertEquals(HttpStatusCode.OK, response.status)
         val body = AppJson.parseToJsonElement(response.bodyAsText()).jsonObject
@@ -45,12 +45,12 @@ class ApplicationTest {
     fun requestIdIsEchoedFromHeaderOrGeneratedWhenAbsent() = testApplication {
         configureTestApplication()
 
-        val withId = client.get("/api/v1/admin/health") {
+        val withId = client.get("/api/v2/admin/health") {
             header(HttpHeaders.XRequestId, "test-request-123")
         }
         assertEquals("test-request-123", withId.headers[HttpHeaders.XRequestId])
 
-        val withoutId = client.get("/api/v1/admin/health")
+        val withoutId = client.get("/api/v2/admin/health")
         val generated = withoutId.headers[HttpHeaders.XRequestId]
         assertNotNull(generated)
         assertTrue(generated.isNotBlank())
@@ -60,7 +60,7 @@ class ApplicationTest {
     fun unauthorizedResponseIncludesErrorCodeAndRequestId() = testApplication {
         configureTestApplication()
 
-        val response = client.get("/api/v1/admin/ingestion/batches") {
+        val response = client.get("/api/v2/admin/ingestion/batches") {
             header(HttpHeaders.XRequestId, "test-request-123")
         }
 
@@ -76,7 +76,7 @@ class ApplicationTest {
     fun validationErrorDetailsIncludeMachineReadableCodes() = testApplication {
         configureTestApplication()
 
-        val response = client.get("/api/v1/dashboard/summary?fromDate=not-a-date&toDate=2026-04-02") {
+        val response = client.get("/api/v2/dashboard/summary?fromDate=not-a-date&toDate=2026-04-02") {
             header(HttpHeaders.Authorization, "Bearer test-key")
         }
 
@@ -97,39 +97,34 @@ class ApplicationTest {
         val paths = body["paths"]!!.jsonObject
 
         listOf(
-            "/api/v1/admin/health",
-            "/api/v1/ingestion/batches",
-            "/api/v1/providers",
-            "/api/v1/providers/status",
-            "/api/v1/providers/{providerCode}",
-            "/api/v1/providers/{providerCode}/status",
-            "/api/v1/providers/{providerCode}/accounts",
-            "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}",
-            "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/disconnect",
-            "/api/v1/providers/{providerCode}/accounts/{providerInstanceId}/reconnect",
-            "/api/v1/providers/{providerCode}/oauth/start",
-            "/api/v1/providers/{providerCode}/oauth/callback",
-            "/api/v1/providers/{providerCode}/sync",
-            "/api/v1/metrics/catalog",
-            "/api/v1/health/day",
-            "/api/v1/metrics/steps",
-            "/api/v1/metrics/steps/daily",
-            "/api/v1/activity/summaries",
-            "/api/v1/activity/summaries/latest",
-            "/api/v1/sleep/sessions",
-            "/api/v1/sleep/nights",
-            "/api/v1/sleep/summaries",
-            "/api/v1/sleep/summaries/latest",
-            "/api/v1/body/measurements",
-            "/api/v1/metrics/heart-rate",
-            "/api/v1/metrics/respiratory-rate",
-            "/api/v1/metrics/respiratory-rate/summary",
-            "/api/v1/metrics/hrv",
-            "/api/v1/metrics/hrv/summary",
-            "/api/v1/dashboard/summary",
-            "/api/v1/admin/ingestion/batches",
-            "/api/v1/admin/ingestion/batches/{id}",
-            "/api/v1/admin/ingestion/failures",
+            "/api/v2/admin/health",
+            "/api/v2/ingestion/batches",
+            "/api/v2/providers",
+            "/api/v2/providers/status",
+            "/api/v2/providers/{providerCode}",
+            "/api/v2/providers/{providerCode}/status",
+            "/api/v2/providers/{providerCode}/accounts",
+            "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}",
+            "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/disconnect",
+            "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/reconnect",
+            "/api/v2/providers/{providerCode}/oauth/start",
+            "/api/v2/providers/{providerCode}/oauth/callback",
+            "/api/v2/providers/{providerCode}/sync",
+            "/api/v2/metrics",
+            "/api/v2/health/day",
+            "/api/v2/steps",
+            "/api/v2/steps/daily",
+            "/api/v2/activity/summaries",
+            "/api/v2/sleep/sessions",
+            "/api/v2/sleep/nights",
+            "/api/v2/sleep/summaries",
+            "/api/v2/metrics/{metricType}",
+            "/api/v2/metrics/{metricType}/summary",
+            "/api/v2/blood-pressure",
+            "/api/v2/dashboard/summary",
+            "/api/v2/admin/ingestion/batches",
+            "/api/v2/admin/ingestion/batches/{id}",
+            "/api/v2/admin/ingestion/failures",
         ).forEach { path ->
             assertNotNull(paths[path], "Missing OpenAPI path $path")
         }
@@ -147,10 +142,10 @@ class ApplicationTest {
 
         val body = client.get("/openapi").jsonBody()
         val paths = body["paths"]!!.jsonObject
-        val protectedOperation = paths["/api/v1/providers"]!!.jsonObject["get"]!!.jsonObject
-        val publicHealthOperation = paths["/api/v1/admin/health"]!!.jsonObject["get"]!!.jsonObject
+        val protectedOperation = paths["/api/v2/providers"]!!.jsonObject["get"]!!.jsonObject
+        val publicHealthOperation = paths["/api/v2/admin/health"]!!.jsonObject["get"]!!.jsonObject
         val publicCallbackOperation =
-            paths["/api/v1/providers/{providerCode}/oauth/callback"]!!.jsonObject["get"]!!.jsonObject
+            paths["/api/v2/providers/{providerCode}/oauth/callback"]!!.jsonObject["get"]!!.jsonObject
 
         assertNotNull(body["components"]!!.jsonObject["securitySchemes"]!!.jsonObject["bearerApiKey"])
         assertEquals("bearerApiKey", protectedOperation["security"]!!.jsonArray.first().jsonObject.keys.first())
@@ -168,7 +163,7 @@ class ApplicationTest {
 
         val body = client.get("/openapi").jsonBody()
         val paths = body["paths"]!!.jsonObject
-        val stepParams = paths["/api/v1/metrics/steps"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!.jsonArray
+        val stepParams = paths["/api/v2/steps"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!.jsonArray
         val limit = stepParams.first { it.jsonObject["name"]!!.jsonPrimitive.content == "limit" }
             .jsonObject["schema"]!!.jsonObject
         assertEquals(500, limit["default"]!!.jsonPrimitive.int)
@@ -178,37 +173,40 @@ class ApplicationTest {
             .jsonObject["schema"]!!.jsonObject
         assertEquals("date-time", from["format"]!!.jsonPrimitive.content)
 
-        val dailyStepParamNames = paths["/api/v1/metrics/steps/daily"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
+        val dailyStepParamNames = paths["/api/v2/steps/daily"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
             .jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
         assertTrue("date" in dailyStepParamNames)
         assertTrue("fromDate" in dailyStepParamNames)
         assertTrue("toDate" in dailyStepParamNames)
+        assertTrue("latest" in dailyStepParamNames)
+        assertTrue("cursor" in dailyStepParamNames)
         assertFalse("canonical" in dailyStepParamNames)
         assertFalse("from" in dailyStepParamNames)
         assertFalse("to" in dailyStepParamNames)
 
-        val latestActivityParamNames = paths["/api/v1/activity/summaries/latest"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
+        val activityParamNames = paths["/api/v2/activity/summaries"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
             .jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
-        assertTrue("date" in latestActivityParamNames)
-        assertTrue("fromDate" in latestActivityParamNames)
-        assertTrue("toDate" in latestActivityParamNames)
-        assertFalse("from" in latestActivityParamNames)
-        assertFalse("to" in latestActivityParamNames)
-        assertFalse("limit" in latestActivityParamNames)
-        assertFalse("sort" in latestActivityParamNames)
-        assertFalse("order" in latestActivityParamNames)
+        assertTrue("date" in activityParamNames)
+        assertTrue("fromDate" in activityParamNames)
+        assertTrue("toDate" in activityParamNames)
+        assertTrue("latest" in activityParamNames)
+        assertTrue("cursor" in activityParamNames)
+        assertFalse("from" in activityParamNames)
+        assertFalse("to" in activityParamNames)
 
-        val bodyMetricParamNames = paths["/api/v1/body/measurements"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
+        val scalarMetricParamNames = paths["/api/v2/metrics/{metricType}"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
             .jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
-        assertTrue("metricType" in bodyMetricParamNames)
-        assertTrue("latest" in bodyMetricParamNames)
-        assertFalse("canonical" in bodyMetricParamNames)
+        assertTrue("metricType" in scalarMetricParamNames)
+        assertTrue("latest" in scalarMetricParamNames)
+        assertTrue("raw" in scalarMetricParamNames)
+        assertTrue("cursor" in scalarMetricParamNames)
+        assertFalse("canonical" in scalarMetricParamNames)
 
-        val dashboardParamNames = paths["/api/v1/dashboard/summary"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
+        val dashboardParamNames = paths["/api/v2/dashboard/summary"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
             .jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
         assertFalse("canonical" in dashboardParamNames)
 
-        val healthDayParamNames = paths["/api/v1/health/day"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
+        val healthDayParamNames = paths["/api/v2/health/day"]!!.jsonObject["get"]!!.jsonObject["parameters"]!!
             .jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
         assertFalse("canonical" in healthDayParamNames)
 
@@ -254,7 +252,7 @@ class ApplicationTest {
             assertNotNull(schemas[schemaName], "Missing OpenAPI component schema $schemaName")
         }
 
-        val requestSchema = paths["/api/v1/ingestion/batches"]!!.jsonObject["post"]!!.jsonObject["requestBody"]!!
+        val requestSchema = paths["/api/v2/ingestion/batches"]!!.jsonObject["post"]!!.jsonObject["requestBody"]!!
             .jsonObject["content"]!!.jsonObject["application/json"]!!.jsonObject["schema"]!!.jsonObject
         val recordRefs = requestSchema["properties"]!!.jsonObject["records"]!!.jsonObject["items"]!!.jsonObject["oneOf"]!!
             .jsonArray.map { it.jsonObject["\$ref"]!!.jsonPrimitive.content }
@@ -288,10 +286,10 @@ class ApplicationTest {
 
         val paths = client.get("/openapi").jsonBody()["paths"]!!.jsonObject
 
-        assertEquals(listOf("endAt"), paths.sortEnum("/api/v1/sleep/summaries"))
-        assertEquals(listOf("startAt"), paths.sortEnum("/api/v1/sleep/sessions"))
-        assertEquals(listOf("measuredAt"), paths.sortEnum("/api/v1/metrics/heart-rate"))
-        assertEquals(listOf("date"), paths.sortEnum("/api/v1/metrics/steps/daily"))
+        assertEquals(listOf("endAt"), paths.sortEnum("/api/v2/sleep/summaries"))
+        assertEquals(listOf("startAt"), paths.sortEnum("/api/v2/sleep/sessions"))
+        assertEquals(listOf("measuredAt"), paths.sortEnum("/api/v2/metrics/{metricType}"))
+        assertEquals(listOf("date"), paths.sortEnum("/api/v2/steps/daily"))
     }
 
     private fun ApplicationTestBuilder.configureTestApplication() {

@@ -1,5 +1,6 @@
 package me.aquitano.health.application.metric.steps.repository
 
+import me.aquitano.health.application.metric.common.keysetFetchLimit
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.application.metric.common.repository.DailyReadFilters
@@ -129,7 +130,7 @@ class CanonicalStepDerivationRepository : BaseMetricRepository() {
                 CanonicalStepSamplesTable.startAt to filters.sortOrder(),
                 StepSamplesTable.id to filters.sortOrder(),
             )
-            .limit(filters.limit + 1)
+            .limit(keysetFetchLimit(filters.limit))
             .map(::toJoinedStepSampleRow)
         return rows to sourceMetadata(rows.map { it.sourceInstanceId }.toSet(), filters.includeSource)
     }
@@ -157,7 +158,7 @@ class CanonicalStepDerivationRepository : BaseMetricRepository() {
                 StepDailySummariesTable.date to filters.sortOrder(),
                 StepDailySummariesTable.id to filters.sortOrder(),
             )
-            .limit(filters.limit + 1)
+            .limit(keysetFetchLimit(filters.limit))
             .map {
                 StepDailySummaryRow(
                     id = it[StepDailySummariesTable.id].value,

@@ -5,7 +5,10 @@ import me.aquitano.health.api.dto.IngestionBatchAdminResponse
 import me.aquitano.health.api.dto.IngestionBatchDetailResponse
 import me.aquitano.health.api.dto.IngestionBatchesResponse
 import me.aquitano.health.api.dto.IngestionRecordAdminResponse
+import me.aquitano.health.api.dto.ReadResponseMeta
 import me.aquitano.health.application.metric.common.QueryParams
+import me.aquitano.health.application.metric.common.keysetFetchLimit
+import me.aquitano.health.application.metric.common.keysetPage
 import me.aquitano.health.application.metric.common.validateRange
 import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.domain.RequestValidationException
@@ -41,10 +44,22 @@ class AdminService(
         val from = params.instant("from")
         val to = params.instant("to")
         validateRange(from, to, "from", "to")
+        val sort = "receivedAt"
+        val order = "desc"
+        val cursor = params.cursor(sort, order)
         val limit = params.limit(default = 100, max = 1000)
         return dbQuery {
+            val page = ingestionRepository
+                .listBatches(status, from, to, keysetFetchLimit(limit), cursor)
+                .keysetPage(
+                    limit = limit,
+                    sort = sort,
+                    order = order,
+                    sortValue = { it.receivedAt },
+                    id = { it.id.toLong() },
+                )
             IngestionBatchesResponse(
-                items = ingestionRepository.listBatches(status, from, to, limit)
+                items = page.items
                     .map {
                         IngestionBatchAdminResponse(
                             id = it.id,
@@ -59,6 +74,13 @@ class AdminService(
                             recordCount = it.recordCount,
                         )
                     },
+                meta = ReadResponseMeta(
+                    count = page.items.size,
+                    limit = limit,
+                    sort = sort,
+                    order = order,
+                    nextCursor = page.nextCursor,
+                ),
             )
         }
     }
@@ -137,6 +159,6 @@ class AdminService(
 }
 
 fun QueryParams.asMap(): Map<String, String?> {
-    val names = listOf("status", "from", "to", "limit")
+    val names = listOf("status", "from", "to", "limit", "cursor")
     return names.associateWith { optional(it) }
 }
