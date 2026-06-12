@@ -97,6 +97,11 @@ fun Application.module() {
     val services = buildApplicationServices()
     configureHttp(corsConfig = appConfig.cors)
     configureMetrics(appConfig = appConfig, sharedHttpClient = httpClient)
+    configureAuthentication(
+        supportRepository = services.supportRepository,
+        apiKeyHasher = services.apiKeyHasher,
+        clock = services.clock,
+    )
     configureRoutes(services = services)
 }
 
