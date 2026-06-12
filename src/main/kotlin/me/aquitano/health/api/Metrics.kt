@@ -1,3 +1,5 @@
+@file:OptIn(io.ktor.utils.io.ExperimentalKtorApi::class)
+
 package me.aquitano.health.api
 
 import io.ktor.client.*
@@ -13,6 +15,7 @@ import io.ktor.server.application.*
 import io.ktor.server.metrics.micrometer.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import io.ktor.server.routing.openapi.*
 import io.micrometer.prometheusmetrics.*
 import kotlinx.coroutines.*
 import me.aquitano.health.infrastructure.config.AppConfig
@@ -48,9 +51,10 @@ fun Application.configureMetrics(appConfig: AppConfig, sharedHttpClient: HttpCli
     }
 
     routing {
+        // Prometheus scrape endpoint; infrastructure-only, kept out of the OpenAPI contract.
         get("/metrics") {
             call.respondText(registry.scrape())
-        }
+        }.hide()
     }
 
     val url = appConfig.openObserve.url
