@@ -1,5 +1,6 @@
 import { db } from "@aqt-gallery/db";
 import { artwork, artworkTag, tag } from "@aqt-gallery/db/schema/gallery";
+import { TRPCError } from "@trpc/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
@@ -58,7 +59,10 @@ export const tagsRouter = router({
 				.limit(1);
 
 			if (!ownedRows[0]) {
-				return [];
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Artwork not found",
+				});
 			}
 
 			const tagIds = [];

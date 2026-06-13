@@ -17,19 +17,57 @@ import { importMediaFromUrls, uploadErrorResponse } from "../../media/upload";
 import { protectedProcedure, router } from "../index";
 import { artworkTypes } from "./gallery-helpers";
 
+/**
+ * Every editable field is optional so a caller can patch a subset (an agent
+ * setting only `description` and `funFacts`, say) without touching the rest.
+ * A field that is *present and null* clears the column; a field that is
+ * *absent* leaves it untouched. The web detail editor always sends the full
+ * set, so its behaviour is unchanged.
+ */
 const artworkUpdateSchema = z.object({
 	id: z.string().min(1),
-	title: z.string().min(1),
+	title: z.string().min(1).optional(),
 	artist: z.string().nullable().optional(),
-	artworkType: z.enum(artworkTypes),
+	artworkType: z.enum(artworkTypes).optional(),
 	year: z.string().nullable().optional(),
+	medium: z.string().nullable().optional(),
+	dimensions: z.string().nullable().optional(),
 	seenAt: z.string().nullable().optional(),
 	rating: z.number().int().min(0).max(5).nullable().optional(),
 	review: z.string().nullable().optional(),
 	thoughts: z.string().nullable().optional(),
 	description: z.string().nullable().optional(),
+	story: z.string().nullable().optional(),
+	funFacts: z.array(z.string()).nullable().optional(),
 	sourceUrl: z.string().nullable().optional(),
 });
+
+type ArtworkUpdateInput = z.infer<typeof artworkUpdateSchema>;
+
+/** Maps a (partial) update input to the Drizzle `set` object, including only
+ * the keys the caller actually provided. */
+function artworkSetValues(
+	input: ArtworkUpdateInput,
+): Partial<typeof artwork.$inferInsert> {
+	const set: Partial<typeof artwork.$inferInsert> = {};
+	if (input.title !== undefined) set.title = input.title;
+	if (input.artist !== undefined) set.artist = input.artist;
+	if (input.artworkType !== undefined) set.artworkType = input.artworkType;
+	if (input.year !== undefined) set.year = input.year;
+	if (input.medium !== undefined) set.medium = input.medium;
+	if (input.dimensions !== undefined) set.dimensions = input.dimensions;
+	if (input.seenAt !== undefined) {
+		set.seenAt = input.seenAt ? new Date(input.seenAt) : null;
+	}
+	if (input.rating !== undefined) set.rating = input.rating;
+	if (input.review !== undefined) set.review = input.review;
+	if (input.thoughts !== undefined) set.thoughts = input.thoughts;
+	if (input.description !== undefined) set.description = input.description;
+	if (input.story !== undefined) set.story = input.story;
+	if (input.funFacts !== undefined) set.funFacts = input.funFacts;
+	if (input.sourceUrl !== undefined) set.sourceUrl = input.sourceUrl;
+	return set;
+}
 
 export const artworksRouter = router({
 	list: protectedProcedure
@@ -221,26 +259,37 @@ export const artworksRouter = router({
 		.input(artworkUpdateSchema)
 		.mutation(async ({ ctx, input }) => {
 			const userId = ctx.session.user.id;
-			const seenAt = input.seenAt ? new Date(input.seenAt) : null;
+			const setValues = artworkSetValues(input);
+			const where = and(eq(artwork.id, input.id), eq(artwork.userId, userId));
+
+			// Nothing to change (id only) — return the current row instead of
+			// asking Drizzle to run an empty `set`, which would throw.
+			if (Object.keys(setValues).length === 0) {
+				const rows = await db.select().from(artwork).where(where).limit(1);
+				if (!rows[0]) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Artwork not found",
+					});
+				}
+				return rows[0];
+			}
 
 			const rows = await db
 				.update(artwork)
-				.set({
-					title: input.title,
-					artist: input.artist ?? null,
-					artworkType: input.artworkType,
-					year: input.year ?? null,
-					seenAt,
-					rating: input.rating ?? null,
-					review: input.review ?? null,
-					thoughts: input.thoughts ?? null,
-					description: input.description ?? null,
-					sourceUrl: input.sourceUrl ?? null,
-				})
-				.where(and(eq(artwork.id, input.id), eq(artwork.userId, userId)))
+				.set(setValues)
+				.where(where)
 				.returning();
 
-			return rows[0] ?? null;
+			// A write that matched no owned row is a failure, not a no-op — so an
+			// agent calling update_artwork with a wrong id sees an error.
+			if (!rows[0]) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Artwork not found",
+				});
+			}
+			return rows[0];
 		}),
 
 	delete: protectedProcedure
@@ -260,20 +309,11 @@ export const artworksRouter = router({
 			const updated = [];
 
 			for (const item of input.artworks) {
+				const setValues = artworkSetValues(item);
+				if (Object.keys(setValues).length === 0) continue;
 				const rows = await db
 					.update(artwork)
-					.set({
-						title: item.title,
-						artist: item.artist ?? null,
-						artworkType: item.artworkType,
-						year: item.year ?? null,
-						seenAt: item.seenAt ? new Date(item.seenAt) : null,
-						rating: item.rating ?? null,
-						review: item.review ?? null,
-						thoughts: item.thoughts ?? null,
-						description: item.description ?? null,
-						sourceUrl: item.sourceUrl ?? null,
-					})
+					.set(setValues)
 					.where(and(eq(artwork.id, item.id), eq(artwork.userId, userId)))
 					.returning();
 				if (rows[0]) {
@@ -372,7 +412,10 @@ export const artworksRouter = router({
 				.limit(1);
 
 			if (!ownedRows[0]) {
-				return [];
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Artwork not found",
+				});
 			}
 
 			await db
