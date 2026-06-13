@@ -12,9 +12,9 @@
 
 .panel {
   overflow: hidden;
+  border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--bg-panel);
-  box-shadow: var(--shadow-sm);
 }
 
 .panelHeader {
@@ -54,9 +54,10 @@
 .metaItem dt,
 .metaItemWide dt {
   color: var(--fg-dim);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -75,10 +76,11 @@
   min-height: 22px;
   padding: 0 var(--s-2);
   border-radius: var(--r-full);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(148, 168, 196, 0.08);
   color: var(--fg-muted);
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
 }
 
 .statusProcessed {

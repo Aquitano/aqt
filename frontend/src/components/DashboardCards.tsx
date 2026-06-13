@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+import { AnimatedNumber } from "@/components/motion/AnimatedNumber";
 import { formatDuration, formatMeasurement, formatNumber } from "@/lib/format";
 import type { DashboardSummaryResponse, DashboardTrendsResponse } from "@/lib/types";
 import styles from "./DashboardCards.module.css";
@@ -92,17 +94,23 @@ export function DashboardCards({ summary, trends }: DashboardCardsProps) {
 
   return (
     <section className={styles.cards} aria-label="Dashboard summary">
-      {cards.map((card) => (
-        <article className={styles.card} key={card.label} data-kind={card.kind}>
-          <div className={styles.icon}>{card.icon}</div>
-          <div className={styles.body}>
+      {cards.map((card, index) => (
+        <article
+          className={styles.card}
+          key={card.label}
+          data-kind={card.kind}
+          data-reveal
+          style={{ "--reveal-i": index } as CSSProperties}
+        >
+          <div className={styles.top}>
             <span className={styles.label}>{card.label}</span>
-            <span className={styles.value}>{card.value}</span>
-            <span className={styles.detail}>
-              {card.detail}
-              <TrendBadge percentChange={card.trend} />
-            </span>
+            <div className={styles.icon}>{card.icon}</div>
           </div>
+          <AnimatedNumber className={styles.value} value={card.value} />
+          <span className={styles.detail}>
+            {card.detail}
+            <TrendBadge percentChange={card.trend} />
+          </span>
         </article>
       ))}
     </section>

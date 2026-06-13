@@ -119,13 +119,13 @@ export function HealthMetricChart({
         {isClient ? (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 10, right: 18, bottom: 8, left: -12 }}>
-              <CartesianGrid stroke="rgba(255,255,255,0.07)" vertical={false} />
+              <CartesianGrid stroke="rgba(148,168,196,0.08)" vertical={false} />
               <XAxis
                 dataKey="label"
                 minTickGap={28}
                 tick={{ fill: "var(--fg-dim)", fontSize: 11 }}
                 tickLine={false}
-                axisLine={{ stroke: "rgba(255,255,255,0.12)" }}
+                axisLine={{ stroke: "rgba(148,168,196,0.14)" }}
               />
               <YAxis
                 width={52}
@@ -137,12 +137,12 @@ export function HealthMetricChart({
               {referenceValue !== undefined ? (
                 <ReferenceLine
                   y={referenceValue}
-                  stroke="rgba(255,255,255,0.22)"
+                  stroke="rgba(148,168,196,0.25)"
                   strokeDasharray="4 4"
                   ifOverflow="extendDomain"
                 />
               ) : null}
-              <Tooltip content={<ChartTooltip series={series} />} cursor={{ stroke: "rgba(255,255,255,0.16)" }} />
+              <Tooltip content={<ChartTooltip series={series} />} cursor={{ stroke: "rgba(148,168,196,0.2)" }} />
               <Legend
                 verticalAlign="bottom"
                 content={() => (

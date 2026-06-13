@@ -1,8 +1,8 @@
 .details {
   margin-top: var(--s-4);
+  border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--bg-panel);
-  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 

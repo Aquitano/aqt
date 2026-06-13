@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { formatDateTime, formatDuration, formatMeasurement, formatNumber } from "@/lib/format";
 import type {
   ActivitySummaryLatestResponse,
@@ -75,8 +76,14 @@ export function MetricHighlights({
 
   return (
     <section className={styles.cards} aria-label="Latest expanded metrics">
-      {cards.map((card) => (
-        <article className={styles.card} data-kind={card.kind} key={card.kind}>
+      {cards.map((card, index) => (
+        <article
+          className={styles.card}
+          data-kind={card.kind}
+          key={card.kind}
+          data-reveal
+          style={{ "--reveal-i": index } as CSSProperties}
+        >
           <span className={styles.label}>{card.label}</span>
           <span className={styles.value}>{card.value}</span>
           <span className={styles.detail}>{card.detail}</span>

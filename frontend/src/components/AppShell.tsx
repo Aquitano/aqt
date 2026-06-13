@@ -1,14 +1,16 @@
 "use client";
 
+import { Activity, Database, PlugZap, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import styles from "./AppShell.module.css";
 
 const navItems = [
-  { href: "/health-data", label: "Health Data" },
-  { href: "/provider-sync", label: "Provider Sync" },
-  { href: "/ingestions", label: "Ingestions" },
+  { href: "/health-data", label: "Health Data", icon: Activity },
+  { href: "/trends", label: "Trends", icon: TrendingUp },
+  { href: "/provider-sync", label: "Provider Sync", icon: PlugZap },
+  { href: "/ingestions", label: "Ingestions", icon: Database },
 ];
 
 type AppShellProps = {
@@ -20,15 +22,20 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div className={styles.shell}>
-      <header className={styles.header}>
+      <aside className={styles.rail}>
         <Link className={styles.brand} href="/health-data">
-          <span className={styles.brandMark}>aqt</span>
-          <span className={styles.brandText}>health</span>
+          <span className={styles.brandPulse} aria-hidden="true" />
+          <span className={styles.brandName}>
+            aqt<em>health</em>
+          </span>
         </Link>
+
         <nav className={styles.nav} aria-label="Primary navigation">
           {navItems.map((item) => {
             const isActive =
-              pathname === item.href || (item.href !== "/health-data" && pathname.startsWith(item.href));
+              pathname === item.href ||
+              (item.href !== "/health-data" && pathname.startsWith(item.href));
+            const Icon = item.icon;
 
             return (
               <Link
@@ -37,12 +44,16 @@ export function AppShell({ children }: AppShellProps) {
                 href={item.href}
                 key={item.href}
               >
-                {item.label}
+                <Icon className={styles.navIcon} size={17} strokeWidth={2} aria-hidden="true" />
+                <span>{item.label}</span>
               </Link>
             );
           })}
         </nav>
-      </header>
+
+        <p className={styles.railFoot}>local health hub</p>
+      </aside>
+
       <main className={styles.content}>{children}</main>
     </div>
   );

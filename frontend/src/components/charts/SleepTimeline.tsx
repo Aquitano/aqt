@@ -10,11 +10,11 @@ type SleepTimelineProps = {
 
 const stageClass: Record<string, string> = {
   awake: "var(--warning)",
-  restless: "#c9875b",
-  asleep: "#7a92ff",
-  light: "#5bb8a4",
-  deep: "#4f6edb",
-  rem: "#b477d9",
+  restless: "#d99a6c",
+  asleep: "#8b9dff",
+  light: "#45d6a4",
+  deep: "#5d77e8",
+  rem: "#b88be0",
   unknown: "var(--fg-muted)",
 };
 

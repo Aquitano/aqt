@@ -1,9 +1,15 @@
 .section {
+  border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--bg-panel);
-  box-shadow: var(--shadow-sm);
   overflow: hidden;
-  transition: box-shadow var(--ease);
+  transition: border-color var(--dur-base) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .section:hover {
+    border-color: var(--border-strong);
+  }
 }
 
 .heading {
@@ -15,16 +21,17 @@
 }
 
 .heading h2 {
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   font-weight: 600;
-  color: var(--fg);
 }
 
 .count {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--fg-dim);
-  background: var(--bg-inset);
-  padding: 2px 8px;
+  padding: 2px 9px;
   border-radius: var(--r-full);
+  background: var(--bg-elevated);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }

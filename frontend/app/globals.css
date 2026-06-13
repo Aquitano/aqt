@@ -1,34 +1,46 @@
 /* ── Design tokens ─────────────────────────────────────────── */
 :root {
-  /* Surfaces */
-  --bg-root: #0f1117;
-  --bg-panel: #181b23;
-  --bg-panel-hover: #1e2230;
-  --bg-inset: #12141b;
-  --bg-input: #12141b;
+  /* Surfaces — deep blue-black canvas with layered panels */
+  --bg-root: #07090e;
+  --bg-panel: #0d1118;
+  --bg-panel-hover: #131826;
+  --bg-inset: #0a0d13;
+  --bg-input: #0a0d13;
+  --bg-elevated: #161c2a;
 
   /* Borders */
-  --border: rgba(255, 255, 255, 0.07);
-  --border-focus: rgba(109, 194, 176, 0.45);
+  --border: rgba(148, 168, 196, 0.1);
+  --border-strong: rgba(148, 168, 196, 0.18);
+  --border-focus: rgba(69, 214, 164, 0.5);
 
   /* Foreground */
-  --fg: #e4e6eb;
-  --fg-muted: #8b8f9a;
-  --fg-dim: #5c5f6b;
-  --fg-inverse: #0f1117;
+  --fg: #e8ecf3;
+  --fg-muted: #8a93a5;
+  --fg-dim: #5a6275;
+  --fg-inverse: #07090e;
 
-  /* Accents */
-  --accent: #5bb8a4;
-  --accent-hover: #6dcdb7;
-  --accent-subtle: rgba(91, 184, 164, 0.12);
-  --accent-fg: #0f1117;
+  /* Accent — bioluminescent mint */
+  --accent: #45d6a4;
+  --accent-hover: #63e6ba;
+  --accent-subtle: rgba(69, 214, 164, 0.12);
+  --accent-fg: #04130d;
+  --accent-glow: rgba(69, 214, 164, 0.35);
 
   /* Semantic */
-  --success: #5bb8a4;
-  --danger: #d46a6a;
-  --danger-subtle: rgba(212, 106, 106, 0.12);
-  --warning: #d4a94a;
-  --warning-subtle: rgba(212, 169, 74, 0.12);
+  --success: #45d6a4;
+  --danger: #f2786d;
+  --danger-subtle: rgba(242, 120, 109, 0.12);
+  --warning: #eab265;
+  --warning-subtle: rgba(234, 178, 101, 0.12);
+
+  /* Metric hues */
+  --hue-steps: #eab265;
+  --hue-heart: #f2786d;
+  --hue-sleep: #8b9dff;
+  --hue-weight: #45d6a4;
+  --hue-resp: #5ec9e8;
+  --hue-hrv: #a3d977;
+  --hue-bp: #e87ba0;
 
   /* Spacing */
   --s-1: 4px;
@@ -42,23 +54,31 @@
   --s-12: 48px;
 
   /* Radius */
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 16px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-4: 16px;
   --r-full: 9999px;
 
   /* Elevation */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.25);
 
-  /* Transitions */
-  --ease: 150ms ease;
+  /* Motion — strong curves, crisp durations */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-fast: 140ms;
+  --dur-base: 200ms;
+  --dur-slow: 280ms;
+  --ease: var(--dur-fast) var(--ease-out);
 
   /* Typography */
-  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
     'Segoe UI', sans-serif;
-  --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
+  --font-display: var(--font-grotesk), var(--font-sans);
+  --font-mono: var(--font-jetbrains), 'Cascadia Code', ui-monospace, monospace;
 }
 
 /* ── Reset ────────────────────────────────────────────────── */
@@ -73,14 +93,30 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  color-scheme: dark;
 }
 
 body {
+  position: relative;
+  min-height: 100dvh;
   background: var(--bg-root);
   color: var(--fg);
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.55;
+}
+
+/* Aurora wash — fixed, decorative, behind everything */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(56% 38% at 18% -6%, rgba(69, 214, 164, 0.09), transparent 70%),
+    radial-gradient(48% 36% at 82% -10%, rgba(139, 157, 255, 0.08), transparent 70%),
+    radial-gradient(60% 50% at 50% 110%, rgba(94, 201, 232, 0.04), transparent 70%);
 }
 
 button,
@@ -91,6 +127,14 @@ textarea {
   color: inherit;
 }
 
+button {
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
 a {
   color: var(--accent);
   text-decoration: none;
@@ -98,6 +142,16 @@ a {
 
 a:hover {
   text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+::selection {
+  background: rgba(69, 214, 164, 0.25);
 }
 
 /* ── Scrollbar ────────────────────────────────────────────── */
@@ -121,7 +175,7 @@ a:hover {
 
 /* ── Page shell ───────────────────────────────────────────── */
 .page {
-  width: min(1120px, calc(100% - var(--s-8)));
+  width: min(1180px, calc(100% - var(--s-8)));
   margin: 0 auto;
   padding: var(--s-8) 0 var(--s-12);
 }
@@ -139,6 +193,13 @@ a:hover {
   border: 0;
 }
 
+/* numerals across data UI read as instrument output */
+.num,
+td,
+dd {
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Page header ──────────────────────────────────────────── */
 .hero {
   display: flex;
@@ -150,26 +211,30 @@ a:hover {
 
 .eyebrow {
   margin: 0 0 var(--s-1);
-  color: var(--fg-dim);
-  font-size: 0.75rem;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 h1 {
   margin: 0;
-  font-size: clamp(1.8rem, 5vw, 2.8rem);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 5vw, 2.6rem);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
   color: var(--fg);
 }
 
 h2 {
   margin: 0;
-  font-size: 0.875rem;
+  font-family: var(--font-display);
+  font-size: 0.92rem;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--fg);
 }
 
@@ -177,7 +242,7 @@ h2 {
 .grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--s-3);
+  gap: var(--s-4);
 }
 
 /* ── Notice (warning) ─────────────────────────────────────── */
@@ -188,7 +253,7 @@ h2 {
   margin: var(--s-3) 0;
   padding: var(--s-3) var(--s-4);
   border-radius: var(--r-md);
-  border-left: 3px solid var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
   background: var(--warning-subtle);
   color: var(--warning);
   font-size: 0.82rem;
@@ -205,5 +270,39 @@ h2 {
   .hero {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+/* ── Entrance reveals ─────────────────────────────────────── */
+/* One-shot CSS animation: fires at first paint, needs no JS, and never
+   fights module hover transitions. Stagger via --reveal-i. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-reveal] {
+    animation: reveal-in 540ms var(--ease-out) both;
+    animation-delay: calc(var(--reveal-i, 0) * 55ms);
+  }
+}
+
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* ── Reduced motion ───────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

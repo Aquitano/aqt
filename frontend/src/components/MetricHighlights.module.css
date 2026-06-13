@@ -1,53 +1,44 @@
 .cards {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--s-4);
-  margin: var(--s-6) 0;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--s-3);
+  margin: var(--s-3) 0 0;
 }
 
 .card {
+  --hue: var(--accent);
   position: relative;
   overflow: hidden;
-  min-height: 132px;
-  padding: var(--s-5);
+  min-width: 0;
+  min-height: 116px;
+  padding: var(--s-4);
   border: 1px solid var(--border);
-  border-radius: var(--r-4);
+  border-radius: var(--r-md);
   background:
-    radial-gradient(circle at top right, rgba(127, 212, 196, 0.16), transparent 34%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018));
-  box-shadow: var(--shadow-soft);
+    radial-gradient(110% 80% at 80% -20%, color-mix(in srgb, var(--hue) 8%, transparent), transparent 60%),
+    var(--bg-panel);
+  transition: border-color var(--dur-base) var(--ease-out);
 }
 
-.card::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  background: var(--accent);
+@media (hover: hover) and (pointer: fine) {
+  .card:hover {
+    border-color: color-mix(in srgb, var(--hue) 30%, var(--border));
+  }
 }
 
-.card[data-kind="activity"]::before {
-  background: #d4a94a;
-}
-
-.card[data-kind="sleep"]::before {
-  background: #8fa2ff;
-}
-
-.card[data-kind="respiratory"]::before {
-  background: #67c7e8;
-}
-
-.card[data-kind="hrv"]::before {
-  background: #9dcf7a;
-}
+.card[data-kind="blood-pressure"] { --hue: var(--hue-bp); }
+.card[data-kind="activity"] { --hue: var(--hue-steps); }
+.card[data-kind="sleep"] { --hue: var(--hue-sleep); }
+.card[data-kind="respiratory"] { --hue: var(--hue-resp); }
+.card[data-kind="hrv"] { --hue: var(--hue-hrv); }
 
 .label {
   display: block;
   color: var(--fg-dim);
-  font-size: 0.76rem;
-  font-weight: 700;
-  letter-spacing: 0;
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -55,17 +46,26 @@
   display: block;
   margin-top: var(--s-2);
   color: var(--fg);
-  font-size: 1.8rem;
-  font-weight: 800;
-  letter-spacing: 0;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
 }
 
 .detail {
   display: block;
   margin-top: var(--s-2);
   color: var(--fg-muted);
-  font-size: 0.82rem;
-  line-height: 1.4;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 1180px) {
+  .cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 980px) {

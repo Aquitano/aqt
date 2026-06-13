@@ -154,6 +154,17 @@ export type HealthDataPageData = HealthStatusData & {
   metricCatalog: ApiResult<MetricCatalogResponse>;
 };
 
+export type TrendsPageData = HealthStatusData & {
+  fromDate: string;
+  toDate: string;
+  weight: ApiResult<BodyMeasurementsResponse>;
+  steps: ApiResult<StepDailySummariesResponse>;
+  sleep: ApiResult<SleepSummariesResponse>;
+  hrv: ApiResult<HrvSamplesResponse>;
+  activity: ApiResult<ActivitySummariesResponse>;
+  respiratory: ApiResult<RespiratoryRateSamplesResponse>;
+};
+
 export type ProviderSyncPageData = HealthStatusData & {
   providerCatalog: ApiResult<ProviderCatalogResponse>;
   providerStatuses: ApiResult<ProviderStatusCatalogResponse>;

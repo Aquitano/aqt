@@ -24,11 +24,11 @@ import type {
 import styles from "./HealthDataVisualizations.module.css";
 
 const bodyMetricConfig: Record<string, { label: string; color: string }> = {
-  weight: { label: "Weight", color: "#7fd4c4" },
-  body_fat: { label: "Body fat", color: "#f2b36d" },
-  muscle: { label: "Muscle", color: "#8fa2ff" },
-  water: { label: "Water", color: "#67c7e8" },
-  visceral_fat: { label: "Visceral fat", color: "#d46a6a" },
+  weight: { label: "Weight", color: "#45d6a4" },
+  body_fat: { label: "Body fat", color: "#eab265" },
+  muscle: { label: "Muscle", color: "#8b9dff" },
+  water: { label: "Water", color: "#5ec9e8" },
+  visceral_fat: { label: "Visceral fat", color: "#f2786d" },
 };
 
 const bodyMetricOrder = ["weight", "body_fat", "muscle", "water", "visceral_fat"];
@@ -83,7 +83,7 @@ export function HealthDataVisualizations({
       metricKey: "heart_rate",
       label: "Heart rate",
       unit: "bpm",
-      color: "#d46a6a",
+      color: "#f2786d",
     }),
     [healthDay],
   );
@@ -97,7 +97,7 @@ export function HealthDataVisualizations({
   const dateLabel = `${fromDate} to ${toDate} (${timezone})`;
 
   return (
-    <section className={styles.section} aria-label="Health visualizations">
+    <section className={styles.section} aria-label="Health visualizations" data-reveal>
       <div className={styles.heading}>
         <div>
           <h2>Visual analytics</h2>
@@ -358,7 +358,7 @@ function buildStepsChart(items: StepDailySummariesResponse["items"]): Normalized
       source: sourceLabel(item.source),
     }));
 
-  return detailsToChart(details, [{ key: "steps", label: "Steps", color: "#d4a94a", unit: "steps" }], ["steps"]);
+  return detailsToChart(details, [{ key: "steps", label: "Steps", color: "#eab265", unit: "steps" }], ["steps"]);
 }
 
 function buildActivityChart(items: ActivitySummariesResponse["items"]): NormalizedChart {
@@ -415,10 +415,10 @@ function buildActivityChart(items: ActivitySummariesResponse["items"]): Normaliz
   return detailsToChart(
     details,
     [
-      { key: "distance", label: "Distance", color: "#d4a94a", unit: "km" },
-      { key: "active_energy", label: "Active energy", color: "#f2b36d", unit: "kcal" },
-      { key: "active_minutes", label: "Active minutes", color: "#7fd4c4", unit: "min" },
-      { key: "average_heart_rate", label: "Avg heart rate", color: "#d46a6a", unit: "bpm" },
+      { key: "distance", label: "Distance", color: "#eab265", unit: "km" },
+      { key: "active_energy", label: "Active energy", color: "#e87ba0", unit: "kcal" },
+      { key: "active_minutes", label: "Active minutes", color: "#45d6a4", unit: "min" },
+      { key: "average_heart_rate", label: "Avg heart rate", color: "#f2786d", unit: "bpm" },
     ],
     ["distance", "active_minutes"],
   );
@@ -466,7 +466,7 @@ function buildSleepChart(latestSleep?: SleepNightsResponse): NormalizedChart {
       source: sourceLabel(session.source),
     }));
 
-  return detailsToChart(details, [{ key: "sleep", label: "Sleep", color: "#8fa2ff", unit: "h" }], ["sleep"]);
+  return detailsToChart(details, [{ key: "sleep", label: "Sleep", color: "#8b9dff", unit: "h" }], ["sleep"]);
 }
 
 function buildSleepSummaryChart(items: SleepSummariesResponse["items"]): NormalizedChart {
@@ -522,10 +522,10 @@ function buildSleepSummaryChart(items: SleepSummariesResponse["items"]): Normali
   return detailsToChart(
     details,
     [
-      { key: "sleep_score", label: "Sleep score", color: "#8fa2ff", unit: "score" },
-      { key: "sleep_efficiency", label: "Efficiency", color: "#67c7e8", unit: "%" },
-      { key: "sleep_hours", label: "Sleep", color: "#7fd4c4", unit: "h" },
-      { key: "wakeups", label: "Wakeups", color: "#f2b36d", unit: "count" },
+      { key: "sleep_score", label: "Sleep score", color: "#8b9dff", unit: "score" },
+      { key: "sleep_efficiency", label: "Efficiency", color: "#5ec9e8", unit: "%" },
+      { key: "sleep_hours", label: "Sleep", color: "#45d6a4", unit: "h" },
+      { key: "wakeups", label: "Wakeups", color: "#eab265", unit: "count" },
     ],
     ["sleep_score", "sleep_efficiency"],
   );
@@ -546,7 +546,7 @@ function buildRespiratoryRateChart(items: RespiratoryRateSamplesResponse["items"
 
   return detailsToChart(
     details,
-    [{ key: "respiratory_rate", label: "Respiratory rate", color: "#67c7e8", unit: items[0]?.unit }],
+    [{ key: "respiratory_rate", label: "Respiratory rate", color: "#5ec9e8", unit: items[0]?.unit }],
     ["respiratory_rate"],
   );
 }
@@ -570,7 +570,7 @@ function buildHrvChart(items: HrvSamplesResponse["items"]): NormalizedChart {
     presentMetricKeys.map((metricKey, index) => ({
       key: metricKey,
       label: metricKey.toUpperCase(),
-      color: ["#9dcf7a", "#7fd4c4", "#8fa2ff"][index % 3],
+      color: ["#a3d977", "#45d6a4", "#8b9dff"][index % 3],
       unit: items.find((item) => item.metricType === metricKey)?.unit,
     })),
     presentMetricKeys.length ? [presentMetricKeys[0]] : [],

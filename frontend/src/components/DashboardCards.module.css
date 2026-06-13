@@ -2,100 +2,119 @@
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--s-3);
-  margin: var(--s-4) 0;
+  margin: var(--s-4) 0 0;
 }
 
 .card {
+  --hue: var(--accent);
+  position: relative;
   display: flex;
-  gap: var(--s-4);
+  flex-direction: column;
+  gap: var(--s-1);
+  overflow: hidden;
   padding: var(--s-4) var(--s-5);
-  border-radius: var(--r-md);
-  background: var(--bg-panel);
-  box-shadow: var(--shadow-sm);
-  border-left: 3px solid var(--border);
-  transition: box-shadow var(--ease), border-color var(--ease);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background:
+    radial-gradient(120% 90% at 50% -30%, color-mix(in srgb, var(--hue) 9%, transparent), transparent 60%),
+    var(--bg-panel);
+  transition:
+    border-color var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
 }
 
-.card:hover {
-  box-shadow: var(--shadow-md);
+@media (hover: hover) and (pointer: fine) {
+  .card:hover {
+    border-color: color-mix(in srgb, var(--hue) 35%, var(--border));
+    transform: translateY(-2px);
+  }
 }
 
-.card[data-kind="steps"] { border-left-color: var(--accent); }
-.card[data-kind="weight"] { border-left-color: #7c8cf5; }
-.card[data-kind="heart"] { border-left-color: #e07878; }
-.card[data-kind="sleep"] { border-left-color: #a78bda; }
+.card[data-kind="steps"] { --hue: var(--hue-steps); }
+.card[data-kind="weight"] { --hue: var(--hue-weight); }
+.card[data-kind="heart"] { --hue: var(--hue-heart); }
+.card[data-kind="sleep"] { --hue: var(--hue-sleep); }
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
 
 .icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--r-sm);
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
-  color: var(--fg-muted);
-}
-
-.card[data-kind="steps"] .icon { background: rgba(91, 184, 164, 0.10); color: var(--accent); }
-.card[data-kind="weight"] .icon { background: rgba(124, 140, 245, 0.10); color: #7c8cf5; }
-.card[data-kind="heart"] .icon { background: rgba(224, 120, 120, 0.10); color: #e07878; }
-.card[data-kind="sleep"] .icon { background: rgba(167, 139, 218, 0.10); color: #a78bda; }
-
-.body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--hue) 10%, transparent);
+  color: var(--hue);
 }
 
 .label {
-  font-size: 0.7rem;
-  font-weight: 500;
   color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
   color: var(--fg);
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 
 .detail {
-  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
   color: var(--fg-muted);
+  font-size: 0.74rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .trend {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  margin-left: 8px;
-  padding: 1px 6px;
-  border-radius: var(--r-sm);
-  font-size: 0.7rem;
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: var(--r-full);
+  font-size: 0.68rem;
   font-weight: 600;
-  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
   background: var(--bg-elevated);
   color: var(--fg-muted);
 }
+
 .trend[data-direction="up"] {
-  background: rgba(91, 184, 164, 0.15);
-  color: #3daa8e;
+  background: var(--accent-subtle);
+  color: var(--accent);
 }
+
 .trend[data-direction="down"] {
-  background: rgba(224, 120, 120, 0.15);
-  color: #c45a5a;
+  background: var(--danger-subtle);
+  color: var(--danger);
 }
+
 .trend[data-direction="neutral"] {
-  background: rgba(148, 163, 184, 0.15);
+  background: rgba(148, 163, 184, 0.12);
   color: var(--fg-dim);
 }
+
 @media (max-width: 900px) {
   .cards {
     grid-template-columns: repeat(2, 1fr);

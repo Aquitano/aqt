@@ -1,7 +1,7 @@
 .panel {
+  border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--bg-panel);
-  box-shadow: var(--shadow-sm);
   overflow: hidden;
   margin-bottom: var(--s-4);
 }
@@ -15,19 +15,20 @@
 }
 
 .heading h2 {
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   font-weight: 600;
 }
 
 .statusPill {
   padding: 3px var(--s-2);
   border: 1px solid var(--border);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-full);
   color: var(--fg-muted);
   background: var(--bg-input);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -51,13 +52,16 @@
   color: var(--fg);
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--ease), background var(--ease);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .providerTab:hover,
 .providerTabActive {
   border-color: var(--border-focus);
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg-input));
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-input));
 }
 
 .providerTab span,
@@ -69,9 +73,10 @@
 .providerTab small,
 .providerTabActive small {
   color: var(--fg-muted);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -107,9 +112,12 @@
   background: var(--bg-panel);
   color: var(--fg);
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
-  transition: background var(--ease), opacity var(--ease);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .secondaryButton {
@@ -120,9 +128,12 @@
   background: var(--bg-input);
   color: var(--fg);
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
-  transition: background var(--ease), opacity var(--ease);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .secondaryButton:hover:not(:disabled) {
@@ -186,9 +197,10 @@
 
 .accountMeta dt {
   color: var(--fg-dim);
-  font-size: 0.64rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -233,11 +245,12 @@
 }
 
 .fieldLabel {
-  font-size: 0.7rem;
-  font-weight: 500;
   color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .input {
@@ -248,7 +261,7 @@
   background: var(--bg-input);
   color: var(--fg);
   font-size: 0.82rem;
-  transition: border-color var(--ease);
+  transition: border-color var(--dur-fast) var(--ease-out);
   color-scheme: dark;
 }
 
@@ -266,12 +279,13 @@
 }
 
 .legend {
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: var(--fg-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   padding: 0 var(--s-1);
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .checkboxRow {
@@ -307,7 +321,10 @@
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background var(--ease), opacity var(--ease);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -328,9 +345,9 @@
   gap: var(--s-2);
   margin: 0 var(--s-4) var(--s-3);
   padding: var(--s-3);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
   border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg-panel));
 }
 
 .progressHeader {
@@ -361,15 +378,16 @@
   position: relative;
   overflow: hidden;
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--r-full);
   background: var(--bg-input);
 }
 
 .progressFill {
   height: 100%;
   border-radius: inherit;
-  background: var(--accent);
-  transition: width 220ms ease;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  box-shadow: 0 0 10px var(--accent-glow);
+  transition: width 220ms var(--ease-out);
 }
 
 .progressMeta {
@@ -378,6 +396,7 @@
   gap: var(--s-3);
   color: var(--fg-muted);
   font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .progressMeta span:last-child {
@@ -393,11 +412,13 @@
   border: 2px solid rgba(0, 0, 0, 0.2);
   border-top-color: var(--accent-fg);
   border-radius: 50%;
-  animation: spin 0.6s linear infinite;
+  animation: spin 0.5s linear infinite;
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* result */
@@ -424,8 +445,8 @@
   gap: var(--s-3);
   margin: var(--s-3) var(--s-4);
   padding: var(--s-3) var(--s-4);
-  border-radius: var(--r-sm);
-  border-left: 3px solid var(--danger);
+  border-radius: var(--r-md);
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
   background: var(--danger-subtle);
   color: var(--danger);
   font-size: 0.82rem;

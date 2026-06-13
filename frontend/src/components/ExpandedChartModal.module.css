@@ -5,8 +5,16 @@
   display: grid;
   place-items: center;
   padding: var(--s-5);
-  background: rgba(4, 6, 10, 0.78);
+  background: rgba(3, 5, 9, 0.8);
   backdrop-filter: blur(10px);
+  opacity: 1;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+@starting-style {
+  .backdrop {
+    opacity: 0;
+  }
 }
 
 .dialog {
@@ -14,11 +22,23 @@
   flex-direction: column;
   width: min(1180px, 100%);
   max-height: min(920px, calc(100vh - var(--s-10)));
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
   background: var(--bg-root);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+
+@starting-style {
+  .dialog {
+    opacity: 0;
+    transform: scale(0.97) translateY(8px);
+  }
 }
 
 .header {
@@ -41,7 +61,8 @@
 .titleBlock p {
   margin-top: var(--s-1);
   color: var(--fg-muted);
-  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
 }
 
 .closeButton {
@@ -55,11 +76,15 @@
   background: var(--bg-inset);
   color: var(--fg-muted);
   cursor: pointer;
-  transition: background var(--ease), border-color var(--ease), color var(--ease);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .closeButton:hover {
-  border-color: var(--border-focus);
+  border-color: var(--border-strong);
   background: var(--bg-panel-hover);
   color: var(--fg);
 }
@@ -81,17 +106,20 @@
 
 .summaryItem dt {
   color: var(--fg-dim);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .summaryItem dd {
   margin: var(--s-1) 0 0;
   color: var(--fg);
+  font-family: var(--font-display);
   font-size: 0.94rem;
-  font-weight: 750;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -130,14 +158,16 @@
   z-index: 1;
   background: var(--bg-inset);
   color: var(--fg-dim);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .detailTable td {
   color: var(--fg);
+  font-variant-numeric: tabular-nums;
 }
 
 .detailTable td:last-child {

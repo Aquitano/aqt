@@ -3,8 +3,14 @@
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--bg-panel);
-  box-shadow: var(--shadow-sm);
   overflow: hidden;
+  transition: border-color var(--dur-base) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .panel:hover {
+    border-color: var(--border-strong);
+  }
 }
 
 .header {
@@ -27,7 +33,7 @@
 .titleBlock p {
   margin-top: var(--s-1);
   color: var(--fg-muted);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
 }
 
 .iconButton {
@@ -35,18 +41,22 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
-  background: var(--bg-inset);
-  color: var(--fg-muted);
+  background: transparent;
+  color: var(--fg-dim);
   cursor: pointer;
-  transition: background var(--ease), border-color var(--ease), color var(--ease);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .iconButton:hover {
-  border-color: var(--border-focus);
+  border-color: var(--border-strong);
   background: var(--bg-panel-hover);
   color: var(--fg);
 }
@@ -62,8 +72,8 @@
   min-height: 180px;
   border-radius: var(--r-sm);
   background:
-    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    linear-gradient(rgba(148, 168, 196, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 168, 196, 0.05) 1px, transparent 1px);
   background-size: 100% 25%, 16.66% 100%;
 }
 
@@ -80,21 +90,26 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 28px;
+  min-height: 26px;
   padding: 0 var(--s-2);
   border: 1px solid var(--border);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-full);
   background: transparent;
   color: var(--fg-dim);
-  font-size: 0.74rem;
-  font-weight: 650;
+  font-size: 0.72rem;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background var(--ease), border-color var(--ease), color var(--ease), opacity var(--ease);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .legendButtonActive {
-  background: var(--bg-inset);
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
   color: var(--fg);
 }
 
@@ -112,17 +127,18 @@
 .tooltip {
   max-width: 260px;
   padding: var(--s-3);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--bg-inset) 94%, black);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--bg-inset) 92%, black);
   box-shadow: var(--shadow-md);
 }
 
 .tooltipTitle {
   margin-bottom: var(--s-2);
   color: var(--fg);
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
 }
 
 .tooltipRow {
@@ -141,6 +157,7 @@
 .tooltipRow strong {
   color: var(--fg);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .tooltipRow small {

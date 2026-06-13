@@ -12,6 +12,7 @@ import type {
   ProviderAccountListResponse,
   ProviderAccountStatus,
   ProviderSyncPageData,
+  TrendsPageData,
   ProviderStatusCatalogResponse,
   ProviderSyncRequest,
   ProviderSyncJobStartResponse,
@@ -24,6 +25,7 @@ import type {
  } from "./types";
 import { createAqtHealthClient } from "./aqtHealthClient";
 import {
+  addUtcDays,
   dateOnlyToUtcInstant,
   dayAfterDateOnlyToUtcInstant,
 } from "./dates";
@@ -187,6 +189,61 @@ export async function getHealthDataPageData(
     extendedBodyMeasurements,
     latestExtendedBodyMeasurement,
     metricCatalog,
+  };
+}
+
+export async function getTrendsPageData(
+  toDate: string,
+  days: number,
+): Promise<TrendsPageData> {
+  const client = createAqtHealthClient();
+  const fromDate = addUtcDays(toDate, -(days - 1));
+  const from = dateOnlyToUtcInstant(fromDate);
+  const to = dayAfterDateOnlyToUtcInstant(toDate);
+  const sampleQuery = {
+    from,
+    to,
+    includeSource: true,
+    sort: "measuredAt" as const,
+    order: "asc" as const,
+    limit: 5000,
+  };
+
+  const [health, weight, steps, sleep, hrv, activity, respiratory] = await Promise.all([
+    client.getHealth(),
+    client.listBodyMeasurements(sampleQuery),
+    client.listDailyStepSummaries({ fromDate, toDate, includeSource: true }),
+    client.listSleepSummaries({
+      from,
+      to,
+      includeSource: true,
+      sort: "endAt",
+      order: "asc",
+      limit: 5000,
+    }),
+    client.listHrvSamples(sampleQuery),
+    client.listActivitySummaries({
+      fromDate,
+      toDate,
+      includeSource: true,
+      sort: "date",
+      order: "asc",
+      limit: 5000,
+    }),
+    client.listRespiratoryRateSamples(sampleQuery),
+  ]);
+
+  return {
+    apiBaseUrl: client.apiBaseUrl,
+    health,
+    fromDate,
+    toDate,
+    weight,
+    steps,
+    sleep,
+    hrv,
+    activity,
+    respiratory,
   };
 }
 

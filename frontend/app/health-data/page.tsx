@@ -1,9 +1,11 @@
 import { DashboardCards } from "@/components/DashboardCards";
 import { DataSection } from "@/components/DataSection";
 import { DateRangeForm } from "@/components/DateRangeForm";
+import { DebugDataPanel } from "@/components/DebugDataPanel";
 import { DayOverview } from "@/components/DayOverview";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { HealthDataVisualizations } from "@/components/HealthDataVisualizations";
+import { LoadingPulse } from "@/components/motion/LoadingPulse";
 import { MetricHighlights } from "@/components/MetricHighlights";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBar } from "@/components/StatusBar";
@@ -50,7 +52,7 @@ export default async function HealthDataPage({ searchParams }: PageProps) {
 
       {range.warning ? <div className="notice warning">{range.warning}</div> : null}
 
-      <Suspense fallback={<div className="notice">Loading health data...</div>}>
+      <Suspense fallback={<LoadingPulse />}>
         <HealthDataContent
           fromDate={range.fromDate}
           toDate={range.toDate}
@@ -129,7 +131,7 @@ async function HealthDataContent({
         timezone={timezone}
       />
 
-      <div className="grid">
+      <DebugDataPanel>
         <DataSection title="Daily steps" result={data.dailySteps}>
           {(response) => <DailyStepsTable items={response.items} />}
         </DataSection>
@@ -173,7 +175,7 @@ async function HealthDataContent({
         <DataSection title="Extended body metrics" result={data.extendedBodyMeasurements}>
           {(response) => <ExtendedBodyMeasurementsTable items={response.items} />}
         </DataSection>
-      </div>
+      </DebugDataPanel>
     </>
   );
 

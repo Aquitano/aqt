@@ -14,7 +14,7 @@ export function StatusBar({ apiBaseUrl, health, fromDate, toDate }: StatusBarPro
   const serviceTime = health.ok ? formatDateTime(health.data.time) : "n/a";
 
   return (
-    <section className={styles.bar} aria-label="Backend status">
+    <section className={styles.bar} aria-label="Backend status" data-reveal>
       <div className={styles.item}>
         <span className={styles.label}>Status</span>
         <div className={styles.statusItem}>

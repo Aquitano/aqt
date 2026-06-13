@@ -1,7 +1,7 @@
 .section {
   display: grid;
   gap: var(--s-3);
-  margin: var(--s-5) 0;
+  margin: var(--s-5) 0 0;
 }
 
 .heading {
@@ -9,16 +9,19 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--s-4);
+  margin-top: var(--s-2);
 }
 
 .heading h2 {
-  font-size: 1rem;
+  font-size: 1.05rem;
 }
 
 .heading p {
   margin-top: var(--s-1);
   color: var(--fg-dim);
-  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
 }
 
 .primaryGrid {
