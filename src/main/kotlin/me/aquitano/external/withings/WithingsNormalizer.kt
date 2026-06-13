@@ -257,10 +257,8 @@ class WithingsNormalizer {
                     )
                 }
 
-                // Emit extended body metrics
                 addAll(extendedMetrics)
 
-                // Emit cardiovascular metrics
                 addAll(cardiovascularMetrics)
             }
         }

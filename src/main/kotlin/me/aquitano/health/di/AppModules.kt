@@ -58,7 +58,6 @@ import org.koin.dsl.module
  * Receives [database] and [config] as seeds from the bootstrap context.
  */
 fun repositoriesModule(database: Database, config: AppConfig) = module {
-    // Expose the pre-built database connection to the container
     single<Database> { database }
 
     // Infrastructure repositories (need database or config)
@@ -181,7 +180,6 @@ fun servicesModule(database: Database, config: AppConfig) = module {
         )
     }
 
-    // Health day module registry
     single {
         HealthDayModuleRegistry(
             listOf(

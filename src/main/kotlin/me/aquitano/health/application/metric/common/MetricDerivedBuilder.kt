@@ -54,7 +54,6 @@ class MetricDerivedBuilder<I : MetricDerivationInput, O : MetricDerivedOutput>(
  * Describes a request to rebuild derived metric data for a specific time range.
  */
 data class DerivationJob(
-    /** Time range the derivation covers. */
     val range: ClosedRange<Instant>,
     /** Target timezone for date-based grouping. */
     val timezone: ZoneId,
@@ -77,13 +76,9 @@ data class DerivationJob(
  * Result of running a single derivation job.
  */
 data class DerivedRebuildResult(
-    /** Time range that was derived. */
     val range: ClosedRange<Instant>,
-    /** Timezone used for the derivation. */
     val timezone: ZoneId,
-    /** Algorithm version that was applied. */
     val algorithmVersion: Int,
-    /** Number of derived rows written. */
     val derivedRowsWritten: Int,
 )
 
@@ -92,7 +87,6 @@ fun interface MetricInputLoader<I : MetricDerivationInput> {
     /**
      * Fetches input data for the given [range] and [timezone].
      *
-     * @param range The time range to load data for.
      * @param timezone The target timezone for date-based calculations.
      * @param computedAt The instant the derivation started; useful for
      *   freshness checks or filtering out data ingested after derivation began.
@@ -106,7 +100,6 @@ fun interface MetricInputLoader<I : MetricDerivationInput> {
 
 /** Base interface for metric derivation inputs. */
 interface MetricDerivationInput {
-    /** The calendar date this input represents. */
     val date: LocalDate
     /** The timezone used for date boundaries. */
     val timezone: ZoneId
@@ -119,7 +112,6 @@ fun interface MetricDerivationCalculator<I : MetricDerivationInput, O : MetricDe
 
 /** Base interface for derived metric outputs. */
 interface MetricDerivedOutput {
-    /** The calendar date this output represents. */
     val date: LocalDate
     /** The timezone used for date boundaries. */
     val timezone: ZoneId

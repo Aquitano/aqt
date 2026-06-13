@@ -98,7 +98,6 @@ export type MetricCatalogResponse = ApiSchema<"MetricTypeCatalogResponse">;
 export type DashboardTrendsResponse = ApiSchema<"DashboardTrendsResponse">;
 
 // New expanded metric types (will be part of generated API after codegen)
-// New expanded metric types
 export interface BloodPressureMeasurement {
   id: number;
   measuredAt: string;

@@ -59,7 +59,6 @@ fun Application.module() {
         )
     }
 
-    // Close the shared HTTP client on shutdown
     val httpClient by inject<io.ktor.client.HttpClient>()
     val clock by inject<UtcClock>()
     monitor.subscribe(ApplicationStopping) {
