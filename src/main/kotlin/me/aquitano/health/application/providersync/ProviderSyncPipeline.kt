@@ -191,9 +191,12 @@ class ProviderSyncPipeline(
             } catch (exception: Exception) {
                 if (exception is CancellationException) throw exception
                 val code = adapter.errorCode(exception)
-                val safeMessage = exception.message
-                    ?.take(500)
-                    ?: adapter.defaultSyncFailureMessage
+                // Raw exception text stays in the server log only. The client-facing message is the
+                // adapter's safe default keyed off the classified `code`, so internal/upstream
+                // exception detail (DB errors, provider response bodies, stack hints) never reaches
+                // the browser via the sync response or the thrown UpstreamProviderException below.
+                val rawMessage = exception.message?.take(500)
+                val clientMessage = adapter.defaultSyncFailureMessage
                 val providerAttributes = adapter.errorAttributes(exception)
                 logger.warnWithContext(
                     "provider_data_type_failed",
@@ -203,7 +206,7 @@ class ProviderSyncPipeline(
                         "from" to item.from,
                         "to" to item.to,
                         "errorCode" to code,
-                        "errorMessage" to safeMessage,
+                        "errorMessage" to (rawMessage ?: clientMessage),
                         "exceptionClass" to (exception::class.qualifiedName ?: exception::class.simpleName),
                         "providerError" to providerAttributes
                     ),
@@ -212,7 +215,7 @@ class ProviderSyncPipeline(
                 errors += ProviderSyncError(
                     dataType = item.dataType,
                     code = code,
-                    message = safeMessage,
+                    message = clientMessage,
                     retryable = isRetryableSyncFailure(exception),
                 )
                 progress.itemCompleted(item)

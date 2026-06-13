@@ -10,6 +10,7 @@ import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ProviderSyncPipelineTest {
@@ -125,10 +126,32 @@ class ProviderSyncPipelineTest {
         assertEquals("processed", summary.status)
     }
 
+    @Test
+    fun syncFailureSurfacesSafeMessageNotRawExceptionText() = runBlocking {
+        // The raw exception text can carry internal/upstream detail (DB errors, provider response
+        // bodies). It must stay in the logs; the client-facing message is the adapter's safe default.
+        val secret = "jdbc:postgresql://internal-db:5432 connection refused for user aqt_admin"
+        val adapter = FakeAdapter(fetchFailure = IllegalStateException(secret))
+        val pipeline = ProviderSyncPipeline(
+            FakeAccountPort(),
+            FakeRunPort(),
+            FakeIngestionPort(),
+            clock = UtcClock.fixed(now),
+        )
+
+        val error = assertFailsWith<UpstreamProviderException> {
+            pipeline.sync(adapter, request, now)
+        }
+
+        assertEquals("Fake sync failed", error.message)
+        assertFalse(error.message!!.contains(secret))
+    }
+
     private class FakeAdapter(
         private val refreshFailure: RuntimeException? = null,
         private var throwUnauthorizedOnce: Boolean = false,
         private val itemCount: Int = 1,
+        private val fetchFailure: RuntimeException? = null,
         override val providerRequestInterval: Duration = Duration.ZERO,
     ) : ProviderSyncAdapter {
         var fetchCalls = 0
@@ -187,6 +210,7 @@ class ProviderSyncPipelineTest {
                 throwUnauthorizedOnce = false
                 throw UnauthorizedFetch()
             }
+            fetchFailure?.let { throw it }
             return ProviderFetchedBatch(
                 dataType = item.dataType,
                 pagesFetched = 1,

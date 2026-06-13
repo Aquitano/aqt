@@ -157,32 +157,49 @@ fun ApplicationConfig.toAppConfig(): AppConfig =
     ).also { it.validateForStartup() }
 
 fun AppConfig.validateForStartup() {
-    if (!environment.isProduction) return
-
     val issues = buildList {
-        requireSecret("aqtHealth.auth.bootstrapApiKey", auth.bootstrapApiKey)
-        requireValue("aqtHealth.auth.bootstrapClientName", auth.bootstrapClientName)
-        if (auth.bootstrapClientName.trim() == "local-admin") {
-            add(ConfigValidationIssue("aqtHealth.auth.bootstrapClientName", "must not use the local default"))
-        }
+        if (environment.isProduction) {
+            requireSecret("aqtHealth.auth.bootstrapApiKey", auth.bootstrapApiKey)
+            requireValue("aqtHealth.auth.bootstrapClientName", auth.bootstrapClientName)
+            if (auth.bootstrapClientName.trim() == "local-admin") {
+                add(ConfigValidationIssue("aqtHealth.auth.bootstrapClientName", "must not use the local default"))
+            }
 
-        requireValue("aqtHealth.database.jdbcUrl", database.jdbcUrl)
-        requireValue("aqtHealth.database.user", database.user)
-        requireSecret("aqtHealth.database.password", database.password)
-        rejectLocalUrl("aqtHealth.database.jdbcUrl", database.jdbcUrl)
-        if (database.user == "aqt_health" || database.password == "aqt_health") {
-            add(ConfigValidationIssue("aqtHealth.database", "must not use default compose credentials"))
-        }
+            requireValue("aqtHealth.database.jdbcUrl", database.jdbcUrl)
+            requireValue("aqtHealth.database.user", database.user)
+            requireSecret("aqtHealth.database.password", database.password)
+            rejectLocalUrl("aqtHealth.database.jdbcUrl", database.jdbcUrl)
+            if (database.user == "aqt_health" || database.password == "aqt_health") {
+                add(ConfigValidationIssue("aqtHealth.database", "must not use default compose credentials"))
+            }
 
-        validateGoogleHealth(googleHealth)
-        validateWithings(withings)
-        validateCors(cors)
+            validateGoogleHealth(googleHealth)
+            validateWithings(withings)
+            validateCors(cors)
+        } else {
+            // Outside production, only fail fast for a provider the operator has started wiring up
+            // (any client credential set). Require its token-encryption key so OAuth/sync fails at
+            // boot with a clear message instead of cryptically at the first TokenCipher use. A fully
+            // unconfigured provider (the local default) still boots untouched.
+            if (googleHealth.isProviderConfigured()) {
+                requireTokenKey("aqtHealth.googleHealth.tokenEncryptionKey", googleHealth.tokenEncryptionKey)
+            }
+            if (withings.isProviderConfigured()) {
+                requireTokenKey("aqtHealth.withings.tokenEncryptionKey", withings.tokenEncryptionKey)
+            }
+        }
     }
 
     if (issues.isNotEmpty()) {
         throw AppConfigValidationException(issues)
     }
 }
+
+private fun GoogleHealthConfig.isProviderConfigured(): Boolean =
+    clientId.isNotBlank() || clientSecret.isNotBlank()
+
+private fun WithingsConfig.isProviderConfigured(): Boolean =
+    clientId.isNotBlank() || clientSecret.isNotBlank()
 
 private fun MutableList<ConfigValidationIssue>.validateGoogleHealth(config: GoogleHealthConfig) {
     requireValue("aqtHealth.googleHealth.clientId", config.clientId)
