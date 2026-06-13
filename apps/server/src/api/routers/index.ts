@@ -1,6 +1,5 @@
 import { protectedProcedure, publicProcedure, router } from "../index";
 import { artworksRouter } from "./artworks";
-import { galleriesRouter } from "./galleries";
 import { museumRouter } from "./museum";
 import { tagsRouter } from "./tags";
 
@@ -15,7 +14,6 @@ export const appRouter = router({
 		};
 	}),
 	artworks: artworksRouter,
-	galleries: galleriesRouter,
 	museum: museumRouter,
 	tags: tagsRouter,
 });

@@ -104,41 +104,6 @@ export const mediaAsset = pgTable(
 	],
 );
 
-export const gallery = pgTable(
-	"gallery",
-	{
-		id: text("id").primaryKey(),
-		userId: text("user_id")
-			.notNull()
-			.references(() => user.id, { onDelete: "cascade" }),
-		title: text("title").notNull(),
-		description: text("description"),
-		coverAssetId: text("cover_asset_id"),
-		sortMode: text("sort_mode").default("manual").notNull(),
-		...timestamps,
-	},
-	(table) => [index("gallery_user_id_idx").on(table.userId)],
-);
-
-export const galleryArtwork = pgTable(
-	"gallery_artwork",
-	{
-		galleryId: text("gallery_id")
-			.notNull()
-			.references(() => gallery.id, { onDelete: "cascade" }),
-		artworkId: text("artwork_id")
-			.notNull()
-			.references(() => artwork.id, { onDelete: "cascade" }),
-		position: integer("position").default(0).notNull(),
-		createdAt: timestamp("created_at").defaultNow().notNull(),
-	},
-	(table) => [
-		primaryKey({ columns: [table.galleryId, table.artworkId] }),
-		index("gallery_artwork_gallery_id_idx").on(table.galleryId),
-		index("gallery_artwork_artwork_id_idx").on(table.artworkId),
-	],
-);
-
 export const artworkCustomField = pgTable(
 	"artwork_custom_field",
 	{
@@ -193,28 +158,12 @@ export const artworkRelations = relations(artwork, ({ one, many }) => ({
 	}),
 	mediaAssets: many(mediaAsset),
 	customFields: many(artworkCustomField),
-	galleryArtworks: many(galleryArtwork),
 	artworkTags: many(artworkTag),
 }));
 
 export const mediaAssetRelations = relations(mediaAsset, ({ one }) => ({
 	artwork: one(artwork, {
 		fields: [mediaAsset.artworkId],
-		references: [artwork.id],
-	}),
-}));
-
-export const galleryRelations = relations(gallery, ({ many }) => ({
-	galleryArtworks: many(galleryArtwork),
-}));
-
-export const galleryArtworkRelations = relations(galleryArtwork, ({ one }) => ({
-	gallery: one(gallery, {
-		fields: [galleryArtwork.galleryId],
-		references: [gallery.id],
-	}),
-	artwork: one(artwork, {
-		fields: [galleryArtwork.artworkId],
 		references: [artwork.id],
 	}),
 }));

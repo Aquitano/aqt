@@ -6,8 +6,6 @@ export const artworkTypes = [
 	"object",
 	"other",
 ] as const;
-export const sortModes = ["manual", "newest", "oldest", "title"] as const;
-
 export function slugify(value: string) {
 	return value
 		.trim()

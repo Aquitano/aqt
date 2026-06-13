@@ -4,7 +4,6 @@ import {
 	artwork,
 	artworkCustomField,
 	artworkTag,
-	galleryArtwork,
 	mediaAsset,
 	tag,
 } from "@aqt-gallery/db/schema/gallery";
@@ -40,7 +39,6 @@ export const artworksRouter = router({
 					query: z.string().optional(),
 					tagId: z.string().optional(),
 					artworkType: z.enum(artworkTypes).optional(),
-					galleryId: z.string().optional(),
 					sort: z
 						.enum(["newest", "oldest", "title", "rating"])
 						.default("newest"),
@@ -90,21 +88,6 @@ export const artworksRouter = router({
 				.orderBy(orderBy);
 
 			let scopedRows = rows;
-
-			if (input?.galleryId) {
-				const membershipRows = await db
-					.select({ artworkId: galleryArtwork.artworkId })
-					.from(galleryArtwork)
-					.innerJoin(artwork, eq(artwork.id, galleryArtwork.artworkId))
-					.where(
-						and(
-							eq(galleryArtwork.galleryId, input.galleryId),
-							eq(artwork.userId, userId),
-						),
-					);
-				const ids = new Set(membershipRows.map((row) => row.artworkId));
-				scopedRows = rows.filter((row) => ids.has(row.id));
-			}
 
 			if (input?.tagId) {
 				const taggedRows = await db
