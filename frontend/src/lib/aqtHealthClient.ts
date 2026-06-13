@@ -41,6 +41,9 @@ type ActivitySummariesQuery = NonNullable<
 type ScalarSamplesQuery = NonNullable<
   paths["/api/v2/metrics/{metricType}"]["get"]["parameters"]["query"]
 >;
+type ScalarSummaryQuery = NonNullable<
+  paths["/api/v2/metrics/{metricType}/summary"]["get"]["parameters"]["query"]
+>;
 type SleepNightsQuery = NonNullable<paths["/api/v2/sleep/nights"]["get"]["parameters"]["query"]>;
 type SleepSummariesQuery = NonNullable<
   paths["/api/v2/sleep/summaries"]["get"]["parameters"]["query"]
@@ -310,6 +313,14 @@ export function createAqtHealthClient() {
     listHeartRateSamples: (query: ScalarSamplesQuery) =>
       listScalarMetric(rawClient, "heart_rate", query),
 
+    getScalarSummary: (metricType: string, query: ScalarSummaryQuery) =>
+      call<ApiSchema<"ScalarSummaryResponse">>((headers) =>
+        rawClient.GET("/api/v2/metrics/{metricType}/summary", {
+          headers,
+          params: { path: { metricType }, query },
+        }),
+      ),
+
     listRespiratoryRateSamples: (query: ScalarSamplesQuery) =>
       listScalarMetric(rawClient, "respiratory_rate", query),
 
@@ -429,7 +440,7 @@ async function mergedScalarMetrics(
       }),
     ),
   );
-  const failed = responses.find((result) => result.error || !result.response.ok);
+  const failed = responses.find((result) => result.error || !result.response?.ok);
   if (failed) return failed as ClientResponse<ApiSchema<"ScalarSamplesResponse">>;
 
   const order = query.order ?? (query.latest ? "desc" : "asc");

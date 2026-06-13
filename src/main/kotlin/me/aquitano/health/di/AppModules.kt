@@ -5,6 +5,7 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.logging.*
+import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import me.aquitano.external.google.*
 import me.aquitano.external.withings.KtorWithingsClient
@@ -101,6 +102,10 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
             install(Logging) {
                 logger = Logger.DEFAULT
                 level = LogLevel.INFO
+                // Never emit bearer tokens to logs/OpenObserve. The Ktor logger writes headers as
+                // free-text lines the logback JSON-field masker can't see, so mask the value here —
+                // this also holds if the level is later raised to HEADERS/ALL for debugging.
+                sanitizeHeader { header -> header.equals(HttpHeaders.Authorization, ignoreCase = true) }
             }
         }
     }

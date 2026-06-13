@@ -82,10 +82,17 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
             return;
           }
         } catch (error) {
+          // A thrown fetch (network blip, abort) must not spin forever: clear the job so the UI
+          // leaves "Syncing…" and the bad job doesn't survive reloads via localStorage.
           setResult({
             ok: false,
             message: error instanceof Error ? error.message : "Provider sync status check failed.",
           });
+          setSyncJob(null);
+          setIsSyncing(false);
+          clearStoredSyncJob();
+          setActiveSyncJob(null);
+          return;
         }
 
         await delay(SYNC_JOB_POLL_INTERVAL_MS);

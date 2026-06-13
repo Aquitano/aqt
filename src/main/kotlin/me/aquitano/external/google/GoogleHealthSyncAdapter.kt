@@ -20,6 +20,7 @@ import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.repositories.ACCOUNT_STATUS_NEEDS_REAUTH
 import java.time.Duration
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 class GoogleHealthSyncAdapter(
     private val client: GoogleHealthClient,
@@ -164,7 +165,13 @@ class GoogleHealthSyncAdapter(
         val windowSize =
             if (dataType == "heart-rate") Duration.ofDays(1) else PROVIDER_SAFE_WINDOW
         val windows = mutableListOf<SyncWindow>()
-        var windowFrom = from
+        // Heart-rate windows are anchored to UTC midnight so overlapping re-syncs (the
+        // scheduled lookback) produce identical batch external ids for elapsed days and
+        // dedupe against already-processed batches instead of re-fetching and re-ingesting
+        // hundreds of thousands of samples on every run. Only the current, still-open day
+        // window keeps a moving `to` and is re-ingested until the day completes.
+        var windowFrom =
+            if (dataType == "heart-rate") from.truncatedTo(ChronoUnit.DAYS) else from
         while (windowFrom.isBefore(to)) {
             val windowTo = listOf(windowFrom.plus(windowSize), to).minOrNull()!!
             windows += SyncWindow(windowFrom, windowTo)

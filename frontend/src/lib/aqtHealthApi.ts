@@ -22,6 +22,7 @@ import type {
   ScheduledSyncConfigUpdateRequest,
   ScheduledSyncRunResponse,
   HealthStatusData,
+  HeartRateDailyPoint,
  } from "./types";
 import { createAqtHealthClient } from "./aqtHealthClient";
 import {
@@ -58,7 +59,8 @@ export async function getHealthDataPageData(
     activitySummaries,
     bodyMeasurements,
     latestHeartRate,
-    latestSleep,
+    heartRateDaily,
+    sleepNights,
     sleepSummaries,
     respiratoryRates,
     hrvSamples,
@@ -106,7 +108,8 @@ export async function getHealthDataPageData(
       limit: 5000,
     }),
     client.listHeartRateSamples({ latest: true, includeSource: true }),
-    client.listSleepNights({ date: toDate, timezone, includeSource: true }),
+    fetchHeartRateDaily(client, fromDate, toDate),
+    client.listSleepNights({ fromDate, toDate, timezone, includeSource: true }),
     client.listSleepSummaries({
       from: measurementsFrom,
       to: measurementsTo,
@@ -174,7 +177,8 @@ export async function getHealthDataPageData(
     activitySummaries,
     bodyMeasurements,
     latestHeartRate,
-    latestSleep,
+    heartRateDaily,
+    sleepNights,
     sleepSummaries,
     respiratoryRates,
     hrvSamples,
@@ -410,6 +414,53 @@ export async function runScheduledSyncNow(
   providerInstanceId: string,
 ): Promise<ApiResult<ScheduledSyncRunResponse>> {
   return createAqtHealthClient().runScheduledSyncNow(providerCode, providerInstanceId);
+}
+
+/**
+ * Builds a per-day heart-rate series (avg/min/max) across the range. The scalar
+ * `/summary` endpoint aggregates server-side, so we issue one cheap summary call
+ * per local day rather than charting hundreds of thousands of raw samples.
+ */
+async function fetchHeartRateDaily(
+  client: ReturnType<typeof createAqtHealthClient>,
+  fromDate: string,
+  toDate: string,
+): Promise<HeartRateDailyPoint[]> {
+  const days = enumerateDays(fromDate, toDate);
+  const summaries = await Promise.all(
+    days.map((date) =>
+      client.getScalarSummary("heart_rate", {
+        from: dateOnlyToUtcInstant(date),
+        to: dayAfterDateOnlyToUtcInstant(date),
+      }),
+    ),
+  );
+
+  const points: HeartRateDailyPoint[] = [];
+  days.forEach((date, index) => {
+    const result = summaries[index];
+    if (!result.ok || result.data.count === 0) return;
+    points.push({
+      date,
+      count: result.data.count,
+      avg: result.data.avgValue ?? null,
+      min: result.data.minValue ?? null,
+      max: result.data.maxValue ?? null,
+    });
+  });
+  return points;
+}
+
+/** Inclusive list of YYYY-MM-DD days, capped to the most recent `maxDays` to bound fan-out. */
+function enumerateDays(fromDate: string, toDate: string, maxDays = 92): string[] {
+  const earliest = addUtcDays(toDate, -(maxDays - 1));
+  let cursor = fromDate < earliest ? earliest : fromDate;
+  const days: string[] = [];
+  while (cursor <= toDate) {
+    days.push(cursor);
+    cursor = addUtcDays(cursor, 1);
+  }
+  return days;
 }
 
 function ingestionStatus(value?: string): "processed" | "failed" | undefined {

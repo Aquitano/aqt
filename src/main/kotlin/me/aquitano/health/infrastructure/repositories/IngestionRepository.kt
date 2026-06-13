@@ -134,18 +134,20 @@ class IngestionRepository {
         records: List<HealthRecord>,
         now: Instant
     ): List<IngestionRecordRef> =
-        records.map { record ->
-            val id = IngestionRecordsTable.insertAndGetId {
-                it[this.batchId] = batchId
-                it[recordType] = record.recordType
-                it[providerRecordId] = record.providerRecordId
-                it[normalizedRecordJson] =
+        records.chunked(INSERT_CHUNK_SIZE).flatMap { chunk ->
+            val rows = IngestionRecordsTable.batchInsert(chunk) { record ->
+                this[IngestionRecordsTable.batchId] = batchId
+                this[IngestionRecordsTable.recordType] = record.recordType
+                this[IngestionRecordsTable.providerRecordId] = record.providerRecordId
+                this[IngestionRecordsTable.normalizedRecordJson] =
                     AppJson.encodeToString(record.normalizedRecordJson)
-                it[recordStartAt] = record.recordStartAt?.toDbTimestamp()
-                it[recordEndAt] = record.recordEndAt?.toDbTimestamp()
-                it[createdAt] = now.toDbTimestamp()
-            }.value
-            IngestionRecordRef(id = id, record = record)
+                this[IngestionRecordsTable.recordStartAt] = record.recordStartAt?.toDbTimestamp()
+                this[IngestionRecordsTable.recordEndAt] = record.recordEndAt?.toDbTimestamp()
+                this[IngestionRecordsTable.createdAt] = now.toDbTimestamp()
+            }
+            chunk.zip(rows) { record, row ->
+                IngestionRecordRef(id = row[IngestionRecordsTable.id].value, record = record)
+            }
         }
 
     fun markProcessed(batchId: Int, processedAt: Instant) {
@@ -353,3 +355,6 @@ class IngestionRepository {
             batchExternalId = row[IngestionBatchesTable.batchExternalId],
         )
 }
+
+/** Rows per multi-row INSERT; keeps statements bounded while avoiding per-row round trips. */
+internal const val INSERT_CHUNK_SIZE = 1_000

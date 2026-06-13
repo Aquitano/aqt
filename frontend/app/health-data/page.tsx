@@ -120,10 +120,9 @@ async function HealthDataContent({
         activitySummaries={data.activitySummaries.ok ? data.activitySummaries.data : undefined}
         bodyMeasurements={bodyMeasurements}
         dailySteps={data.dailySteps.ok ? data.dailySteps.data : undefined}
-        healthDay={healthDay}
+        heartRateDaily={data.heartRateDaily}
         hrvSamples={data.hrvSamples.ok ? data.hrvSamples.data : undefined}
-        latestHeartRate={data.latestHeartRate.ok ? data.latestHeartRate.data : undefined}
-        latestSleep={data.latestSleep.ok ? data.latestSleep.data : undefined}
+        sleepNights={data.sleepNights.ok ? data.sleepNights.data : undefined}
         respiratoryRates={data.respiratoryRates.ok ? data.respiratoryRates.data : undefined}
         sleepSummaries={data.sleepSummaries.ok ? data.sleepSummaries.data : undefined}
         fromDate={fromDate}
@@ -148,7 +147,7 @@ async function HealthDataContent({
           {(response) => <HeartRateTable items={response.items} />}
         </DataSection>
 
-        <DataSection title="Latest sleep" result={data.latestSleep}>
+        <DataSection title="Sleep nights" result={data.sleepNights}>
           {(response) => <SleepSessionsTable items={response.items.map((night) => night.session)} />}
         </DataSection>
 

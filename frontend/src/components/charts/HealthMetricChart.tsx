@@ -117,7 +117,13 @@ export function HealthMetricChart({
       />
       <div className={styles.chart} style={{ height }}>
         {isClient ? (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+            // Seed a positive size so the first render (before the ResizeObserver
+            // measures the container) doesn't log a width(-1)/height(-1) warning.
+            initialDimension={{ width: 320, height: typeof height === "number" ? height : 280 }}
+          >
             <LineChart data={data} margin={{ top: 10, right: 18, bottom: 8, left: -12 }}>
               <CartesianGrid stroke="rgba(148,168,196,0.08)" vertical={false} />
               <XAxis

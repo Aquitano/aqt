@@ -12,9 +12,7 @@ import type {
   ActivitySummariesResponse,
   BodyMeasurement,
   BodyMeasurementsResponse,
-  HealthDayBucket,
-  HealthDayResponse,
-  HeartRateSamplesResponse,
+  HeartRateDailyPoint,
   HrvSamplesResponse,
   RespiratoryRateSamplesResponse,
   SleepNightsResponse,
@@ -37,10 +35,9 @@ type HealthDataVisualizationsProps = {
   activitySummaries?: ActivitySummariesResponse;
   bodyMeasurements?: BodyMeasurementsResponse;
   dailySteps?: StepDailySummariesResponse;
-  healthDay?: HealthDayResponse;
+  heartRateDaily: HeartRateDailyPoint[];
   hrvSamples?: HrvSamplesResponse;
-  latestHeartRate?: HeartRateSamplesResponse;
-  latestSleep?: SleepNightsResponse;
+  sleepNights?: SleepNightsResponse;
   respiratoryRates?: RespiratoryRateSamplesResponse;
   sleepSummaries?: SleepSummariesResponse;
   fromDate: string;
@@ -62,10 +59,9 @@ export function HealthDataVisualizations({
   activitySummaries,
   bodyMeasurements,
   dailySteps,
-  healthDay,
+  heartRateDaily,
   hrvSamples,
-  latestHeartRate,
-  latestSleep,
+  sleepNights,
   respiratoryRates,
   sleepSummaries,
   fromDate,
@@ -77,17 +73,8 @@ export function HealthDataVisualizations({
   const weightChart = useMemo(() => buildWeightChart(bodyMeasurements?.items ?? []), [bodyMeasurements]);
   const stepsChart = useMemo(() => buildStepsChart(dailySteps?.items ?? []), [dailySteps]);
   const activityChart = useMemo(() => buildActivityChart(activitySummaries?.items ?? []), [activitySummaries]);
-  const heartRateChart = useMemo(
-    () => buildBucketChart({
-      buckets: healthDay?.heartRate?.buckets ?? [],
-      metricKey: "heart_rate",
-      label: "Heart rate",
-      unit: "bpm",
-      color: "#f2786d",
-    }),
-    [healthDay],
-  );
-  const sleepChart = useMemo(() => buildSleepChart(latestSleep), [latestSleep]);
+  const heartRateChart = useMemo(() => buildHeartRateDailyChart(heartRateDaily), [heartRateDaily]);
+  const sleepChart = useMemo(() => buildSleepChart(sleepNights), [sleepNights]);
   const sleepSummaryChart = useMemo(() => buildSleepSummaryChart(sleepSummaries?.items ?? []), [sleepSummaries]);
   const respiratoryRateChart = useMemo(
     () => buildRespiratoryRateChart(respiratoryRates?.items ?? []),
@@ -180,7 +167,7 @@ export function HealthDataVisualizations({
         <HealthMetricChart
           key={`heart-${heartRateChart.data.length}`}
           title="Heart-rate detail"
-          description={latestHeartRate?.items.length ? "Bucketed day view plus latest sample context." : "Bucketed day view."}
+          description="Daily average, minimum, and maximum across the selected range."
           series={heartRateChart.series}
           data={heartRateChart.data}
           defaultVisibleMetricKeys={heartRateChart.defaultVisibleMetricKeys}
@@ -424,36 +411,35 @@ function buildActivityChart(items: ActivitySummariesResponse["items"]): Normaliz
   );
 }
 
-function buildBucketChart({
-  buckets,
-  metricKey,
-  label,
-  unit,
-  color,
-}: {
-  buckets: HealthDayBucket[];
-  metricKey: string;
-  label: string;
-  unit: string;
-  color: string;
-}): NormalizedChart {
-  const details = buckets
-    .filter((bucket) => typeof bucket.value === "number")
-    .map((bucket) => ({
-      id: `${metricKey}-${bucket.startAt}`,
-      at: bucket.startAt,
-      metricKey,
-      label,
-      value: bucket.value ?? 0,
-      unit,
-      source: bucket.count ? `${bucket.count} samples` : undefined,
-    }));
+function buildHeartRateDailyChart(items: HeartRateDailyPoint[]): NormalizedChart {
+  const details: ChartPointDetail[] = [];
+  for (const item of [...items].sort((a, b) => a.date.localeCompare(b.date))) {
+    const at = `${item.date}T12:00:00.000Z`;
+    const source = `${item.count} samples`;
+    if (typeof item.avg === "number") {
+      details.push({ id: `hr-avg-${item.date}`, at, metricKey: "hr_avg", label: "Average", value: item.avg, unit: "bpm", source });
+    }
+    if (typeof item.min === "number") {
+      details.push({ id: `hr-min-${item.date}`, at, metricKey: "hr_min", label: "Min", value: item.min, unit: "bpm", source });
+    }
+    if (typeof item.max === "number") {
+      details.push({ id: `hr-max-${item.date}`, at, metricKey: "hr_max", label: "Max", value: item.max, unit: "bpm", source });
+    }
+  }
 
-  return detailsToChart(details, [{ key: metricKey, label, color, unit }], [metricKey]);
+  return detailsToChart(
+    details,
+    [
+      { key: "hr_avg", label: "Average", color: "#f2786d", unit: "bpm" },
+      { key: "hr_min", label: "Min", color: "#5ec9e8", unit: "bpm" },
+      { key: "hr_max", label: "Max", color: "#eab265", unit: "bpm" },
+    ],
+    ["hr_avg", "hr_min", "hr_max"],
+  );
 }
 
-function buildSleepChart(latestSleep?: SleepNightsResponse): NormalizedChart {
-  const details: ChartPointDetail[] = (latestSleep?.items ?? [])
+function buildSleepChart(sleepNights?: SleepNightsResponse): NormalizedChart {
+  const details: ChartPointDetail[] = (sleepNights?.items ?? [])
     .map((night) => night.session)
     .sort((a, b) => a.startAt.localeCompare(b.startAt))
     .map((session) => ({

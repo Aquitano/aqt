@@ -68,7 +68,7 @@ class SleepQueryService(
                 sort = filters.sort,
                 order = filters.order,
                 sortValue = { it.date },
-                id = { it.session.id.toLong() },
+                id = { it.id.toLong() },
             )
             SleepNightsResponse(
                 items = page.items.map { night ->

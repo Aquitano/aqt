@@ -9,6 +9,7 @@ data class SleepSessionRow(
 )
 
 data class SleepNightRow(
+    val id: Int,
     val date: String,
     val timezone: String,
     val session: SleepSessionRow,

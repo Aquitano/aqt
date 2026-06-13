@@ -151,5 +151,6 @@
     <logger name="org.eclipse.jetty" level="INFO"/>
     <logger name="org.flywaydb" level="INFO"/>
     <logger name="org.jetbrains.exposed" level="WARN"/>
-    <logger name="me.aquitano.health.database.Sql" level="DEBUG"/>
+    <!-- Per-statement SQL logging; set AQT_HEALTH_SQL_LOG_LEVEL=DEBUG to trace statements. -->
+    <logger name="me.aquitano.health.database.Sql" level="${AQT_HEALTH_SQL_LOG_LEVEL:-INFO}"/>
 </configuration>

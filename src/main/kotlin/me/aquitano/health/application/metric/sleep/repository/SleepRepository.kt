@@ -96,6 +96,7 @@ class SleepRepository : BaseMetricRepository() {
                     durationSeconds = it[SleepSessionsTable.durationSeconds],
                 )
                 SleepNightRow(
+                    id = it[SleepNightsTable.id].value,
                     date = it[SleepNightsTable.date].toString(),
                     timezone = it[SleepNightsTable.timezone],
                     session = session,
@@ -124,7 +125,7 @@ class SleepRepository : BaseMetricRepository() {
             filters.cursor,
             filters.order,
             CanonicalSleepNightsTable.date,
-            CanonicalSleepNightsTable.sleepSessionId,
+            CanonicalSleepNightsTable.id,
         )?.let { conditions.add(it) }
 
         val nights = CanonicalSleepNightsTable
@@ -133,7 +134,7 @@ class SleepRepository : BaseMetricRepository() {
             .where { combineConditions(conditions) }
             .orderBy(
                 CanonicalSleepNightsTable.date to filters.sortOrder(),
-                CanonicalSleepNightsTable.sleepSessionId to filters.sortOrder(),
+                CanonicalSleepNightsTable.id to filters.sortOrder(),
             )
             .limit(keysetFetchLimit(filters.limit))
             .map {
@@ -145,6 +146,7 @@ class SleepRepository : BaseMetricRepository() {
                     durationSeconds = it[SleepSessionsTable.durationSeconds],
                 )
                 SleepNightRow(
+                    id = it[CanonicalSleepNightsTable.id],
                     date = it[CanonicalSleepNightsTable.date].toString(),
                     timezone = it[CanonicalSleepNightsTable.timezone],
                     session = session,

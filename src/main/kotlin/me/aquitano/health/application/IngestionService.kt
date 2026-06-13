@@ -4,6 +4,7 @@ import me.aquitano.health.api.dto.BatchStatus
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
 import me.aquitano.health.api.dto.MetricSkippedCountsResponse
+import me.aquitano.health.application.metric.common.MetricWrite
 import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
@@ -138,23 +139,18 @@ class IngestionService(
 
                 var created = MetricCreatedCounts()
                 var duplicateSkipped = 0
-                val affectedDates = mutableMapOf<DerivedKind, MutableSet<LocalDate>>()
+                var affectedDates = mapOf<DerivedKind, Set<LocalDate>>()
 
                 try {
-                    ingestionRecords.forEach { ingestionRecord ->
-                        val result = metricWriteService.write(
-                            provider = validated.provider,
-                            sourceInstanceId = sourceInstance.id,
-                            ingestionRecordId = ingestionRecord.id,
-                            record = ingestionRecord.record,
-                            now = now,
-                        )
-                        created += result.created
-                        duplicateSkipped += result.duplicateSkipped
-                        result.affectedDates.forEach { (kind, dates) ->
-                            affectedDates.getOrPut(kind) { linkedSetOf() }.addAll(dates)
-                        }
-                    }
+                    val writeResult = metricWriteService.writeAll(
+                        provider = validated.provider,
+                        sourceInstanceId = sourceInstance.id,
+                        writes = ingestionRecords.map { MetricWrite(it.id, it.record) },
+                        now = now,
+                    )
+                    created = writeResult.created
+                    duplicateSkipped = writeResult.duplicateSkipped
+                    affectedDates = writeResult.affectedDates
                     ingestionRepository.markProcessed(batchId, now)
                 } catch (exception: Exception) {
                     if (exception is CancellationException) throw exception
@@ -189,7 +185,7 @@ class IngestionService(
                 )
                 val rebuildRequest = DerivedRebuildRequest(
                     sourceInstanceId = sourceInstance.id,
-                    affectedDates = affectedDates.mapValues { it.value.toSet() },
+                    affectedDates = affectedDates,
                 )
                 IngestionTransactionResult.Success(
                     response,
