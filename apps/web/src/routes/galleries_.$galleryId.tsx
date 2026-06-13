@@ -1,5 +1,4 @@
 import { env } from "@aqt-gallery/env/web";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createFileRoute,
 	Link,
@@ -8,15 +7,11 @@ import {
 } from "@tanstack/react-router";
 import { Check, GripVertical, Plus, Star, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 
 import { CosmosShell } from "@/components/gallery/cosmos-shell";
-import {
-	GalleryThemePanel,
-	type GalleryThemeValue,
-} from "@/components/gallery/gallery-theme-panel";
+import { GalleryThemePanel } from "@/components/gallery/gallery-theme-panel";
+import { useGalleryCuration } from "@/components/gallery/use-gallery-curation";
 import { getUser } from "@/functions/get-user";
-import { useTRPC } from "@/utils/trpc";
 
 export const Route = createFileRoute("/galleries_/$galleryId")({
 	component: RouteComponent,
@@ -33,34 +28,21 @@ export const Route = createFileRoute("/galleries_/$galleryId")({
 
 function RouteComponent() {
 	const { galleryId } = Route.useParams();
-	const trpc = useTRPC();
-	const queryClient = useQueryClient();
 	const navigate = useNavigate();
 
-	const myGroups = useQuery(trpc.museum.myGroups.queryOptions());
-	const artworks = useQuery(trpc.artworks.list.queryOptions({}));
+	const curation = useGalleryCuration(galleryId);
+	const { group, members, available, selected, busy } = curation;
 
-	const updateGroup = useMutation(trpc.museum.updateGroup.mutationOptions());
-	const deleteGroup = useMutation(trpc.museum.deleteGroup.mutationOptions());
-	const setGroupArtworks = useMutation(
-		trpc.museum.setGroupArtworks.mutationOptions(),
-	);
-
-	const group = (myGroups.data ?? []).find((g) => g.id === galleryId) ?? null;
-
+	// Controlled details form — local view state, reset on gallery switch.
 	const [details, setDetails] = useState({
 		name: "",
 		tagline: "",
 		description: "",
 	});
-	// Optimistic membership order so add/remove/reorder feel instant; null
-	// means "use the server's order". Selection is the bulk-add staging set.
-	const [pendingOrder, setPendingOrder] = useState<string[] | null>(null);
-	const [selected, setSelected] = useState<Set<string>>(new Set());
+	// Drag DOM state stays in the view; the reorder itself goes through the hook.
 	const [dragId, setDragId] = useState<string | null>(null);
 	const [overId, setOverId] = useState<string | null>(null);
 
-	// Refill the per-gallery local state whenever the loaded gallery changes.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only on gallery switch
 	useEffect(() => {
 		if (group) {
@@ -70,87 +52,12 @@ function RouteComponent() {
 				description: group.description ?? "",
 			});
 		}
-		setPendingOrder(null);
-		setSelected(new Set());
 	}, [group?.id]);
-
-	const refresh = () => queryClient.invalidateQueries();
-
-	const serverIds = group?.artworkIds ?? [];
-	const memberIds = pendingOrder ?? serverIds;
-	const artworkById = new Map((artworks.data ?? []).map((a) => [a.id, a]));
-	const members = memberIds
-		.map((id) => artworkById.get(id))
-		.filter((a) => a !== undefined);
-	const available = (artworks.data ?? []).filter(
-		(a) => !memberIds.includes(a.id),
-	);
 
 	const thumbUrl = (a: { thumbnailUrl: string | null }) =>
 		a.thumbnailUrl ? `${env.VITE_SERVER_URL}${a.thumbnailUrl}` : null;
 
-	const busy =
-		setGroupArtworks.isPending ||
-		updateGroup.isPending ||
-		deleteGroup.isPending;
-
-	const syncArtworks = async (artworkIds: string[]) => {
-		if (!group) return;
-		setPendingOrder(artworkIds);
-		try {
-			await setGroupArtworks.mutateAsync({ groupId: group.id, artworkIds });
-			await refresh();
-		} catch {
-			toast.error("Couldn't save changes");
-		} finally {
-			setPendingOrder(null);
-		}
-	};
-
-	const saveTheme = async (theme: GalleryThemeValue) => {
-		if (!group) return;
-		await updateGroup.mutateAsync({ id: group.id, theme });
-		await refresh();
-		toast.success("Theme saved");
-	};
-
-	const setCover = async (artworkId: string | null) => {
-		if (!group) return;
-		await updateGroup.mutateAsync({ id: group.id, coverArtworkId: artworkId });
-		await refresh();
-		toast.success(artworkId ? "Cover updated" : "Cover reset");
-	};
-
-	const moveMember = (sourceId: string, targetId: string) => {
-		if (sourceId === targetId) return;
-		const ids = [...memberIds];
-		const from = ids.indexOf(sourceId);
-		const to = ids.indexOf(targetId);
-		if (from === -1 || to === -1) return;
-		ids.splice(from, 1);
-		ids.splice(to, 0, sourceId);
-		void syncArtworks(ids);
-	};
-
-	const toggleSelected = (id: string) =>
-		setSelected((prev) => {
-			const next = new Set(prev);
-			if (next.has(id)) {
-				next.delete(id);
-			} else {
-				next.add(id);
-			}
-			return next;
-		});
-
-	const addSelected = () => {
-		const toAdd = available.filter((a) => selected.has(a.id)).map((a) => a.id);
-		if (toAdd.length === 0) return;
-		setSelected(new Set());
-		void syncArtworks([...memberIds, ...toAdd]);
-	};
-
-	if (myGroups.isSuccess && !group) {
+	if (curation.loaded && !group) {
 		return (
 			<CosmosShell active="galleries">
 				<section className="gallery-list-page">
@@ -192,14 +99,7 @@ function RouteComponent() {
 							type="button"
 							className="gallery-secondary-button"
 							disabled={busy || !group}
-							onClick={async () => {
-								if (!group) return;
-								await updateGroup.mutateAsync({
-									id: group.id,
-									isPublished: !group.isPublished,
-								});
-								await refresh();
-							}}
+							onClick={() => void curation.togglePublish()}
 						>
 							{group?.isPublished ? "Unpublish" : "Publish"}
 						</button>
@@ -216,9 +116,7 @@ function RouteComponent() {
 								) {
 									return;
 								}
-								await deleteGroup.mutateAsync({ id: group.id });
-								await refresh();
-								toast.success("Gallery deleted");
+								await curation.deleteGroup();
 								navigate({ to: "/galleries" });
 							}}
 						>
@@ -262,17 +160,7 @@ function RouteComponent() {
 							type="button"
 							className="gallery-primary-button gallery-save-button"
 							disabled={busy || details.name.trim().length === 0}
-							onClick={async () => {
-								if (!group) return;
-								await updateGroup.mutateAsync({
-									id: group.id,
-									name: details.name.trim(),
-									tagline: details.tagline.trim() || null,
-									description: details.description.trim() || null,
-								});
-								await refresh();
-								toast.success("Details saved");
-							}}
+							onClick={() => void curation.saveDetails(details)}
 						>
 							Save details
 						</button>
@@ -289,7 +177,7 @@ function RouteComponent() {
 						groupId={group.id}
 						theme={group.theme}
 						disabled={busy}
-						onSave={saveTheme}
+						onSave={curation.saveTheme}
 					/>
 				) : null}
 
@@ -333,7 +221,7 @@ function RouteComponent() {
 										}}
 										onDrop={(e) => {
 											e.preventDefault();
-											if (dragId) moveMember(dragId, a.id);
+											if (dragId) curation.move(dragId, a.id);
 											setDragId(null);
 											setOverId(null);
 										}}
@@ -384,7 +272,7 @@ function RouteComponent() {
 												}`}
 												disabled={busy}
 												onClick={() =>
-													void setCover(explicitCover ? null : a.id)
+													void curation.setCover(explicitCover ? null : a.id)
 												}
 											>
 												<Star
@@ -397,11 +285,7 @@ function RouteComponent() {
 												aria-label="Remove from gallery"
 												className="gallery-icon-control gallery-icon-control-danger"
 												disabled={busy}
-												onClick={() => {
-													void syncArtworks(
-														memberIds.filter((id) => id !== a.id),
-													);
-												}}
+												onClick={() => curation.remove(a.id)}
 											>
 												<X size={15} />
 											</button>
@@ -422,7 +306,7 @@ function RouteComponent() {
 								type="button"
 								className="gallery-secondary-button"
 								disabled={busy}
-								onClick={() => setSelected(new Set())}
+								onClick={curation.clearSelected}
 							>
 								Clear
 							</button>
@@ -430,7 +314,7 @@ function RouteComponent() {
 								type="button"
 								className="gallery-primary-button"
 								disabled={busy}
-								onClick={addSelected}
+								onClick={curation.addSelected}
 							>
 								<Plus size={15} />
 								Add {selected.size} selected
@@ -441,9 +325,9 @@ function RouteComponent() {
 				<p className="gallery-muted-note">
 					Adding an artwork publishes it so it can appear in the museum.
 				</p>
-				{artworks.isPending ? null : available.length === 0 ? (
+				{!curation.archiveLoaded ? null : available.length === 0 ? (
 					<p className="gallery-muted-note">
-						{(artworks.data ?? []).length === 0
+						{members.length === 0
 							? "Your archive is empty — import artworks first."
 							: "Every artwork in your archive is already in this gallery."}
 					</p>
@@ -456,7 +340,7 @@ function RouteComponent() {
 									key={a.id}
 									type="button"
 									aria-pressed={isSelected}
-									onClick={() => toggleSelected(a.id)}
+									onClick={() => curation.toggleSelected(a.id)}
 									className={`gallery-archive-tile${
 										isSelected ? "gallery-archive-tile-selected" : ""
 									}`}
