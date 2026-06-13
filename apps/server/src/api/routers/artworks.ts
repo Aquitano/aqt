@@ -78,9 +78,13 @@ export const artworksRouter = router({
 					rating: artwork.rating,
 					archivedAt: artwork.archivedAt,
 					assetId: mediaAsset.id,
-					width: mediaAsset.width,
-					height: mediaAsset.height,
+					assetWidth: mediaAsset.width,
+					assetHeight: mediaAsset.height,
 					mimeType: mediaAsset.mimeType,
+					imageUrl: artwork.imageUrl,
+					externalThumbUrl: artwork.thumbnailUrl,
+					imageWidth: artwork.imageWidth,
+					imageHeight: artwork.imageHeight,
 				})
 				.from(artwork)
 				.leftJoin(mediaAsset, eq(mediaAsset.id, artwork.primaryAssetId))
@@ -115,18 +119,43 @@ export const artworksRouter = router({
 				.innerJoin(tag, eq(tag.id, artworkTag.tagId))
 				.where(inArray(artworkTag.artworkId, artworkIds));
 
-			return scopedRows.map((row) => ({
-				...row,
-				thumbnailUrl: row.assetId ? `/media/${row.assetId}/thumb` : null,
-				originalUrl: row.assetId ? `/media/${row.assetId}/original` : null,
-				tags: tagRows
-					.filter((tagRow) => tagRow.artworkId === row.id)
-					.map((tagRow) => ({
-						id: tagRow.id,
-						name: tagRow.name,
-						slug: tagRow.slug,
-					})),
-			}));
+			return scopedRows.map((row) => {
+				// An artwork has an image if it was uploaded (a media asset) or
+				// carries an external source URL (seeded content). Asset-backed
+				// images stream from the owner-auth /media route; external ones
+				// go through the proxy/cache, which also serves the owner's own
+				// unpublished artworks. Either way the browser never hotlinks.
+				const hasExternal = Boolean(row.imageUrl || row.externalThumbUrl);
+				return {
+					id: row.id,
+					title: row.title,
+					artist: row.artist,
+					artworkType: row.artworkType,
+					rating: row.rating,
+					archivedAt: row.archivedAt,
+					assetId: row.assetId,
+					mimeType: row.mimeType,
+					width: row.assetWidth ?? row.imageWidth,
+					height: row.assetHeight ?? row.imageHeight,
+					thumbnailUrl: row.assetId
+						? `/media/${row.assetId}/thumb`
+						: hasExternal
+							? `/public-image/artwork/${row.id}/thumb`
+							: null,
+					originalUrl: row.assetId
+						? `/media/${row.assetId}/original`
+						: hasExternal
+							? `/public-image/artwork/${row.id}/full`
+							: null,
+					tags: tagRows
+						.filter((tagRow) => tagRow.artworkId === row.id)
+						.map((tagRow) => ({
+							id: tagRow.id,
+							name: tagRow.name,
+							slug: tagRow.slug,
+						})),
+				};
+			});
 		}),
 
 	get: protectedProcedure
@@ -158,8 +187,26 @@ export const artworksRouter = router({
 					.where(eq(artworkTag.artworkId, item.id)),
 			]);
 
+			// Resolve a single display image the same way `list` does: the
+			// uploaded asset when present, else the external source through the
+			// proxy (which serves the owner's own unpublished artworks too).
+			const primaryAsset = assets[0];
+			const hasExternal = Boolean(item.imageUrl || item.thumbnailUrl);
+			const image = primaryAsset
+				? {
+						thumbnailUrl: `/media/${primaryAsset.id}/thumb`,
+						originalUrl: `/media/${primaryAsset.id}/original`,
+					}
+				: hasExternal
+					? {
+							thumbnailUrl: `/public-image/artwork/${item.id}/thumb`,
+							originalUrl: `/public-image/artwork/${item.id}/full`,
+						}
+					: null;
+
 			return {
 				artwork: item,
+				image,
 				mediaAssets: assets.map((asset) => ({
 					...asset,
 					thumbnailUrl: `/media/${asset.id}/thumb`,

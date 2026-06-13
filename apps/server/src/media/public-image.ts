@@ -40,6 +40,7 @@ async function sourceFor(
 	entity: Entity,
 	id: string,
 	variant: Variant,
+	resolveViewer?: () => Promise<string | undefined>,
 ): Promise<ImageSource | null> {
 	if (entity === "artwork") {
 		const rows = await db
@@ -47,13 +48,22 @@ async function sourceFor(
 				imageUrl: artwork.imageUrl,
 				thumbnailUrl: artwork.thumbnailUrl,
 				isPublished: artwork.isPublished,
+				userId: artwork.userId,
 				primaryAssetId: artwork.primaryAssetId,
 			})
 			.from(artwork)
 			.where(eq(artwork.id, id))
 			.limit(1);
 		const row = rows[0];
-		if (!row?.isPublished) return null;
+		if (!row) return null;
+		// Published artworks are public. An owner may also view their own
+		// unpublished artwork — the private archive and studio grids serve
+		// thumbnails through this same proxy. The session lookup is lazy so the
+		// public museum hot path (published images) never pays for it.
+		if (!row.isPublished) {
+			const viewerId = await resolveViewer?.();
+			if (!viewerId || row.userId !== viewerId) return null;
+		}
 		const url =
 			variant === "thumb" ? (row.thumbnailUrl ?? row.imageUrl) : row.imageUrl;
 		if (url) {
@@ -177,15 +187,16 @@ export async function servePublicImage(options: {
 	entity: Entity;
 	id: string;
 	variant: Variant;
+	resolveViewer?: () => Promise<string | undefined>;
 }): Promise<Response> {
-	const { uploadRoot, entity, id, variant } = options;
+	const { uploadRoot, entity, id, variant, resolveViewer } = options;
 	const cacheDir = path.join(uploadRoot, "public-image-cache");
 	const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
 	const cacheBase = path.join(cacheDir, `${entity}-${safeId}-${variant}`);
 
-	// Resolve the source first — it carries the publish check, so an
+	// Resolve the source first — it carries the publish/owner check, so an
 	// unpublished artwork is never served, not even from the disk cache.
-	const source = await sourceFor(entity, id, variant);
+	const source = await sourceFor(entity, id, variant, resolveViewer);
 	if (!source) {
 		return new Response("Not found", { status: 404 });
 	}

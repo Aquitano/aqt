@@ -1,3 +1,4 @@
+import { cn } from "@aqt-gallery/ui/lib/utils";
 import { Link } from "@tanstack/react-router";
 
 import type { ActiveGalleryTab } from "./types";
@@ -10,12 +11,17 @@ const tabs = [
 
 export function SegmentedNav({ active }: { active: ActiveGalleryTab }) {
 	return (
-		<nav aria-label="Gallery sections" className="gallery-nav-pill">
+		<nav
+			aria-label="Gallery sections"
+			className="inline-flex items-center gap-0.5 border border-border bg-card p-0.5"
+		>
 			{tabs.map((tab) => (
 				<Link
 					key={tab.id}
 					aria-current={active === tab.id ? "page" : undefined}
-					className={`gallery-nav-item ${active === tab.id ? "gallery-nav-item-active" : ""}`}
+					className={cn(
+						"inline-flex h-7 items-center justify-center px-3 font-medium text-muted-foreground text-xs transition-colors hover:text-foreground aria-[current=page]:bg-secondary aria-[current=page]:text-secondary-foreground",
+					)}
 					to={tab.to}
 				>
 					{tab.label}

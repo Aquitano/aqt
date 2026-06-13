@@ -6,6 +6,10 @@ import { defineConfig } from "vite";
 export default defineConfig({
 	server: {
 		port: 3001,
+		// Fail loudly if 3001 is taken instead of silently drifting to another
+		// port — a drifted origin no longer matches the server's CORS_ORIGIN
+		// and every API/auth request gets blocked.
+		strictPort: true,
 	},
 	resolve: {
 		tsconfigPaths: true,

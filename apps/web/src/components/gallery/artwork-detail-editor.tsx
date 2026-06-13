@@ -32,10 +32,8 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
 		tags: "",
 	});
 	const [customFields, setCustomFieldState] = useState<CustomField[]>([]);
-	const primaryAsset = detail.data?.mediaAssets[0];
-	const imageUrl = primaryAsset
-		? `${env.VITE_SERVER_URL}${primaryAsset.originalUrl}`
-		: null;
+	const image = detail.data?.image;
+	const imageUrl = image ? `${env.VITE_SERVER_URL}${image.originalUrl}` : null;
 
 	useEffect(() => {
 		const data = detail.data;

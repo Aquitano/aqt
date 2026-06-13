@@ -1,3 +1,4 @@
+import { Button } from "@aqt-gallery/ui/components/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -6,50 +7,49 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@aqt-gallery/ui/components/dropdown-menu";
+import { Kbd } from "@aqt-gallery/ui/components/kbd";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Bolt, Menu } from "lucide-react";
+import { Upload } from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
+import { useImportController } from "./import-provider";
 
-export function ActionCluster({ onCreate }: { onCreate: () => void }) {
+export function ActionCluster() {
 	const navigate = useNavigate();
+	const { openImport } = useImportController();
 	const { data: session } = authClient.useSession();
 	const initials = session?.user.name?.slice(0, 1).toUpperCase() ?? "A";
 
 	return (
-		<div className="gallery-action-cluster">
-			<button
-				aria-label="Quick actions"
-				className="gallery-icon-button"
-				type="button"
-			>
-				<Bolt size={17} />
-			</button>
+		<div className="flex items-center justify-end gap-2">
 			{session ? (
-				<button
-					className="gallery-create-button"
+				<Button
 					type="button"
-					onClick={onCreate}
+					variant="secondary"
+					size="lg"
+					onClick={openImport}
 				>
-					Create
-				</button>
+					<Upload />
+					Import
+					<Kbd className="ml-0.5 border-secondary-foreground/25 bg-secondary-foreground/10 text-secondary-foreground/80">
+						I
+					</Kbd>
+				</Button>
 			) : (
-				<Link className="gallery-create-button" to="/login">
-					Sign in
-				</Link>
+				<Button
+					size="lg"
+					nativeButton={false}
+					render={<Link to="/login">Sign in</Link>}
+				/>
 			)}
-			<div aria-hidden="true" className="gallery-mini-thumb" />
 			<DropdownMenu>
 				<DropdownMenuTrigger
-					className="gallery-avatar"
 					aria-label="Open user menu"
+					className="inline-grid size-9 place-items-center rounded-full bg-secondary font-medium text-secondary-foreground text-xs outline-none ring-1 ring-foreground/10 transition-colors hover:bg-secondary/80 focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					{initials}
 				</DropdownMenuTrigger>
-				<DropdownMenuContent
-					align="end"
-					className="border-white/10 bg-[#1f1f1f] text-white"
-				>
+				<DropdownMenuContent align="end" className="min-w-44">
 					<DropdownMenuLabel>
 						{session?.user.email ?? "Gallery"}
 					</DropdownMenuLabel>
@@ -57,30 +57,30 @@ export function ActionCluster({ onCreate }: { onCreate: () => void }) {
 					<DropdownMenuItem onClick={() => navigate({ to: "/dashboard" })}>
 						Archive
 					</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => navigate({ to: "/galleries" })}>
+						Galleries
+					</DropdownMenuItem>
 					{session ? (
-						<DropdownMenuItem
-							onClick={() => {
-								authClient.signOut({
-									fetchOptions: {
-										onSuccess: () => {
-											navigate({ to: "/" });
+						<>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem
+								variant="destructive"
+								onClick={() => {
+									authClient.signOut({
+										fetchOptions: {
+											onSuccess: () => {
+												navigate({ to: "/" });
+											},
 										},
-									},
-								});
-							}}
-						>
-							Sign out
-						</DropdownMenuItem>
+									});
+								}}
+							>
+								Sign out
+							</DropdownMenuItem>
+						</>
 					) : null}
 				</DropdownMenuContent>
 			</DropdownMenu>
-			<button
-				aria-label="Open menu"
-				className="gallery-menu-button"
-				type="button"
-			>
-				<Menu size={18} />
-			</button>
 		</div>
 	);
 }

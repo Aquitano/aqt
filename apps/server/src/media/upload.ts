@@ -132,20 +132,34 @@ function cleanupFiles(
 	).pipe(Effect.orDie);
 }
 
+/** Pairs each uploaded file with its optional title and filters both in
+ * lockstep, so a dropped (empty) file can never shift the titles out of
+ * alignment with the files that survive. */
 function filesFromFormData(formData: FormData) {
-	const files = formData
+	const rawTitles = formData.getAll("titles");
+	const entries = formData
 		.getAll("files")
-		.filter((value): value is File => value instanceof File && value.size > 0);
+		.map((value, index) => ({
+			value,
+			title:
+				typeof rawTitles[index] === "string"
+					? (rawTitles[index] as string)
+					: undefined,
+		}))
+		.filter(
+			(entry): entry is { value: File; title: string | undefined } =>
+				entry.value instanceof File && entry.value.size > 0,
+		);
 
-	if (files.length === 0) {
+	if (entries.length === 0) {
 		return Effect.fail(new NoFilesSupplied({}));
 	}
 
-	if (files.length > maxFilesPerUpload) {
+	if (entries.length > maxFilesPerUpload) {
 		return Effect.fail(new TooManyFiles({ maxFiles: maxFilesPerUpload }));
 	}
 
-	return Effect.succeed(files);
+	return Effect.succeed(entries);
 }
 
 /** Shared ingest core: validates an in-memory image, derives a thumbnail,
@@ -227,7 +241,12 @@ function prepareImage(
 	});
 }
 
-function prepareUploadFile(uploadRoot: string, userId: string, file: File) {
+function prepareUploadFile(
+	uploadRoot: string,
+	userId: string,
+	file: File,
+	title?: string,
+) {
 	return Effect.gen(function* () {
 		if (file.size > maxFileSizeBytes) {
 			return yield* new FileTooLarge({ filename: file.name, maxFileSizeBytes });
@@ -241,6 +260,7 @@ function prepareUploadFile(uploadRoot: string, userId: string, file: File) {
 			bytes,
 			mimeType: file.type,
 			filename: file.name,
+			title,
 		});
 	});
 }
@@ -272,8 +292,11 @@ function prepareUrlImage(
 					return { ok: false as const, status: res.status };
 				}
 				const contentType =
-					res.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ??
-					"";
+					res.headers
+						.get("content-type")
+						?.split(";")[0]
+						?.trim()
+						.toLowerCase() ?? "";
 				return {
 					ok: true as const,
 					contentType,
@@ -371,9 +394,17 @@ export function uploadMedia({
 	userId,
 }: UploadMediaInput) {
 	return Effect.gen(function* () {
-		const files = yield* filesFromFormData(formData);
+		// Each entry carries its file and the title supplied alongside it.
+		const entries = yield* filesFromFormData(formData);
 		const prepared = yield* Effect.all(
-			files.map((file) => prepareUploadFile(uploadRoot, userId, file)),
+			entries.map((entry) =>
+				prepareUploadFile(
+					uploadRoot,
+					userId,
+					entry.value,
+					entry.title || undefined,
+				),
+			),
 			{
 				concurrency: 2,
 			},

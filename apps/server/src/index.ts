@@ -117,7 +117,18 @@ app.get("/public-image/:entity/:id/:variant", async (c) => {
 	if (!isEntity(entity) || !isVariant(variant)) {
 		return c.notFound();
 	}
-	return servePublicImage({ uploadRoot: uploadRoot(), entity, id, variant });
+	return servePublicImage({
+		uploadRoot: uploadRoot(),
+		entity,
+		id,
+		variant,
+		// Resolved lazily (only for unpublished artworks) so an owner can
+		// preview their own drafts without slowing the public hot path.
+		resolveViewer: async () => {
+			const session = await getSession(c.req.raw.headers);
+			return session?.user.id;
+		},
+	});
 });
 
 app.use(

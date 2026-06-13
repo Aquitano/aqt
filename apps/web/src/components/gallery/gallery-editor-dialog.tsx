@@ -1,6 +1,17 @@
+import { Button } from "@aqt-gallery/ui/components/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@aqt-gallery/ui/components/dialog";
+import { Input } from "@aqt-gallery/ui/components/input";
+import { Label } from "@aqt-gallery/ui/components/label";
+import { Textarea } from "@aqt-gallery/ui/components/textarea";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -8,10 +19,10 @@ import { useTRPC } from "@/utils/trpc";
 
 export function GalleryEditorDialog({
 	open,
-	onClose,
+	onOpenChange,
 }: {
 	open: boolean;
-	onClose: () => void;
+	onOpenChange: (open: boolean) => void;
 }) {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
@@ -21,10 +32,6 @@ export function GalleryEditorDialog({
 	const [tagline, setTagline] = useState("");
 	const [description, setDescription] = useState("");
 
-	if (!open) {
-		return null;
-	}
-
 	const reset = () => {
 		setName("");
 		setTagline("");
@@ -32,9 +39,7 @@ export function GalleryEditorDialog({
 	};
 
 	const submit = async () => {
-		if (!name.trim()) {
-			return;
-		}
+		if (!name.trim()) return;
 		const created = await createGroup.mutateAsync({
 			name: name.trim(),
 			tagline: tagline.trim() || null,
@@ -43,7 +48,7 @@ export function GalleryEditorDialog({
 		await queryClient.invalidateQueries();
 		toast.success("Gallery created");
 		reset();
-		onClose();
+		onOpenChange(false);
 		if (created) {
 			navigate({
 				to: "/galleries/$galleryId",
@@ -53,61 +58,61 @@ export function GalleryEditorDialog({
 	};
 
 	return (
-		<div className="gallery-modal-backdrop">
-			<section
-				className="gallery-import-dialog gallery-compact-dialog"
-				aria-label="Create gallery"
-			>
-				<div className="gallery-dialog-header">
-					<div>
-						<p className="gallery-eyebrow">Curated gallery</p>
-						<h2>Create a gallery</h2>
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="max-w-md">
+				<DialogHeader>
+					<DialogTitle>Create a gallery</DialogTitle>
+					<DialogDescription>
+						A curated room you can fill with artworks and walk through in 3D.
+					</DialogDescription>
+				</DialogHeader>
+				<div className="flex flex-col gap-3">
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="gallery-name">Name</Label>
+						<Input
+							id="gallery-name"
+							autoFocus
+							value={name}
+							onChange={(event) => setName(event.target.value)}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") void submit();
+							}}
+						/>
 					</div>
-					<button
-						aria-label="Close"
-						className="gallery-icon-button"
-						type="button"
-						onClick={onClose}
-					>
-						<X size={18} />
-					</button>
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="gallery-tagline">Tagline</Label>
+						<Input
+							id="gallery-tagline"
+							placeholder="Shown beneath the title"
+							value={tagline}
+							onChange={(event) => setTagline(event.target.value)}
+						/>
+					</div>
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="gallery-description">Description</Label>
+						<Textarea
+							id="gallery-description"
+							value={description}
+							onChange={(event) => setDescription(event.target.value)}
+						/>
+					</div>
 				</div>
-				<label className="gallery-field">
-					<span>Name</span>
-					<input
-						value={name}
-						onChange={(event) => setName(event.target.value)}
-						onKeyDown={(event) => {
-							if (event.key === "Enter") void submit();
-						}}
-					/>
-				</label>
-				<label className="gallery-field">
-					<span>Tagline</span>
-					<input
-						placeholder="Shown beneath the title"
-						value={tagline}
-						onChange={(event) => setTagline(event.target.value)}
-					/>
-				</label>
-				<label className="gallery-field">
-					<span>Description</span>
-					<textarea
-						value={description}
-						onChange={(event) => setDescription(event.target.value)}
-					/>
-				</label>
-				<div className="gallery-dialog-actions">
-					<button
-						className="gallery-primary-button"
-						type="button"
-						disabled={createGroup.isPending || name.trim().length === 0}
+				<DialogFooter>
+					<Button
+						variant="ghost"
+						onClick={() => onOpenChange(false)}
+						disabled={createGroup.isPending}
+					>
+						Cancel
+					</Button>
+					<Button
 						onClick={() => void submit()}
+						disabled={createGroup.isPending || name.trim().length === 0}
 					>
 						Create gallery
-					</button>
-				</div>
-			</section>
-		</div>
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }

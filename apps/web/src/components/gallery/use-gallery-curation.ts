@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppRouter } from "server/api/routers/index";
 import { toast } from "sonner";
 
@@ -44,6 +44,8 @@ export type GalleryCuration = {
 	toggleSelected: (id: string) => void;
 	clearSelected: () => void;
 	addSelected: () => void;
+	/** Append archive artworks (by id) to the gallery — used by import. Stable. */
+	addArtworks: (artworkIds: string[]) => void;
 	move: (sourceId: string, targetId: string) => void;
 	remove: (id: string) => void;
 	setCover: (artworkId: string | null) => Promise<void>;
@@ -148,6 +150,23 @@ export function useGalleryCuration(galleryId: string): GalleryCuration {
 		void syncArtworks([...memberIds, ...toAdd]);
 	};
 
+	// Refs let `addArtworks` stay referentially stable (so the import provider
+	// can register it once) while still acting on the latest membership.
+	const memberIdsRef = useRef(memberIds);
+	memberIdsRef.current = memberIds;
+	const hasGroupRef = useRef(group !== null);
+	hasGroupRef.current = group !== null;
+	const syncArtworksRef = useRef(syncArtworks);
+	syncArtworksRef.current = syncArtworks;
+
+	const addArtworks = useCallback((artworkIds: string[]) => {
+		if (!hasGroupRef.current || artworkIds.length === 0) return;
+		const current = memberIdsRef.current;
+		const fresh = artworkIds.filter((id) => !current.includes(id));
+		if (fresh.length === 0) return;
+		void syncArtworksRef.current([...current, ...fresh]);
+	}, []);
+
 	const setCover = async (artworkId: string | null) => {
 		if (!group) return;
 		await updateGroup.mutateAsync({ id: group.id, coverArtworkId: artworkId });
@@ -201,6 +220,7 @@ export function useGalleryCuration(galleryId: string): GalleryCuration {
 		toggleSelected,
 		clearSelected,
 		addSelected,
+		addArtworks,
 		move,
 		remove,
 		setCover,

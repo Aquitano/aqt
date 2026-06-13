@@ -29,36 +29,41 @@ function RouteComponent() {
 
 	return (
 		<CosmosShell active="reviews" search={search} onSearch={setSearch}>
-			<section className="reviews-page">
-				<div className="gallery-page-heading">
-					<div>
-						<p className="gallery-eyebrow">Seen and scored</p>
-						<h1>Reviews</h1>
+			<div className="mx-auto w-full max-w-[1120px] pt-6">
+				<div className="mb-6">
+					<p className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
+						Seen and scored
+					</p>
+					<h1 className="mt-1 font-semibold text-3xl tracking-tight">
+						Reviews
+					</h1>
+				</div>
+				{reviewed.length === 0 ? (
+					<div className="flex max-w-xl flex-col items-start gap-2 pt-10">
+						<h2 className="font-semibold text-xl">No reviews yet.</h2>
+						<p className="text-muted-foreground text-sm">
+							Open an artwork and add a rating or review to build this page.
+						</p>
 					</div>
-				</div>
-				<div className="review-list">
-					{reviewed.map((artwork) => (
-						<Link
-							key={artwork.id}
-							className="review-row"
-							to="/artworks/$artworkId"
-							params={{ artworkId: artwork.id }}
-						>
-							<span>{artwork.title}</span>
-							<strong>{artwork.rating}/5</strong>
-							<small>{artwork.artist || artwork.artworkType}</small>
-						</Link>
-					))}
-					{reviewed.length === 0 ? (
-						<div className="gallery-empty-state">
-							<h1>No reviews yet.</h1>
-							<p>
-								Open an artwork and add a rating or review to build this page.
-							</p>
-						</div>
-					) : null}
-				</div>
-			</section>
+				) : (
+					<div className="flex flex-col">
+						{reviewed.map((artwork) => (
+							<Link
+								key={artwork.id}
+								to="/artworks/$artworkId"
+								params={{ artworkId: artwork.id }}
+								className="grid grid-cols-[1fr_auto_auto] items-center gap-4 border-border/60 border-t py-3.5 text-sm transition-colors hover:bg-card/60"
+							>
+								<span className="truncate">{artwork.title}</span>
+								<strong className="tabular-nums">{artwork.rating}/5</strong>
+								<small className="text-muted-foreground">
+									{artwork.artist || artwork.artworkType}
+								</small>
+							</Link>
+						))}
+					</div>
+				)}
+			</div>
 		</CosmosShell>
 	);
 }

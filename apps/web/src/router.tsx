@@ -19,7 +19,10 @@ export const queryClient = new QueryClient({
 			toast.error(error.message, {
 				action: {
 					label: "retry",
-					onClick: query.invalidate,
+					// Wrap, don't pass `query.invalidate` directly: sonner calls the
+					// handler as a bare function, which strips the method's `this` and
+					// makes invalidate() throw on `this.state.isInvalidated`.
+					onClick: () => query.invalidate(),
 				},
 			});
 		},

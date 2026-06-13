@@ -1,3 +1,5 @@
+import { Badge } from "@aqt-gallery/ui/components/badge";
+import { Button } from "@aqt-gallery/ui/components/button";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
@@ -5,6 +7,7 @@ import { useState } from "react";
 
 import { CosmosShell } from "@/components/gallery/cosmos-shell";
 import { GalleryEditorDialog } from "@/components/gallery/gallery-editor-dialog";
+import type { GalleryGroup } from "@/components/gallery/use-gallery-curation";
 import { getUser } from "@/functions/get-user";
 import { useTRPC } from "@/utils/trpc";
 
@@ -32,58 +35,33 @@ function RouteComponent() {
 
 	return (
 		<CosmosShell active="galleries" search={search} onSearch={setSearch}>
-			<section className="gallery-list-page">
-				<div className="gallery-page-heading">
+			<div className="mx-auto w-full max-w-[1120px] pt-6">
+				<div className="mb-6 flex items-end justify-between gap-4">
 					<div>
-						<p className="gallery-eyebrow">Curated galleries</p>
-						<h1>Galleries</h1>
+						<p className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
+							Curated galleries
+						</p>
+						<h1 className="mt-1 font-semibold text-3xl tracking-tight">
+							Galleries
+						</h1>
 					</div>
-					<button
-						className="gallery-primary-button"
-						type="button"
-						onClick={() => setEditorOpen(true)}
-					>
-						<Plus size={16} />
+					<Button size="lg" onClick={() => setEditorOpen(true)}>
+						<Plus />
 						New gallery
-					</button>
+					</Button>
 				</div>
-				<div className="gallery-page-grid">
+
+				<div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
 					{visible.map((group) => (
-						<Link
-							key={group.id}
-							className="gallery-page-card"
-							to="/galleries/$galleryId"
-							params={{ galleryId: group.id }}
-						>
-							{group.coverImageUrl ? (
-								<img src={group.coverImageUrl} alt="" />
-							) : (
-								<div className="gallery-page-card-empty" />
-							)}
-							<h2>{group.name}</h2>
-							<p>{group.tagline || group.description || "A curated gallery"}</p>
-							<div className="gallery-card-meta">
-								<span>
-									{group.artworkIds.length}{" "}
-									{group.artworkIds.length === 1 ? "artwork" : "artworks"}
-								</span>
-								<span
-									className={`gallery-status-badge ${
-										group.isPublished ? "gallery-status-badge-published" : ""
-									}`}
-								>
-									{group.isPublished ? "Published" : "Draft"}
-								</span>
-							</div>
-						</Link>
+						<GalleryCard key={group.id} group={group} />
 					))}
 					{groups.isSuccess && visible.length === 0 ? (
 						<button
-							className="gallery-page-card gallery-page-card-create"
 							type="button"
 							onClick={() => setEditorOpen(true)}
+							className="flex min-h-56 flex-col items-center justify-center gap-2 border border-border border-dashed bg-card/40 px-4 text-center text-muted-foreground text-xs outline-none transition-colors hover:border-ring hover:text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
 						>
-							<Plus size={20} />
+							<Plus className="size-5" />
 							<span>
 								{search
 									? "No galleries match — create a new one"
@@ -92,11 +70,45 @@ function RouteComponent() {
 						</button>
 					) : null}
 				</div>
-				<GalleryEditorDialog
-					open={editorOpen}
-					onClose={() => setEditorOpen(false)}
-				/>
-			</section>
+			</div>
+			<GalleryEditorDialog open={editorOpen} onOpenChange={setEditorOpen} />
 		</CosmosShell>
+	);
+}
+
+function GalleryCard({ group }: { group: GalleryGroup }) {
+	return (
+		<Link
+			to="/galleries/$galleryId"
+			params={{ galleryId: group.id }}
+			className="group flex flex-col overflow-hidden bg-card ring-1 ring-foreground/10 transition-all hover:ring-foreground/25"
+		>
+			<div className="aspect-[1.5] overflow-hidden bg-muted">
+				{group.coverImageUrl ? (
+					<img
+						src={group.coverImageUrl}
+						alt=""
+						className="size-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+					/>
+				) : (
+					<div className="size-full bg-gradient-to-br from-muted to-background" />
+				)}
+			</div>
+			<div className="flex flex-1 flex-col gap-1 p-3">
+				<h2 className="font-medium text-sm">{group.name}</h2>
+				<p className="line-clamp-2 text-muted-foreground text-xs">
+					{group.tagline || group.description || "A curated gallery"}
+				</p>
+				<div className="mt-auto flex items-center justify-between pt-3">
+					<span className="text-muted-foreground text-xs">
+						{group.artworkIds.length}{" "}
+						{group.artworkIds.length === 1 ? "artwork" : "artworks"}
+					</span>
+					<Badge variant={group.isPublished ? "success" : "outline"}>
+						{group.isPublished ? "Published" : "Draft"}
+					</Badge>
+				</div>
+			</div>
+		</Link>
 	);
 }
