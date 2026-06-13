@@ -17,6 +17,7 @@ import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import java.time.Instant
 import java.time.LocalDate
+import kotlin.math.roundToInt
 
 data class CanonicalStepSampleOutput(
     val sampleId: Int,
@@ -77,7 +78,7 @@ class CanonicalStepDerivationRepository : BaseMetricRepository() {
             (CanonicalStepSamplesTable.date eq output.date) and
                 (CanonicalStepSamplesTable.algorithmVersion eq output.algorithmVersion)
         }
-        CanonicalStepSamplesTable.batchInsert(output.samples) { sample ->
+        CanonicalStepSamplesTable.batchInsert(output.samples, ignore = true) { sample ->
             this[CanonicalStepSamplesTable.date] = output.date
             this[CanonicalStepSamplesTable.sourceInstanceId] = sample.sourceInstanceId
             this[CanonicalStepSamplesTable.stepSampleId] = sample.sampleId
@@ -87,7 +88,7 @@ class CanonicalStepDerivationRepository : BaseMetricRepository() {
             this[CanonicalStepSamplesTable.algorithmVersion] = output.algorithmVersion
             this[CanonicalStepSamplesTable.computedAt] = output.computedAt.toDbTimestamp()
         }
-        CanonicalStepDayBucketContributionsTable.batchInsert(output.bucketContributions) { contribution ->
+        CanonicalStepDayBucketContributionsTable.batchInsert(output.bucketContributions, ignore = true) { contribution ->
             this[CanonicalStepDayBucketContributionsTable.date] = contribution.date
             this[CanonicalStepDayBucketContributionsTable.sourceInstanceId] = contribution.sourceInstanceId
             this[CanonicalStepDayBucketContributionsTable.stepSampleId] = contribution.sampleId
@@ -215,7 +216,7 @@ class CanonicalStepDerivationRepository : BaseMetricRepository() {
             .groupBy(CanonicalStepDayBucketContributionsTable.sourceInstanceId)
             .associate {
                 it[CanonicalStepDayBucketContributionsTable.sourceInstanceId] to
-                    ((it[valueExpression] ?: 0.0).toInt())
+                    (it[valueExpression] ?: 0.0)
             }
 
         val countExpression = CanonicalStepSamplesTable.stepSampleId.count()
@@ -229,7 +230,10 @@ class CanonicalStepDerivationRepository : BaseMetricRepository() {
 
         val sourceIds = stepsBySource.keys + sampleCountsBySource.keys
         val summary = CanonicalDashboardStepsSummary(
-            steps = stepsBySource.values.sum(),
+            // Sum the fractional per-source contributions first, then round once — matches
+            // StepDailySummaryDerivation.allocatedStepsForDay and avoids per-source truncation
+            // that made the dashboard total under-report and disagree with /steps/daily-summaries.
+            steps = stepsBySource.values.sum().roundToInt(),
             sampleCount = sampleCountsBySource.values.sum(),
             sourceInstanceIds = sourceIds,
         )

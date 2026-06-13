@@ -8,20 +8,12 @@ import io.ktor.server.request.*
 import io.ktor.util.*
 import kotlinx.coroutines.slf4j.MDCContext
 import kotlinx.coroutines.withContext
-import me.aquitano.health.infrastructure.repositories.SupportRepository
-import me.aquitano.health.infrastructure.security.ApiKeyHasher
-import me.aquitano.health.infrastructure.time.UtcClock
-import org.koin.ktor.ext.inject
 import org.slf4j.event.Level
 import java.util.*
 
 private val RequestStartedAtKey = AttributeKey<Long>("RequestStartedAt")
 
 fun Application.configureRequestLogging() {
-    val supportRepository by inject<SupportRepository>()
-    val apiKeyHasher by inject<ApiKeyHasher>()
-    val clock by inject<UtcClock>()
-
     install(CallId) {
         retrieveFromHeader(HttpHeaders.XRequestId)
         generate { UUID.randomUUID().toString() }
@@ -33,32 +25,20 @@ fun Application.configureRequestLogging() {
         call.attributes.put(RequestStartedAtKey, System.nanoTime())
     }
 
+    // Request-scoped MDC for logs emitted while the call is handled. The client identity is
+    // intentionally NOT resolved here: hashing the bearer token and querying the DB on *every*
+    // inbound request (before auth runs, including public/invalid traffic) is an unauthenticated
+    // load-amplification primitive and duplicates the auth provider's work. clientId/clientName are
+    // filled in by CallLogging below, read from the attribute the auth provider sets once a request
+    // reaches an authenticated route.
     intercept(ApplicationCallPipeline.Plugins) {
-        val authHeader = call.request.headers[HttpHeaders.Authorization]
-        val clientRef = if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            val apiKey = authHeader.removePrefix("Bearer ").trim()
-            if (apiKey.isNotBlank()) {
-                try {
-                    val hash = apiKeyHasher.hash(apiKey)
-                    supportRepository.findEnabledApiClientByHash(hash, clock.now())
-                } catch (e: Exception) {
-                    null
-                }
-            } else null
-        } else null
-
-        val mdcMap = mutableMapOf(
+        val mdcMap = mapOf(
             "requestId" to call.callId.orEmpty(),
             "method" to call.request.httpMethod.value,
             "path" to call.request.path(),
             "clientIp" to call.request.local.remoteHost,
-            "userAgent" to call.request.headers[HttpHeaders.UserAgent].orEmpty()
+            "userAgent" to call.request.headers[HttpHeaders.UserAgent].orEmpty(),
         )
-        if (clientRef != null) {
-            mdcMap["clientId"] = clientRef.id.toString()
-            mdcMap["clientName"] = clientRef.name
-            call.attributes.put(ApiClientAttributeKey, clientRef)
-        }
 
         withContext(MDCContext(mdcMap)) {
             proceed()
@@ -84,4 +64,3 @@ fun Application.configureRequestLogging() {
 private fun ApplicationCall.durationMs(): Long? =
     attributes.getOrNull(RequestStartedAtKey)
         ?.let { (System.nanoTime() - it) / 1_000_000 }
-

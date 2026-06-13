@@ -100,6 +100,31 @@ class ProviderSyncPipelineTest {
         assertTrue(delays.single() > Duration.ZERO)
     }
 
+    @Test
+    fun reReadUnderLockSkipsRefreshWhenTokenAlreadyRotated() = runBlocking {
+        // The first account read sees an expired token; the re-read inside the per-account lock sees
+        // a fresh one (as if a concurrent run already refreshed and rotated the refresh token). This
+        // run must NOT refresh again with the stale token — doing so is what bricks rotating-token
+        // (Google) accounts into needs_reauth.
+        val accountPort = FakeStaleThenFreshAccountPort(
+            staleAccount = syncAccount(expiresAt = now.minusSeconds(1)),
+            freshAccount = syncAccount(expiresAt = now.plusSeconds(3600)),
+        )
+        val adapter = FakeAdapter()
+        val pipeline = ProviderSyncPipeline(
+            accountPort,
+            FakeRunPort(),
+            FakeIngestionPort(),
+            clock = UtcClock.fixed(now),
+        )
+
+        val summary = pipeline.sync(adapter, request, now)
+
+        assertEquals(0, adapter.refreshCalls)
+        assertEquals(0, accountPort.saveCount)
+        assertEquals("processed", summary.status)
+    }
+
     private class FakeAdapter(
         private val refreshFailure: RuntimeException? = null,
         private var throwUnauthorizedOnce: Boolean = false,
@@ -231,6 +256,55 @@ class ProviderSyncPipelineTest {
         ) {
             needsReauthCode = code
         }
+
+        override suspend fun markTokenRefreshFailed(
+            accountId: Int,
+            code: String,
+            message: String,
+            now: Instant,
+        ) = Unit
+    }
+
+    /** Returns a stale (expired) account on the first read and a fresh one on every read after. */
+    private class FakeStaleThenFreshAccountPort(
+        private val staleAccount: SyncAccount,
+        private val freshAccount: SyncAccount,
+    ) : ProviderSyncAccountPort {
+        private var selectCalls = 0
+        var saveCount = 0
+
+        override suspend fun selectForSync(
+            providerCode: String,
+            providerInstanceId: String?,
+        ): SyncAccount {
+            selectCalls += 1
+            return if (selectCalls == 1) staleAccount else freshAccount
+        }
+
+        override suspend fun findAnyForStatusHint(
+            providerCode: String,
+            providerInstanceId: String?,
+        ): SyncAccount = freshAccount
+
+        override suspend fun decryptAccessToken(account: SyncAccount): String = "access"
+
+        override suspend fun decryptRefreshToken(account: SyncAccount): String = "refresh"
+
+        override suspend fun saveRefreshedToken(
+            accountId: Int,
+            tokens: RefreshedTokenSet,
+            previousRefreshToken: String,
+            now: Instant,
+        ) {
+            saveCount += 1
+        }
+
+        override suspend fun markNeedsReauth(
+            accountId: Int,
+            code: String,
+            message: String,
+            now: Instant,
+        ) = Unit
 
         override suspend fun markTokenRefreshFailed(
             accountId: Int,

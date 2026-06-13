@@ -71,12 +71,16 @@ class ScalarSampleReadRepository : BaseMetricRepository() {
             mode = mode,
         ).whereOrNull() ?: return emptyLatestResult()
 
+        // Honor filters.order: desc -> most recent (the common "latest"), asc -> earliest. Callers
+        // that want the latest pass order = desc; previously this was hardcoded DESC, so an asc
+        // caller silently got the newest sample instead of the earliest.
+        val order = filters.sortOrder()
         val row = table.query
             .selectAll()
             .where(where and (table.metricType inList metricTypes))
             .orderBy(
-                table.measuredAt to SortOrder.DESC,
-                table.idColumn to SortOrder.DESC,
+                table.measuredAt to order,
+                table.idColumn to order,
             )
             .limit(1)
             .map(table::toRow)

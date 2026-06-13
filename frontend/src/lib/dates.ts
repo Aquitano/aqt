@@ -7,15 +7,13 @@ export type DateRange = {
 
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 
-export function defaultDateRange(now = new Date()): DateRange {
-  const toDate = toDateInputValue(now);
-  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  from.setUTCDate(from.getUTCDate() - 6);
+export function defaultDateRange(now = new Date(), timezone = "UTC"): DateRange {
+  const toDate = dateInputValueInTimeZone(now, timezone);
 
   return {
-    fromDate: toDateInputValue(from),
+    fromDate: addUtcDays(toDate, -6),
     toDate,
-    timezone: "UTC",
+    timezone,
   };
 }
 
@@ -24,12 +22,20 @@ export function parseDateRange(values: {
   toDate?: string | string[];
   timezone?: string | string[];
 }): DateRange {
-  const fallback = defaultDateRange();
+  const timezoneInput = first(values.timezone);
+  const timezone =
+    timezoneInput != null && isTimezoneLike(timezoneInput) ? timezoneInput : "UTC";
+  // Resolve the default range in the requested timezone so an unset range matches the local dates
+  // the picker produces, rather than UTC "today" (off-by-one for users east/west of UTC).
+  const fallback = defaultDateRange(new Date(), timezone);
   const fromDate = first(values.fromDate) ?? fallback.fromDate;
   const toDate = first(values.toDate) ?? fallback.toDate;
-  const timezone = first(values.timezone) ?? fallback.timezone;
 
-  if (!isDateOnly(fromDate) || !isDateOnly(toDate) || !isTimezoneLike(timezone)) {
+  if (
+    !isDateOnly(fromDate) ||
+    !isDateOnly(toDate) ||
+    (timezoneInput != null && !isTimezoneLike(timezoneInput))
+  ) {
     return {
       ...fallback,
       warning: "Invalid date query parameters were ignored.",
@@ -73,6 +79,20 @@ function isDateOnly(value: string): boolean {
 
 function toDateInputValue(value: Date): string {
   return value.toISOString().slice(0, 10);
+}
+
+function dateInputValueInTimeZone(value: Date, timeZone: string): string {
+  // "en-CA" formats as YYYY-MM-DD, and the timeZone option yields the calendar date in that zone.
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(value);
+  } catch {
+    return toDateInputValue(value);
+  }
 }
 
 function isTimezoneLike(value: string): boolean {

@@ -6,7 +6,7 @@ import me.aquitano.health.infrastructure.database.tables.SleepSessionsTable
 import me.aquitano.health.infrastructure.database.tables.SleepStagesTable
 import me.aquitano.health.infrastructure.database.tables.SleepSummariesTable
 import me.aquitano.health.infrastructure.database.toDbTimestamp
-import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.insertIgnore
 import org.jetbrains.exposed.v1.jdbc.insertIgnoreAndGetId
 import java.time.Duration
 import java.time.Instant
@@ -30,7 +30,9 @@ class SleepWriteRepository {
                 it[createdAt] = now.toDbTimestamp()
             }?.value ?: return null
         record.stages.forEach { stage ->
-            SleepStagesTable.insert {
+            // insertIgnore + the sleep_stages_session_start_stage_uq unique index keep replays and
+            // any future non-new-session writer from doubling stages and inflating stage totals.
+            SleepStagesTable.insertIgnore {
                 it[sleepSessionId] = sessionId
                 it[this.stage] = stage.stage
                 it[startAt] = stage.startAt.toDbTimestamp()

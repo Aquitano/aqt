@@ -54,7 +54,7 @@ export function DayOverview({ day, weightDelta7d, weightDelta7dUnit }: DayOvervi
         <div className={styles.head}>
           <span className={styles.label}>Heart rate</span>
           <span className={styles.meta}>
-            {day?.heartRate?.minBpm && day.heartRate.maxBpm
+            {day?.heartRate?.minBpm != null && day.heartRate.maxBpm != null
               ? `${day.heartRate.minBpm}-${day.heartRate.maxBpm}`
               : "n/a"}
           </span>
@@ -64,7 +64,7 @@ export function DayOverview({ day, weightDelta7d, weightDelta7dUnit }: DayOvervi
           value={day?.heartRate?.latest ? `${day.heartRate.latest.value} ${day.heartRate.latest.unit}` : "n/a"}
         />
         <div className={styles.subvalue}>
-          avg {day?.heartRate?.avgBpm ? `${Math.round(day.heartRate.avgBpm)} bpm` : "n/a"}
+          avg {day?.heartRate?.avgBpm != null ? `${Math.round(day.heartRate.avgBpm)} bpm` : "n/a"}
         </div>
         <div className={styles.chart}>
           <Sparkline buckets={day?.heartRate?.buckets ?? []} />

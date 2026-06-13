@@ -1,6 +1,8 @@
 package me.aquitano.health.application.providersync
 
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import me.aquitano.health.domain.*
 import me.aquitano.health.infrastructure.time.UtcClock
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -8,6 +10,7 @@ import me.aquitano.health.infrastructure.logging.*
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.CancellationException
+import java.util.concurrent.ConcurrentHashMap
 
 private val logger = KotlinLogging.logger {}
 
@@ -18,6 +21,18 @@ class ProviderSyncPipeline(
     private val throttleDelay: suspend (Duration) -> Unit = { delay(it.toMillis()) },
     private val clock: UtcClock = UtcClock(),
 ) {
+    // Serializes the token-refresh critical section per account so a manual + scheduled + sync-job
+    // run for the same account can't interleave refreshAccessToken/saveRefreshedToken and invalidate
+    // each other's rotating refresh token (Google), bricking the account into needs_reauth. Only the
+    // short refresh window is guarded, not the whole sync, so the synchronous POST /sync path never
+    // blocks for the length of a backfill. Process-local: the pipeline is a per-provider singleton,
+    // so this covers every in-process sync path. Multi-instance deploys still need a DB-backed claim
+    // (same gap noted on ScheduledSyncRunGuard).
+    private val accountTokenLocks = ConcurrentHashMap<String, Mutex>()
+
+    private fun accountTokenLock(providerCode: String, providerInstanceId: String): Mutex =
+        accountTokenLocks.computeIfAbsent("$providerCode:$providerInstanceId") { Mutex() }
+
     suspend fun sync(
         adapter: ProviderSyncAdapter,
         request: ProviderSyncRequest,
@@ -99,7 +114,13 @@ class ProviderSyncPipeline(
                 } catch (exception: Throwable) {
                     if (exception is CancellationException) throw exception
                     if (!adapter.isUnauthorized(exception)) throw exception
-                    token = refreshAccessToken(adapter, account, token.refreshToken, clock.now())
+                    token = obtainAccessToken(
+                        adapter = adapter,
+                        providerInstanceId = account.providerInstanceId,
+                        now = clock.now(),
+                        forceRefresh = true,
+                        usedRefreshToken = token.refreshToken,
+                    )
                     throttledFetch(
                         adapter = adapter,
                         lastCompletedAtNanos = lastProviderRequestCompletedAtNanos,
@@ -270,13 +291,50 @@ class ProviderSyncPipeline(
         account: SyncAccount,
         now: Instant,
     ): ProviderAccessToken {
-        val accessToken = accounts.decryptAccessToken(account)
-        val refreshToken = accounts.decryptRefreshToken(account)
         if (account.expiresAt.isAfter(now.plusSeconds(60))) {
-            return ProviderAccessToken(accessToken, refreshToken)
+            return ProviderAccessToken(
+                accounts.decryptAccessToken(account),
+                accounts.decryptRefreshToken(account),
+            )
         }
-        return refreshAccessToken(adapter, account, refreshToken, now)
+        return obtainAccessToken(
+            adapter = adapter,
+            providerInstanceId = account.providerInstanceId,
+            now = now,
+            forceRefresh = false,
+            usedRefreshToken = null,
+        )
     }
+
+    /**
+     * Under the per-account lock, re-reads the account and refreshes only if still needed, so two
+     * concurrent runs don't both refresh: the second observes the token the first already rotated
+     * and reuses it. [forceRefresh] handles a mid-sync 401 — refresh unless another run already
+     * rotated the refresh token we just failed with (then its newer token is returned instead).
+     */
+    private suspend fun obtainAccessToken(
+        adapter: ProviderSyncAdapter,
+        providerInstanceId: String,
+        now: Instant,
+        forceRefresh: Boolean,
+        usedRefreshToken: String?,
+    ): ProviderAccessToken =
+        accountTokenLock(adapter.providerCode, providerInstanceId).withLock {
+            val current = accounts.selectForSync(adapter.providerCode, providerInstanceId)
+                ?: throw adapter.accountUnavailable(
+                    providerInstanceId,
+                    accounts.findAnyForStatusHint(adapter.providerCode, providerInstanceId),
+                )
+            val currentRefreshToken = accounts.decryptRefreshToken(current)
+            val refreshNeeded =
+                if (forceRefresh) currentRefreshToken == usedRefreshToken
+                else !current.expiresAt.isAfter(now.plusSeconds(60))
+            if (refreshNeeded) {
+                refreshAccessToken(adapter, current, currentRefreshToken, now)
+            } else {
+                ProviderAccessToken(accounts.decryptAccessToken(current), currentRefreshToken)
+            }
+        }
 
     private suspend fun refreshAccessToken(
         adapter: ProviderSyncAdapter,

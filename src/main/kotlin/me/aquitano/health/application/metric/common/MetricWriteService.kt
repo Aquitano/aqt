@@ -68,6 +68,11 @@ class MetricWriteService(
                 scalarWrites,
                 now,
             )
+            // insertedTypes is the repository's in-memory dedup decision and is authoritative for
+            // these counts: created = rows that passed dedup, duplicateSkipped = the rest. The
+            // insert's ignore=true can additionally drop a concurrent writer's row after the
+            // pre-check; that rare case is counted as created here because a multi-row statement
+            // can't distinguish inserted from conflict-ignored rows without an extra round trip.
             created += MetricCreatedCounts(insertedTypes.groupingBy { it }.eachCount())
             duplicateSkipped += scalarWrites.sumOf { it.record.values.size } - insertedTypes.size
         }

@@ -278,11 +278,20 @@ class SleepDayModule(
         val (nights, stagesBySession, sourceMetadata) =
             sleepRepository.listCanonicalSleepNights(filters)
         val sessions = nights
-            .map { it.session }
-            .filter { session ->
-                Instant.parse(session.startAt).isBefore(context.to) &&
-                    Instant.parse(session.endAt).isAfter(context.from)
+            .filter { night ->
+                Instant.parse(night.session.startAt).isBefore(context.to) &&
+                    Instant.parse(night.session.endAt).isAfter(context.from)
             }
+            .groupBy { it.date }
+            .flatMap { (_, nightsForDate) ->
+                // The canonical_sleep_nights view can return >1 row for a night when providers
+                // tie on rank (e.g. two unranked providers both at rank 10000). Keep a single
+                // source per night so two providers' overlapping stage segments aren't summed
+                // twice; multiple sessions from that one source (a fragmented night) still count.
+                val winningSource = nightsForDate.minOf { it.session.sourceInstanceId }
+                nightsForDate.filter { it.session.sourceInstanceId == winningSource }
+            }
+            .map { it.session }
         val timeline = sessions.flatMap { session ->
             stagesBySession[session.id].orEmpty().mapNotNull { stage ->
                 val start = maxOf(Instant.parse(stage.startAt), context.from)

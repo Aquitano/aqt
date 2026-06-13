@@ -190,13 +190,20 @@ class SleepNightDerivationRepository {
             return 0
         }
 
+        val rewrittenSessionIds = output.nights.map { it.sleepSessionId }
         SleepNightsTable.deleteWhere {
-            val base =
+            val dateScope =
                 (SleepNightsTable.timezone eq timezone) and
                     (SleepNightsTable.date eq output.date)
-            output.sourceInstanceIds?.let {
-                base and (SleepNightsTable.sourceInstanceId inList it)
-            } ?: base
+            val scoped = output.sourceInstanceIds?.let {
+                dateScope and (SleepNightsTable.sourceInstanceId inList it)
+            } ?: dateScope
+            // Also drop any existing row for the exact sessions being rewritten, even when its
+            // stored night-date or timezone differs. The upsert key is (timezone, sleepSessionId),
+            // so a session whose computed night-date changed (endAt/tz correction) would otherwise
+            // leave a stale row the date-scoped delete misses -> duplicate/drifted nights.
+            if (rewrittenSessionIds.isEmpty()) scoped
+            else scoped or (SleepNightsTable.sleepSessionId inList rewrittenSessionIds)
         }
 
         output.nights.forEach { night ->
