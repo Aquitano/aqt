@@ -61,6 +61,11 @@ export function ActionCluster() {
 						Galleries
 					</DropdownMenuItem>
 					{session ? (
+						<DropdownMenuItem onClick={() => navigate({ to: "/connect" })}>
+							Connect an agent
+						</DropdownMenuItem>
+					) : null}
+					{session ? (
 						<>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem

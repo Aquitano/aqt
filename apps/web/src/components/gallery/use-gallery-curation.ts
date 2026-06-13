@@ -109,7 +109,8 @@ export function useGalleryCuration(galleryId: string): GalleryCuration {
 			await setGroupArtworks.mutateAsync({ groupId: group.id, artworkIds });
 			await refresh();
 		} catch {
-			toast.error("Couldn't save changes");
+			// The global mutation error handler surfaces the toast; here we only
+			// need to drop the optimistic order so the UI reverts.
 		} finally {
 			setPendingOrder(null);
 		}

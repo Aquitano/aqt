@@ -2,7 +2,7 @@ import { env } from "@aqt-gallery/env/web";
 import type { AppRouter } from "server/api/routers/index";
 
 import "./index.css";
-import { QueryCache, QueryClient } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { createRouter as createTanStackRouter } from "@tanstack/react-router";
 import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
@@ -26,6 +26,12 @@ export const queryClient = new QueryClient({
 				},
 			});
 		},
+	}),
+	// Surface a toast when any mutation rejects. Most call sites fire mutations
+	// with `void mutate()` and no local catch (e.g. token create/revoke), so
+	// without this a failed write would fail silently.
+	mutationCache: new MutationCache({
+		onError: (error) => toast.error(error.message),
 	}),
 	defaultOptions: { queries: { staleTime: 60 * 1000 } },
 });
