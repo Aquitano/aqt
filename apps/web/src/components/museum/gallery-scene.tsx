@@ -282,7 +282,7 @@ export function GalleryScene({
 			{/* Paintings */}
 			{world.paintings.map((p) => (
 				<Painting
-					key={p.artwork.id + p.roomIndex}
+					key={`${p.artwork.id}:${p.roomIndex}`}
 					layout={p}
 					ceilingHeight={world.rooms[p.roomIndex]?.height ?? 5}
 					lightColor={theme.lightColor}

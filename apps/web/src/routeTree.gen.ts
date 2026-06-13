@@ -15,8 +15,7 @@ import { Route as GalleriesRouteImport } from './routes/galleries'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as MuseumIndexRouteImport } from './routes/museum.index'
-import { Route as MuseumStudioRouteImport } from './routes/museum.studio'
-import { Route as GalleriesGalleryIdRouteImport } from './routes/galleries.$galleryId'
+import { Route as GalleriesGalleryIdRouteImport } from './routes/galleries_.$galleryId'
 import { Route as ArtworksArtworkIdRouteImport } from './routes/artworks.$artworkId'
 import { Route as MuseumKindSlugRouteImport } from './routes/museum.$kind.$slug'
 
@@ -50,15 +49,10 @@ const MuseumIndexRoute = MuseumIndexRouteImport.update({
   path: '/museum/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MuseumStudioRoute = MuseumStudioRouteImport.update({
-  id: '/museum/studio',
-  path: '/museum/studio',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const GalleriesGalleryIdRoute = GalleriesGalleryIdRouteImport.update({
-  id: '/$galleryId',
-  path: '/$galleryId',
-  getParentRoute: () => GalleriesRoute,
+  id: '/galleries_/$galleryId',
+  path: '/galleries/$galleryId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ArtworksArtworkIdRoute = ArtworksArtworkIdRouteImport.update({
   id: '/artworks/$artworkId',
@@ -74,24 +68,22 @@ const MuseumKindSlugRoute = MuseumKindSlugRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
-  '/galleries': typeof GalleriesRouteWithChildren
+  '/galleries': typeof GalleriesRoute
   '/login': typeof LoginRoute
   '/reviews': typeof ReviewsRoute
   '/artworks/$artworkId': typeof ArtworksArtworkIdRoute
   '/galleries/$galleryId': typeof GalleriesGalleryIdRoute
-  '/museum/studio': typeof MuseumStudioRoute
   '/museum/': typeof MuseumIndexRoute
   '/museum/$kind/$slug': typeof MuseumKindSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
-  '/galleries': typeof GalleriesRouteWithChildren
+  '/galleries': typeof GalleriesRoute
   '/login': typeof LoginRoute
   '/reviews': typeof ReviewsRoute
   '/artworks/$artworkId': typeof ArtworksArtworkIdRoute
   '/galleries/$galleryId': typeof GalleriesGalleryIdRoute
-  '/museum/studio': typeof MuseumStudioRoute
   '/museum': typeof MuseumIndexRoute
   '/museum/$kind/$slug': typeof MuseumKindSlugRoute
 }
@@ -99,12 +91,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
-  '/galleries': typeof GalleriesRouteWithChildren
+  '/galleries': typeof GalleriesRoute
   '/login': typeof LoginRoute
   '/reviews': typeof ReviewsRoute
   '/artworks/$artworkId': typeof ArtworksArtworkIdRoute
-  '/galleries/$galleryId': typeof GalleriesGalleryIdRoute
-  '/museum/studio': typeof MuseumStudioRoute
+  '/galleries_/$galleryId': typeof GalleriesGalleryIdRoute
   '/museum/': typeof MuseumIndexRoute
   '/museum/$kind/$slug': typeof MuseumKindSlugRoute
 }
@@ -118,7 +109,6 @@ export interface FileRouteTypes {
     | '/reviews'
     | '/artworks/$artworkId'
     | '/galleries/$galleryId'
-    | '/museum/studio'
     | '/museum/'
     | '/museum/$kind/$slug'
   fileRoutesByTo: FileRoutesByTo
@@ -130,7 +120,6 @@ export interface FileRouteTypes {
     | '/reviews'
     | '/artworks/$artworkId'
     | '/galleries/$galleryId'
-    | '/museum/studio'
     | '/museum'
     | '/museum/$kind/$slug'
   id:
@@ -141,8 +130,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reviews'
     | '/artworks/$artworkId'
-    | '/galleries/$galleryId'
-    | '/museum/studio'
+    | '/galleries_/$galleryId'
     | '/museum/'
     | '/museum/$kind/$slug'
   fileRoutesById: FileRoutesById
@@ -150,11 +138,11 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
-  GalleriesRoute: typeof GalleriesRouteWithChildren
+  GalleriesRoute: typeof GalleriesRoute
   LoginRoute: typeof LoginRoute
   ReviewsRoute: typeof ReviewsRoute
   ArtworksArtworkIdRoute: typeof ArtworksArtworkIdRoute
-  MuseumStudioRoute: typeof MuseumStudioRoute
+  GalleriesGalleryIdRoute: typeof GalleriesGalleryIdRoute
   MuseumIndexRoute: typeof MuseumIndexRoute
   MuseumKindSlugRoute: typeof MuseumKindSlugRoute
 }
@@ -203,19 +191,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MuseumIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/museum/studio': {
-      id: '/museum/studio'
-      path: '/museum/studio'
-      fullPath: '/museum/studio'
-      preLoaderRoute: typeof MuseumStudioRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/galleries/$galleryId': {
-      id: '/galleries/$galleryId'
-      path: '/$galleryId'
+    '/galleries_/$galleryId': {
+      id: '/galleries_/$galleryId'
+      path: '/galleries/$galleryId'
       fullPath: '/galleries/$galleryId'
       preLoaderRoute: typeof GalleriesGalleryIdRouteImport
-      parentRoute: typeof GalleriesRoute
+      parentRoute: typeof rootRouteImport
     }
     '/artworks/$artworkId': {
       id: '/artworks/$artworkId'
@@ -234,26 +215,14 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface GalleriesRouteChildren {
-  GalleriesGalleryIdRoute: typeof GalleriesGalleryIdRoute
-}
-
-const GalleriesRouteChildren: GalleriesRouteChildren = {
-  GalleriesGalleryIdRoute: GalleriesGalleryIdRoute,
-}
-
-const GalleriesRouteWithChildren = GalleriesRoute._addFileChildren(
-  GalleriesRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
-  GalleriesRoute: GalleriesRouteWithChildren,
+  GalleriesRoute: GalleriesRoute,
   LoginRoute: LoginRoute,
   ReviewsRoute: ReviewsRoute,
   ArtworksArtworkIdRoute: ArtworksArtworkIdRoute,
-  MuseumStudioRoute: MuseumStudioRoute,
+  GalleriesGalleryIdRoute: GalleriesGalleryIdRoute,
   MuseumIndexRoute: MuseumIndexRoute,
   MuseumKindSlugRoute: MuseumKindSlugRoute,
 }

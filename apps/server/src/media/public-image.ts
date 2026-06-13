@@ -109,26 +109,53 @@ export function isVariant(value: string): value is Variant {
 	return (VARIANTS as readonly string[]).includes(value);
 }
 
-/** Upstream fetches run one at a time with spacing and backoff —
- * image hosts (e.g. Wikimedia) rate-limit bursts hard. Cache misses are
- * a one-time cost per image; afterwards everything is served from disk. */
-let upstreamChain: Promise<unknown> = Promise.resolve();
+/** Upstream fetches are deduped per source URL and limited to a small
+ * concurrency — image hosts (e.g. Wikimedia) rate-limit hard bursts, but
+ * a fully serial queue stalls a cold room load past the HTTP timeout.
+ * Cache misses are a one-time cost per image; afterwards everything is
+ * served from disk. */
+type UpstreamImage = { bytes: ArrayBuffer; contentType: string };
+
+const MAX_UPSTREAM_CONCURRENCY = 2;
+let activeUpstream = 0;
+const upstreamWaiters: Array<() => void> = [];
+const inflightByUrl = new Map<string, Promise<UpstreamImage | null>>();
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function fetchUpstream(url: string): Promise<Response | null> {
-	const task = upstreamChain.then(async () => {
-		for (const delayMs of [0, 2000, 8000, 20000]) {
+async function withUpstreamSlot<T>(work: () => Promise<T>): Promise<T> {
+	if (activeUpstream >= MAX_UPSTREAM_CONCURRENCY) {
+		await new Promise<void>((resolve) => upstreamWaiters.push(resolve));
+	}
+	activeUpstream++;
+	try {
+		return await work();
+	} finally {
+		activeUpstream--;
+		upstreamWaiters.shift()?.();
+	}
+}
+
+function fetchUpstream(url: string): Promise<UpstreamImage | null> {
+	const existing = inflightByUrl.get(url);
+	if (existing) return existing;
+	const task = withUpstreamSlot(async () => {
+		for (const delayMs of [0, 2000, 8000]) {
 			if (delayMs > 0) await sleep(delayMs);
 			try {
 				const res = await fetch(url, {
 					headers: { "User-Agent": "aqt-gallery/1.0 (museum image cache)" },
 					redirect: "follow",
 				});
-				if (res.ok) return res;
+				if (res.ok) {
+					const contentType =
+						res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
+					return { bytes: await res.arrayBuffer(), contentType };
+				}
 				if (res.status === 429) {
 					const retryAfter = Number(res.headers.get("retry-after"));
 					if (Number.isFinite(retryAfter) && retryAfter > 0) {
-						await sleep(Math.min(retryAfter, 30) * 1000);
+						await sleep(Math.min(retryAfter, 15) * 1000);
 					}
 					continue;
 				}
@@ -138,9 +165,10 @@ function fetchUpstream(url: string): Promise<Response | null> {
 			}
 		}
 		return null;
+	}).finally(() => {
+		inflightByUrl.delete(url);
 	});
-	// Space successive upstream hits out, even on success.
-	upstreamChain = task.then(() => sleep(600)).catch(() => {});
+	inflightByUrl.set(url, task);
 	return task;
 }
 
@@ -155,19 +183,8 @@ export async function servePublicImage(options: {
 	const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
 	const cacheBase = path.join(cacheDir, `${entity}-${safeId}-${variant}`);
 
-	// Serve from disk cache when present (extension records content type).
-	for (const [type, ext] of Object.entries(EXT_BY_TYPE)) {
-		const file = Bun.file(`${cacheBase}.${ext}`);
-		if (await file.exists()) {
-			return new Response(file.stream(), {
-				headers: {
-					"Content-Type": type,
-					"Cache-Control": "public, max-age=86400",
-				},
-			});
-		}
-	}
-
+	// Resolve the source first — it carries the publish check, so an
+	// unpublished artwork is never served, not even from the disk cache.
 	const source = await sourceFor(entity, id, variant);
 	if (!source) {
 		return new Response("Not found", { status: 404 });
@@ -187,20 +204,30 @@ export async function servePublicImage(options: {
 		});
 	}
 
+	// Serve from disk cache when present (extension records content type).
+	for (const [type, ext] of Object.entries(EXT_BY_TYPE)) {
+		const file = Bun.file(`${cacheBase}.${ext}`);
+		if (await file.exists()) {
+			return new Response(file.stream(), {
+				headers: {
+					"Content-Type": type,
+					"Cache-Control": "public, max-age=86400",
+				},
+			});
+		}
+	}
+
 	const upstream = await fetchUpstream(source.url);
 	if (!upstream) {
 		return new Response("Upstream image unavailable", { status: 502 });
 	}
 
-	const contentType =
-		upstream.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
-	const ext = EXT_BY_TYPE[contentType] ?? "jpg";
-	const bytes = await upstream.arrayBuffer();
-	await Bun.write(`${cacheBase}.${ext}`, bytes, { createPath: true });
+	const ext = EXT_BY_TYPE[upstream.contentType] ?? "jpg";
+	await Bun.write(`${cacheBase}.${ext}`, upstream.bytes, { createPath: true });
 
-	return new Response(bytes, {
+	return new Response(upstream.bytes, {
 		headers: {
-			"Content-Type": contentType,
+			"Content-Type": upstream.contentType,
 			"Cache-Control": "public, max-age=86400",
 		},
 	});

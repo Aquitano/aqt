@@ -73,9 +73,7 @@ export function parsePhysicalSize(
 	dimensions: string | null | undefined,
 ): { height: number; width: number } | null {
 	if (!dimensions) return null;
-	const match = dimensions.match(
-		/([\d.]+)\s*[×x]\s*([\d.]+)\s*cm/i,
-	);
+	const match = dimensions.match(/([\d.]+)\s*[×x]\s*([\d.]+)\s*cm/i);
 	if (!match) return null;
 	const h = Number.parseFloat(match[1]) / 100;
 	const w = Number.parseFloat(match[2]) / 100;
@@ -108,6 +106,16 @@ type Slot = { artwork: ArtworkData; width: number; height: number };
 
 const FRAME_MARGIN = 1.5; // breathing room between paintings, meters
 const MIN_SLOT = 2.6;
+
+/** A procedurally-sized hall grows only this deep; a gallery with more
+ * artworks than two walls can hold is split into several connected halls. */
+const MAX_ROOM_DEPTH = 30;
+const MIN_ROOM_DEPTH = 12;
+/** Clearance between a room end and the nearest painting on a side wall. */
+const WALL_END_MARGIN = 1.6;
+/** Usable length of one side wall at maximum depth — the budget the
+ * auto-splitter packs each wall up to before opening another hall. */
+const MAX_SIDE_SPAN = MAX_ROOM_DEPTH - 2 * WALL_END_MARGIN;
 
 function slotWidth(slot: Slot) {
 	return Math.max(slot.width + FRAME_MARGIN, MIN_SLOT);
@@ -169,10 +177,10 @@ function planRoom(
 
 	const tallest = slots.reduce((acc, s) => Math.max(acc, s.height), 0);
 
-	const depth = explicit?.depth ?? clamp(sideNeed + 4, 12, 30);
+	const depth =
+		explicit?.depth ?? clamp(sideNeed + 4, MIN_ROOM_DEPTH, MAX_ROOM_DEPTH);
 	const width = explicit?.width ?? clamp(Math.max(endNeed + 2, 13), 13, 24);
-	const height =
-		explicit?.height ?? clamp(Math.max(5, tallest + 2.6), 5, 7.5);
+	const height = explicit?.height ?? clamp(Math.max(5, tallest + 2.6), 5, 7.5);
 
 	return {
 		id: room.id,
@@ -189,25 +197,99 @@ function clamp(v: number, min: number, max: number) {
 	return Math.min(Math.max(v, min), max);
 }
 
-/** Spread slots along a free span [from, to], honoring wallOffset when set. */
+/** Spread slots along a free span [from, to]. Curated walls (any slot with
+ * an explicit wallOffset) keep their pinned fractions; auto walls pack by
+ * real slot width with equal gaps, so neighbours never overlap when they
+ * fit and degrade gracefully to edge-to-edge only when over-packed. */
 function spreadAlong(
 	slots: Slot[],
 	from: number,
 	to: number,
 ): { slot: Slot; at: number }[] {
+	if (slots.length === 0) return [];
 	const span = to - from;
-	return slots.map((slot, i) => {
-		const offset = slot.artwork.placement?.wallOffset;
-		const t =
-			offset != null && offset >= 0 && offset <= 1
-				? offset
-				: (i + 1) / (slots.length + 1);
-		return { slot, at: from + t * span };
+
+	const pinned = slots.some((s) => {
+		const o = s.artwork.placement?.wallOffset;
+		return o != null && o >= 0 && o <= 1;
+	});
+	if (pinned) {
+		return slots.map((slot, i) => {
+			const offset = slot.artwork.placement?.wallOffset;
+			const t =
+				offset != null && offset >= 0 && offset <= 1
+					? offset
+					: (i + 1) / (slots.length + 1);
+			return { slot, at: from + t * span };
+		});
+	}
+
+	const total = slots.reduce((acc, s) => acc + slotWidth(s), 0);
+	const overflow = total > span;
+	const gap = overflow ? 0 : (span - total) / (slots.length + 1);
+	let cursor = overflow ? from + (span - total) / 2 : from + gap;
+	return slots.map((slot) => {
+		const w = slotWidth(slot);
+		const at = cursor + w / 2;
+		cursor += w + gap;
+		return { slot, at };
 	});
 }
 
+const WING_NUMERALS = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
+function wingLabel(index: number) {
+	return WING_NUMERALS[index] ?? String(index + 1);
+}
+
+/** Auto-distributed rooms (no curator wall assignments) grow only to
+ * MAX_ROOM_DEPTH; a gallery with more artworks than two side walls can hold
+ * is split into a sequence of connected halls so paintings never stack on
+ * top of one another. Curated rooms — those with an explicit layout or any
+ * per-artwork wall placement — are left exactly as authored. */
+function splitToCapacity(
+	room: GalleryContent["rooms"][number],
+): GalleryContent["rooms"] {
+	const curated =
+		room.layout != null || room.artworks.some((a) => a.placement?.wall != null);
+	if (curated) return [room];
+
+	const chunks: ArtworkData[][] = [];
+	let current: ArtworkData[] = [];
+	const walls = { east: 0, west: 0 };
+	const reset = () => {
+		walls.east = 0;
+		walls.west = 0;
+	};
+
+	for (const artwork of room.artworks) {
+		const width = slotWidth({ artwork, ...displaySize(artwork) });
+		// Mirror planRoom's by-position alternating: even → east, odd → west.
+		let target: "east" | "west" = current.length % 2 === 0 ? "east" : "west";
+		if (current.length > 0 && walls[target] + width > MAX_SIDE_SPAN) {
+			chunks.push(current);
+			current = [];
+			reset();
+			target = "east";
+		}
+		walls[target] += width;
+		current.push(artwork);
+	}
+	if (current.length > 0) chunks.push(current);
+	if (chunks.length <= 1) return [room];
+
+	return chunks.map((artworks, i) => ({
+		...room,
+		id: i === 0 ? room.id : `${room.id}__wing-${i + 1}`,
+		name: i === 0 ? room.name : `${room.name} · ${wingLabel(i)}`,
+		description: i === 0 ? room.description : null,
+		artworks,
+	}));
+}
+
 export function buildWorldLayout(content: GalleryContent): WorldLayout {
-	const roomsIn = content.rooms.filter((r) => r.artworks.length > 0);
+	const roomsIn = content.rooms
+		.filter((r) => r.artworks.length > 0)
+		.flatMap(splitToCapacity);
 
 	const plans = roomsIn.map((room, i) =>
 		planRoom(room, i > 0, i < roomsIn.length - 1),
@@ -272,11 +354,7 @@ export function buildWorldLayout(content: GalleryContent): WorldLayout {
 		if (i === 0) {
 			boundaryWall(minZ, heightHere, false);
 		}
-		boundaryWall(
-			maxZ,
-			Math.max(heightHere, nextHeight),
-			i < plans.length - 1,
-		);
+		boundaryWall(maxZ, Math.max(heightHere, nextHeight), i < plans.length - 1);
 
 		// Side walls for this room.
 		addWall({
@@ -303,7 +381,7 @@ export function buildWorldLayout(content: GalleryContent): WorldLayout {
 
 		// ---- Paintings ----
 		const innerX = halfW - WALL_THICKNESS / 2;
-		const margin = 1.6;
+		const margin = WALL_END_MARGIN;
 
 		const place = (
 			slot: Slot,
@@ -366,8 +444,7 @@ export function buildWorldLayout(content: GalleryContent): WorldLayout {
 		// End walls: split around the doorway when one exists.
 		const endWall = (wall: "north" | "south", slots: Slot[]) => {
 			if (slots.length === 0) return;
-			const hasDoor =
-				wall === "north" ? i < plans.length - 1 : i > 0;
+			const hasDoor = wall === "north" ? i < plans.length - 1 : i > 0;
 			if (!hasDoor) {
 				for (const { slot, at } of spreadAlong(
 					slots,
@@ -428,9 +505,7 @@ export function collideAndSlide(
 		colliders.some((c) => {
 			const [cx, , cz] = c.position;
 			const [sx, , sz] = c.size;
-			return (
-				Math.abs(x - cx) < sx / 2 + r && Math.abs(z - cz) < sz / 2 + r
-			);
+			return Math.abs(x - cx) < sx / 2 + r && Math.abs(z - cz) < sz / 2 + r;
 		});
 	const x = blocked(to.x, from.z) ? from.x : to.x;
 	const z = blocked(x, to.z) ? from.z : to.z;

@@ -81,6 +81,7 @@ function ControlsHint() {
 	const [expired, setExpired] = useState(false);
 	useEffect(() => {
 		if (!locked) return;
+		setExpired(false);
 		const t = setTimeout(() => setExpired(true), 7000);
 		return () => clearTimeout(t);
 	}, [locked]);

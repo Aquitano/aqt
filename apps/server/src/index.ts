@@ -134,4 +134,9 @@ app.get("/", (c) => {
 	return c.text("OK");
 });
 
-export default app;
+export default {
+	fetch: app.fetch,
+	/** Cold museum loads proxy many images upstream at once; Bun's default
+	 * 10s idle timeout drops those requests mid-queue (ERR_EMPTY_RESPONSE). */
+	idleTimeout: 60,
+};

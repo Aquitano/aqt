@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -14,13 +15,42 @@ export function GalleryEditorDialog({
 }) {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
-	const createGallery = useMutation(trpc.galleries.create.mutationOptions());
-	const [title, setTitle] = useState("");
+	const navigate = useNavigate();
+	const createGroup = useMutation(trpc.museum.createGroup.mutationOptions());
+	const [name, setName] = useState("");
+	const [tagline, setTagline] = useState("");
 	const [description, setDescription] = useState("");
 
 	if (!open) {
 		return null;
 	}
+
+	const reset = () => {
+		setName("");
+		setTagline("");
+		setDescription("");
+	};
+
+	const submit = async () => {
+		if (!name.trim()) {
+			return;
+		}
+		const created = await createGroup.mutateAsync({
+			name: name.trim(),
+			tagline: tagline.trim() || null,
+			description: description.trim() || null,
+		});
+		await queryClient.invalidateQueries();
+		toast.success("Gallery created");
+		reset();
+		onClose();
+		if (created) {
+			navigate({
+				to: "/galleries/$galleryId",
+				params: { galleryId: created.id },
+			});
+		}
+	};
 
 	return (
 		<div className="gallery-modal-backdrop">
@@ -30,8 +60,8 @@ export function GalleryEditorDialog({
 			>
 				<div className="gallery-dialog-header">
 					<div>
-						<p className="gallery-eyebrow">Gallery page</p>
-						<h2>Create a curated page</h2>
+						<p className="gallery-eyebrow">Curated gallery</p>
+						<h2>Create a gallery</h2>
 					</div>
 					<button
 						aria-label="Close"
@@ -43,10 +73,21 @@ export function GalleryEditorDialog({
 					</button>
 				</div>
 				<label className="gallery-field">
-					<span>Title</span>
+					<span>Name</span>
 					<input
-						value={title}
-						onChange={(event) => setTitle(event.target.value)}
+						value={name}
+						onChange={(event) => setName(event.target.value)}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") void submit();
+						}}
+					/>
+				</label>
+				<label className="gallery-field">
+					<span>Tagline</span>
+					<input
+						placeholder="Shown beneath the title"
+						value={tagline}
+						onChange={(event) => setTagline(event.target.value)}
 					/>
 				</label>
 				<label className="gallery-field">
@@ -60,19 +101,8 @@ export function GalleryEditorDialog({
 					<button
 						className="gallery-primary-button"
 						type="button"
-						onClick={async () => {
-							if (!title.trim()) {
-								return;
-							}
-							await createGallery.mutateAsync({
-								title,
-								description,
-								sortMode: "manual",
-							});
-							await queryClient.invalidateQueries();
-							toast.success("Gallery created");
-							onClose();
-						}}
+						disabled={createGroup.isPending || name.trim().length === 0}
+						onClick={() => void submit()}
 					>
 						Create gallery
 					</button>

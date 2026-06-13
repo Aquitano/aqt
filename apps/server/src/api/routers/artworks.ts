@@ -1,3 +1,4 @@
+import path from "node:path";
 import { db } from "@aqt-gallery/db";
 import {
 	artwork,
@@ -7,9 +8,13 @@ import {
 	mediaAsset,
 	tag,
 } from "@aqt-gallery/db/schema/gallery";
+import { env } from "@aqt-gallery/env/server";
+import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { Effect } from "effect";
 import { z } from "zod";
 
+import { importMediaFromUrls, uploadErrorResponse } from "../../media/upload";
 import { protectedProcedure, router } from "../index";
 import { artworkTypes } from "./gallery-helpers";
 
@@ -247,6 +252,50 @@ export const artworksRouter = router({
 			}
 
 			return updated;
+		}),
+
+	/** Import artworks from remote image URLs. Each URL is downloaded once
+	 * and stored as a media asset (same as an upload) so the gallery never
+	 * relies on the third-party URL afterwards. */
+	importFromUrl: protectedProcedure
+		.input(
+			z.object({
+				items: z
+					.array(
+						z.object({
+							url: z.string().url(),
+							title: z.string().min(1).max(200).optional(),
+						}),
+					)
+					.min(1)
+					.max(25),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const result = await Effect.runPromise(
+				importMediaFromUrls({
+					items: input.items,
+					uploadRoot: path.resolve(env.UPLOAD_DIR),
+					userId: ctx.session.user.id,
+				}).pipe(
+					Effect.match({
+						onFailure: (error) => ({
+							ok: false as const,
+							error: uploadErrorResponse(error).body.error,
+						}),
+						onSuccess: (uploaded) => ({ ok: true as const, uploaded }),
+					}),
+				),
+			);
+			if (!result.ok) {
+				throw new TRPCError({ code: "BAD_REQUEST", message: result.error });
+			}
+			return {
+				imported: result.uploaded.map((u) => ({
+					artworkId: u.artworkId,
+					title: u.title,
+				})),
+			};
 		}),
 
 	createDraftFromUpload: protectedProcedure

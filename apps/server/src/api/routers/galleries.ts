@@ -161,12 +161,23 @@ export const galleriesRouter = router({
 				return { ok: false };
 			}
 
+			// Append at the end. `position` is an int4 column, so a timestamp
+			// would overflow it — derive the next slot from the current max
+			// instead (matches the 0-based ordering reorderArtworks writes).
+			const lastRows = await db
+				.select({ position: galleryArtwork.position })
+				.from(galleryArtwork)
+				.where(eq(galleryArtwork.galleryId, input.galleryId))
+				.orderBy(desc(galleryArtwork.position))
+				.limit(1);
+			const nextPosition = lastRows[0] ? lastRows[0].position + 1 : 0;
+
 			await db
 				.insert(galleryArtwork)
 				.values({
 					galleryId: input.galleryId,
 					artworkId: input.artworkId,
-					position: Date.now(),
+					position: nextPosition,
 				})
 				.onConflictDoNothing();
 

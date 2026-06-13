@@ -58,6 +58,11 @@ export class DatabaseWriteFailed extends Data.TaggedError(
 	readonly cause: unknown;
 }> {}
 
+export class RemoteFetchFailed extends Data.TaggedError("RemoteFetchFailed")<{
+	readonly url: string;
+	readonly status?: number;
+}> {}
+
 export type UploadError =
 	| NoFilesSupplied
 	| TooManyFiles
@@ -65,10 +70,10 @@ export type UploadError =
 	| UnsupportedFileType
 	| ImageProcessingFailed
 	| StorageWriteFailed
-	| DatabaseWriteFailed;
+	| DatabaseWriteFailed
+	| RemoteFetchFailed;
 
 type UploadFile = {
-	readonly file: File;
 	readonly artworkId: string;
 	readonly assetId: string;
 	readonly title: string;
@@ -79,6 +84,9 @@ type UploadFile = {
 	readonly thumbnailBuffer: Buffer;
 	readonly width: number | null;
 	readonly height: number | null;
+	readonly originalFilename: string;
+	readonly mimeType: string;
+	readonly byteSize: number;
 };
 
 export type UploadedArtwork = {
@@ -140,18 +148,34 @@ function filesFromFormData(formData: FormData) {
 	return Effect.succeed(files);
 }
 
-function prepareUploadFile(uploadRoot: string, userId: string, file: File) {
+/** Shared ingest core: validates an in-memory image, derives a thumbnail,
+ * and produces an unwritten UploadFile. Both browser uploads and remote
+ * URL imports funnel through here so a downloaded image is stored exactly
+ * like an uploaded one. */
+function prepareImage(
+	uploadRoot: string,
+	userId: string,
+	input: {
+		readonly bytes: Buffer;
+		readonly mimeType: string;
+		readonly filename: string;
+		readonly title?: string;
+	},
+) {
 	return Effect.gen(function* () {
-		if (file.size > maxFileSizeBytes) {
-			return yield* new FileTooLarge({ filename: file.name, maxFileSizeBytes });
+		if (input.bytes.byteLength > maxFileSizeBytes) {
+			return yield* new FileTooLarge({
+				filename: input.filename,
+				maxFileSizeBytes,
+			});
 		}
 
-		const extension = imageMimeExtensions.get(file.type);
+		const extension = imageMimeExtensions.get(input.mimeType);
 
 		if (!extension) {
 			return yield* new UnsupportedFileType({
-				filename: file.name,
-				mimeType: file.type,
+				filename: input.filename,
+				mimeType: input.mimeType,
 			});
 		}
 
@@ -160,21 +184,16 @@ function prepareUploadFile(uploadRoot: string, userId: string, file: File) {
 		const { originalsDir, thumbsDir } = uploadDirs(uploadRoot, userId);
 		const originalPath = path.join(originalsDir, `${assetId}.${extension}`);
 		const thumbnailPath = path.join(thumbsDir, `${assetId}.webp`);
-		const buffer = yield* Effect.tryPromise({
-			try: async () => Buffer.from(await file.arrayBuffer()),
-			catch: (cause) =>
-				new ImageProcessingFailed({ filename: file.name, cause }),
-		});
+		const animated = input.mimeType === "image/gif";
 
-		const image = sharp(buffer, { animated: file.type === "image/gif" });
 		const metadata = yield* Effect.tryPromise({
-			try: () => image.metadata(),
+			try: () => sharp(input.bytes, { animated }).metadata(),
 			catch: (cause) =>
-				new ImageProcessingFailed({ filename: file.name, cause }),
+				new ImageProcessingFailed({ filename: input.filename, cause }),
 		});
 		const thumbnailBuffer = yield* Effect.tryPromise({
 			try: () =>
-				sharp(buffer, { animated: file.type === "image/gif" })
+				sharp(input.bytes, { animated })
 					.resize({
 						width: 900,
 						height: 1200,
@@ -184,22 +203,97 @@ function prepareUploadFile(uploadRoot: string, userId: string, file: File) {
 					.webp({ quality: 82 })
 					.toBuffer(),
 			catch: (cause) =>
-				new ImageProcessingFailed({ filename: file.name, cause }),
+				new ImageProcessingFailed({ filename: input.filename, cause }),
 		});
 
 		return {
-			file,
 			artworkId,
 			assetId,
-			title: filenameTitle(file.name) || "Untitled artwork",
+			title:
+				input.title?.trim() ||
+				filenameTitle(input.filename) ||
+				"Untitled artwork",
 			extension,
 			originalPath,
 			thumbnailPath,
-			buffer,
+			buffer: input.bytes,
 			thumbnailBuffer,
 			width: metadata.width ?? null,
 			height: metadata.height ?? null,
+			originalFilename: input.filename,
+			mimeType: input.mimeType,
+			byteSize: input.bytes.byteLength,
 		} satisfies UploadFile;
+	});
+}
+
+function prepareUploadFile(uploadRoot: string, userId: string, file: File) {
+	return Effect.gen(function* () {
+		if (file.size > maxFileSizeBytes) {
+			return yield* new FileTooLarge({ filename: file.name, maxFileSizeBytes });
+		}
+		const bytes = yield* Effect.tryPromise({
+			try: async () => Buffer.from(await file.arrayBuffer()),
+			catch: (cause) =>
+				new ImageProcessingFailed({ filename: file.name, cause }),
+		});
+		return yield* prepareImage(uploadRoot, userId, {
+			bytes,
+			mimeType: file.type,
+			filename: file.name,
+		});
+	});
+}
+
+function filenameFromUrl(url: string) {
+	try {
+		const last = new URL(url).pathname.split("/").filter(Boolean).pop();
+		return last ? decodeURIComponent(last) : "imported-image";
+	} catch {
+		return "imported-image";
+	}
+}
+
+/** Downloads a remote image once and routes it through the shared ingest,
+ * so the gallery never depends on a live third-party URL afterwards. */
+function prepareUrlImage(
+	uploadRoot: string,
+	userId: string,
+	item: { readonly url: string; readonly title?: string },
+) {
+	return Effect.gen(function* () {
+		const fetched = yield* Effect.tryPromise({
+			try: async () => {
+				const res = await fetch(item.url, {
+					headers: { "User-Agent": "aqt-gallery/1.0 (museum image import)" },
+					redirect: "follow",
+				});
+				if (!res.ok) {
+					return { ok: false as const, status: res.status };
+				}
+				const contentType =
+					res.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ??
+					"";
+				return {
+					ok: true as const,
+					contentType,
+					bytes: Buffer.from(await res.arrayBuffer()),
+				};
+			},
+			catch: () => new RemoteFetchFailed({ url: item.url }),
+		});
+		if (!fetched.ok) {
+			return yield* new RemoteFetchFailed({
+				url: item.url,
+				status: fetched.status,
+			});
+		}
+		return yield* prepareImage(uploadRoot, userId, {
+			bytes: fetched.bytes,
+			mimeType: fetched.contentType,
+			filename: filenameFromUrl(item.url),
+			title: item.title,
+		});
 	});
 }
 
@@ -242,9 +336,9 @@ function insertUploadedArtworks(
 							id: file.assetId,
 							userId,
 							artworkId: file.artworkId,
-							originalFilename: file.file.name,
-							mimeType: file.file.type,
-							byteSize: file.file.size,
+							originalFilename: file.originalFilename,
+							mimeType: file.mimeType,
+							byteSize: file.byteSize,
 							width: file.width,
 							height: file.height,
 							storagePath: file.originalPath,
@@ -290,6 +384,39 @@ export function uploadMedia({
 	});
 }
 
+export type ImportUrlsInput = {
+	readonly items: ReadonlyArray<{
+		readonly url: string;
+		readonly title?: string;
+	}>;
+	readonly uploadRoot: string;
+	readonly userId: string;
+};
+
+/** Import flow for remote images: each URL is downloaded once, processed,
+ * and stored as a media asset — identical on-disk result to an upload, so
+ * the rest of the app never sees the external URL. */
+export function importMediaFromUrls({
+	items,
+	uploadRoot,
+	userId,
+}: ImportUrlsInput) {
+	return Effect.gen(function* () {
+		if (items.length === 0) {
+			return yield* new NoFilesSupplied({});
+		}
+		if (items.length > maxFilesPerUpload) {
+			return yield* new TooManyFiles({ maxFiles: maxFilesPerUpload });
+		}
+		const prepared = yield* Effect.all(
+			items.map((item) => prepareUrlImage(uploadRoot, userId, item)),
+			{ concurrency: 2 },
+		);
+		yield* writeUploadFiles(prepared);
+		return yield* insertUploadedArtworks(userId, prepared);
+	});
+}
+
 export function uploadErrorResponse(error: UploadError) {
 	switch (error._tag) {
 		case "NoFilesSupplied":
@@ -317,6 +444,15 @@ export function uploadErrorResponse(error: UploadError) {
 			return {
 				status: 400 as const,
 				body: { error: `Could not process image: ${error.filename}` },
+			};
+		case "RemoteFetchFailed":
+			return {
+				status: 502 as const,
+				body: {
+					error: `Could not download image${
+						error.status ? ` (HTTP ${error.status})` : ""
+					}`,
+				},
 			};
 		case "StorageWriteFailed":
 		case "DatabaseWriteFailed":

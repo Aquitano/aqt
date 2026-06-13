@@ -1,7 +1,10 @@
 import { env } from "@aqt-gallery/env/web";
+import { useMutation } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+
+import { useTRPC } from "@/utils/trpc";
 
 type ImportDialogProps = {
 	open: boolean;
@@ -9,13 +12,27 @@ type ImportDialogProps = {
 	onUploaded: () => void;
 };
 
+/** Splits pasted text into candidate URLs (one per line, whitespace-trimmed). */
+function parseUrls(raw: string) {
+	return raw
+		.split(/[\n\r]+/)
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0);
+}
+
 export function ImportDialog({ open, onClose, onUploaded }: ImportDialogProps) {
+	const trpc = useTRPC();
 	const [files, setFiles] = useState<File[]>([]);
+	const [urlText, setUrlText] = useState("");
 	const [isUploading, setIsUploading] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const previews = useMemo(
 		() => files.map((file) => ({ file, url: URL.createObjectURL(file) })),
 		[files],
+	);
+
+	const importFromUrl = useMutation(
+		trpc.artworks.importFromUrl.mutationOptions(),
 	);
 
 	if (!open) {
@@ -27,6 +44,14 @@ export function ImportDialog({ open, onClose, onUploaded }: ImportDialogProps) {
 			...current,
 			...Array.from(incoming).filter((file) => file.type.startsWith("image/")),
 		]);
+	};
+
+	const finishImport = (message: string) => {
+		setFiles([]);
+		setUrlText("");
+		toast.success(message);
+		onUploaded();
+		onClose();
 	};
 
 	const upload = async () => {
@@ -53,10 +78,28 @@ export function ImportDialog({ open, onClose, onUploaded }: ImportDialogProps) {
 			return;
 		}
 
-		setFiles([]);
-		toast.success("Imported into archive");
-		onUploaded();
-		onClose();
+		finishImport("Imported into archive");
+	};
+
+	const urls = parseUrls(urlText);
+	const importUrls = async () => {
+		if (urls.length === 0) {
+			return;
+		}
+		try {
+			const result = await importFromUrl.mutateAsync({
+				items: urls.map((url) => ({ url })),
+			});
+			finishImport(
+				`Imported ${result.imported.length} image${
+					result.imported.length === 1 ? "" : "s"
+				} into archive`,
+			);
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "Could not import from URL",
+			);
+		}
 	};
 
 	return (
@@ -126,6 +169,36 @@ export function ImportDialog({ open, onClose, onUploaded }: ImportDialogProps) {
 						onClick={upload}
 					>
 						{isUploading ? "Importing..." : `Import ${files.length || ""}`}
+					</button>
+				</div>
+
+				<div className="gallery-import-divider">
+					<span>or import from the web</span>
+				</div>
+				<label className="gallery-import-url" htmlFor="import-urls">
+					<span>Image URLs</span>
+					<textarea
+						id="import-urls"
+						rows={3}
+						placeholder={"https://example.com/painting.jpg\nOne URL per line"}
+						value={urlText}
+						onChange={(event) => setUrlText(event.target.value)}
+					/>
+					<small>
+						Each image is downloaded once and stored in your archive — no live
+						link to the source is kept.
+					</small>
+				</label>
+				<div className="gallery-dialog-actions">
+					<button
+						className="gallery-primary-button"
+						type="button"
+						disabled={urls.length === 0 || importFromUrl.isPending}
+						onClick={importUrls}
+					>
+						{importFromUrl.isPending
+							? "Downloading..."
+							: `Import ${urls.length || ""} from URL`}
 					</button>
 				</div>
 			</section>

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useState } from "react";
@@ -23,13 +23,11 @@ export const Route = createFileRoute("/galleries")({
 
 function RouteComponent() {
 	const trpc = useTRPC();
-	const queryClient = useQueryClient();
-	const galleries = useQuery(trpc.galleries.list.queryOptions());
-	const createGallery = useMutation(trpc.galleries.create.mutationOptions());
+	const groups = useQuery(trpc.museum.myGroups.queryOptions());
 	const [editorOpen, setEditorOpen] = useState(false);
 	const [search, setSearch] = useState("");
-	const visible = (galleries.data ?? []).filter((gallery) =>
-		gallery.title.toLowerCase().includes(search.toLowerCase()),
+	const visible = (groups.data ?? []).filter((group) =>
+		group.name.toLowerCase().includes(search.toLowerCase()),
 	);
 
 	return (
@@ -37,7 +35,7 @@ function RouteComponent() {
 			<section className="gallery-list-page">
 				<div className="gallery-page-heading">
 					<div>
-						<p className="gallery-eyebrow">Curated pages</p>
+						<p className="gallery-eyebrow">Curated galleries</p>
 						<h1>Galleries</h1>
 					</div>
 					<button
@@ -50,36 +48,47 @@ function RouteComponent() {
 					</button>
 				</div>
 				<div className="gallery-page-grid">
-					{visible.map((gallery) => (
+					{visible.map((group) => (
 						<Link
-							key={gallery.id}
+							key={group.id}
 							className="gallery-page-card"
 							to="/galleries/$galleryId"
-							params={{ galleryId: gallery.id }}
+							params={{ galleryId: group.id }}
 						>
-							{gallery.coverUrl ? (
-								<img src={gallery.coverUrl} alt="" />
+							{group.coverImageUrl ? (
+								<img src={group.coverImageUrl} alt="" />
 							) : (
 								<div className="gallery-page-card-empty" />
 							)}
-							<h2>{gallery.title}</h2>
-							<p>{gallery.description || "A private curated page"}</p>
+							<h2>{group.name}</h2>
+							<p>{group.tagline || group.description || "A curated gallery"}</p>
+							<div className="gallery-card-meta">
+								<span>
+									{group.artworkIds.length}{" "}
+									{group.artworkIds.length === 1 ? "artwork" : "artworks"}
+								</span>
+								<span
+									className={`gallery-status-badge ${
+										group.isPublished ? "gallery-status-badge-published" : ""
+									}`}
+								>
+									{group.isPublished ? "Published" : "Draft"}
+								</span>
+							</div>
 						</Link>
 					))}
-					{visible.length === 0 ? (
+					{groups.isSuccess && visible.length === 0 ? (
 						<button
 							className="gallery-page-card gallery-page-card-create"
 							type="button"
-							onClick={async () => {
-								await createGallery.mutateAsync({
-									title: "Untitled gallery",
-									sortMode: "manual",
-								});
-								await queryClient.invalidateQueries();
-							}}
+							onClick={() => setEditorOpen(true)}
 						>
 							<Plus size={20} />
-							<span>Create your first gallery</span>
+							<span>
+								{search
+									? "No galleries match — create a new one"
+									: "Create your first gallery"}
+							</span>
 						</button>
 					) : null}
 				</div>

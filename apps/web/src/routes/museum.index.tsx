@@ -147,7 +147,7 @@ function LobbyPage() {
 				</div>
 				<div className="flex items-center gap-6">
 					<Link
-						to="/museum/studio"
+						to="/galleries"
 						className="text-[#c9b687] text-[11px] uppercase tracking-[0.24em] transition-colors hover:text-[#e9dcb4]"
 					>
 						Curate your own
