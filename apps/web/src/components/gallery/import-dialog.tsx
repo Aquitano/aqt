@@ -231,6 +231,9 @@ function ImportWorkspace({
 						<Textarea
 							id={urlInputId}
 							data-url-input=""
+							// Cap manual resize so a tall textarea can't push the footer
+							// out of the dialog; vertical-only since width is flex-controlled.
+							className="max-h-[25svh] resize-y"
 							rows={2}
 							placeholder={"https://example.com/painting.jpg\nOne URL per line"}
 							value={urlDraft}
@@ -279,14 +282,14 @@ function ImportWorkspace({
 				) : null}
 			</div>
 
-			<ScrollArea className="min-h-32 flex-1">
+			<ScrollArea className="min-h-0 flex-1">
 				{queue.items.length === 0 ? (
 					<div className="flex min-h-32 flex-col items-center justify-center gap-1 px-5 py-8 text-center text-muted-foreground text-xs">
 						<ImageIcon className="size-5 opacity-60" />
 						Nothing queued yet. Add files or URLs above.
 					</div>
 				) : (
-					<ul className="flex flex-col divide-y divide-border/50">
+					<ul className="flex min-h-32 flex-col divide-y divide-border/50">
 						{queue.items.map((item) => (
 							<ImportRow
 								key={item.id}
@@ -300,7 +303,7 @@ function ImportWorkspace({
 				)}
 			</ScrollArea>
 
-			<div className="flex items-center justify-between gap-3 border-border/60 border-t px-5 py-4">
+			<div className="flex shrink-0 items-center justify-between gap-3 border-border/60 border-t px-5 py-4">
 				<span className="hidden items-center gap-1.5 text-muted-foreground text-xs sm:flex">
 					<Kbd>{modKey}</Kbd>
 					<Kbd>↵</Kbd>
