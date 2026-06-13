@@ -1,4 +1,5 @@
 import { protectedProcedure, publicProcedure, router } from "../index";
+import { apiTokensRouter } from "./api-tokens";
 import { artworksRouter } from "./artworks";
 import { museumRouter } from "./museum";
 import { tagsRouter } from "./tags";
@@ -16,5 +17,6 @@ export const appRouter = router({
 	artworks: artworksRouter,
 	museum: museumRouter,
 	tags: tagsRouter,
+	apiTokens: apiTokensRouter,
 });
 export type AppRouter = typeof appRouter;

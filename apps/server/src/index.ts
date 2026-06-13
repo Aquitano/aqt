@@ -3,20 +3,18 @@ import { auth } from "@aqt-gallery/auth";
 import { db } from "@aqt-gallery/db";
 import { mediaAsset } from "@aqt-gallery/db/schema/gallery";
 import { env } from "@aqt-gallery/env/server";
+import { StreamableHTTPTransport } from "@hono/mcp";
 import { trpcServer } from "@hono/trpc-server";
 import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-
+import { sessionFromApiToken } from "./api/auth-token";
 import { createContext } from "./api/context";
 import { appRouter } from "./api/routers/index";
-import {
-	isEntity,
-	isVariant,
-	servePublicImage,
-} from "./media/public-image";
+import { createGalleryMcpServer } from "./mcp/server";
+import { isEntity, isVariant, servePublicImage } from "./media/public-image";
 import { uploadErrorResponse, uploadMedia } from "./media/upload";
 
 const app = new Hono();
@@ -34,8 +32,16 @@ app.use(
 	"/*",
 	cors({
 		origin: env.CORS_ORIGIN,
-		allowMethods: ["GET", "POST", "OPTIONS"],
-		allowHeaders: ["Content-Type", "Authorization"],
+		allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+		allowHeaders: [
+			"Content-Type",
+			"Authorization",
+			// Headers the MCP Streamable HTTP transport sends.
+			"Mcp-Session-Id",
+			"Mcp-Protocol-Version",
+			"Last-Event-ID",
+		],
+		exposeHeaders: ["Mcp-Session-Id"],
 		credentials: true,
 	}),
 );
@@ -123,12 +129,45 @@ app.get("/public-image/:entity/:id/:variant", async (c) => {
 		id,
 		variant,
 		// Resolved lazily (only for unpublished artworks) so an owner can
-		// preview their own drafts without slowing the public hot path.
+		// preview their own drafts without slowing the public hot path — via a
+		// browser cookie or a personal access token, so an agent can fetch the
+		// bytes of the artworks it just imported.
 		resolveViewer: async () => {
-			const session = await getSession(c.req.raw.headers);
+			const session =
+				(await sessionFromApiToken(c.req.raw.headers)) ??
+				(await getSession(c.req.raw.headers));
 			return session?.user.id;
 		},
 	});
+});
+
+// Model Context Protocol endpoint — lets an external agent drive the gallery
+// (import, enrich, curate, publish) on behalf of a user. Authenticated by a
+// personal access token (Authorization: Bearer aqtg_…) or a browser cookie
+// session. Stateless: a fresh server + transport handle each request. Only
+// POST (JSON-RPC) and DELETE (teardown) are served — a stateless server has no
+// use for the GET server→client SSE stream.
+app.on(["POST", "DELETE"], "/mcp", async (c) => {
+	const headers = c.req.raw.headers;
+	const session =
+		(await sessionFromApiToken(headers)) ?? (await getSession(headers));
+
+	if (!session) {
+		return c.json(
+			{
+				jsonrpc: "2.0",
+				error: { code: -32001, message: "Authentication required" },
+				id: null,
+			},
+			401,
+		);
+	}
+
+	const server = createGalleryMcpServer(session);
+	const transport = new StreamableHTTPTransport();
+	await server.connect(transport);
+	const response = await transport.handleRequest(c);
+	return response ?? c.body(null, 204);
 });
 
 app.use(
