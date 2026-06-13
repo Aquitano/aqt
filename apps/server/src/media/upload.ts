@@ -1,4 +1,6 @@
+import { lookup } from "node:dns/promises";
 import { mkdir, unlink } from "node:fs/promises";
+import { isIP } from "node:net";
 import path from "node:path";
 import { db } from "@aqt-gallery/db";
 import { artwork, mediaAsset } from "@aqt-gallery/db/schema/gallery";
@@ -274,6 +276,83 @@ function filenameFromUrl(url: string) {
 	}
 }
 
+const IMAGE_FETCH_USER_AGENT = "aqt-gallery/1.0 (museum image import)";
+const MAX_IMAGE_FETCH_REDIRECTS = 5;
+
+/**
+ * Reject loopback, link-local (incl. the 169.254.169.254 cloud-metadata
+ * endpoint), private, CGNAT, and reserved ranges so a server-side image fetch
+ * can't be steered at internal infrastructure (SSRF). Defence-in-depth: a
+ * resolve-then-fetch check still leaves a narrow DNS-rebinding window, but it
+ * closes the practical vectors (literal IPs, internal DNS names, metadata IPs,
+ * and redirect-to-internal hops).
+ */
+function isBlockedAddress(ip: string): boolean {
+	if (ip.includes(".")) {
+		const parts = ip.split(".").map(Number);
+		if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return true;
+		const [a = 0, b = 0] = parts;
+		if (a === 0 || a === 10 || a === 127) return true;
+		if (a === 169 && b === 254) return true; // link-local + cloud metadata
+		if (a === 172 && b >= 16 && b <= 31) return true;
+		if (a === 192 && b === 168) return true;
+		if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+		if (a >= 224) return true; // multicast + reserved
+		return false;
+	}
+	const v6 = (ip.toLowerCase().split("%")[0] ?? "").trim();
+	if (v6 === "::" || v6 === "::1") return true;
+	if (v6.startsWith("fe80")) return true; // link-local
+	if (v6.startsWith("fc") || v6.startsWith("fd")) return true; // unique-local
+	const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(v6);
+	if (mapped?.[1]) return isBlockedAddress(mapped[1]);
+	return false;
+}
+
+/** http(s) only, and every IP the host resolves to must be public. */
+async function assertFetchableUrl(raw: string): Promise<void> {
+	const url = new URL(raw);
+	if (url.protocol !== "http:" && url.protocol !== "https:") {
+		throw new Error(`Unsupported URL scheme: ${url.protocol}`);
+	}
+	const host = url.hostname.replace(/^\[|\]$/g, ""); // unwrap [ipv6]
+	if (isIP(host)) {
+		if (isBlockedAddress(host)) {
+			throw new Error("URL resolves to a non-public address");
+		}
+		return;
+	}
+	const addresses = await lookup(host, { all: true });
+	if (addresses.length === 0) throw new Error("Host did not resolve");
+	for (const { address } of addresses) {
+		if (isBlockedAddress(address)) {
+			throw new Error("URL resolves to a non-public address");
+		}
+	}
+}
+
+/** Fetch an image, validating the initial URL and every redirect hop against
+ * SSRF before each request (redirects are followed manually so an internal
+ * target can't be reached via a public-looking URL). */
+async function fetchImageGuarded(initialUrl: string): Promise<Response> {
+	let current = initialUrl;
+	for (let hop = 0; hop <= MAX_IMAGE_FETCH_REDIRECTS; hop++) {
+		await assertFetchableUrl(current);
+		const res = await fetch(current, {
+			headers: { "User-Agent": IMAGE_FETCH_USER_AGENT },
+			redirect: "manual",
+		});
+		if (res.status >= 300 && res.status < 400) {
+			const location = res.headers.get("location");
+			if (!location) return res;
+			current = new URL(location, current).toString();
+			continue;
+		}
+		return res;
+	}
+	throw new Error("Too many redirects");
+}
+
 /** Downloads a remote image once and routes it through the shared ingest,
  * so the gallery never depends on a live third-party URL afterwards. */
 function prepareUrlImage(
@@ -284,10 +363,7 @@ function prepareUrlImage(
 	return Effect.gen(function* () {
 		const fetched = yield* Effect.tryPromise({
 			try: async () => {
-				const res = await fetch(item.url, {
-					headers: { "User-Agent": "aqt-gallery/1.0 (museum image import)" },
-					redirect: "follow",
-				});
+				const res = await fetchImageGuarded(item.url);
 				if (!res.ok) {
 					return { ok: false as const, status: res.status };
 				}
