@@ -1,42 +1,17 @@
 import { RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
-/** Visual theme for a gallery's 3D room. Mirrors `MuseumTheme` on the
- * server and the defaults the renderer falls back to in `themeOf`. */
-export type GalleryThemeValue = {
-	wallColor?: string;
-	accentWallColor?: string;
-	floorColor?: string;
-	floorRoughness?: number;
-	ambientIntensity?: number;
-	lightTemperature?: "warm" | "neutral" | "cool";
-};
+import {
+	LIGHT_COLORS,
+	type ThemeValue,
+	withThemeDefaults,
+} from "../museum/theme";
 
-const THEME_DEFAULTS = {
-	wallColor: "#857b6c",
-	accentWallColor: "#6e6354",
-	floorColor: "#332b22",
-	floorRoughness: 0.82,
-	ambientIntensity: 1,
-	lightTemperature: "warm",
-} satisfies Required<GalleryThemeValue>;
+/** Re-exported under the editor's historical name; the shape now lives in
+ * the shared theme module. */
+export type GalleryThemeValue = ThemeValue;
 
-const LIGHT_SWATCH = {
-	warm: "#ffe2b8",
-	neutral: "#fff3e2",
-	cool: "#e8eeff",
-} as const;
-
-/** Fill any unset field with the renderer's default so every control has a
- * concrete value to bind to. */
-function withDefaults(theme: GalleryThemeValue | null | undefined) {
-	return { ...THEME_DEFAULTS, ...(theme ?? {}) };
-}
-
-function shallowEqual(
-	a: Required<GalleryThemeValue>,
-	b: Required<GalleryThemeValue>,
-) {
+function shallowEqual(a: Required<ThemeValue>, b: Required<ThemeValue>) {
 	return (
 		a.wallColor === b.wallColor &&
 		a.accentWallColor === b.accentWallColor &&
@@ -58,18 +33,18 @@ export function GalleryThemePanel({
 	disabled: boolean;
 	onSave: (theme: GalleryThemeValue) => void | Promise<void>;
 }) {
-	const [draft, setDraft] = useState(() => withDefaults(theme));
+	const [draft, setDraft] = useState(() => withThemeDefaults(theme));
 
 	// Reload the form when switching to a different gallery (and after a save
 	// reconciles, since the value then matches and the reset is a no-op).
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only on gallery switch
 	useEffect(() => {
-		setDraft(withDefaults(theme));
+		setDraft(withThemeDefaults(theme));
 	}, [groupId]);
 
-	const saved = withDefaults(theme);
+	const saved = withThemeDefaults(theme);
 	const dirty = !shallowEqual(draft, saved);
-	const isDefault = shallowEqual(draft, withDefaults(null));
+	const isDefault = shallowEqual(draft, withThemeDefaults(null));
 
 	const set = <K extends keyof Required<GalleryThemeValue>>(
 		key: K,
@@ -86,7 +61,7 @@ export function GalleryThemePanel({
 			>
 				<span
 					className="gallery-theme-preview-light"
-					style={{ background: LIGHT_SWATCH[draft.lightTemperature] }}
+					style={{ background: LIGHT_COLORS[draft.lightTemperature] }}
 				/>
 			</div>
 
@@ -170,7 +145,7 @@ export function GalleryThemePanel({
 						type="button"
 						className="gallery-secondary-button"
 						disabled={disabled || isDefault}
-						onClick={() => setDraft(withDefaults(null))}
+						onClick={() => setDraft(withThemeDefaults(null))}
 					>
 						<RotateCcw size={14} />
 						Reset to defaults

@@ -3,11 +3,11 @@ import { artist, artwork, mediaAsset } from "@aqt-gallery/db/schema/gallery";
 import {
 	artGroup,
 	groupArtwork,
-	type MuseumTheme,
 	museum,
 	placement,
 	room,
 } from "@aqt-gallery/db/schema/museum";
+import { themeSchema } from "@aqt-gallery/db/schema/theme";
 import { env } from "@aqt-gallery/env/server";
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
@@ -140,15 +140,6 @@ async function uniqueGroupSlug(name: string) {
 	}
 	return `${base}-${crypto.randomUUID().slice(0, 8)}`;
 }
-
-const themeInput = z.object({
-	wallColor: z.string().optional(),
-	accentWallColor: z.string().optional(),
-	floorColor: z.string().optional(),
-	floorRoughness: z.number().min(0).max(1).optional(),
-	ambientIntensity: z.number().min(0).max(5).optional(),
-	lightTemperature: z.enum(["warm", "neutral", "cool"]).optional(),
-}) satisfies z.ZodType<MuseumTheme>;
 
 async function requireOwnGroup(groupId: string, userId: string) {
 	const rows = await db
@@ -507,7 +498,7 @@ export const museumRouter = router({
 				name: z.string().min(1).max(120).optional(),
 				tagline: z.string().max(200).nullable().optional(),
 				description: z.string().max(2000).nullable().optional(),
-				theme: themeInput.nullable().optional(),
+				theme: themeSchema.nullable().optional(),
 				coverArtworkId: z.string().min(1).nullable().optional(),
 				isPublished: z.boolean().optional(),
 			}),

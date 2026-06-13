@@ -14,6 +14,7 @@ import {
 
 import { user } from "./auth";
 import { artist, artwork } from "./gallery";
+import type { Theme } from "./theme";
 
 const timestamps = {
 	createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -23,16 +24,9 @@ const timestamps = {
 		.notNull(),
 };
 
-/** Visual theme for a museum's 3D environment. All fields optional;
- * the renderer falls back to defaults when absent. */
-export type MuseumTheme = {
-	wallColor?: string;
-	accentWallColor?: string;
-	floorColor?: string;
-	floorRoughness?: number;
-	ambientIntensity?: number;
-	lightTemperature?: "warm" | "neutral" | "cool";
-};
+/** Visual theme for a museum's 3D environment. Canonical shape lives in
+ * schema/theme.ts; kept as an alias for back-compat at existing call sites. */
+export type MuseumTheme = Theme;
 
 /** Optional explicit 3D layout for a room. When null, the gallery is
  * generated procedurally from placement ordering alone. */

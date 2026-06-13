@@ -15,29 +15,8 @@ import {
 	type WorldLayout,
 } from "./layout";
 import { Painting } from "./painting";
+import { resolveTheme } from "./theme";
 import type { GalleryContent } from "./types";
-
-const LIGHT_COLORS = {
-	warm: "#ffe2b8",
-	neutral: "#fff3e2",
-	cool: "#e8eeff",
-} as const;
-
-export function themeOf(content: GalleryContent) {
-	const t = content.theme ?? {};
-	return {
-		wallColor: t.wallColor ?? "#857b6c",
-		accentWallColor: t.accentWallColor ?? t.wallColor ?? "#6e6354",
-		floorColor: t.floorColor ?? "#332b22",
-		floorRoughness: t.floorRoughness ?? 0.82,
-		ambientIntensity: t.ambientIntensity ?? 1,
-		lightColor:
-			LIGHT_COLORS[
-				(t.lightTemperature ?? "warm") as keyof typeof LIGHT_COLORS
-			] ?? LIGHT_COLORS.warm,
-		background: "#0b0a09",
-	};
-}
 
 function RoomShadowLight({
 	x,
@@ -138,7 +117,7 @@ export function GalleryScene({
 	world: WorldLayout;
 	register: (mesh: THREE.Object3D | null, layout: PaintingLayout) => void;
 }) {
-	const theme = themeOf(content);
+	const theme = resolveTheme(content.theme);
 	const midZ = world.totalDepth / 2;
 
 	return (
