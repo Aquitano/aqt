@@ -29,10 +29,12 @@ export function themeOf(content: GalleryContent) {
 		wallColor: t.wallColor ?? "#857b6c",
 		accentWallColor: t.accentWallColor ?? t.wallColor ?? "#6e6354",
 		floorColor: t.floorColor ?? "#332b22",
+		floorRoughness: t.floorRoughness ?? 0.82,
 		ambientIntensity: t.ambientIntensity ?? 1,
 		lightColor:
-			LIGHT_COLORS[(t.lightTemperature ?? "warm") as keyof typeof LIGHT_COLORS] ??
-			LIGHT_COLORS.warm,
+			LIGHT_COLORS[
+				(t.lightTemperature ?? "warm") as keyof typeof LIGHT_COLORS
+			] ?? LIGHT_COLORS.warm,
 		background: "#0b0a09",
 	};
 }
@@ -89,7 +91,11 @@ function Bench({ x, z }: { x: number; z: number }) {
 			{[-0.9, 0.9].map((dx) => (
 				<mesh key={dx} position={[dx, 0.2, 0]} castShadow>
 					<boxGeometry args={[0.1, 0.4, 0.5]} />
-					<meshStandardMaterial color="#15110d" roughness={0.6} metalness={0.5} />
+					<meshStandardMaterial
+						color="#15110d"
+						roughness={0.6}
+						metalness={0.5}
+					/>
 				</mesh>
 			))}
 		</group>
@@ -104,7 +110,11 @@ function DoorFrame({ z, color }: { z: number; color: string }) {
 			{[-1, 1].map((side) => (
 				<mesh
 					key={side}
-					position={[side * (DOOR_WIDTH / 2 + jambW / 2 - 0.02), DOOR_HEIGHT / 2, 0]}
+					position={[
+						side * (DOOR_WIDTH / 2 + jambW / 2 - 0.02),
+						DOOR_HEIGHT / 2,
+						0,
+					]}
 					castShadow
 				>
 					<boxGeometry args={[jambW, DOOR_HEIGHT, jambD]} />
@@ -134,10 +144,7 @@ export function GalleryScene({
 	return (
 		<>
 			<color attach="background" args={[theme.background]} />
-			<fog
-				attach="fog"
-				args={[theme.background, 14, world.totalDepth + 34]}
-			/>
+			<fog attach="fog" args={[theme.background, 14, world.totalDepth + 34]} />
 
 			<hemisphereLight
 				color={theme.wallColor}
@@ -180,15 +187,13 @@ export function GalleryScene({
 				position={[0, 0, midZ]}
 				receiveShadow
 			>
-				<planeGeometry
-					args={[world.buildingWidth + 2, world.totalDepth + 2]}
-				/>
+				<planeGeometry args={[world.buildingWidth + 2, world.totalDepth + 2]} />
 				<MeshReflectorMaterial
 					blur={[380, 90]}
 					resolution={1024}
 					mixBlur={1}
 					mixStrength={48}
-					roughness={0.82}
+					roughness={theme.floorRoughness}
 					depthScale={1.1}
 					minDepthThreshold={0.4}
 					maxDepthThreshold={1.3}

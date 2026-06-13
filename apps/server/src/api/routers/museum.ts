@@ -25,6 +25,29 @@ function publicImageUrl(
 	return `${env.BETTER_AUTH_URL}/public-image/${entity}/${id}/${variant}`;
 }
 
+/** Resolve a group's display cover. An explicitly chosen member artwork
+ * wins; then a stored remote cover (seeded content); then the first hung
+ * artwork; otherwise nothing. */
+function groupCoverUrl(
+	g: {
+		id: string;
+		coverArtworkId: string | null;
+		coverImageUrl: string | null;
+	},
+	firstArtworkId: string | undefined,
+) {
+	if (g.coverArtworkId) {
+		return publicImageUrl("artwork", g.coverArtworkId, "thumb");
+	}
+	if (g.coverImageUrl) {
+		return publicImageUrl("group", g.id, "cover");
+	}
+	if (firstArtworkId) {
+		return publicImageUrl("artwork", firstArtworkId, "thumb");
+	}
+	return null;
+}
+
 /** Public artwork payload for the 3D museum. Only published artworks
  * are ever returned; personal-archive fields (rating, review…) stay private.
  * Uploaded artworks (no external imageUrl) fall back to their primary
@@ -224,24 +247,17 @@ export const museumRouter = router({
 				roomNames: roomCountByMuseum.get(m.id)?.names ?? [],
 				artworkCount: artworkCountByMuseum.get(m.id) ?? 0,
 			})),
-			groups: groups.map((g) => {
-				const firstArtworkId = firstArtworkByGroup.get(g.id);
-				return {
-					id: g.id,
-					slug: g.slug,
-					kind: g.kind,
-					name: g.name,
-					tagline: g.tagline,
-					description: g.description,
-					coverImageUrl: g.coverImageUrl
-						? publicImageUrl("group", g.id, "cover")
-						: firstArtworkId
-							? publicImageUrl("artwork", firstArtworkId, "thumb")
-							: null,
-					theme: g.theme,
-					artworkCount: artworkCountByGroup.get(g.id) ?? 0,
-				};
-			}),
+			groups: groups.map((g) => ({
+				id: g.id,
+				slug: g.slug,
+				kind: g.kind,
+				name: g.name,
+				tagline: g.tagline,
+				description: g.description,
+				coverImageUrl: groupCoverUrl(g, firstArtworkByGroup.get(g.id)),
+				theme: g.theme,
+				artworkCount: artworkCountByGroup.get(g.id) ?? 0,
+			})),
 		};
 	}),
 
@@ -449,11 +465,8 @@ export const museumRouter = router({
 				description: g.description,
 				theme: g.theme,
 				isPublished: g.isPublished,
-				coverImageUrl: g.coverImageUrl
-					? publicImageUrl("group", g.id, "cover")
-					: artworkIds[0]
-						? publicImageUrl("artwork", artworkIds[0], "thumb")
-						: null,
+				coverArtworkId: g.coverArtworkId,
+				coverImageUrl: groupCoverUrl(g, artworkIds[0]),
 				artworkIds,
 				updatedAt: g.updatedAt,
 			};
@@ -495,11 +508,31 @@ export const museumRouter = router({
 				tagline: z.string().max(200).nullable().optional(),
 				description: z.string().max(2000).nullable().optional(),
 				theme: themeInput.nullable().optional(),
+				coverArtworkId: z.string().min(1).nullable().optional(),
 				isPublished: z.boolean().optional(),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
 			await requireOwnGroup(input.id, ctx.session.user.id);
+			// A chosen cover must be a member of this gallery.
+			if (input.coverArtworkId) {
+				const member = await db
+					.select({ artworkId: groupArtwork.artworkId })
+					.from(groupArtwork)
+					.where(
+						and(
+							eq(groupArtwork.groupId, input.id),
+							eq(groupArtwork.artworkId, input.coverArtworkId),
+						),
+					)
+					.limit(1);
+				if (!member[0]) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "Cover artwork must be in this gallery",
+					});
+				}
+			}
 			const rows = await db
 				.update(artGroup)
 				.set({
@@ -509,6 +542,9 @@ export const museumRouter = router({
 						? { description: input.description }
 						: {}),
 					...(input.theme !== undefined ? { theme: input.theme } : {}),
+					...(input.coverArtworkId !== undefined
+						? { coverArtworkId: input.coverArtworkId }
+						: {}),
 					...(input.isPublished !== undefined
 						? { isPublished: input.isPublished }
 						: {}),
@@ -539,7 +575,7 @@ export const museumRouter = router({
 		)
 		.mutation(async ({ ctx, input }) => {
 			const userId = ctx.session.user.id;
-			await requireOwnGroup(input.groupId, userId);
+			const group = await requireOwnGroup(input.groupId, userId);
 
 			const unique = [...new Set(input.artworkIds)];
 			const allowed =
@@ -581,9 +617,16 @@ export const museumRouter = router({
 					})),
 				);
 			}
+			// Drop a chosen cover that's no longer hung in this gallery.
+			const coverRemoved =
+				group.coverArtworkId !== null &&
+				!ordered.includes(group.coverArtworkId);
 			await db
 				.update(artGroup)
-				.set({ updatedAt: new Date() })
+				.set({
+					updatedAt: new Date(),
+					...(coverRemoved ? { coverArtworkId: null } : {}),
+				})
 				.where(eq(artGroup.id, input.groupId));
 
 			return { ok: true, artworkIds: ordered };

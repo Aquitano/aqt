@@ -123,6 +123,11 @@ export const artGroup = pgTable(
 		tagline: text("tagline"),
 		description: text("description"),
 		coverImageUrl: text("cover_image_url"),
+		/** Member artwork chosen as the gallery cover; null falls back to the
+		 * first hung artwork. Cleared automatically if the artwork is removed. */
+		coverArtworkId: text("cover_artwork_id").references(() => artwork.id, {
+			onDelete: "set null",
+		}),
 		museumId: text("museum_id").references(() => museum.id, {
 			onDelete: "set null",
 		}),
