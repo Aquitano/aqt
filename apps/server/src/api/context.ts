@@ -1,4 +1,4 @@
-import { auth } from "@aqt-gallery/auth";
+import { getSession } from "@aqt-gallery/auth";
 import type { Context as HonoContext } from "hono";
 
 export type CreateContextOptions = {
@@ -10,9 +10,7 @@ export async function createContext({ context }: CreateContextOptions) {
 	// deliberately NOT honoured here — they authenticate the /mcp endpoint
 	// alone, so a leaked agent token can't reach token management or any other
 	// procedure outside the MCP tool surface.
-	const session = await auth.api.getSession({
-		headers: context.req.raw.headers,
-	});
+	const session = await getSession(context.req.raw);
 	return {
 		auth: null,
 		session,

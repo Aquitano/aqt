@@ -1,4 +1,3 @@
-import { relations } from "drizzle-orm";
 import {
 	index,
 	pgTable,
@@ -6,8 +5,6 @@ import {
 	timestamp,
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
-
-import { user } from "./auth";
 
 const timestamps = {
 	createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -28,9 +25,8 @@ export const apiToken = pgTable(
 	"api_token",
 	{
 		id: text("id").primaryKey(),
-		userId: text("user_id")
-			.notNull()
-			.references(() => user.id, { onDelete: "cascade" }),
+		// Clerk user id of the token owner. No FK (identities live in Clerk).
+		userId: text("user_id").notNull(),
 		name: text("name").notNull(),
 		tokenHash: text("token_hash").notNull(),
 		prefix: text("prefix").notNull(),
@@ -43,10 +39,3 @@ export const apiToken = pgTable(
 		uniqueIndex("api_token_hash_idx").on(table.tokenHash),
 	],
 );
-
-export const apiTokenRelations = relations(apiToken, ({ one }) => ({
-	user: one(user, {
-		fields: [apiToken.userId],
-		references: [user.id],
-	}),
-}));

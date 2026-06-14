@@ -22,7 +22,7 @@ function publicImageUrl(
 	id: string,
 	variant: "full" | "thumb" | "cover",
 ) {
-	return `${env.BETTER_AUTH_URL}/public-image/${entity}/${id}/${variant}`;
+	return `${env.SERVER_URL}/public-image/${entity}/${id}/${variant}`;
 }
 
 /** Resolve a group's display cover. An explicitly chosen member artwork

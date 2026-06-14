@@ -1,5 +1,5 @@
 import path from "node:path";
-import { auth } from "@aqt-gallery/auth";
+import { getSession } from "@aqt-gallery/auth";
 import { db } from "@aqt-gallery/db";
 import { mediaAsset } from "@aqt-gallery/db/schema/gallery";
 import { env } from "@aqt-gallery/env/server";
@@ -23,10 +23,6 @@ function uploadRoot() {
 	return path.resolve(env.UPLOAD_DIR);
 }
 
-async function getSession(headers: Headers) {
-	return auth.api.getSession({ headers });
-}
-
 app.use(logger());
 app.use(
 	"/*",
@@ -46,10 +42,8 @@ app.use(
 	}),
 );
 
-app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
-
 app.post("/media/upload", async (c) => {
-	const session = await getSession(c.req.raw.headers);
+	const session = await getSession(c.req.raw);
 
 	if (!session) {
 		return c.json({ error: "Authentication required" }, 401);
@@ -73,7 +67,7 @@ app.post("/media/upload", async (c) => {
 });
 
 app.get("/media/:assetId/:variant", async (c) => {
-	const session = await getSession(c.req.raw.headers);
+	const session = await getSession(c.req.raw);
 
 	if (!session) {
 		return c.notFound();
@@ -135,7 +129,7 @@ app.get("/public-image/:entity/:id/:variant", async (c) => {
 		resolveViewer: async () => {
 			const session =
 				(await sessionFromApiToken(c.req.raw.headers)) ??
-				(await getSession(c.req.raw.headers));
+				(await getSession(c.req.raw));
 			return session?.user.id;
 		},
 	});
@@ -150,7 +144,7 @@ app.get("/public-image/:entity/:id/:variant", async (c) => {
 app.on(["POST", "DELETE"], "/mcp", async (c) => {
 	const headers = c.req.raw.headers;
 	const session =
-		(await sessionFromApiToken(headers)) ?? (await getSession(headers));
+		(await sessionFromApiToken(headers)) ?? (await getSession(c.req.raw));
 
 	if (!session) {
 		return c.json(

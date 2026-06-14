@@ -5,12 +5,13 @@
 	"scripts": {
 		"build": "vite build",
 		"serve": "vite preview",
-		"dev": "vite dev"
+		"dev": "vite dev",
+		"check-types": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@aqt-gallery/auth": "workspace:*",
 		"@aqt-gallery/env": "workspace:*",
 		"@aqt-gallery/ui": "workspace:*",
+		"@clerk/tanstack-react-start": "^1.4.2",
 		"@react-three/drei": "^10.7.7",
 		"@react-three/fiber": "^9.6.1",
 		"@tailwindcss/vite": "^4.2.2",
@@ -22,7 +23,6 @@
 		"@trpc/client": "catalog:",
 		"@trpc/server": "catalog:",
 		"@trpc/tanstack-react-query": "^11.16.0",
-		"better-auth": "catalog:",
 		"dotenv": "catalog:",
 		"lucide-react": "^1.8.0",
 		"next-themes": "catalog:",

@@ -5,11 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 import { GalleryScene } from "./gallery-scene";
-import {
-	buildWorldLayout,
-	type PaintingLayout,
-} from "./layout";
 import { InspectPanel } from "./inspect-panel";
+import { buildWorldLayout, type PaintingLayout } from "./layout";
 import { PlayerRig } from "./player-rig";
 import { useMuseumStore } from "./store";
 import type { GalleryContent } from "./types";
@@ -41,7 +38,9 @@ function HoverTitle() {
 	return (
 		<div
 			className={`pointer-events-none absolute inset-x-0 bottom-24 z-10 flex justify-center transition-all duration-300 ${
-				hovered && locked ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
+				hovered && locked
+					? "translate-y-0 opacity-100"
+					: "translate-y-2 opacity-0"
 			}`}
 		>
 			<div className="rounded-full border border-white/10 bg-black/55 px-5 py-2.5 text-center backdrop-blur">

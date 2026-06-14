@@ -116,15 +116,15 @@ export function PlayerRig({
 					? p.z - (room.minZ + WALL_THICKNESS + PLAYER_RADIUS)
 					: Number.POSITIVE_INFINITY,
 			);
-			dist = Math.min(
-				dist,
-				Math.abs(n.x) > 0.5 ? maxByX : maxByZ,
-			);
+			dist = Math.min(dist, Math.abs(n.x) > 0.5 ? maxByX : maxByZ);
 		}
 
 		// Shift the view sideways so the painting sits left of the info panel.
 		const forward = n.clone().negate();
-		const right = forward.clone().cross(new THREE.Vector3(0, 1, 0)).normalize();
+		const right = forward
+			.clone()
+			.cross(new THREE.Vector3(0, 1, 0))
+			.normalize();
 		const sideShift = Math.min(2 * dist * tanH * 0.16, layout.width);
 
 		const position = p

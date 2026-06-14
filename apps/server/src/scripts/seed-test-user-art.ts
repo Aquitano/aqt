@@ -8,7 +8,6 @@
  */
 import path from "node:path";
 import { db } from "@aqt-gallery/db";
-import { user } from "@aqt-gallery/db/schema/auth";
 import { artwork } from "@aqt-gallery/db/schema/gallery";
 import { env } from "@aqt-gallery/env/server";
 import { and, eq, inArray } from "drizzle-orm";
@@ -16,7 +15,12 @@ import { Effect } from "effect";
 
 import { importMediaFromUrls, uploadErrorResponse } from "../media/upload";
 
-const EMAIL = "test@me3.com";
+// Clerk user id to seed for (e.g. "user_2 abc…"). Identities live in Clerk now,
+// so there is no local user table to look up by email.
+const SEED_USER_ID = process.env.SEED_USER_ID;
+if (!SEED_USER_ID) {
+	throw new Error("Set SEED_USER_ID to the Clerk user id to seed for");
+}
 
 const SEED = [
 	{
@@ -35,16 +39,10 @@ const SEED = [
 	},
 ] as const;
 
-const rows = await db.select().from(user).where(eq(user.email, EMAIL)).limit(1);
-const u = rows[0];
-if (!u) {
-	throw new Error(`No user with email ${EMAIL}`);
-}
-
 // Idempotent: drop previously seeded artworks (cascades their media assets).
 await db.delete(artwork).where(
 	and(
-		eq(artwork.userId, u.id),
+		eq(artwork.userId, SEED_USER_ID),
 		inArray(
 			artwork.title,
 			SEED.map((s) => s.title),
@@ -56,7 +54,7 @@ const result = await Effect.runPromise(
 	importMediaFromUrls({
 		items: SEED.map((s) => ({ url: s.url, title: s.title })),
 		uploadRoot: path.resolve(env.UPLOAD_DIR),
-		userId: u.id,
+		userId: SEED_USER_ID,
 	}).pipe(
 		Effect.match({
 			onFailure: (error) => ({
@@ -89,6 +87,6 @@ for (const item of result.uploaded) {
 }
 
 console.log(
-	`seeded ${result.uploaded.length} stored test artworks for ${u.id}`,
+	`seeded ${result.uploaded.length} stored test artworks for ${SEED_USER_ID}`,
 );
 process.exit(0);

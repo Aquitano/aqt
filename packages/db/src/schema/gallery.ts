@@ -11,8 +11,6 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { user } from "./auth";
-
 const timestamps = {
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 	updatedAt: timestamp("updated_at")
@@ -41,9 +39,9 @@ export const artwork = pgTable(
 	"artwork",
 	{
 		id: text("id").primaryKey(),
-		userId: text("user_id")
-			.notNull()
-			.references(() => user.id, { onDelete: "cascade" }),
+		// Clerk user id of the owner. No FK: identities live in Clerk, not in
+		// this database, so cascade-delete no longer applies.
+		userId: text("user_id").notNull(),
 		title: text("title").notNull(),
 		artist: text("artist"),
 		artistId: text("artist_id").references(() => artist.id, {
@@ -83,9 +81,7 @@ export const mediaAsset = pgTable(
 	"media_asset",
 	{
 		id: text("id").primaryKey(),
-		userId: text("user_id")
-			.notNull()
-			.references(() => user.id, { onDelete: "cascade" }),
+		userId: text("user_id").notNull(),
 		artworkId: text("artwork_id")
 			.notNull()
 			.references(() => artwork.id, { onDelete: "cascade" }),
@@ -122,9 +118,7 @@ export const tag = pgTable(
 	"tag",
 	{
 		id: text("id").primaryKey(),
-		userId: text("user_id")
-			.notNull()
-			.references(() => user.id, { onDelete: "cascade" }),
+		userId: text("user_id").notNull(),
 		name: text("name").notNull(),
 		slug: text("slug").notNull(),
 	},

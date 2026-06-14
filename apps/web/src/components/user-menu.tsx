@@ -9,19 +9,19 @@ import {
 	DropdownMenuTrigger,
 } from "@aqt-gallery/ui/components/dropdown-menu";
 import { Skeleton } from "@aqt-gallery/ui/components/skeleton";
+import { useClerk, useUser } from "@clerk/tanstack-react-start";
 import { Link, useNavigate } from "@tanstack/react-router";
-
-import { authClient } from "@/lib/auth-client";
 
 export default function UserMenu() {
 	const navigate = useNavigate();
-	const { data: session, isPending } = authClient.useSession();
+	const { isLoaded, isSignedIn, user } = useUser();
+	const { signOut } = useClerk();
 
-	if (isPending) {
+	if (!isLoaded) {
 		return <Skeleton className="h-9 w-24" />;
 	}
 
-	if (!session) {
+	if (!isSignedIn) {
 		return (
 			<Link to="/login">
 				<Button variant="outline">Sign In</Button>
@@ -29,28 +29,24 @@ export default function UserMenu() {
 		);
 	}
 
+	const name = user.fullName ?? user.username ?? "Account";
+	const email = user.primaryEmailAddress?.emailAddress;
+
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger render={<Button variant="outline" />}>
-				{session.user.name}
+				{name}
 			</DropdownMenuTrigger>
 			<DropdownMenuContent className="bg-card">
 				<DropdownMenuGroup>
 					<DropdownMenuLabel>My Account</DropdownMenuLabel>
 					<DropdownMenuSeparator />
-					<DropdownMenuItem>{session.user.email}</DropdownMenuItem>
+					{email ? <DropdownMenuItem>{email}</DropdownMenuItem> : null}
 					<DropdownMenuItem
 						variant="destructive"
-						onClick={() => {
-							authClient.signOut({
-								fetchOptions: {
-									onSuccess: () => {
-										navigate({
-											to: "/",
-										});
-									},
-								},
-							});
+						onClick={async () => {
+							await signOut();
+							navigate({ to: "/" });
 						}}
 					>
 						Sign Out

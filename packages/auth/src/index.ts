@@ -1,33 +1,42 @@
-import { createDb } from "@aqt-gallery/db";
-import * as schema from "@aqt-gallery/db/schema/auth";
 import { env } from "@aqt-gallery/env/server";
-import { betterAuth } from "better-auth";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { createClerkClient } from "@clerk/backend";
 
-export function createAuth() {
-	const db = createDb();
+const clerk = createClerkClient({
+	secretKey: env.CLERK_SECRET_KEY,
+	publishableKey: env.CLERK_PUBLISHABLE_KEY,
+});
 
-	return betterAuth({
-		database: drizzleAdapter(db, {
-			provider: "pg",
+/**
+ * The session shape the API acts on. Identities live in Clerk, not in this
+ * database, so a session is just the Clerk user id (plus the session id for
+ * logging). Personal-access-token auth mints the same shape, so a PAT is a
+ * drop-in replacement at every call site (see apps/server/src/api/auth-token).
+ */
+export type AuthSession = {
+	user: { id: string };
+	session: { id: string; userId: string };
+};
 
-			schema: schema,
-		}),
-		trustedOrigins: [env.CORS_ORIGIN],
-		emailAndPassword: {
-			enabled: true,
-		},
-		secret: env.BETTER_AUTH_SECRET,
-		baseURL: env.BETTER_AUTH_URL,
-		advanced: {
-			defaultCookieAttributes: {
-				sameSite: "none",
-				secure: true,
-				httpOnly: true,
-			},
-		},
-		plugins: [],
+/**
+ * Resolve the Clerk session from a request's `__session` cookie (or a Clerk
+ * bearer token). Networkless JWT verification — no round-trip to Clerk on the
+ * hot path. Returns null when the request is unauthenticated.
+ */
+export async function getSession(
+	request: Request,
+): Promise<AuthSession | null> {
+	const state = await clerk.authenticateRequest(request, {
+		// Only accept tokens minted for our own web origin.
+		authorizedParties: [env.CORS_ORIGIN],
 	});
-}
 
-export const auth = createAuth();
+	if (!state.isSignedIn) return null;
+
+	const { userId, sessionId } = state.toAuth();
+	if (!userId) return null;
+
+	return {
+		user: { id: userId },
+		session: { id: sessionId ?? userId, userId },
+	};
+}

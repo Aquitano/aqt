@@ -10,14 +10,13 @@
 import { inArray } from "drizzle-orm";
 
 import { db } from "../index";
-import { user } from "../schema/auth";
 import { artist, artwork } from "../schema/gallery";
 import {
 	artGroup,
 	groupArtwork,
 	museum,
-	placement,
 	type PlacementWall,
+	placement,
 	room,
 } from "../schema/museum";
 
@@ -802,16 +801,9 @@ const groupId = (slug: string) => `group-${slug}`;
 async function seed() {
 	console.log("Seeding museum content…");
 
-	// System curator owns all seeded artworks (artwork.userId is required).
-	await db
-		.insert(user)
-		.values({
-			id: CURATOR_ID,
-			name: "Museum Curator",
-			email: "curator@aqt-gallery.local",
-			emailVerified: true,
-		})
-		.onConflictDoNothing();
+	// A synthetic owner id stamped on every seeded artwork (artwork.userId is
+	// required). It is not a real Clerk user — these public works simply need a
+	// stable owner that no human account will ever collide with.
 
 	// Wipe previously seeded rows (cascades placements/group memberships).
 	await db.delete(museum).where(

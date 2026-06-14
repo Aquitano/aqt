@@ -186,10 +186,7 @@ export function Painting({
 		ceilingHeight - 0.12 - layout.position[1],
 		2.1,
 	];
-	const distToPainting = Math.hypot(
-		lightLocal[1],
-		lightLocal[2] - CANVAS_LIFT,
-	);
+	const distToPainting = Math.hypot(lightLocal[1], lightLocal[2] - CANVAS_LIFT);
 	const halfDiag = Math.hypot(frameW, frameH) / 2;
 	const angle = THREE.MathUtils.clamp(
 		Math.atan2(halfDiag * 1.25, distToPainting),

@@ -17,7 +17,10 @@ export function InspectPanel() {
 	useEffect(() => {
 		if (!mounted) return;
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape" && useMuseumStore.getState().inspectPhase === "open") {
+			if (
+				e.key === "Escape" &&
+				useMuseumStore.getState().inspectPhase === "open"
+			) {
 				closeInspect();
 			}
 		};
@@ -100,7 +103,10 @@ export function InspectPanel() {
 									key={fact}
 									className="flex gap-2.5 text-[13.5px] leading-relaxed text-white/70"
 								>
-									<span aria-hidden className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-[#b7a989]" />
+									<span
+										aria-hidden
+										className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-[#b7a989]"
+									/>
 									{fact}
 								</li>
 							))}

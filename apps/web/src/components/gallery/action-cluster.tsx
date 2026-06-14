@@ -8,21 +8,23 @@ import {
 	DropdownMenuTrigger,
 } from "@aqt-gallery/ui/components/dropdown-menu";
 import { Kbd } from "@aqt-gallery/ui/components/kbd";
+import { useClerk, useUser } from "@clerk/tanstack-react-start";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Upload } from "lucide-react";
 
-import { authClient } from "@/lib/auth-client";
 import { useImportController } from "./import-provider";
 
 export function ActionCluster() {
 	const navigate = useNavigate();
 	const { openImport } = useImportController();
-	const { data: session } = authClient.useSession();
-	const initials = session?.user.name?.slice(0, 1).toUpperCase() ?? "A";
+	const { isSignedIn, user } = useUser();
+	const { signOut } = useClerk();
+	const initials =
+		(user?.firstName ?? user?.username)?.slice(0, 1).toUpperCase() ?? "A";
 
 	return (
 		<div className="flex items-center justify-end gap-2">
-			{session ? (
+			{isSignedIn ? (
 				<Button
 					type="button"
 					variant="secondary"
@@ -51,7 +53,7 @@ export function ActionCluster() {
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end" className="min-w-44">
 					<DropdownMenuLabel>
-						{session?.user.email ?? "Gallery"}
+						{user?.primaryEmailAddress?.emailAddress ?? "Gallery"}
 					</DropdownMenuLabel>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem onClick={() => navigate({ to: "/dashboard" })}>
@@ -60,24 +62,19 @@ export function ActionCluster() {
 					<DropdownMenuItem onClick={() => navigate({ to: "/galleries" })}>
 						Galleries
 					</DropdownMenuItem>
-					{session ? (
+					{isSignedIn ? (
 						<DropdownMenuItem onClick={() => navigate({ to: "/connect" })}>
 							Connect an agent
 						</DropdownMenuItem>
 					) : null}
-					{session ? (
+					{isSignedIn ? (
 						<>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem
 								variant="destructive"
-								onClick={() => {
-									authClient.signOut({
-										fetchOptions: {
-											onSuccess: () => {
-												navigate({ to: "/" });
-											},
-										},
-									});
+								onClick={async () => {
+									await signOut();
+									navigate({ to: "/" });
 								}}
 							>
 								Sign out

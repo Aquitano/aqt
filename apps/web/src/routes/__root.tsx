@@ -1,4 +1,6 @@
+import { env } from "@aqt-gallery/env/web";
 import { Toaster } from "@aqt-gallery/ui/components/sonner";
+import { ClerkProvider } from "@clerk/tanstack-react-start";
 import type { QueryClient } from "@tanstack/react-query";
 import {
 	createRootRouteWithContext,
@@ -42,15 +44,17 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 
 function RootDocument() {
 	return (
-		<html lang="en" className="dark">
-			<head>
-				<HeadContent />
-			</head>
-			<body>
-				<Outlet />
-				<Toaster richColors />
-				<Scripts />
-			</body>
-		</html>
+		<ClerkProvider publishableKey={env.VITE_CLERK_PUBLISHABLE_KEY}>
+			<html lang="en" className="dark">
+				<head>
+					<HeadContent />
+				</head>
+				<body>
+					<Outlet />
+					<Toaster richColors />
+					<Scripts />
+				</body>
+			</html>
+		</ClerkProvider>
 	);
 }

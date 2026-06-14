@@ -58,7 +58,7 @@ set_artwork_custom_fields replaces an artwork's label/value rows (e.g. "Collecti
 ## Publishing
 Adding an artwork to a gallery auto-publishes that artwork. publish_gallery controls whether the gallery itself is visible in the public museum.`;
 
-const PUBLIC_IMAGE_BASE = env.BETTER_AUTH_URL.replace(/\/+$/, "");
+const PUBLIC_IMAGE_BASE = env.SERVER_URL.replace(/\/+$/, "");
 
 /**
  * Turn a relative API image path into an absolute URL the agent can actually

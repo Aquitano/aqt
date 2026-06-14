@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
-import type { auth } from "@aqt-gallery/auth";
+import type { AuthSession } from "@aqt-gallery/auth";
 import { db } from "@aqt-gallery/db";
-import { user as userTable } from "@aqt-gallery/db/schema/auth";
 import { apiToken } from "@aqt-gallery/db/schema/tokens";
 import { eq } from "drizzle-orm";
 
 /** Every personal access token starts with this so we can cheaply tell a PAT
- * apart from a better-auth bearer/session token before touching the database. */
+ * apart from a Clerk bearer/session token before touching the database. */
 export const API_TOKEN_PREFIX = "aqtg_";
 
 /** A non-secret slice of the token (prefix + first chars) shown in the UI so a
@@ -19,10 +18,6 @@ export function hashApiToken(token: string): string {
 	return createHash("sha256").update(token).digest("hex");
 }
 
-/** The exact shape better-auth's `getSession` resolves to, so a PAT-minted
- * session is a drop-in replacement at every call site. */
-type AuthSession = NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>;
-
 function bearerToken(headers: Headers): string | null {
 	const header = headers.get("authorization");
 	if (!header) return null;
@@ -33,9 +28,11 @@ function bearerToken(headers: Headers): string | null {
 
 /**
  * Resolve a personal access token from the request's `Authorization: Bearer`
- * header into a session-shaped object the API uses exactly like a cookie
- * session. Returns null when there's no PAT (so callers fall back to the
- * cookie session) or the token is unknown/expired.
+ * header into the same session shape `getSession` returns, so a PAT is a
+ * drop-in replacement at every call site. Identities live in Clerk, so the
+ * token row already carries the Clerk user id — no user table to join.
+ * Returns null when there's no PAT (so callers fall back to the cookie
+ * session) or the token is unknown/expired.
  */
 export async function sessionFromApiToken(
 	headers: Headers,
@@ -44,14 +41,13 @@ export async function sessionFromApiToken(
 	if (!token) return null;
 
 	const rows = await db
-		.select({ token: apiToken, user: userTable })
+		.select()
 		.from(apiToken)
-		.innerJoin(userTable, eq(userTable.id, apiToken.userId))
 		.where(eq(apiToken.tokenHash, hashApiToken(token)))
 		.limit(1);
 	const row = rows[0];
 	if (!row) return null;
-	if (row.token.expiresAt && row.token.expiresAt.getTime() <= Date.now()) {
+	if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
 		return null;
 	}
 
@@ -61,24 +57,14 @@ export async function sessionFromApiToken(
 			await db
 				.update(apiToken)
 				.set({ lastUsedAt: new Date() })
-				.where(eq(apiToken.id, row.token.id));
+				.where(eq(apiToken.id, row.id));
 		} catch {
 			/* ignore — telemetry only */
 		}
 	})();
 
-	const oneYearMs = 365 * 24 * 60 * 60 * 1000;
 	return {
-		user: row.user,
-		session: {
-			id: `pat:${row.token.id}`,
-			token,
-			userId: row.user.id,
-			createdAt: row.token.createdAt,
-			updatedAt: row.token.updatedAt,
-			expiresAt: row.token.expiresAt ?? new Date(Date.now() + oneYearMs),
-			ipAddress: null,
-			userAgent: "mcp",
-		},
-	} as AuthSession;
+		user: { id: row.userId },
+		session: { id: `pat:${row.id}`, userId: row.userId },
+	};
 }

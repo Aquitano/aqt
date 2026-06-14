@@ -12,7 +12,6 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { user } from "./auth";
 import { artist, artwork } from "./gallery";
 import type { Theme } from "./theme";
 
@@ -128,10 +127,9 @@ export const artGroup = pgTable(
 		artistId: text("artist_id").references(() => artist.id, {
 			onDelete: "set null",
 		}),
-		/** Owner for user-curated galleries; null for system/seeded content. */
-		createdBy: text("created_by").references(() => user.id, {
-			onDelete: "cascade",
-		}),
+		/** Clerk user id of the owner for user-curated galleries; null for
+		 * system/seeded content. No FK (identities live in Clerk). */
+		createdBy: text("created_by"),
 		theme: jsonb("theme").$type<MuseumTheme>(),
 		isPublished: boolean("is_published").default(false).notNull(),
 		sortOrder: integer("sort_order").default(0).notNull(),
