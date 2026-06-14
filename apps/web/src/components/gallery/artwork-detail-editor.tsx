@@ -7,7 +7,14 @@ import { toast } from "sonner";
 
 import { useTRPC } from "@/utils/trpc";
 
-type CustomField = { label: string; value: string; position: number };
+import type { ArtworkType } from "./types";
+
+type CustomField = {
+	id: string;
+	label: string;
+	value: string;
+	position: number;
+};
 
 export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
 	const trpc = useTRPC();
@@ -21,7 +28,7 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
 	const [form, setForm] = useState({
 		title: "",
 		artist: "",
-		artworkType: "other" as const,
+		artworkType: "other" as ArtworkType,
 		year: "",
 		seenAt: "",
 		rating: 0,
@@ -43,7 +50,7 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
 		setForm({
 			title: data.artwork.title,
 			artist: data.artwork.artist ?? "",
-			artworkType: data.artwork.artworkType as typeof form.artworkType,
+			artworkType: data.artwork.artworkType as ArtworkType,
 			year: data.artwork.year ?? "",
 			seenAt: data.artwork.seenAt
 				? new Date(data.artwork.seenAt).toISOString().slice(0, 10)
@@ -57,6 +64,7 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
 		});
 		setCustomFieldState(
 			data.customFields.map((field) => ({
+				id: crypto.randomUUID(),
 				label: field.label,
 				value: field.value,
 				position: field.position,
@@ -159,7 +167,7 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
 								onChange={(event) =>
 									setForm({
 										...form,
-										artworkType: event.target.value as typeof form.artworkType,
+										artworkType: event.target.value as ArtworkType,
 									})
 								}
 							>
@@ -250,7 +258,12 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
 							onClick={() =>
 								setCustomFieldState([
 									...customFields,
-									{ label: "", value: "", position: customFields.length },
+									{
+										id: crypto.randomUUID(),
+										label: "",
+										value: "",
+										position: customFields.length,
+									},
 								])
 							}
 						>
@@ -258,7 +271,7 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
 						</button>
 					</div>
 					{customFields.map((field, index) => (
-						<div className="custom-field-row" key={index}>
+						<div className="custom-field-row" key={field.id}>
 							<input
 								aria-label="Custom field label"
 								value={field.label}

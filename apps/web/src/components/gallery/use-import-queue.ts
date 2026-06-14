@@ -317,36 +317,42 @@ export function useImportQueue() {
 			}
 		};
 
-		// Files: server-sized batches, falling back to single requests on failure.
-		for (const group of chunk(fileItems, MAX_PER_REQUEST)) {
-			await uploadGroup(group);
+		// finally so an unexpected throw can't leave `isImporting` stuck on.
+		try {
+			// Files: server-sized batches, falling back to single requests on failure.
+			for (const group of chunk(fileItems, MAX_PER_REQUEST)) {
+				await uploadGroup(group);
+			}
+
+			// URLs: one request each so a single dead link only fails itself.
+			await runPool(urlItems, URL_CONCURRENCY, async (item) => {
+				patch(item.id, { status: "uploading", error: undefined });
+				try {
+					const result = await importFromUrl.mutateAsync({
+						items: [
+							{ url: item.url as string, title: item.title || undefined },
+						],
+					});
+					const artworkId = result.imported[0]?.artworkId;
+					if (artworkId) {
+						importedArtworkIds.push(artworkId);
+						patch(item.id, { status: "done", artworkId });
+					} else {
+						failed += 1;
+						patch(item.id, { status: "error", error: "Nothing imported" });
+					}
+				} catch (error) {
+					failed += 1;
+					const message =
+						error instanceof Error ? error.message : "Could not import URL";
+					patch(item.id, { status: "error", error: message });
+				}
+				advance(1);
+			});
+		} finally {
+			setIsImporting(false);
 		}
 
-		// URLs: one request each so a single dead link only fails itself.
-		await runPool(urlItems, URL_CONCURRENCY, async (item) => {
-			patch(item.id, { status: "uploading", error: undefined });
-			try {
-				const result = await importFromUrl.mutateAsync({
-					items: [{ url: item.url as string, title: item.title || undefined }],
-				});
-				const artworkId = result.imported[0]?.artworkId;
-				if (artworkId) {
-					importedArtworkIds.push(artworkId);
-					patch(item.id, { status: "done", artworkId });
-				} else {
-					failed += 1;
-					patch(item.id, { status: "error", error: "Nothing imported" });
-				}
-			} catch (error) {
-				failed += 1;
-				const message =
-					error instanceof Error ? error.message : "Could not import URL";
-				patch(item.id, { status: "error", error: message });
-			}
-			advance(1);
-		});
-
-		setIsImporting(false);
 		return {
 			importedArtworkIds,
 			imported: importedArtworkIds.length,

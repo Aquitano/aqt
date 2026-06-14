@@ -1,3 +1,12 @@
+/** Mirrors `artworkTypes` in apps/server's gallery-helpers. */
+export type ArtworkType =
+	| "painting"
+	| "photo"
+	| "sculpture"
+	| "print"
+	| "object"
+	| "other";
+
 export type ArtworkCard = {
 	id: string;
 	title: string;
