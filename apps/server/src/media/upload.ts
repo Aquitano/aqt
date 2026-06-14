@@ -353,6 +353,37 @@ async function fetchImageGuarded(initialUrl: string): Promise<Response> {
 	throw new Error("Too many redirects");
 }
 
+/** Buffers the body while enforcing the size cap up front (Content-Length) and
+ * per-chunk, so a length-lying response can't be fully buffered before
+ * prepareImage's check. Null if exceeded. */
+async function readImageBodyCapped(
+	res: Response,
+	maxBytes: number,
+): Promise<Buffer | null> {
+	const declared = res.headers.get("content-length");
+	if (declared && Number(declared) > maxBytes) {
+		return null;
+	}
+	const reader = res.body?.getReader();
+	if (!reader) {
+		const bytes = Buffer.from(await res.arrayBuffer());
+		return bytes.byteLength > maxBytes ? null : bytes;
+	}
+	const chunks: Buffer[] = [];
+	let total = 0;
+	let read = await reader.read();
+	while (!read.done) {
+		total += read.value.byteLength;
+		if (total > maxBytes) {
+			await reader.cancel();
+			return null;
+		}
+		chunks.push(Buffer.from(read.value));
+		read = await reader.read();
+	}
+	return Buffer.concat(chunks);
+}
+
 /** Downloads a remote image once and routes it through the shared ingest,
  * so the gallery never depends on a live third-party URL afterwards. */
 function prepareUrlImage(
@@ -365,7 +396,11 @@ function prepareUrlImage(
 			try: async () => {
 				const res = await fetchImageGuarded(item.url);
 				if (!res.ok) {
-					return { ok: false as const, status: res.status };
+					return {
+						ok: false as const,
+						reason: "http" as const,
+						status: res.status,
+					};
 				}
 				const contentType =
 					res.headers
@@ -373,15 +408,21 @@ function prepareUrlImage(
 						?.split(";")[0]
 						?.trim()
 						.toLowerCase() ?? "";
-				return {
-					ok: true as const,
-					contentType,
-					bytes: Buffer.from(await res.arrayBuffer()),
-				};
+				const bytes = await readImageBodyCapped(res, maxFileSizeBytes);
+				if (!bytes) {
+					return { ok: false as const, reason: "too-large" as const };
+				}
+				return { ok: true as const, contentType, bytes };
 			},
 			catch: () => new RemoteFetchFailed({ url: item.url }),
 		});
 		if (!fetched.ok) {
+			if (fetched.reason === "too-large") {
+				return yield* new FileTooLarge({
+					filename: filenameFromUrl(item.url),
+					maxFileSizeBytes,
+				});
+			}
 			return yield* new RemoteFetchFailed({
 				url: item.url,
 				status: fetched.status,
@@ -470,7 +511,6 @@ export function uploadMedia({
 	userId,
 }: UploadMediaInput) {
 	return Effect.gen(function* () {
-		// Each entry carries its file and the title supplied alongside it.
 		const entries = yield* filesFromFormData(formData);
 		const prepared = yield* Effect.all(
 			entries.map((entry) =>

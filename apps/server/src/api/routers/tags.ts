@@ -19,28 +19,28 @@ export const tagsRouter = router({
 	upsert: protectedProcedure
 		.input(z.object({ name: z.string().min(1) }))
 		.mutation(async ({ ctx, input }) => {
+			const userId = ctx.session.user.id;
 			const slug = slugify(input.name);
+
+			// Insert-first (no-op on conflict) then re-select, so concurrent
+			// upserts can't collide on the unique index.
+			const inserted = await db
+				.insert(tag)
+				.values({ id: crypto.randomUUID(), userId, name: input.name, slug })
+				.onConflictDoNothing({ target: [tag.userId, tag.slug] })
+				.returning();
+
+			if (inserted[0]) {
+				return inserted[0];
+			}
+
 			const existing = await db
 				.select()
 				.from(tag)
-				.where(and(eq(tag.userId, ctx.session.user.id), eq(tag.slug, slug)))
+				.where(and(eq(tag.userId, userId), eq(tag.slug, slug)))
 				.limit(1);
 
-			if (existing[0]) {
-				return existing[0];
-			}
-
-			const rows = await db
-				.insert(tag)
-				.values({
-					id: crypto.randomUUID(),
-					userId: ctx.session.user.id,
-					name: input.name,
-					slug,
-				})
-				.returning();
-
-			return rows[0];
+			return existing[0];
 		}),
 
 	setArtworkTags: protectedProcedure
@@ -69,18 +69,20 @@ export const tagsRouter = router({
 
 			for (const name of input.tagNames) {
 				const slug = slugify(name);
-				const existing = await db
-					.select()
-					.from(tag)
-					.where(and(eq(tag.userId, userId), eq(tag.slug, slug)))
-					.limit(1);
+				// Insert-first then re-select on conflict; same race guard as `upsert`.
+				const inserted = await db
+					.insert(tag)
+					.values({ id: crypto.randomUUID(), userId, name, slug })
+					.onConflictDoNothing({ target: [tag.userId, tag.slug] })
+					.returning();
 				const row =
-					existing[0] ??
+					inserted[0] ??
 					(
 						await db
-							.insert(tag)
-							.values({ id: crypto.randomUUID(), userId, name, slug })
-							.returning()
+							.select()
+							.from(tag)
+							.where(and(eq(tag.userId, userId), eq(tag.slug, slug)))
+							.limit(1)
 					)[0];
 				if (row) {
 					tagIds.push(row.id);
@@ -91,11 +93,16 @@ export const tagsRouter = router({
 				.delete(artworkTag)
 				.where(eq(artworkTag.artworkId, input.artworkId));
 
-			if (tagIds.length > 0) {
+			// De-dup: "Art" and "art" slugify to one id that would self-collide.
+			const uniqueTagIds = [...new Set(tagIds)];
+			if (uniqueTagIds.length > 0) {
 				await db
 					.insert(artworkTag)
 					.values(
-						tagIds.map((tagId) => ({ artworkId: input.artworkId, tagId })),
+						uniqueTagIds.map((tagId) => ({
+							artworkId: input.artworkId,
+							tagId,
+						})),
 					)
 					.onConflictDoNothing();
 			}
