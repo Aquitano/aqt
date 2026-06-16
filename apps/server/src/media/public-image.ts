@@ -119,6 +119,41 @@ export function isVariant(value: string): value is Variant {
 	return (VARIANTS as readonly string[]).includes(value);
 }
 
+/** The cache file base for one entity image, sans extension:
+ * `<uploadRoot>/public-image-cache/<entity>-<safeId>-<variant>`. The id is
+ * sanitised so a crafted id can never escape the cache directory. This is the
+ * single source of truth for the cache path — both the serve path below and
+ * the cleanup-on-delete path derive from it, so they can never drift apart. */
+function cacheBaseFor(
+	uploadRoot: string,
+	entity: Entity,
+	id: string,
+	variant: Variant,
+): string {
+	const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+	return path.join(
+		uploadRoot,
+		"public-image-cache",
+		`${entity}-${safeId}-${variant}`,
+	);
+}
+
+/** Every cache file that could exist for an entity's image, across all
+ * variants and stored content types. Used to purge the cache when the entity
+ * is deleted, so removed images don't linger on disk forever. */
+export function publicImageCacheTargets(
+	uploadRoot: string,
+	entity: Entity,
+	id: string,
+): string[] {
+	const exts = Object.values(EXT_BY_TYPE);
+	return VARIANTS.flatMap((variant) =>
+		exts.map(
+			(ext) => `${cacheBaseFor(uploadRoot, entity, id, variant)}.${ext}`,
+		),
+	);
+}
+
 /** Upstream fetches are deduped per source URL and limited to a small
  * concurrency — image hosts (e.g. Wikimedia) rate-limit hard bursts, but
  * a fully serial queue stalls a cold room load past the HTTP timeout.
@@ -190,9 +225,7 @@ export async function servePublicImage(options: {
 	resolveViewer?: () => Promise<string | undefined>;
 }): Promise<Response> {
 	const { uploadRoot, entity, id, variant, resolveViewer } = options;
-	const cacheDir = path.join(uploadRoot, "public-image-cache");
-	const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
-	const cacheBase = path.join(cacheDir, `${entity}-${safeId}-${variant}`);
+	const cacheBase = cacheBaseFor(uploadRoot, entity, id, variant);
 
 	// Resolve the source first — it carries the publish/owner check, so an
 	// unpublished artwork is never served, not even from the disk cache.

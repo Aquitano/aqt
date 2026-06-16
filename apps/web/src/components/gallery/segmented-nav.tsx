@@ -6,6 +6,7 @@ import type { ActiveGalleryTab } from "./types";
 const tabs = [
 	{ id: "archive", label: "Archive", to: "/dashboard" },
 	{ id: "galleries", label: "Galleries", to: "/galleries" },
+	{ id: "museums", label: "Museums", to: "/museums" },
 	{ id: "reviews", label: "Reviews", to: "/reviews" },
 ] as const;
 

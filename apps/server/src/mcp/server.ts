@@ -23,7 +23,9 @@ Typical flow for "import these artworks and set up a gallery":
 5. update_gallery — set a fitting 3D theme and optionally a cover artwork.
 6. publish_gallery — publish when the user is happy (leave as a draft otherwise).
 
-Read tools (list_artworks, get_artwork, list_galleries, list_tags, list_artists) let you orient before writing. Read gallery://guide for the full field reference and enums.`;
+A "gallery" (create_gallery) is a single curated room. For a larger, multi-room building, use create_museum, then add_room for each room and set_room_artworks (or add_artworks_to_room) to hang art in it; update_museum sets the theme/cover and publish_museum makes it public. The per-room flow mirrors steps 2–6 above.
+
+Read tools (list_artworks, get_artwork, list_galleries, list_museums, list_tags, list_artists) let you orient before writing. Read gallery://guide for the full field reference and enums.`;
 
 const GUIDE = `# aqt-gallery agent guide
 
@@ -59,8 +61,14 @@ set_artwork_custom_fields replaces an artwork's label/value rows (e.g. "Collecti
 - ambientIntensity: 0–5
 - lightTemperature: warm | neutral | cool
 
+## Museums (multi-room)
+A gallery is one room; a museum is a building of several rooms, each with its own ordered artworks.
+- create_museum → add_room (one per room) → set_room_artworks or add_artworks_to_room to hang art in each room.
+- update_museum sets name/tagline/description, the 3D theme, and a cover (the cover must be hung in one of the museum's rooms). reorder_rooms arranges the rooms.
+- publish_museum controls whether the museum appears in the public 3D lobby.
+
 ## Publishing
-Adding an artwork to a gallery auto-publishes that artwork. publish_gallery controls whether the gallery itself is visible in the public museum.`;
+Adding an artwork to a gallery or a museum room auto-publishes that artwork. publish_gallery / publish_museum control whether the gallery or museum itself is visible in the public museum.`;
 
 const PUBLIC_IMAGE_BASE = env.SERVER_URL.replace(/\/+$/, "");
 
@@ -446,6 +454,200 @@ export function createGalleryMcpServer(session: Session): McpServer {
 		},
 		async ({ galleryId }) =>
 			run(() => caller.museum.deleteGroup({ id: galleryId })),
+	);
+
+	// ── Museums (multi-room) ────────────────────────────────────────────────────
+	server.registerTool(
+		"list_museums",
+		{
+			title: "List museums",
+			description:
+				"List the user's multi-room museums (including drafts), each with its ordered rooms and every room's ordered artworkIds and publish state.",
+			annotations: { readOnlyHint: true },
+		},
+		async () => run(() => caller.museum.myMuseums()),
+	);
+
+	server.registerTool(
+		"create_museum",
+		{
+			title: "Create museum",
+			description:
+				"Create a new (unpublished) multi-room museum owned by the user. Returns the new museum, including its id — use that id to add rooms and configure it. A museum is a building of several rooms; for a single curated room, use create_gallery instead.",
+			inputSchema: {
+				name: z.string().min(1).max(120),
+				tagline: z.string().max(200).optional(),
+				description: z.string().max(2000).optional(),
+			},
+		},
+		async ({ name, tagline, description }) =>
+			run(() =>
+				caller.museum.createMuseum({
+					name,
+					tagline: tagline ?? null,
+					description: description ?? null,
+				}),
+			),
+	);
+
+	server.registerTool(
+		"update_museum",
+		{
+			title: "Update museum",
+			description:
+				"Update a museum's name, tagline, description, 3D theme, and/or cover artwork. The cover must already be hung in one of the museum's rooms. See gallery://guide for theme fields.",
+			inputSchema: {
+				museumId: z.string().min(1),
+				name: z.string().min(1).max(120).optional(),
+				tagline: z.string().max(200).nullable().optional(),
+				description: z.string().max(2000).nullable().optional(),
+				theme: z.object(themeShape).nullable().optional(),
+				coverArtworkId: z.string().min(1).nullable().optional(),
+			},
+			annotations: { idempotentHint: true },
+		},
+		async ({ museumId, ...fields }) =>
+			run(() => caller.museum.updateMuseum({ id: museumId, ...fields })),
+	);
+
+	server.registerTool(
+		"publish_museum",
+		{
+			title: "Publish / unpublish museum",
+			description:
+				"Set whether a museum is publicly visible in the 3D lobby. Publish only when the user is happy with it.",
+			inputSchema: {
+				museumId: z.string().min(1),
+				publish: z.boolean(),
+			},
+			annotations: { idempotentHint: true },
+		},
+		async ({ museumId, publish }) =>
+			run(() =>
+				caller.museum.updateMuseum({ id: museumId, isPublished: publish }),
+			),
+	);
+
+	server.registerTool(
+		"delete_museum",
+		{
+			title: "Delete museum",
+			description:
+				"Permanently delete a museum and all its rooms. The member artworks themselves are kept in the archive.",
+			inputSchema: { museumId: z.string().min(1) },
+			annotations: { destructiveHint: true, idempotentHint: true },
+		},
+		async ({ museumId }) =>
+			run(() => caller.museum.deleteMuseum({ id: museumId })),
+	);
+
+	server.registerTool(
+		"add_room",
+		{
+			title: "Add room to museum",
+			description:
+				"Add a room to a museum, appended after the existing rooms. Returns the new room, including its id — use that id to hang artworks with set_room_artworks.",
+			inputSchema: {
+				museumId: z.string().min(1),
+				name: z.string().min(1).max(120),
+				description: z.string().max(2000).optional(),
+			},
+		},
+		async ({ museumId, name, description }) =>
+			run(() =>
+				caller.museum.createRoom({
+					museumId,
+					name,
+					description: description ?? null,
+				}),
+			),
+	);
+
+	server.registerTool(
+		"update_room",
+		{
+			title: "Update room",
+			description: "Update a room's name and/or description.",
+			inputSchema: {
+				roomId: z.string().min(1),
+				name: z.string().min(1).max(120).optional(),
+				description: z.string().max(2000).nullable().optional(),
+			},
+			annotations: { idempotentHint: true },
+		},
+		async ({ roomId, ...fields }) =>
+			run(() => caller.museum.updateRoom({ roomId, ...fields })),
+	);
+
+	server.registerTool(
+		"delete_room",
+		{
+			title: "Delete room",
+			description:
+				"Delete a room from its museum. The artworks hung in it are kept in the archive.",
+			inputSchema: { roomId: z.string().min(1) },
+			annotations: { destructiveHint: true, idempotentHint: true },
+		},
+		async ({ roomId }) => run(() => caller.museum.deleteRoom({ roomId })),
+	);
+
+	server.registerTool(
+		"reorder_rooms",
+		{
+			title: "Reorder museum rooms",
+			description:
+				"Reorder a museum's rooms to match this list. Rooms you omit keep their relative order after the listed ones; ids not belonging to the museum are ignored.",
+			inputSchema: {
+				museumId: z.string().min(1),
+				roomIds: z.array(z.string().min(1)).max(100),
+			},
+			annotations: { idempotentHint: true },
+		},
+		async ({ museumId, roomIds }) =>
+			run(() => caller.museum.reorderRooms({ museumId, roomIds })),
+	);
+
+	server.registerTool(
+		"add_artworks_to_room",
+		{
+			title: "Add artworks to a room",
+			description:
+				"Append artworks (by id) to a room, keeping the existing order and skipping duplicates. This auto-publishes the added artworks so they can appear in the 3D museum.",
+			inputSchema: {
+				roomId: z.string().min(1),
+				artworkIds: z.array(z.string().min(1)).min(1),
+			},
+		},
+		async ({ roomId, artworkIds }) =>
+			run(async () => {
+				const museums = await caller.museum.myMuseums();
+				const target = museums
+					.flatMap((m) => m.rooms)
+					.find((r) => r.id === roomId);
+				if (!target) throw new Error("Room not found");
+				const current = target.artworkIds;
+				const merged = [
+					...current,
+					...artworkIds.filter((id) => !current.includes(id)),
+				];
+				return caller.museum.setRoomArtworks({ roomId, artworkIds: merged });
+			}),
+	);
+
+	server.registerTool(
+		"set_room_artworks",
+		{
+			title: "Set / reorder room artworks",
+			description:
+				"Replace a room's full set of artworks with this exact ordered list (use to reorder or remove). Own artworks are auto-published.",
+			inputSchema: {
+				roomId: z.string().min(1),
+				artworkIds: z.array(z.string().min(1)).max(200),
+			},
+			annotations: { idempotentHint: true },
+		},
+		async ({ roomId, artworkIds }) =>
+			run(() => caller.museum.setRoomArtworks({ roomId, artworkIds })),
 	);
 
 	// ── Reference + workflow ────────────────────────────────────────────────────

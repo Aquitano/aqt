@@ -128,7 +128,13 @@ function GalleryPage() {
 	}
 
 	const isDraftPreview =
-		kind === "g" && groupQuery.data ? !groupQuery.data.isPublished : false;
+		kind === "g"
+			? groupQuery.data
+				? !groupQuery.data.isPublished
+				: false
+			: museumQuery.data
+				? !museumQuery.data.isPublished
+				: false;
 
 	return (
 		<Suspense fallback={<LoadingScreen />}>

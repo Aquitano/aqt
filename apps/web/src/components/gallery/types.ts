@@ -21,4 +21,9 @@ export type ArtworkCard = {
 	tags: { id: string; name: string; slug: string }[];
 };
 
-export type ActiveGalleryTab = "archive" | "galleries" | "reviews" | "connect";
+export type ActiveGalleryTab =
+	| "archive"
+	| "galleries"
+	| "museums"
+	| "reviews"
+	| "connect";

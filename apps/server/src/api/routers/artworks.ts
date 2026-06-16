@@ -14,6 +14,7 @@ import { and, asc, desc, eq, ilike, inArray, isNull, or } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 
+import { deleteArtworkFiles } from "../../media/delete-files";
 import { importMediaFromUrls, uploadErrorResponse } from "../../media/upload";
 import { importRateLimiter } from "../../rate-limit";
 import { protectedProcedure, router } from "../index";
@@ -322,9 +323,35 @@ export const artworksRouter = router({
 		.input(z.object({ id: z.string().min(1) }))
 		.mutation(async ({ ctx, input }) => {
 			const userId = ctx.session.user.id;
-			await db
+			// Read the asset paths before the FK cascade drops the media_asset
+			// rows. Scoped to the owner so this can never reveal another user's
+			// paths; the delete below is the authoritative ownership gate.
+			const assets = await db
+				.select({
+					storagePath: mediaAsset.storagePath,
+					thumbnailPath: mediaAsset.thumbnailPath,
+				})
+				.from(mediaAsset)
+				.where(
+					and(
+						eq(mediaAsset.artworkId, input.id),
+						eq(mediaAsset.userId, userId),
+					),
+				);
+
+			const deleted = await db
 				.delete(artwork)
-				.where(and(eq(artwork.id, input.id), eq(artwork.userId, userId)));
+				.where(and(eq(artwork.id, input.id), eq(artwork.userId, userId)))
+				.returning({ id: artwork.id });
+
+			// Only unlink files when we actually owned and removed the row.
+			if (deleted.length > 0) {
+				await deleteArtworkFiles({
+					uploadRoot: path.resolve(env.UPLOAD_DIR),
+					artworkId: input.id,
+					assetFiles: assets.flatMap((a) => [a.storagePath, a.thumbnailPath]),
+				});
+			}
 			return { ok: true };
 		}),
 

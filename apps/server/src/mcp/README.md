@@ -60,6 +60,7 @@ handle each request, so it scales without server-side session state.
 | `list_artworks` | List the user's archived artworks (find ids). |
 | `get_artwork` | One artwork with all details, custom fields, tags. |
 | `list_galleries` | The user's galleries with ordered members + publish state. |
+| `list_museums` | The user's multi-room museums with each room's ordered members. |
 | `list_tags` | The user's tags. |
 | `list_artists` | Artists you can link — your own plus built-in reference artists. |
 | `import_artworks_from_urls` | Download 1–25 remote images into the archive. |
@@ -73,6 +74,22 @@ handle each request, so it scales without server-side session state.
 | `update_gallery` | Name, tagline, description, 3D theme, cover. |
 | `publish_gallery` | Publish / unpublish a gallery. |
 | `delete_gallery` | Delete a gallery (member artworks are kept). |
+
+A **gallery** is a single curated room. A **museum** is a building of several
+rooms, each with its own ordered artworks:
+
+| Tool | What it does |
+| --- | --- |
+| `create_museum` | Create a new (draft) multi-room museum. |
+| `update_museum` | Name, tagline, description, 3D theme, cover. |
+| `publish_museum` | Publish / unpublish a museum. |
+| `delete_museum` | Delete a museum and its rooms (member artworks are kept). |
+| `add_room` | Add a room to a museum. |
+| `update_room` | Rename a room / edit its description. |
+| `delete_room` | Delete a room (its artworks are kept). |
+| `reorder_rooms` | Reorder a museum's rooms. |
+| `add_artworks_to_room` | Append artworks to a room (auto-publishes them). |
+| `set_room_artworks` | Replace/reorder a room's artworks. |
 
 Also exposed:
 
@@ -88,3 +105,7 @@ Also exposed:
 4. `add_artworks_to_gallery` — hang them (this auto-publishes the artworks).
 5. `update_gallery` — a fitting 3D theme + a cover.
 6. `publish_gallery` — when the user is happy.
+
+For a multi-room **museum**, swap steps 3–6: `create_museum`, then `add_room`
+per room and `add_artworks_to_room` / `set_room_artworks` to hang each one,
+`update_museum` for the theme + cover, and `publish_museum` to finish.

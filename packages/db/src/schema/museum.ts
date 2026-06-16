@@ -46,12 +46,23 @@ export const museum = pgTable(
 		tagline: text("tagline"),
 		description: text("description"),
 		coverImageUrl: text("cover_image_url"),
+		/** Member artwork chosen as the museum cover; null falls back to the
+		 * first hung artwork. Cleared automatically if the artwork is removed. */
+		coverArtworkId: text("cover_artwork_id").references(() => artwork.id, {
+			onDelete: "set null",
+		}),
+		/** Clerk user id of the owner for user-curated museums; null for
+		 * system/seeded content. No FK (identities live in Clerk). */
+		createdBy: text("created_by"),
 		theme: jsonb("theme").$type<MuseumTheme>(),
 		isPublished: boolean("is_published").default(false).notNull(),
 		sortOrder: integer("sort_order").default(0).notNull(),
 		...timestamps,
 	},
-	(table) => [uniqueIndex("museum_slug_idx").on(table.slug)],
+	(table) => [
+		uniqueIndex("museum_slug_idx").on(table.slug),
+		index("museum_created_by_idx").on(table.createdBy),
+	],
 );
 
 export const room = pgTable(
