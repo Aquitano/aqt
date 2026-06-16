@@ -61,10 +61,12 @@ handle each request, so it scales without server-side session state.
 | `get_artwork` | One artwork with all details, custom fields, tags. |
 | `list_galleries` | The user's galleries with ordered members + publish state. |
 | `list_tags` | The user's tags. |
+| `list_artists` | Artists you can link — your own plus built-in reference artists. |
 | `import_artworks_from_urls` | Download 1–25 remote images into the archive. |
-| `update_artwork` | Set any subset of an artwork's details (partial patch). |
+| `update_artwork` | Set any subset of an artwork's details (partial patch), incl. `artistId`. |
 | `set_artwork_tags` | Replace an artwork's tags (created on demand). |
 | `set_artwork_custom_fields` | Replace an artwork's label/value rows. |
+| `create_artist` | Create a reusable artist (bio/dates/nationality); link via `update_artwork.artistId`. |
 | `create_gallery` | Create a new (draft) curated gallery. |
 | `add_artworks_to_gallery` | Append artworks (auto-publishes them). |
 | `set_gallery_artworks` | Replace/reorder a gallery's full membership. |

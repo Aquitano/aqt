@@ -23,6 +23,9 @@ export const artist = pgTable(
 	"artist",
 	{
 		id: text("id").primaryKey(),
+		// Clerk user id of the owner, or null for seeded/global reference
+		// artists that every user can read and link to (but not edit).
+		userId: text("user_id"),
 		slug: text("slug").notNull(),
 		name: text("name").notNull(),
 		bio: text("bio"),
@@ -32,7 +35,10 @@ export const artist = pgTable(
 		portraitUrl: text("portrait_url"),
 		...timestamps,
 	},
-	(table) => [uniqueIndex("artist_slug_idx").on(table.slug)],
+	(table) => [
+		uniqueIndex("artist_slug_idx").on(table.slug),
+		index("artist_user_id_idx").on(table.userId),
+	],
 );
 
 export const artwork = pgTable(

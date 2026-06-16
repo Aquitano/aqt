@@ -99,6 +99,7 @@ function ConnectBody() {
 	const revokeToken = useMutation(trpc.apiTokens.revoke.mutationOptions());
 
 	const [name, setName] = useState("");
+	const [expiresInDays, setExpiresInDays] = useState(90);
 	// The plaintext token is returned exactly once on creation; we hold it in
 	// memory only until the user navigates away.
 	const [fresh, setFresh] = useState<{ name: string; token: string } | null>(
@@ -111,7 +112,10 @@ function ConnectBody() {
 	const create = async () => {
 		const trimmed = name.trim();
 		if (!trimmed) return;
-		const result = await createToken.mutateAsync({ name: trimmed });
+		const result = await createToken.mutateAsync({
+			name: trimmed,
+			expiresInDays,
+		});
 		await queryClient.invalidateQueries({
 			queryKey: trpc.apiTokens.list.queryKey(),
 		});
@@ -182,6 +186,20 @@ function ConnectBody() {
 							}}
 						/>
 					</div>
+					<div className="flex flex-col gap-1.5">
+						<Label htmlFor="token-expiry">Expires</Label>
+						<select
+							id="token-expiry"
+							value={expiresInDays}
+							disabled={busy}
+							onChange={(e) => setExpiresInDays(Number(e.target.value))}
+							className="h-8 rounded-none border border-input bg-transparent px-2.5 py-1 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
+						>
+							<option value={30}>30 days</option>
+							<option value={90}>90 days</option>
+							<option value={365}>1 year</option>
+						</select>
+					</div>
 					<Button
 						type="button"
 						disabled={busy || name.trim().length === 0}
@@ -216,6 +234,13 @@ function ConnectBody() {
 										{t.lastUsedAt
 											? `last used ${new Date(t.lastUsedAt).toLocaleDateString()}`
 											: "never used"}
+										{t.expiresAt
+											? ` · ${
+													new Date(t.expiresAt).getTime() <= Date.now()
+														? "expired"
+														: `expires ${new Date(t.expiresAt).toLocaleDateString()}`
+												}`
+											: " · no expiry"}
 									</p>
 								</div>
 								<Button

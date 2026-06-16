@@ -2,7 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 
+import {
+	ArchiveControls,
+	type ArchiveSort,
+} from "@/components/gallery/archive-controls";
 import { CosmosShell } from "@/components/gallery/cosmos-shell";
+import type { ArtworkType } from "@/components/gallery/types";
 import { getUser } from "@/functions/get-user";
 import { useTRPC } from "@/utils/trpc";
 
@@ -22,8 +27,16 @@ export const Route = createFileRoute("/reviews")({
 function RouteComponent() {
 	const trpc = useTRPC();
 	const [search, setSearch] = useState("");
+	const [sort, setSort] = useState<ArchiveSort>("rating");
+	const [artworkType, setArtworkType] = useState<ArtworkType | "all">("all");
+	const [tagId, setTagId] = useState<string | "all">("all");
 	const artworks = useQuery(
-		trpc.artworks.list.queryOptions({ query: search, sort: "rating" }),
+		trpc.artworks.list.queryOptions({
+			query: search,
+			sort,
+			artworkType: artworkType === "all" ? undefined : artworkType,
+			tagId: tagId === "all" ? undefined : tagId,
+		}),
 	);
 	const reviewed = (artworks.data ?? []).filter((artwork) => artwork.rating);
 
@@ -38,6 +51,15 @@ function RouteComponent() {
 						Reviews
 					</h1>
 				</div>
+				<ArchiveControls
+					sort={sort}
+					onSort={setSort}
+					artworkType={artworkType}
+					onArtworkType={setArtworkType}
+					tagId={tagId}
+					onTagId={setTagId}
+					count={reviewed.length}
+				/>
 				{reviewed.length === 0 ? (
 					<div className="flex max-w-xl flex-col items-start gap-2 pt-10">
 						<h2 className="font-semibold text-xl">No reviews yet.</h2>

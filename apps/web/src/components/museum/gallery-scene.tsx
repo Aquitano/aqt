@@ -4,6 +4,7 @@ import {
 	MeshReflectorMaterial,
 	Text,
 } from "@react-three/drei";
+import { useFrame } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import type * as THREE from "three";
 
@@ -15,15 +16,23 @@ import {
 	type WorldLayout,
 } from "./layout";
 import { Painting } from "./painting";
+import { useMuseumStore } from "./store";
 import { resolveTheme } from "./theme";
 import type { GalleryContent } from "./types";
 
+/** Each shadow-casting light re-renders the scene into its shadow map every
+ * frame, so keep only the player's room (and immediate neighbours) active —
+ * a multi-wing gallery would otherwise pay for a full shadow pass per room. */
+const SHADOW_ROOM_RADIUS = 1;
+
 function RoomShadowLight({
+	index,
 	x,
 	z,
 	height,
 	color,
 }: {
+	index: number;
 	x: number;
 	z: number;
 	height: number;
@@ -36,6 +45,13 @@ function RoomShadowLight({
 			ref.current.target = targetRef.current;
 		}
 	}, []);
+	useFrame(() => {
+		const light = ref.current;
+		if (!light) return;
+		light.visible =
+			Math.abs(useMuseumStore.getState().roomIndex - index) <=
+			SHADOW_ROOM_RADIUS;
+	});
 	return (
 		<>
 			<spotLight
@@ -250,6 +266,7 @@ export function GalleryScene({
 					) : null}
 
 					<RoomShadowLight
+						index={room.index}
 						x={0}
 						z={(room.minZ + room.maxZ) / 2}
 						height={room.height}

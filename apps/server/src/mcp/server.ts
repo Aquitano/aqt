@@ -17,19 +17,20 @@ const SERVER_INSTRUCTIONS = `This server lets you build a user's art gallery end
 
 Typical flow for "import these artworks and set up a gallery":
 1. import_artworks_from_urls — download remote images into the user's archive. Each becomes a new artwork (unpublished, title only). Note the returned artworkId for every item.
-2. update_artwork — for each imported piece, fill in everything you can infer: title, artist, artworkType, year, medium, dimensions, description, story (a short wall-label narrative) and funFacts. Use set_artwork_tags for themes/keywords.
+2. update_artwork — for each imported piece, fill in everything you can infer: title, artist, artworkType, year, medium, dimensions, description, story (a short wall-label narrative) and funFacts. Use set_artwork_tags for themes/keywords. When you have biographic detail, optionally link a structured artist (create_artist → update_artwork.artistId; list_artists first to reuse one).
 3. create_gallery — make the curated room (name, tagline, description).
 4. add_artworks_to_gallery — hang the imported artworks. This also auto-publishes those artworks so they can appear in the 3D museum.
 5. update_gallery — set a fitting 3D theme and optionally a cover artwork.
 6. publish_gallery — publish when the user is happy (leave as a draft otherwise).
 
-Read tools (list_artworks, get_artwork, list_galleries, list_tags) let you orient before writing. Read gallery://guide for the full field reference and enums.`;
+Read tools (list_artworks, get_artwork, list_galleries, list_tags, list_artists) let you orient before writing. Read gallery://guide for the full field reference and enums.`;
 
 const GUIDE = `# aqt-gallery agent guide
 
 ## Artwork fields (update_artwork)
 - title: string
-- artist: string — the creator's name
+- artist: string — the creator's name (free text; a quick label)
+- artistId: link to a structured artist entity (see Artists). Overrides the free-text artist on the public artist wall; pass null to unlink.
 - artworkType: one of ${artworkTypes.join(", ")}
 - year: free text (e.g. "1889", "c. 1920")
 - medium: e.g. "Oil on canvas"
@@ -42,6 +43,9 @@ const GUIDE = `# aqt-gallery agent guide
 - sourceUrl: where the image/info came from
 
 Set only the fields you know — omitted fields are left untouched; passing null clears a field.
+
+## Artists
+An artist is a reusable entity (name, bio, birthYear, deathYear, nationality, portraitUrl) whose details render on the artist's wall in the 3D museum. To link one: list_artists to find or reuse an existing artist (your own plus built-in reference artists), else create_artist, then set update_artwork.artistId to its id. Prefer linking a structured artist over free text when you have biographic detail; reuse one artist across all works by the same creator instead of creating duplicates.
 
 ## Tags
 set_artwork_tags replaces an artwork's tags with the given names (created on demand).
@@ -205,6 +209,17 @@ export function createGalleryMcpServer(session: Session): McpServer {
 		async () => run(() => caller.tags.list()),
 	);
 
+	server.registerTool(
+		"list_artists",
+		{
+			title: "List artists",
+			description:
+				"List artists you can link to a work — your own plus built-in reference artists. Use to reuse an existing artistId instead of creating duplicates.",
+			annotations: { readOnlyHint: true },
+		},
+		async () => run(() => caller.artists.list()),
+	);
+
 	// ── Import ────────────────────────────────────────────────────────────────
 	server.registerTool(
 		"import_artworks_from_urls",
@@ -238,6 +253,7 @@ export function createGalleryMcpServer(session: Session): McpServer {
 				artworkId: z.string().min(1),
 				title: z.string().min(1).optional(),
 				artist: z.string().nullable().optional(),
+				artistId: z.string().nullable().optional(),
 				artworkType: z.enum(artworkTypes).optional(),
 				year: z.string().nullable().optional(),
 				medium: z.string().nullable().optional(),
@@ -292,6 +308,24 @@ export function createGalleryMcpServer(session: Session): McpServer {
 					fields: fields.map((field, position) => ({ ...field, position })),
 				}),
 			),
+	);
+
+	server.registerTool(
+		"create_artist",
+		{
+			title: "Create artist",
+			description:
+				"Create a reusable artist (name + optional bio, dates, nationality, portrait). Returns the new artist incl. id — pass that id to update_artwork.artistId to link works. Check list_artists first to reuse one instead of duplicating.",
+			inputSchema: {
+				name: z.string().min(1).max(160),
+				bio: z.string().nullable().optional(),
+				birthYear: z.number().int().nullable().optional(),
+				deathYear: z.number().int().nullable().optional(),
+				nationality: z.string().nullable().optional(),
+				portraitUrl: z.string().url().nullable().optional(),
+			},
+		},
+		async (input) => run(() => caller.artists.create(input)),
 	);
 
 	// ── Gallery setup ────────────────────────────────────────────────────────

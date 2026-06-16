@@ -1,5 +1,6 @@
 import { protectedProcedure, publicProcedure, router } from "../index";
 import { apiTokensRouter } from "./api-tokens";
+import { artistsRouter } from "./artists";
 import { artworksRouter } from "./artworks";
 import { museumRouter } from "./museum";
 import { tagsRouter } from "./tags";
@@ -15,6 +16,7 @@ export const appRouter = router({
 		};
 	}),
 	artworks: artworksRouter,
+	artists: artistsRouter,
 	museum: museumRouter,
 	tags: tagsRouter,
 	apiTokens: apiTokensRouter,

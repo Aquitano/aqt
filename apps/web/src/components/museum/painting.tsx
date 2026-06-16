@@ -17,6 +17,13 @@ const FRAME_BORDER = 0.085;
 const FRAME_DEPTH = 0.075;
 const CANVAS_LIFT = 0.052;
 
+/** Light a painting's spotlight only while the player is in its room (or an
+ * immediate neighbour, so paintings stay lit through a doorway). three.js
+ * evaluates every *visible* light per-fragment, so leaving all 200 spotlights
+ * of a large gallery on at once tanks the framerate; culling by room keeps the
+ * active-light count bounded to a couple of rooms' worth. */
+const LIT_ROOM_RADIUS = 1;
+
 /** Shared radial-gradient texture faking the soft drop shadow a hung
  * frame throws on the wall — far cheaper than 20+ shadow-casting lights. */
 let dropShadowTexture: THREE.Texture | null = null;
@@ -156,11 +163,21 @@ export function Painting({
 		}
 	}, []);
 
-	// Subtle frame glow when this painting is under the crosshair.
 	useFrame((_, delta) => {
+		const state = useMuseumStore.getState();
+
+		// Cull this painting's spotlight unless the player is in (or next to)
+		// its room — keeps the live dynamic-light count bounded in big galleries.
+		const spot = spotRef.current;
+		if (spot) {
+			spot.visible =
+				Math.abs(state.roomIndex - layout.roomIndex) <= LIT_ROOM_RADIUS;
+		}
+
+		// Subtle frame glow when this painting is under the crosshair.
 		const mat = frameRef.current;
 		if (!mat) return;
-		const hovered = useMuseumStore.getState().hovered === layout;
+		const hovered = state.hovered === layout;
 		const target = hovered ? 0.32 : 0;
 		mat.emissiveIntensity = THREE.MathUtils.damp(
 			mat.emissiveIntensity,

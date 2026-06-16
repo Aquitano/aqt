@@ -16,6 +16,8 @@ import { appRouter } from "./api/routers/index";
 import { createGalleryMcpServer } from "./mcp/server";
 import { isEntity, isVariant, servePublicImage } from "./media/public-image";
 import { uploadErrorResponse, uploadMedia } from "./media/upload";
+import { mcpRateLimiter, uploadRateLimiter } from "./rate-limit";
+import { purgeUserData, verifyClerkWebhook } from "./webhooks/clerk";
 
 const app = new Hono();
 
@@ -47,6 +49,13 @@ app.post("/media/upload", async (c) => {
 
 	if (!session) {
 		return c.json({ error: "Authentication required" }, 401);
+	}
+
+	const limit = uploadRateLimiter.check(session.user.id);
+	if (!limit.ok) {
+		return c.json({ error: "Too many uploads — try again shortly" }, 429, {
+			"Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)),
+		});
 	}
 
 	const formData = await c.req.formData();
@@ -157,11 +166,69 @@ app.on(["POST", "DELETE"], "/mcp", async (c) => {
 		);
 	}
 
+	const limit = mcpRateLimiter.check(session.user.id);
+	if (!limit.ok) {
+		return c.json(
+			{
+				jsonrpc: "2.0",
+				error: { code: -32029, message: "Rate limit exceeded" },
+				id: null,
+			},
+			429,
+			{ "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) },
+		);
+	}
+
 	const server = createGalleryMcpServer(session);
 	const transport = new StreamableHTTPTransport();
 	await server.connect(transport);
 	const response = await transport.handleRequest(c);
 	return response ?? c.body(null, 204);
+});
+
+// Clerk account-lifecycle webhook. On user.deleted we purge that user's data
+// (galleries, artworks, media, tokens) — identities live in Clerk, so nothing
+// cascades automatically and a deleted account would otherwise leave its
+// published galleries publicly walkable forever.
+app.post("/webhooks/clerk", async (c) => {
+	const secret = env.CLERK_WEBHOOK_SIGNING_SECRET;
+	if (!secret) {
+		console.warn(
+			"Clerk webhook hit but CLERK_WEBHOOK_SIGNING_SECRET is not set — ignoring",
+		);
+		return c.json({ error: "Webhook not configured" }, 503);
+	}
+
+	const body = await c.req.text();
+	const verified = verifyClerkWebhook(
+		secret,
+		{
+			id: c.req.header("svix-id"),
+			timestamp: c.req.header("svix-timestamp"),
+			signature: c.req.header("svix-signature"),
+		},
+		body,
+	);
+	if (!verified) {
+		return c.json({ error: "Invalid signature" }, 401);
+	}
+
+	let event: { type?: string; data?: { id?: unknown } };
+	try {
+		event = JSON.parse(body);
+	} catch {
+		return c.json({ error: "Invalid payload" }, 400);
+	}
+
+	if (event.type === "user.deleted") {
+		const userId = event.data?.id;
+		if (typeof userId === "string" && userId) {
+			const purged = await purgeUserData(userId, uploadRoot());
+			console.log(`Purged data for deleted Clerk user ${userId}`, purged);
+		}
+	}
+
+	return c.json({ ok: true });
 });
 
 app.use(

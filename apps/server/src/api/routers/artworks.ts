@@ -1,6 +1,7 @@
 import path from "node:path";
 import { db } from "@aqt-gallery/db";
 import {
+	artist,
 	artwork,
 	artworkCustomField,
 	artworkTag,
@@ -9,11 +10,12 @@ import {
 } from "@aqt-gallery/db/schema/gallery";
 import { env } from "@aqt-gallery/env/server";
 import { TRPCError } from "@trpc/server";
-import { and, asc, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, or } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 
 import { importMediaFromUrls, uploadErrorResponse } from "../../media/upload";
+import { importRateLimiter } from "../../rate-limit";
 import { protectedProcedure, router } from "../index";
 import { artworkTypes } from "./gallery-helpers";
 
@@ -28,6 +30,7 @@ const artworkUpdateSchema = z.object({
 	id: z.string().min(1),
 	title: z.string().min(1).optional(),
 	artist: z.string().nullable().optional(),
+	artistId: z.string().nullable().optional(),
 	artworkType: z.enum(artworkTypes).optional(),
 	year: z.string().nullable().optional(),
 	medium: z.string().nullable().optional(),
@@ -52,6 +55,7 @@ function artworkSetValues(
 	const set: Partial<typeof artwork.$inferInsert> = {};
 	if (input.title !== undefined) set.title = input.title;
 	if (input.artist !== undefined) set.artist = input.artist;
+	if (input.artistId !== undefined) set.artistId = input.artistId;
 	if (input.artworkType !== undefined) set.artworkType = input.artworkType;
 	if (input.year !== undefined) set.year = input.year;
 	if (input.medium !== undefined) set.medium = input.medium;
@@ -67,6 +71,25 @@ function artworkSetValues(
 	if (input.funFacts !== undefined) set.funFacts = input.funFacts;
 	if (input.sourceUrl !== undefined) set.sourceUrl = input.sourceUrl;
 	return set;
+}
+
+/** A linked artist must be one the caller can see — their own or a seeded
+ * global artist (`user_id` null). Stops one user pointing an artwork at
+ * another user's private artist. */
+async function assertArtistLinkable(artistId: string, userId: string) {
+	const rows = await db
+		.select({ id: artist.id })
+		.from(artist)
+		.where(
+			and(
+				eq(artist.id, artistId),
+				or(eq(artist.userId, userId), isNull(artist.userId)),
+			),
+		)
+		.limit(1);
+	if (!rows[0]) {
+		throw new TRPCError({ code: "BAD_REQUEST", message: "Artist not found" });
+	}
 }
 
 export const artworksRouter = router({
@@ -259,6 +282,9 @@ export const artworksRouter = router({
 		.input(artworkUpdateSchema)
 		.mutation(async ({ ctx, input }) => {
 			const userId = ctx.session.user.id;
+			if (input.artistId) {
+				await assertArtistLinkable(input.artistId, userId);
+			}
 			const setValues = artworkSetValues(input);
 			const where = and(eq(artwork.id, input.id), eq(artwork.userId, userId));
 
@@ -309,6 +335,9 @@ export const artworksRouter = router({
 			const updated = [];
 
 			for (const item of input.artworks) {
+				if (item.artistId) {
+					await assertArtistLinkable(item.artistId, userId);
+				}
 				const setValues = artworkSetValues(item);
 				if (Object.keys(setValues).length === 0) continue;
 				const rows = await db
@@ -342,6 +371,21 @@ export const artworksRouter = router({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
+			// Imports fetch arbitrary upstream URLs server-side, so throttle by
+			// image count (covers both the HTTP API and the MCP import tool, which
+			// share this procedure).
+			const limit = importRateLimiter.check(
+				ctx.session.user.id,
+				input.items.length,
+			);
+			if (!limit.ok) {
+				throw new TRPCError({
+					code: "TOO_MANY_REQUESTS",
+					message: `Import rate limit reached — try again in ${Math.ceil(
+						limit.retryAfterMs / 1000,
+					)}s.`,
+				});
+			}
 			const result = await Effect.runPromise(
 				importMediaFromUrls({
 					items: input.items,
