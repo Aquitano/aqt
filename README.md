@@ -114,8 +114,6 @@ Production requires:
 - Public HTTPS CORS origins. `localhost`, HTTP origins, and `*` are rejected.
 - Public HTTPS provider API, OAuth token, and OAuth authorization URLs.
 
-See [Production Deployment](docs/production-deployment.md) for a deployment checklist.
-
 For local secrets, copy `.env.example` to `.env` and put real values only in `.env`. The `.env` file is ignored by git.
 
 PowerShell:
