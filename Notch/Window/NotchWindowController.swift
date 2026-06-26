@@ -15,6 +15,10 @@ final class NotchWindowController {
     private var cancellables = Set<AnyCancellable>()
     private var mouseMonitors: [Any] = []
 
+    /// True while an inbound file drag is hovering the notch; keeps the panel
+    /// interactive so SwiftUI's `onDrop` can land the drop (see `setupMouseTracking`).
+    private var isDragSessionActive = false
+
     init(env: AppEnvironment) {
         self.env = env
         self.geometry = ScreenGeometry.current()
@@ -88,18 +92,82 @@ final class NotchWindowController {
     /// Instead we let events pass through everywhere except the actual visible
     /// content rect, recomputed as the pointer moves and as the content resizes.
     private func setupMouseTracking() {
-        let global = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
-            self?.updatePassthrough()
+        let globalMove = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
+            self?.pointerMoved()
         }
-        let local = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
-            self?.updatePassthrough()
+        let localMove = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
+            self?.pointerMoved()
             return event
         }
-        mouseMonitors = [global, local].compactMap { $0 }
+        // A file drag from another app posts dragged events (never mouseMoved) while
+        // the panel is click-through, so the move monitors above never fire and the
+        // drop is silently missed. Track the drag explicitly and open the panel to
+        // events once the pointer reaches the notch, then let `onDrop` take over.
+        let globalDrag = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDragged]) { [weak self] _ in
+            self?.dragMoved()
+        }
+        let globalUp = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] _ in
+            self?.dragEnded()
+        }
+        mouseMonitors = [globalMove, localMove, globalDrag, globalUp].compactMap { $0 }
+    }
+
+    /// A real pointer move cannot happen mid drag-session, so any drag state is
+    /// stale by the time one arrives — clear it before restoring passthrough.
+    private func pointerMoved() {
+        isDragSessionActive = false
+        updatePassthrough()
+    }
+
+    /// While a file drag hovers the notch's catch area, make the panel interactive
+    /// so the drop registers. Once the notch commits to expanding it stays
+    /// interactive (the `.expanded` case below); if the drag leaves first, restore
+    /// click-through so other drop targets underneath aren't blocked.
+    private func dragMoved() {
+        guard panel.isVisible else { return }
+        if dragDropZone().contains(NSEvent.mouseLocation) {
+            guard !isDragSessionActive else { return }
+            isDragSessionActive = true
+            panel.ignoresMouseEvents = false
+        } else if isDragSessionActive, env.state.presentation != .expanded {
+            isDragSessionActive = false
+            updatePassthrough()
+        }
+    }
+
+    private func dragEnded() {
+        guard isDragSessionActive else { return }
+        isDragSessionActive = false
+        // A drag that only flew over the notch (dropped elsewhere) leaves it
+        // expanded with no hover to close it; collapse unless the drop landed here.
+        if env.state.presentation == .expanded,
+           !interactiveContentRect().contains(NSEvent.mouseLocation) {
+            env.state.collapse(hasCompactContent: true)
+        }
+        updatePassthrough()
+    }
+
+    /// Generous catch area around the bezel for an inbound file drag: wider and
+    /// taller than the visible pill so a drag can aim loosely at the notch, but far
+    /// smaller than the full panel frame so drags toward the screen corners don't
+    /// trip it.
+    private func dragDropZone() -> NSRect {
+        let width = geometry.notchSize.width + 200
+        let drop: CGFloat = 90
+        return NSRect(
+            x: geometry.notchFrame.midX - width / 2,
+            y: geometry.notchFrame.minY - drop,
+            width: width,
+            height: geometry.notchFrame.height + drop
+        )
     }
 
     private func updatePassthrough() {
         guard panel.isVisible else { return }
+        if isDragSessionActive {
+            panel.ignoresMouseEvents = false
+            return
+        }
         switch env.state.presentation {
         case .expanded:
             // The panel is visibly present and auto-collapses on exit, so keep it
