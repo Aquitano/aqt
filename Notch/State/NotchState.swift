@@ -89,8 +89,10 @@ final class NotchState: ObservableObject {
     }
 
     func endDropTargeting() {
+        // Leave `activeDropZone` for the drop delegate to consume. Mouse-up fires
+        // both this (via the window controller) and SwiftUI's performDrop; clearing
+        // the zone here would race that and misroute the drop to the shelf.
         isDropActive = false
-        activeDropZone = nil
     }
 
     /// Collapse to the compact pill when there is something to show, otherwise hide.

@@ -170,9 +170,13 @@ private struct NotchDropDelegate: DropDelegate {
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        let target = zone(at: info.location)
+        // Route to the field the pointer was last over (what the user saw
+        // highlighted) rather than a fresh hit-test: by drop time the controller may
+        // have torn the chooser down on mouse-up, leaving the published frames stale.
+        let target = state.activeDropZone ?? zone(at: info.location)
         let providers = info.itemProviders(for: [.fileURL, .data])
         state.activeDropZone = nil
+        state.isDropActive = false
         let accepted = target == .share ? onShare(providers) : onKeep(providers)
         if accepted { Haptics.tap(.alignment) }
         return accepted
