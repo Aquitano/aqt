@@ -37,6 +37,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         addItem(to: menu, title: "Toggle Notch", action: #selector(toggleNotch))
         addItem(to: menu, title: "Clear Tray", action: #selector(clearTray))
+
+        let timerItem = NSMenuItem(title: "Start Timer", action: nil, keyEquivalent: "")
+        let timerMenu = NSMenu()
+        for minutes in [1, 5, 10, 25] {
+            let item = NSMenuItem(title: "\(minutes) min", action: #selector(startTimer(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = minutes
+            timerMenu.addItem(item)
+        }
+        timerItem.submenu = timerMenu
+        menu.addItem(timerItem)
+        addItem(to: menu, title: "Cancel Timer", action: #selector(cancelTimer))
+
         menu.addItem(.separator())
         addItem(to: menu, title: "Settings…", action: #selector(openSettings), key: ",")
         menu.addItem(.separator())
@@ -60,6 +73,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func clearTray() {
         env.tray.clear()
+    }
+
+    @objc private func startTimer(_ sender: NSMenuItem) {
+        env.timer.start(name: "Timer", duration: TimeInterval(sender.tag * 60))
+    }
+
+    @objc private func cancelTimer() {
+        env.timer.cancel()
     }
 
     @objc private func openSettings() {

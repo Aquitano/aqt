@@ -13,10 +13,16 @@ final class AppEnvironment: ObservableObject {
     let imageCache: ImageCache
     let persistence: Persistence
 
+    /// Shared CoreAudio service: drives the volume/mute HUD and the output-route
+    /// activity. Owned here (not by the HUD) so route changes are detected even
+    /// when the HUD is disabled.
+    let audio: AudioHardware
+
     let activities: ActivityManager
     let media: MediaManager
     let hud: HUDManager
     let tray: TrayManager
+    let timer: TimerManager
 
     let battery: BatteryManager
     let calendar: CalendarManager
@@ -39,18 +45,21 @@ final class AppEnvironment: ObservableObject {
         let imageCache = ImageCache()
         let persistence = Persistence()
         let activities = ActivityManager(state: state)
+        let audio = AudioHardware()
 
         self.settings = settings
         self.state = state
         self.imageCache = imageCache
         self.persistence = persistence
+        self.audio = audio
         self.activities = activities
 
         self.media = MediaManager(activities: activities, imageCache: imageCache, settings: settings)
-        self.hud = HUDManager(settings: settings)
-        self.tray = TrayManager(persistence: persistence, imageCache: imageCache, settings: settings)
+        self.hud = HUDManager(settings: settings, audio: audio)
+        self.tray = TrayManager(persistence: persistence, imageCache: imageCache, settings: settings, activities: activities)
+        self.timer = TimerManager(activities: activities)
         self.battery = BatteryManager(activities: activities)
-        self.calendar = CalendarManager()
+        self.calendar = CalendarManager(activities: activities)
         self.weather = WeatherManager(settings: settings)
         self.bluetooth = BluetoothBatteryManager(activities: activities)
         self.focus = FocusManager(activities: activities)
@@ -58,6 +67,14 @@ final class AppEnvironment: ObservableObject {
 
     /// Start all event-driven subscriptions. Called after the window is up.
     func start() {
+        audio.onRouteChange = { [activities] name, symbol in
+            MainActor.assumeIsolated {
+                activities.publish(Activity(kind: .audioRoute(name: name, symbol: symbol),
+                                            priority: .normal, createdAt: Date(), ttl: 3))
+            }
+        }
+        audio.start()
+
         media.start()
         hud.start()
         tray.start()

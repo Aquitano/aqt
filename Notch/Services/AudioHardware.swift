@@ -13,7 +13,13 @@ final class AudioHardware {
     /// volume 0...1, muted flag. Always delivered on the main queue.
     var onChange: ((Float, Bool) -> Void)?
 
+    /// Default output device changed: (display name, SF Symbol). Delivered on main.
+    /// Skips the initial bind so launch doesn't read as a route change.
+    var onRouteChange: ((String, String) -> Void)?
+
     private var deviceID = AudioObjectID(kAudioObjectUnknown)
+    private var previousDeviceID = AudioObjectID(kAudioObjectUnknown)
+    private var hasBoundOnce = false
     private let queue = DispatchQueue(label: "com.aquitano.notch.audio")
 
     private var volumeAddress = AudioObjectPropertyAddress(
@@ -70,6 +76,55 @@ final class AudioHardware {
         return status == noErr && value != 0
     }
 
+    private func readNameLocked() -> String {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var name: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &name)
+        guard status == noErr, let name else { return "Output" }
+        return name.takeRetainedValue() as String
+    }
+
+    private func readTransportLocked() -> UInt32 {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var transport = UInt32(0)
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &transport)
+        return status == noErr ? transport : 0
+    }
+
+    /// Pick a glyph from the device name first (AirPods variants), then the
+    /// transport type for everything else.
+    private static func routeSymbol(name: String, transport: UInt32) -> String {
+        let lowered = name.lowercased()
+        if lowered.contains("airpods max") { return "airpods.max" }
+        if lowered.contains("airpods pro") { return "airpods.pro" }
+        if lowered.contains("airpods") { return "airpods" }
+        if lowered.contains("homepod") { return "homepod.fill" }
+        if lowered.contains("headphone") { return "headphones" }
+
+        switch transport {
+        case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:
+            return "headphones"
+        case kAudioDeviceTransportTypeUSB:
+            return "hifispeaker.fill"
+        case kAudioDeviceTransportTypeHDMI, kAudioDeviceTransportTypeDisplayPort:
+            return "display"
+        case kAudioDeviceTransportTypeAirPlay:
+            return "airplayaudio"
+        default:
+            return "speaker.wave.2.fill"
+        }
+    }
+
     // MARK: - Binding (always on `queue`)
 
     private func rebindDeviceLocked() {
@@ -81,6 +136,14 @@ final class AudioHardware {
         let status = AudioObjectGetPropertyData(systemObject, &defaultDeviceAddress, 0, nil, &size, &newDevice)
         guard status == noErr else { return }
         deviceID = newDevice
+
+        if hasBoundOnce, newDevice != previousDeviceID {
+            let name = readNameLocked()
+            let symbol = Self.routeSymbol(name: name, transport: readTransportLocked())
+            DispatchQueue.main.async { [weak self] in self?.onRouteChange?(name, symbol) }
+        }
+        previousDeviceID = newDevice
+        hasBoundOnce = true
 
         let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             self?.emitLocked()

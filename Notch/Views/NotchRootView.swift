@@ -121,7 +121,7 @@ struct NotchRootView: View {
 
     private func handleHover(_ hovering: Bool) {
         if hovering {
-            state.expand()
+            state.hoverExpand()
         } else {
             // Always settle back to the compact pill: it keeps the panel on-screen
             // and mouse-tracking alive so the next hover can expand again. Only the

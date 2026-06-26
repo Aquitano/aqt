@@ -57,7 +57,7 @@ final class NotchState: ObservableObject {
     func hoverChanged(_ hovering: Bool) {
         isHovering = hovering
         if hovering {
-            expand()
+            hoverExpand()
         } else {
             collapse()
         }
@@ -69,13 +69,41 @@ final class NotchState: ObservableObject {
     /// collapses out from under a click.
     private var collapseTask: Task<Void, Never>?
 
+    /// Pending hover-driven expand. A short intent delay lets a quick scroll /
+    /// middle-click on the pill cycle activities instead, and stops a cursor that
+    /// merely skims the menu-bar edge from popping the panel open.
+    private var expandTask: Task<Void, Never>?
+
+    /// Immediate expand for programmatic callers (status-bar toggle, inbound drag).
     func expand() {
+        cancelPendingExpand()
         collapseTask?.cancel()
         collapseTask = nil
         guard presentation != .expanded else { return }
         withAnimation(NotchAnimation.open(reduceMotion: reduceMotion)) {
             presentation = .expanded
         }
+    }
+
+    /// Hover entry: expand after a brief intent delay.
+    func hoverExpand() {
+        collapseTask?.cancel()
+        collapseTask = nil
+        guard presentation != .expanded else { return }
+        expandTask?.cancel()
+        expandTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard let self, !Task.isCancelled else { return }
+            self.expandTask = nil
+            withAnimation(NotchAnimation.open(reduceMotion: self.reduceMotion)) {
+                self.presentation = .expanded
+            }
+        }
+    }
+
+    func cancelPendingExpand() {
+        expandTask?.cancel()
+        expandTask = nil
     }
 
     /// A file drag entered the notch: open straight to the tray (the file shelf)
@@ -98,6 +126,7 @@ final class NotchState: ObservableObject {
     /// Collapse to the compact pill when there is something to show, otherwise hide.
     func collapse(hasCompactContent: Bool = true) {
         guard !isDropActive else { return }
+        cancelPendingExpand()
         collapseTask?.cancel()
         collapseTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(160))
@@ -119,6 +148,7 @@ final class NotchState: ObservableObject {
     }
 
     func hide() {
+        cancelPendingExpand()
         collapseTask?.cancel()
         collapseTask = nil
         guard presentation != .hidden else { return }

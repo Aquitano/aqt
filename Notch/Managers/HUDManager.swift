@@ -13,7 +13,7 @@ final class HUDManager: ObservableObject {
 
     private let settings: Settings
     private let tap = SystemDefinedTap()
-    private let audio = AudioHardware()
+    private let audio: AudioHardware
     private let brightness = Brightness()
     private var dismissTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
@@ -21,8 +21,9 @@ final class HUDManager: ObservableObject {
 
     private let visibleDuration: TimeInterval = 1.6
 
-    init(settings: Settings) {
+    init(settings: Settings, audio: AudioHardware) {
         self.settings = settings
+        self.audio = audio
     }
 
     func start() {

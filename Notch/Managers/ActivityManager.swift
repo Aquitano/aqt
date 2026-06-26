@@ -42,6 +42,17 @@ final class ActivityManager: ObservableObject {
         state.showCompact()
     }
 
+    /// Push a generic Quick Peek from any internal source. Peeks have no channel
+    /// key, so they stack rather than replace, and always auto-expire.
+    func peek(title: String,
+              message: String = "",
+              symbol: String,
+              tint: Activity.PeekTint = .neutral,
+              ttl: TimeInterval = 4) {
+        publish(Activity(kind: .peek(title: title, message: message, symbol: symbol, tint: tint),
+                         priority: .urgent, createdAt: Date(), ttl: ttl))
+    }
+
     func remove(id: UUID) {
         ttlTasks[id]?.cancel()
         ttlTasks[id] = nil
@@ -49,9 +60,13 @@ final class ActivityManager: ObservableObject {
         if cycleOffset >= max(activities.count, 1) { cycleOffset = 0 }
     }
 
-    func cycle() {
-        guard !activities.isEmpty else { return }
-        cycleOffset = (cycleOffset + 1) % activities.count
+    /// Rotate which queued activity the compact pill shows. `cycleOffset` is not a
+    /// `@Published` property, so notify observers explicitly.
+    func cycle(forward: Bool = true) {
+        let count = activities.count
+        guard count > 1 else { return }
+        objectWillChange.send()
+        cycleOffset = ((cycleOffset + (forward ? 1 : -1)) % count + count) % count
     }
 
     /// Media owns whether a now-playing activity exists.

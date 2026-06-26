@@ -17,12 +17,14 @@ final class TrayManager: ObservableObject {
     private let persistence: Persistence
     private let imageCache: ImageCache
     private let settings: Settings
+    private unowned let activities: ActivityManager
     private let storeFile = "tray.json"
 
-    init(persistence: Persistence, imageCache: ImageCache, settings: Settings) {
+    init(persistence: Persistence, imageCache: ImageCache, settings: Settings, activities: ActivityManager) {
         self.persistence = persistence
         self.imageCache = imageCache
         self.settings = settings
+        self.activities = activities
         self.storageRoot = persistence.directory(named: "CopiedItems")
         self.shareStagingRoot = persistence.directory(named: "ShareStaging")
         self.items = persistence.load([DropItem].self, from: storeFile) ?? []
@@ -63,6 +65,8 @@ final class TrayManager: ObservableObject {
     private func add(_ item: DropItem) {
         items.insert(item, at: 0)
         persist()
+        activities.peek(title: "Added to Shelf", message: item.fileName,
+                        symbol: "tray.and.arrow.down.fill", tint: .success)
     }
 
     /// Copy dropped files into the staging dir for an immediate share (the drop

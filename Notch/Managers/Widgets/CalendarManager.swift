@@ -13,6 +13,14 @@ final class CalendarManager: ObservableObject {
     private let store = EKEventStore()
     private let horizonDays = 7
 
+    private unowned let activities: ActivityManager
+    private var reminderTasks: [Task<Void, Never>] = []
+    private let reminderLead: TimeInterval = 5 * 60
+
+    init(activities: ActivityManager) {
+        self.activities = activities
+    }
+
     func start() {
         authorization = EKEventStore.authorizationStatus(for: .event)
         NotificationCenter.default.addObserver(
@@ -41,6 +49,7 @@ final class CalendarManager: ObservableObject {
     private func reload() {
         guard authorization == .fullAccess else {
             events = []
+            scheduleReminders()
             return
         }
         let now = Date()
@@ -50,6 +59,31 @@ final class CalendarManager: ObservableObject {
             .sorted { $0.startDate < $1.startDate }
             .prefix(25)
         events = matched.map(Self.map)
+        scheduleReminders()
+    }
+
+    /// Fire a Quick Peek a few minutes before each timed event. One-shot
+    /// `Task.sleep` per event (rebuilt on every reload) — no repeating timer.
+    private func scheduleReminders() {
+        reminderTasks.forEach { $0.cancel() }
+        reminderTasks.removeAll()
+
+        // Recurring events share one identifier across occurrences, so key off an
+        // array rather than the event id — otherwise sibling occurrences would
+        // collapse onto one slot and orphan each other's still-running tasks.
+        let now = Date()
+        for event in events where !event.isAllDay {
+            let fireAt = event.start.addingTimeInterval(-reminderLead)
+            guard fireAt > now else { continue }
+            let delay = fireAt.timeIntervalSince(now)
+            let title = event.title
+            reminderTasks.append(Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                self?.activities.peek(title: title, message: "Starts in 5 min",
+                                      symbol: "calendar", tint: .accent, ttl: 6)
+            })
+        }
     }
 
     private static func map(_ event: EKEvent) -> CalendarEvent {

@@ -19,6 +19,10 @@ final class NotchWindowController {
     /// interactive so SwiftUI's `onDrop` can land the drop (see `setupMouseTracking`).
     private var isDragSessionActive = false
 
+    /// Debounce so one trackpad flick (which fires many scroll events) advances
+    /// the activity queue by a single step.
+    private var cycleCooldown = false
+
     init(env: AppEnvironment) {
         self.env = env
         self.geometry = ScreenGeometry.current()
@@ -109,7 +113,23 @@ final class NotchWindowController {
         let globalUp = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] _ in
             self?.dragEnded()
         }
-        mouseMonitors = [globalMove, localMove, globalDrag, globalUp].compactMap { $0 }
+        // Scroll / middle-click over the compact pill cycles the queued activities.
+        let scrollGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
+            self?.scrollWheel(event)
+        }
+        let scrollLocal = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
+            self?.scrollWheel(event)
+            return event
+        }
+        let middleGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.otherMouseDown]) { [weak self] event in
+            self?.otherMouseDown(event)
+        }
+        let middleLocal = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown]) { [weak self] event in
+            self?.otherMouseDown(event)
+            return event
+        }
+        mouseMonitors = [globalMove, localMove, globalDrag, globalUp,
+                         scrollGlobal, scrollLocal, middleGlobal, middleLocal].compactMap { $0 }
     }
 
     /// A real pointer move cannot happen mid drag-session, so any drag state is
@@ -239,6 +259,43 @@ final class NotchWindowController {
     private func occlusionChanged() {
         let visible = panel.occlusionState.contains(.visible)
         env.setRenderingActive(visible)
+    }
+
+    // MARK: - Activity cycling
+
+    /// A vertical scroll over the compact pill rotates the queued activities;
+    /// gated to the pill so it never interferes with scrolling elsewhere.
+    private func scrollWheel(_ event: NSEvent) {
+        guard !cycleCooldown, canCycleAtCursor() else { return }
+        let dy = event.scrollingDeltaY
+        guard abs(dy) > 2 else { return }
+        cycleActivity(forward: dy < 0)
+    }
+
+    private func otherMouseDown(_ event: NSEvent) {
+        guard event.buttonNumber == 2, canCycleAtCursor() else { return }
+        cycleActivity(forward: true)
+    }
+
+    private func canCycleAtCursor() -> Bool {
+        // The compact pill shows media over any activity, so cycling is only
+        // meaningful (and visible) when no track is playing.
+        guard panel.isVisible,
+              env.state.presentation == .compact,
+              env.media.track.isEmpty,
+              env.activities.activities.count > 1 else { return false }
+        return interactiveContentRect().insetBy(dx: -8, dy: -8).contains(NSEvent.mouseLocation)
+    }
+
+    private func cycleActivity(forward: Bool) {
+        env.state.cancelPendingExpand()
+        env.activities.cycle(forward: forward)
+        Haptics.tap(.alignment)
+        cycleCooldown = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            self?.cycleCooldown = false
+        }
     }
 
     // MARK: - Share sheet lifecycle
