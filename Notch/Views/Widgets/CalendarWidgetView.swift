@@ -26,8 +26,8 @@ struct CalendarWidgetView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
 
@@ -41,6 +41,8 @@ struct CalendarWidgetView: View {
         Label("Calendar", systemImage: "calendar")
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .fixedSize()
     }
 
     // MARK: - Access prompt

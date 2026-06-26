@@ -19,8 +19,10 @@ final class SystemDefinedTap {
     @discardableResult
     func start() -> Bool {
         guard tap == nil else { return true }
+        // Don't call CGRequestListenEventAccess() here: at launch it yanks System
+        // Settings to the front unprompted. The HUD simply stays inactive until the
+        // user grants Input Monitoring (Settings > Permissions deep-links there).
         guard CGPreflightListenEventAccess() else {
-            CGRequestListenEventAccess()
             return false
         }
 

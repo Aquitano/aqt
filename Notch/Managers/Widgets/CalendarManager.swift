@@ -18,12 +18,17 @@ final class CalendarManager: ObservableObject {
         NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged, object: store, queue: .main
         ) { [weak self] _ in
-            self?.reload()
+            MainActor.assumeIsolated { self?.reload() }
         }
-        Task { await requestAccess() }
+        // Don't trigger the TCC prompt at launch; that stacks dialogs on top of the
+        // location prompt and feels like a freeze. The widget's "Enable" button asks.
+        if authorization == .fullAccess { reload() }
     }
 
     func requestAccess() async {
+        // Accessory apps don't auto-foreground, so the system prompt can appear
+        // behind everything; bring the app forward first.
+        NSApp.activate(ignoringOtherApps: true)
         do {
             _ = try await store.requestFullAccessToEvents()
         } catch {

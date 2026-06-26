@@ -8,7 +8,6 @@ struct ExpandedView: View {
     let namespace: Namespace.ID
 
     @EnvironmentObject private var state: NotchState
-    @EnvironmentObject private var media: MediaManager
     @EnvironmentObject private var activities: ActivityManager
     @EnvironmentObject private var settings: Settings
 
@@ -21,9 +20,10 @@ struct ExpandedView: View {
                 tabStrip
                 content
             }
-            .padding(14)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
             // Keep all content clear of the physical notch / camera band.
-            .padding(.top, notchSize.height)
+            .padding(.top, notchSize.height + 8)
         }
         .foregroundStyle(.white)
         .tint(.white)
@@ -77,17 +77,15 @@ struct ExpandedView: View {
 
     @ViewBuilder
     private var home: some View {
-        VStack(spacing: 12) {
-            if !media.track.isEmpty {
-                MediaPlayerView(namespace: namespace)
-            }
-
+        VStack(spacing: 10) {
             WidgetGridView()
 
             if let activity = activities.ordered.first {
                 ActivityCardView(activity: activity, namespace: namespace)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - Inline settings

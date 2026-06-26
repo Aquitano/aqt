@@ -38,20 +38,27 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
 
     // MARK: - CLLocationManagerDelegate
 
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        authorization = manager.authorizationStatus
-        if authorization == .authorizedAlways {
-            manager.requestLocation()
+    // CLLocationManager delivers callbacks on the thread that created it (main,
+    // since init runs on the main actor), so asserting isolation is safe and lets
+    // the delegate conformance stay off the main actor.
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        MainActor.assumeIsolated {
+            authorization = manager.authorizationStatus
+            if authorization == .authorizedAlways {
+                manager.requestLocation()
+            }
         }
     }
 
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
-        lastLocation = location
-        Task { await fetch(for: location) }
+        MainActor.assumeIsolated {
+            lastLocation = location
+            Task { await fetch(for: location) }
+        }
     }
 
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Log.widgets.error("Location error: \(error.localizedDescription)")
     }
 

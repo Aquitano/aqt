@@ -9,22 +9,23 @@ struct FocusWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: focus.isOn ? "moon.fill" : "moon")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(focus.isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(focus.isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.white.opacity(0.7)))
+
+            Spacer(minLength: 6)
 
             Text(focus.name ?? "Focus")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.primary)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
                 .lineLimit(1)
 
             Text(focus.isOn ? "On" : "Off")
                 .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.6))
         }
-        .padding(10)
-        .frame(maxHeight: .infinity, alignment: .topLeading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 14))
-        .onAppear { focus.refresh() }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Focus \(focus.name ?? "") \(focus.isOn ? "on" : "off")")
     }

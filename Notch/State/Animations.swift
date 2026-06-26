@@ -34,6 +34,6 @@ enum NotchMetrics {
     static let compactCornerRadius: CGFloat = 12
     static let expandedCornerRadius: CGFloat = 24
 
-    static let expandedSize = CGSize(width: 420, height: 180)
-    static let expandedMediaSize = CGSize(width: 420, height: 210)
+    static let expandedSize = CGSize(width: 500, height: 290)
+    static let expandedMediaSize = CGSize(width: 500, height: 250)
 }

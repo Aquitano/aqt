@@ -15,8 +15,8 @@ struct BluetoothWidgetView: View {
                 row(for: device)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
 

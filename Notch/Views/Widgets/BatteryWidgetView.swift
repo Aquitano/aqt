@@ -21,6 +21,8 @@ struct BatteryWidgetView: View {
                 }
             }
 
+            Spacer(minLength: 6)
+
             VStack(alignment: .leading, spacing: 1) {
                 Text("\(battery.percent)%")
                     .font(.title3.weight(.semibold))
@@ -35,7 +37,7 @@ struct BatteryWidgetView: View {
             }
         }
         .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
         .accessibilityElement(children: .combine)
     }

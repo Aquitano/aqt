@@ -88,21 +88,19 @@ struct NotchRootView: View {
                 height: notchSize.height + (hasContent ? 4 : 0)
             )
         case .expanded:
-            let base = state.expandedTab == .media || (state.expandedTab == .home && !media.track.isEmpty)
-                ? NotchMetrics.expandedMediaSize
-                : NotchMetrics.expandedSize
+            let base = state.expandedTab == .media ? NotchMetrics.expandedMediaSize : NotchMetrics.expandedSize
             return CGSize(width: base.width, height: base.height + notchSize.height)
         }
     }
 
     private func handleHover(_ hovering: Bool) {
         if hovering {
-            if state.presentation == .compact { state.expand() }
+            state.expand()
         } else {
-            if state.presentation == .expanded {
-                let hasContent = activities.compactActivity != nil || !media.track.isEmpty
-                state.collapse(hasCompactContent: hasContent)
-            }
+            // Always settle back to the compact pill: it keeps the panel on-screen
+            // and mouse-tracking alive so the next hover can expand again. Only the
+            // status-bar toggle fully hides the notch.
+            state.collapse(hasCompactContent: true)
         }
     }
 }

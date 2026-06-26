@@ -10,15 +10,15 @@ struct WeatherWidgetView: View {
         VStack(alignment: .leading, spacing: 10) {
             if let snapshot = weather.snapshot {
                 current(snapshot)
+                Spacer(minLength: 6)
                 forecast(snapshot.daily)
             } else {
                 placeholder
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .glassEffect(.regular, in: .rect(cornerRadius: 14))
-        .fixedSize(horizontal: true, vertical: false)
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
         .accessibilityElement(children: .combine)
     }
 
@@ -57,7 +57,7 @@ struct WeatherWidgetView: View {
     private func forecast(_ days: [WeatherDay]) -> some View {
         let visible = Array(days.prefix(4))
         if !visible.isEmpty {
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .top, spacing: 0) {
                 ForEach(visible) { day in
                     VStack(spacing: 3) {
                         Text(weekday(for: day.date))
@@ -77,6 +77,7 @@ struct WeatherWidgetView: View {
                             .font(.caption2)
                             .foregroundStyle(.white.opacity(0.55))
                     }
+                    .frame(maxWidth: .infinity)
                 }
             }
         }
