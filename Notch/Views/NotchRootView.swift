@@ -87,6 +87,13 @@ struct NotchRootView: View {
         .frame(maxWidth: .infinity, alignment: .center)
     }
 
+    private var compactContent: NotchLayout.CompactContent {
+        NotchLayout.compactContent(
+            hasMedia: !media.track.isEmpty,
+            activityLabel: activities.compactActivity?.compactLabel
+        )
+    }
+
     private var currentSize: CGSize {
         NotchLayout.contentSize(
             presentation: state.presentation,
@@ -94,7 +101,7 @@ struct NotchRootView: View {
             tab: state.expandedTab,
             hasInfoRow: settings.showWeatherWidget || settings.showCalendarWidget,
             trayEmpty: tray.items.isEmpty,
-            hasCompactContent: activities.compactActivity != nil || !media.track.isEmpty
+            compact: compactContent
         )
     }
 
@@ -105,7 +112,7 @@ struct NotchRootView: View {
             tab: state.expandedTab,
             hasInfoRow: settings.showWeatherWidget || settings.showCalendarWidget,
             trayEmpty: tray.items.isEmpty,
-            hasCompactContent: true
+            compact: .media
         )
     }
 

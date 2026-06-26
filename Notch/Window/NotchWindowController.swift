@@ -194,7 +194,10 @@ final class NotchWindowController {
             tab: env.state.expandedTab,
             hasInfoRow: env.settings.showWeatherWidget || env.settings.showCalendarWidget,
             trayEmpty: env.tray.items.isEmpty,
-            hasCompactContent: env.activities.compactActivity != nil || !env.media.track.isEmpty
+            compact: NotchLayout.compactContent(
+                hasMedia: !env.media.track.isEmpty,
+                activityLabel: env.activities.compactActivity?.compactLabel
+            )
         )
         return NSRect(
             x: geometry.panelFrame.midX - size.width / 2,

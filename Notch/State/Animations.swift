@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The "Apple feel" lives here: one asymmetric spring set, ~0.4s each.
 /// Open bounces, close settles, compact<->expanded snaps. Reduce Motion
@@ -44,6 +45,45 @@ enum NotchMetrics {
 /// panel's clickable region to exactly the visible content) read from here, so
 /// the panel never swallows clicks over its large but invisible surrounding frame.
 enum NotchLayout {
+    /// Point size of the compact pill's trailing label. Shared with `CompactView`
+    /// so the width reserved here matches exactly what gets drawn.
+    static let compactLabelFontSize: CGFloat = 12
+
+    /// What the compact pill is showing. Drives its width so the trailing slot
+    /// fits the actual label instead of one fixed size that truncates longer text.
+    enum CompactContent: Equatable {
+        case none
+        case media
+        case activity(label: String)
+    }
+
+    /// Resolve the compact content from the live state. Media wins over an
+    /// activity (mirrors `CompactView`), so all three readers stay in sync.
+    static func compactContent(hasMedia: Bool, activityLabel: String?) -> CompactContent {
+        if hasMedia { return .media }
+        if let label = activityLabel { return .activity(label: label) }
+        return .none
+    }
+
+    /// Width the compact pill adds around the notch for the given content.
+    /// The pill is two equal slots flanking the centered notch gap, so the wider
+    /// (text) slot sets the size; reserve the label width plus breathing on both
+    /// sides, clamped so a short badge still reads as a pill and a long name
+    /// truncates rather than growing the bezel without bound.
+    static func compactExtraWidth(_ content: CompactContent) -> CGFloat {
+        switch content {
+        case .none:
+            return 0
+        case .media:
+            return 130
+        case let .activity(label):
+            let font = NSFont.systemFont(ofSize: compactLabelFontSize, weight: .medium)
+            let measured = (label as NSString).size(withAttributes: [.font: font]).width
+            let slot = min(max(measured, 30), 120)
+            return ceil(slot * 2) + 52
+        }
+    }
+
     /// Height of the expanded body below the notch, sized per tab so each surface
     /// fits its own content instead of one fixed box.
     static func expandedBodyHeight(tab: NotchState.ExpandedTab, hasInfoRow: Bool, trayEmpty: Bool) -> CGFloat {
@@ -60,13 +100,13 @@ enum NotchLayout {
                             tab: NotchState.ExpandedTab,
                             hasInfoRow: Bool,
                             trayEmpty: Bool,
-                            hasCompactContent: Bool) -> CGSize {
+                            compact: CompactContent) -> CGSize {
         switch presentation {
         case .hidden:
             return notch
         case .compact:
-            return CGSize(width: notch.width + (hasCompactContent ? 130 : 0),
-                          height: notch.height + (hasCompactContent ? 4 : 0))
+            return CGSize(width: notch.width + compactExtraWidth(compact),
+                          height: notch.height + (compact == .none ? 0 : 4))
         case .expanded:
             let body = expandedBodyHeight(tab: tab, hasInfoRow: hasInfoRow, trayEmpty: trayEmpty)
             return CGSize(width: NotchMetrics.expandedWidth, height: body + notch.height)

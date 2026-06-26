@@ -62,4 +62,21 @@ struct Activity: Identifiable, Equatable {
         case .timer: return "timer"
         }
     }
+
+    /// Trailing text in the compact pill. Empty for now-playing (the equalizer
+    /// renders there instead). The pill reserves its width from this string, so
+    /// the view and the layout must read the same value.
+    var compactLabel: String {
+        switch kind {
+        case .nowPlaying: return ""
+        case let .charging(percent, _, _): return "\(percent)%"
+        case let .lowBattery(percent): return "\(percent)%"
+        case .lowPowerMode: return "Low Power"
+        case let .deviceConnected(name, _, battery): return battery.map { "\($0)%" } ?? name
+        case let .audioRoute(name, _): return name
+        case let .focus(name, _): return name ?? "Focus"
+        case let .peek(title, _, _, _): return title
+        case let .timer(name, _): return name
+        }
+    }
 }

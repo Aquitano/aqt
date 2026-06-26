@@ -102,33 +102,10 @@ struct CompactView: View {
     }
 
     private func activityLabel(_ activity: Activity) -> some View {
-        Text(compactLabel(for: activity))
-            .font(.system(size: 12, weight: .medium))
+        Text(activity.compactLabel)
+            .font(.system(size: NotchLayout.compactLabelFontSize, weight: .medium))
             .lineLimit(1)
             .truncationMode(.tail)
-    }
-
-    private func compactLabel(for activity: Activity) -> String {
-        switch activity.kind {
-        case .nowPlaying:
-            return ""
-        case let .charging(percent, _, _):
-            return "\(percent)%"
-        case let .lowBattery(percent):
-            return "\(percent)%"
-        case .lowPowerMode:
-            return "Low Power"
-        case let .deviceConnected(name, _, battery):
-            return battery.map { "\($0)%" } ?? name
-        case let .audioRoute(name, _):
-            return name
-        case let .focus(name, _):
-            return name ?? "Focus"
-        case let .peek(title, _, _, _):
-            return title
-        case let .timer(name, _):
-            return name
-        }
     }
 
     private func popScale(_ phase: Int) -> CGFloat {
