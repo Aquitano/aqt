@@ -1,6 +1,12 @@
 import SwiftUI
 import Combine
 
+/// The two fields shown while a file is dragged onto the notch.
+enum DropZone: Hashable {
+    case keep   // stage on the shelf
+    case share  // share immediately via the configured method
+}
+
 /// Single source of truth for what the notch is showing right now.
 /// Owns the presentation phase and the active-activity selection; the feature
 /// managers own their own data and publish into the SwiftUI environment.
@@ -34,6 +40,10 @@ final class NotchState: ObservableObject {
     /// tray and suppresses the hover-out collapse so a flickering hover can't pull
     /// the drop target out from under the drag.
     @Published var isDropActive: Bool = false
+
+    /// Which drop field the pointer is currently over during a file drag, for the
+    /// chooser's highlight. Set by the root drop delegate.
+    @Published var activeDropZone: DropZone?
 
     /// Mirrors `accessibilityReduceMotion`; the root view keeps it in sync so the
     /// transition helpers (which run outside the SwiftUI environment) can react.
@@ -80,6 +90,7 @@ final class NotchState: ObservableObject {
 
     func endDropTargeting() {
         isDropActive = false
+        activeDropZone = nil
     }
 
     /// Collapse to the compact pill when there is something to show, otherwise hide.
