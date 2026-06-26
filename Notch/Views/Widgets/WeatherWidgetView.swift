@@ -36,19 +36,19 @@ struct WeatherWidgetView: View {
                     .contentTransition(.numericText())
                     .animation(.snappy, value: s.temperature)
 
-                Text(s.conditionText)
+                // Condition and place on one line so the card leaves room for the
+                // daily outlook below instead of clipping it.
+                Text(subtitle(s))
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.7))
                     .lineLimit(1)
-
-                if let location = s.locationName, !location.isEmpty {
-                    Text(location)
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.5))
-                        .lineLimit(1)
-                }
             }
         }
+    }
+
+    private func subtitle(_ s: WeatherSnapshot) -> String {
+        guard let location = s.locationName, !location.isEmpty else { return s.conditionText }
+        return "\(s.conditionText) · \(location)"
     }
 
     // MARK: - Daily outlook
@@ -69,13 +69,16 @@ struct WeatherWidgetView: View {
                             .symbolRenderingMode(.multicolor)
                             .frame(height: 16)
 
-                        Text("\(Int(day.high.rounded()))°")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white)
-
-                        Text("\(Int(day.low.rounded()))°")
-                            .font(.caption2)
-                            .foregroundStyle(.white.opacity(0.55))
+                        // High and low share a line to keep the row to a single
+                        // compact band that fits inside the card.
+                        HStack(spacing: 3) {
+                            Text("\(Int(day.high.rounded()))°")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white)
+                            Text("\(Int(day.low.rounded()))°")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.55))
+                        }
                     }
                     .frame(maxWidth: .infinity)
                 }

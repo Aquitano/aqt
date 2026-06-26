@@ -64,9 +64,16 @@ struct NotchRootView: View {
             Group {
                 switch state.presentation {
                 case .expanded:
+                    // Pinned to its full expanded size so a collapse lets the
+                    // shrinking blob clip it away (and fade it) in lockstep,
+                    // instead of squishing the content to nothing instantly.
                     ExpandedView(namespace: morph)
+                        .frame(width: expandedSize.width, height: expandedSize.height, alignment: .top)
+                        .transition(.opacity)
                 case .compact:
                     CompactView(namespace: morph)
+                        .frame(width: size.width, height: size.height, alignment: .top)
+                        .transition(.opacity)
                 case .hidden:
                     EmptyView()
                 }
@@ -81,34 +88,25 @@ struct NotchRootView: View {
     }
 
     private var currentSize: CGSize {
-        switch state.presentation {
-        case .hidden:
-            return notchSize
-        case .compact:
-            let hasContent = activities.compactActivity != nil || !media.track.isEmpty
-            return CGSize(
-                width: notchSize.width + (hasContent ? 130 : 0),
-                height: notchSize.height + (hasContent ? 4 : 0)
-            )
-        case .expanded:
-            return CGSize(width: NotchMetrics.expandedWidth, height: expandedBodyHeight + notchSize.height)
-        }
+        NotchLayout.contentSize(
+            presentation: state.presentation,
+            notch: notchSize,
+            tab: state.expandedTab,
+            hasInfoRow: settings.showWeatherWidget || settings.showCalendarWidget,
+            trayEmpty: tray.items.isEmpty,
+            hasCompactContent: activities.compactActivity != nil || !media.track.isEmpty
+        )
     }
 
-    /// Body height per tab so each surface is sized to its own content instead of
-    /// one fixed box that leaves settings empty and crowds the dashboard.
-    private var expandedBodyHeight: CGFloat {
-        switch state.expandedTab {
-        case .home:
-            let hasInfoRow = settings.showWeatherWidget || settings.showCalendarWidget
-            return hasInfoRow ? 300 : 165
-        case .media:
-            return 210
-        case .tray:
-            return tray.items.isEmpty ? 170 : 236
-        case .settings:
-            return 240
-        }
+    private var expandedSize: CGSize {
+        NotchLayout.contentSize(
+            presentation: .expanded,
+            notch: notchSize,
+            tab: state.expandedTab,
+            hasInfoRow: settings.showWeatherWidget || settings.showCalendarWidget,
+            trayEmpty: tray.items.isEmpty,
+            hasCompactContent: true
+        )
     }
 
     private func handleHover(_ hovering: Bool) {

@@ -21,10 +21,15 @@ struct ExpandedView: View {
                 tabStrip
                 content
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
-            // Keep all content clear of the physical notch / camera band.
-            .padding(.top, notchSize.height + 8)
+            // The blob insets its own left/right edges by the notch corner radius,
+            // so the horizontal padding must add that back to read as the same
+            // visible margin as the bottom; otherwise the sides look pinched and
+            // the bottom looks loose.
+            .padding(.horizontal, 12 + NotchMetrics.compactCornerRadius)
+            .padding(.bottom, 12)
+            // Keep the tap targets well clear of the physical notch / menu-bar band,
+            // which otherwise crowds the top tab row and eats clicks near the notch.
+            .padding(.top, notchSize.height + 14)
         }
         .foregroundStyle(.white)
         .tint(.white)
@@ -50,13 +55,15 @@ struct ExpandedView: View {
             state.select(tab: tab)
         } label: {
             Image(systemName: tab.symbol)
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 38, height: 28)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 46, height: 32)
                 .foregroundStyle(selected ? Color.white : Color.white.opacity(0.5))
                 .background {
-                    // One shared pill that slides between tabs as the selection moves.
+                    // One shared pill that slides between tabs as the selection
+                    // moves. A capsule so its curvature matches the capsule strip
+                    // around it instead of reading as a rounded-rect inside a pill.
                     if selected {
-                        RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                        Capsule(style: .continuous)
                             .fill(.white.opacity(0.18))
                             .matchedGeometryEffect(id: "tabSelection", in: tabNamespace)
                     }

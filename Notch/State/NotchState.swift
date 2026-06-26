@@ -48,7 +48,15 @@ final class NotchState: ObservableObject {
         }
     }
 
+    /// Pending hover-out collapse, cancelled if the pointer comes back. The grace
+    /// period absorbs the brief `onHover` drop that happens when the pointer skims
+    /// the menu-bar edge while reaching for the top tab row, so the panel no longer
+    /// collapses out from under a click.
+    private var collapseTask: Task<Void, Never>?
+
     func expand() {
+        collapseTask?.cancel()
+        collapseTask = nil
         guard presentation != .expanded else { return }
         withAnimation(NotchAnimation.open(reduceMotion: reduceMotion)) {
             presentation = .expanded
@@ -57,11 +65,16 @@ final class NotchState: ObservableObject {
 
     /// Collapse to the compact pill when there is something to show, otherwise hide.
     func collapse(hasCompactContent: Bool = true) {
-        let target: Presentation = hasCompactContent ? .compact : .hidden
-        guard presentation != target else { return }
-        withAnimation(NotchAnimation.close(reduceMotion: reduceMotion)) {
-            presentation = target
-            expandedTab = .home
+        collapseTask?.cancel()
+        collapseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(160))
+            guard let self, !Task.isCancelled else { return }
+            let target: Presentation = hasCompactContent ? .compact : .hidden
+            guard self.presentation != target else { return }
+            withAnimation(NotchAnimation.close(reduceMotion: self.reduceMotion)) {
+                self.presentation = target
+                self.expandedTab = .home
+            }
         }
     }
 
@@ -73,6 +86,8 @@ final class NotchState: ObservableObject {
     }
 
     func hide() {
+        collapseTask?.cancel()
+        collapseTask = nil
         guard presentation != .hidden else { return }
         withAnimation(NotchAnimation.close(reduceMotion: reduceMotion)) {
             presentation = .hidden

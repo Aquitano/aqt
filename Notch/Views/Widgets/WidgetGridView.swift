@@ -16,7 +16,7 @@ struct WidgetGridView: View {
     var body: some View {
         VStack(spacing: 10) {
             statusRow
-                .frame(height: 88)
+                .frame(height: 80)
 
             if hasInfoRow {
                 infoRow

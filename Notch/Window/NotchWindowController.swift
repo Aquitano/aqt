@@ -13,6 +13,7 @@ final class NotchWindowController {
     private let hostingView: NSHostingView<AnyView>
     private var geometry: ScreenGeometry
     private var cancellables = Set<AnyCancellable>()
+    private var mouseMonitors: [Any] = []
 
     init(env: AppEnvironment) {
         self.env = env
@@ -37,6 +38,11 @@ final class NotchWindowController {
         panel.ignoresMouseEvents = true
 
         observe()
+        setupMouseTracking()
+    }
+
+    deinit {
+        for monitor in mouseMonitors { NSEvent.removeMonitor(monitor) }
     }
 
     // MARK: - Wiring
@@ -71,8 +77,63 @@ final class NotchWindowController {
         } else {
             panel.orderOut(nil)
         }
-        // Only capture mouse events when there is interactive notch content.
-        panel.ignoresMouseEvents = presentation == .hidden
+        updatePassthrough()
+    }
+
+    // MARK: - Click-through
+
+    /// The panel frame is far larger than the visible notch content (it reserves
+    /// room for the expanded body + HUD), so capturing events across the whole
+    /// frame would make a wide, tall, invisible region of the screen unclickable.
+    /// Instead we let events pass through everywhere except the actual visible
+    /// content rect, recomputed as the pointer moves and as the content resizes.
+    private func setupMouseTracking() {
+        let global = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
+            self?.updatePassthrough()
+        }
+        let local = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
+            self?.updatePassthrough()
+            return event
+        }
+        mouseMonitors = [global, local].compactMap { $0 }
+    }
+
+    private func updatePassthrough() {
+        guard panel.isVisible else { return }
+        switch env.state.presentation {
+        case .expanded:
+            // The panel is visibly present and auto-collapses on exit, so keep it
+            // interactive. Toggling passthrough here would make AppKit fire a
+            // spurious mouseExited and collapse the panel mid-interaction.
+            panel.ignoresMouseEvents = false
+        case .hidden:
+            // Hidden (HUD may still be showing, but it is informational).
+            panel.ignoresMouseEvents = true
+        case .compact:
+            // Only the small pill is interactive; the rest of the large panel
+            // frame must pass clicks through to whatever is beneath it.
+            let hit = interactiveContentRect().insetBy(dx: -4, dy: -4)
+            panel.ignoresMouseEvents = !hit.contains(NSEvent.mouseLocation)
+        }
+    }
+
+    /// The visible content's rect in screen coordinates: centered on the notch,
+    /// pinned to the top, sized by `NotchLayout` for the current state.
+    private func interactiveContentRect() -> NSRect {
+        let size = NotchLayout.contentSize(
+            presentation: env.state.presentation,
+            notch: geometry.notchSize,
+            tab: env.state.expandedTab,
+            hasInfoRow: env.settings.showWeatherWidget || env.settings.showCalendarWidget,
+            trayEmpty: env.tray.items.isEmpty,
+            hasCompactContent: env.activities.compactActivity != nil || !env.media.track.isEmpty
+        )
+        return NSRect(
+            x: geometry.panelFrame.midX - size.width / 2,
+            y: geometry.panelFrame.maxY - size.height,
+            width: size.width,
+            height: size.height
+        )
     }
 
     private func recomputeGeometry() {

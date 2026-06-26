@@ -35,6 +35,41 @@ enum NotchMetrics {
     static let expandedCornerRadius: CGFloat = 24
 
     /// The expanded panel keeps a constant width; height is chosen per tab (see
-    /// `NotchRootView.expandedBodyHeight`) so each surface fits its own content.
+    /// `NotchLayout.expandedBodyHeight`) so each surface fits its own content.
     static let expandedWidth: CGFloat = 540
+}
+
+/// Single source of truth for the visible content's size per presentation state.
+/// Both the SwiftUI tree (to lay out) and the window controller (to scope the
+/// panel's clickable region to exactly the visible content) read from here, so
+/// the panel never swallows clicks over its large but invisible surrounding frame.
+enum NotchLayout {
+    /// Height of the expanded body below the notch, sized per tab so each surface
+    /// fits its own content instead of one fixed box.
+    static func expandedBodyHeight(tab: NotchState.ExpandedTab, hasInfoRow: Bool, trayEmpty: Bool) -> CGFloat {
+        switch tab {
+        case .home: return hasInfoRow ? 296 : 175
+        case .media: return 220
+        case .tray: return trayEmpty ? 180 : 246
+        case .settings: return 250
+        }
+    }
+
+    static func contentSize(presentation: NotchState.Presentation,
+                            notch: CGSize,
+                            tab: NotchState.ExpandedTab,
+                            hasInfoRow: Bool,
+                            trayEmpty: Bool,
+                            hasCompactContent: Bool) -> CGSize {
+        switch presentation {
+        case .hidden:
+            return notch
+        case .compact:
+            return CGSize(width: notch.width + (hasCompactContent ? 130 : 0),
+                          height: notch.height + (hasCompactContent ? 4 : 0))
+        case .expanded:
+            let body = expandedBodyHeight(tab: tab, hasInfoRow: hasInfoRow, trayEmpty: trayEmpty)
+            return CGSize(width: NotchMetrics.expandedWidth, height: body + notch.height)
+        }
+    }
 }
