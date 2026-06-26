@@ -1,4 +1,5 @@
 import CoreLocation
+import MapKit
 import Combine
 
 /// Weather from Open-Meteo (no key, no account). Location via CoreLocation;
@@ -81,10 +82,23 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
         do {
             let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(OpenMeteoResponse.self, from: data)
-            let placemark = try? await CLGeocoder().reverseGeocodeLocation(location).first
-            apply(response, unit: unit, placeName: placemark?.locality)
+            let placeName = await cityName(for: location)
+            apply(response, unit: unit, placeName: placeName)
         } catch {
             Log.widgets.error("Weather fetch failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Reverse-geocode to a city label via MapKit (CLGeocoder is deprecated as of
+    /// macOS 26). Best-effort: the widget just omits the name when this fails.
+    private func cityName(for location: CLLocation) async -> String? {
+        guard let request = MKReverseGeocodingRequest(location: location) else { return nil }
+        do {
+            let items = try await request.mapItems
+            return items.first?.addressRepresentations?.cityName ?? items.first?.name
+        } catch {
+            Log.widgets.error("Reverse geocoding failed: \(error.localizedDescription)")
+            return nil
         }
     }
 

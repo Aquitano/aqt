@@ -24,7 +24,12 @@ final class Settings: ObservableObject {
     @Published var temperatureUnit: WeatherSnapshot.TemperatureUnit {
         didSet { defaults.set(temperatureUnit.rawValue, forKey: Key.temperatureUnit) }
     }
-    @Published var launchAtLogin: Bool { didSet { defaults.set(launchAtLogin, forKey: Key.launchAtLogin) } }
+    @Published var launchAtLogin: Bool {
+        didSet {
+            defaults.set(launchAtLogin, forKey: Key.launchAtLogin)
+            LoginItem.setEnabled(launchAtLogin)
+        }
+    }
     @Published var enableMediaAdapter: Bool { didSet { defaults.set(enableMediaAdapter, forKey: Key.enableMediaAdapter) } }
     @Published var hapticFeedback: Bool { didSet { defaults.set(hapticFeedback, forKey: Key.hapticFeedback) } }
     @Published var trayTTLDays: Int { didSet { defaults.set(trayTTLDays, forKey: Key.trayTTLDays) } }
@@ -47,7 +52,10 @@ final class Settings: ObservableObject {
         self.temperatureUnit = WeatherSnapshot.TemperatureUnit(
             rawValue: defaults.string(forKey: Key.temperatureUnit) ?? "celsius"
         ) ?? .celsius
-        self.launchAtLogin = defaults.bool(forKey: Key.launchAtLogin)
+        // Trust the OS registration over the stored bool so a login item the user
+        // removed in System Settings isn't silently re-shown as enabled. didSet does
+        // not fire during init, so reading this never triggers a register() call.
+        self.launchAtLogin = LoginItem.isEnabled
         self.enableMediaAdapter = defaults.bool(forKey: Key.enableMediaAdapter)
         self.hapticFeedback = defaults.bool(forKey: Key.hapticFeedback)
         self.trayTTLDays = defaults.integer(forKey: Key.trayTTLDays)

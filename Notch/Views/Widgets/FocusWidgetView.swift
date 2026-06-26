@@ -23,9 +23,7 @@ struct FocusWidgetView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.6))
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .notchCard()
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Focus \(focus.name ?? "") \(focus.isOn ? "on" : "off")")
     }

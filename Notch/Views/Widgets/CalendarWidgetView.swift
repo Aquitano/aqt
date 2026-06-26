@@ -26,9 +26,7 @@ struct CalendarWidgetView: View {
                 }
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .notchCard()
     }
 
     private var upcoming: [CalendarEvent] {

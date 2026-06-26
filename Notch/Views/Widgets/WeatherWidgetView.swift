@@ -16,9 +16,7 @@ struct WeatherWidgetView: View {
                 placeholder
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .notchCard()
         .accessibilityElement(children: .combine)
     }
 
@@ -35,6 +33,8 @@ struct WeatherWidgetView: View {
                 Text("\(Int(s.temperature.rounded()))\(s.unit.suffix)")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+                    .animation(.snappy, value: s.temperature)
 
                 Text(s.conditionText)
                     .font(.caption)

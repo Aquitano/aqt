@@ -27,6 +27,8 @@ struct BatteryWidgetView: View {
                 Text("\(battery.percent)%")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+                    .animation(.snappy, value: battery.percent)
 
                 if let status = statusLine {
                     Text(status)
@@ -36,9 +38,7 @@ struct BatteryWidgetView: View {
                 }
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .notchCard()
         .accessibilityElement(children: .combine)
     }
 

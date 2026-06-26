@@ -14,6 +14,8 @@ struct ExpandedView: View {
     @Environment(\.notchGeometry) private var notchSize
     @Environment(\.openSettings) private var openSettings
 
+    @Namespace private var tabNamespace
+
     var body: some View {
         GlassEffectContainer(spacing: 10) {
             VStack(spacing: 12) {
@@ -35,28 +37,35 @@ struct ExpandedView: View {
     private var tabStrip: some View {
         HStack(spacing: 4) {
             ForEach(NotchState.ExpandedTab.allCases) { tab in
-                let selected = state.expandedTab == tab
-                Button {
-                    state.select(tab: tab)
-                } label: {
-                    Image(systemName: tab.symbol)
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(width: 36, height: 26)
-                        .foregroundStyle(selected ? Color.white : Color.white.opacity(0.55))
-                        .background {
-                            if selected {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(.white.opacity(0.18))
-                            }
-                        }
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(tab.rawValue.capitalized)
+                tabButton(tab)
             }
         }
         .padding(4)
         .glassEffect(.regular, in: .capsule)
+    }
+
+    private func tabButton(_ tab: NotchState.ExpandedTab) -> some View {
+        let selected = state.expandedTab == tab
+        return Button {
+            Haptics.tap(.levelChange)
+            state.select(tab: tab)
+        } label: {
+            Image(systemName: tab.symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 38, height: 28)
+                .foregroundStyle(selected ? Color.white : Color.white.opacity(0.5))
+                .background {
+                    // One shared pill that slides between tabs as the selection moves.
+                    if selected {
+                        RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                            .fill(.white.opacity(0.18))
+                            .matchedGeometryEffect(id: "tabSelection", in: tabNamespace)
+                    }
+                }
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(tab.rawValue.capitalized)
     }
 
     // MARK: - Body

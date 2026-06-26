@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import ServiceManagement
 
 /// Content of the standard Settings window. A grouped Form that binds directly
 /// to the shared `Settings` object; the login-item toggle additionally syncs the
@@ -25,25 +24,10 @@ struct SettingsView: View {
 
     private var generalSection: some View {
         Section("General") {
+            // The SMAppService registration is driven from the Settings model, so
+            // this toggle and the in-notch one stay in sync.
             Toggle("Launch at Login", isOn: $settings.launchAtLogin)
-                .onChange(of: settings.launchAtLogin) { _, enabled in
-                    syncLoginItem(enabled)
-                }
-
             Toggle("Haptic feedback", isOn: $settings.hapticFeedback)
-        }
-    }
-
-    private func syncLoginItem(_ enabled: Bool) {
-        do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-        } catch {
-            // Registration can fail if the user revoked the login item in System
-            // Settings; the stored preference still reflects intent.
         }
     }
 

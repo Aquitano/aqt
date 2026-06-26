@@ -42,7 +42,9 @@ struct NotchRootView: View {
             }
         }
         .onDrop(of: [.fileURL, .data], isTargeted: $dropTargeted) { providers in
-            tray.handleDrop(providers)
+            let accepted = tray.handleDrop(providers)
+            if accepted { Haptics.tap(.alignment) }
+            return accepted
         }
     }
 
