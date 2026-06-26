@@ -1,28 +1,26 @@
 import SwiftUI
 
-/// The expanded home surface, laid out as Notification-Center-style tiles: a
-/// narrow column of status tiles (battery / focus / bluetooth) beside a wider
-/// column of info panels (weather / calendar). Each tile owns its own glass
-/// chrome and fills its cell, so the grid only arranges them and gates the
-/// optional cells behind their settings / availability.
+/// The expanded home dashboard: a compact row of status tiles (battery / focus /
+/// bluetooth) above a wider row of info panels (weather / calendar). Each tile
+/// owns its own glass chrome and fills its cell, so this view only arranges them
+/// and gates the optional cells behind their settings / availability.
 struct WidgetGridView: View {
     @EnvironmentObject private var settings: Settings
     @EnvironmentObject private var bluetooth: BluetoothBatteryManager
     @EnvironmentObject private var focus: FocusManager
 
-    private var hasInfoColumn: Bool {
+    private var hasInfoRow: Bool {
         settings.showWeatherWidget || settings.showCalendarWidget
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            statusColumn
-                .frame(width: hasInfoColumn ? 150 : nil)
-                .frame(maxWidth: hasInfoColumn ? nil : .infinity, alignment: .leading)
+        VStack(spacing: 10) {
+            statusRow
+                .frame(height: 88)
 
-            if hasInfoColumn {
-                infoColumn
-                    .frame(maxWidth: .infinity)
+            if hasInfoRow {
+                infoRow
+                    .frame(maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -32,8 +30,8 @@ struct WidgetGridView: View {
         }
     }
 
-    private var statusColumn: some View {
-        VStack(spacing: 10) {
+    private var statusRow: some View {
+        HStack(spacing: 10) {
             BatteryWidgetView()
             FocusWidgetView()
             if !bluetooth.devices.isEmpty {
@@ -42,8 +40,8 @@ struct WidgetGridView: View {
         }
     }
 
-    private var infoColumn: some View {
-        VStack(spacing: 10) {
+    private var infoRow: some View {
+        HStack(spacing: 10) {
             if settings.showWeatherWidget {
                 WeatherWidgetView()
             }

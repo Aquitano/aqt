@@ -12,18 +12,21 @@ struct CalendarWidgetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            header
+            TileHeader(title: "Calendar", systemImage: "calendar")
 
             if calendar.authorization != .fullAccess {
                 accessPrompt
             } else if upcoming.isEmpty {
-                Text("No events")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Text("No upcoming events")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.5))
+                Spacer(minLength: 0)
             } else {
                 ForEach(upcoming) { event in
                     row(for: event)
                 }
+                Spacer(minLength: 0)
             }
         }
         .notchCard()
@@ -33,27 +36,26 @@ struct CalendarWidgetView: View {
         Array(calendar.events.prefix(maxEvents))
     }
 
-    // MARK: - Header
-
-    private var header: some View {
-        Label("Calendar", systemImage: "calendar")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .fixedSize()
-    }
-
     // MARK: - Access prompt
 
     private var accessPrompt: some View {
-        Button {
-            Task { await calendar.requestAccess() }
-        } label: {
-            Text("Enable Calendar")
-                .font(.caption.weight(.medium))
+        VStack(alignment: .leading, spacing: 8) {
+            Text("See your next events at a glance.")
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                Task { await calendar.requestAccess() }
+            } label: {
+                Text("Enable Calendar")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.small)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - Event row

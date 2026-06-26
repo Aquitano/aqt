@@ -8,7 +8,6 @@ struct ExpandedView: View {
     let namespace: Namespace.ID
 
     @EnvironmentObject private var state: NotchState
-    @EnvironmentObject private var activities: ActivityManager
     @EnvironmentObject private var settings: Settings
 
     @Environment(\.notchGeometry) private var notchSize
@@ -84,37 +83,53 @@ struct ExpandedView: View {
         }
     }
 
-    @ViewBuilder
     private var home: some View {
-        VStack(spacing: 10) {
-            WidgetGridView()
-
-            if let activity = activities.ordered.first {
-                ActivityCardView(activity: activity, namespace: namespace)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // The compact pill already surfaces transient activities, so home stays a
+        // clean, fixed-height dashboard.
+        WidgetGridView()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - Inline settings
 
     private var settingsPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Toggle("Show HUD", isOn: $settings.showHUD)
-            Toggle("Weather widget", isOn: $settings.showWeatherWidget)
-            Toggle("Calendar widget", isOn: $settings.showCalendarWidget)
-            Toggle("Launch at login", isOn: $settings.launchAtLogin)
+        VStack(spacing: 2) {
+            settingsToggle("Show HUD", $settings.showHUD)
+            settingsToggle("Weather widget", $settings.showWeatherWidget)
+            settingsToggle("Calendar widget", $settings.showCalendarWidget)
+            settingsToggle("Launch at login", $settings.launchAtLogin)
 
-            Button("Open Settings…") { openSettings() }
-                .buttonStyle(.plain)
-                .font(.callout.weight(.medium))
-                .foregroundStyle(.white.opacity(0.8))
-                .padding(.top, 2)
+            Divider()
+                .overlay(.white.opacity(0.12))
+                .padding(.vertical, 6)
+
+            Button {
+                openSettings()
+            } label: {
+                HStack(spacing: 8) {
+                    Text("All Settings…")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer(minLength: 0)
+                    Image(systemName: "arrow.up.forward")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .foregroundStyle(.white.opacity(0.85))
+                .frame(maxWidth: .infinity, minHeight: 30)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: 0)
         }
-        .toggleStyle(.switch)
-        .controlSize(.small)
-        .font(.callout)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private func settingsToggle(_ title: String, _ isOn: Binding<Bool>) -> some View {
+        SettingRow(title: title) {
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+        }
     }
 }

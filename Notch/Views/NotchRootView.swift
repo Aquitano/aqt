@@ -10,6 +10,7 @@ struct NotchRootView: View {
     @EnvironmentObject private var media: MediaManager
     @EnvironmentObject private var activities: ActivityManager
     @EnvironmentObject private var tray: TrayManager
+    @EnvironmentObject private var settings: Settings
 
     @Environment(\.notchGeometry) private var notchSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -90,8 +91,23 @@ struct NotchRootView: View {
                 height: notchSize.height + (hasContent ? 4 : 0)
             )
         case .expanded:
-            let base = state.expandedTab == .media ? NotchMetrics.expandedMediaSize : NotchMetrics.expandedSize
-            return CGSize(width: base.width, height: base.height + notchSize.height)
+            return CGSize(width: NotchMetrics.expandedWidth, height: expandedBodyHeight + notchSize.height)
+        }
+    }
+
+    /// Body height per tab so each surface is sized to its own content instead of
+    /// one fixed box that leaves settings empty and crowds the dashboard.
+    private var expandedBodyHeight: CGFloat {
+        switch state.expandedTab {
+        case .home:
+            let hasInfoRow = settings.showWeatherWidget || settings.showCalendarWidget
+            return hasInfoRow ? 300 : 165
+        case .media:
+            return 210
+        case .tray:
+            return tray.items.isEmpty ? 170 : 236
+        case .settings:
+            return 240
         }
     }
 

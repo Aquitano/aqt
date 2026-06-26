@@ -34,6 +34,7 @@ enum NotchMetrics {
     static let compactCornerRadius: CGFloat = 12
     static let expandedCornerRadius: CGFloat = 24
 
-    static let expandedSize = CGSize(width: 500, height: 290)
-    static let expandedMediaSize = CGSize(width: 500, height: 250)
+    /// The expanded panel keeps a constant width; height is chosen per tab (see
+    /// `NotchRootView.expandedBodyHeight`) so each surface fits its own content.
+    static let expandedWidth: CGFloat = 540
 }

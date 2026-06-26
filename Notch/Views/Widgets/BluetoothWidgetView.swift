@@ -25,9 +25,7 @@ struct BluetoothWidgetView: View {
     // MARK: - Header
 
     private var header: some View {
-        Label("Bluetooth", systemImage: "dot.radiowaves.right")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+        TileHeader(title: "Bluetooth", systemImage: "dot.radiowaves.right")
     }
 
     // MARK: - Device row

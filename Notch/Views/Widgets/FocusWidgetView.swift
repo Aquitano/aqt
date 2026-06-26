@@ -7,15 +7,15 @@ struct FocusWidgetView: View {
     @EnvironmentObject private var focus: FocusManager
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
             Image(systemName: focus.isOn ? "moon.fill" : "moon")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(focus.isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.white.opacity(0.7)))
 
-            Spacer(minLength: 6)
+            Spacer(minLength: 4)
 
             Text(focus.name ?? "Focus")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
 
