@@ -119,18 +119,35 @@ final class NotchWindowController {
             isDragSessionActive = false
             env.state.endDropTargeting()
         }
+        if env.state.activeDropZone != nil { env.state.activeDropZone = nil }
         updatePassthrough()
     }
 
     /// When a file drag reaches the notch's catch area, make the panel interactive
-    /// and open it straight to the tray so the file shelf is the visible drop
-    /// surface. It stays open until the drag ends (see `dragEnded`).
+    /// and open the two-field chooser. Tracks which field the pointer is over for
+    /// the highlight; the drop itself is routed by `dropZoneAtCursor()`.
     private func dragMoved() {
-        guard panel.isVisible, !isDragSessionActive else { return }
-        guard dragDropZone().contains(NSEvent.mouseLocation) else { return }
-        isDragSessionActive = true
-        panel.ignoresMouseEvents = false
-        env.state.beginDropTargeting()
+        guard panel.isVisible else { return }
+        let mouse = NSEvent.mouseLocation
+        if !isDragSessionActive {
+            guard dragDropZone().contains(mouse) else { return }
+            isDragSessionActive = true
+            panel.ignoresMouseEvents = false
+            env.state.beginDropTargeting()
+        }
+        let zone = dropZone(for: mouse)
+        if env.state.activeDropZone != zone { env.state.activeDropZone = zone }
+    }
+
+    /// The drop field under a screen point: left of the notch centre keeps, right
+    /// shares. Screen coordinates are reliable here; SwiftUI's drop location is not.
+    private func dropZone(for point: NSPoint) -> DropZone {
+        point.x >= geometry.panelFrame.midX ? .share : .keep
+    }
+
+    /// Field under the pointer right now, read at drop time by the drop delegate.
+    func dropZoneAtCursor() -> DropZone {
+        dropZone(for: NSEvent.mouseLocation)
     }
 
     private func dragEnded() {

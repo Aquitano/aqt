@@ -18,9 +18,6 @@ struct NotchRootView: View {
 
     @Namespace private var morph
 
-    /// Frames of the two drop fields in `notchDropSpace`, published by the chooser.
-    @State private var zoneFrames: [DropZone: CGRect] = [:]
-
     var body: some View {
         ZStack(alignment: .top) {
             Color.clear.allowsHitTesting(false)
@@ -36,20 +33,18 @@ struct NotchRootView: View {
                 .zIndex(2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .coordinateSpace(name: notchDropSpace)
-        .onPreferenceChange(DropZoneFrameKey.self) { zoneFrames = $0 }
         .onChange(of: reduceMotion, initial: true) { _, newValue in
             state.reduceMotion = newValue
         }
-        // A single drop surface routed by location. Nested onDrop regions don't
-        // resolve reliably (the outer one swallows the inner), so the two chooser
-        // fields are pure visuals and this delegate hit-tests the drop against their
-        // published frames. Kept always-present so the hosting view stays registered
+        // A single, always-present drop surface so the hosting view stays registered
         // for dragged types and the panel is a valid destination the moment the
-        // window controller turns it interactive.
+        // window controller turns it interactive. Nested per-field onDrop regions
+        // don't resolve reliably, and SwiftUI's drop location proved unreliable too,
+        // so the two chooser fields are pure visuals and the field is resolved from
+        // the live cursor position in screen space (see `dropZoneAtCursor`).
         .onDrop(of: [.fileURL, .data], delegate: NotchDropDelegate(
-            zoneFrames: zoneFrames,
             state: state,
+            resolveZone: { env.windowController?.dropZoneAtCursor() ?? .keep },
             onKeep: { tray.handleDrop($0) },
             onShare: { env.shareDrop($0) }
         ))
@@ -136,49 +131,36 @@ struct NotchRootView: View {
     }
 }
 
-/// Routes an inbound file drag to one of the two chooser fields by hit-testing the
-/// drop location against their published frames, defaulting to "keep" outside the
-/// share field. A single delegate avoids the unreliable resolution of nested
-/// `onDrop` regions.
+/// Always-present drop surface for the panel. The field (keep vs share) is decided
+/// by `resolveZone`, which reads the live cursor position in screen space — SwiftUI's
+/// `DropInfo.location` is unreliable inside this overlay.
 private struct NotchDropDelegate: DropDelegate {
-    let zoneFrames: [DropZone: CGRect]
     let state: NotchState
+    let resolveZone: () -> DropZone
     let onKeep: ([NSItemProvider]) -> Bool
     let onShare: ([NSItemProvider]) -> Bool
-
-    private func zone(at location: CGPoint) -> DropZone {
-        if let share = zoneFrames[.share], share.contains(location) { return .share }
-        return .keep
-    }
 
     func validateDrop(info: DropInfo) -> Bool {
         info.hasItemsConforming(to: [.fileURL, .data])
     }
 
     func dropEntered(info: DropInfo) {
+        // Backup: the window controller normally opens the chooser first.
         state.beginDropTargeting()
-        state.activeDropZone = zone(at: info.location)
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        state.activeDropZone = zone(at: info.location)
-        return DropProposal(operation: .copy)
-    }
-
-    func dropExited(info: DropInfo) {
-        state.activeDropZone = nil
+        DropProposal(operation: .copy)
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        // Route to the field the pointer was last over (what the user saw
-        // highlighted) rather than a fresh hit-test: by drop time the controller may
-        // have torn the chooser down on mouse-up, leaving the published frames stale.
-        let target = state.activeDropZone ?? zone(at: info.location)
+        let target = resolveZone()
         let providers = info.itemProviders(for: [.fileURL, .data])
         state.activeDropZone = nil
         state.isDropActive = false
         let accepted = target == .share ? onShare(providers) : onKeep(providers)
         if accepted { Haptics.tap(.alignment) }
+        Log.tray.notice("drop routed to \(target == .share ? "share" : "keep")")
         return accepted
     }
 }
