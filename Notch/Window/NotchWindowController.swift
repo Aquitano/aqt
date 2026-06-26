@@ -26,6 +26,11 @@ final class NotchWindowController {
         self.hostingView = NSHostingView(rootView: AnyView(root))
         hostingView.frame = NSRect(origin: .zero, size: geometry.panelFrame.size)
         hostingView.autoresizingMask = [.width, .height]
+        // The panel frame is driven entirely by ScreenGeometry; if the hosting
+        // view also propagated SwiftUI's sizing into AppKit it would re-enter
+        // layout mid-pass (the "layoutSubtreeIfNeeded while already laying out"
+        // warning) as the compact/expanded morph changes size.
+        hostingView.sizingOptions = []
         // Let the SwiftUI layer be the only thing that ever paints.
         panel.contentView = hostingView
 

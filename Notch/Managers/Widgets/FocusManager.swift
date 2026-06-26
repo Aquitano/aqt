@@ -33,6 +33,10 @@ final class FocusManager: ObservableObject {
     }
 
     func refresh() {
+        // Reading focusStatus without authorization spins up a DND XPC connection
+        // that immediately fails ("Communication Notifications entitlement"), so
+        // skip the query entirely until the user has granted Focus access.
+        guard authorized else { return }
         let focused = INFocusStatusCenter.default.focusStatus.isFocused ?? false
         guard focused != isOn else { return }
         isOn = focused
