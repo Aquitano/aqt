@@ -1,0 +1,46 @@
+import SwiftUI
+
+// MARK: - Notch geometry through the environment
+
+private struct NotchGeometryKey: EnvironmentKey {
+    static let defaultValue: CGSize = NotchMetrics.fallbackNotchSize
+}
+
+extension EnvironmentValues {
+    /// The physical notch size, injected by the window controller.
+    var notchGeometry: CGSize {
+        get { self[NotchGeometryKey.self] }
+        set { self[NotchGeometryKey.self] = newValue }
+    }
+}
+
+// MARK: - Color helpers
+
+extension Color {
+    /// Parse "#RRGGBB" / "RRGGBB" (EventKit calendar colors come through as hex).
+    init?(hex: String) {
+        var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let value = UInt32(s, radix: 16) else { return nil }
+        self.init(
+            .sRGB,
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255,
+            opacity: 1
+        )
+    }
+}
+
+// MARK: - Time formatting
+
+extension TimeInterval {
+    /// "3:07" style clock string; "0:00" for non-finite or negative values.
+    var clockString: String {
+        guard isFinite, self >= 0 else { return "0:00" }
+        let total = Int(self.rounded())
+        let minutes = total / 60
+        let seconds = total % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}

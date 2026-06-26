@@ -1,0 +1,170 @@
+import CoreLocation
+import Combine
+
+/// Weather from Open-Meteo (no key, no account). Location via CoreLocation;
+/// fetched on location update and when the unit preference changes.
+@MainActor
+final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+
+    @Published private(set) var snapshot: WeatherSnapshot?
+    @Published private(set) var authorization: CLAuthorizationStatus = .notDetermined
+
+    private let settings: Settings
+    private let manager = CLLocationManager()
+    private let session = URLSession(configuration: .default)
+    private var lastLocation: CLLocation?
+    private var cancellables = Set<AnyCancellable>()
+
+    init(settings: Settings) {
+        self.settings = settings
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyKilometer
+    }
+
+    func start() {
+        authorization = manager.authorizationStatus
+        manager.requestWhenInUseAuthorization()
+        manager.requestLocation()
+
+        settings.$temperatureUnit
+            .dropFirst()
+            .sink { [weak self] _ in
+                guard let self, let location = self.lastLocation else { return }
+                Task { await self.fetch(for: location) }
+            }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - CLLocationManagerDelegate
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        authorization = manager.authorizationStatus
+        if authorization == .authorizedAlways {
+            manager.requestLocation()
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        lastLocation = location
+        Task { await fetch(for: location) }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        Log.widgets.error("Location error: \(error.localizedDescription)")
+    }
+
+    // MARK: - Fetch
+
+    private func fetch(for location: CLLocation) async {
+        let unit = settings.temperatureUnit
+        var components = URLComponents(string: "https://api.open-meteo.com/v1/forecast")!
+        components.queryItems = [
+            .init(name: "latitude", value: String(location.coordinate.latitude)),
+            .init(name: "longitude", value: String(location.coordinate.longitude)),
+            .init(name: "current", value: "temperature_2m,apparent_temperature,weather_code,is_day"),
+            .init(name: "daily", value: "weather_code,temperature_2m_max,temperature_2m_min"),
+            .init(name: "timezone", value: "auto"),
+            .init(name: "forecast_days", value: "5"),
+            .init(name: "temperature_unit", value: unit == .celsius ? "celsius" : "fahrenheit"),
+        ]
+        guard let url = components.url else { return }
+
+        do {
+            let (data, _) = try await session.data(from: url)
+            let response = try JSONDecoder().decode(OpenMeteoResponse.self, from: data)
+            let placemark = try? await CLGeocoder().reverseGeocodeLocation(location).first
+            apply(response, unit: unit, placeName: placemark?.locality)
+        } catch {
+            Log.widgets.error("Weather fetch failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func apply(_ response: OpenMeteoResponse, unit: WeatherSnapshot.TemperatureUnit, placeName: String?) {
+        let isDay = response.current.is_day == 1
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateFormat = "yyyy-MM-dd"
+
+        let days: [WeatherDay] = zip(response.daily.time.indices, response.daily.time).compactMap { index, dateString in
+            guard let date = dayFormatter.date(from: dateString) else { return nil }
+            let code = response.daily.weather_code[index]
+            return WeatherDay(
+                date: date,
+                high: response.daily.temperature_2m_max[index],
+                low: response.daily.temperature_2m_min[index],
+                weatherCode: code,
+                symbolName: WMO.symbol(for: code, isDay: true)
+            )
+        }
+
+        snapshot = WeatherSnapshot(
+            temperature: response.current.temperature_2m,
+            apparentTemperature: response.current.apparent_temperature,
+            weatherCode: response.current.weather_code,
+            isDay: isDay,
+            symbolName: WMO.symbol(for: response.current.weather_code, isDay: isDay),
+            conditionText: WMO.text(for: response.current.weather_code),
+            locationName: placeName,
+            unit: unit,
+            daily: days
+        )
+    }
+}
+
+private struct OpenMeteoResponse: Decodable {
+    let current: Current
+    let daily: Daily
+
+    struct Current: Decodable {
+        let temperature_2m: Double
+        let apparent_temperature: Double?
+        let weather_code: Int
+        let is_day: Int
+    }
+    struct Daily: Decodable {
+        let time: [String]
+        let weather_code: [Int]
+        let temperature_2m_max: [Double]
+        let temperature_2m_min: [Double]
+    }
+}
+
+/// WMO weather-code → our own SF Symbols + text (no Apple condition enum).
+enum WMO {
+    static func symbol(for code: Int, isDay: Bool) -> String {
+        switch code {
+        case 0: return isDay ? "sun.max.fill" : "moon.stars.fill"
+        case 1, 2: return isDay ? "cloud.sun.fill" : "cloud.moon.fill"
+        case 3: return "cloud.fill"
+        case 45, 48: return "cloud.fog.fill"
+        case 51, 53, 55, 56, 57: return "cloud.drizzle.fill"
+        case 61, 63, 65, 66, 67: return "cloud.rain.fill"
+        case 71, 73, 75, 77: return "cloud.snow.fill"
+        case 80, 81, 82: return "cloud.heavyrain.fill"
+        case 85, 86: return "cloud.snow.fill"
+        case 95: return "cloud.bolt.fill"
+        case 96, 99: return "cloud.bolt.rain.fill"
+        default: return "cloud.fill"
+        }
+    }
+
+    static func text(for code: Int) -> String {
+        switch code {
+        case 0: return "Clear"
+        case 1, 2: return "Partly cloudy"
+        case 3: return "Overcast"
+        case 45, 48: return "Fog"
+        case 51, 53, 55: return "Drizzle"
+        case 56, 57: return "Freezing drizzle"
+        case 61, 63, 65: return "Rain"
+        case 66, 67: return "Freezing rain"
+        case 71, 73, 75, 77: return "Snow"
+        case 80, 81, 82: return "Rain showers"
+        case 85, 86: return "Snow showers"
+        case 95: return "Thunderstorm"
+        case 96, 99: return "Thunderstorm, hail"
+        default: return "—"
+        }
+    }
+}

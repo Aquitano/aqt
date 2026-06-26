@@ -1,0 +1,21 @@
+# Xcode / build
+build/
+DerivedData/
+*.xcodeproj
+*.xcworkspace
+!default.xcworkspace
+xcuserdata/
+*.xcuserstate
+.DS_Store
+
+# XcodeGen output is regenerated; keep project.yml, ignore the project
+# (delete the line below if you prefer to check in the generated .xcodeproj)
+
+# SwiftPM
+.build/
+.swiftpm/
+
+# Signing / local
+*.p12
+*.provisionprofile
+ExportOptions.plist
