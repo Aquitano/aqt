@@ -30,6 +30,11 @@ final class NotchState: ObservableObject {
     @Published var isHovering: Bool = false
     @Published var expandedTab: ExpandedTab = .home
 
+    /// True while a file drag is hovering the notch. Pins the panel open on the
+    /// tray and suppresses the hover-out collapse so a flickering hover can't pull
+    /// the drop target out from under the drag.
+    @Published var isDropActive: Bool = false
+
     /// Mirrors `accessibilityReduceMotion`; the root view keeps it in sync so the
     /// transition helpers (which run outside the SwiftUI environment) can react.
     @Published var reduceMotion: Bool = false
@@ -63,8 +68,23 @@ final class NotchState: ObservableObject {
         }
     }
 
+    /// A file drag entered the notch: open straight to the tray (the file shelf)
+    /// and hold it there for the duration of the drag. SwiftUI's drop targeting is
+    /// unreliable when the panel only turns interactive partway through the drag
+    /// session, so the window controller drives this directly.
+    func beginDropTargeting() {
+        isDropActive = true
+        expand()
+        select(tab: .tray)
+    }
+
+    func endDropTargeting() {
+        isDropActive = false
+    }
+
     /// Collapse to the compact pill when there is something to show, otherwise hide.
     func collapse(hasCompactContent: Bool = true) {
+        guard !isDropActive else { return }
         collapseTask?.cancel()
         collapseTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(160))

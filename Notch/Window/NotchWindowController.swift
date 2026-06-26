@@ -115,33 +115,31 @@ final class NotchWindowController {
     /// A real pointer move cannot happen mid drag-session, so any drag state is
     /// stale by the time one arrives — clear it before restoring passthrough.
     private func pointerMoved() {
-        isDragSessionActive = false
+        if isDragSessionActive {
+            isDragSessionActive = false
+            env.state.endDropTargeting()
+        }
         updatePassthrough()
     }
 
-    /// While a file drag hovers the notch's catch area, make the panel interactive
-    /// so the drop registers. Once the notch commits to expanding it stays
-    /// interactive (the `.expanded` case below); if the drag leaves first, restore
-    /// click-through so other drop targets underneath aren't blocked.
+    /// When a file drag reaches the notch's catch area, make the panel interactive
+    /// and open it straight to the tray so the file shelf is the visible drop
+    /// surface. It stays open until the drag ends (see `dragEnded`).
     private func dragMoved() {
-        guard panel.isVisible else { return }
-        if dragDropZone().contains(NSEvent.mouseLocation) {
-            guard !isDragSessionActive else { return }
-            isDragSessionActive = true
-            panel.ignoresMouseEvents = false
-        } else if isDragSessionActive, env.state.presentation != .expanded {
-            isDragSessionActive = false
-            updatePassthrough()
-        }
+        guard panel.isVisible, !isDragSessionActive else { return }
+        guard dragDropZone().contains(NSEvent.mouseLocation) else { return }
+        isDragSessionActive = true
+        panel.ignoresMouseEvents = false
+        env.state.beginDropTargeting()
     }
 
     private func dragEnded() {
         guard isDragSessionActive else { return }
         isDragSessionActive = false
-        // A drag that only flew over the notch (dropped elsewhere) leaves it
-        // expanded with no hover to close it; collapse unless the drop landed here.
-        if env.state.presentation == .expanded,
-           !interactiveContentRect().contains(NSEvent.mouseLocation) {
+        env.state.endDropTargeting()
+        // A drag that only flew over the notch (dropped elsewhere) leaves it open
+        // on the tray; collapse unless the drop landed on the panel itself.
+        if !interactiveContentRect().contains(NSEvent.mouseLocation) {
             env.state.collapse(hasCompactContent: true)
         }
         updatePassthrough()
