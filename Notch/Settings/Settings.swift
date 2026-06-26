@@ -18,6 +18,7 @@ final class Settings: ObservableObject {
         static let trayTTLDays = "trayTTLDays"
         static let showWeatherWidget = "showWeatherWidget"
         static let showCalendarWidget = "showCalendarWidget"
+        static let shareMethod = "shareMethod"
     }
 
     @Published var showHUD: Bool { didSet { defaults.set(showHUD, forKey: Key.showHUD) } }
@@ -35,6 +36,7 @@ final class Settings: ObservableObject {
     @Published var trayTTLDays: Int { didSet { defaults.set(trayTTLDays, forKey: Key.trayTTLDays) } }
     @Published var showWeatherWidget: Bool { didSet { defaults.set(showWeatherWidget, forKey: Key.showWeatherWidget) } }
     @Published var showCalendarWidget: Bool { didSet { defaults.set(showCalendarWidget, forKey: Key.showCalendarWidget) } }
+    @Published var shareMethod: ShareMethod { didSet { defaults.set(shareMethod.rawValue, forKey: Key.shareMethod) } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -47,6 +49,7 @@ final class Settings: ObservableObject {
             Key.trayTTLDays: 7,
             Key.showWeatherWidget: true,
             Key.showCalendarWidget: true,
+            Key.shareMethod: ShareMethod.airdrop.rawValue,
         ])
         self.showHUD = defaults.bool(forKey: Key.showHUD)
         self.temperatureUnit = WeatherSnapshot.TemperatureUnit(
@@ -61,5 +64,6 @@ final class Settings: ObservableObject {
         self.trayTTLDays = defaults.integer(forKey: Key.trayTTLDays)
         self.showWeatherWidget = defaults.bool(forKey: Key.showWeatherWidget)
         self.showCalendarWidget = defaults.bool(forKey: Key.showCalendarWidget)
+        self.shareMethod = ShareMethod(rawValue: defaults.string(forKey: Key.shareMethod) ?? "airdrop") ?? .airdrop
     }
 }

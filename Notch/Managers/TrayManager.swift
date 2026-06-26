@@ -12,6 +12,8 @@ final class TrayManager: ObservableObject {
     @Published private(set) var items: [DropItem] = []
 
     let storageRoot: URL
+    /// Temp copies for share-on-drop, kept out of the shelf and wiped each launch.
+    let shareStagingRoot: URL
     private let persistence: Persistence
     private let imageCache: ImageCache
     private let settings: Settings
@@ -22,11 +24,13 @@ final class TrayManager: ObservableObject {
         self.imageCache = imageCache
         self.settings = settings
         self.storageRoot = persistence.directory(named: "CopiedItems")
+        self.shareStagingRoot = persistence.directory(named: "ShareStaging")
         self.items = persistence.load([DropItem].self, from: storeFile) ?? []
     }
 
     func start() {
         pruneExpired()
+        clearStaging()
     }
 
     // MARK: - Inbound
@@ -59,6 +63,36 @@ final class TrayManager: ObservableObject {
     private func add(_ item: DropItem) {
         items.insert(item, at: 0)
         persist()
+    }
+
+    /// Copy dropped files into the staging dir for an immediate share (the drop
+    /// URLs are gone once the handler returns) without adding them to the shelf.
+    /// `completion` runs on the main actor with the staged copies.
+    func stageForShare(_ providers: [NSItemProvider], completion: @escaping @MainActor ([URL]) -> Void) {
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var staged: [URL] = []
+
+        for provider in providers {
+            let typeIdentifier = provider.registeredTypeIdentifiers.first(where: {
+                UTType($0)?.conforms(to: .data) ?? false
+            }) ?? UTType.data.identifier
+
+            group.enter()
+            provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { [root = shareStagingRoot] url, error in
+                defer { group.leave() }
+                guard let url else {
+                    if let error { Log.tray.error("Share staging failed: \(error.localizedDescription)") }
+                    return
+                }
+                guard let dest = Self.stageCopy(url, root: root) else { return }
+                lock.lock(); staged.append(dest); lock.unlock()
+            }
+        }
+
+        group.notify(queue: .main) {
+            MainActor.assumeIsolated { completion(staged) }
+        }
     }
 
     // MARK: - Mutation
@@ -107,6 +141,13 @@ final class TrayManager: ObservableObject {
         for item in expired { remove(item) }
     }
 
+    /// Staged share copies are transient; clear any left over from a prior run.
+    private func clearStaging() {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(at: shareStagingRoot, includingPropertiesForKeys: nil) else { return }
+        for entry in entries { try? fm.removeItem(at: entry) }
+    }
+
     // MARK: - Off-main file work
 
     private static func copyIntoStorage(_ source: URL, root: URL, typeIdentifier: String) -> DropItem? {
@@ -128,6 +169,19 @@ final class TrayManager: ObservableObject {
             )
         } catch {
             Log.tray.error("Copy into storage failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private static func stageCopy(_ source: URL, root: URL) -> URL? {
+        let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let destination = folder.appendingPathComponent(source.lastPathComponent)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: source, to: destination)
+            return destination
+        } catch {
+            Log.tray.error("Share staging copy failed: \(error.localizedDescription)")
             return nil
         }
     }

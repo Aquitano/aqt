@@ -56,6 +56,42 @@ struct BluetoothDevice: Identifiable, Equatable {
     var isConnected: Bool
 }
 
+/// How the tray's share zone hands a dropped file off. AirDrop uses the native
+/// share sheet; Blip is matched by name among the system sharing services.
+enum ShareMethod: String, CaseIterable, Identifiable, Codable {
+    case airdrop
+    case blip
+
+    var id: String { rawValue }
+
+    /// Name shown in Settings.
+    var title: String {
+        switch self {
+        case .airdrop: return "AirDrop"
+        case .blip: return "Blip"
+        }
+    }
+
+    /// Label on the drop zone.
+    var actionTitle: String {
+        switch self {
+        case .airdrop: return "AirDrop"
+        case .blip: return "Send with Blip"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .airdrop: return "airdrop"
+        case .blip: return "paperplane.fill"
+        }
+    }
+
+    /// Substring used to locate the service in `NSSharingService.sharingServices`.
+    /// AirDrop has a named constant and skips this.
+    var serviceMatch: String { "blip" }
+}
+
 /// What a HUD overlay is currently reporting.
 enum HUDKind: Equatable {
     case volume

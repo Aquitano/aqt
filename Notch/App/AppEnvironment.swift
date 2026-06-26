@@ -77,11 +77,28 @@ final class AppEnvironment: ObservableObject {
     /// Open the AirDrop sheet pre-loaded with the given tray items, anchored to
     /// the (temporarily key) overlay panel.
     func airDrop(_ items: [DropItem]) {
-        let urls = items.map { $0.url(relativeTo: tray.storageRoot) }
+        share(urls: items.map { $0.url(relativeTo: tray.storageRoot) }, via: .airdrop)
+    }
+
+    /// Share freshly dropped files via the user's configured method. The drop
+    /// URLs die when the handler returns, so the bytes are copied into a temp
+    /// staging dir first, then the service is presented anchored to the panel.
+    @discardableResult
+    func shareDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard !providers.isEmpty else { return false }
+        let method = settings.shareMethod
+        tray.stageForShare(providers) { [weak self] urls in
+            self?.share(urls: urls, via: method)
+        }
+        return true
+    }
+
+    /// Present a sharing service for `urls`, anchored to the (temporarily key)
+    /// overlay panel so the device/share picker has a window to attach to.
+    func share(urls: [URL], via method: ShareMethod) {
         guard !urls.isEmpty else { return }
-        guard let service = NSSharingService(named: .sendViaAirDrop),
-              service.canPerform(withItems: urls) else {
-            Log.tray.error("AirDrop unavailable for selection")
+        guard let service = sharingService(for: method, items: urls) else {
+            Log.tray.error("Share unavailable via \(method.rawValue)")
             return
         }
 
@@ -95,6 +112,20 @@ final class AppEnvironment: ObservableObject {
 
         windowController?.beginShareSheet {
             service.perform(withItems: urls)
+        }
+    }
+
+    private func sharingService(for method: ShareMethod, items: [URL]) -> NSSharingService? {
+        switch method {
+        case .airdrop:
+            let service = NSSharingService(named: .sendViaAirDrop)
+            return (service?.canPerform(withItems: items) ?? false) ? service : nil
+        case .blip:
+            // No named constant for third-party services; match the one the system
+            // offers for these items by title.
+            return NSSharingService.sharingServices(forItems: items).first {
+                $0.title.localizedCaseInsensitiveContains(method.serviceMatch)
+            }
         }
     }
 }

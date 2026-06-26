@@ -36,11 +36,13 @@ struct NotchRootView: View {
         .onChange(of: reduceMotion, initial: true) { _, newValue in
             state.reduceMotion = newValue
         }
+        // Targeting is driven by the window controller's drag detection, but mirror
+        // it here too: this keeps the hosting view registered for dragged types so
+        // the panel is a valid drop destination the instant it turns interactive.
+        // The drop chooser's two zones sit on top and take precedence; this handler
+        // only catches drops that miss them, defaulting to "keep on the shelf".
         .onChange(of: dropTargeted) { _, targeted in
-            if targeted {
-                state.expand()
-                state.select(tab: .tray)
-            }
+            if targeted { state.beginDropTargeting() }
         }
         .onDrop(of: [.fileURL, .data], isTargeted: $dropTargeted) { providers in
             let accepted = tray.handleDrop(providers)
@@ -101,7 +103,8 @@ struct NotchRootView: View {
             tab: state.expandedTab,
             hasInfoRow: settings.showWeatherWidget || settings.showCalendarWidget,
             trayEmpty: tray.items.isEmpty,
-            compact: compactContent
+            compact: compactContent,
+            dropActive: state.isDropActive
         )
     }
 
@@ -112,7 +115,8 @@ struct NotchRootView: View {
             tab: state.expandedTab,
             hasInfoRow: settings.showWeatherWidget || settings.showCalendarWidget,
             trayEmpty: tray.items.isEmpty,
-            compact: .media
+            compact: .media,
+            dropActive: state.isDropActive
         )
     }
 

@@ -95,12 +95,17 @@ enum NotchLayout {
         }
     }
 
+    /// Body height while a file drag is showing the two-zone drop chooser, so the
+    /// store/share fields get a stable, comfortable size regardless of the tray.
+    static let dropChooserHeight: CGFloat = 188
+
     static func contentSize(presentation: NotchState.Presentation,
                             notch: CGSize,
                             tab: NotchState.ExpandedTab,
                             hasInfoRow: Bool,
                             trayEmpty: Bool,
-                            compact: CompactContent) -> CGSize {
+                            compact: CompactContent,
+                            dropActive: Bool = false) -> CGSize {
         switch presentation {
         case .hidden:
             return notch
@@ -108,7 +113,9 @@ enum NotchLayout {
             return CGSize(width: notch.width + compactExtraWidth(compact),
                           height: notch.height + (compact == .none ? 0 : 4))
         case .expanded:
-            let body = expandedBodyHeight(tab: tab, hasInfoRow: hasInfoRow, trayEmpty: trayEmpty)
+            let body = dropActive
+                ? dropChooserHeight
+                : expandedBodyHeight(tab: tab, hasInfoRow: hasInfoRow, trayEmpty: trayEmpty)
             return CGSize(width: NotchMetrics.expandedWidth, height: body + notch.height)
         }
     }

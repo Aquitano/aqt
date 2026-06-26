@@ -195,7 +195,8 @@ final class NotchWindowController {
             compact: NotchLayout.compactContent(
                 hasMedia: !env.media.track.isEmpty,
                 activityLabel: env.activities.compactActivity?.compactLabel
-            )
+            ),
+            dropActive: env.state.isDropActive
         )
         return NSRect(
             x: geometry.panelFrame.midX - size.width / 2,

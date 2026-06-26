@@ -14,6 +14,7 @@ struct SettingsView: View {
             hudSection
             widgetsSection
             traySection
+            sharingSection
             permissionsSection
         }
         .formStyle(.grouped)
@@ -75,6 +76,24 @@ struct SettingsView: View {
                 value: $settings.trayTTLDays,
                 in: 1...90
             )
+        }
+    }
+
+    // MARK: - Sharing
+
+    private var sharingSection: some View {
+        Section {
+            Picker("Share files with", selection: $settings.shareMethod) {
+                ForEach(ShareMethod.allCases) { method in
+                    Text(method.title).tag(method)
+                }
+            }
+        } header: {
+            Text("Sharing")
+        } footer: {
+            Text("Used when you drop a file on the notch's share zone. Blip must be installed and offer a macOS share option.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

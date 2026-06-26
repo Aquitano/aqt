@@ -18,7 +18,7 @@ struct ExpandedView: View {
     var body: some View {
         GlassEffectContainer(spacing: 10) {
             VStack(spacing: 12) {
-                tabStrip
+                if !state.isDropActive { tabStrip }
                 content
             }
             // The blob insets its own left/right edges by the notch corner radius,
@@ -78,15 +78,19 @@ struct ExpandedView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch state.expandedTab {
-        case .home:
-            home
-        case .media:
-            MediaPlayerView(namespace: namespace)
-        case .tray:
-            TrayView()
-        case .settings:
-            settingsPanel
+        if state.isDropActive {
+            DropChooserView()
+        } else {
+            switch state.expandedTab {
+            case .home:
+                home
+            case .media:
+                MediaPlayerView(namespace: namespace)
+            case .tray:
+                TrayView()
+            case .settings:
+                settingsPanel
+            }
         }
     }
 
