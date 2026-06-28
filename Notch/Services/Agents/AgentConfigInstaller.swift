@@ -52,12 +52,17 @@ struct AgentConfigInstaller {
         """
         #!/bin/sh
         # notch agent hook launcher (auto-generated, do not edit)
+        # Prefer the lightweight bundled tool; fall back to the app's --agent-hook.
+        run() {
+          app="$1"; shift
+          [ -x "$app/Contents/Resources/notch-hook" ] && exec "$app/Contents/Resources/notch-hook" "$@"
+          [ -x "$app/Contents/MacOS/Notch" ] && exec "$app/Contents/MacOS/Notch" --agent-hook "$@"
+        }
         C="$HOME/.notch/bin/.app-path"
-        [ -f "$C" ] && read -r P < "$C" && [ -x "$P/Contents/MacOS/Notch" ] && exec "$P/Contents/MacOS/Notch" --agent-hook "$@"
-        B="/Applications/Notch.app/Contents/MacOS/Notch"
-        [ -x "$B" ] && exec "$B" --agent-hook "$@"
+        [ -f "$C" ] && read -r P < "$C" && run "$P" "$@"
+        run "/Applications/Notch.app" "$@"
         P="$(/usr/bin/mdfind 'kMDItemCFBundleIdentifier == "com.aquitano.notch"' 2>/dev/null | /usr/bin/head -1)"
-        [ -x "$P/Contents/MacOS/Notch" ] && { printf '%s' "$P" > "$C"; exec "$P/Contents/MacOS/Notch" --agent-hook "$@"; }
+        [ -n "$P" ] && { printf '%s' "$P" > "$C"; run "$P" "$@"; }
         exit 0
         """
     }

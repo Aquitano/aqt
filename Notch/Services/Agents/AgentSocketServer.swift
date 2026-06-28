@@ -11,9 +11,7 @@ import Foundation
 /// polling. Technique reference: devmegablaster/Notch-Pilot (MIT).
 final class AgentSocketServer: @unchecked Sendable {
 
-    static let socketURL: URL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".notch", isDirectory: true)
-        .appendingPathComponent("agents.sock")
+    static var socketURL: URL { AgentSocket.url }
 
     private let queue = DispatchQueue(label: "com.aquitano.notch.agentsocket")
     /// Per-client reads run here so one slow/hung peer can't stall accepting or
