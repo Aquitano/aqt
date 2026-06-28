@@ -24,12 +24,12 @@ final class AgentNotifier {
         switch event.kind {
         case .started:
             guard settings.agentNotifyStarted else { return }
-            emit(event, suffix: "started", sound: nil,
+            emit(event, suffix: "started", sound: settings.agentSoundStarted,
                  title: "\(agent) started", message: event.session.project,
                  symbol: event.session.kind.symbol, tint: .neutral)
         case .needsAttention:
             guard settings.agentNotifyAttention else { return }
-            emit(event, suffix: "attention", sound: "Ping",
+            emit(event, suffix: "attention", sound: settings.agentSoundAttention,
                  title: "\(agent) needs you", message: event.message ?? event.session.project,
                  symbol: "exclamationmark.bubble.fill", tint: .warning)
             if settings.agentAutoExpandOnAttention {
@@ -37,7 +37,7 @@ final class AgentNotifier {
             }
         case .finished:
             guard settings.agentNotifyFinished else { return }
-            emit(event, suffix: "finished", sound: "Glass",
+            emit(event, suffix: "finished", sound: settings.agentSoundFinished,
                  title: "\(agent) finished", message: event.session.project,
                  symbol: "checkmark.circle.fill", tint: .success)
         case .statusChanged, .ended:
@@ -45,7 +45,19 @@ final class AgentNotifier {
         }
     }
 
-    private func emit(_ event: AgentEvent, suffix: String, sound: String?,
+    /// macOS system sounds available for the per-event sound pack.
+    static let availableSounds = [
+        "Basso", "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero",
+        "Morse", "Ping", "Pop", "Purr", "Sosumi", "Submarine", "Tink",
+    ]
+
+    /// Play a named system sound for preview (Settings).
+    static func preview(_ name: String) {
+        guard !name.isEmpty else { return }
+        NSSound(named: name)?.play()
+    }
+
+    private func emit(_ event: AgentEvent, suffix: String, sound: String,
                       title: String, message: String, symbol: String, tint: Activity.PeekTint) {
         let key = "\(event.session.id).\(suffix)"
         let now = Date()
@@ -56,7 +68,7 @@ final class AgentNotifier {
 
         activities.peek(title: title, message: message, symbol: symbol, tint: tint, ttl: 5)
 
-        if settings.agentNotifySound, let sound { NSSound(named: sound)?.play() }
+        if settings.agentNotifySound, !sound.isEmpty { NSSound(named: sound)?.play() }
         if settings.agentSystemNotifications { postSystemNotification(title: title, body: message) }
     }
 

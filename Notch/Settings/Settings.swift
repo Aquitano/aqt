@@ -30,6 +30,9 @@ final class Settings: ObservableObject {
         static let agentAutoExpandOnAttention = "agentAutoExpandOnAttention"
         static let agentSystemNotifications = "agentSystemNotifications"
         static let agentNotifySound = "agentNotifySound"
+        static let agentSoundStarted = "agentSoundStarted"
+        static let agentSoundAttention = "agentSoundAttention"
+        static let agentSoundFinished = "agentSoundFinished"
     }
 
     @Published var showHUD: Bool { didSet { defaults.set(showHUD, forKey: Key.showHUD) } }
@@ -59,6 +62,9 @@ final class Settings: ObservableObject {
     @Published var agentAutoExpandOnAttention: Bool { didSet { defaults.set(agentAutoExpandOnAttention, forKey: Key.agentAutoExpandOnAttention) } }
     @Published var agentSystemNotifications: Bool { didSet { defaults.set(agentSystemNotifications, forKey: Key.agentSystemNotifications) } }
     @Published var agentNotifySound: Bool { didSet { defaults.set(agentNotifySound, forKey: Key.agentNotifySound) } }
+    @Published var agentSoundStarted: String { didSet { defaults.set(agentSoundStarted, forKey: Key.agentSoundStarted) } }
+    @Published var agentSoundAttention: String { didSet { defaults.set(agentSoundAttention, forKey: Key.agentSoundAttention) } }
+    @Published var agentSoundFinished: String { didSet { defaults.set(agentSoundFinished, forKey: Key.agentSoundFinished) } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -83,6 +89,9 @@ final class Settings: ObservableObject {
             Key.agentAutoExpandOnAttention: false,
             Key.agentSystemNotifications: false,
             Key.agentNotifySound: false,
+            Key.agentSoundStarted: "",
+            Key.agentSoundAttention: "Ping",
+            Key.agentSoundFinished: "Glass",
         ])
         self.showHUD = defaults.bool(forKey: Key.showHUD)
         self.temperatureUnit = WeatherSnapshot.TemperatureUnit(
@@ -109,5 +118,8 @@ final class Settings: ObservableObject {
         self.agentAutoExpandOnAttention = defaults.bool(forKey: Key.agentAutoExpandOnAttention)
         self.agentSystemNotifications = defaults.bool(forKey: Key.agentSystemNotifications)
         self.agentNotifySound = defaults.bool(forKey: Key.agentNotifySound)
+        self.agentSoundStarted = defaults.string(forKey: Key.agentSoundStarted) ?? ""
+        self.agentSoundAttention = defaults.string(forKey: Key.agentSoundAttention) ?? "Ping"
+        self.agentSoundFinished = defaults.string(forKey: Key.agentSoundFinished) ?? "Glass"
     }
 }

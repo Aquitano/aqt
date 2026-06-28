@@ -45,6 +45,11 @@ struct SettingsView: View {
                 Toggle("Auto-expand on needs-you", isOn: $settings.agentAutoExpandOnAttention)
                 Toggle("System notifications", isOn: $settings.agentSystemNotifications)
                 Toggle("Play a sound", isOn: $settings.agentNotifySound)
+                if settings.agentNotifySound {
+                    soundPicker("Needs-you sound", $settings.agentSoundAttention)
+                    soundPicker("Finished sound", $settings.agentSoundFinished)
+                    soundPicker("Started sound", $settings.agentSoundStarted)
+                }
             }
         } header: {
             Text("Agents")
@@ -53,6 +58,16 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func soundPicker(_ title: String, _ selection: Binding<String>) -> some View {
+        Picker(title, selection: selection) {
+            Text("None").tag("")
+            ForEach(AgentNotifier.availableSounds, id: \.self) { name in
+                Text(name).tag(name)
+            }
+        }
+        .onChange(of: selection.wrappedValue) { _, name in AgentNotifier.preview(name) }
     }
 
     // MARK: - Media
