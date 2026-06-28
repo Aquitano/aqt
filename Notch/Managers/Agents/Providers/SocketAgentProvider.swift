@@ -116,6 +116,7 @@ final class SocketAgentProvider: AgentProviding {
         if let prompt = envelope.prompt, !prompt.isEmpty { session.lastPrompt = Self.clip(prompt) }
         if let response = envelope.response, !response.isEmpty { session.lastResponse = Self.clip(response) }
         if let model = envelope.model, !model.isEmpty { session.detail = model }
+        if let parent = envelope.parent, !parent.isEmpty { session.parentSessionID = parent }
 
         emitEvents(sid: sid, previous: previous, session: session, message: envelope.message)
         sessions[sid] = session

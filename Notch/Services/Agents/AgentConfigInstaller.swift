@@ -292,11 +292,11 @@ struct AgentConfigInstaller {
       const pid = process.pid;
       const sessions = new Map();
       const roles = new Map();
-      const get = (id) => { if (!sessions.has(id)) sessions.set(id, { cwd: directory, prompt: "", response: "", model: "" }); return sessions.get(id); };
+      const get = (id) => { if (!sessions.has(id)) sessions.set(id, { cwd: directory, prompt: "", response: "", model: "", parent: "" }); return sessions.get(id); };
       const emit = (id, status, extra = {}) => {
         const s = get(id);
         return send({ agent: "openCode", hook: extra.event || status, status, sessionId: id, cwd: s.cwd, pid,
-          prompt: s.prompt || undefined, response: s.response || undefined, model: s.model || undefined, tool: extra.tool });
+          prompt: s.prompt || undefined, response: s.response || undefined, model: s.model || undefined, tool: extra.tool, parent: s.parent || undefined });
       };
       return {
         event: async ({ event }) => {
@@ -305,6 +305,7 @@ struct AgentConfigInstaller {
           if ((t === "session.created" || t === "session.updated") && p.info && p.info.id) {
             const s = get(p.info.id);
             if (p.info.directory) s.cwd = p.info.directory;
+            if (p.info.parentID) s.parent = p.info.parentID;
             if (p.info.time && p.info.time.archived) return emit(p.info.id, "ended", { event: t });
             return emit(p.info.id, "idle", { event: t });
           }

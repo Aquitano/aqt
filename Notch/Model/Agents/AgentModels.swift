@@ -177,4 +177,6 @@ struct HookEnvelope: Codable, Sendable {
     var response: String?
     var model: String?
     var project: String?
+    /// Parent session id when this is a sub-agent, for grouping.
+    var parent: String?
 }

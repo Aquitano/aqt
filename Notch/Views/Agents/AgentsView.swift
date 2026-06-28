@@ -9,8 +9,14 @@ struct AgentsView: View {
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 10) {
-                ForEach(agents.sessions) { session in
+                ForEach(topLevelSessions) { session in
                     AgentRowView(session: session) { agents.jumpToTerminal(session) }
+                    // Sub-agents (e.g. OpenCode child sessions) nested under their parent.
+                    ForEach(children(of: session)) { child in
+                        AgentRowView(session: child) { agents.jumpToTerminal(child) }
+                            .padding(.leading, 22)
+                            .opacity(0.92)
+                    }
                 }
                 ForEach(disabledKinds, id: \.self) { kind in
                     enableCard(kind)
@@ -28,6 +34,20 @@ struct AgentsView: View {
 
     private var disabledKinds: [AgentKind] {
         agents.availableKinds.filter { !agents.isEnabled($0) }
+    }
+
+    /// Sessions with no parent (or whose parent isn't currently shown) render at
+    /// the top level; their sub-agents nest underneath.
+    private var topLevelSessions: [AgentSession] {
+        let ids = Set(agents.sessions.map(\.id))
+        return agents.sessions.filter { session in
+            guard let parent = session.parentSessionID else { return true }
+            return !ids.contains(parent)
+        }
+    }
+
+    private func children(of session: AgentSession) -> [AgentSession] {
+        agents.sessions.filter { $0.parentSessionID == session.id }
     }
 
     private func enableCard(_ kind: AgentKind) -> some View {
