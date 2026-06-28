@@ -7,6 +7,24 @@ struct NotchShape: Shape {
     var topRadius: CGFloat
     var bottomRadius: CGFloat
 
+    /// Physical notch width. The concave top shoulders inset the body by the top
+    /// radius on each side, so the *visible* body is narrower than `rect.width`.
+    /// Scaling that inset with the width does two things for the close:
+    ///
+    /// 1. The body never thins below `notchWidth`, so a collapsing blob can't dangle
+    ///    under the bezel as a sliver with wallpaper showing on both sides, and it
+    ///    keeps narrowing all the way in (no plateau where the sides freeze while
+    ///    the height is still retracting).
+    /// 2. It narrows the gap between how fast the width and the height collapse. The
+    ///    width travels 540->185 (355pt) while the height travels 329->33 (296pt) in
+    ///    the same time, so a fixed shoulder makes the width visibly outrun the
+    ///    height. `shoulder = (width - notchWidth)/18` shrinks the *visible* body
+    ///    sweep to ~316pt — about halfway to the height's 296pt — so the two edges
+    ///    move at closer to the same speed without flaring the expanded top corners
+    ///    too far (~20pt at 540 wide). The body still reaches `notchWidth` exactly
+    ///    when the width does, so they still land together.
+    var notchWidth: CGFloat = 0
+
     var animatableData: AnimatablePair<CGFloat, CGFloat> {
         get { AnimatablePair(topRadius, bottomRadius) }
         set { topRadius = newValue.first; bottomRadius = newValue.second }
@@ -14,7 +32,9 @@ struct NotchShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        let tr = min(topRadius, rect.width / 2)
+        let tr: CGFloat = notchWidth > 0
+            ? min(rect.width / 2, max(0, (rect.width - notchWidth) / 18))
+            : min(topRadius, rect.width / 2)
         let br = min(bottomRadius, min(rect.width, rect.height) / 2)
 
         // Start under the top-left, flush to the bezel.

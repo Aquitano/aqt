@@ -10,8 +10,12 @@ enum NotchAnimation {
         reduceMotion ? .smooth(duration: 0.35) : .bouncy(duration: 0.4)
     }
 
+    /// Duration of the close/collapse. Also gates how long the expanded content
+    /// stays mounted (fading, clipped by the blob) before it is dropped.
+    static let closeDuration: TimeInterval = 0.4
+
     static func close(reduceMotion: Bool) -> Animation {
-        .smooth(duration: 0.4)
+        .smooth(duration: closeDuration)
     }
 
     static func morph(reduceMotion: Bool) -> Animation {

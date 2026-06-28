@@ -58,32 +58,35 @@ struct NotchRootView: View {
         let bottomRadius = expanded ? NotchMetrics.expandedCornerRadius : NotchMetrics.compactCornerRadius
 
         return ZStack {
-            NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius)
+            NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius, notchWidth: notchSize.width)
                 .fill(.black)
                 .shadow(color: .black.opacity(expanded ? 0.45 : 0), radius: 18, y: 8)
 
-            Group {
-                switch state.presentation {
-                case .expanded:
-                    // Pinned to its full expanded size so a collapse lets the
-                    // shrinking blob clip it away (and fade it) in lockstep,
-                    // instead of squishing the content to nothing instantly.
+            ZStack(alignment: .top) {
+                // Expanded body kept mounted (fading via opacity) through the whole
+                // close instead of removed by a `.transition`: a view SwiftUI is
+                // removing renders in its own layer at its pre-collapse size, so the
+                // blob's `clipShape` can't retract it and the widgets hang below the
+                // shrinking blob. As a plain child it clips into the notch in
+                // lockstep. `isCollapsing` holds it for the close, then drops it so
+                // the idle pill never keeps the widget grid (and its managers) alive.
+                if state.isExpanded || state.isCollapsing {
                     ExpandedView(namespace: morph)
                         .frame(width: expandedSize.width, height: expandedSize.height, alignment: .top)
-                        .transition(.opacity)
-                case .compact:
+                        .opacity(state.isExpanded ? 1 : 0)
+                }
+
+                if state.presentation == .compact {
                     CompactView(namespace: morph)
                         .frame(width: size.width, height: size.height, alignment: .top)
                         .transition(.opacity)
-                case .hidden:
-                    EmptyView()
                 }
             }
             .frame(width: size.width, height: size.height, alignment: .top)
-            .clipShape(NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius))
+            .clipShape(NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius, notchWidth: notchSize.width))
         }
         .frame(width: size.width, height: size.height)
-        .contentShape(NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius))
+        .contentShape(NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius, notchWidth: notchSize.width))
         .onHover { hovering in handleHover(hovering) }
         .frame(maxWidth: .infinity, alignment: .center)
     }
