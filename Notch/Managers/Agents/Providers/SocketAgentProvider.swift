@@ -106,6 +106,9 @@ final class SocketAgentProvider: AgentProviding {
             cwd: envelope.cwd, status: .idle, startedAt: Date(), lastActivity: Date()
         )
         session.status = mapStatus(raw, tool: envelope.tool)
+        session.activityVerb = session.status.isBusy
+            ? (envelope.tool.map(agentToolVerb) ?? (session.status == .running ? "Thinking" : nil))
+            : nil
         if let cwd = envelope.cwd { session.cwd = cwd; session.project = Self.projectName(cwd) }
         else if let project = envelope.project { session.project = project }
         session.lastActivity = Date()

@@ -218,7 +218,9 @@ final class ClaudeCodeProvider: AgentProviding {
 
         for sid in Array(result.keys) {
             var session = result[sid]!
-            session.status = computeStatus(sid: sid, scanned: lastScan.first { $0.sessionId == sid })
+            let scanned = lastScan.first { $0.sessionId == sid }
+            session.status = computeStatus(sid: sid, scanned: scanned)
+            session.activityVerb = session.status.isBusy ? scanned?.verb : nil
             session.detail = hookState[sid]?.message ?? session.detail
             if let prev = sessionsByID[sid] {
                 session.startedAt = prev.startedAt
@@ -333,6 +335,7 @@ final class ClaudeCodeProvider: AgentProviding {
         let terminalName: String?
         let prompt: String?
         let response: String?
+        let verb: String?
     }
 
     nonisolated private static let projectsRoot = FileManager.default.homeDirectoryForCurrentUser
@@ -372,7 +375,7 @@ final class ClaudeCodeProvider: AgentProviding {
                 sessionId: transcript.sessionId, cwd: cwd, pid: pid,
                 lastActivity: transcript.mtime, gitBranch: transcript.branch, busyStatus: transcript.busy,
                 focusURL: terminal.focusURL, terminalName: terminal.name,
-                prompt: transcript.prompt, response: transcript.response
+                prompt: transcript.prompt, response: transcript.response, verb: transcript.verb
             ))
         }
         return result
@@ -407,7 +410,7 @@ final class ClaudeCodeProvider: AgentProviding {
 
     nonisolated private static func newestTranscript(
         forCwd cwd: String
-    ) -> (sessionId: String, mtime: Date, branch: String?, busy: AgentStatus, prompt: String?, response: String?)? {
+    ) -> (sessionId: String, mtime: Date, branch: String?, busy: AgentStatus, verb: String?, prompt: String?, response: String?)? {
         let encoded = cwd.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ".", with: "-")
         let dir = projectsRoot.appendingPathComponent(encoded, isDirectory: true)
         guard let entries = try? FileManager.default.contentsOfDirectory(
@@ -417,17 +420,18 @@ final class ClaudeCodeProvider: AgentProviding {
         guard let newest = jsonls.max(by: { mtime($0) < mtime($1) }) else { return nil }
         let parsed = parseTail(newest)
         return (newest.deletingPathExtension().lastPathComponent, mtime(newest),
-                parsed.branch, parsed.busy, parsed.prompt, parsed.response)
+                parsed.branch, parsed.busy, parsed.verb, parsed.prompt, parsed.response)
     }
 
     /// One reverse pass over the transcript tail collecting branch, busy status,
     /// the latest user prompt, and the latest assistant reply (for the preview).
     nonisolated private static func parseTail(
         _ url: URL
-    ) -> (branch: String?, busy: AgentStatus, prompt: String?, response: String?) {
-        guard let chunk = readTail(url, maxBytes: 65536) else { return (nil, .running, nil, nil) }
+    ) -> (branch: String?, busy: AgentStatus, verb: String?, prompt: String?, response: String?) {
+        guard let chunk = readTail(url, maxBytes: 65536) else { return (nil, .running, nil, nil, nil) }
         var branch: String?
         var status: AgentStatus = .running
+        var verb: String?
         var foundStatus = false
         var prompt: String?
         var response: String?
@@ -444,8 +448,10 @@ final class ClaudeCodeProvider: AgentProviding {
                     if let tool = content.last(where: { ($0["type"] as? String) == "tool_use" }),
                        let name = tool["name"] as? String {
                         status = editTools.contains(name) ? .editing : .tool
+                        verb = agentToolVerb(name)
                     } else {
                         status = .running
+                        verb = "Thinking"
                     }
                     foundStatus = true
                 }
@@ -456,7 +462,7 @@ final class ClaudeCodeProvider: AgentProviding {
                     if !text.isEmpty { response = clip(text) }
                 }
             case "user":
-                if !foundStatus { status = .running; foundStatus = true }
+                if !foundStatus { status = .running; verb = "Thinking"; foundStatus = true }
                 if prompt == nil, let message = obj["message"] as? [String: Any],
                    let text = userPrompt(message) {
                     prompt = clip(text)
@@ -466,7 +472,7 @@ final class ClaudeCodeProvider: AgentProviding {
             }
             if branch != nil && foundStatus && prompt != nil && response != nil { break }
         }
-        return (branch, status, prompt, response)
+        return (branch, status, verb, prompt, response)
     }
 
     /// A user transcript entry is a real prompt only when its content is plain

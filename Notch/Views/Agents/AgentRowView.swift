@@ -59,7 +59,7 @@ struct AgentRowView: View {
     private var metaRow: some View {
         HStack(spacing: 6) {
             Circle().fill(statusColor).frame(width: 6, height: 6)
-            Text(session.status.label)
+            Text(session.activityVerb ?? session.status.label)
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.6))
             if let branch = session.gitBranch, !branch.isEmpty {

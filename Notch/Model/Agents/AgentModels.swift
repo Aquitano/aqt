@@ -103,6 +103,27 @@ struct AgentSession: Identifiable, Equatable, Sendable {
     var lastResponse: String?
     /// Terminal hosting the session (e.g. "Warp"), for the row badge.
     var terminalName: String?
+    /// Human verb for what it's doing now ("Reading", "Editing", "Running",
+    /// "Thinking"), shown in the row instead of the bare status when present.
+    var activityVerb: String?
+    /// Parent session id when this is a sub-agent (Task), for grouping.
+    var parentSessionID: String?
+}
+
+/// Human-readable verb for a tool name — the row's "what it's doing now".
+func agentToolVerb(_ tool: String) -> String {
+    switch tool.lowercased() {
+    case "bash", "shell": return "Running"
+    case "read", "notebookread", "cat", "view": return "Reading"
+    case "edit", "write", "multiedit", "notebookedit", "apply_patch", "str_replace_editor", "update":
+        return "Editing"
+    case "grep", "glob", "search", "codebase_search", "ripgrep", "ls": return "Searching"
+    case "webfetch", "websearch", "fetch", "browser": return "Browsing"
+    case "task", "agent": return "Delegating"
+    case "todowrite", "todoread": return "Planning"
+    default:
+        return tool.isEmpty ? "Working" : tool.prefix(1).uppercased() + tool.dropFirst()
+    }
 }
 
 /// A normalized, notify-worthy transition a provider emits to `AgentManager`,
