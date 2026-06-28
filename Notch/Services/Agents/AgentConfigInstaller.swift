@@ -22,6 +22,8 @@ struct AgentConfigInstaller {
     private var bridgeDir: URL { home.appendingPathComponent(".notch/bin", isDirectory: true) }
     private var bridgeURL: URL { bridgeDir.appendingPathComponent("notch-agent-hook") }
     private var appPathCacheURL: URL { bridgeDir.appendingPathComponent(".app-path") }
+    private var statusLineURL: URL { bridgeDir.appendingPathComponent("notch-statusline") }
+    private var statusLineOrigURL: URL { bridgeDir.appendingPathComponent(".statusline-orig.json") }
 
     private var codexHooksURL: URL { home.appendingPathComponent(".codex/hooks.json") }
     private var openCodePluginURL: URL { home.appendingPathComponent(".config/opencode/plugins/notch.js") }
@@ -137,6 +139,90 @@ struct AgentConfigInstaller {
     }
 
     func removeOhMyPi() throws { try? FileManager.default.removeItem(at: ohMyPiDir) }
+
+    // MARK: - Claude usage limits (statusLine wrapper, preserves the user's own)
+
+    func claudeUsageInstalled() -> Bool {
+        guard case let .object(root) = readSettings(at: claudeSettingsURL),
+              let line = root["statusLine"] as? [String: Any],
+              let command = line["command"] as? String else { return false }
+        return command.contains("notch-statusline")
+    }
+
+    /// Wrap the user's statusLine so we tee `rate_limits` to the socket while
+    /// still running their original command (e.g. ccstatusline) unchanged.
+    func installClaudeUsage() throws {
+        try writeBridge()
+        var root: [String: Any]
+        switch readSettings(at: claudeSettingsURL) {
+        case .missing: root = [:]
+        case .object(let obj): root = obj
+        case .unreadable: throw InstallerError.settingsUnreadable
+        }
+
+        let existing = root["statusLine"] as? [String: Any]
+        let currentCommand = existing?["command"] as? String ?? ""
+        if currentCommand.contains("notch-statusline") {
+            try writeStatusLineWrapper(original: savedOriginalCommand())
+            return
+        }
+
+        if let existing { try? writeJSONFile(existing, to: statusLineOrigURL) }
+        else { try? FileManager.default.removeItem(at: statusLineOrigURL) }
+        try writeStatusLineWrapper(original: currentCommand.isEmpty ? nil : currentCommand)
+
+        var line = existing ?? [:]
+        line["type"] = "command"
+        line["command"] = statusLineURL.path
+        root["statusLine"] = line
+        try writeJSON(root, to: claudeSettingsURL)
+    }
+
+    func removeClaudeUsage() throws {
+        guard case var .object(root) = readSettings(at: claudeSettingsURL),
+              let line = root["statusLine"] as? [String: Any],
+              (line["command"] as? String)?.contains("notch-statusline") == true else { return }
+        if let original = readJSONFile(statusLineOrigURL) {
+            root["statusLine"] = original
+        } else {
+            root["statusLine"] = nil
+        }
+        try writeJSON(root, to: claudeSettingsURL)
+        try? FileManager.default.removeItem(at: statusLineURL)
+        try? FileManager.default.removeItem(at: statusLineOrigURL)
+    }
+
+    private func writeStatusLineWrapper(original: String?) throws {
+        try FileManager.default.createDirectory(
+            at: bridgeDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]
+        )
+        // Run the original command on the same stdin so the user's status line is
+        // unchanged; "true" when there was none.
+        let runOriginal = original.map { "printf '%s' \"$in\" | \($0)" } ?? "true"
+        let script = """
+        #!/bin/sh
+        # notch-statusline (auto-generated, do not edit) — tee rate_limits, then run the original
+        in="$(cat)"
+        printf '%s' "$in" | "$HOME/.notch/bin/notch-agent-hook" --source statusline >/dev/null 2>&1 &
+        \(runOriginal)
+        """
+        try script.write(to: statusLineURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: statusLineURL.path)
+    }
+
+    private func savedOriginalCommand() -> String? {
+        readJSONFile(statusLineOrigURL)?["command"] as? String
+    }
+
+    private func writeJSONFile(_ object: [String: Any], to url: URL) throws {
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted])
+        try data.write(to: url, options: .atomic)
+    }
+
+    private func readJSONFile(_ url: URL) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
 
     // MARK: - Generic hook merge (Claude settings.json + Codex hooks.json share the format)
 

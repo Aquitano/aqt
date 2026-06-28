@@ -179,4 +179,18 @@ struct HookEnvelope: Codable, Sendable {
     var project: String?
     /// Parent session id when this is a sub-agent, for grouping.
     var parent: String?
+
+    // Account-wide usage (status == "usage"), captured from Claude's statusLine.
+    var fiveHourUsed: Double?
+    var sevenDayUsed: Double?
+    var fiveHourResetsAt: Double?
+    var sevenDayResetsAt: Double?
+}
+
+/// Account-wide Claude usage limits, from the statusLine `rate_limits` data.
+struct AgentUsage: Equatable, Sendable {
+    var fiveHourUsedPercent: Double
+    var sevenDayUsedPercent: Double
+    var fiveHourResetsAt: Date?
+    var sevenDayResetsAt: Date?
 }

@@ -33,6 +33,7 @@ final class Settings: ObservableObject {
         static let agentSoundStarted = "agentSoundStarted"
         static let agentSoundAttention = "agentSoundAttention"
         static let agentSoundFinished = "agentSoundFinished"
+        static let agentUsageLimits = "agentUsageLimits"
     }
 
     @Published var showHUD: Bool { didSet { defaults.set(showHUD, forKey: Key.showHUD) } }
@@ -65,6 +66,7 @@ final class Settings: ObservableObject {
     @Published var agentSoundStarted: String { didSet { defaults.set(agentSoundStarted, forKey: Key.agentSoundStarted) } }
     @Published var agentSoundAttention: String { didSet { defaults.set(agentSoundAttention, forKey: Key.agentSoundAttention) } }
     @Published var agentSoundFinished: String { didSet { defaults.set(agentSoundFinished, forKey: Key.agentSoundFinished) } }
+    @Published var agentUsageLimits: Bool { didSet { defaults.set(agentUsageLimits, forKey: Key.agentUsageLimits) } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -92,6 +94,7 @@ final class Settings: ObservableObject {
             Key.agentSoundStarted: "",
             Key.agentSoundAttention: "Ping",
             Key.agentSoundFinished: "Glass",
+            Key.agentUsageLimits: false,
         ])
         self.showHUD = defaults.bool(forKey: Key.showHUD)
         self.temperatureUnit = WeatherSnapshot.TemperatureUnit(
@@ -121,5 +124,6 @@ final class Settings: ObservableObject {
         self.agentSoundStarted = defaults.string(forKey: Key.agentSoundStarted) ?? ""
         self.agentSoundAttention = defaults.string(forKey: Key.agentSoundAttention) ?? "Ping"
         self.agentSoundFinished = defaults.string(forKey: Key.agentSoundFinished) ?? "Glass"
+        self.agentUsageLimits = defaults.bool(forKey: Key.agentUsageLimits)
     }
 }

@@ -9,6 +9,9 @@ struct AgentsView: View {
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 10) {
+                if let usage = agents.usage {
+                    usagePanel(usage)
+                }
                 ForEach(topLevelSessions) { session in
                     AgentRowView(session: session) { agents.jumpToTerminal(session) }
                     // Sub-agents (e.g. OpenCode child sessions) nested under their parent.
@@ -48,6 +51,54 @@ struct AgentsView: View {
 
     private func children(of session: AgentSession) -> [AgentSession] {
         agents.sessions.filter { $0.parentSessionID == session.id }
+    }
+
+    // MARK: - Usage limits
+
+    private func usagePanel(_ usage: AgentUsage) -> some View {
+        VStack(spacing: 9) {
+            usageBar("5-hour", percent: usage.fiveHourUsedPercent, reset: usage.fiveHourResetsAt)
+            usageBar("Weekly", percent: usage.sevenDayUsedPercent, reset: usage.sevenDayResetsAt)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+
+    private func usageBar(_ label: String, percent: Double, reset: Date?) -> some View {
+        let clamped = min(max(percent, 0), 100)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+                Spacer(minLength: 4)
+                Text("\(Int(clamped))%").font(.system(size: 11)).monospacedDigit().foregroundStyle(.white.opacity(0.6))
+                if let reset { Text("· \(resetString(reset))").font(.system(size: 10)).foregroundStyle(.white.opacity(0.4)) }
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.12))
+                    Capsule().fill(usageColor(clamped)).frame(width: max(2, geo.size.width * clamped / 100))
+                }
+            }
+            .frame(height: 5)
+        }
+    }
+
+    private func usageColor(_ percent: Double) -> Color {
+        switch percent {
+        case ..<70: return .green
+        case ..<90: return .orange
+        default: return .red
+        }
+    }
+
+    private func resetString(_ date: Date) -> String {
+        let seconds = Int(date.timeIntervalSinceNow)
+        guard seconds > 0 else { return "resetting" }
+        if seconds < 3600 { return "resets in \(seconds / 60)m" }
+        if seconds < 86400 { return "resets in \(seconds / 3600)h" }
+        return "resets in \(seconds / 86400)d"
     }
 
     private func enableCard(_ kind: AgentKind) -> some View {

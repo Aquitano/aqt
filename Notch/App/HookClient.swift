@@ -31,10 +31,31 @@ enum HookClient {
         if let index = arguments.firstIndex(of: "--source"), index + 1 < arguments.count {
             switch arguments[index + 1] {
             case "codex": runCodexHook()
+            case "statusline": runStatusLine()
             default: runClaude()
             }
         }
         runClaude()
+    }
+
+    /// `--source statusline` — fed Claude's statusLine stdin JSON (which carries
+    /// account-wide `rate_limits`). Forwards usage to the socket; prints nothing.
+    static func runStatusLine() -> Never {
+        let input = readStdin()
+        let json = (try? JSONSerialization.jsonObject(with: input)) as? [String: Any] ?? [:]
+        let limits = json["rate_limits"] as? [String: Any]
+        let fiveHour = limits?["five_hour"] as? [String: Any]
+        let sevenDay = limits?["seven_day"] as? [String: Any]
+
+        send(HookEnvelope(
+            agent: "usage", hook: "statusline", sessionId: json["session_id"] as? String,
+            pid: getppid(), status: "usage",
+            fiveHourUsed: fiveHour?["used_percentage"] as? Double,
+            sevenDayUsed: sevenDay?["used_percentage"] as? Double,
+            fiveHourResetsAt: (fiveHour?["resets_at"] as? NSNumber)?.doubleValue,
+            sevenDayResetsAt: (sevenDay?["resets_at"] as? NSNumber)?.doubleValue
+        ))
+        exit(0)
     }
 
     /// Codex hooks.json command — event JSON on stdin (`hook_event_name`,

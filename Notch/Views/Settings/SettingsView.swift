@@ -6,6 +6,7 @@ import AppKit
 /// real `SMAppService` registration so the preference and the OS agree.
 struct SettingsView: View {
     @EnvironmentObject private var settings: Settings
+    @EnvironmentObject private var agents: AgentManager
 
     var body: some View {
         Form {
@@ -43,6 +44,10 @@ struct SettingsView: View {
                 Toggle("Notify when an agent finishes", isOn: $settings.agentNotifyFinished)
                 Toggle("Notify when an agent starts", isOn: $settings.agentNotifyStarted)
                 Toggle("Auto-expand on needs-you", isOn: $settings.agentAutoExpandOnAttention)
+                Toggle("Claude usage limits", isOn: Binding(
+                    get: { settings.agentUsageLimits },
+                    set: { agents.setUsageLimits($0) }
+                ))
                 Toggle("System notifications", isOn: $settings.agentSystemNotifications)
                 Toggle("Play a sound", isOn: $settings.agentNotifySound)
                 if settings.agentNotifySound {

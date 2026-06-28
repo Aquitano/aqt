@@ -9,6 +9,8 @@ import SwiftUI
 final class AgentManager: ObservableObject {
 
     @Published private(set) var sessions: [AgentSession] = []
+    /// Account-wide Claude usage limits (when enabled), from the statusLine.
+    @Published private(set) var usage: AgentUsage?
 
     private let activities: ActivityManager
     private let settings: Settings
@@ -66,6 +68,28 @@ final class AgentManager: ObservableObject {
         socketServer.start { [weak self] envelope, pid in
             Task { @MainActor in self?.route(envelope, pid: pid) }
         }
+
+        if settings.agentUsageLimits { try? installer.installClaudeUsage() }
+    }
+
+    var usageLimitsEnabled: Bool { settings.agentUsageLimits }
+
+    /// Opt-in: wrap (or unwrap) Claude's statusLine to surface usage limits.
+    func setUsageLimits(_ enabled: Bool) {
+        let installer = AgentConfigInstaller()
+        do {
+            if enabled {
+                try installer.installClaudeUsage()
+                settings.agentUsageLimits = true
+            } else {
+                settings.agentUsageLimits = false
+                try installer.removeClaudeUsage()
+                usage = nil
+            }
+        } catch {
+            settings.agentUsageLimits = false
+            Log.agents.error("usage-limits toggle failed: \(String(describing: error))")
+        }
     }
 
     // MARK: - UI proxies
@@ -100,6 +124,15 @@ final class AgentManager: ObservableObject {
     // MARK: - Routing & reconciliation
 
     private func route(_ envelope: HookEnvelope, pid: pid_t) {
+        if envelope.status == "usage" {
+            usage = AgentUsage(
+                fiveHourUsedPercent: envelope.fiveHourUsed ?? 0,
+                sevenDayUsedPercent: envelope.sevenDayUsed ?? 0,
+                fiveHourResetsAt: envelope.fiveHourResetsAt.map { Date(timeIntervalSince1970: $0) },
+                sevenDayResetsAt: envelope.sevenDayResetsAt.map { Date(timeIntervalSince1970: $0) }
+            )
+            return
+        }
         guard let kind = AgentKind(rawValue: envelope.agent) else { return }
         provider(for: kind)?.ingest(envelope, pid: pid)
     }
