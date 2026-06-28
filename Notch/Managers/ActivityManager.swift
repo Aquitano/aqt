@@ -56,20 +56,21 @@ final class ActivityManager: ObservableObject {
                          priority: .urgent, createdAt: Date(), ttl: ttl))
     }
 
-    /// Mirror an agent session into the pill. Sticky (no TTL); the `AgentManager`
-    /// removes the channel when the session leaves a busy / needs-attention state.
-    func publishAgent(_ session: AgentSession) {
-        let priority: Activity.Priority = session.status == .needsAttention ? .urgent : .normal
+    /// Mirror the active agents into the pill as one aggregate entry (count +
+    /// representative status). Sticky (no TTL); `AgentManager` removes it when no
+    /// agent is busy / needs attention.
+    func publishAgentSummary(count: Int, kind: AgentKind, project: String, status: AgentStatus) {
+        let priority: Activity.Priority = status == .needsAttention ? .urgent : .normal
         publish(Activity(
-            kind: .agent(sessionID: session.id, kind: session.kind, project: session.project, status: session.status),
+            kind: .agent(count: count, kind: kind, project: project, status: status),
             priority: priority,
             createdAt: Date()
         ))
     }
 
-    func removeAgent(sessionID: String) {
+    func removeAgentSummary() {
         let ids = activities.compactMap { activity -> UUID? in
-            if case let .agent(id, _, _, _) = activity.kind, id == sessionID { return activity.id }
+            if case .agent = activity.kind { return activity.id }
             return nil
         }
         ids.forEach { remove(id: $0) }
@@ -141,7 +142,7 @@ final class ActivityManager: ObservableObject {
         case .focus: return "focus"
         case let .deviceConnected(name, _, _): return "device.\(name)"
         case let .audioRoute(name, _): return "route.\(name)"
-        case let .agent(sessionID, _, _, _): return "agent.\(sessionID)"
+        case .agent: return "agents"
         case .peek, .timer: return nil
         }
     }

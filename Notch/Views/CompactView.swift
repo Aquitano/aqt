@@ -97,10 +97,24 @@ struct CompactView: View {
 
     // MARK: - Activity slots
 
+    @ViewBuilder
     private func activityIcon(_ activity: Activity) -> some View {
-        Image(systemName: activity.compactSymbol)
-            .font(.system(size: 13, weight: .semibold))
-            .symbolRenderingMode(.hierarchical)
+        if case let .agent(_, _, _, status) = activity.kind {
+            // Retro pixel spinner: animates while an agent is actively working.
+            PixelWorkingIndicator(active: status.isBusy, tint: agentPixelTint(status))
+        } else {
+            Image(systemName: activity.compactSymbol)
+                .font(.system(size: 13, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+        }
+    }
+
+    private func agentPixelTint(_ status: AgentStatus) -> Color {
+        switch status {
+        case .needsAttention: return .orange
+        case .finished: return .green
+        default: return Color(red: 0.40, green: 0.92, blue: 0.55) // retro green
+        }
     }
 
     @ViewBuilder

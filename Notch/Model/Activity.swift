@@ -42,7 +42,7 @@ struct Activity: Identifiable, Equatable {
         case focus(name: String?, isOn: Bool)
         case peek(title: String, message: String, symbol: String, tint: PeekTint)
         case timer(name: String, endsAt: Date)
-        case agent(sessionID: String, kind: AgentKind, project: String, status: AgentStatus)
+        case agent(count: Int, kind: AgentKind, project: String, status: AgentStatus)
     }
 
     enum PeekTint: Equatable {
@@ -79,9 +79,9 @@ struct Activity: Identifiable, Equatable {
         case let .focus(name, _): return name ?? "Focus"
         case let .peek(title, _, _, _): return title
         case let .timer(name, _): return name
-        // Terse in the pill (it hugs the notch); the agent glyph identifies which
-        // agent, the expanded activity card carries the full "claude · status".
-        case let .agent(_, _, _, status): return status.label
+        // Terse in the pill (it hugs the notch); the pixel glyph shows activity,
+        // the expanded card carries detail. Show the count when more than one runs.
+        case let .agent(count, _, _, status): return count > 1 ? "\(count) agents" : status.label
         }
     }
 }

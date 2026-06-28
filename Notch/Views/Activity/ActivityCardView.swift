@@ -86,10 +86,11 @@ struct ActivityCardView: View {
         case let .timer(name, endsAt):
             return CardContent(title: name, subtitle: remaining(until: endsAt), tint: .white)
 
-        case let .agent(_, kind, project, status):
-            return CardContent(title: project,
-                               subtitle: "\(kind.shortName) · \(status.label)",
-                               tint: agentTint(status))
+        case let .agent(count, kind, project, status):
+            let subtitle = count > 1
+                ? "\(count) agents · \(status.label)"
+                : "\(kind.shortName) · \(status.label)"
+            return CardContent(title: count > 1 ? "Agents" : project, subtitle: subtitle, tint: agentTint(status))
         }
     }
 

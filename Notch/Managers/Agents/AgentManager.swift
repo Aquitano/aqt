@@ -19,9 +19,9 @@ final class AgentManager: ObservableObject {
     private var providers: [AgentProviding] = []
     private var sessionsByKind: [AgentKind: [AgentSession]] = [:]
 
-    /// Session ids currently mirrored into the pill, and the status each was last
-    /// published with — so we only re-pop the pill on a real status change.
-    private var pillStatus: [String: AgentStatus] = [:]
+    /// Last pill summary signature (count + status + project), so the pill only
+    /// re-pops on a real change rather than every transcript write.
+    private var pillSignature: String?
 
     init(activities: ActivityManager, settings: Settings) {
         self.activities = activities
@@ -93,21 +93,25 @@ final class AgentManager: ObservableObject {
         syncPill(merged)
     }
 
-    /// Mirror only the busy / needs-attention sessions into the pill (idle ones
-    /// live in the Agents tab). Re-publish a channel only when its status changed,
-    /// so the pill doesn't re-pop on every transcript write.
+    /// Mirror the active agents into the pill as one aggregate entry showing the
+    /// running count + the most important status (idle ones live in the Agents
+    /// tab). Only re-publish when that summary actually changes.
     private func syncPill(_ sessions: [AgentSession]) {
-        var shown: Set<String> = []
-        for session in sessions where session.status.isBusy || session.status == .needsAttention {
-            shown.insert(session.id)
-            if pillStatus[session.id] != session.status {
-                activities.publishAgent(session)
-                pillStatus[session.id] = session.status
-            }
+        let active = sessions.filter { $0.status.isBusy || $0.status == .needsAttention }
+        guard let representative = active.first(where: { $0.status == .needsAttention })
+            ?? active.max(by: { $0.lastActivity < $1.lastActivity }) else {
+            if pillSignature != nil { activities.removeAgentSummary(); pillSignature = nil }
+            return
         }
-        for id in Set(pillStatus.keys).subtracting(shown) {
-            activities.removeAgent(sessionID: id)
-            pillStatus[id] = nil
-        }
+
+        let needsAttention = active.contains { $0.status == .needsAttention }
+        let status: AgentStatus = needsAttention ? .needsAttention : representative.status
+        let signature = "\(active.count)|\(status.rawValue)|\(representative.project)"
+        guard signature != pillSignature else { return }
+        pillSignature = signature
+        activities.publishAgentSummary(
+            count: active.count, kind: representative.kind,
+            project: representative.project, status: status
+        )
     }
 }
