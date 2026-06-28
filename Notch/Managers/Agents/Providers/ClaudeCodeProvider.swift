@@ -53,8 +53,13 @@ final class ClaudeCodeProvider: AgentProviding {
 
     func start() {
         guard isEnabled else { return }
-        // Self-heal the hook command path in case the app moved since last install.
-        try? installer.installClaudeHooks()
+        // Keep the stable-path launcher current (cheap, local). The config points
+        // at that launcher, so it only needs rewriting if it went missing.
+        try? installer.writeBridge()
+        // Install if missing, or upgrade a legacy app-path hook to the launcher.
+        if !installer.claudeBridgeInstalled() {
+            try? installer.installClaudeHooks()
+        }
         beginWatching()
     }
 

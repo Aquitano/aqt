@@ -10,7 +10,6 @@ import Foundation
 struct AgentConfigInstaller {
 
     enum InstallerError: Error {
-        case noExecutablePath
         /// The file exists but could not be read or parsed as a JSON object;
         /// we refuse to overwrite it (that would destroy the user's settings).
         case settingsUnreadable
@@ -18,29 +17,78 @@ struct AgentConfigInstaller {
         case unexpectedHooksShape
     }
 
-    private let claudeSettingsURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".claude/settings.json")
+    private let home = FileManager.default.homeDirectoryForCurrentUser
+    private var claudeSettingsURL: URL { home.appendingPathComponent(".claude/settings.json") }
+    private var bridgeDir: URL { home.appendingPathComponent(".notch/bin", isDirectory: true) }
+    private var bridgeURL: URL { bridgeDir.appendingPathComponent("notch-agent-hook") }
+    private var appPathCacheURL: URL { bridgeDir.appendingPathComponent(".app-path") }
 
     private static let claudeHookEvents = ["Notification", "Stop", "SessionStart", "SessionEnd"]
-    private static let hookMarker = "--agent-hook"
+    /// Substring identifying our hook entries — matches both the stable-path
+    /// launcher (`notch-agent-hook`) and any legacy `… --agent-hook` command.
+    private static let hookMarker = "agent-hook"
+
+    /// The hook command Claude runs: a defensive call to our stable-path launcher
+    /// that locates the app and execs `--agent-hook`. Never blocks Claude.
+    private var bridgeCommand: String {
+        "/bin/sh -c '[ -x \"$HOME/.notch/bin/notch-agent-hook\" ] && \"$HOME/.notch/bin/notch-agent-hook\"; exit 0'"
+    }
+
+    // MARK: - Bridge launcher (stable path)
+
+    /// Write the launcher script + record the app's current bundle path so the
+    /// launcher resolves the running build (including dev builds) without the
+    /// config ever referencing a volatile path.
+    func writeBridge() throws {
+        try FileManager.default.createDirectory(
+            at: bridgeDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]
+        )
+        try bridgeScript.write(to: bridgeURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bridgeURL.path)
+        try? Bundle.main.bundlePath.write(to: appPathCacheURL, atomically: true, encoding: .utf8)
+    }
+
+    private var bridgeScript: String {
+        """
+        #!/bin/sh
+        # notch agent hook launcher (auto-generated, do not edit)
+        C="$HOME/.notch/bin/.app-path"
+        [ -f "$C" ] && read -r P < "$C" && [ -x "$P/Contents/MacOS/Notch" ] && exec "$P/Contents/MacOS/Notch" --agent-hook "$@"
+        B="/Applications/Notch.app/Contents/MacOS/Notch"
+        [ -x "$B" ] && exec "$B" --agent-hook "$@"
+        P="$(/usr/bin/mdfind 'kMDItemCFBundleIdentifier == "com.aquitano.notch"' 2>/dev/null | /usr/bin/head -1)"
+        [ -x "$P/Contents/MacOS/Notch" ] && { printf '%s' "$P" > "$C"; exec "$P/Contents/MacOS/Notch" --agent-hook "$@"; }
+        exit 0
+        """
+    }
 
     // MARK: - Claude
 
     func claudeHooksInstalled() -> Bool {
+        claudeHasCommand(containing: Self.hookMarker)
+    }
+
+    /// True when the *stable-path launcher* is installed (vs. a legacy command
+    /// that hard-codes the app path), so start() can upgrade old installs once.
+    func claudeBridgeInstalled() -> Bool {
+        claudeHasCommand(containing: "notch-agent-hook")
+    }
+
+    private func claudeHasCommand(containing needle: String) -> Bool {
         guard case let .object(root) = readSettings(at: claudeSettingsURL),
               let hooks = root["hooks"] as? [String: Any] else { return false }
         return Self.claudeHookEvents.contains { event in
-            commands(inEvent: hooks[event]).contains { $0.contains(Self.hookMarker) }
+            commands(inEvent: hooks[event]).contains { $0.contains(needle) }
         }
     }
 
-    /// Add our hook to each watched event, refreshing a stale executable path
-    /// (self-heal). Throws — rather than overwriting — if the existing file is
-    /// present but unreadable/unparseable, so a transient read error or a manual
-    /// JSON syntax slip can never wipe the user's settings.
+    /// Install the launcher and add our hook to each watched event. Throws —
+    /// rather than overwriting — if the existing settings file is present but
+    /// unreadable/unparseable, so a transient read error or a manual JSON syntax
+    /// slip can never wipe the user's settings.
     func installClaudeHooks() throws {
-        guard let exe = Bundle.main.executablePath else { throw InstallerError.noExecutablePath }
-        let command = "\(shellQuoted(exe)) \(Self.hookMarker)"
+        try writeBridge()
+        let command = bridgeCommand
 
         var root: [String: Any]
         switch readSettings(at: claudeSettingsURL) {
