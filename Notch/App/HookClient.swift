@@ -26,21 +26,53 @@ enum HookClient {
         exit(0)
     }
 
-    /// `Notch --codex-notify` — Codex notify program. The event JSON is the last
-    /// argument Codex appends (`type` == "agent-turn-complete", ...).
-    static func runCodex() -> Never {
-        let payload = CommandLine.arguments.last ?? "{}"
-        let json = (payload.data(using: .utf8)
-            .flatMap { try? JSONSerialization.jsonObject(with: $0) }) as? [String: Any] ?? [:]
+    /// Dispatch by `--source` (used by both the app's argv branch and the tool).
+    static func dispatch(_ arguments: [String]) -> Never {
+        if let index = arguments.firstIndex(of: "--source"), index + 1 < arguments.count {
+            switch arguments[index + 1] {
+            case "codex": runCodexHook()
+            default: runClaude()
+            }
+        }
+        runClaude()
+    }
+
+    /// Codex hooks.json command — event JSON on stdin (`hook_event_name`,
+    /// `session_id`, `cwd`, `tool_name`, `tool_input`, `prompt`,
+    /// `last_assistant_message`). Mapped to a normalized status envelope.
+    static func runCodexHook() -> Never {
+        let input = readStdin()
+        let json = (try? JSONSerialization.jsonObject(with: input)) as? [String: Any] ?? [:]
+        let event = (json["hook_event_name"] as? String) ?? "unknown"
+        let toolName = json["tool_name"] as? String
+        let toolInput = json["tool_input"] as? [String: Any]
+
+        var status = "busy"
+        var message: String?
+        var prompt: String?
+        var response: String?
+        switch event {
+        case "SessionStart": status = "started"
+        case "UserPromptSubmit": status = "busy"; prompt = json["prompt"] as? String
+        case "PostToolUse": status = "tool"
+        case "PermissionRequest": status = "waiting"; message = (toolInput?["description"] as? String) ?? toolName
+        case "Stop": status = "finished"; response = json["last_assistant_message"] as? String
+        default: break
+        }
 
         send(HookEnvelope(
             agent: AgentKind.codex.rawValue,
-            hook: (json["type"] as? String) ?? "unknown",
-            sessionId: json["turn-id"] as? String,
+            hook: event,
+            sessionId: json["session_id"] as? String,
             cwd: json["cwd"] as? String,
-            transcriptPath: nil,
-            message: json["last-assistant-message"] as? String,
-            pid: getppid()
+            transcriptPath: json["transcript_path"] as? String,
+            message: message,
+            pid: getppid(),
+            status: status,
+            tool: toolName,
+            prompt: prompt,
+            response: response,
+            model: json["model"] as? String
         ))
         exit(0)
     }

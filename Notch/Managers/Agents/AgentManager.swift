@@ -32,7 +32,27 @@ final class AgentManager: ObservableObject {
     func start() {
         guard settings.agentsEnabled else { return }
 
-        providers = [ClaudeCodeProvider(processLookup: processLookup, settings: settings)]
+        let installer = AgentConfigInstaller()
+        providers = [
+            ClaudeCodeProvider(processLookup: processLookup, settings: settings),
+            // Codex hooks are short-lived subprocesses (pid unreliable) -> age out by staleness.
+            SocketAgentProvider(
+                kind: .codex, capabilities: [.liveEvents, .attention], liveness: .staleness,
+                settings: settings, enabledKey: \.agentCodexEnabled,
+                install: { try installer.installCodexHooks() }, uninstall: { try installer.removeCodexHooks() }
+            ),
+            // OpenCode/oh-my-pi report from inside the agent process -> prune by live pid.
+            SocketAgentProvider(
+                kind: .openCode, capabilities: [.liveEvents, .attention], liveness: .processPid,
+                settings: settings, enabledKey: \.agentOpenCodeEnabled,
+                install: { try installer.installOpenCodePlugin() }, uninstall: { try installer.removeOpenCodePlugin() }
+            ),
+            SocketAgentProvider(
+                kind: .ohMyPi, capabilities: [.liveEvents, .attention], liveness: .processPid,
+                settings: settings, enabledKey: \.agentOhMyPiEnabled,
+                install: { try installer.installOhMyPi() }, uninstall: { try installer.removeOhMyPi() }
+            ),
+        ]
         for provider in providers {
             provider.onSessions = { [weak self] sessions in
                 self?.updateSessions(sessions, for: provider.kind)

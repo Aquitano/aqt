@@ -7,9 +7,8 @@ import SwiftUI
 enum NotchMain {
     static func main() {
         switch CommandLine.arguments.dropFirst().first {
-        case "--agent-hook":   HookClient.runClaude()
-        case "--codex-notify": HookClient.runCodex()
-        default:               NotchApp.main()
+        case "--agent-hook": HookClient.dispatch(Array(CommandLine.arguments.dropFirst()))
+        default:             NotchApp.main()
         }
     }
 }

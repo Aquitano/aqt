@@ -98,6 +98,7 @@ struct AgentRowView: View {
         case .claudeCode: return Color(red: 0.85, green: 0.55, blue: 0.35) // Claude amber
         case .codex: return .green
         case .openCode: return .cyan
+        case .ohMyPi: return .mint
         }
     }
 

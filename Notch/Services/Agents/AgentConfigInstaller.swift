@@ -23,15 +23,21 @@ struct AgentConfigInstaller {
     private var bridgeURL: URL { bridgeDir.appendingPathComponent("notch-agent-hook") }
     private var appPathCacheURL: URL { bridgeDir.appendingPathComponent(".app-path") }
 
+    private var codexHooksURL: URL { home.appendingPathComponent(".codex/hooks.json") }
+    private var openCodePluginURL: URL { home.appendingPathComponent(".config/opencode/plugins/notch.js") }
+    private var ohMyPiDir: URL { home.appendingPathComponent(".omp/agent/extensions/notch", isDirectory: true) }
+
     private static let claudeHookEvents = ["Notification", "Stop", "SessionStart", "SessionEnd"]
+    private static let codexHookEvents = ["PermissionRequest", "PostToolUse", "SessionStart", "Stop", "UserPromptSubmit"]
     /// Substring identifying our hook entries — matches both the stable-path
     /// launcher (`notch-agent-hook`) and any legacy `… --agent-hook` command.
     private static let hookMarker = "agent-hook"
 
-    /// The hook command Claude runs: a defensive call to our stable-path launcher
-    /// that locates the app and execs `--agent-hook`. Never blocks Claude.
-    private var bridgeCommand: String {
-        "/bin/sh -c '[ -x \"$HOME/.notch/bin/notch-agent-hook\" ] && \"$HOME/.notch/bin/notch-agent-hook\"; exit 0'"
+    /// Defensive call to our stable-path launcher that locates the app and execs
+    /// the hook tool. Never blocks the agent. `--source` selects the parser.
+    private func launcherCommand(source: String?) -> String {
+        let suffix = source.map { " --source \($0)" } ?? ""
+        return "/bin/sh -c '[ -x \"$HOME/.notch/bin/notch-agent-hook\" ] && \"$HOME/.notch/bin/notch-agent-hook\"\(suffix); exit 0'"
     }
 
     // MARK: - Bridge launcher (stable path)
@@ -70,33 +76,73 @@ struct AgentConfigInstaller {
     // MARK: - Claude
 
     func claudeHooksInstalled() -> Bool {
-        claudeHasCommand(containing: Self.hookMarker)
+        hasCommand(at: claudeSettingsURL, events: Self.claudeHookEvents, containing: Self.hookMarker)
     }
 
     /// True when the *stable-path launcher* is installed (vs. a legacy command
     /// that hard-codes the app path), so start() can upgrade old installs once.
     func claudeBridgeInstalled() -> Bool {
-        claudeHasCommand(containing: "notch-agent-hook")
+        hasCommand(at: claudeSettingsURL, events: Self.claudeHookEvents, containing: "notch-agent-hook")
     }
 
-    private func claudeHasCommand(containing needle: String) -> Bool {
-        guard case let .object(root) = readSettings(at: claudeSettingsURL),
-              let hooks = root["hooks"] as? [String: Any] else { return false }
-        return Self.claudeHookEvents.contains { event in
-            commands(inEvent: hooks[event]).contains { $0.contains(needle) }
-        }
-    }
-
-    /// Install the launcher and add our hook to each watched event. Throws —
-    /// rather than overwriting — if the existing settings file is present but
-    /// unreadable/unparseable, so a transient read error or a manual JSON syntax
-    /// slip can never wipe the user's settings.
+    /// Install the launcher and add our hook to each Claude event. Throws — rather
+    /// than overwriting — if the existing file is present but unparseable, so a
+    /// transient read error or a manual JSON slip can never wipe the user's config.
     func installClaudeHooks() throws {
         try writeBridge()
-        let command = bridgeCommand
+        try installHooks(at: claudeSettingsURL, events: Self.claudeHookEvents, command: launcherCommand(source: nil))
+    }
 
+    func removeClaudeHooks() throws {
+        try removeHooks(at: claudeSettingsURL, events: Self.claudeHookEvents)
+    }
+
+    // MARK: - Codex (~/.codex/hooks.json)
+
+    func codexHooksInstalled() -> Bool {
+        hasCommand(at: codexHooksURL, events: Self.codexHookEvents, containing: "notch-agent-hook")
+    }
+
+    func installCodexHooks() throws {
+        try writeBridge()
+        try installHooks(at: codexHooksURL, events: Self.codexHookEvents,
+                         command: launcherCommand(source: "codex"), timeout: 5)
+    }
+
+    func removeCodexHooks() throws {
+        try removeHooks(at: codexHooksURL, events: Self.codexHookEvents)
+    }
+
+    // MARK: - OpenCode (JS plugin) & oh-my-pi (extension)
+
+    func openCodePluginInstalled() -> Bool { FileManager.default.fileExists(atPath: openCodePluginURL.path) }
+
+    func installOpenCodePlugin() throws {
+        try FileManager.default.createDirectory(
+            at: openCodePluginURL.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try Self.openCodePluginJS.write(to: openCodePluginURL, atomically: true, encoding: .utf8)
+    }
+
+    func removeOpenCodePlugin() throws { try? FileManager.default.removeItem(at: openCodePluginURL) }
+
+    func ohMyPiInstalled() -> Bool {
+        FileManager.default.fileExists(atPath: ohMyPiDir.appendingPathComponent("index.js").path)
+    }
+
+    func installOhMyPi() throws {
+        try FileManager.default.createDirectory(at: ohMyPiDir, withIntermediateDirectories: true)
+        try Self.ohMyPiPackageJSON.write(to: ohMyPiDir.appendingPathComponent("package.json"), atomically: true, encoding: .utf8)
+        try Self.ohMyPiIndexJS.write(to: ohMyPiDir.appendingPathComponent("index.js"), atomically: true, encoding: .utf8)
+    }
+
+    func removeOhMyPi() throws { try? FileManager.default.removeItem(at: ohMyPiDir) }
+
+    // MARK: - Generic hook merge (Claude settings.json + Codex hooks.json share the format)
+
+    private func installHooks(at url: URL, events: [String], command: String, timeout: Int? = nil) throws {
         var root: [String: Any]
-        switch readSettings(at: claudeSettingsURL) {
+        switch readSettings(at: url) {
         case .missing: root = [:]
         case .object(let obj): root = obj
         case .unreadable: throw InstallerError.settingsUnreadable
@@ -109,35 +155,44 @@ struct AgentConfigInstaller {
         default: throw InstallerError.unexpectedHooksShape
         }
 
-        for event in Self.claudeHookEvents {
+        for event in events {
             if let existing = hooks[event] {
-                // Leave a malformed (non-array) event value untouched.
-                guard let groups = existing as? [[String: Any]] else { continue }
-                hooks[event] = pruneMarker(from: groups) + [ourGroup(command)]
+                guard let groups = existing as? [[String: Any]] else { continue } // leave malformed value
+                hooks[event] = pruneMarker(from: groups) + [ourGroup(command, timeout: timeout)]
             } else {
-                hooks[event] = [ourGroup(command)]
+                hooks[event] = [ourGroup(command, timeout: timeout)]
             }
         }
         root["hooks"] = hooks
-        try writeJSON(root, to: claudeSettingsURL)
+        try writeJSON(root, to: url)
     }
 
-    func removeClaudeHooks() throws {
-        guard case var .object(root) = readSettings(at: claudeSettingsURL),
+    private func removeHooks(at url: URL, events: [String]) throws {
+        guard case var .object(root) = readSettings(at: url),
               var hooks = root["hooks"] as? [String: Any] else { return }
-        for event in Self.claudeHookEvents {
+        for event in events {
             guard let groups = hooks[event] as? [[String: Any]] else { continue }
             let pruned = pruneMarker(from: groups)
             if pruned.isEmpty { hooks[event] = nil } else { hooks[event] = pruned }
         }
         if hooks.isEmpty { root["hooks"] = nil } else { root["hooks"] = hooks }
-        try writeJSON(root, to: claudeSettingsURL)
+        try writeJSON(root, to: url)
+    }
+
+    private func hasCommand(at url: URL, events: [String], containing needle: String) -> Bool {
+        guard case let .object(root) = readSettings(at: url),
+              let hooks = root["hooks"] as? [String: Any] else { return false }
+        return events.contains { event in
+            commands(inEvent: hooks[event]).contains { $0.contains(needle) }
+        }
     }
 
     // MARK: - Hook shaping
 
-    private func ourGroup(_ command: String) -> [String: Any] {
-        ["hooks": [["type": "command", "command": command]]]
+    private func ourGroup(_ command: String, timeout: Int? = nil) -> [String: Any] {
+        var hook: [String: Any] = ["type": "command", "command": command]
+        if let timeout { hook["timeout"] = timeout }
+        return ["hooks": [hook]]
     }
 
     /// Strip only our marker commands, at inner-hook granularity, so a group that
@@ -208,5 +263,149 @@ struct AgentConfigInstaller {
         }
     }
 
-    private func shellQuoted(_ path: String) -> String { "\"\(path)\"" }
+    // MARK: - Generated plugin / extension sources
+
+    /// OpenCode auto-loads every file in its plugins dir. This forwards the bus
+    /// events we care about to ~/.notch/agents.sock as one normalized envelope
+    /// per event. Written fresh (not copied from any proprietary plugin).
+    private static let openCodePluginJS = #"""
+    // notch agent watcher — auto-generated, do not edit
+    import { Socket } from "net";
+    import { homedir } from "os";
+    import { join } from "path";
+
+    const SOCKET = join(homedir(), ".notch", "agents.sock");
+
+    function send(record) {
+      return new Promise((resolve) => {
+        let done = false;
+        const fin = (ok) => { if (done) return; done = true; try { sock.destroy(); } catch {} resolve(ok); };
+        const sock = new Socket();
+        sock.on("error", () => fin(false));
+        sock.setTimeout(2000, () => fin(false));
+        sock.on("connect", () => { try { sock.write(JSON.stringify(record) + "\n"); sock.end(); resolve(true); } catch { fin(false); } });
+        sock.connect({ path: SOCKET });
+      });
+    }
+
+    export default async ({ directory }) => {
+      const pid = process.pid;
+      const sessions = new Map();
+      const roles = new Map();
+      const get = (id) => { if (!sessions.has(id)) sessions.set(id, { cwd: directory, prompt: "", response: "", model: "" }); return sessions.get(id); };
+      const emit = (id, status, extra = {}) => {
+        const s = get(id);
+        return send({ agent: "openCode", hook: extra.event || status, status, sessionId: id, cwd: s.cwd, pid,
+          prompt: s.prompt || undefined, response: s.response || undefined, model: s.model || undefined, tool: extra.tool });
+      };
+      return {
+        event: async ({ event }) => {
+          const t = event && event.type;
+          const p = (event && event.properties) || {};
+          if ((t === "session.created" || t === "session.updated") && p.info && p.info.id) {
+            const s = get(p.info.id);
+            if (p.info.directory) s.cwd = p.info.directory;
+            if (p.info.time && p.info.time.archived) return emit(p.info.id, "ended", { event: t });
+            return emit(p.info.id, "idle", { event: t });
+          }
+          if (t === "session.deleted" && p.info && p.info.id) { await emit(p.info.id, "ended", { event: t }); sessions.delete(p.info.id); return; }
+          if (t === "session.idle" && p.sessionID) return emit(p.sessionID, "idle", { event: t });
+          if (t === "message.updated" && p.info && p.info.id) {
+            roles.set(p.info.id, { role: p.info.role, sessionID: p.info.sessionID });
+            if (p.info.role === "assistant" && p.info.modelID) get(p.info.sessionID).model = p.info.modelID;
+            if (p.info.finish === "stop" && p.info.sessionID) return emit(p.info.sessionID, "idle", { event: t });
+            return;
+          }
+          if (t === "message.part.updated" && p.part) {
+            const part = p.part;
+            if (part.type === "text" && part.messageID) {
+              const meta = roles.get(part.messageID);
+              if (!meta || !meta.sessionID) return;
+              const s = get(meta.sessionID);
+              if (meta.role === "user" && part.text) { s.prompt = part.text; return emit(meta.sessionID, "busy", { event: "prompt" }); }
+              if (meta.role === "assistant" && part.text) s.response = part.text;
+              return;
+            }
+            if (part.type === "tool" && part.sessionID) {
+              const st = part.state && part.state.status;
+              if (st === "running" || st === "pending") return emit(part.sessionID, "busy", { event: "tool", tool: part.tool });
+              return;
+            }
+          }
+          if (t === "permission.asked" && p.sessionID) return emit(p.sessionID, "waiting", { event: t, tool: p.permission });
+          if (t === "permission.replied" && p.sessionID) return emit(p.sessionID, "busy", { event: t });
+        },
+      };
+    };
+    """#
+
+    private static let ohMyPiPackageJSON = #"""
+    {
+      "name": "notch-omp-extension",
+      "private": true,
+      "type": "module",
+      "main": "index.js",
+      "omp": { "extensions": ["./index.js"] },
+      "pi": { "extensions": ["./index.js"] }
+    }
+    """#
+
+    /// oh-my-pi (omp) loads extensions via a `pi.on(event, handler)` API.
+    private static let ohMyPiIndexJS = #"""
+    // notch agent watcher — auto-generated, do not edit
+    import net from "node:net";
+    import os from "node:os";
+    import path from "node:path";
+
+    const SOCK = path.join(os.homedir(), ".notch/agents.sock");
+
+    function send(payload) {
+      return new Promise((resolve) => {
+        let done = false;
+        const fin = (ok) => { if (done) return; done = true; resolve(ok); };
+        const s = net.connect(SOCK);
+        s.on("error", () => fin(false));
+        s.on("connect", () => s.end(JSON.stringify(payload) + "\n"));
+        s.on("close", () => fin(true));
+        setTimeout(() => { try { s.destroy(); } catch {} fin(false); }, 2000).unref();
+      });
+    }
+    function sid(ctx) { return String((ctx && ctx.sessionManager && ctx.sessionManager.getSessionId && ctx.sessionManager.getSessionId()) || "unknown"); }
+    function cwd(ctx) { return (ctx && ctx.cwd) || (ctx && ctx.sessionManager && ctx.sessionManager.getCwd && ctx.sessionManager.getCwd()); }
+    function text(m) {
+      const c = m && m.content;
+      if (typeof c === "string") return c || undefined;
+      if (!Array.isArray(c)) return undefined;
+      const t = c.filter((b) => b && b.type === "text" && typeof b.text === "string").map((b) => b.text);
+      return t.length ? t.join("\n") : undefined;
+    }
+    function lastAssistant(ms) {
+      if (!Array.isArray(ms)) return {};
+      for (let i = ms.length - 1; i >= 0; i--) {
+        const m = ms[i];
+        if (!m || m.role !== "assistant") continue;
+        const t = text(m);
+        if (!t) continue;
+        return { text: t, model: typeof m.model === "string" ? m.model : undefined };
+      }
+      return {};
+    }
+    const base = (ctx, hook, status) => ({ agent: "ohMyPi", hook, status, sessionId: sid(ctx), cwd: cwd(ctx), pid: process.pid });
+    const safe = (fn) => async (...a) => { try { await fn(...a); } catch {} };
+
+    export default function activate(pi) {
+      pi.on("session_start", safe(async (_e, ctx) => send(base(ctx, "session_start", "started"))));
+      pi.on("message_start", safe(async (e, ctx) => { if (!e.message || e.message.role !== "user") return; const p = text(e.message); if (!p) return; await send({ ...base(ctx, "prompt", "busy"), prompt: p }); }));
+      pi.on("agent_start", safe(async (_e, ctx) => send({ ...base(ctx, "agent_start", "busy"), model: ctx.model && ctx.model.id })));
+      pi.on("tool_call", safe(async (e, ctx) => {
+        if (e.toolName !== "ask" && e.toolName !== "AskUserQuestion") return;
+        const qs = Array.isArray(e.input && e.input.questions) ? e.input.questions : [];
+        const msg = qs.map((q) => q && q.question).filter(Boolean).join(" / ");
+        await send({ ...base(ctx, "ask", "waiting"), message: msg || undefined });
+      }));
+      pi.on("tool_result", safe(async (e, ctx) => { if (e.toolName !== "ask" && e.toolName !== "AskUserQuestion") return; await send(base(ctx, "ask_resolved", "busy")); }));
+      pi.on("agent_end", safe(async (e, ctx) => { const r = lastAssistant(e.messages); await send({ ...base(ctx, "agent_end", "finished"), response: r.text, model: r.model }); }));
+      pi.on("session_shutdown", safe(async (_e, ctx) => send(base(ctx, "session_shutdown", "ended"))));
+    }
+    """#
 }

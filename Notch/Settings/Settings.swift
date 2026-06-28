@@ -21,6 +21,9 @@ final class Settings: ObservableObject {
         static let shareMethod = "shareMethod"
         static let agentsEnabled = "agentsEnabled"
         static let agentClaudeEnabled = "agentClaudeEnabled"
+        static let agentCodexEnabled = "agentCodexEnabled"
+        static let agentOpenCodeEnabled = "agentOpenCodeEnabled"
+        static let agentOhMyPiEnabled = "agentOhMyPiEnabled"
         static let agentNotifyStarted = "agentNotifyStarted"
         static let agentNotifyAttention = "agentNotifyAttention"
         static let agentNotifyFinished = "agentNotifyFinished"
@@ -47,6 +50,9 @@ final class Settings: ObservableObject {
     @Published var shareMethod: ShareMethod { didSet { defaults.set(shareMethod.rawValue, forKey: Key.shareMethod) } }
     @Published var agentsEnabled: Bool { didSet { defaults.set(agentsEnabled, forKey: Key.agentsEnabled) } }
     @Published var agentClaudeEnabled: Bool { didSet { defaults.set(agentClaudeEnabled, forKey: Key.agentClaudeEnabled) } }
+    @Published var agentCodexEnabled: Bool { didSet { defaults.set(agentCodexEnabled, forKey: Key.agentCodexEnabled) } }
+    @Published var agentOpenCodeEnabled: Bool { didSet { defaults.set(agentOpenCodeEnabled, forKey: Key.agentOpenCodeEnabled) } }
+    @Published var agentOhMyPiEnabled: Bool { didSet { defaults.set(agentOhMyPiEnabled, forKey: Key.agentOhMyPiEnabled) } }
     @Published var agentNotifyStarted: Bool { didSet { defaults.set(agentNotifyStarted, forKey: Key.agentNotifyStarted) } }
     @Published var agentNotifyAttention: Bool { didSet { defaults.set(agentNotifyAttention, forKey: Key.agentNotifyAttention) } }
     @Published var agentNotifyFinished: Bool { didSet { defaults.set(agentNotifyFinished, forKey: Key.agentNotifyFinished) } }
@@ -68,6 +74,9 @@ final class Settings: ObservableObject {
             Key.shareMethod: ShareMethod.airdrop.rawValue,
             Key.agentsEnabled: true,
             Key.agentClaudeEnabled: false,
+            Key.agentCodexEnabled: false,
+            Key.agentOpenCodeEnabled: false,
+            Key.agentOhMyPiEnabled: false,
             Key.agentNotifyStarted: false,
             Key.agentNotifyAttention: true,
             Key.agentNotifyFinished: true,
@@ -91,6 +100,9 @@ final class Settings: ObservableObject {
         self.shareMethod = ShareMethod(rawValue: defaults.string(forKey: Key.shareMethod) ?? "airdrop") ?? .airdrop
         self.agentsEnabled = defaults.bool(forKey: Key.agentsEnabled)
         self.agentClaudeEnabled = defaults.bool(forKey: Key.agentClaudeEnabled)
+        self.agentCodexEnabled = defaults.bool(forKey: Key.agentCodexEnabled)
+        self.agentOpenCodeEnabled = defaults.bool(forKey: Key.agentOpenCodeEnabled)
+        self.agentOhMyPiEnabled = defaults.bool(forKey: Key.agentOhMyPiEnabled)
         self.agentNotifyStarted = defaults.bool(forKey: Key.agentNotifyStarted)
         self.agentNotifyAttention = defaults.bool(forKey: Key.agentNotifyAttention)
         self.agentNotifyFinished = defaults.bool(forKey: Key.agentNotifyFinished)

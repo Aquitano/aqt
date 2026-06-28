@@ -6,14 +6,4 @@ import Foundation
 // and exits 0 — never blocking the host agent. Shares HookClient + HookEnvelope
 // with the app target.
 
-let arguments = Array(CommandLine.arguments.dropFirst())
-let source = arguments.firstIndex(of: "--source").flatMap { index -> String? in
-    index + 1 < arguments.count ? arguments[index + 1] : nil
-}
-
-switch source {
-case "codex":
-    HookClient.runClaude() // Codex hooks.json also delivers JSON on stdin (provider TBD)
-default:
-    HookClient.runClaude()
-}
+HookClient.dispatch(Array(CommandLine.arguments.dropFirst()))

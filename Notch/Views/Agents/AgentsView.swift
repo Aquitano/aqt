@@ -88,11 +88,11 @@ struct AgentsView: View {
         case .claudeCode:
             return "Live status, needs-you, and finished. Adds fire-and-forget hooks to ~/.claude/settings.json."
         case .codex:
-            return "Finish + liveness only — Codex exposes no idle or approval signal."
+            return "Live status, needs-you, and finished via ~/.codex/hooks.json (Codex asks you to trust the hook on first run)."
         case .openCode:
-            return agents.capabilities(kind).contains(.attention)
-                ? "Live status + needs-you via a running opencode serve."
-                : "Needs a running opencode serve."
+            return "Live status + needs-you via a small plugin in ~/.config/opencode/plugins."
+        case .ohMyPi:
+            return "Live status + needs-you via an extension in ~/.omp/agent/extensions."
         }
     }
 }

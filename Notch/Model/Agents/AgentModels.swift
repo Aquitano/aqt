@@ -6,6 +6,7 @@ enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case claudeCode
     case codex
     case openCode
+    case ohMyPi
 
     var id: String { rawValue }
 
@@ -15,6 +16,7 @@ enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .claudeCode: return "claude"
         case .codex: return "codex"
         case .openCode: return "opencode"
+        case .ohMyPi: return "omp"
         }
     }
 
@@ -23,6 +25,7 @@ enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .claudeCode: return "Claude Code"
         case .codex: return "Codex"
         case .openCode: return "OpenCode"
+        case .ohMyPi: return "oh-my-pi"
         }
     }
 
@@ -32,6 +35,7 @@ enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .claudeCode: return "sparkles"
         case .codex: return "chevron.left.forwardslash.chevron.right"
         case .openCode: return "curlybraces"
+        case .ohMyPi: return "fossil.shell.fill"
         }
     }
 }
@@ -142,4 +146,14 @@ struct HookEnvelope: Codable, Sendable {
     var message: String?
     /// Best-effort agent process id (client's getppid()), used as a liveness hint.
     var pid: Int32?
+
+    // Normalized fields the event-driven clients (Codex hook, OpenCode plugin,
+    // oh-my-pi extension) populate so one provider can interpret them uniformly.
+    /// "started" | "busy" | "tool" | "editing" | "idle" | "finished" | "waiting" | "ended"
+    var status: String?
+    var tool: String?
+    var prompt: String?
+    var response: String?
+    var model: String?
+    var project: String?
 }
