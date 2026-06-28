@@ -42,6 +42,7 @@ struct Activity: Identifiable, Equatable {
         case focus(name: String?, isOn: Bool)
         case peek(title: String, message: String, symbol: String, tint: PeekTint)
         case timer(name: String, endsAt: Date)
+        case agent(sessionID: String, kind: AgentKind, project: String, status: AgentStatus)
     }
 
     enum PeekTint: Equatable {
@@ -60,6 +61,7 @@ struct Activity: Identifiable, Equatable {
         case let .focus(_, isOn): return isOn ? "moon.fill" : "moon"
         case let .peek(_, _, symbol, _): return symbol
         case .timer: return "timer"
+        case let .agent(_, _, _, status): return status.symbol
         }
     }
 
@@ -77,6 +79,7 @@ struct Activity: Identifiable, Equatable {
         case let .focus(name, _): return name ?? "Focus"
         case let .peek(title, _, _, _): return title
         case let .timer(name, _): return name
+        case let .agent(_, kind, _, status): return "\(kind.shortName) · \(status.label)"
         }
     }
 }

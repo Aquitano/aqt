@@ -85,6 +85,20 @@ struct ActivityCardView: View {
 
         case let .timer(name, endsAt):
             return CardContent(title: name, subtitle: remaining(until: endsAt), tint: .white)
+
+        case let .agent(_, kind, project, status):
+            return CardContent(title: project,
+                               subtitle: "\(kind.shortName) · \(status.label)",
+                               tint: agentTint(status))
+        }
+    }
+
+    private func agentTint(_ status: AgentStatus) -> Color {
+        switch status {
+        case .needsAttention: return .orange
+        case .finished: return .green
+        case .editing, .running, .tool: return .white
+        case .idle: return .white.opacity(0.6)
         }
     }
 

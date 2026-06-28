@@ -19,6 +19,12 @@ final class Settings: ObservableObject {
         static let showWeatherWidget = "showWeatherWidget"
         static let showCalendarWidget = "showCalendarWidget"
         static let shareMethod = "shareMethod"
+        static let agentsEnabled = "agentsEnabled"
+        static let agentClaudeEnabled = "agentClaudeEnabled"
+        static let agentNotifyStarted = "agentNotifyStarted"
+        static let agentNotifyAttention = "agentNotifyAttention"
+        static let agentNotifyFinished = "agentNotifyFinished"
+        static let agentAutoExpandOnAttention = "agentAutoExpandOnAttention"
     }
 
     @Published var showHUD: Bool { didSet { defaults.set(showHUD, forKey: Key.showHUD) } }
@@ -37,6 +43,12 @@ final class Settings: ObservableObject {
     @Published var showWeatherWidget: Bool { didSet { defaults.set(showWeatherWidget, forKey: Key.showWeatherWidget) } }
     @Published var showCalendarWidget: Bool { didSet { defaults.set(showCalendarWidget, forKey: Key.showCalendarWidget) } }
     @Published var shareMethod: ShareMethod { didSet { defaults.set(shareMethod.rawValue, forKey: Key.shareMethod) } }
+    @Published var agentsEnabled: Bool { didSet { defaults.set(agentsEnabled, forKey: Key.agentsEnabled) } }
+    @Published var agentClaudeEnabled: Bool { didSet { defaults.set(agentClaudeEnabled, forKey: Key.agentClaudeEnabled) } }
+    @Published var agentNotifyStarted: Bool { didSet { defaults.set(agentNotifyStarted, forKey: Key.agentNotifyStarted) } }
+    @Published var agentNotifyAttention: Bool { didSet { defaults.set(agentNotifyAttention, forKey: Key.agentNotifyAttention) } }
+    @Published var agentNotifyFinished: Bool { didSet { defaults.set(agentNotifyFinished, forKey: Key.agentNotifyFinished) } }
+    @Published var agentAutoExpandOnAttention: Bool { didSet { defaults.set(agentAutoExpandOnAttention, forKey: Key.agentAutoExpandOnAttention) } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -50,6 +62,12 @@ final class Settings: ObservableObject {
             Key.showWeatherWidget: true,
             Key.showCalendarWidget: true,
             Key.shareMethod: ShareMethod.airdrop.rawValue,
+            Key.agentsEnabled: true,
+            Key.agentClaudeEnabled: false,
+            Key.agentNotifyStarted: false,
+            Key.agentNotifyAttention: true,
+            Key.agentNotifyFinished: true,
+            Key.agentAutoExpandOnAttention: false,
         ])
         self.showHUD = defaults.bool(forKey: Key.showHUD)
         self.temperatureUnit = WeatherSnapshot.TemperatureUnit(
@@ -65,5 +83,11 @@ final class Settings: ObservableObject {
         self.showWeatherWidget = defaults.bool(forKey: Key.showWeatherWidget)
         self.showCalendarWidget = defaults.bool(forKey: Key.showCalendarWidget)
         self.shareMethod = ShareMethod(rawValue: defaults.string(forKey: Key.shareMethod) ?? "airdrop") ?? .airdrop
+        self.agentsEnabled = defaults.bool(forKey: Key.agentsEnabled)
+        self.agentClaudeEnabled = defaults.bool(forKey: Key.agentClaudeEnabled)
+        self.agentNotifyStarted = defaults.bool(forKey: Key.agentNotifyStarted)
+        self.agentNotifyAttention = defaults.bool(forKey: Key.agentNotifyAttention)
+        self.agentNotifyFinished = defaults.bool(forKey: Key.agentNotifyFinished)
+        self.agentAutoExpandOnAttention = defaults.bool(forKey: Key.agentAutoExpandOnAttention)
     }
 }

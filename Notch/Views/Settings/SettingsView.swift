@@ -10,6 +10,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             generalSection
+            agentsSection
             mediaSection
             hudSection
             widgetsSection
@@ -29,6 +30,26 @@ struct SettingsView: View {
             // this toggle and the in-notch one stay in sync.
             Toggle("Launch at Login", isOn: $settings.launchAtLogin)
             Toggle("Haptic feedback", isOn: $settings.hapticFeedback)
+        }
+    }
+
+    // MARK: - Agents
+
+    private var agentsSection: some View {
+        Section {
+            Toggle("Watch coding agents", isOn: $settings.agentsEnabled)
+            if settings.agentsEnabled {
+                Toggle("Notify when an agent needs you", isOn: $settings.agentNotifyAttention)
+                Toggle("Notify when an agent finishes", isOn: $settings.agentNotifyFinished)
+                Toggle("Notify when an agent starts", isOn: $settings.agentNotifyStarted)
+                Toggle("Auto-expand on needs-you", isOn: $settings.agentAutoExpandOnAttention)
+            }
+        } header: {
+            Text("Agents")
+        } footer: {
+            Text("Enable a specific agent from the Agents tab in the notch — that writes its opt-in hooks. Turning Watch off takes effect on relaunch.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

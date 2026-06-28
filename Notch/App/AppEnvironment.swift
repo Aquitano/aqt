@@ -23,6 +23,7 @@ final class AppEnvironment: ObservableObject {
     let hud: HUDManager
     let tray: TrayManager
     let timer: TimerManager
+    let agents: AgentManager
 
     let battery: BatteryManager
     let calendar: CalendarManager
@@ -58,6 +59,7 @@ final class AppEnvironment: ObservableObject {
         self.hud = HUDManager(settings: settings, audio: audio)
         self.tray = TrayManager(persistence: persistence, imageCache: imageCache, settings: settings, activities: activities)
         self.timer = TimerManager(activities: activities)
+        self.agents = AgentManager(activities: activities, settings: settings)
         self.battery = BatteryManager(activities: activities)
         self.calendar = CalendarManager(activities: activities)
         self.weather = WeatherManager(settings: settings)
@@ -78,6 +80,7 @@ final class AppEnvironment: ObservableObject {
         media.start()
         hud.start()
         tray.start()
+        agents.start()
         battery.start()
         calendar.start()
         weather.start()
@@ -174,6 +177,7 @@ extension View {
             .environmentObject(env.media)
             .environmentObject(env.hud)
             .environmentObject(env.tray)
+            .environmentObject(env.agents)
             .environmentObject(env.battery)
             .environmentObject(env.calendar)
             .environmentObject(env.weather)

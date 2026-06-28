@@ -35,8 +35,11 @@ final class ActivityManager: ObservableObject {
     // MARK: - Mutation
 
     func publish(_ activity: Activity) {
-        replaceOrInsert(activity)
-        cycleOffset = 0
+        // Resetting the cycle only on a genuinely new entry keeps an in-place
+        // channel update (e.g. an agent's running -> editing) from yanking the
+        // pill back to the top while the user is cycling through activities.
+        let replaced = replaceOrInsert(activity)
+        if !replaced { cycleOffset = 0 }
         lastEventID = activity.id
         scheduleTTL(activity)
         state.showCompact()
@@ -51,6 +54,32 @@ final class ActivityManager: ObservableObject {
               ttl: TimeInterval = 4) {
         publish(Activity(kind: .peek(title: title, message: message, symbol: symbol, tint: tint),
                          priority: .urgent, createdAt: Date(), ttl: ttl))
+    }
+
+    /// Mirror an agent session into the pill. Sticky (no TTL); the `AgentManager`
+    /// removes the channel when the session leaves a busy / needs-attention state.
+    func publishAgent(_ session: AgentSession) {
+        let priority: Activity.Priority = session.status == .needsAttention ? .urgent : .normal
+        publish(Activity(
+            kind: .agent(sessionID: session.id, kind: session.kind, project: session.project, status: session.status),
+            priority: priority,
+            createdAt: Date()
+        ))
+    }
+
+    func removeAgent(sessionID: String) {
+        let ids = activities.compactMap { activity -> UUID? in
+            if case let .agent(id, _, _, _) = activity.kind, id == sessionID { return activity.id }
+            return nil
+        }
+        ids.forEach { remove(id: $0) }
+    }
+
+    /// Open the panel on the Agents tab — used when a session needs attention and
+    /// the user opted into auto-expand.
+    func requestAutoExpand() {
+        state.expand()
+        state.select(tab: .agents)
     }
 
     func remove(id: UUID) {
@@ -89,11 +118,18 @@ final class ActivityManager: ObservableObject {
 
     /// Singleton channels (charging, focus, ...) replace the previous entry;
     /// everything else is appended.
-    private func replaceOrInsert(_ activity: Activity) {
+    /// Returns true when it replaced an existing entry on the same channel (vs.
+    /// inserting a brand-new activity).
+    @discardableResult
+    private func replaceOrInsert(_ activity: Activity) -> Bool {
+        var replaced = false
         if let key = channelKey(activity.kind) {
+            let before = activities.count
             activities.removeAll { channelKey($0.kind) == key }
+            replaced = activities.count != before
         }
         activities.append(activity)
+        return replaced
     }
 
     private func channelKey(_ kind: Activity.Kind) -> String? {
@@ -105,6 +141,7 @@ final class ActivityManager: ObservableObject {
         case .focus: return "focus"
         case let .deviceConnected(name, _, _): return "device.\(name)"
         case let .audioRoute(name, _): return "route.\(name)"
+        case let .agent(sessionID, _, _, _): return "agent.\(sessionID)"
         case .peek, .timer: return nil
         }
     }

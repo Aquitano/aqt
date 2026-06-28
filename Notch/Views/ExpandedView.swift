@@ -40,12 +40,16 @@ struct ExpandedView: View {
 
     private var tabStrip: some View {
         HStack(spacing: 4) {
-            ForEach(NotchState.ExpandedTab.allCases) { tab in
+            ForEach(visibleTabs) { tab in
                 tabButton(tab)
             }
         }
         .padding(4)
         .glassEffect(.regular, in: .capsule)
+    }
+
+    private var visibleTabs: [NotchState.ExpandedTab] {
+        NotchState.ExpandedTab.allCases.filter { $0 != .agents || settings.agentsEnabled }
     }
 
     private func tabButton(_ tab: NotchState.ExpandedTab) -> some View {
@@ -84,6 +88,8 @@ struct ExpandedView: View {
             switch state.expandedTab {
             case .home:
                 home
+            case .agents:
+                AgentsView()
             case .media:
                 MediaPlayerView(namespace: namespace)
             case .tray:
@@ -109,6 +115,10 @@ struct ExpandedView: View {
             settingsToggle("Weather widget", $settings.showWeatherWidget)
             settingsToggle("Calendar widget", $settings.showCalendarWidget)
             settingsToggle("Launch at login", $settings.launchAtLogin)
+            if settings.agentsEnabled {
+                settingsToggle("Agent needs-you alerts", $settings.agentNotifyAttention)
+                settingsToggle("Agent finished alerts", $settings.agentNotifyFinished)
+            }
 
             Divider()
                 .overlay(.white.opacity(0.12))
