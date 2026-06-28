@@ -102,7 +102,8 @@ final class NotchState: ObservableObject {
         guard presentation != .expanded else { return }
         expandTask?.cancel()
         expandTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(150))
+            // Brief intent delay so the pill's hover-swell reads before it opens.
+            try? await Task.sleep(for: .milliseconds(210))
             guard let self, !Task.isCancelled else { return }
             self.expandTask = nil
             self.endCollapsing()

@@ -56,6 +56,9 @@ struct NotchRootView: View {
         let expanded = state.presentation == .expanded
         let size = currentSize
         let bottomRadius = expanded ? NotchMetrics.expandedCornerRadius : NotchMetrics.compactCornerRadius
+        // Hover the compact pill and it swells slightly first (an intent preview),
+        // then opens after a brief delay — a softer, more deliberate reveal.
+        let hoverGrow = state.presentation == .compact && state.isHovering && !state.isDropActive
 
         return ZStack {
             NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius, notchWidth: notchSize.width)
@@ -86,6 +89,8 @@ struct NotchRootView: View {
             .clipShape(NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius, notchWidth: notchSize.width))
         }
         .frame(width: size.width, height: size.height)
+        .scaleEffect(hoverGrow ? 1.06 : 1.0, anchor: .top)
+        .animation(NotchAnimation.hoverGrow(reduceMotion: state.reduceMotion), value: hoverGrow)
         .contentShape(NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius, notchWidth: notchSize.width))
         .onHover { hovering in handleHover(hovering) }
         .frame(maxWidth: .infinity, alignment: .center)

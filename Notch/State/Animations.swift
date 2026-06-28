@@ -24,6 +24,11 @@ enum NotchAnimation {
 
     /// One-shot pop for a new track / new activity. Used as a phaseAnimator curve.
     static let pop: Animation = .spring(response: 0.32, dampingFraction: 0.55)
+
+    /// Gentle swell while the cursor rests on the compact pill, before it opens.
+    static func hoverGrow(reduceMotion: Bool) -> Animation {
+        reduceMotion ? .smooth(duration: 0.2) : .spring(response: 0.28, dampingFraction: 0.72)
+    }
 }
 
 /// Layout constants for the notch geometry and morph.
