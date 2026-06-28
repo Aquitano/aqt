@@ -61,7 +61,7 @@ struct Activity: Identifiable, Equatable {
         case let .focus(_, isOn): return isOn ? "moon.fill" : "moon"
         case let .peek(_, _, symbol, _): return symbol
         case .timer: return "timer"
-        case let .agent(_, _, _, status): return status.symbol
+        case let .agent(_, kind, _, _): return kind.symbol
         }
     }
 
@@ -79,7 +79,9 @@ struct Activity: Identifiable, Equatable {
         case let .focus(name, _): return name ?? "Focus"
         case let .peek(title, _, _, _): return title
         case let .timer(name, _): return name
-        case let .agent(_, kind, _, status): return "\(kind.shortName) · \(status.label)"
+        // Terse in the pill (it hugs the notch); the agent glyph identifies which
+        // agent, the expanded activity card carries the full "claude · status".
+        case let .agent(_, _, _, status): return status.label
         }
     }
 }
