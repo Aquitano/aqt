@@ -184,7 +184,8 @@ final class ClaudeCodeProvider: AgentProviding {
                 id: scanned.sessionId, kind: .claudeCode, project: Self.projectName(scanned.cwd),
                 cwd: scanned.cwd, status: .idle, startedAt: scanned.lastActivity,
                 lastActivity: scanned.lastActivity, pid: scanned.pid, gitBranch: scanned.gitBranch,
-                terminalFocusURL: scanned.focusURL
+                terminalFocusURL: scanned.focusURL, lastPrompt: scanned.prompt,
+                lastResponse: scanned.response, terminalName: scanned.terminalName
             )
         }
 
@@ -216,8 +217,11 @@ final class ClaudeCodeProvider: AgentProviding {
             session.detail = hookState[sid]?.message ?? session.detail
             if let prev = sessionsByID[sid] {
                 session.startedAt = prev.startedAt
-                // Keep a previously-captured focus URL if this cycle didn't see one.
+                // Keep previously-captured detail if this cycle didn't see it.
                 session.terminalFocusURL = session.terminalFocusURL ?? prev.terminalFocusURL
+                session.terminalName = session.terminalName ?? prev.terminalName
+                session.lastPrompt = session.lastPrompt ?? prev.lastPrompt
+                session.lastResponse = session.lastResponse ?? prev.lastResponse
             }
             result[sid] = session
         }
@@ -321,6 +325,9 @@ final class ClaudeCodeProvider: AgentProviding {
         let gitBranch: String?
         let busyStatus: AgentStatus
         let focusURL: String?
+        let terminalName: String?
+        let prompt: String?
+        let response: String?
     }
 
     nonisolated private static let projectsRoot = FileManager.default.homeDirectoryForCurrentUser
@@ -355,28 +362,47 @@ final class ClaudeCodeProvider: AgentProviding {
             guard let cwd = lookup.cwd(of: pid), !seenCwd.contains(cwd) else { continue }
             seenCwd.insert(cwd)
             guard let transcript = newestTranscript(forCwd: cwd) else { continue }
+            let terminal = terminalInfo(forPID: pid, lookup: lookup)
             result.append(ScannedSession(
                 sessionId: transcript.sessionId, cwd: cwd, pid: pid,
                 lastActivity: transcript.mtime, gitBranch: transcript.branch, busyStatus: transcript.busy,
-                focusURL: terminalFocusURL(forPID: pid, lookup: lookup)
+                focusURL: terminal.focusURL, terminalName: terminal.name,
+                prompt: transcript.prompt, response: transcript.response
             ))
         }
         return result
     }
 
-    /// A deep link to the exact hosting tab, read from the agent process's
-    /// environment. Warp exports `WARP_FOCUS_URL` (warp://session/<uuid>) per tab;
-    /// otherwise reconstruct it from the session UUID.
-    nonisolated private static func terminalFocusURL(forPID pid: pid_t, lookup: ProcessLookup) -> String? {
+    /// Terminal locator + display name, read from the agent process's environment.
+    /// Warp exports `WARP_FOCUS_URL` (warp://session/<uuid>) per tab.
+    nonisolated private static func terminalInfo(forPID pid: pid_t, lookup: ProcessLookup) -> (focusURL: String?, name: String?) {
         let env = lookup.environment(of: pid)
-        if let url = env["WARP_FOCUS_URL"], !url.isEmpty { return url }
-        if let uuid = env["WARP_TERMINAL_SESSION_UUID"], !uuid.isEmpty { return "warp://session/\(uuid)" }
-        return nil
+        var focusURL: String?
+        if let url = env["WARP_FOCUS_URL"], !url.isEmpty {
+            focusURL = url
+        } else if let uuid = env["WARP_TERMINAL_SESSION_UUID"], !uuid.isEmpty {
+            focusURL = "warp://session/\(uuid)"
+        }
+        return (focusURL, terminalName(env["TERM_PROGRAM"]))
+    }
+
+    nonisolated private static func terminalName(_ termProgram: String?) -> String? {
+        switch termProgram {
+        case "WarpTerminal": return "Warp"
+        case "iTerm.app": return "iTerm"
+        case "Apple_Terminal": return "Terminal"
+        case "vscode": return "VS Code"
+        case "ghostty", "xterm-ghostty": return "Ghostty"
+        case "WezTerm": return "WezTerm"
+        case "Hyper": return "Hyper"
+        case let other?: return other.isEmpty ? nil : other
+        case nil: return nil
+        }
     }
 
     nonisolated private static func newestTranscript(
         forCwd cwd: String
-    ) -> (sessionId: String, mtime: Date, branch: String?, busy: AgentStatus)? {
+    ) -> (sessionId: String, mtime: Date, branch: String?, busy: AgentStatus, prompt: String?, response: String?)? {
         let encoded = cwd.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ".", with: "-")
         let dir = projectsRoot.appendingPathComponent(encoded, isDirectory: true)
         guard let entries = try? FileManager.default.contentsOfDirectory(
@@ -384,41 +410,77 @@ final class ClaudeCodeProvider: AgentProviding {
         ) else { return nil }
         let jsonls = entries.filter { $0.pathExtension == "jsonl" }
         guard let newest = jsonls.max(by: { mtime($0) < mtime($1) }) else { return nil }
-        let (branch, busy) = parseTail(newest)
-        return (newest.deletingPathExtension().lastPathComponent, mtime(newest), branch, busy)
+        let parsed = parseTail(newest)
+        return (newest.deletingPathExtension().lastPathComponent, mtime(newest),
+                parsed.branch, parsed.busy, parsed.prompt, parsed.response)
     }
 
-    nonisolated private static func parseTail(_ url: URL) -> (String?, AgentStatus) {
-        guard let chunk = readTail(url, maxBytes: 16384) else { return (nil, .running) }
+    /// One reverse pass over the transcript tail collecting branch, busy status,
+    /// the latest user prompt, and the latest assistant reply (for the preview).
+    nonisolated private static func parseTail(
+        _ url: URL
+    ) -> (branch: String?, busy: AgentStatus, prompt: String?, response: String?) {
+        guard let chunk = readTail(url, maxBytes: 65536) else { return (nil, .running, nil, nil) }
         var branch: String?
         var status: AgentStatus = .running
         var foundStatus = false
+        var prompt: String?
+        var response: String?
+
         for line in chunk.split(separator: 0x0A).reversed() {
             guard let obj = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { continue }
             if branch == nil { branch = obj["gitBranch"] as? String }
-            if !foundStatus {
-                switch obj["type"] as? String {
-                case "assistant":
-                    if let message = obj["message"] as? [String: Any],
-                       let content = message["content"] as? [[String: Any]] {
-                        if let tool = content.last(where: { ($0["type"] as? String) == "tool_use" }),
-                           let name = tool["name"] as? String {
-                            status = editTools.contains(name) ? .editing : .tool
-                        } else {
-                            status = .running
-                        }
-                        foundStatus = true
+
+            switch obj["type"] as? String {
+            case "assistant":
+                guard let message = obj["message"] as? [String: Any],
+                      let content = message["content"] as? [[String: Any]] else { break }
+                if !foundStatus {
+                    if let tool = content.last(where: { ($0["type"] as? String) == "tool_use" }),
+                       let name = tool["name"] as? String {
+                        status = editTools.contains(name) ? .editing : .tool
+                    } else {
+                        status = .running
                     }
-                case "user":
-                    status = .running
                     foundStatus = true
-                default:
-                    break
                 }
+                if response == nil {
+                    let text = content
+                        .compactMap { ($0["type"] as? String) == "text" ? $0["text"] as? String : nil }
+                        .joined(separator: " ")
+                    if !text.isEmpty { response = clip(text) }
+                }
+            case "user":
+                if !foundStatus { status = .running; foundStatus = true }
+                if prompt == nil, let message = obj["message"] as? [String: Any],
+                   let text = userPrompt(message) {
+                    prompt = clip(text)
+                }
+            default:
+                break
             }
-            if branch != nil && foundStatus { break }
+            if branch != nil && foundStatus && prompt != nil && response != nil { break }
         }
-        return (branch, status)
+        return (branch, status, prompt, response)
+    }
+
+    /// A user transcript entry is a real prompt only when its content is plain
+    /// text — entries carrying a `tool_result` are tool output, not prompts.
+    nonisolated private static func userPrompt(_ message: [String: Any]) -> String? {
+        if let string = message["content"] as? String {
+            return string.isEmpty ? nil : string
+        }
+        guard let content = message["content"] as? [[String: Any]] else { return nil }
+        if content.contains(where: { ($0["type"] as? String) == "tool_result" }) { return nil }
+        let text = content
+            .compactMap { ($0["type"] as? String) == "text" ? $0["text"] as? String : nil }
+            .joined(separator: " ")
+        return text.isEmpty ? nil : text
+    }
+
+    nonisolated private static func clip(_ string: String, max: Int = 240) -> String {
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.count <= max ? trimmed : String(trimmed.prefix(max)) + "…"
     }
 
     nonisolated private static func readTail(_ url: URL, maxBytes: Int) -> Data? {

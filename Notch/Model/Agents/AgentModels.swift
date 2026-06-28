@@ -94,6 +94,11 @@ struct AgentSession: Identifiable, Equatable, Sendable {
     /// Deep link to focus the exact hosting terminal tab (e.g. Warp's
     /// `warp://session/<uuid>`), captured from the agent process's environment.
     var terminalFocusURL: String?
+    /// Most recent user prompt and assistant reply, for the expanded preview.
+    var lastPrompt: String?
+    var lastResponse: String?
+    /// Terminal hosting the session (e.g. "Warp"), for the row badge.
+    var terminalName: String?
 }
 
 /// A normalized, notify-worthy transition a provider emits to `AgentManager`,

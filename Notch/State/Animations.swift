@@ -95,7 +95,7 @@ enum NotchLayout {
     static func expandedBodyHeight(tab: NotchState.ExpandedTab, hasInfoRow: Bool, trayEmpty: Bool) -> CGFloat {
         switch tab {
         case .home: return hasInfoRow ? 296 : 175
-        case .agents: return 260
+        case .agents: return 320
         case .media: return 220
         case .tray: return trayEmpty ? 180 : 246
         case .settings: return 300
