@@ -43,9 +43,26 @@ struct ExpandedView: View {
             ForEach(visibleTabs) { tab in
                 tabButton(tab)
             }
+            gearButton
         }
         .padding(4)
         .glassEffect(.regular, in: .capsule)
+    }
+
+    /// Opens the standard Settings window (all settings live there).
+    private var gearButton: some View {
+        Button {
+            Haptics.tap(.levelChange)
+            openSettings()
+        } label: {
+            Image(systemName: "gearshape")
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 46, height: 32)
+                .foregroundStyle(Color.white.opacity(0.5))
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Settings")
     }
 
     private var visibleTabs: [NotchState.ExpandedTab] {
@@ -56,8 +73,7 @@ struct ExpandedView: View {
         let selected = state.expandedTab == tab
         return Button {
             Haptics.tap(.levelChange)
-            // Settings live in the standard Settings window, not inline.
-            if tab == .settings { openSettings() } else { state.select(tab: tab) }
+            state.select(tab: tab)
         } label: {
             Image(systemName: tab.symbol)
                 .font(.system(size: 14, weight: .semibold))
@@ -95,8 +111,6 @@ struct ExpandedView: View {
                 MediaPlayerView(namespace: namespace)
             case .tray:
                 TrayView()
-            case .settings:
-                Color.clear // the gear opens the Settings window instead
             }
         }
     }

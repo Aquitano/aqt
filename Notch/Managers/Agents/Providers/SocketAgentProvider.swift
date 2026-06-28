@@ -14,7 +14,6 @@ final class SocketAgentProvider: AgentProviding {
     enum Liveness { case processPid, staleness }
 
     let kind: AgentKind
-    let capabilities: AgentProviderCapabilities
     var onSessions: (([AgentSession]) -> Void)?
     var onEvent: ((AgentEvent) -> Void)?
 
@@ -25,19 +24,16 @@ final class SocketAgentProvider: AgentProviding {
     private let uninstall: () throws -> Void
 
     private var sessions: [String: AgentSession] = [:]
-    private var emittedAttentionAt: [String: Date] = [:]
     private var pruneTask: Task<Void, Never>?
     private static let staleAfter: TimeInterval = 30 * 60
 
     init(kind: AgentKind,
-         capabilities: AgentProviderCapabilities,
          liveness: Liveness,
          settings: Settings,
          enabledKey: ReferenceWritableKeyPath<Settings, Bool>,
          install: @escaping () throws -> Void,
          uninstall: @escaping () throws -> Void) {
         self.kind = kind
-        self.capabilities = capabilities
         self.liveness = liveness
         self.settings = settings
         self.enabledKey = enabledKey
@@ -75,7 +71,6 @@ final class SocketAgentProvider: AgentProviding {
         try? uninstall()
         stop()
         sessions = [:]
-        emittedAttentionAt = [:]
         onSessions?([])
     }
 
@@ -93,7 +88,6 @@ final class SocketAgentProvider: AgentProviding {
 
         if raw == "ended" {
             if let gone = sessions.removeValue(forKey: sid) {
-                emittedAttentionAt[sid] = nil
                 onEvent?(AgentEvent(kind: .ended, session: gone, message: nil))
             }
             publish()
@@ -102,19 +96,19 @@ final class SocketAgentProvider: AgentProviding {
 
         let previous = sessions[sid]
         var session = previous ?? AgentSession(
-            id: sid, kind: kind, project: Self.projectName(envelope.cwd ?? envelope.project),
+            id: sid, kind: kind, project: agentProjectName(envelope.cwd ?? envelope.project),
             cwd: envelope.cwd, status: .idle, startedAt: Date(), lastActivity: Date()
         )
         session.status = mapStatus(raw, tool: envelope.tool)
         session.activityVerb = session.status.isBusy
             ? (envelope.tool.map(agentToolVerb) ?? (session.status == .running ? "Thinking" : nil))
             : nil
-        if let cwd = envelope.cwd { session.cwd = cwd; session.project = Self.projectName(cwd) }
+        if let cwd = envelope.cwd { session.cwd = cwd; session.project = agentProjectName(cwd) }
         else if let project = envelope.project { session.project = project }
         session.lastActivity = Date()
         if liveness == .processPid, pid > 0 { session.pid = pid }
-        if let prompt = envelope.prompt, !prompt.isEmpty { session.lastPrompt = Self.clip(prompt) }
-        if let response = envelope.response, !response.isEmpty { session.lastResponse = Self.clip(response) }
+        if let prompt = envelope.prompt, !prompt.isEmpty { session.lastPrompt = agentClip(prompt) }
+        if let response = envelope.response, !response.isEmpty { session.lastResponse = agentClip(response) }
         if let model = envelope.model, !model.isEmpty { session.detail = model }
         if let parent = envelope.parent, !parent.isEmpty { session.parentSessionID = parent }
 
@@ -146,8 +140,9 @@ final class SocketAgentProvider: AgentProviding {
 
     private func emitEvents(sid: String, previous: AgentSession?, session: AgentSession, message: String?) {
         if session.status == .needsAttention {
-            if emittedAttentionAt[sid] != session.lastActivity {
-                emittedAttentionAt[sid] = session.lastActivity
+            // Fire on entering attention (consecutive permission asks are separated
+            // by activity, so each transition is distinct; the notifier rate-limits).
+            if previous?.status != .needsAttention {
                 onEvent?(AgentEvent(kind: .needsAttention, session: session, message: message ?? session.lastPrompt))
             }
             return
@@ -177,7 +172,6 @@ final class SocketAgentProvider: AgentProviding {
 
     private func remove(_ sid: String, _ session: AgentSession) {
         sessions[sid] = nil
-        emittedAttentionAt[sid] = nil
         onEvent?(AgentEvent(kind: .ended, session: session, message: nil))
     }
 
@@ -199,13 +193,5 @@ final class SocketAgentProvider: AgentProviding {
         kill(pid, 0) == 0 || errno == EPERM
     }
 
-    private static func projectName(_ cwd: String?) -> String {
-        guard let cwd, !cwd.isEmpty else { return "—" }
-        return (cwd as NSString).lastPathComponent
-    }
 
-    private static func clip(_ string: String, max: Int = 240) -> String {
-        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.count <= max ? trimmed : String(trimmed.prefix(max)) + "…"
-    }
 }

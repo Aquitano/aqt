@@ -68,14 +68,14 @@ struct AgentsView: View {
                 .symbolRenderingMode(.hierarchical)
                 .frame(width: 26)
             Text(kind.displayName)
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 13, weight: .semibold))
             Spacer(minLength: 6)
             Text("Not installed")
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.4))
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(.white.opacity(0.45))
         .background(.white.opacity(0.04), in: .rect(cornerRadius: 16))
@@ -132,7 +132,7 @@ struct AgentsView: View {
     private func enableCard(_ kind: AgentKind) -> some View {
         HStack(spacing: 12) {
             Image(systemName: kind.symbol)
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 16, weight: .semibold))
                 .symbolRenderingMode(.hierarchical)
                 .frame(width: 26)
 
@@ -159,8 +159,8 @@ struct AgentsView: View {
             .buttonStyle(.plain)
             .glassEffect(.regular, in: .capsule)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 13)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }

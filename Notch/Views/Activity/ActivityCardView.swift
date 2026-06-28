@@ -98,7 +98,8 @@ struct ActivityCardView: View {
         switch status {
         case .needsAttention: return .orange
         case .finished: return .green
-        case .editing, .running, .tool: return .white
+        case .running, .tool: return .cyan
+        case .editing: return .blue
         case .idle: return .white.opacity(0.6)
         }
     }

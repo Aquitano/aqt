@@ -167,7 +167,8 @@ struct AgentConfigInstaller {
             return
         }
 
-        if let existing { try? writeJSONFile(existing, to: statusLineOrigURL) }
+        // Mandatory: if we can't snapshot the original, abort before replacing it.
+        if let existing { try writeJSONFile(existing, to: statusLineOrigURL) }
         else { try? FileManager.default.removeItem(at: statusLineOrigURL) }
         try writeStatusLineWrapper(original: currentCommand.isEmpty ? nil : currentCommand)
 
@@ -396,11 +397,11 @@ struct AgentConfigInstaller {
             return emit(p.info.id, "idle", { event: t });
           }
           if (t === "session.deleted" && p.info && p.info.id) { await emit(p.info.id, "ended", { event: t }); sessions.delete(p.info.id); return; }
-          if (t === "session.idle" && p.sessionID) return emit(p.sessionID, "idle", { event: t });
+          if (t === "session.idle" && p.sessionID) return emit(p.sessionID, "finished", { event: t });
           if (t === "message.updated" && p.info && p.info.id) {
             roles.set(p.info.id, { role: p.info.role, sessionID: p.info.sessionID });
             if (p.info.role === "assistant" && p.info.modelID) get(p.info.sessionID).model = p.info.modelID;
-            if (p.info.finish === "stop" && p.info.sessionID) return emit(p.info.sessionID, "idle", { event: t });
+            if (p.info.finish === "stop" && p.info.sessionID) return emit(p.info.sessionID, "finished", { event: t });
             return;
           }
           if (t === "message.part.updated" && p.part) {

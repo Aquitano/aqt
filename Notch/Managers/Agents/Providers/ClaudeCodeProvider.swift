@@ -11,7 +11,6 @@ import Foundation
 final class ClaudeCodeProvider: AgentProviding {
 
     let kind: AgentKind = .claudeCode
-    let capabilities: AgentProviderCapabilities = [.liveEvents, .attention]
 
     var onSessions: (([AgentSession]) -> Void)?
     var onEvent: ((AgentEvent) -> Void)?
@@ -186,7 +185,7 @@ final class ClaudeCodeProvider: AgentProviding {
 
         for scanned in lastScan where !endedSessionIDs.contains(scanned.sessionId) {
             result[scanned.sessionId] = AgentSession(
-                id: scanned.sessionId, kind: .claudeCode, project: Self.projectName(scanned.cwd),
+                id: scanned.sessionId, kind: .claudeCode, project: agentProjectName(scanned.cwd),
                 cwd: scanned.cwd, status: .idle, startedAt: scanned.lastActivity,
                 lastActivity: scanned.lastActivity, pid: scanned.pid, gitBranch: scanned.gitBranch,
                 terminalFocusURL: scanned.focusURL, lastPrompt: scanned.prompt,
@@ -205,7 +204,7 @@ final class ClaudeCodeProvider: AgentProviding {
             guard let hook = hookState[sid], let cwd = hookCwd[sid] else { continue }
             if now.timeIntervalSince(hook.time) <= Self.graceWindow {
                 result[sid] = AgentSession(
-                    id: sid, kind: .claudeCode, project: Self.projectName(cwd), cwd: cwd,
+                    id: sid, kind: .claudeCode, project: agentProjectName(cwd), cwd: cwd,
                     status: .idle, startedAt: hook.time, lastActivity: hook.time,
                     pid: nil, gitBranch: nil, detail: hook.message
                 )
@@ -459,13 +458,13 @@ final class ClaudeCodeProvider: AgentProviding {
                     let text = content
                         .compactMap { ($0["type"] as? String) == "text" ? $0["text"] as? String : nil }
                         .joined(separator: " ")
-                    if !text.isEmpty { response = clip(text) }
+                    if !text.isEmpty { response = agentClip(text) }
                 }
             case "user":
                 if !foundStatus { status = .running; verb = "Thinking"; foundStatus = true }
                 if prompt == nil, let message = obj["message"] as? [String: Any],
                    let text = userPrompt(message) {
-                    prompt = clip(text)
+                    prompt = agentClip(text)
                 }
             default:
                 break
@@ -489,10 +488,6 @@ final class ClaudeCodeProvider: AgentProviding {
         return text.isEmpty ? nil : text
     }
 
-    nonisolated private static func clip(_ string: String, max: Int = 240) -> String {
-        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.count <= max ? trimmed : String(trimmed.prefix(max)) + "…"
-    }
 
     nonisolated private static func readTail(_ url: URL, maxBytes: Int) -> Data? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
@@ -512,7 +507,4 @@ final class ClaudeCodeProvider: AgentProviding {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
     }
 
-    nonisolated private static func projectName(_ cwd: String) -> String {
-        cwd.isEmpty ? "—" : (cwd as NSString).lastPathComponent
-    }
 }

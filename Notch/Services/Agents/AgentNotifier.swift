@@ -40,7 +40,7 @@ final class AgentNotifier {
             emit(event, suffix: "finished", sound: settings.agentSoundFinished,
                  title: "\(agent) finished", message: event.session.project,
                  symbol: "checkmark.circle.fill", tint: .success)
-        case .statusChanged, .ended:
+        case .ended:
             break
         }
     }

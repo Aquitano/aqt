@@ -43,9 +43,10 @@ enum HookClient {
     static func runStatusLine() -> Never {
         let input = readStdin()
         let json = (try? JSONSerialization.jsonObject(with: input)) as? [String: Any] ?? [:]
-        let limits = json["rate_limits"] as? [String: Any]
-        let fiveHour = limits?["five_hour"] as? [String: Any]
-        let sevenDay = limits?["seven_day"] as? [String: Any]
+        // No rate_limits in this refresh → nothing to report (don't overwrite with 0%).
+        guard let limits = json["rate_limits"] as? [String: Any] else { exit(0) }
+        let fiveHour = limits["five_hour"] as? [String: Any]
+        let sevenDay = limits["seven_day"] as? [String: Any]
 
         send(HookEnvelope(
             agent: "usage", hook: "statusline", sessionId: json["session_id"] as? String,

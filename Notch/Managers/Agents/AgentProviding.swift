@@ -6,7 +6,6 @@ import Foundation
 @MainActor
 protocol AgentProviding: AnyObject {
     var kind: AgentKind { get }
-    var capabilities: AgentProviderCapabilities { get }
 
     /// Push the provider's full current session set (the reconciliation source).
     var onSessions: (([AgentSession]) -> Void)? { get set }
@@ -29,11 +28,5 @@ protocol AgentProviding: AnyObject {
     func disable()
 
     /// Feed a decoded socket envelope addressed to this provider's `kind`.
-    /// No-op by default for providers that don't use the socket (e.g. OpenCode).
     func ingest(_ envelope: HookEnvelope, pid: pid_t)
-}
-
-extension AgentProviding {
-    func ingest(_ envelope: HookEnvelope, pid: pid_t) {}
-    func refresh() {}
 }

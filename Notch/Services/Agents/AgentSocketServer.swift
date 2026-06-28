@@ -11,8 +11,6 @@ import Foundation
 /// polling. Technique reference: devmegablaster/Notch-Pilot (MIT).
 final class AgentSocketServer: @unchecked Sendable {
 
-    static var socketURL: URL { AgentSocket.url }
-
     private let queue = DispatchQueue(label: "com.aquitano.notch.agentsocket")
     /// Per-client reads run here so one slow/hung peer can't stall accepting or
     /// delivering the others.
@@ -34,7 +32,7 @@ final class AgentSocketServer: @unchecked Sendable {
     // MARK: - Setup
 
     private func bind(_ onEnvelope: @escaping @Sendable (HookEnvelope, pid_t) -> Void) {
-        let url = Self.socketURL
+        let url = AgentSocket.url
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true,
@@ -107,7 +105,7 @@ final class AgentSocketServer: @unchecked Sendable {
         acceptSource = nil
         listenFD = -1
         handler = nil
-        unlink(Self.socketURL.path)
+        unlink(AgentSocket.url.path)
     }
 
     // MARK: - Accept / read

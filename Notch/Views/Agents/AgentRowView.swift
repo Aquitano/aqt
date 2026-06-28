@@ -9,12 +9,12 @@ struct AgentRowView: View {
 
     var body: some View {
         Button(action: onJump) {
-            HStack(alignment: .top, spacing: 11) {
+            HStack(alignment: .top, spacing: 12) {
                 Image(systemName: session.kind.symbol)
                     .font(.system(size: 16, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(kindTint)
-                    .frame(width: 24)
+                    .frame(width: 26)
 
                 VStack(alignment: .leading, spacing: 5) {
                     title
@@ -62,6 +62,8 @@ struct AgentRowView: View {
             Text(session.activityVerb ?? session.status.label)
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.6))
+                .lineLimit(1)
+                .truncationMode(.tail)
             if let branch = session.gitBranch, !branch.isEmpty {
                 Text("· \(branch)")
                     .font(.system(size: 11))
@@ -85,7 +87,7 @@ struct AgentRowView: View {
 
     private func badge(_ text: String, tint: Color) -> some View {
         Text(text)
-            .font(.system(size: 9.5, weight: .semibold))
+            .font(.system(size: 10, weight: .semibold))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(tint.opacity(0.18), in: .capsule)

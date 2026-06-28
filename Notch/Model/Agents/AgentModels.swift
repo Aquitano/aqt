@@ -69,17 +69,6 @@ enum AgentStatus: String, Codable, Sendable {
         case .finished: return "done"
         }
     }
-
-    var symbol: String {
-        switch self {
-        case .running: return "ellipsis"
-        case .editing: return "pencil"
-        case .tool: return "wrench.and.screwdriver"
-        case .idle: return "pause.circle"
-        case .needsAttention: return "exclamationmark.circle.fill"
-        case .finished: return "checkmark.circle.fill"
-        }
-    }
 }
 
 /// One watched agent session, reconciled from provider events + liveness.
@@ -126,12 +115,23 @@ func agentToolVerb(_ tool: String) -> String {
     }
 }
 
+/// Trimmed, length-capped text for previews (shared by all providers).
+func agentClip(_ string: String, max: Int = 240) -> String {
+    let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.count <= max ? trimmed : String(trimmed.prefix(max)) + "…"
+}
+
+/// Display name for a working directory (its last path component).
+func agentProjectName(_ cwd: String?) -> String {
+    guard let cwd, !cwd.isEmpty else { return "—" }
+    return (cwd as NSString).lastPathComponent
+}
+
 /// A normalized, notify-worthy transition a provider emits to `AgentManager`,
 /// distinct from the raw wire payload. Carries the post-transition session.
 struct AgentEvent: Sendable {
     enum Kind: Sendable {
         case started
-        case statusChanged
         case needsAttention
         case finished
         case ended
@@ -140,19 +140,6 @@ struct AgentEvent: Sendable {
     let kind: Kind
     let session: AgentSession
     let message: String?
-}
-
-/// What a provider can observe, so the UI can be honest about each agent's
-/// limits (e.g. Codex exposes finish + liveness only, no attention signal).
-struct AgentProviderCapabilities: OptionSet, Sendable {
-    let rawValue: Int
-
-    /// Push live activity (status changes mid-turn), not just terminal events.
-    static let liveEvents = AgentProviderCapabilities(rawValue: 1 << 0)
-    /// Surface a "needs you" / permission-prompt signal.
-    static let attention = AgentProviderCapabilities(rawValue: 1 << 1)
-    /// Answer permission prompts / questions remotely (future phase).
-    static let respondToPermissions = AgentProviderCapabilities(rawValue: 1 << 2)
 }
 
 /// Line-delimited JSON exchanged over `~/.notch/agents.sock`. The hook/notify

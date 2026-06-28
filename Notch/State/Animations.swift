@@ -103,7 +103,6 @@ enum NotchLayout {
         case .agents: return 320
         case .media: return 220
         case .tray: return trayEmpty ? 180 : 246
-        case .settings: return 300
         }
     }
 
