@@ -8,13 +8,13 @@ struct AgentRowView: View {
 
     var body: some View {
         Button(action: onJump) {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Image(systemName: session.kind.symbol)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
-                    .frame(width: 22)
+                    .frame(width: 26)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(session.project)
                         .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
@@ -35,23 +35,25 @@ struct AgentRowView: View {
                     }
                 }
 
-                Spacer(minLength: 4)
+                Spacer(minLength: 8)
 
-                Text(uptime)
-                    .font(.system(size: 11))
-                    .monospacedDigit()
-                    .foregroundStyle(.white.opacity(0.5))
-                Image(systemName: "arrow.up.forward.app")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.4))
+                HStack(spacing: 7) {
+                    Text(uptime)
+                        .font(.system(size: 11))
+                        .monospacedDigit()
+                        .foregroundStyle(.white.opacity(0.5))
+                    Image(systemName: "arrow.up.forward.app")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.4))
+                }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
         .accessibilityLabel("\(session.kind.displayName) in \(session.project), \(session.status.label). Jump to terminal.")
     }
 

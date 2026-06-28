@@ -61,6 +61,11 @@ final class AgentManager: ObservableObject {
         TerminalJumper(processLookup: processLookup).jump(toPID: session.pid, cwd: session.cwd)
     }
 
+    /// Pull fresh state now — used when the Agents tab appears.
+    func refresh() {
+        providers.forEach { $0.refresh() }
+    }
+
     func isEnabled(_ kind: AgentKind) -> Bool { provider(for: kind)?.isEnabled ?? false }
 
     func capabilities(_ kind: AgentKind) -> AgentProviderCapabilities { provider(for: kind)?.capabilities ?? [] }

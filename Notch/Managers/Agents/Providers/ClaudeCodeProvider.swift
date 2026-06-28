@@ -27,6 +27,7 @@ final class ClaudeCodeProvider: AgentProviding {
     private var endedSessionIDs: Set<String> = []
     private var lastScan: [ScannedSession] = []
     private var reconcileTask: Task<Void, Never>?
+    private var reconcilePending = false
     private var decayTask: Task<Void, Never>?
     private var reconcileGeneration = 0
     /// Last attention-hook time we surfaced per session, so a fresh permission
@@ -60,6 +61,7 @@ final class ClaudeCodeProvider: AgentProviding {
     func stop() {
         reconcileTask?.cancel()
         reconcileTask = nil
+        reconcilePending = false
         decayTask?.cancel()
         decayTask = nil
         watcher.stop()
@@ -112,7 +114,14 @@ final class ClaudeCodeProvider: AgentProviding {
                 MainActor.assumeIsolated { self?.scheduleReconcile() }
             }
         }
-        scheduleReconcile()
+        // Reconcile immediately so enabling (or launch) surfaces live sessions at
+        // once instead of after the first debounce window.
+        Task { [weak self] in await self?.reconcile() }
+    }
+
+    func refresh() {
+        guard isEnabled else { return }
+        Task { [weak self] in await self?.reconcile() }
     }
 
     // MARK: - Socket events
@@ -135,11 +144,18 @@ final class ClaudeCodeProvider: AgentProviding {
 
     // MARK: - Reconcile
 
+    /// Coalesce a burst of events into one reconcile ~200ms after the *first*
+    /// event, rather than cancelling and rescheduling on each. A trailing-only
+    /// debounce starves during sustained transcript writes (every write resets
+    /// the timer), which left status lagging while an agent was actively working.
     private func scheduleReconcile() {
-        reconcileTask?.cancel()
+        guard !reconcilePending else { return }
+        reconcilePending = true
         reconcileTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(200))
-            guard !Task.isCancelled, let self else { return }
+            guard let self else { return }
+            self.reconcilePending = false
+            guard !Task.isCancelled else { return }
             await self.reconcile()
         }
     }

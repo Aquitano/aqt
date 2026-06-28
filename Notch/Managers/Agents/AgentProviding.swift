@@ -20,6 +20,9 @@ protocol AgentProviding: AnyObject {
     func start()
     func stop()
 
+    /// Re-check liveness/state now (e.g. when the user opens the Agents tab).
+    func refresh()
+
     /// Opt-in installer hooks. `enable()` writes the agent's config; `disable()`
     /// removes only this app's entries. Both idempotent and reversible.
     func enable()
@@ -32,4 +35,5 @@ protocol AgentProviding: AnyObject {
 
 extension AgentProviding {
     func ingest(_ envelope: HookEnvelope, pid: pid_t) {}
+    func refresh() {}
 }

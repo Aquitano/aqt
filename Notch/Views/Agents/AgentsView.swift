@@ -8,7 +8,7 @@ struct AgentsView: View {
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 ForEach(agents.sessions) { session in
                     AgentRowView(session: session) { agents.jumpToTerminal(session) }
                 }
@@ -19,9 +19,11 @@ struct AgentsView: View {
                     emptyState
                 }
             }
+            .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onAppear { agents.refresh() }
     }
 
     private var disabledKinds: [AgentKind] {
@@ -29,13 +31,13 @@ struct AgentsView: View {
     }
 
     private func enableCard(_ kind: AgentKind) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Image(systemName: kind.symbol)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 18, weight: .semibold))
                 .symbolRenderingMode(.hierarchical)
-                .frame(width: 24)
+                .frame(width: 26)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(kind.displayName)
                     .font(.system(size: 13, weight: .semibold))
                 Text(summary(kind))
@@ -44,24 +46,24 @@ struct AgentsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Spacer(minLength: 6)
+            Spacer(minLength: 10)
 
             Button {
                 agents.setEnabled(true, for: kind)
             } label: {
                 Text("Enable")
                     .font(.system(size: 12, weight: .semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
                     .contentShape(.capsule)
             }
             .buttonStyle(.plain)
             .glassEffect(.regular, in: .capsule)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
 
     private var emptyState: some View {
