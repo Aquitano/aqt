@@ -21,11 +21,6 @@ struct ProcessLookup: Sendable {
         return pids.prefix(count).filter { $0 > 0 }
     }
 
-    /// Pids whose executable base name equals `name` (e.g. "claude").
-    func pids(named name: String) -> [pid_t] {
-        allPIDs().filter { self.name(of: $0) == name }
-    }
-
     /// Executable base name, or nil if the pid is gone / not inspectable.
     func name(of pid: pid_t) -> String? {
         var buffer = [CChar](repeating: 0, count: 2 * Int(MAXCOMLEN) + 1)
@@ -40,6 +35,33 @@ struct ProcessLookup: Sendable {
         let result = proc_pidpath(pid, &buffer, UInt32(buffer.count))
         guard result > 0 else { return nil }
         return String(cString: buffer)
+    }
+
+    /// Launch arguments via `KERN_PROCARGS2`. Used to recognize a CLI hosted by
+    /// a generic runtime (e.g. `node …/claude-code/cli.js`) where the executable
+    /// name alone doesn't identify the agent.
+    func arguments(of pid: pid_t) -> [String] {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return [] }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0 else { return [] }
+
+        // Layout: Int32 argc, exec_path\0, padding \0s, then argc NUL-terminated args.
+        let argc = buffer.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 0, as: Int32.self) }
+        var args: [String] = []
+        var i = MemoryLayout<Int32>.size
+        while i < size && buffer[i] != 0 { i += 1 }       // skip exec_path
+        while i < size && buffer[i] == 0 { i += 1 }        // skip padding
+        var produced = 0
+        while produced < Int(argc) && i < size {
+            let start = i
+            while i < size && buffer[i] != 0 { i += 1 }
+            if i > start, let s = String(bytes: buffer[start..<i], encoding: .utf8) { args.append(s) }
+            i += 1
+            produced += 1
+        }
+        return args
     }
 
     /// Parent pid via `PROC_PIDTBSDINFO`.

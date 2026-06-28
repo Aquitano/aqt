@@ -28,12 +28,13 @@ struct TerminalJumper {
         }
     }
 
-    /// Use the known pid, else find a live `claude` whose cwd matches.
+    /// Use the known pid, else find any live process in the session's cwd (its
+    /// ancestor chain still leads to the hosting terminal).
     private func resolvePID(_ pid: pid_t?, cwd: String?) -> pid_t? {
         if let pid, processLookup.name(of: pid) != nil { return pid }
         guard let cwd else { return nil }
         let target = processLookup.normalize(cwd)
-        return processLookup.pids(named: "claude").first { processLookup.cwd(of: $0) == target }
+        return processLookup.allPIDs().first { processLookup.cwd(of: $0) == target }
     }
 
     private static func activateTerminal(forPID pid: pid_t, lookup: ProcessLookup) {

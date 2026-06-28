@@ -314,10 +314,26 @@ final class ClaudeCodeProvider: AgentProviding {
     // one scanned session (the newest transcript), since cwd is the only link
     // between a pid and a session without inspecting each process's open files.
     // Distinct hook sessions still surface separately via hookState.
+    /// The `claude` CLI's executable is the versioned binary
+    /// (`…/claude/versions/X.Y.Z`), so `proc_name` is the version string, not
+    /// "claude" — matching by name finds nothing. Match by executable path, and
+    /// fall back to argv for a runtime-hosted CLI (`node …/claude-code/…`).
+    nonisolated private static func isClaudeProcess(_ pid: pid_t, lookup: ProcessLookup) -> Bool {
+        guard let path = lookup.path(of: pid) else { return false }
+        let lower = path.lowercased()
+        if lower.contains("/claude/") || lower.contains("/claude-code") { return true }
+        let base = (path as NSString).lastPathComponent
+        if base == "claude" { return true }
+        if base == "node" || base == "bun" || base == "deno" {
+            return lookup.arguments(of: pid).contains { $0.lowercased().contains("claude") }
+        }
+        return false
+    }
+
     nonisolated private static func scanLiveSessions(lookup: ProcessLookup) -> [ScannedSession] {
         var result: [ScannedSession] = []
         var seenCwd = Set<String>()
-        for pid in lookup.pids(named: "claude") {
+        for pid in lookup.allPIDs() where isClaudeProcess(pid, lookup: lookup) {
             guard let cwd = lookup.cwd(of: pid), !seenCwd.contains(cwd) else { continue }
             seenCwd.insert(cwd)
             guard let transcript = newestTranscript(forCwd: cwd) else { continue }
