@@ -63,7 +63,9 @@ struct CompactView: View {
             trailing
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(.horizontal, 14)
+        // Keep content clear of the rounded corners; must stay in sync with the
+        // width reserved in `NotchLayout.compactExtraWidth`.
+        .padding(.horizontal, 18)
     }
 
     // MARK: - Media slots

@@ -84,7 +84,9 @@ enum NotchLayout {
             let font = NSFont.systemFont(ofSize: compactLabelFontSize, weight: .medium)
             let measured = (label as NSString).size(withAttributes: [.font: font]).width
             let slot = min(max(measured, 30), 120)
-            return ceil(slot * 2) + 52
+            // Constant = 2 * pill horizontal padding (18, see CompactView) + inner
+            // breathing room, so the reserved width matches the laid-out content.
+            return ceil(slot * 2) + 60
         }
     }
 

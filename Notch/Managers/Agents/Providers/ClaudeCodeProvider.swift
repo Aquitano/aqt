@@ -248,7 +248,14 @@ final class ClaudeCodeProvider: AgentProviding {
 
         if let hook, hook.time >= fileTime {
             switch hook.name {
-            case "Notification": return .needsAttention
+            case "Notification":
+                // Claude's Notification hook covers both permission prompts and
+                // idle "waiting for your input" nudges. Only a permission prompt is
+                // a real needs-you; an idle nudge fires with no follow-up activity,
+                // so treating it as attention left finished/idle sessions stuck
+                // showing "needs you". A genuine prompt clears on its own once the
+                // user answers and the transcript advances past the hook time.
+                if !Self.isIdleNotification(hook.message) { return .needsAttention }
             case "Stop", "SessionEnd": return .finished
             case "SessionStart": return scanned?.busyStatus ?? .running
             default: break
@@ -259,6 +266,13 @@ final class ClaudeCodeProvider: AgentProviding {
         // The transcript is the freshest signal: treat very recent writes as busy,
         // otherwise the session is alive but waiting.
         return Date().timeIntervalSince(fileTime) < Self.busyWindow ? (scanned?.busyStatus ?? .running) : .idle
+    }
+
+    /// Distinguish Claude's idle "waiting for your input" Notification from a
+    /// permission prompt, so the former doesn't read as needs-you.
+    nonisolated private static func isIdleNotification(_ message: String?) -> Bool {
+        guard let message = message?.lowercased() else { return false }
+        return message.contains("waiting") || message.contains("idle")
     }
 
     private func emitEvents(old: [String: AgentSession], new: [String: AgentSession]) {
