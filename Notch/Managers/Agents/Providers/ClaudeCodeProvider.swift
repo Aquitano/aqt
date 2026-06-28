@@ -183,7 +183,8 @@ final class ClaudeCodeProvider: AgentProviding {
             result[scanned.sessionId] = AgentSession(
                 id: scanned.sessionId, kind: .claudeCode, project: Self.projectName(scanned.cwd),
                 cwd: scanned.cwd, status: .idle, startedAt: scanned.lastActivity,
-                lastActivity: scanned.lastActivity, pid: scanned.pid, gitBranch: scanned.gitBranch
+                lastActivity: scanned.lastActivity, pid: scanned.pid, gitBranch: scanned.gitBranch,
+                terminalFocusURL: scanned.focusURL
             )
         }
 
@@ -215,6 +216,8 @@ final class ClaudeCodeProvider: AgentProviding {
             session.detail = hookState[sid]?.message ?? session.detail
             if let prev = sessionsByID[sid] {
                 session.startedAt = prev.startedAt
+                // Keep a previously-captured focus URL if this cycle didn't see one.
+                session.terminalFocusURL = session.terminalFocusURL ?? prev.terminalFocusURL
             }
             result[sid] = session
         }
@@ -317,6 +320,7 @@ final class ClaudeCodeProvider: AgentProviding {
         let lastActivity: Date
         let gitBranch: String?
         let busyStatus: AgentStatus
+        let focusURL: String?
     }
 
     nonisolated private static let projectsRoot = FileManager.default.homeDirectoryForCurrentUser
@@ -353,10 +357,21 @@ final class ClaudeCodeProvider: AgentProviding {
             guard let transcript = newestTranscript(forCwd: cwd) else { continue }
             result.append(ScannedSession(
                 sessionId: transcript.sessionId, cwd: cwd, pid: pid,
-                lastActivity: transcript.mtime, gitBranch: transcript.branch, busyStatus: transcript.busy
+                lastActivity: transcript.mtime, gitBranch: transcript.branch, busyStatus: transcript.busy,
+                focusURL: terminalFocusURL(forPID: pid, lookup: lookup)
             ))
         }
         return result
+    }
+
+    /// A deep link to the exact hosting tab, read from the agent process's
+    /// environment. Warp exports `WARP_FOCUS_URL` (warp://session/<uuid>) per tab;
+    /// otherwise reconstruct it from the session UUID.
+    nonisolated private static func terminalFocusURL(forPID pid: pid_t, lookup: ProcessLookup) -> String? {
+        let env = lookup.environment(of: pid)
+        if let url = env["WARP_FOCUS_URL"], !url.isEmpty { return url }
+        if let uuid = env["WARP_TERMINAL_SESSION_UUID"], !uuid.isEmpty { return "warp://session/\(uuid)" }
+        return nil
     }
 
     nonisolated private static func newestTranscript(

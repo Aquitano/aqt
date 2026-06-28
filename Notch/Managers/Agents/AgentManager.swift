@@ -58,7 +58,8 @@ final class AgentManager: ObservableObject {
     var availableKinds: [AgentKind] { providers.map(\.kind) }
 
     func jumpToTerminal(_ session: AgentSession) {
-        TerminalJumper(processLookup: processLookup).jump(toPID: session.pid, cwd: session.cwd)
+        TerminalJumper(processLookup: processLookup)
+            .jump(toPID: session.pid, cwd: session.cwd, focusURL: session.terminalFocusURL)
     }
 
     /// Pull fresh state now — used when the Agents tab appears.

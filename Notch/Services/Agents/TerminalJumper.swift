@@ -16,9 +16,17 @@ struct TerminalJumper {
         "/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"
     ]
 
-    func jump(toPID pid: pid_t?, cwd: String?) {
+    func jump(toPID pid: pid_t?, cwd: String?, focusURL: String? = nil) {
+        // Precise path: the tab exports a focus deep link (e.g. Warp's
+        // warp://session/<uuid>); opening it selects the exact tab. The terminal
+        // gets activated as a side effect of handling the URL.
+        if let focusURL, let url = URL(string: focusURL) {
+            NSWorkspace.shared.open(url)
+            return
+        }
+
         guard let pid = resolvePID(pid, cwd: cwd) else {
-            Log.agents.notice("terminal jump: no pid for session")
+            Log.agents.notice("terminal jump: no pid or focus URL for session")
             return
         }
         let lookup = processLookup

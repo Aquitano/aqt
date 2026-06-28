@@ -41,27 +41,52 @@ struct ProcessLookup: Sendable {
     /// a generic runtime (e.g. `node …/claude-code/cli.js`) where the executable
     /// name alone doesn't identify the agent.
     func arguments(of pid: pid_t) -> [String] {
+        procArgs2(of: pid)?.args ?? []
+    }
+
+    /// Environment of another process via `KERN_PROCARGS2` (same-uid only). Used to
+    /// read terminal locators the tab exports (e.g. `WARP_FOCUS_URL`) so we can
+    /// jump straight to the agent's tab.
+    func environment(of pid: pid_t) -> [String: String] {
+        guard let env = procArgs2(of: pid)?.env else { return [:] }
+        var result: [String: String] = [:]
+        for entry in env {
+            guard let eq = entry.firstIndex(of: "=") else { continue }
+            result[String(entry[..<eq])] = String(entry[entry.index(after: eq)...])
+        }
+        return result
+    }
+
+    /// Parse the `KERN_PROCARGS2` blob: Int32 argc, exec_path\0, padding, argc
+    /// NUL-terminated args, then NUL-terminated `KEY=VALUE` env entries.
+    private func procArgs2(of pid: pid_t) -> (args: [String], env: [String])? {
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
         var size = 0
-        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return [] }
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
         var buffer = [UInt8](repeating: 0, count: size)
-        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0 else { return [] }
+        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0 else { return nil }
 
-        // Layout: Int32 argc, exec_path\0, padding \0s, then argc NUL-terminated args.
         let argc = buffer.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 0, as: Int32.self) }
-        var args: [String] = []
         var i = MemoryLayout<Int32>.size
-        while i < size && buffer[i] != 0 { i += 1 }       // skip exec_path
-        while i < size && buffer[i] == 0 { i += 1 }        // skip padding
-        var produced = 0
-        while produced < Int(argc) && i < size {
+        while i < size && buffer[i] != 0 { i += 1 }   // skip exec_path
+        while i < size && buffer[i] == 0 { i += 1 }   // skip padding
+
+        func nextToken() -> String? {
             let start = i
             while i < size && buffer[i] != 0 { i += 1 }
-            if i > start, let s = String(bytes: buffer[start..<i], encoding: .utf8) { args.append(s) }
-            i += 1
-            produced += 1
+            defer { i += 1 }
+            return i > start ? String(bytes: buffer[start..<i], encoding: .utf8) : nil
         }
-        return args
+
+        var args: [String] = []
+        for _ in 0..<Int(argc) where i < size {
+            if let token = nextToken() { args.append(token) }
+        }
+        var env: [String] = []
+        while i < size {
+            if let token = nextToken() { env.append(token) }
+        }
+        return (args, env)
     }
 
     /// Parent pid via `PROC_PIDTBSDINFO`.

@@ -91,6 +91,9 @@ struct AgentSession: Identifiable, Equatable, Sendable {
     var gitBranch: String?
     /// Most recent human-readable detail (notification text, last summary).
     var detail: String?
+    /// Deep link to focus the exact hosting terminal tab (e.g. Warp's
+    /// `warp://session/<uuid>`), captured from the agent process's environment.
+    var terminalFocusURL: String?
 }
 
 /// A normalized, notify-worthy transition a provider emits to `AgentManager`,
