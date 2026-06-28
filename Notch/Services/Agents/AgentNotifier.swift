@@ -1,15 +1,18 @@
+import AppKit
 import Foundation
+import UserNotifications
 
-/// Routes agent events to the in-notch Quick Peek surface, gated by the user's
-/// per-event toggles and lightly rate-limited so a burst (or a hook + scan
-/// double-fire) can't stack duplicate peeks. System notifications + sound are a
-/// later phase; this is the always-on in-notch path.
+/// Routes agent events to the in-notch Quick Peek surface and, when the user
+/// opts in, to Notification Center + a sound. Gated by per-event toggles and
+/// lightly rate-limited so a burst (or a hook + scan double-fire) can't stack
+/// duplicates.
 @MainActor
 final class AgentNotifier {
 
     private unowned let activities: ActivityManager
     private let settings: Settings
     private var lastNotified: [String: Date] = [:]
+    private var requestedAuthorization = false
 
     init(activities: ActivityManager, settings: Settings) {
         self.activities = activities
@@ -21,12 +24,12 @@ final class AgentNotifier {
         switch event.kind {
         case .started:
             guard settings.agentNotifyStarted else { return }
-            emit(event, suffix: "started",
+            emit(event, suffix: "started", sound: nil,
                  title: "\(agent) started", message: event.session.project,
                  symbol: event.session.kind.symbol, tint: .neutral)
         case .needsAttention:
             guard settings.agentNotifyAttention else { return }
-            emit(event, suffix: "attention",
+            emit(event, suffix: "attention", sound: "Ping",
                  title: "\(agent) needs you", message: event.message ?? event.session.project,
                  symbol: "exclamationmark.bubble.fill", tint: .warning)
             if settings.agentAutoExpandOnAttention {
@@ -34,7 +37,7 @@ final class AgentNotifier {
             }
         case .finished:
             guard settings.agentNotifyFinished else { return }
-            emit(event, suffix: "finished",
+            emit(event, suffix: "finished", sound: "Glass",
                  title: "\(agent) finished", message: event.session.project,
                  symbol: "checkmark.circle.fill", tint: .success)
         case .statusChanged, .ended:
@@ -42,14 +45,36 @@ final class AgentNotifier {
         }
     }
 
-    private func emit(_ event: AgentEvent, suffix: String, title: String, message: String,
-                      symbol: String, tint: Activity.PeekTint) {
+    private func emit(_ event: AgentEvent, suffix: String, sound: String?,
+                      title: String, message: String, symbol: String, tint: Activity.PeekTint) {
         let key = "\(event.session.id).\(suffix)"
         let now = Date()
         // Drop stale keys so the map can't grow with every session ever seen.
         lastNotified = lastNotified.filter { now.timeIntervalSince($0.value) < 60 }
         if let last = lastNotified[key], now.timeIntervalSince(last) < 3 { return }
         lastNotified[key] = now
+
         activities.peek(title: title, message: message, symbol: symbol, tint: tint, ttl: 5)
+
+        if settings.agentNotifySound, let sound { NSSound(named: sound)?.play() }
+        if settings.agentSystemNotifications { postSystemNotification(title: title, body: message) }
+    }
+
+    // MARK: - Notification Center
+
+    private func postSystemNotification(title: String, body: String) {
+        let center = UNUserNotificationCenter.current()
+        ensureAuthorization(center)
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        center.add(request)
+    }
+
+    private func ensureAuthorization(_ center: UNUserNotificationCenter) {
+        guard !requestedAuthorization else { return }
+        requestedAuthorization = true
+        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 }

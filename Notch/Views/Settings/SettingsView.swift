@@ -43,6 +43,8 @@ struct SettingsView: View {
                 Toggle("Notify when an agent finishes", isOn: $settings.agentNotifyFinished)
                 Toggle("Notify when an agent starts", isOn: $settings.agentNotifyStarted)
                 Toggle("Auto-expand on needs-you", isOn: $settings.agentAutoExpandOnAttention)
+                Toggle("System notifications", isOn: $settings.agentSystemNotifications)
+                Toggle("Play a sound", isOn: $settings.agentNotifySound)
             }
         } header: {
             Text("Agents")
