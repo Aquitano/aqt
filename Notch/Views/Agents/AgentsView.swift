@@ -21,10 +21,13 @@ struct AgentsView: View {
                             .opacity(0.92)
                     }
                 }
-                ForEach(disabledKinds, id: \.self) { kind in
+                ForEach(installableKinds, id: \.self) { kind in
                     enableCard(kind)
                 }
-                if agents.sessions.isEmpty && disabledKinds.isEmpty {
+                ForEach(notInstalledKinds, id: \.self) { kind in
+                    notInstalledCard(kind)
+                }
+                if agents.sessions.isEmpty && installableKinds.isEmpty {
                     emptyState
                 }
             }
@@ -39,6 +42,11 @@ struct AgentsView: View {
         agents.availableKinds.filter { !agents.isEnabled($0) }
     }
 
+    /// Disabled-but-installed agents get an Enable card; the rest show as a quiet
+    /// "not installed" row so it's clear they're supported.
+    private var installableKinds: [AgentKind] { disabledKinds.filter { agents.isInstalled($0) } }
+    private var notInstalledKinds: [AgentKind] { disabledKinds.filter { !agents.isInstalled($0) } }
+
     /// Sessions with no parent (or whose parent isn't currently shown) render at
     /// the top level; their sub-agents nest underneath.
     private var topLevelSessions: [AgentSession] {
@@ -51,6 +59,26 @@ struct AgentsView: View {
 
     private func children(of session: AgentSession) -> [AgentSession] {
         agents.sessions.filter { $0.parentSessionID == session.id }
+    }
+
+    private func notInstalledCard(_ kind: AgentKind) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: kind.symbol)
+                .font(.system(size: 16, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .frame(width: 26)
+            Text(kind.displayName)
+                .font(.system(size: 13, weight: .medium))
+            Spacer(minLength: 6)
+            Text("Not installed")
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.4))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(.white.opacity(0.45))
+        .background(.white.opacity(0.04), in: .rect(cornerRadius: 16))
     }
 
     // MARK: - Usage limits

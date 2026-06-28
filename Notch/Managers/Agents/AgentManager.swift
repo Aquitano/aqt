@@ -101,6 +101,8 @@ final class AgentManager: ObservableObject {
     /// Agents that have a provider this build (drives which Enable cards appear).
     var availableKinds: [AgentKind] { providers.map(\.kind) }
 
+    func isInstalled(_ kind: AgentKind) -> Bool { CLIDetector().isInstalled(kind) }
+
     func jumpToTerminal(_ session: AgentSession) {
         TerminalJumper(processLookup: processLookup)
             .jump(toPID: session.pid, cwd: session.cwd, focusURL: session.terminalFocusURL)

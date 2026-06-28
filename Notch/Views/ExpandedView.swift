@@ -56,7 +56,8 @@ struct ExpandedView: View {
         let selected = state.expandedTab == tab
         return Button {
             Haptics.tap(.levelChange)
-            state.select(tab: tab)
+            // Settings live in the standard Settings window, not inline.
+            if tab == .settings { openSettings() } else { state.select(tab: tab) }
         } label: {
             Image(systemName: tab.symbol)
                 .font(.system(size: 14, weight: .semibold))
@@ -95,7 +96,7 @@ struct ExpandedView: View {
             case .tray:
                 TrayView()
             case .settings:
-                settingsPanel
+                Color.clear // the gear opens the Settings window instead
             }
         }
     }
@@ -105,52 +106,5 @@ struct ExpandedView: View {
         // clean, fixed-height dashboard.
         WidgetGridView()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    // MARK: - Inline settings
-
-    private var settingsPanel: some View {
-        VStack(spacing: 2) {
-            settingsToggle("Show HUD", $settings.showHUD)
-            settingsToggle("Weather widget", $settings.showWeatherWidget)
-            settingsToggle("Calendar widget", $settings.showCalendarWidget)
-            settingsToggle("Launch at login", $settings.launchAtLogin)
-            if settings.agentsEnabled {
-                settingsToggle("Agent needs-you alerts", $settings.agentNotifyAttention)
-                settingsToggle("Agent finished alerts", $settings.agentNotifyFinished)
-            }
-
-            Divider()
-                .overlay(.white.opacity(0.12))
-                .padding(.vertical, 6)
-
-            Button {
-                openSettings()
-            } label: {
-                HStack(spacing: 8) {
-                    Text("All Settings…")
-                        .font(.system(size: 13, weight: .medium))
-                    Spacer(minLength: 0)
-                    Image(systemName: "arrow.up.forward")
-                        .font(.system(size: 11, weight: .semibold))
-                }
-                .foregroundStyle(.white.opacity(0.85))
-                .frame(maxWidth: .infinity, minHeight: 30)
-                .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    private func settingsToggle(_ title: String, _ isOn: Binding<Bool>) -> some View {
-        SettingRow(title: title) {
-            Toggle("", isOn: isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
-        }
     }
 }
