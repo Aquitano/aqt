@@ -31,9 +31,94 @@ struct TerminalJumper {
         }
         let lookup = processLookup
         Task {
-            await Task.detached { Self.selectTmuxPane(forAgent: pid, lookup: lookup) }.value
+            // Try a terminal-specific precise focus (selects the exact tab/pane).
+            let handled = await Task.detached { Self.focusPrecise(pid: pid, lookup: lookup) }.value
+            if !handled {
+                await Task.detached { Self.selectTmuxPane(forAgent: pid, lookup: lookup) }.value
+            }
+            // Always raise the hosting GUI app (iTerm/Terminal AppleScript already
+            // does, but this covers wezterm/kitty/tmux and the plain fallback).
             Self.activateTerminal(forPID: pid, lookup: lookup)
         }
+    }
+
+    /// Select the exact tab/pane using whatever control surface the hosting
+    /// terminal exposes, keyed on the agent process's environment + controlling
+    /// tty. Returns false for terminals we can only raise at the app level
+    /// (Ghostty, VS Code) so the caller falls back. Reads/commands run off-main.
+    nonisolated private static func focusPrecise(pid: pid_t, lookup: ProcessLookup) -> Bool {
+        let env = lookup.environment(of: pid)
+        let term = env["TERM_PROGRAM"]
+        let tty = lookup.controllingTTY(of: pid)
+
+        // iTerm2 — also covers tmux -CC (panes are real iTerm2 sessions).
+        if term == "iTerm.app", let tty { return focusByTTY(app: "iTerm2", tty: tty) }
+        if let pane = env["WEZTERM_PANE"] { return focusWezTerm(pane: pane) }
+        if let windowID = env["KITTY_WINDOW_ID"] { return focusKitty(windowID: windowID, listenOn: env["KITTY_LISTEN_ON"]) }
+        if term == "Apple_Terminal", let tty { return focusAppleTerminal(tty: tty) }
+        return false
+    }
+
+    nonisolated private static func focusByTTY(app: String, tty: String) -> Bool {
+        let script = """
+        tell application "\(app)"
+          repeat with w in windows
+            repeat with t in tabs of w
+              repeat with s in sessions of t
+                if tty of s is "\(tty)" then
+                  select w
+                  tell t to select
+                  tell s to select
+                  activate
+                  return "ok"
+                end if
+              end repeat
+            end repeat
+          end repeat
+        end tell
+        return "no"
+        """
+        return run("/usr/bin/osascript", ["-e", script])?.contains("ok") == true
+    }
+
+    nonisolated private static func focusAppleTerminal(tty: String) -> Bool {
+        let script = """
+        tell application "Terminal"
+          repeat with w in windows
+            repeat with t in tabs of w
+              if tty of t is "\(tty)" then
+                set selected tab of w to t
+                set frontmost of w to true
+                set index of w to 1
+                activate
+                return "ok"
+              end if
+            end repeat
+          end repeat
+        end tell
+        return "no"
+        """
+        return run("/usr/bin/osascript", ["-e", script])?.contains("ok") == true
+    }
+
+    nonisolated private static func focusWezTerm(pane: String) -> Bool {
+        guard let wezterm = binary("wezterm") else { return false }
+        _ = run(wezterm, ["cli", "activate-pane", "--pane-id", pane])
+        _ = run(wezterm, ["cli", "activate-tab", "--pane-id", pane])
+        return true
+    }
+
+    nonisolated private static func focusKitty(windowID: String, listenOn: String?) -> Bool {
+        guard let kitten = binary("kitten") else { return false }
+        var args = ["@"]
+        if let listenOn { args += ["--to", listenOn] }
+        args += ["focus-window", "--match", "id:\(windowID)"]
+        return run(kitten, args) != nil
+    }
+
+    nonisolated private static func binary(_ name: String) -> String? {
+        ["/opt/homebrew/bin/\(name)", "/usr/local/bin/\(name)", "/usr/bin/\(name)"]
+            .first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
     /// Use the known pid, else find any live process in the session's cwd (its

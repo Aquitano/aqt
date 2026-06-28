@@ -98,6 +98,18 @@ struct ProcessLookup: Sendable {
         return pid_t(info.pbi_ppid)
     }
 
+    /// Controlling terminal device of a process (e.g. "/dev/ttys003"), or nil if
+    /// it has none (daemonized / no pty). The most portable cross-terminal handle.
+    func controllingTTY(of pid: pid_t) -> String? {
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
+        let tdev = info.e_tdev
+        guard tdev != 0, tdev != UInt32.max else { return nil }
+        guard let name = devname(dev_t(tdev), S_IFCHR) else { return nil }
+        return "/dev/" + String(cString: name)
+    }
+
     /// Current working directory via `PROC_PIDVNODEPATHINFO`, normalized.
     func cwd(of pid: pid_t) -> String? {
         var info = proc_vnodepathinfo()
