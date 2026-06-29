@@ -58,6 +58,14 @@ enum NotchLayout {
     /// so the width reserved here matches exactly what gets drawn.
     static let compactLabelFontSize: CGFloat = 12
 
+    /// Outer horizontal padding the compact pill keeps clear of the rounded
+    /// corners. `CompactView` applies exactly this and the reserved width is
+    /// derived from it, so the estimate and the drawn pill share one constant.
+    static let compactHorizontalPadding: CGFloat = 18
+
+    /// Breathing room added inside each slot beyond its content's measured width.
+    static let compactSlotInset: CGFloat = 12
+
     /// What the compact pill is showing. Drives its width so the trailing slot
     /// fits the actual label instead of one fixed size that truncates longer text.
     enum CompactContent: Equatable {
@@ -74,25 +82,33 @@ enum NotchLayout {
         return .none
     }
 
-    /// Width the compact pill adds around the notch for the given content.
-    /// The pill is two equal slots flanking the centered notch gap, so the wider
-    /// (text) slot sets the size; reserve the label width plus breathing on both
-    /// sides, clamped so a short badge still reads as a pill and a long name
-    /// truncates rather than growing the bezel without bound.
-    static func compactExtraWidth(_ content: CompactContent) -> CGFloat {
+    /// Width of each of the two equal slots flanking the centered notch gap.
+    /// Both sides reserve the same width so the gap stays aligned with the
+    /// physical notch; `CompactView` lays its slots out at exactly this value and
+    /// the pill's total width is derived from it, so the drawn content and the
+    /// reserved width share a single source. The label width is clamped so a
+    /// short badge still reads as a pill and a long name truncates rather than
+    /// growing the bezel without bound.
+    static func compactSlotWidth(_ content: CompactContent) -> CGFloat {
         switch content {
         case .none:
             return 0
         case .media:
-            return 130
+            return 47
         case let .activity(label):
             let font = NSFont.systemFont(ofSize: compactLabelFontSize, weight: .medium)
             let measured = (label as NSString).size(withAttributes: [.font: font]).width
-            let slot = min(max(measured, 30), 120)
-            // Constant = 2 * pill horizontal padding (18, see CompactView) + inner
-            // breathing room, so the reserved width matches the laid-out content.
-            return ceil(slot * 2) + 60
+            return min(max(measured, 30), 120) + compactSlotInset
         }
+    }
+
+    /// Width the compact pill adds around the notch: two equal slots plus the
+    /// outer padding. This is the *estimate* used for the first frame and for the
+    /// window controller's hit region; the on-screen pill refines the visible
+    /// width from its measured content (see `CompactView`) so the blob always
+    /// fits what it draws.
+    static func compactExtraWidth(_ content: CompactContent) -> CGFloat {
+        content == .none ? 0 : ceil(compactSlotWidth(content) * 2) + compactHorizontalPadding * 2
     }
 
     /// Height of the expanded body below the notch, sized per tab so each surface

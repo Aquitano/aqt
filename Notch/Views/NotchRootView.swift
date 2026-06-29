@@ -18,6 +18,10 @@ struct NotchRootView: View {
 
     @Namespace private var morph
 
+    /// Width the compact pill actually measured for its drawn content. The blob is
+    /// sized to at least this, so it can never end up narrower than its content.
+    @State private var compactPillWidth: CGFloat = 0
+
     var body: some View {
         ZStack(alignment: .top) {
             Color.clear.allowsHitTesting(false)
@@ -30,6 +34,7 @@ struct NotchRootView: View {
             }
 
             notchContent
+                .onPreferenceChange(CompactPillWidthKey.self) { compactPillWidth = $0 }
                 .zIndex(2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -104,7 +109,7 @@ struct NotchRootView: View {
     }
 
     private var currentSize: CGSize {
-        NotchLayout.contentSize(
+        var size = NotchLayout.contentSize(
             presentation: state.presentation,
             notch: notchSize,
             tab: state.expandedTab,
@@ -113,6 +118,13 @@ struct NotchRootView: View {
             compact: compactContent,
             dropActive: state.isDropActive
         )
+        // Trust the pill's measured content width over the string estimate so the
+        // blob is never narrower than what it draws (which clips the icon into the
+        // corner). The estimate is only the first-frame fallback.
+        if state.presentation == .compact {
+            size.width = max(size.width, compactPillWidth)
+        }
+        return size
     }
 
     private var expandedSize: CGSize {
@@ -128,14 +140,11 @@ struct NotchRootView: View {
     }
 
     private func handleHover(_ hovering: Bool) {
-        if hovering {
-            state.hoverExpand()
-        } else {
-            // Always settle back to the compact pill: it keeps the panel on-screen
-            // and mouse-tracking alive so the next hover can expand again. Only the
-            // status-bar toggle fully hides the notch.
-            state.collapse(hasCompactContent: true)
-        }
+        // Route through `hoverChanged` so `isHovering` (which drives the pill's
+        // hover-swell) updates in lockstep with the expand/collapse timers. On exit
+        // it settles back to the compact pill, keeping the panel on-screen and
+        // mouse-tracking alive so the next hover can expand again.
+        state.hoverChanged(hovering)
     }
 }
 
