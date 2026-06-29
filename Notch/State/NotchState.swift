@@ -54,6 +54,11 @@ final class NotchState: ObservableObject {
     /// transition helpers (which run outside the SwiftUI environment) can react.
     @Published var reduceMotion: Bool = false
 
+    /// Width the compact pill measured for its drawn content, mirrored from
+    /// `NotchRootView`. The window controller reads it so the clickable hit region
+    /// matches the visible pill (which sizes to its content, not the estimate).
+    @Published var compactPillWidth: CGFloat = 0
+
     var isExpanded: Bool { presentation == .expanded }
     var isVisible: Bool { presentation != .hidden }
 

@@ -18,10 +18,6 @@ struct NotchRootView: View {
 
     @Namespace private var morph
 
-    /// Width the compact pill actually measured for its drawn content. The blob is
-    /// sized to at least this, so it can never end up narrower than its content.
-    @State private var compactPillWidth: CGFloat = 0
-
     var body: some View {
         ZStack(alignment: .top) {
             Color.clear.allowsHitTesting(false)
@@ -34,7 +30,7 @@ struct NotchRootView: View {
             }
 
             notchContent
-                .onPreferenceChange(CompactPillWidthKey.self) { compactPillWidth = $0 }
+                .onPreferenceChange(CompactPillWidthKey.self) { state.compactPillWidth = $0 }
                 .zIndex(2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -122,7 +118,7 @@ struct NotchRootView: View {
         // blob is never narrower than what it draws (which clips the icon into the
         // corner). The estimate is only the first-frame fallback.
         if state.presentation == .compact {
-            size.width = max(size.width, compactPillWidth)
+            size.width = max(size.width, state.compactPillWidth)
         }
         return size
     }

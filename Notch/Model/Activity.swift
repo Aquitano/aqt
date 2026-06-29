@@ -78,7 +78,9 @@ struct Activity: Identifiable, Equatable {
         case let .audioRoute(name, _): return name
         case let .focus(name, _): return name ?? "Focus"
         case let .peek(title, _, _, _): return title
-        case let .timer(name, _): return name
+        // The pill draws the live countdown (see CompactView), not the name, so
+        // reserve width for the clock — that string is what actually gets rendered.
+        case let .timer(_, endsAt): return max(0, endsAt.timeIntervalSinceNow).clockString
         // Terse in the pill (it hugs the notch); the pixel glyph shows activity,
         // the expanded card carries detail. Show the count when more than one runs.
         case let .agent(count, _, _, status): return count > 1 ? "\(count) agents" : status.label
