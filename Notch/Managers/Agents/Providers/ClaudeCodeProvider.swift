@@ -21,13 +21,13 @@ final class ClaudeCodeProvider: AgentProviding {
     private let watcher = DirectoryWatcher(path: ClaudeCodeProvider.projectsRoot.path)
 
     private var sessionsByID: [String: AgentSession] = [:]
-    private var hookState: [String: (name: String, time: Date, message: String?)] = [:]
+    private var hookState: [String: (name: String, time: Date, message: String?, tool: String?)] = [:]
     private var hookCwd: [String: String] = [:]
     private var endedSessionIDs: Set<String> = []
     private var lastScan: [ScannedSession] = []
     private var reconcileTask: Task<Void, Never>?
     private var reconcilePending = false
-    private var decayTask: Task<Void, Never>?
+    private var livenessTask: Task<Void, Never>?
     private var reconcileGeneration = 0
     /// Last attention-hook time we surfaced per session, so a fresh permission
     /// prompt re-notifies even when the status is already `.needsAttention`.
@@ -36,10 +36,12 @@ final class ClaudeCodeProvider: AgentProviding {
 
     /// A hook-only session (seen via hook, not yet by the process scan) is kept
     /// this long before being purged as a dead/crashed session that never sent
-    /// SessionEnd. Also the window after which a transcript-derived busy status
-    /// decays to idle.
+    /// SessionEnd.
     private static let graceWindow: TimeInterval = 30
-    private static let busyWindow: TimeInterval = 8
+    /// While a turn is in progress, re-run reconcile on this cadence so a process
+    /// that exits mid-turn (no final transcript write or hook) is still dropped
+    /// promptly. Busy-vs-idle itself is structural, so this never flaps the status.
+    private static let livenessRecheck: TimeInterval = 8
 
     init(processLookup: ProcessLookup, settings: Settings) {
         self.processLookup = processLookup
@@ -66,8 +68,8 @@ final class ClaudeCodeProvider: AgentProviding {
         reconcileTask?.cancel()
         reconcileTask = nil
         reconcilePending = false
-        decayTask?.cancel()
-        decayTask = nil
+        livenessTask?.cancel()
+        livenessTask = nil
         watcher.stop()
         if let activationObserver {
             NotificationCenter.default.removeObserver(activationObserver)
@@ -140,7 +142,7 @@ final class ClaudeCodeProvider: AgentProviding {
             hookState[sid] = nil
         } else {
             endedSessionIDs.remove(sid)
-            hookState[sid] = (envelope.hook, Date(), envelope.message)
+            hookState[sid] = (envelope.hook, Date(), envelope.message, envelope.tool)
         }
         rebuild()
         scheduleReconcile() // fill pid / branch / liveness
@@ -218,8 +220,9 @@ final class ClaudeCodeProvider: AgentProviding {
         for sid in Array(result.keys) {
             var session = result[sid]!
             let scanned = lastScan.first { $0.sessionId == sid }
-            session.status = computeStatus(sid: sid, scanned: scanned)
-            session.activityVerb = session.status.isBusy ? scanned?.verb : nil
+            let resolved = computeStatus(sid: sid, scanned: scanned)
+            session.status = resolved.status
+            session.activityVerb = resolved.status.isBusy ? resolved.verb : nil
             session.detail = hookState[sid]?.message ?? session.detail
             if let prev = sessionsByID[sid] {
                 session.startedAt = prev.startedAt
@@ -239,23 +242,29 @@ final class ClaudeCodeProvider: AgentProviding {
         // A SessionEnd tombstone is only needed while the process is still winding
         // down in the scan; once it's gone, forget it so the set stays bounded.
         endedSessionIDs.formIntersection(Set(lastScan.map(\.sessionId)))
-        // Transcript-derived busy decays to idle on a wall clock, but reconcile is
-        // event-driven; schedule a one-shot re-check so a finished-but-Stop-less
-        // turn doesn't sit "running" forever. Stops rescheduling once idle.
-        scheduleDecay(needed: result.values.contains { $0.status.isBusy })
+        // Reconcile is event-driven; while a turn is in progress also re-check on a
+        // timer so a process that exits mid-turn (without a final write or hook) is
+        // dropped promptly. Re-checking a still-running turn just re-confirms busy —
+        // status is structural now, so this never flaps it to idle. Stops once idle.
+        scheduleLivenessRecheck(busy: result.values.contains { $0.status.isBusy })
     }
 
-    private func scheduleDecay(needed: Bool) {
-        decayTask?.cancel()
-        guard needed else { decayTask = nil; return }
-        decayTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(Self.busyWindow + 0.5))
+    private func scheduleLivenessRecheck(busy: Bool) {
+        livenessTask?.cancel()
+        guard busy else { livenessTask = nil; return }
+        livenessTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.livenessRecheck))
             guard !Task.isCancelled, let self else { return }
             await self.reconcile()
         }
     }
 
-    private func computeStatus(sid: String, scanned: ScannedSession?) -> AgentStatus {
+    /// Resolve a session's status and live verb. A hook fresher than the last
+    /// transcript write is authoritative — it marks an exact turn transition, so the
+    /// status never has to be inferred from timing. Otherwise fall back to the
+    /// transcript structure (which also stands in for sessions that predate enabling
+    /// the hooks).
+    private func computeStatus(sid: String, scanned: ScannedSession?) -> (status: AgentStatus, verb: String?) {
         let hook = hookState[sid]
         let fileTime = scanned?.lastActivity ?? .distantPast
 
@@ -268,17 +277,28 @@ final class ClaudeCodeProvider: AgentProviding {
                 // so treating it as attention left finished/idle sessions stuck
                 // showing "needs you". A genuine prompt clears on its own once the
                 // user answers and the transcript advances past the hook time.
-                if !Self.isIdleNotification(hook.message) { return .needsAttention }
-            case "Stop", "SessionEnd": return .finished
-            case "SessionStart": return scanned?.busyStatus ?? .running
+                if !Self.isIdleNotification(hook.message) { return (.needsAttention, nil) }
+            case "Stop", "SessionEnd": return (.finished, nil)
+            case "UserPromptSubmit", "PostToolUse":
+                // Turn just started, or a tool just finished and the model is working
+                // on what to do next.
+                return (.running, "Thinking")
+            case "PreToolUse":
+                if let tool = hook.tool {
+                    return (Self.editTools.contains(tool) ? .editing : .tool, agentToolVerb(tool))
+                }
+                return (.running, "Thinking")
+            case "SessionStart": return (scanned?.busyStatus ?? .running, scanned?.verb)
             default: break
             }
         }
 
-        guard scanned != nil else { return .idle }
-        // The transcript is the freshest signal: treat very recent writes as busy,
-        // otherwise the session is alive but waiting.
-        return Date().timeIntervalSince(fileTime) < Self.busyWindow ? (scanned?.busyStatus ?? .running) : .idle
+        guard let scanned else { return (.idle, nil) }
+        // parseTail already resolved busy-vs-idle from the transcript structure (a
+        // pending tool_use or an unanswered prompt is busy; a text-only final turn is
+        // idle), so trust it directly. The old clock-based window wrongly idled long
+        // tool runs and thinking pauses, and flip-flopped during active turns.
+        return (scanned.busyStatus, scanned.verb)
     }
 
     /// Distinguish Claude's idle "waiting for your input" Notification from a
@@ -446,11 +466,22 @@ final class ClaudeCodeProvider: AgentProviding {
                 if !foundStatus {
                     if let tool = content.last(where: { ($0["type"] as? String) == "tool_use" }),
                        let name = tool["name"] as? String {
+                        // A pending tool_use is the last thing emitted: the turn is in
+                        // progress (running it / awaiting its result).
                         status = editTools.contains(name) ? .editing : .tool
                         verb = agentToolVerb(name)
-                    } else {
+                    } else if (message["stop_reason"] as? String) == "tool_use" {
+                        // A thinking/text preamble whose turn continues with a tool in
+                        // the following message (the tool_use block isn't in this one
+                        // yet) — still in progress, not done.
                         status = .running
                         verb = "Thinking"
+                    } else {
+                        // A terminal assistant message (end_turn / max_tokens) ends the
+                        // turn: nothing left to run, so the session is idle until the
+                        // user speaks again.
+                        status = .idle
+                        verb = nil
                     }
                     foundStatus = true
                 }

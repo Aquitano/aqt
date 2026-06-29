@@ -29,7 +29,13 @@ struct AgentConfigInstaller {
     private var openCodePluginURL: URL { home.appendingPathComponent(".config/opencode/plugins/notch.js") }
     private var ohMyPiDir: URL { home.appendingPathComponent(".omp/agent/extensions/notch", isDirectory: true) }
 
-    private static let claudeHookEvents = ["Notification", "Stop", "SessionStart", "SessionEnd"]
+    // UserPromptSubmit / PreToolUse / PostToolUse make status precise: they mark the
+    // exact start, tool-run, and tool-done transitions of a turn, so busy/idle never
+    // has to be inferred from transcript timing. Notification/Stop/SessionStart/
+    // SessionEnd cover attention, turn-end, and lifecycle. Tool events need no matcher
+    // (Claude runs a matcher-less group for every tool).
+    private static let claudeHookEvents = ["Notification", "Stop", "SessionStart", "SessionEnd",
+                                           "UserPromptSubmit", "PreToolUse", "PostToolUse"]
     private static let codexHookEvents = ["PermissionRequest", "PostToolUse", "SessionStart", "Stop", "UserPromptSubmit"]
     /// Substring identifying our hook entries — matches both the stable-path
     /// launcher (`notch-agent-hook`) and any legacy `… --agent-hook` command.
@@ -81,10 +87,13 @@ struct AgentConfigInstaller {
         hasCommand(at: claudeSettingsURL, events: Self.claudeHookEvents, containing: Self.hookMarker)
     }
 
-    /// True when the *stable-path launcher* is installed (vs. a legacy command
-    /// that hard-codes the app path), so start() can upgrade old installs once.
+    /// True only when the stable-path launcher is wired into *every* event we manage
+    /// (vs. a legacy command that hard-codes the app path, or an older install that
+    /// predates the precise tool events). Requiring all of them lets start() upgrade
+    /// an existing install in place the next time the app launches.
     func claudeBridgeInstalled() -> Bool {
-        hasCommand(at: claudeSettingsURL, events: Self.claudeHookEvents, containing: "notch-agent-hook")
+        hasCommand(at: claudeSettingsURL, events: Self.claudeHookEvents,
+                   containing: "notch-agent-hook", requireAll: true)
     }
 
     /// Install the launcher and add our hook to each Claude event. Throws — rather
@@ -266,12 +275,16 @@ struct AgentConfigInstaller {
         try writeJSON(root, to: url)
     }
 
-    private func hasCommand(at url: URL, events: [String], containing needle: String) -> Bool {
+    /// `requireAll`: every event must carry the command (used to detect a complete,
+    /// up-to-date install); otherwise any single event matching is enough.
+    private func hasCommand(at url: URL, events: [String], containing needle: String,
+                            requireAll: Bool = false) -> Bool {
         guard case let .object(root) = readSettings(at: url),
               let hooks = root["hooks"] as? [String: Any] else { return false }
-        return events.contains { event in
+        let match: (String) -> Bool = { event in
             commands(inEvent: hooks[event]).contains { $0.contains(needle) }
         }
+        return requireAll ? events.allSatisfy(match) : events.contains(where: match)
     }
 
     // MARK: - Hook shaping

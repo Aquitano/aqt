@@ -21,7 +21,10 @@ enum HookClient {
             cwd: json["cwd"] as? String,
             transcriptPath: json["transcript_path"] as? String,
             message: json["message"] as? String,
-            pid: getppid()
+            pid: getppid(),
+            // Present on PreToolUse/PostToolUse; lets the provider name the live verb
+            // ("Running Bash", "Editing") straight from the event.
+            tool: json["tool_name"] as? String
         ))
         exit(0)
     }
