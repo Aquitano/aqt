@@ -12,6 +12,9 @@ struct SettingsView: View {
         Form {
             generalSection
             agentsSection
+            if settings.agentsEnabled {
+                agentIntegrationsSection
+            }
             mediaSection
             hudSection
             widgetsSection
@@ -59,9 +62,69 @@ struct SettingsView: View {
         } header: {
             Text("Agents")
         } footer: {
-            Text("Enable a specific agent from the Agents tab in the notch — that writes its opt-in hooks. Turning Watch off takes effect on relaunch.")
+            Text("Turning Watch off takes effect on relaunch.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Agent integrations
+
+    /// Per-agent opt-in: enabling installs that CLI's hooks so the notch can watch
+    /// it. Lives here (not in the notch's Agents tab) so the tab stays a clean list
+    /// of what's running.
+    private var agentIntegrationsSection: some View {
+        Section {
+            ForEach(agents.availableKinds) { kind in
+                agentIntegrationRow(kind)
+            }
+        } header: {
+            Text("Coding agents")
+        } footer: {
+            Text("Enabling installs an agent's opt-in hooks (e.g. ~/.claude/settings.json) so the notch can watch it; disabling removes them.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func agentIntegrationRow(_ kind: AgentKind) -> some View {
+        if agents.isInstalled(kind) {
+            Toggle(isOn: Binding(
+                get: { agents.isEnabled(kind) },
+                set: { agents.setEnabled($0, for: kind) }
+            )) {
+                agentLabel(kind)
+            }
+        } else {
+            LabeledContent {
+                Text("Not installed").foregroundStyle(.secondary)
+            } label: {
+                agentLabel(kind)
+            }
+        }
+    }
+
+    private func agentLabel(_ kind: AgentKind) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(kind.displayName)
+            Text(summary(kind))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func summary(_ kind: AgentKind) -> String {
+        switch kind {
+        case .claudeCode:
+            return "Live status, needs-you, and finished. Adds fire-and-forget hooks to ~/.claude/settings.json."
+        case .codex:
+            return "Live status, needs-you, and finished via ~/.codex/hooks.json (Codex asks you to trust the hook on first run)."
+        case .openCode:
+            return "Live status + needs-you via a small plugin in ~/.config/opencode/plugins."
+        case .ohMyPi:
+            return "Live status + needs-you via an extension in ~/.omp/agent/extensions."
         }
     }
 

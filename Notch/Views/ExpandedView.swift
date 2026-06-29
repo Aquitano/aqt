@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The full expanded panel body. Lives inside the black notch blob, so every
 /// chrome surface here is glass-on-black (never glass on the pill itself). A
@@ -53,6 +54,10 @@ struct ExpandedView: View {
     private var gearButton: some View {
         Button {
             Haptics.tap(.levelChange)
+            // An accessory app isn't frontmost when the notch panel is clicked, so
+            // openSettings() alone leaves the window buried or unshown. Activate
+            // first to reliably surface it (mirrors the status-item menu path).
+            NSApp.activate(ignoringOtherApps: true)
             openSettings()
         } label: {
             Image(systemName: "gearshape")
