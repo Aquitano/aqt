@@ -220,12 +220,19 @@ final class NotchWindowController {
         }
     }
 
-    /// The visible content's rect in screen coordinates: centered on the notch,
-    /// pinned to the top, sized by `NotchLayout` for the current state.
+    /// The visible content's rect in screen coordinates. The geometry itself is a
+    /// pure function of `layoutSnapshot()`; see `HitRegion`.
     private func interactiveContentRect() -> NSRect {
-        let size = NotchLayout.contentSize(
+        HitRegion.rect(layoutSnapshot())
+    }
+
+    /// Collapse the layout-affecting reads off the live environment into one
+    /// value, so the rect math stays a pure, testable function of this snapshot.
+    private func layoutSnapshot() -> LayoutSnapshot {
+        LayoutSnapshot(
             presentation: env.state.presentation,
             notch: geometry.notchSize,
+            panelFrame: geometry.panelFrame,
             tab: env.state.expandedTab,
             hasInfoRow: env.settings.showWeatherWidget || env.settings.showCalendarWidget,
             trayEmpty: env.tray.items.isEmpty,
@@ -235,12 +242,6 @@ final class NotchWindowController {
                 activityLabel: env.activities.compactActivity?.compactLabel
             ),
             dropActive: env.state.isDropActive
-        )
-        return NSRect(
-            x: geometry.panelFrame.midX - size.width / 2,
-            y: geometry.panelFrame.maxY - size.height,
-            width: size.width,
-            height: size.height
         )
     }
 
