@@ -99,6 +99,12 @@ struct AgentSession: Identifiable, Equatable, Sendable {
     var parentSessionID: String?
 }
 
+/// Tools whose execution applies a file edit, so a session running one reads as
+/// `.editing` rather than the generic `.tool`. Matched case-sensitively against
+/// Claude's tool names; shared by the transcript parser and the status reducer so
+/// the two can't drift.
+let agentEditTools: Set<String> = ["Edit", "Write", "MultiEdit", "NotebookEdit"]
+
 /// Human-readable verb for a tool name — the row's "what it's doing now".
 func agentToolVerb(_ tool: String) -> String {
     switch tool.lowercased() {

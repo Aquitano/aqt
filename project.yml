@@ -78,6 +78,34 @@ targets:
     # dependencies:
     #   - package: mediaremote-adapter
 
+  # Logic tests for the agent-watch pure modules. Host-less: the modules under
+  # test are Foundation-only and compiled straight into the bundle (same pattern
+  # as notch-hook reusing AgentModels), so the suite runs without launching the
+  # app — no AppKit, no TCC prompts.
+  NotchTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: Notch/Model/Agents/AgentModels.swift
+      - path: Notch/Services/Agents/StatusReducer.swift
+      - path: Notch/Services/Agents/TranscriptParser.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aquitano.notch.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGNING_ALLOWED: NO
+
+schemes:
+  NotchTests:
+    build:
+      targets:
+        NotchTests: [test]
+    test:
+      targets:
+        - NotchTests
+
 # packages:
 #   mediaremote-adapter:
 #     url: https://github.com/ejbills/mediaremote-adapter

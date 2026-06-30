@@ -7,6 +7,11 @@ import Foundation
 /// dir, git branch, and liveness come from tailing `~/.claude/projects/**/*.jsonl`
 /// and matching live `claude` pids by cwd. No timers — every refresh is triggered
 /// by a socket event, an FSEvents change, or app activation.
+///
+/// This type only orchestrates: it owns the watch/reconcile lifecycle and the
+/// hook-state bookkeeping, then delegates the work to three focused modules —
+/// `ProcessScanner` (libproc), `TranscriptParser` (bytes → state), and the pure
+/// `StatusReducer` ((hook, scan) → status).
 @MainActor
 final class ClaudeCodeProvider: AgentProviding {
 
@@ -18,10 +23,10 @@ final class ClaudeCodeProvider: AgentProviding {
     private let settings: Settings
     private let installer = AgentConfigInstaller()
     private let processLookup: ProcessLookup
-    private let watcher = DirectoryWatcher(path: ClaudeCodeProvider.projectsRoot.path)
+    private let watcher = DirectoryWatcher(path: ProcessScanner.projectsRoot.path)
 
     private var sessionsByID: [String: AgentSession] = [:]
-    private var hookState: [String: (name: String, time: Date, message: String?, tool: String?)] = [:]
+    private var hookState: [String: HookSnapshot] = [:]
     private var hookCwd: [String: String] = [:]
     private var endedSessionIDs: Set<String> = []
     private var lastScan: [ScannedSession] = []
@@ -142,7 +147,7 @@ final class ClaudeCodeProvider: AgentProviding {
             hookState[sid] = nil
         } else {
             endedSessionIDs.remove(sid)
-            hookState[sid] = (envelope.hook, Date(), envelope.message, envelope.tool)
+            hookState[sid] = HookSnapshot(name: envelope.hook, time: Date(), message: envelope.message, tool: envelope.tool)
         }
         rebuild()
         scheduleReconcile() // fill pid / branch / liveness
@@ -169,9 +174,9 @@ final class ClaudeCodeProvider: AgentProviding {
     private func reconcile() async {
         reconcileGeneration += 1
         let generation = reconcileGeneration
-        let lookup = processLookup
+        let scanner = ProcessScanner(lookup: processLookup)
         let scan = await Task.detached(priority: .utility) {
-            Self.scanLiveSessions(lookup: lookup)
+            scanner.scan()
         }.value
         // A newer reconcile started while this scan ran (Task.detached doesn't
         // inherit cancellation): drop this stale result so it can't clobber it.
@@ -220,7 +225,7 @@ final class ClaudeCodeProvider: AgentProviding {
         for sid in Array(result.keys) {
             var session = result[sid]!
             let scanned = lastScan.first { $0.sessionId == sid }
-            let resolved = computeStatus(sid: sid, scanned: scanned)
+            let resolved = StatusReducer.reduce(hook: hookState[sid], scan: scanned.map(Self.scanInput))
             session.status = resolved.status
             session.activityVerb = resolved.status.isBusy ? resolved.verb : nil
             session.detail = hookState[sid]?.message ?? session.detail
@@ -259,53 +264,9 @@ final class ClaudeCodeProvider: AgentProviding {
         }
     }
 
-    /// Resolve a session's status and live verb. A hook fresher than the last
-    /// transcript write is authoritative — it marks an exact turn transition, so the
-    /// status never has to be inferred from timing. Otherwise fall back to the
-    /// transcript structure (which also stands in for sessions that predate enabling
-    /// the hooks).
-    private func computeStatus(sid: String, scanned: ScannedSession?) -> (status: AgentStatus, verb: String?) {
-        let hook = hookState[sid]
-        let fileTime = scanned?.lastActivity ?? .distantPast
-
-        if let hook, hook.time >= fileTime {
-            switch hook.name {
-            case "Notification":
-                // Claude's Notification hook covers both permission prompts and
-                // idle "waiting for your input" nudges. Only a permission prompt is
-                // a real needs-you; an idle nudge fires with no follow-up activity,
-                // so treating it as attention left finished/idle sessions stuck
-                // showing "needs you". A genuine prompt clears on its own once the
-                // user answers and the transcript advances past the hook time.
-                if !Self.isIdleNotification(hook.message) { return (.needsAttention, nil) }
-            case "Stop", "SessionEnd": return (.finished, nil)
-            case "UserPromptSubmit", "PostToolUse":
-                // Turn just started, or a tool just finished and the model is working
-                // on what to do next.
-                return (.running, "Thinking")
-            case "PreToolUse":
-                if let tool = hook.tool {
-                    return (Self.editTools.contains(tool) ? .editing : .tool, agentToolVerb(tool))
-                }
-                return (.running, "Thinking")
-            case "SessionStart": return (scanned?.busyStatus ?? .running, scanned?.verb)
-            default: break
-            }
-        }
-
-        guard let scanned else { return (.idle, nil) }
-        // parseTail already resolved busy-vs-idle from the transcript structure (a
-        // pending tool_use or an unanswered prompt is busy; a text-only final turn is
-        // idle), so trust it directly. The old clock-based window wrongly idled long
-        // tool runs and thinking pauses, and flip-flopped during active turns.
-        return (scanned.busyStatus, scanned.verb)
-    }
-
-    /// Distinguish Claude's idle "waiting for your input" Notification from a
-    /// permission prompt, so the former doesn't read as needs-you.
-    nonisolated private static func isIdleNotification(_ message: String?) -> Bool {
-        guard let message = message?.lowercased() else { return false }
-        return message.contains("waiting") || message.contains("idle")
+    /// Project a scanned session onto just the facts the status reducer needs.
+    private static func scanInput(_ scanned: ScannedSession) -> StatusReducer.Scan {
+        StatusReducer.Scan(lastActivity: scanned.lastActivity, busy: scanned.busyStatus, verb: scanned.verb)
     }
 
     private func emitEvents(old: [String: AgentSession], new: [String: AgentSession]) {
@@ -340,202 +301,4 @@ final class ClaudeCodeProvider: AgentProviding {
             onEvent?(AgentEvent(kind: .ended, session: session, message: nil))
         }
     }
-
-    // MARK: - Off-main scan
-
-    private struct ScannedSession: Sendable {
-        let sessionId: String
-        let cwd: String
-        let pid: pid_t
-        let lastActivity: Date
-        let gitBranch: String?
-        let busyStatus: AgentStatus
-        let focusURL: String?
-        let terminalName: String?
-        let prompt: String?
-        let response: String?
-        let verb: String?
-    }
-
-    nonisolated private static let projectsRoot = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".claude/projects", isDirectory: true)
-
-    nonisolated private static let editTools: Set<String> = ["Edit", "Write", "MultiEdit", "NotebookEdit"]
-
-    // Known limitation: two `claude` processes in the SAME directory collapse to
-    // one scanned session (the newest transcript), since cwd is the only link
-    // between a pid and a session without inspecting each process's open files.
-    // Distinct hook sessions still surface separately via hookState.
-    /// The `claude` CLI's executable is the versioned binary
-    /// (`…/claude/versions/X.Y.Z`), so `proc_name` is the version string, not
-    /// "claude" — matching by name finds nothing. Match by executable path, and
-    /// fall back to argv for a runtime-hosted CLI (`node …/claude-code/…`).
-    nonisolated private static func isClaudeProcess(_ pid: pid_t, lookup: ProcessLookup) -> Bool {
-        guard let path = lookup.path(of: pid) else { return false }
-        let lower = path.lowercased()
-        if lower.contains("/claude/") || lower.contains("/claude-code") { return true }
-        let base = (path as NSString).lastPathComponent
-        if base == "claude" { return true }
-        if base == "node" || base == "bun" || base == "deno" {
-            return lookup.arguments(of: pid).contains { $0.lowercased().contains("claude") }
-        }
-        return false
-    }
-
-    nonisolated private static func scanLiveSessions(lookup: ProcessLookup) -> [ScannedSession] {
-        var result: [ScannedSession] = []
-        var seenCwd = Set<String>()
-        for pid in lookup.allPIDs() where isClaudeProcess(pid, lookup: lookup) {
-            guard let cwd = lookup.cwd(of: pid), !seenCwd.contains(cwd) else { continue }
-            seenCwd.insert(cwd)
-            guard let transcript = newestTranscript(forCwd: cwd) else { continue }
-            let terminal = terminalInfo(forPID: pid, lookup: lookup)
-            result.append(ScannedSession(
-                sessionId: transcript.sessionId, cwd: cwd, pid: pid,
-                lastActivity: transcript.mtime, gitBranch: transcript.branch, busyStatus: transcript.busy,
-                focusURL: terminal.focusURL, terminalName: terminal.name,
-                prompt: transcript.prompt, response: transcript.response, verb: transcript.verb
-            ))
-        }
-        return result
-    }
-
-    /// Terminal locator + display name, read from the agent process's environment.
-    /// Warp exports `WARP_FOCUS_URL` (warp://session/<uuid>) per tab.
-    nonisolated private static func terminalInfo(forPID pid: pid_t, lookup: ProcessLookup) -> (focusURL: String?, name: String?) {
-        let env = lookup.environment(of: pid)
-        var focusURL: String?
-        if let url = env["WARP_FOCUS_URL"], !url.isEmpty {
-            focusURL = url
-        } else if let uuid = env["WARP_TERMINAL_SESSION_UUID"], !uuid.isEmpty {
-            focusURL = "warp://session/\(uuid)"
-        }
-        return (focusURL, terminalName(env["TERM_PROGRAM"]))
-    }
-
-    nonisolated private static func terminalName(_ termProgram: String?) -> String? {
-        switch termProgram {
-        case "WarpTerminal": return "Warp"
-        case "iTerm.app": return "iTerm"
-        case "Apple_Terminal": return "Terminal"
-        case "vscode": return "VS Code"
-        case "ghostty", "xterm-ghostty": return "Ghostty"
-        case "WezTerm": return "WezTerm"
-        case "Hyper": return "Hyper"
-        case let other?: return other.isEmpty ? nil : other
-        case nil: return nil
-        }
-    }
-
-    nonisolated private static func newestTranscript(
-        forCwd cwd: String
-    ) -> (sessionId: String, mtime: Date, branch: String?, busy: AgentStatus, verb: String?, prompt: String?, response: String?)? {
-        let encoded = cwd.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ".", with: "-")
-        let dir = projectsRoot.appendingPathComponent(encoded, isDirectory: true)
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]
-        ) else { return nil }
-        let jsonls = entries.filter { $0.pathExtension == "jsonl" }
-        guard let newest = jsonls.max(by: { mtime($0) < mtime($1) }) else { return nil }
-        let parsed = parseTail(newest)
-        return (newest.deletingPathExtension().lastPathComponent, mtime(newest),
-                parsed.branch, parsed.busy, parsed.verb, parsed.prompt, parsed.response)
-    }
-
-    /// One reverse pass over the transcript tail collecting branch, busy status,
-    /// the latest user prompt, and the latest assistant reply (for the preview).
-    nonisolated private static func parseTail(
-        _ url: URL
-    ) -> (branch: String?, busy: AgentStatus, verb: String?, prompt: String?, response: String?) {
-        guard let chunk = readTail(url, maxBytes: 65536) else { return (nil, .running, nil, nil, nil) }
-        var branch: String?
-        var status: AgentStatus = .running
-        var verb: String?
-        var foundStatus = false
-        var prompt: String?
-        var response: String?
-
-        for line in chunk.split(separator: 0x0A).reversed() {
-            guard let obj = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { continue }
-            if branch == nil { branch = obj["gitBranch"] as? String }
-
-            switch obj["type"] as? String {
-            case "assistant":
-                guard let message = obj["message"] as? [String: Any],
-                      let content = message["content"] as? [[String: Any]] else { break }
-                if !foundStatus {
-                    if let tool = content.last(where: { ($0["type"] as? String) == "tool_use" }),
-                       let name = tool["name"] as? String {
-                        // A pending tool_use is the last thing emitted: the turn is in
-                        // progress (running it / awaiting its result).
-                        status = editTools.contains(name) ? .editing : .tool
-                        verb = agentToolVerb(name)
-                    } else if (message["stop_reason"] as? String) == "tool_use" {
-                        // A thinking/text preamble whose turn continues with a tool in
-                        // the following message (the tool_use block isn't in this one
-                        // yet) — still in progress, not done.
-                        status = .running
-                        verb = "Thinking"
-                    } else {
-                        // A terminal assistant message (end_turn / max_tokens) ends the
-                        // turn: nothing left to run, so the session is idle until the
-                        // user speaks again.
-                        status = .idle
-                        verb = nil
-                    }
-                    foundStatus = true
-                }
-                if response == nil {
-                    let text = content
-                        .compactMap { ($0["type"] as? String) == "text" ? $0["text"] as? String : nil }
-                        .joined(separator: " ")
-                    if !text.isEmpty { response = agentClip(text) }
-                }
-            case "user":
-                if !foundStatus { status = .running; verb = "Thinking"; foundStatus = true }
-                if prompt == nil, let message = obj["message"] as? [String: Any],
-                   let text = userPrompt(message) {
-                    prompt = agentClip(text)
-                }
-            default:
-                break
-            }
-            if branch != nil && foundStatus && prompt != nil && response != nil { break }
-        }
-        return (branch, status, verb, prompt, response)
-    }
-
-    /// A user transcript entry is a real prompt only when its content is plain
-    /// text — entries carrying a `tool_result` are tool output, not prompts.
-    nonisolated private static func userPrompt(_ message: [String: Any]) -> String? {
-        if let string = message["content"] as? String {
-            return string.isEmpty ? nil : string
-        }
-        guard let content = message["content"] as? [[String: Any]] else { return nil }
-        if content.contains(where: { ($0["type"] as? String) == "tool_result" }) { return nil }
-        let text = content
-            .compactMap { ($0["type"] as? String) == "text" ? $0["text"] as? String : nil }
-            .joined(separator: " ")
-        return text.isEmpty ? nil : text
-    }
-
-
-    nonisolated private static func readTail(_ url: URL, maxBytes: Int) -> Data? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        let size = (try? handle.seekToEnd()) ?? 0
-        let start = size > UInt64(maxBytes) ? size - UInt64(maxBytes) : 0
-        try? handle.seek(toOffset: start)
-        guard var data = try? handle.readToEnd() else { return nil }
-        // Drop the leading partial line when we seeked into the middle of one.
-        if start > 0, let newline = data.firstIndex(of: 0x0A) {
-            data = data.subdata(in: data.index(after: newline)..<data.endIndex)
-        }
-        return data
-    }
-
-    nonisolated private static func mtime(_ url: URL) -> Date {
-        (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-    }
-
 }
