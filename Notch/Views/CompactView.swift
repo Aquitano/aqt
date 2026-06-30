@@ -115,7 +115,11 @@ struct CompactView: View {
     private func activityIcon(_ activity: Activity) -> some View {
         if case let .agent(_, _, _, status) = activity.kind {
             // Retro pixel spinner: animates while an agent is actively working.
+            // Ease the tint between states (busy green -> attention orange) so the
+            // status shift reads as a transition, not a hard cut. Only fires on a
+            // tint change, so the per-frame spinner stays a zero-cost render.
             PixelWorkingIndicator(active: status.isBusy, tint: agentPixelTint(status))
+                .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: agentPixelTint(status))
         } else {
             Image(systemName: activity.compactSymbol)
                 .font(.system(size: 13, weight: .semibold))
@@ -144,10 +148,15 @@ struct CompactView: View {
                     .lineLimit(1)
             }
         } else {
+            // The agent pill holds one width across states, so a status change
+            // (tool -> running) can cross-fade the label in place instead of
+            // hard-cutting. Keyed on the string, so it only animates on a change.
             Text(activity.compactLabel)
                 .font(.system(size: NotchLayout.compactLabelFontSize, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .contentTransition(.opacity)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: activity.compactLabel)
         }
     }
 
