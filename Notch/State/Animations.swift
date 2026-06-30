@@ -47,6 +47,16 @@ enum NotchMetrics {
     /// The expanded panel keeps a constant width; height is chosen per tab (see
     /// `NotchLayout.expandedBodyHeight`) so each surface fits its own content.
     static let expandedWidth: CGFloat = 540
+
+    /// Concave shoulder inset of the blob at a given width, matching the curve in
+    /// `NotchShape.path`. The *visible* body starts this far in from each edge, so
+    /// anything that draws inside the blob (the compact pill) must clear it or it
+    /// slips under the rounded corner. Shared so the shape and the content can't
+    /// disagree about where the body actually begins.
+    static func shoulderInset(width: CGFloat, notchWidth: CGFloat) -> CGFloat {
+        guard notchWidth > 0 else { return 0 }
+        return min(width / 2, max(0, (width - notchWidth) / 18))
+    }
 }
 
 /// Single source of truth for the visible content's size per presentation state.
@@ -58,10 +68,27 @@ enum NotchLayout {
     /// so the width reserved here matches exactly what gets drawn.
     static let compactLabelFontSize: CGFloat = 12
 
-    /// Outer horizontal padding the compact pill keeps clear of the rounded
-    /// corners. `CompactView` applies exactly this and the reserved width is
-    /// derived from it, so the estimate and the drawn pill share one constant.
+    /// Resting horizontal padding the compact pill keeps clear of the rounded
+    /// corners. The width reserved in `compactExtraWidth` is derived from it, so
+    /// the estimate and the drawn pill share one constant.
     static let compactHorizontalPadding: CGFloat = 18
+
+    /// Minimum gap kept between the pill content and the blob's *visible* shoulder
+    /// edge. The shoulder grows with the blob's width (see `shoulderInset`), so a
+    /// fixed padding would let the leading icon slide under the corner whenever the
+    /// blob is momentarily wide (entrance grow, morph, a wider status label). The
+    /// padding tracks the shoulder instead, holding this gap at any width.
+    static let compactShoulderGap: CGFloat = 9
+
+    /// Horizontal padding the compact pill applies for its current on-screen width:
+    /// enough to clear the blob's shoulder at that width plus `compactShoulderGap`,
+    /// never less than the resting padding. Because the content fills the blob, the
+    /// width is the live (animating) blob width, so the icon stays clear of the
+    /// corner through every transition instead of only at rest.
+    static func compactOuterPadding(width: CGFloat, notchWidth: CGFloat) -> CGFloat {
+        max(compactHorizontalPadding,
+            NotchMetrics.shoulderInset(width: width, notchWidth: notchWidth) + compactShoulderGap)
+    }
 
     /// Breathing room added inside each slot beyond its content's measured width.
     static let compactSlotInset: CGFloat = 12
@@ -71,16 +98,33 @@ enum NotchLayout {
     enum CompactContent: Equatable {
         case none
         case media
+        /// An agent pill. Its status label changes constantly (running -> tool ->
+        /// editing ...); reserving per-label would resize the pill on every change
+        /// and shove the leading icon under the rounded corner mid-transition, so
+        /// the agent pill keeps one fixed width across all states.
+        case agent
         case activity(label: String)
     }
 
     /// Resolve the compact content from the live state. Media wins over an
-    /// activity (mirrors `CompactView`), so all three readers stay in sync.
-    static func compactContent(hasMedia: Bool, activityLabel: String?) -> CompactContent {
+    /// activity (mirrors `CompactView`), so all three readers stay in sync. An
+    /// agent activity is its own fixed-width case so status changes don't resize.
+    static func compactContent(hasMedia: Bool, isAgent: Bool, activityLabel: String?) -> CompactContent {
         if hasMedia { return .media }
+        if isAgent { return .agent }
         if let label = activityLabel { return .activity(label: label) }
         return .none
     }
+
+    /// Fixed slot width for the agent pill, sized once for the widest status label
+    /// so every agent state renders at the same width (see `CompactContent.agent`).
+    static let compactAgentSlotWidth: CGFloat = {
+        let font = NSFont.systemFont(ofSize: compactLabelFontSize, weight: .medium)
+        let widest = ["running", "editing", "needs you", "99 agents"]
+            .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? 64
+        return min(max(widest, 30), 120) + compactSlotInset
+    }()
 
     /// Width of each of the two equal slots flanking the centered notch gap.
     /// Both sides reserve the same width so the gap stays aligned with the
@@ -95,6 +139,8 @@ enum NotchLayout {
             return 0
         case .media:
             return 47
+        case .agent:
+            return compactAgentSlotWidth
         case let .activity(label):
             let font = NSFont.systemFont(ofSize: compactLabelFontSize, weight: .medium)
             let measured = (label as NSString).size(withAttributes: [.font: font]).width

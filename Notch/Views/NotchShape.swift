@@ -33,7 +33,7 @@ struct NotchShape: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
         let tr: CGFloat = notchWidth > 0
-            ? min(rect.width / 2, max(0, (rect.width - notchWidth) / 18))
+            ? NotchMetrics.shoulderInset(width: rect.width, notchWidth: notchWidth)
             : min(topRadius, rect.width / 2)
         let br = min(bottomRadius, min(rect.width, rect.height) / 2)
 

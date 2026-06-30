@@ -22,18 +22,23 @@ struct CompactView: View {
         content
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .phaseAnimator([0, 1, 2], trigger: activities.lastEventID) { view, phase in
-                view.scaleEffect(popScale(phase))
-            } animation: { _ in
-                reduceMotion ? .smooth(duration: 0.2) : NotchAnimation.pop
-            }
+    }
+
+    /// One-shot attention pop on a new event. Applied to each slot's content (not
+    /// the full-width pill) so the icon/label scale about their own centers and
+    /// stay put — scaling the whole pill pushed the leading icon under the corner.
+    private func popping<V: View>(_ view: V) -> some View {
+        view.phaseAnimator([0, 1, 2], trigger: activities.lastEventID) { content, phase in
+            content.scaleEffect(popScale(phase))
+        } animation: { _ in
+            reduceMotion ? .smooth(duration: 0.2) : NotchAnimation.pop
+        }
     }
 
     @ViewBuilder
     private var content: some View {
         if !media.track.isEmpty {
             pill(
-                content: .media,
                 leading: artworkThumbnail,
                 trailing: NowPlayingIndicator(
                     isPlaying: media.track.isPlaying,
@@ -43,7 +48,6 @@ struct CompactView: View {
             )
         } else if let activity = activities.compactActivity {
             pill(
-                content: .activity(label: activity.compactLabel),
                 leading: activityIcon(activity),
                 trailing: activityLabel(activity)
             )
@@ -54,32 +58,28 @@ struct CompactView: View {
 
     // MARK: - Layout
 
-    /// Two equal-width slots flanking the fixed center gap. The slot width comes
-    /// from `NotchLayout` (so the gap stays centered on the physical notch), and
-    /// the pill reports its measured width up via `CompactPillWidthKey` so the
-    /// host blob is sized to fit exactly what is drawn — the content and the blob
-    /// can never disagree and clip the leading icon against the rounded corner.
+    /// Two equal slots flanking the fixed center gap. The slots fill the blob
+    /// (their width comes from the host frame, not a self-measured ideal) so the
+    /// content tracks the blob as its width animates — it can never overflow the
+    /// growing blob and clip against the rounded corners mid-transition. The
+    /// horizontal padding tracks the blob's shoulder so the leading icon keeps a
+    /// constant gap from the *visible* edge at every width, not just at rest.
     private func pill<Leading: View, Trailing: View>(
-        content: NotchLayout.CompactContent,
         leading: Leading,
         trailing: Trailing
     ) -> some View {
-        let slot = NotchLayout.compactSlotWidth(content)
-        return HStack(spacing: 0) {
-            leading
-                .frame(width: slot, alignment: .leading)
-            Color.clear
-                .frame(width: notchSize.width)
-            trailing
-                .frame(width: slot, alignment: .trailing)
-        }
-        .padding(.horizontal, NotchLayout.compactHorizontalPadding)
-        .fixedSize(horizontal: true, vertical: false)
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(key: CompactPillWidthKey.self, value: geo.size.width)
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                popping(leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Color.clear
+                    .frame(width: notchSize.width)
+                popping(trailing)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
-        )
+            .padding(.horizontal, NotchLayout.compactOuterPadding(width: geo.size.width, notchWidth: notchSize.width))
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
     }
 
     // MARK: - Media slots
@@ -154,16 +154,6 @@ struct CompactView: View {
     private func popScale(_ phase: Int) -> CGFloat {
         guard !reduceMotion else { return 1 }
         return phase == 1 ? 1.06 : 1.0
-    }
-}
-
-/// The compact pill's measured on-screen width, reported up to `NotchRootView`
-/// so the black blob is sized to fit exactly what the pill draws (rather than a
-/// parallel string estimate that could lag and clip the content).
-struct CompactPillWidthKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
     }
 }
 

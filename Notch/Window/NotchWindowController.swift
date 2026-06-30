@@ -223,7 +223,7 @@ final class NotchWindowController {
     /// The visible content's rect in screen coordinates: centered on the notch,
     /// pinned to the top, sized by `NotchLayout` for the current state.
     private func interactiveContentRect() -> NSRect {
-        var size = NotchLayout.contentSize(
+        let size = NotchLayout.contentSize(
             presentation: env.state.presentation,
             notch: geometry.notchSize,
             tab: env.state.expandedTab,
@@ -231,15 +231,11 @@ final class NotchWindowController {
             trayEmpty: env.tray.items.isEmpty,
             compact: NotchLayout.compactContent(
                 hasMedia: !env.media.track.isEmpty,
+                isAgent: env.activities.compactActivity?.isAgent ?? false,
                 activityLabel: env.activities.compactActivity?.compactLabel
             ),
             dropActive: env.state.isDropActive
         )
-        // Match the visible pill, which sizes to its measured content rather than
-        // the string estimate, so the clickable rect never falls short of the blob.
-        if env.state.presentation == .compact {
-            size.width = max(size.width, env.state.compactPillWidth)
-        }
         return NSRect(
             x: geometry.panelFrame.midX - size.width / 2,
             y: geometry.panelFrame.maxY - size.height,

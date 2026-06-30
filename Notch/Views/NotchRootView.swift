@@ -30,7 +30,6 @@ struct NotchRootView: View {
             }
 
             notchContent
-                .onPreferenceChange(CompactPillWidthKey.self) { state.compactPillWidth = $0 }
                 .zIndex(2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -100,12 +99,13 @@ struct NotchRootView: View {
     private var compactContent: NotchLayout.CompactContent {
         NotchLayout.compactContent(
             hasMedia: !media.track.isEmpty,
+            isAgent: activities.compactActivity?.isAgent ?? false,
             activityLabel: activities.compactActivity?.compactLabel
         )
     }
 
     private var currentSize: CGSize {
-        var size = NotchLayout.contentSize(
+        NotchLayout.contentSize(
             presentation: state.presentation,
             notch: notchSize,
             tab: state.expandedTab,
@@ -114,13 +114,6 @@ struct NotchRootView: View {
             compact: compactContent,
             dropActive: state.isDropActive
         )
-        // Trust the pill's measured content width over the string estimate so the
-        // blob is never narrower than what it draws (which clips the icon into the
-        // corner). The estimate is only the first-frame fallback.
-        if state.presentation == .compact {
-            size.width = max(size.width, state.compactPillWidth)
-        }
-        return size
     }
 
     private var expandedSize: CGSize {

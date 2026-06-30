@@ -49,6 +49,11 @@ struct Activity: Identifiable, Equatable {
         case neutral, accent, warning, success
     }
 
+    var isAgent: Bool {
+        if case .agent = kind { return true }
+        return false
+    }
+
     /// SF Symbol shown in the compact pill for this activity.
     var compactSymbol: String {
         switch kind {
