@@ -88,8 +88,10 @@ targets:
     sources:
       - path: Tests
       - path: Notch/Model/Agents/AgentModels.swift
+      - path: Notch/Model/Agents/ScannedSession.swift
       - path: Notch/Services/Agents/StatusReducer.swift
       - path: Notch/Services/Agents/TranscriptParser.swift
+      - path: Notch/Services/Agents/SessionReconciler.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aquitano.notch.tests

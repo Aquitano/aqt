@@ -1,21 +1,5 @@
 import Foundation
 
-/// One live Claude session found by the process scan: a running `claude` pid,
-/// the cwd it's in, and the newest transcript in that cwd parsed for status.
-struct ScannedSession: Sendable {
-    let sessionId: String
-    let cwd: String
-    let pid: pid_t
-    let lastActivity: Date
-    let gitBranch: String?
-    let busyStatus: AgentStatus
-    let focusURL: String?
-    let terminalName: String?
-    let prompt: String?
-    let response: String?
-    let verb: String?
-}
-
 /// libproc adapter for Claude liveness: enumerates live `claude` processes, maps
 /// each to the newest transcript in its cwd, and reads terminal locators from the
 /// process environment. Stateless and `Sendable`, so a reconcile can run it off

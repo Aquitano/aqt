@@ -185,64 +185,24 @@ final class ClaudeCodeProvider: AgentProviding {
         rebuild()
     }
 
-    /// Merge the latest process/transcript scan with hook state into the session
-    /// set, compute each status, emit transitions, and publish.
+    /// Run the pure reconcile over the current scan + hook state, then apply its
+    /// side effects: emit transitions, publish, and prune the local bookkeeping.
     private func rebuild() {
-        var result: [String: AgentSession] = [:]
+        let outcome = SessionReconciler.reconcile(SessionReconciler.Inputs(
+            scan: lastScan, hookState: hookState, hookCwd: hookCwd,
+            endedSessionIDs: endedSessionIDs, previous: sessionsByID,
+            emittedAttentionAt: emittedAttentionAt, now: Date(), graceWindow: Self.graceWindow
+        ))
 
-        for scanned in lastScan where !endedSessionIDs.contains(scanned.sessionId) {
-            result[scanned.sessionId] = AgentSession(
-                id: scanned.sessionId, kind: .claudeCode, project: agentProjectName(scanned.cwd),
-                cwd: scanned.cwd, status: .idle, startedAt: scanned.lastActivity,
-                lastActivity: scanned.lastActivity, pid: scanned.pid, gitBranch: scanned.gitBranch,
-                terminalFocusURL: scanned.focusURL, lastPrompt: scanned.prompt,
-                lastResponse: scanned.response, terminalName: scanned.terminalName
-            )
+        // Forget hook-only sessions that aged out past the grace window.
+        for sid in outcome.expiredHookIDs {
+            hookState[sid] = nil
+            hookCwd[sid] = nil
         }
-
-        // Hook-known sessions not yet seen by the scan. Keep one only briefly:
-        // a real session shows up in the scan within a reconcile or two, so a
-        // hook with no matching live process past the grace window is a crashed
-        // session that never sent SessionEnd — purge it instead of resurrecting
-        // a phantom (e.g. a stuck "needs you") on every rebuild.
-        let now = Date()
-        for sid in Array(hookState.keys) where result[sid] == nil {
-            if endedSessionIDs.contains(sid) { continue }
-            guard let hook = hookState[sid], let cwd = hookCwd[sid] else { continue }
-            if now.timeIntervalSince(hook.time) <= Self.graceWindow {
-                result[sid] = AgentSession(
-                    id: sid, kind: .claudeCode, project: agentProjectName(cwd), cwd: cwd,
-                    status: .idle, startedAt: hook.time, lastActivity: hook.time,
-                    pid: nil, gitBranch: nil, detail: hook.message
-                )
-            } else {
-                hookState[sid] = nil
-                hookCwd[sid] = nil
-                emittedAttentionAt[sid] = nil
-            }
-        }
-
-        for sid in Array(result.keys) {
-            var session = result[sid]!
-            let scanned = lastScan.first { $0.sessionId == sid }
-            let resolved = StatusReducer.reduce(hook: hookState[sid], scan: scanned.map(Self.scanInput))
-            session.status = resolved.status
-            session.activityVerb = resolved.status.isBusy ? resolved.verb : nil
-            session.detail = hookState[sid]?.message ?? session.detail
-            if let prev = sessionsByID[sid] {
-                session.startedAt = prev.startedAt
-                // Keep previously-captured detail if this cycle didn't see it.
-                session.terminalFocusURL = session.terminalFocusURL ?? prev.terminalFocusURL
-                session.terminalName = session.terminalName ?? prev.terminalName
-                session.lastPrompt = session.lastPrompt ?? prev.lastPrompt
-                session.lastResponse = session.lastResponse ?? prev.lastResponse
-            }
-            result[sid] = session
-        }
-
-        emitEvents(old: sessionsByID, new: result)
-        sessionsByID = result
-        onSessions?(Array(result.values))
+        emittedAttentionAt = outcome.emittedAttentionAt
+        for event in outcome.events { onEvent?(event) }
+        sessionsByID = outcome.sessions
+        onSessions?(Array(outcome.sessions.values))
 
         // A SessionEnd tombstone is only needed while the process is still winding
         // down in the scan; once it's gone, forget it so the set stays bounded.
@@ -251,7 +211,7 @@ final class ClaudeCodeProvider: AgentProviding {
         // timer so a process that exits mid-turn (without a final write or hook) is
         // dropped promptly. Re-checking a still-running turn just re-confirms busy —
         // status is structural now, so this never flaps it to idle. Stops once idle.
-        scheduleLivenessRecheck(busy: result.values.contains { $0.status.isBusy })
+        scheduleLivenessRecheck(busy: outcome.sessions.values.contains { $0.status.isBusy })
     }
 
     private func scheduleLivenessRecheck(busy: Bool) {
@@ -261,44 +221,6 @@ final class ClaudeCodeProvider: AgentProviding {
             try? await Task.sleep(for: .seconds(Self.livenessRecheck))
             guard !Task.isCancelled, let self else { return }
             await self.reconcile()
-        }
-    }
-
-    /// Project a scanned session onto just the facts the status reducer needs.
-    private static func scanInput(_ scanned: ScannedSession) -> StatusReducer.Scan {
-        StatusReducer.Scan(lastActivity: scanned.lastActivity, busy: scanned.busyStatus, verb: scanned.verb)
-    }
-
-    private func emitEvents(old: [String: AgentSession], new: [String: AgentSession]) {
-        for (sid, session) in new {
-            // A fresh permission prompt surfaces even when the status was already
-            // needsAttention (two prompts in a row share the status). Keyed on the
-            // Notification hook time so each distinct prompt fires exactly once.
-            if session.status == .needsAttention,
-               let attentionTime = hookState[sid].flatMap({ $0.name == "Notification" ? $0.time : nil }) {
-                if emittedAttentionAt[sid] != attentionTime {
-                    emittedAttentionAt[sid] = attentionTime
-                    onEvent?(AgentEvent(kind: .needsAttention, session: session, message: session.detail))
-                }
-                continue
-            }
-
-            guard let previous = old[sid] else {
-                // Only a genuine SessionStart hook announces a start; sessions that
-                // predate the app/enable are discovered silently by the scan.
-                if hookState[sid]?.name == "SessionStart" {
-                    onEvent?(AgentEvent(kind: .started, session: session, message: nil))
-                }
-                continue
-            }
-
-            if previous.status != session.status, session.status == .finished {
-                onEvent?(AgentEvent(kind: .finished, session: session, message: nil))
-            }
-        }
-        for (sid, session) in old where new[sid] == nil {
-            emittedAttentionAt[sid] = nil
-            onEvent?(AgentEvent(kind: .ended, session: session, message: nil))
         }
     }
 }
