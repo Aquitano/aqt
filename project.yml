@@ -52,6 +52,14 @@ targets:
           - "@executable_path/../Frameworks"
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
+      # Debug signs with a personal-team Apple Development cert so Xcode's Run works
+      # without a Developer-ID cert, and TCC grants (Location, Calendar, Focus)
+      # persist across rebuilds (stable identity); Release keeps Developer ID above.
+      configs:
+        Debug:
+          CODE_SIGN_STYLE: Automatic
+          DEVELOPMENT_TEAM: KRZZXX9G3M
+          CODE_SIGN_IDENTITY: "Apple Development"
 
   # Standalone agent hook client. Foundation-only, no AppKit — the launcher in
   # ~/.notch/bin execs this per hook. Shares HookClient/HookEnvelope with the app.
@@ -70,6 +78,11 @@ targets:
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "Developer ID Application"
         ENABLE_HARDENED_RUNTIME: YES
+      configs:
+        Debug:
+          CODE_SIGN_STYLE: Automatic
+          DEVELOPMENT_TEAM: KRZZXX9G3M
+          CODE_SIGN_IDENTITY: "Apple Development"
 
     # The mediaremote-adapter system-wide Now Playing bridge is an opt-in.
     # To enable it: uncomment the package below + the dependency, then read
@@ -108,6 +121,12 @@ targets:
         CODE_SIGNING_ALLOWED: NO
 
 schemes:
+  Notch:
+    build:
+      targets:
+        Notch: all
+    run:
+      config: Debug
   NotchTests:
     build:
       targets:
