@@ -37,13 +37,19 @@ final class BluetoothBatteryManager: NSObject, ObservableObject {
         }
     }
 
-    @objc private func deviceConnected(_ notification: IOBluetoothUserNotification, fromDevice device: IOBluetoothDevice) {
+    // IOBluetooth delivers this ObjC callback on its own notification thread, not
+    // main, so read the device name here and hop to the main actor before touching
+    // published activity state or kicking off a rescan.
+    @objc private nonisolated func deviceConnected(_ notification: IOBluetoothUserNotification, fromDevice device: IOBluetoothDevice) {
         let name = device.name ?? "Bluetooth Device"
-        activities.publish(Activity(
-            kind: .deviceConnected(name: name, symbol: Self.symbol(forName: name, minorType: nil), battery: nil),
-            priority: .normal, createdAt: Date(), ttl: 4
-        ))
-        refresh()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.activities.publish(Activity(
+                kind: .deviceConnected(name: name, symbol: Self.symbol(forName: name, minorType: nil), battery: nil),
+                priority: .normal, createdAt: Date(), ttl: 4
+            ))
+            self.refresh()
+        }
     }
 
     private func apply(_ scanned: [BluetoothDevice]) {
