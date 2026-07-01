@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreLocation
 
 /// At-a-glance weather: current conditions plus a short daily outlook. Owns its
 /// own glass chrome and only renders inside the expanded home surface, so it
@@ -12,12 +13,24 @@ struct WeatherWidgetView: View {
                 current(snapshot)
                 Spacer(minLength: 6)
                 forecast(snapshot.daily)
+            } else if needsLocationAccess {
+                accessPrompt
             } else {
                 placeholder
             }
         }
         .notchCard()
         .accessibilityElement(children: .combine)
+    }
+
+    /// The location prompt never fired, or was denied — offer to (re)request it.
+    /// An authorized-but-empty snapshot is a transient/network gap, not a
+    /// permission problem, so it keeps the plain placeholder.
+    private var needsLocationAccess: Bool {
+        switch weather.authorization {
+        case .notDetermined, .denied, .restricted: return true
+        default: return false
+        }
     }
 
     // MARK: - Current conditions
@@ -86,11 +99,38 @@ struct WeatherWidgetView: View {
         }
     }
 
+    // MARK: - Access prompt
+
+    private var accessPrompt: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: "location.slash")
+                .font(.system(size: 22))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.white.opacity(0.6))
+
+            Text("Show local weather for your location.")
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                weather.requestAccess()
+            } label: {
+                Text("Enable Location")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
     // MARK: - Placeholder
 
     private var placeholder: some View {
         HStack(spacing: 10) {
-            Image(systemName: "cloud.slash")
+            Image(systemName: "location.slash")
                 .font(.system(size: 22))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.white.opacity(0.6))

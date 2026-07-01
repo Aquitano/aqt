@@ -1,5 +1,6 @@
 import CoreLocation
 import MapKit
+import AppKit
 import Combine
 
 /// Weather from Open-Meteo (no key, no account). Location via CoreLocation;
@@ -35,6 +36,25 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
                 Task { await self.fetch(for: location) }
             }
             .store(in: &cancellables)
+    }
+
+    /// Surface the location prompt on demand (the widget's "Enable" button).
+    /// Accessory apps can't present the system prompt while backgrounded, so bring
+    /// the app forward first — mirrors `CalendarManager.requestAccess`. Once the
+    /// user has denied, macOS won't prompt again, so open the Location Services
+    /// pane instead of silently doing nothing.
+    func requestAccess() {
+        NSApp.activate(ignoringOtherApps: true)
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        case .denied, .restricted:
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices") {
+                NSWorkspace.shared.open(url)
+            }
+        default:
+            manager.requestLocation()
+        }
     }
 
     // MARK: - CLLocationManagerDelegate
