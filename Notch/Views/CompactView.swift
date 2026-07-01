@@ -121,7 +121,7 @@ struct CompactView: View {
             PixelWorkingIndicator(active: status.isBusy, tint: agentPixelTint(status))
                 .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: agentPixelTint(status))
         } else {
-            Image(systemName: activity.compactSymbol)
+            Image(systemName: ActivityPresenter.symbol(for: activity.kind))
                 .font(.system(size: 13, weight: .semibold))
                 .symbolRenderingMode(.hierarchical)
         }
@@ -148,15 +148,16 @@ struct CompactView: View {
                     .lineLimit(1)
             }
         } else {
+            let label = ActivityPresenter.compactLabel(for: activity.kind)
             // The agent pill holds one width across states, so a status change
             // (tool -> running) can cross-fade the label in place instead of
             // hard-cutting. Keyed on the string, so it only animates on a change.
-            Text(activity.compactLabel)
+            Text(label)
                 .font(.system(size: NotchLayout.compactLabelFontSize, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .contentTransition(.opacity)
-                .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: activity.compactLabel)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: label)
         }
     }
 

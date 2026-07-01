@@ -239,7 +239,7 @@ final class NotchWindowController {
             compact: NotchLayout.compactContent(
                 hasMedia: !env.media.track.isEmpty,
                 isAgent: env.activities.compactActivity?.isAgent ?? false,
-                activityLabel: env.activities.compactActivity?.compactLabel
+                activityLabel: env.activities.compactActivity.map { ActivityPresenter.compactLabel(for: $0.kind) }
             ),
             dropActive: env.state.isDropActive
         )

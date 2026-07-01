@@ -100,7 +100,7 @@ struct NotchRootView: View {
         NotchLayout.compactContent(
             hasMedia: !media.track.isEmpty,
             isAgent: activities.compactActivity?.isAgent ?? false,
-            activityLabel: activities.compactActivity?.compactLabel
+            activityLabel: activities.compactActivity.map { ActivityPresenter.compactLabel(for: $0.kind) }
         )
     }
 
