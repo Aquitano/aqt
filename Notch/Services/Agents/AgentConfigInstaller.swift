@@ -17,7 +17,16 @@ struct AgentConfigInstaller {
         case unexpectedHooksShape
     }
 
-    private let home = FileManager.default.homeDirectoryForCurrentUser
+    /// The filesystem root all config paths hang off. Defaults to the user's home
+    /// in production; a test injects a temp directory to exercise the install /
+    /// uninstall round-trip (symlink write-through, user-hook preservation, the
+    /// refuse-unreadable guard) without touching real dotfiles.
+    private let home: URL
+
+    init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
+        self.home = home
+    }
+
     private var claudeSettingsURL: URL { home.appendingPathComponent(".claude/settings.json") }
     private var bridgeDir: URL { home.appendingPathComponent(".notch/bin", isDirectory: true) }
     private var bridgeURL: URL { bridgeDir.appendingPathComponent("notch-agent-hook") }
