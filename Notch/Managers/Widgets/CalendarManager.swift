@@ -63,20 +63,18 @@ final class CalendarManager: ObservableObject {
     }
 
     /// Fire a Quick Peek a few minutes before each timed event. One-shot
-    /// `Task.sleep` per event (rebuilt on every reload) — no repeating timer.
+    /// `Task.sleep` per reminder (rebuilt on every reload) — no repeating timer.
+    /// Recurring events share one identifier across occurrences, so the tasks live
+    /// in an array rather than keyed by event id; otherwise sibling occurrences
+    /// would collapse onto one slot and orphan each other's still-running tasks.
     private func scheduleReminders() {
         reminderTasks.forEach { $0.cancel() }
         reminderTasks.removeAll()
 
-        // Recurring events share one identifier across occurrences, so key off an
-        // array rather than the event id — otherwise sibling occurrences would
-        // collapse onto one slot and orphan each other's still-running tasks.
         let now = Date()
-        for event in events where !event.isAllDay {
-            let fireAt = event.start.addingTimeInterval(-reminderLead)
-            guard fireAt > now else { continue }
-            let delay = fireAt.timeIntervalSince(now)
-            let title = event.title
+        for reminder in CalendarReminders.pending(events: events, now: now, lead: reminderLead) {
+            let delay = reminder.fireAt.timeIntervalSince(now)
+            let title = reminder.title
             reminderTasks.append(Task { [weak self] in
                 try? await Task.sleep(for: .seconds(delay))
                 guard !Task.isCancelled else { return }

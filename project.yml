@@ -93,7 +93,9 @@ targets:
       - path: Notch/Services/Agents/TranscriptParser.swift
       - path: Notch/Services/Agents/SessionReconciler.swift
       - path: Notch/Managers/Widgets/BatteryPolicy.swift
+      - path: Notch/Managers/Widgets/CalendarReminders.swift
       - path: Notch/Model/Activity.swift
+      - path: Notch/Model/SystemModels.swift
       - path: Notch/Window/HitRegion.swift
       - path: Notch/State/Animations.swift
       - path: Notch/State/NotchState.swift
