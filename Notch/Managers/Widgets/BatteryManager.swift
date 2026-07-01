@@ -16,8 +16,7 @@ final class BatteryManager: ObservableObject {
 
     private unowned let activities: ActivityManager
     private var runLoopSource: CFRunLoopSource?
-    private var notifiedLowBattery = false
-    private var lastPluggedIn = false
+    private var policy = BatteryPolicy.State()
 
     init(activities: ActivityManager) {
         self.activities = activities
@@ -36,13 +35,13 @@ final class BatteryManager: ObservableObject {
         }
 
         lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+        policy.lowPowerMode = lowPowerMode
         NotificationCenter.default.addObserver(
             forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main
         ) { [weak self] _ in
             self?.powerStateChanged()
         }
 
-        lastPluggedIn = isPluggedIn
         refresh()
     }
 
@@ -67,7 +66,7 @@ final class BatteryManager: ObservableObject {
             isFullyCharged = plugged && !charging && percent >= 100
             timeToEmpty = raw > 0 ? raw : nil
 
-            evaluateActivities()
+            evaluate()
             break   // internal battery is the first source
         }
     }
@@ -76,25 +75,16 @@ final class BatteryManager: ObservableObject {
         let enabled = ProcessInfo.processInfo.isLowPowerModeEnabled
         guard enabled != lowPowerMode else { return }
         lowPowerMode = enabled
-        activities.publish(Activity(kind: .lowPowerMode(on: enabled), priority: .high, createdAt: Date(), ttl: 3))
+        evaluate()
     }
 
-    private func evaluateActivities() {
-        if isPluggedIn != lastPluggedIn {
-            lastPluggedIn = isPluggedIn
-            if isPluggedIn {
-                activities.publish(Activity(
-                    kind: .charging(percent: percent, isCharging: isCharging, isFull: isFullyCharged),
-                    priority: .high, createdAt: Date(), ttl: 4
-                ))
-            }
-        }
-
-        if percent <= 20 && !isCharging && !notifiedLowBattery {
-            notifiedLowBattery = true
-            activities.publish(Activity(kind: .lowBattery(percent: percent), priority: .urgent, createdAt: Date(), ttl: 6))
-        } else if percent > 25 || isCharging {
-            notifiedLowBattery = false
-        }
+    private func evaluate() {
+        let snapshot = BatterySnapshot(
+            percent: percent, isCharging: isCharging, isPluggedIn: isPluggedIn,
+            isFullyCharged: isFullyCharged, lowPowerMode: lowPowerMode
+        )
+        let output = BatteryPolicy.decide(snapshot, previous: policy, now: Date())
+        policy = output.state
+        output.activities.forEach { activities.publish($0) }
     }
 }

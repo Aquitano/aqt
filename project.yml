@@ -92,9 +92,12 @@ targets:
       - path: Notch/Services/Agents/StatusReducer.swift
       - path: Notch/Services/Agents/TranscriptParser.swift
       - path: Notch/Services/Agents/SessionReconciler.swift
+      - path: Notch/Managers/Widgets/BatteryPolicy.swift
+      - path: Notch/Model/Activity.swift
       - path: Notch/Window/HitRegion.swift
       - path: Notch/State/Animations.swift
       - path: Notch/State/NotchState.swift
+      - path: Notch/Utilities/Extensions.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aquitano.notch.tests
