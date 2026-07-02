@@ -8,6 +8,21 @@ struct FocusWidgetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if focus.authorized {
+                status
+            } else {
+                accessPrompt
+            }
+        }
+        .notchCard()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(focus.authorized
+            ? "Focus \(focus.name ?? "") \(focus.isOn ? "on" : "off")"
+            : "Focus access needed")
+    }
+
+    private var status: some View {
+        VStack(alignment: .leading, spacing: 0) {
             Image(systemName: focus.isOn ? "moon.fill" : "moon")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(focus.isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.white.opacity(0.7)))
@@ -23,8 +38,29 @@ struct FocusWidgetView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.6))
         }
-        .notchCard()
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Focus \(focus.name ?? "") \(focus.isOn ? "on" : "off")")
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// Focus access was never granted (or was denied); without this the tile would
+    /// confidently show "Off" for an unknown state, unfixable from the UI.
+    private var accessPrompt: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Image(systemName: "moon.zzz")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+
+            Spacer(minLength: 4)
+
+            Button {
+                focus.requestAccess()
+            } label: {
+                Text("Enable")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
