@@ -36,6 +36,25 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
                 Task { await self.fetch(for: location) }
             }
             .store(in: &cancellables)
+
+        // Weather is otherwise a one-shot at launch: without a cadence the widget
+        // presents the launch-time temperature as current forever. Coarse (15 min);
+        // .common so it also fires while the run loop is tracking.
+        Timer.publish(every: 15 * 60, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in self?.refresh() }
+            .store(in: &cancellables)
+    }
+
+    /// Re-fetch for the last known location, or retry the location request if an
+    /// earlier fix never landed. Driven by the cadence timer and by panel open, so
+    /// a single transient CoreLocation failure isn't terminal.
+    func refresh() {
+        if let location = lastLocation {
+            Task { await fetch(for: location) }
+        } else if manager.authorizationStatus == .authorizedAlways {
+            manager.requestLocation()
+        }
     }
 
     /// Surface the location prompt on demand (the widget's "Enable" button).

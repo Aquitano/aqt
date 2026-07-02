@@ -8,6 +8,7 @@ struct WidgetGridView: View {
     @EnvironmentObject private var settings: Settings
     @EnvironmentObject private var bluetooth: BluetoothBatteryManager
     @EnvironmentObject private var focus: FocusManager
+    @EnvironmentObject private var weather: WeatherManager
 
     private var hasInfoRow: Bool {
         settings.showWeatherWidget || settings.showCalendarWidget
@@ -27,6 +28,7 @@ struct WidgetGridView: View {
         .onAppear {
             bluetooth.refresh()
             focus.refresh()
+            weather.refresh()
         }
     }
 
