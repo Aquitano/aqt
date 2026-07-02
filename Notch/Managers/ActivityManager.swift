@@ -102,9 +102,11 @@ final class ActivityManager: ObservableObject {
     /// Media owns whether a now-playing activity exists.
     func setNowPlaying(active: Bool) {
         if active {
-            if !activities.contains(where: { isNowPlaying($0) }) {
-                replaceOrInsert(Activity(kind: .nowPlaying, priority: .ambient, createdAt: Date()))
-            }
+            // Go through publish() (not a bare replaceOrInsert) so starting playback
+            // while the notch is hidden surfaces the compact pill and keeps the
+            // lastEventID/TTL bookkeeping this class is built around.
+            guard !activities.contains(where: { isNowPlaying($0) }) else { return }
+            publish(Activity(kind: .nowPlaying, priority: .ambient, createdAt: Date()))
         } else {
             activities.removeAll { isNowPlaying($0) }
         }
