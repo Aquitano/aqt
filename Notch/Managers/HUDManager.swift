@@ -56,9 +56,16 @@ final class HUDManager: ObservableObject {
             kind = muted ? .mute : .volume
             show()
         case .brightnessUp, .brightnessDown:
+            // On an external display (or a missing private symbol) the brightness
+            // read fails; without a real value the HUD would render the last *volume*
+            // level under a brightness glyph. Skip our overlay in that case and set
+            // the current value now so there's no stale flash before the refined read.
+            guard let level = brightness.current() else { return }
             kind = .brightness
+            value = Double(level)
             show()
-            // Brightness has no change listener; read just after the system applies it.
+            // Brightness has no change listener; re-read just after the system applies
+            // the key press to catch the post-change level.
             Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(50))
                 guard let self, let level = self.brightness.current() else { return }
