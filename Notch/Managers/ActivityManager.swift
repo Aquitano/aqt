@@ -35,12 +35,15 @@ final class ActivityManager: ObservableObject {
     // MARK: - Mutation
 
     func publish(_ activity: Activity) {
-        // Resetting the cycle only on a genuinely new entry keeps an in-place
-        // channel update (e.g. an agent's running -> editing) from yanking the
-        // pill back to the top while the user is cycling through activities.
+        // Resetting the cycle and firing the attention pop only on a genuinely new
+        // entry keeps an in-place channel update (e.g. an agent's running -> editing,
+        // or a charging-percent tick) from yanking the pill back to the top or
+        // replaying the pop on every status flip.
         let replaced = replaceOrInsert(activity)
-        if !replaced { cycleOffset = 0 }
-        lastEventID = activity.id
+        if !replaced {
+            cycleOffset = 0
+            lastEventID = activity.id
+        }
         scheduleTTL(activity)
         state.showCompact()
     }
