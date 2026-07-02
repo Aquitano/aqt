@@ -67,9 +67,13 @@ final class NotchWindowController {
             .sink { [weak self] _ in self?.occlusionChanged() }
             .store(in: &cancellables)
 
-        // On-screen whenever the notch is visible OR a HUD is showing.
+        // On-screen whenever the notch is visible OR a HUD is showing. Deliver on
+        // DispatchQueue.main, not RunLoop.main: the latter only fires in .default
+        // mode, so while the run loop is tracking (status-bar menu open, scroll
+        // momentum, window drag) an expand or HUD wouldn't order the panel front
+        // until tracking ended.
         Publishers.CombineLatest(env.state.$presentation, env.hud.$isVisible)
-            .receive(on: RunLoop.main)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] presentation, hudVisible in
                 self?.apply(presentation: presentation, hudVisible: hudVisible)
             }
