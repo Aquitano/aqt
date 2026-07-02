@@ -51,20 +51,20 @@ final class ScriptingMediaController: MediaControlling {
             for app in order where app.isRunning {
                 if self.read(app: app) { return }
             }
-            DispatchQueue.main.async { [weak self] in
-                self?.onUpdate?(.empty)
-            }
+            Task { @MainActor [weak self] in self?.onUpdate?(.empty) }
         }
     }
 
-    /// Reads one app; returns true if it produced a non-stopped track.
+    /// Reads one app; returns true if it produced a non-stopped track. `nonisolated`
+    /// because it runs NSAppleScript on the background `queue`; the class is
+    /// @MainActor but only the delivery hops back to the main actor.
     @discardableResult
-    private func read(app: MediaApp) -> Bool {
+    nonisolated private func read(app: MediaApp) -> Bool {
         guard app.isRunning, let descriptor = AppleScript.run(app.readScript) else { return false }
         let raw = descriptor.stringValue ?? ""
         guard let track = MediaApp.parse(raw, app: app) else { return false }
 
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             self.activeApp = app
             self.onUpdate?(track)
@@ -93,7 +93,7 @@ final class ScriptingMediaController: MediaControlling {
         case .music:
             queue.async { [weak self] in
                 let data = AppleScript.run(app.artworkDataScript)?.data
-                DispatchQueue.main.async { self?.onArtwork?(data) }
+                Task { @MainActor in self?.onArtwork?(data) }
             }
         }
     }
