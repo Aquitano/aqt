@@ -105,13 +105,7 @@ struct AgentRowView: View {
     }
 
     private var statusColor: Color {
-        switch session.status {
-        case .running, .tool: return .cyan
-        case .editing: return .blue
-        case .needsAttention: return .orange
-        case .finished: return .green
-        case .idle: return .white.opacity(0.4)
-        }
+        ActivityPresenter.agentTint(session.status)
     }
 
     private var uptime: String {

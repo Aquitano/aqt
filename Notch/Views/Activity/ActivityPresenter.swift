@@ -91,7 +91,9 @@ enum ActivityPresenter {
         }
     }
 
-    private static func agentTint(_ status: AgentStatus) -> Color {
+    /// Canonical status → color for the agent feature, so the pill, the card, and
+    /// the session rows can't drift apart (they used to keep three copies).
+    static func agentTint(_ status: AgentStatus) -> Color {
         switch status {
         case .needsAttention: return .orange
         case .finished: return .green

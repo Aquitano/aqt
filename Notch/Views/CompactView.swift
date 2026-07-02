@@ -129,8 +129,9 @@ struct CompactView: View {
 
     private func agentPixelTint(_ status: AgentStatus) -> Color {
         switch status {
-        case .needsAttention: return .orange
-        case .finished: return .green
+        // Attention/finished share the canonical palette; busy keeps the retro-green
+        // pixel look that's specific to this indicator.
+        case .needsAttention, .finished: return ActivityPresenter.agentTint(status)
         default: return Color(red: 0.40, green: 0.92, blue: 0.55) // retro green
         }
     }
