@@ -35,12 +35,16 @@ extension Color {
 // MARK: - Time formatting
 
 extension TimeInterval {
-    /// "3:07" style clock string; "0:00" for non-finite or negative values.
+    /// "3:07" (or "1:03:07" past an hour) clock string; "0:00" for non-finite or
+    /// negative values. Without the hour component a 90-minute value read "90:00".
     var clockString: String {
         guard isFinite, self >= 0 else { return "0:00" }
         let total = Int(self.rounded())
-        let minutes = total / 60
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
         let seconds = total % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, seconds)
+            : String(format: "%d:%02d", minutes, seconds)
     }
 }
