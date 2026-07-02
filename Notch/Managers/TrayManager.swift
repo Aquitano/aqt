@@ -57,8 +57,14 @@ final class TrayManager: ObservableObject {
             }
             // Copy bytes out synchronously; `url` dies when this handler returns.
             guard let item = Self.copyIntoStorage(url, root: self.storageRoot, typeIdentifier: typeIdentifier) else { return }
-            Self.makeThumbnail(for: item, root: self.storageRoot)
+            // Add immediately — the shelf entry and "Added to Shelf" peek shouldn't
+            // wait on thumbnailing. The thumbnail reads the persisted copy, not the
+            // dying drag URL, so it can finish whenever; nudge the shelf to re-read
+            // when it lands.
             Task { @MainActor [weak self] in self?.add(item) }
+            Self.makeThumbnail(for: item, root: self.storageRoot) { [weak self] in
+                Task { @MainActor in self?.objectWillChange.send() }
+            }
         }
     }
 
@@ -190,7 +196,7 @@ final class TrayManager: ObservableObject {
         }
     }
 
-    private static func makeThumbnail(for item: DropItem, root: URL) {
+    private static func makeThumbnail(for item: DropItem, root: URL, completion: @escaping () -> Void) {
         let fileURL = item.url(relativeTo: root)
         let request = QLThumbnailGenerator.Request(
             fileAt: fileURL,
@@ -198,14 +204,12 @@ final class TrayManager: ObservableObject {
             scale: 2,
             representationTypes: .all
         )
-        let semaphore = DispatchSemaphore(value: 0)
         QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, _ in
-            defer { semaphore.signal() }
+            defer { completion() }
             guard let cg = representation?.cgImage else { return }
             let rep = NSBitmapImageRep(cgImage: cg)
             guard let data = rep.representation(using: .png, properties: [:]) else { return }
             try? data.write(to: item.thumbnailURL(relativeTo: root), options: .atomic)
         }
-        _ = semaphore.wait(timeout: .now() + 3)
     }
 }
