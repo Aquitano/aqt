@@ -77,7 +77,7 @@
     <div class="count arch"><b>9</b>Architecture themes</div>
   </div>
   <p class="note">Findings tagged <span class="badge verified">verified</span> were confirmed line-by-line in this review pass, not just reported by a subsystem sweep.</p>
-  <p class="note">Remediation in progress: items tagged <span class="badge done">Fixed</span> have landed on branch <code>code-review-fixes-2026-07-02</code>, one commit per finding. So far: all <b>8 High</b> and <b>~30 Medium</b> across security, core, media, widgets, the agent-watch pipeline, UI, and design (plus one Low; one socket finding partially). Remaining: the deeper architectural themes (strict-concurrency migration, server-side socket read model, Theme-token adoption, dead-plumbing sweep) and the Low assorted items. Build green, logic suite 78/78.</p>
+  <p class="note">Remediation in progress: items tagged <span class="badge done">Fixed</span> have landed on branch <code>code-review-fixes-2026-07-02</code>, one commit per finding. So far: all <b>8 High</b> and <b>~31 Medium</b> across security, core, media, widgets, the agent-watch pipeline, UI, and design (plus a few Low; one socket finding partially). Remaining: the deeper architectural themes (strict-concurrency migration, server-side socket read model, Theme-token adoption, dead-plumbing sweep) and the Low assorted items. Build green, logic suite 78/78.</p>
 </div>
 
 <ul class="toc">
@@ -220,8 +220,8 @@
   <div class="body"><p>The presentation/HUD sink that orders the panel in/out is scheduled on <code>RunLoop.main</code>, which only fires in <code>.default</code> mode. While the run loop is tracking (status-bar menu open, scroll momentum, window drag), a HUD or expand won't order the panel front until tracking ends. The publishers are already main-actor; drop the scheduler or use <code>DispatchQueue.main</code>.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">Scripting media controller runs main-actor methods and NSAppleScript on a background queue</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Scripting media controller runs main-actor methods and NSAppleScript on a background queue</span></div>
   <div class="loc">Notch/Managers/Media/ScriptingMediaController.swift:39–73, 199–210</div>
   <div class="body"><p>The class is <code>@MainActor</code>, yet <code>send()</code>/<code>refresh()</code> hop to a private DispatchQueue and call the isolated <code>read(app:)</code> there — GCD closures aren't isolation-checked under <code>SWIFT_STRICT_CONCURRENCY: minimal</code>, so this compiles but violates the annotation. <code>NSAppleScript</code> is additionally documented main-thread-only. Works today, breaks under strict concurrency, and is undefined behavior per Apple's thread-safety guidance. <code>AdapterMediaController</code> has the same shape: it inherits <code>@MainActor</code> from <code>MediaControlling</code> but mutates <code>buffer</code> on the FileHandle readability queue.</p></div>
 </div>
@@ -277,7 +277,7 @@
     <p>• <b>Tray TTL and share staging only pruned at launch</b> — for an app that runs for weeks, <code>trayTTLDays</code> is effectively ignored mid-session and <code>ShareStaging</code> copies accumulate on disk (TrayManager.swift:33–36, 140–153).</p>
     <p>• <b>Synchronous disk I/O in view accessors</b> — <code>thumbnail(for:)</code> does <code>Data(contentsOf:)</code> + decode on the main actor per shelf item during layout (TrayManager.swift:124–132); <code>persist()</code> likewise writes pretty-printed JSON synchronously on every add/remove, contradicting Persistence.swift's "only touched from background contexts" comment.</p>
     <p>• <b>SystemDefinedTap / BatteryManager teardown traps</b> — both hold <code>Unmanaged.passUnretained(self)</code> in C callbacks with no invalidation path; safe only because AppEnvironment owns them for app lifetime (SystemDefinedTap.swift:29–56, BatteryManager.swift:26–43). HUDManager's comment that "the tap can't be torn down cleanly" is wrong — <code>CGEvent.tapEnable</code> + <code>CFMachPortInvalidate</code> exist.</p>
-    <p>• <b><code>clockString</code> has no hour component</b> — a 90-minute item renders "90:00" (Extensions.swift:39–45).</p>
+    <p>• <span class="badge done">Fixed</span> <b><code>clockString</code> has no hour component</b> — a 90-minute item renders "90:00" (Extensions.swift:39–45).</p>
     <p>• <b>Settings opened via private stringly-typed selectors</b> — <code>Selector(("showSettingsWindow:"))</code> silently no-ops if macOS renames it; the supported <code>openSettings</code> action exists at this deployment target (AppDelegate.swift:89–91).</p>
     <p>• <b><code>NSScreen()</code> fallback yields degenerate geometry</b> — a zero frame during display reconfiguration, and the simulated-notch path draws over the menu bar of non-notched displays (ScreenGeometry.swift:73).</p>
     <p>• <b>Main-thread-only AppKit call in nonisolated deinit</b> — <code>NSEvent.removeMonitor</code> in <code>NotchWindowController.deinit</code> (52–54).</p>
@@ -420,7 +420,7 @@
     <p>• <b>Per-mouse-move text measurement</b> — every system-wide pointer move runs <code>NSString.size(withAttributes:)</code> through <code>updatePassthrough → HitRegion → compactSlotWidth</code> when an activity label is showing; the width should be cached per label (NotchWindowController.swift:99–105; Animations.swift:136–148).</p>
     <p>• <b>Uptime/reset strings frozen in <code>body</code></b> — <code>Date()</code>-derived strings only refresh on unrelated re-renders; an idle session shows "42s" for minutes (AgentRowView.swift:117–122; AgentsView.swift:89–95).</p>
     <p>• <b><code>topRadius</code> is dead but animatable</b> — with <code>notchWidth &gt; 0</code> the parameter is ignored, yet callers pass it and <code>animatableData</code> interpolates it (NotchShape.swift:33–37).</p>
-    <p>• <b>BatteryIndicator 0% renders no fill</b> — the <code>max(2, …)</code> clamp is dead (floor of 4 from the <code>+ 4</code>), and after the 2pt inner padding a 0% fill is invisible; also uses raw <code>.animation(.snappy)</code> ignoring reduce-motion, unlike the rest of the app (BatteryIndicator.swift:26; same in DropChooserView.swift:58).</p>
+    <p>• <span class="badge done">Fixed</span> <b>BatteryIndicator 0% renders no fill</b> — the <code>max(2, …)</code> clamp is dead (floor of 4 from the <code>+ 4</code>), and after the 2pt inner padding a 0% fill is invisible; also uses raw <code>.animation(.snappy)</code> ignoring reduce-motion, unlike the rest of the app (BatteryIndicator.swift:26; same in DropChooserView.swift:58). <span class="note">BatteryIndicator fixed; the identical DropChooserView instance still open.</span></p>
     <p>• <b>MarqueeText restart snaps to origin</b> — <code>runScroll()</code> starts with an unanimated <code>offset = 0</code>, hard-jumping mid-leg on text change; task lifecycle itself is correct (MarqueeText.swift:86).</p>
     <p>• <b><code>SettingRow</code> is dead code</b> referencing a removed in-notch settings tab (SettingRow.swift:6). Similarly <code>collapse(hasCompactContent:)</code> is always called with true, so the <code>.hidden</code> target is unreachable (NotchState.swift:138).</p>
   </div>
