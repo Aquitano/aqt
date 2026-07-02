@@ -12,14 +12,10 @@ struct AgentsView: View {
                 if let usage = agents.usage {
                     usagePanel(usage)
                 }
-                ForEach(topLevelSessions) { session in
-                    AgentRowView(session: session) { agents.jumpToTerminal(session) }
-                    // Sub-agents (e.g. OpenCode child sessions) nested under their parent.
-                    ForEach(children(of: session)) { child in
-                        AgentRowView(session: child) { agents.jumpToTerminal(child) }
-                            .padding(.leading, 22)
-                            .opacity(0.92)
-                    }
+                ForEach(sessionRows) { row in
+                    AgentRowView(session: row.session) { agents.jumpToTerminal(row.session) }
+                        .padding(.leading, CGFloat(row.depth) * 22)
+                        .opacity(row.depth > 0 ? 0.92 : 1)
                 }
                 if agents.sessions.isEmpty {
                     emptyState
@@ -32,18 +28,37 @@ struct AgentsView: View {
         .onAppear { agents.refresh() }
     }
 
-    /// Sessions with no parent (or whose parent isn't currently shown) render at
-    /// the top level; their sub-agents nest underneath.
-    private var topLevelSessions: [AgentSession] {
-        let ids = Set(agents.sessions.map(\.id))
-        return agents.sessions.filter { session in
+    private struct Row: Identifiable {
+        let session: AgentSession
+        let depth: Int
+        var id: String { session.id }
+    }
+
+    /// The session forest flattened depth-first, so a sub-agent that spawns its own
+    /// sub-session (a grandchild, which OpenCode supports) still renders — indented
+    /// by depth — instead of vanishing between the top-level and direct-child passes.
+    private var sessionRows: [Row] {
+        let sessions = agents.sessions
+        let ids = Set(sessions.map(\.id))
+        let childrenByParent = Dictionary(
+            grouping: sessions.filter { ($0.parentSessionID).map(ids.contains) ?? false },
+            by: { $0.parentSessionID! }
+        )
+        // Roots: no parent, or a parent that isn't currently shown.
+        let roots = sessions.filter { session in
             guard let parent = session.parentSessionID else { return true }
             return !ids.contains(parent)
         }
-    }
 
-    private func children(of session: AgentSession) -> [AgentSession] {
-        agents.sessions.filter { $0.parentSessionID == session.id }
+        var rows: [Row] = []
+        var visited = Set<String>()
+        func visit(_ session: AgentSession, depth: Int) {
+            guard visited.insert(session.id).inserted else { return } // guard against parent cycles
+            rows.append(Row(session: session, depth: depth))
+            for child in childrenByParent[session.id] ?? [] { visit(child, depth: depth + 1) }
+        }
+        for root in roots { visit(root, depth: 0) }
+        return rows
     }
 
     // MARK: - Usage limits
