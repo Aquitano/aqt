@@ -29,12 +29,34 @@ final class MediaManager: ObservableObject {
     }
 
     func start() {
-        let controller = makeController()
+        // Start on the always-available scripting controller so launch never blocks
+        // on the adapter's synchronous perl probe (hundreds of ms). If the adapter is
+        // enabled and its probe passes off-main, upgrade to it in place.
+        let controller: MediaControlling = ScriptingMediaController()
         wire(controller)
         controller.start()
         self.controller = controller
         self.capabilities = controller.capabilities
         Log.media.info("Media controller: \(String(describing: type(of: controller)))")
+
+        if settings.enableMediaAdapter, let adapter = AdapterMediaController() {
+            Task.detached(priority: .userInitiated) {
+                guard adapter.probe() else {
+                    Log.media.notice("mediaremote-adapter test failed; staying on scripting")
+                    return
+                }
+                await MainActor.run { [weak self] in self?.upgradeToAdapter(adapter) }
+            }
+        }
+    }
+
+    private func upgradeToAdapter(_ adapter: AdapterMediaController) {
+        controller?.stop()
+        wire(adapter)
+        adapter.start()
+        controller = adapter
+        capabilities = adapter.capabilities
+        Log.media.info("Media controller upgraded to system-wide adapter")
     }
 
     private func wire(_ controller: MediaControlling) {
@@ -71,18 +93,6 @@ final class MediaManager: ObservableObject {
     /// Interpolated playback position for the current instant.
     func position(asOf date: Date = Date()) -> TimeInterval {
         track.position(asOf: date, lastUpdate: lastUpdate)
-    }
-
-    // MARK: - Controller selection
-
-    private func makeController() -> MediaControlling {
-        // System-wide bridge when its artifacts are bundled and `test` passes;
-        // otherwise per-app scripting. The adapter init returns nil when the
-        // perl/framework artifacts aren't present, so this always degrades.
-        if settings.enableMediaAdapter, let adapter = AdapterMediaController() {
-            return adapter
-        }
-        return ScriptingMediaController()
     }
 
     // MARK: - State updates

@@ -41,11 +41,12 @@ final class AdapterMediaController: MediaControlling {
 
         self.scriptPath = script.path
         self.frameworkPath = framework.path
+    }
 
-        guard Self.runOneShot(arguments: [script.path, framework.path, "test"]) == 0 else {
-            Log.media.notice("mediaremote-adapter test failed; using scripting fallback")
-            return nil
-        }
+    /// The one-shot `test`: spawns perl and waits, which can take hundreds of ms, so
+    /// it must run off the main thread. `nonisolated` and reads only immutable paths.
+    nonisolated func probe() -> Bool {
+        Self.runOneShot(arguments: [scriptPath, frameworkPath, "test"]) == 0
     }
 
     func start() {
@@ -143,7 +144,7 @@ final class AdapterMediaController: MediaControlling {
     }
 
     @discardableResult
-    private static func runOneShot(arguments: [String]) -> Int32 {
+    nonisolated private static func runOneShot(arguments: [String]) -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: perlPath)
         process.arguments = arguments
