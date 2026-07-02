@@ -33,6 +33,12 @@ targets:
         codeSign: true
         copy:
           destination: resources
+      # The mediaremote-adapter system-wide Now Playing bridge is an opt-in.
+      # To enable it: uncomment the package at the bottom of this file + the
+      # dependency below, then read README.md "Enabling system-wide Now Playing".
+      # The app code is guarded by #if canImport(MediaRemoteAdapter), so leaving
+      # it out changes nothing.
+      # - package: mediaremote-adapter
     settings:
       base:
         PRODUCT_NAME: Notch
@@ -83,13 +89,6 @@ targets:
           CODE_SIGN_STYLE: Automatic
           DEVELOPMENT_TEAM: KRZZXX9G3M
           CODE_SIGN_IDENTITY: "Apple Development"
-
-    # The mediaremote-adapter system-wide Now Playing bridge is an opt-in.
-    # To enable it: uncomment the package below + the dependency, then read
-    # README.md "Enabling system-wide Now Playing". The code is guarded by
-    # #if canImport(MediaRemoteAdapter), so leaving it out changes nothing.
-    # dependencies:
-    #   - package: mediaremote-adapter
 
   # Logic tests for the agent-watch pure modules. Host-less: the modules under
   # test are Foundation-only and compiled straight into the bundle (same pattern
