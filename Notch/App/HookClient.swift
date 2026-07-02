@@ -143,13 +143,31 @@ enum HookClient {
             }
         }
 
+        // Bound connect(): once the app's listen backlog fills, a blocking connect
+        // has no timeout and would stall the host agent's turn (the hook entry may
+        // carry no timeout of its own). Connect non-blocking, then poll briefly.
+        let flags = fcntl(fd, F_GETFL, 0)
+        _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
+
         let len = socklen_t(MemoryLayout<sockaddr_un>.size)
-        let connected = withUnsafePointer(to: &addr) {
+        let rc = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 Darwin.connect(fd, $0, len)
             }
         }
-        guard connected == 0 else { return } // app not running: skip silently
+        if rc != 0 {
+            guard errno == EINPROGRESS else { return } // app not running: skip silently
+            var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+            guard poll(&pfd, 1, 2000) == 1, pfd.revents & Int16(POLLOUT) != 0 else { return }
+            var soError: Int32 = 0
+            var soLen = socklen_t(MemoryLayout<Int32>.size)
+            guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &soLen) == 0, soError == 0 else { return }
+        }
+
+        // Restore blocking with a send timeout so a stalled write can't hang either.
+        _ = fcntl(fd, F_SETFL, flags)
+        var sendTimeout = timeval(tv_sec: 2, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &sendTimeout, socklen_t(MemoryLayout<timeval>.size))
 
         line.withUnsafeBytes { _ = write(fd, $0.baseAddress, $0.count) }
     }

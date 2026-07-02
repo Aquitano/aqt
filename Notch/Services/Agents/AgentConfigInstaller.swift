@@ -121,7 +121,10 @@ struct AgentConfigInstaller {
     /// transient read error or a manual JSON slip can never wipe the user's config.
     func installClaudeHooks() throws {
         try writeBridge()
-        try installHooks(at: claudeSettingsURL, events: Self.claudeHookEvents, command: launcherCommand(source: nil))
+        // Bound each hook so a stalled connect (full accept backlog) can't hold up
+        // the user's Claude turn to the 60s default.
+        try installHooks(at: claudeSettingsURL, events: Self.claudeHookEvents,
+                         command: launcherCommand(source: nil), timeout: 5)
     }
 
     func removeClaudeHooks() throws {
