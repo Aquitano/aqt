@@ -155,6 +155,14 @@ private struct NotchDropDelegate: DropDelegate {
         state.beginDropTargeting()
     }
 
+    func dropExited(info: DropInfo) {
+        // Matching backup for dropEntered: if the controller missed the enter it
+        // also misses the exit, so without this a drag-away or Esc leaves
+        // isDropActive true and collapse() bails forever, pinning the panel open.
+        state.endDropTargeting()
+        state.collapse(hasCompactContent: true)
+    }
+
     func dropUpdated(info: DropInfo) -> DropProposal? {
         DropProposal(operation: .copy)
     }
