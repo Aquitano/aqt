@@ -149,15 +149,25 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
     private func apply(_ response: OpenMeteoResponse, unit: WeatherSnapshot.TemperatureUnit, placeName: String?) {
         let isDay = response.current.is_day == 1
         let dayFormatter = DateFormatter()
+        // POSIX locale + Gregorian calendar so "yyyy-MM-dd" parses regardless of the
+        // user's system calendar (a non-Gregorian one would parse the year wrong).
+        dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dayFormatter.calendar = Calendar(identifier: .gregorian)
         dayFormatter.dateFormat = "yyyy-MM-dd"
 
-        let days: [WeatherDay] = zip(response.daily.time.indices, response.daily.time).compactMap { index, dateString in
-            guard let date = dayFormatter.date(from: dateString) else { return nil }
-            let code = response.daily.weather_code[index]
+        // Index only across what every parallel array actually holds: a shorter
+        // weather_code / min / max array (partial data, API change) would otherwise
+        // be an out-of-bounds crash on untrusted network input.
+        let daily = response.daily
+        let count = min(daily.time.count, daily.weather_code.count,
+                        daily.temperature_2m_max.count, daily.temperature_2m_min.count)
+        let days: [WeatherDay] = (0..<count).compactMap { index in
+            guard let date = dayFormatter.date(from: daily.time[index]) else { return nil }
+            let code = daily.weather_code[index]
             return WeatherDay(
                 date: date,
-                high: response.daily.temperature_2m_max[index],
-                low: response.daily.temperature_2m_min[index],
+                high: daily.temperature_2m_max[index],
+                low: daily.temperature_2m_min[index],
                 weatherCode: code,
                 symbolName: WMO.symbol(for: code, isDay: true)
             )
