@@ -148,16 +148,24 @@ final class NotchState: ObservableObject {
             // mounted across it (fading + clipped by the blob) instead of unmounting
             // the instant `presentation` leaves `.expanded`. Only when closing from
             // the open panel; a compact->hidden collapse has nothing to retract.
+            // Reset the tab only after the close completes (see `holdCollapsing`);
+            // resetting it inside the close animation cross-fades the still-mounted
+            // expanded body to home while it shrinks. A compact->hidden collapse has
+            // no mounted body, so it can reset immediately.
             let wasExpanded = self.presentation == .expanded
-            if wasExpanded { self.holdCollapsing() }
+            if wasExpanded {
+                self.holdCollapsing()
+            } else {
+                self.expandedTab = .home
+            }
             withAnimation(NotchAnimation.close(reduceMotion: self.reduceMotion)) {
                 self.presentation = target
-                self.expandedTab = .home
             }
         }
     }
 
-    /// Keep the expanded content mounted for one close cycle, then release it.
+    /// Keep the expanded content mounted for one close cycle, then release it and
+    /// reset the tab back to home.
     private func holdCollapsing() {
         isCollapsing = true
         collapsingResetTask?.cancel()
@@ -165,6 +173,7 @@ final class NotchState: ObservableObject {
             try? await Task.sleep(for: .seconds(NotchAnimation.closeDuration + 0.1))
             guard let self, !Task.isCancelled else { return }
             self.isCollapsing = false
+            self.expandedTab = .home
         }
     }
 
