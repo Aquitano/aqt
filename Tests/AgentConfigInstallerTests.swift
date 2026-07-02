@@ -68,6 +68,21 @@ final class AgentConfigInstallerTests: XCTestCase {
         XCTAssertFalse(afterRemove.contains("agent-hook"), "our hook must be fully pruned")
     }
 
+    func testPreservesUserHookWhoseCommandContainsAgentHook() throws {
+        // A user hook named like ~/bin/my-agent-hook.sh contains the substring
+        // "agent-hook" but is not ours; a substring marker would silently delete it.
+        try writeSettings(#"""
+        { "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "/Users/me/bin/my-agent-hook.sh" } ] } ] } }
+        """#)
+
+        try installer.installClaudeHooks()
+        try installer.removeClaudeHooks()
+
+        XCTAssertTrue(try settingsText().contains("my-agent-hook.sh"),
+                      "a user hook merely containing \"agent-hook\" must survive our uninstall")
+        XCTAssertFalse(installer.claudeHooksInstalled())
+    }
+
     func testRefusesToClobberUnreadableSettings() throws {
         let garbage = "{ not valid json"
         try writeSettings(garbage)

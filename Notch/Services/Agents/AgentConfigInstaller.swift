@@ -46,9 +46,15 @@ struct AgentConfigInstaller {
     private static let claudeHookEvents = ["Notification", "Stop", "SessionStart", "SessionEnd",
                                            "UserPromptSubmit", "PreToolUse", "PostToolUse"]
     private static let codexHookEvents = ["PermissionRequest", "PostToolUse", "SessionStart", "Stop", "UserPromptSubmit"]
-    /// Substring identifying our hook entries — matches both the stable-path
-    /// launcher (`notch-agent-hook`) and any legacy `… --agent-hook` command.
-    private static let hookMarker = "agent-hook"
+    /// Distinctive tokens in our hook commands: the stable-path launcher binary
+    /// (`notch-agent-hook`) and the legacy `… --agent-hook` flag. Matching these,
+    /// rather than the bare substring "agent-hook", avoids deleting an unrelated
+    /// user hook such as ~/bin/my-agent-hook.sh.
+    private static let hookMarkers = ["notch-agent-hook", "--agent-hook"]
+
+    private static func isOurHookCommand(_ command: String) -> Bool {
+        hookMarkers.contains { command.contains($0) }
+    }
 
     /// Defensive call to our stable-path launcher that locates the app and execs
     /// the hook tool. Never blocks the agent. `--source` selects the parser.
@@ -93,7 +99,7 @@ struct AgentConfigInstaller {
     // MARK: - Claude
 
     func claudeHooksInstalled() -> Bool {
-        hasCommand(at: claudeSettingsURL, events: Self.claudeHookEvents, containing: Self.hookMarker)
+        hasCommand(at: claudeSettingsURL, events: Self.claudeHookEvents, matching: Self.isOurHookCommand)
     }
 
     /// True only when the stable-path launcher is wired into *every* event we manage
@@ -102,7 +108,7 @@ struct AgentConfigInstaller {
     /// an existing install in place the next time the app launches.
     func claudeBridgeInstalled() -> Bool {
         hasCommand(at: claudeSettingsURL, events: Self.claudeHookEvents,
-                   containing: "notch-agent-hook", requireAll: true)
+                   matching: { $0.contains("notch-agent-hook") }, requireAll: true)
     }
 
     /// Install the launcher and add our hook to each Claude event. Throws — rather
@@ -120,7 +126,7 @@ struct AgentConfigInstaller {
     // MARK: - Codex (~/.codex/hooks.json)
 
     func codexHooksInstalled() -> Bool {
-        hasCommand(at: codexHooksURL, events: Self.codexHookEvents, containing: "notch-agent-hook")
+        hasCommand(at: codexHooksURL, events: Self.codexHookEvents, matching: { $0.contains("notch-agent-hook") })
     }
 
     func installCodexHooks() throws {
@@ -286,12 +292,12 @@ struct AgentConfigInstaller {
 
     /// `requireAll`: every event must carry the command (used to detect a complete,
     /// up-to-date install); otherwise any single event matching is enough.
-    private func hasCommand(at url: URL, events: [String], containing needle: String,
+    private func hasCommand(at url: URL, events: [String], matching predicate: @escaping (String) -> Bool,
                             requireAll: Bool = false) -> Bool {
         guard case let .object(root) = readSettings(at: url),
               let hooks = root["hooks"] as? [String: Any] else { return false }
         let match: (String) -> Bool = { event in
-            commands(inEvent: hooks[event]).contains { $0.contains(needle) }
+            commands(inEvent: hooks[event]).contains(where: predicate)
         }
         return requireAll ? events.allSatisfy(match) : events.contains(where: match)
     }
@@ -310,7 +316,7 @@ struct AgentConfigInstaller {
     private func pruneMarker(from groups: [[String: Any]]) -> [[String: Any]] {
         groups.compactMap { group in
             guard var inner = group["hooks"] as? [[String: Any]] else { return group }
-            inner.removeAll { ($0["command"] as? String)?.contains(Self.hookMarker) == true }
+            inner.removeAll { ($0["command"] as? String).map(Self.isOurHookCommand) ?? false }
             if inner.isEmpty { return nil }
             var pruned = group
             pruned["hooks"] = inner
