@@ -78,11 +78,24 @@ struct ProcessScanner: Sendable {
         }
     }
 
+    /// Allowed characters in Claude Code's project-directory encoding: `[a-zA-Z0-9]`.
+    private static let projectDirAllowed = Set(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    )
+
+    /// Claude Code names each project's transcript directory by replacing every
+    /// non-alphanumeric character of the cwd with "-" (so "/", ".", and spaces all
+    /// become "-"). Handling only "/" and "." missed any path containing a space:
+    /// the scan found no transcript, the session survived only as a hook-only entry,
+    /// then flapped in and out of the UI on the 30s grace window.
+    private static func encodeProjectDir(_ cwd: String) -> String {
+        String(cwd.map { projectDirAllowed.contains($0) ? $0 : "-" })
+    }
+
     private static func newestTranscript(
         forCwd cwd: String
     ) -> (sessionId: String, mtime: Date, state: TranscriptState)? {
-        let encoded = cwd.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ".", with: "-")
-        let dir = projectsRoot.appendingPathComponent(encoded, isDirectory: true)
+        let dir = projectsRoot.appendingPathComponent(encodeProjectDir(cwd), isDirectory: true)
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]
         ) else { return nil }
