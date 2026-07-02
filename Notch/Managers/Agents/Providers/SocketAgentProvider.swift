@@ -83,6 +83,10 @@ final class SocketAgentProvider: AgentProviding {
     // MARK: - Ingest
 
     func ingest(_ envelope: HookEnvelope, pid: pid_t) {
+        // A still-running agent keeps its hooks/plugin loaded after the user toggles
+        // the integration off; without this guard its envelopes rebuild and
+        // re-publish sessions while the feature is disabled.
+        guard isEnabled else { return }
         guard let sid = envelope.sessionId else { return }
         let raw = envelope.status ?? "busy"
 

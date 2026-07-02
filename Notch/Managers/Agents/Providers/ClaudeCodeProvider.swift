@@ -138,6 +138,10 @@ final class ClaudeCodeProvider: AgentProviding {
     // MARK: - Socket events
 
     func ingest(_ envelope: HookEnvelope, pid: pid_t) {
+        // A still-running claude keeps its hooks loaded after the user toggles the
+        // integration off; without this guard its envelopes resurrect sessions
+        // while the feature is disabled.
+        guard isEnabled else { return }
         guard let sid = envelope.sessionId else { scheduleReconcile(); return }
         if let cwd = envelope.cwd { hookCwd[sid] = cwd }
         if envelope.hook == "SessionEnd" {
