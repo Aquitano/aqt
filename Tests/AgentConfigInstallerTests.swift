@@ -83,6 +83,41 @@ final class AgentConfigInstallerTests: XCTestCase {
         XCTAssertFalse(installer.claudeHooksInstalled())
     }
 
+    // MARK: - statusLine usage wrapper
+
+    func testUsageUninstallRestoresOriginalStatusLineWhenSnapshotFileIsGone() throws {
+        try writeSettings(#"""
+        { "statusLine": { "type": "command", "command": "ccstatusline" } }
+        """#)
+
+        try installer.installClaudeUsage()
+        XCTAssertTrue(installer.claudeUsageInstalled())
+
+        // Simulate the user deleting ~/.notch while cleaning up, taking the on-disk
+        // snapshot with it.
+        try FileManager.default.removeItem(at: home.appendingPathComponent(".notch"))
+
+        try installer.removeClaudeUsage()
+
+        let line = try XCTUnwrap(settingsObject()["statusLine"] as? [String: Any])
+        XCTAssertEqual(line["command"] as? String, "ccstatusline",
+                       "the user's original statusLine must be restored from the in-settings backup")
+    }
+
+    func testUsageUninstallRemovesWrapperWhenUserHadNoStatusLine() throws {
+        try writeSettings("{}")
+
+        try installer.installClaudeUsage()
+        XCTAssertTrue(installer.claudeUsageInstalled())
+
+        try FileManager.default.removeItem(at: home.appendingPathComponent(".notch"))
+        try installer.removeClaudeUsage()
+
+        XCTAssertNil(try settingsObject()["statusLine"], "no original -> our wrapper is removed")
+        XCTAssertFalse(try settingsText().contains("notchStatusLineBackup"),
+                       "our private backup key must not linger after uninstall")
+    }
+
     func testRefusesToClobberUnreadableSettings() throws {
         let garbage = "{ not valid json"
         try writeSettings(garbage)

@@ -34,6 +34,11 @@ struct AgentConfigInstaller {
     private var statusLineURL: URL { bridgeDir.appendingPathComponent("notch-statusline") }
     private var statusLineOrigURL: URL { bridgeDir.appendingPathComponent(".statusline-orig.json") }
 
+    /// Key under which we stash the user's pre-wrap statusLine inside settings.json
+    /// itself, so an uninstall restores it even if the user deleted ~/.notch (and the
+    /// on-disk snapshot with it). NSNull records "the user had no statusLine".
+    private static let statusLineBackupKey = "notchStatusLineBackup"
+
     private var codexHooksURL: URL { home.appendingPathComponent(".codex/hooks.json") }
     private var openCodePluginURL: URL { home.appendingPathComponent(".config/opencode/plugins/notch.js") }
     private var ohMyPiDir: URL { home.appendingPathComponent(".omp/agent/extensions/notch", isDirectory: true) }
@@ -187,13 +192,19 @@ struct AgentConfigInstaller {
         let existing = root["statusLine"] as? [String: Any]
         let currentCommand = existing?["command"] as? String ?? ""
         if currentCommand.contains("notch-statusline") {
-            try writeStatusLineWrapper(original: savedOriginalCommand())
+            // Already wrapped: refresh the wrapper against the recorded original
+            // (from disk, else the settings.json backup) instead of clobbering it
+            // with "true" when the on-disk snapshot has gone missing.
+            try writeStatusLineWrapper(original: savedOriginalCommand(from: root))
             return
         }
 
-        // Mandatory: if we can't snapshot the original, abort before replacing it.
+        // Snapshot the original both to disk and inside settings.json, so an
+        // uninstall restores it even if the user deletes ~/.notch. NSNull records
+        // "there was no statusLine" so uninstall removes ours rather than guessing.
         if let existing { try writeJSONFile(existing, to: statusLineOrigURL) }
         else { try? FileManager.default.removeItem(at: statusLineOrigURL) }
+        root[Self.statusLineBackupKey] = existing ?? NSNull()
         try writeStatusLineWrapper(original: currentCommand.isEmpty ? nil : currentCommand)
 
         var line = existing ?? [:]
@@ -207,11 +218,18 @@ struct AgentConfigInstaller {
         guard case var .object(root) = readSettings(at: claudeSettingsURL),
               let line = root["statusLine"] as? [String: Any],
               (line["command"] as? String)?.contains("notch-statusline") == true else { return }
-        if let original = readJSONFile(statusLineOrigURL) {
+        if let original = savedOriginal(from: root) {
             root["statusLine"] = original
+        } else if root[Self.statusLineBackupKey] != nil {
+            // Backup recorded (as NSNull) that there was no original statusLine.
+            root["statusLine"] = nil
         } else {
+            // No snapshot on disk and no in-settings backup: a legacy install whose
+            // ~/.notch was deleted. The original is unrecoverable; drop our wrapper
+            // entry rather than leave statusLine pointing at a file we're deleting.
             root["statusLine"] = nil
         }
+        root[Self.statusLineBackupKey] = nil
         try writeJSON(root, to: claudeSettingsURL)
         try? FileManager.default.removeItem(at: statusLineURL)
         try? FileManager.default.removeItem(at: statusLineOrigURL)
@@ -235,8 +253,16 @@ struct AgentConfigInstaller {
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: statusLineURL.path)
     }
 
-    private func savedOriginalCommand() -> String? {
-        readJSONFile(statusLineOrigURL)?["command"] as? String
+    /// The user's pre-wrap statusLine object, preferring the on-disk snapshot and
+    /// falling back to the copy stashed inside settings.json (survives ~/.notch
+    /// deletion). Returns nil for the NSNull "no original" sentinel.
+    private func savedOriginal(from root: [String: Any]) -> [String: Any]? {
+        if let fromFile = readJSONFile(statusLineOrigURL) { return fromFile }
+        return root[Self.statusLineBackupKey] as? [String: Any]
+    }
+
+    private func savedOriginalCommand(from root: [String: Any]) -> String? {
+        savedOriginal(from: root)?["command"] as? String
     }
 
     private func writeJSONFile(_ object: [String: Any], to url: URL) throws {
