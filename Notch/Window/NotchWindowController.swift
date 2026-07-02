@@ -78,6 +78,20 @@ final class NotchWindowController {
                 self?.apply(presentation: presentation, hudVisible: hudVisible)
             }
             .store(in: &cancellables)
+
+        // The compact hit rect is a function of live content (media track, compact
+        // activity, tray items). Passthrough otherwise only re-runs on pointer moves,
+        // so a pill that grows/shrinks under a stationary cursor kept the stale
+        // answer — a click on a just-appeared pill fell through, or one beside a
+        // shrunk pill was swallowed, until the next move. Re-run on content changes.
+        Publishers.Merge3(
+            env.media.$track.map { _ in () },
+            env.activities.$activities.map { _ in () },
+            env.tray.$items.map { _ in () }
+        )
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] in self?.updatePassthrough() }
+        .store(in: &cancellables)
     }
 
     private func apply(presentation: NotchState.Presentation, hudVisible: Bool) {
