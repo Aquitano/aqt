@@ -99,6 +99,7 @@ struct ExpandedView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tab.rawValue.capitalized)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     // MARK: - Body

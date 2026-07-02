@@ -147,6 +147,21 @@ private struct SeekBar: View {
                 )
             }
             .frame(height: 14)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Playback position")
+            .accessibilityValue("\(displayed.clockString) of \(duration.clockString)")
+            .accessibilityAdjustableAction { direction in
+                let step: TimeInterval = 15
+                let target: TimeInterval
+                switch direction {
+                case .increment: target = min(displayed + step, duration)
+                case .decrement: target = max(displayed - step, 0)
+                @unknown default: return
+                }
+                scrubPosition = target
+                onScrub(target)
+                holdUntilSeekLands(target)
+            }
 
             HStack {
                 Text(displayed.clockString)
