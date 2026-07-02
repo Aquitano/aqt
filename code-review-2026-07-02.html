@@ -77,7 +77,7 @@
     <div class="count arch"><b>9</b>Architecture themes</div>
   </div>
   <p class="note">Findings tagged <span class="badge verified">verified</span> were confirmed line-by-line in this review pass, not just reported by a subsystem sweep.</p>
-  <p class="note">Remediation in progress: items tagged <span class="badge done">Fixed</span> have landed on branch <code>code-review-fixes-2026-07-02</code>, one commit per finding. So far: all <b>8 High</b> and <b>18 Medium</b> across security, core, media, widgets, and the agent-watch pipeline (plus one Low). Build green, logic suite 76/76.</p>
+  <p class="note">Remediation in progress: items tagged <span class="badge done">Fixed</span> have landed on branch <code>code-review-fixes-2026-07-02</code>, one commit per finding. So far: all <b>8 High</b> and <b>27 Medium</b> across security, core, media, widgets, the agent-watch pipeline, UI, and design (plus one Low). Build green, logic suite 78/78.</p>
 </div>
 
 <ul class="toc">
@@ -175,8 +175,8 @@
   <div class="body"><p>Clients are read on a concurrent queue and each envelope hops to the main actor via an independent <code>Task { @MainActor … }</code> — two hooks fired back-to-back (separate short-lived hook processes, e.g. <code>PostToolUse</code> then <code>Stop</code>) can be processed reversed. <code>HookSnapshot.time</code> is stamped <code>Date()</code> at receipt, so the reordered older hook wins the <code>hook.time &gt;= fileTime</code> rule in <code>StatusReducer</code>, leaving a session stuck on "Thinking" after the turn finished. For <code>SocketAgentProvider</code>, an "ended" processed before an earlier "busy" resurrects the session (up to 30 minutes under staleness liveness). Delivery needs a serial ordering (serial ingest queue or a sequence number).</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">DirectoryWatcher deinit tears down the FSEvents stream off the watcher queue — use-after-free race</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">DirectoryWatcher deinit tears down the FSEvents stream off the watcher queue — use-after-free race</span></div>
   <div class="loc">Notch/Services/Agents/DirectoryWatcher.swift:28–36, 44, 50–54</div>
   <div class="body"><p>The stream context uses <code>Unmanaged.passUnretained(self)</code> and the callback does <code>takeUnretainedValue()</code> on the watcher queue, but <code>deinit</code> runs on whatever thread drops the last reference and calls <code>FSEventStreamStop/Invalidate/Release</code> there, unsynchronized with the queue. A callback already scheduled can dereference the deallocated object. Fix: <code>passRetained</code> with release in a cancel path, or drain the queue synchronously in deinit.</p></div>
 </div>
@@ -207,8 +207,8 @@
   <div class="body"><p><code>shareCoordinator = coordinator</code> deallocates any in-flight coordinator while its share sheet may still be open. <code>NSSharingService.delegate</code> is <code>weak</code> (verified in the macOS SDK header), so the first share's <code>didShareItems</code>/<code>didFail…</code> callbacks are silently dropped — no crash, but that coordinator's <code>endShareSheet()</code> never runs, so <code>panel.presentingShareSheet</code> can stay latched true and the passive overlay stays permanently key-capable. <code>share(urls:via:)</code> needs a reentrancy guard or per-share coordinator retention.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="badge verified">verified</span><span class="title">Click-through region goes stale when the pill resizes under a stationary cursor</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Click-through region goes stale when the pill resizes under a stationary cursor</span></div>
   <div class="loc">Notch/Window/NotchWindowController.swift:200–221, 231–246</div>
   <div class="body"><p><code>updatePassthrough()</code> is only re-run on pointer moves and presentation/HUD changes, but the hit rect depends on live content (media track, compact activity, tray items, settings). If the pill grows or shrinks while the cursor is stationary — an activity appears/expires, media starts — <code>panel.ignoresMouseEvents</code> keeps the old answer: a click on a newly appeared pill passes through to the window beneath, or a click beside a shrunk pill is swallowed, until the next mouse move.</p></div>
 </div>
@@ -249,8 +249,8 @@
   <div class="body"><p>Every other activity goes through <code>publish()</code>, which calls <code>state.showCompact()</code>; <code>setNowPlaying</code> calls <code>replaceOrInsert</code> directly. When playback starts while the notch is hidden, the now-playing sliver doesn't appear until some unrelated activity fires. It also skips the <code>lastEventID</code>/TTL bookkeeping — a second mutation path in a class designed around one.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">TrayManager blocks the item-provider callback ~3s per file for no reason</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">TrayManager blocks the item-provider callback ~3s per file for no reason</span></div>
   <div class="loc">Notch/Managers/TrayManager.swift:60, 193–210</div>
   <div class="body"><p>The comment justifies the synchronous <code>semaphore.wait(timeout: .now() + 3)</code> because "the drag URL dies when the handler returns" — but <code>makeThumbnail</code> reads <code>item.url(relativeTo: root)</code>, the already-persisted copy, not the drag temp URL. The wait only delays the shelf entry and the "Added to Shelf" peek by up to 3 seconds per file and blocks NSItemProvider's queue. Thumbnailing can be fully async after the copy.</p></div>
 </div>
@@ -342,14 +342,14 @@
   <div class="body"><p>Every envelope with a cwd writes <code>hookCwd[sid]</code>, but SessionEnd clears only <code>hookState[sid]</code>. The reconciler derives <code>expiredHookIDs</code> by iterating <code>hookState.keys</code>, so a sid whose hookState is already gone can never be expired — <code>hookCwd</code> accumulates every session ever seen until relaunch. Related: a hook-only sid that arrives without a cwd leaves a permanent <code>hookState</code> entry that is skipped by both the surface and expiry branches (SessionReconciler.swift:60).</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">In-flight reconcile survives <code>disable()</code>; liveness loop can keep scanning while disabled</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">In-flight reconcile survives <code>disable()</code>; liveness loop can keep scanning while disabled</span></div>
   <div class="loc">ClaudeCodeProvider.swift:72–83, 174–186</div>
   <div class="body"><p><code>stop()</code> cancels the tracked tasks, but the unstructured <code>Task { await self?.reconcile() }</code> from <code>beginWatching()</code>/<code>refresh()</code> is untracked, <code>reconcileGeneration</code> isn't bumped on stop, and neither <code>reconcile()</code> nor <code>rebuild()</code> checks <code>isEnabled</code>. Disabling during a scan publishes scanned sessions <em>after</em> <code>onSessions([])</code>, and a busy session re-arms the 8s liveness recheck while the integration is off.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title"><code>isIdleNotification</code> substring heuristic can suppress genuine permission prompts</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title"><code>isIdleNotification</code> substring heuristic can suppress genuine permission prompts</span></div>
   <div class="loc">Notch/Services/Agents/StatusReducer.swift:79–82</div>
   <div class="body"><p>Any Notification whose message contains "waiting" or "idle" is demoted to an idle nudge — a permission prompt for a tool whose description contains either word silently loses <code>.needsAttention</code>, the feature's headline event. Conversely, if Claude's nudge wording changes or is localized, the stuck-"needs you" bug the comment describes returns. Flagged independently by two review passes; deserves a structured signal or at least anchored matching.</p></div>
 </div>
@@ -381,8 +381,8 @@
   <div class="body"><p>The <code>matchedGeometryEffect(id: "artwork")</code> pair can never animate: every collapse resets <code>expandedTab = .home</code>, so at expansion the media tab is never selected — <code>MediaPlayerView</code> mounts only on a later tab click, when <code>CompactView</code> is long unmounted. The namespace plumbed through <code>ExpandedView</code>/<code>NotchRootView</code> does nothing, as does <code>HUDOverlayView.namespace</code>, which is accepted and never read.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">Expanded panel side padding compensates with the wrong inset</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Expanded panel side padding compensates with the wrong inset</span></div>
   <div class="loc">Notch/Views/ExpandedView.swift:29; NotchShape.swift:35–36; Animations.swift:56–59</div>
   <div class="body"><p>The content pads <code>12 + compactCornerRadius</code> (24pt) on the theory that the blob insets its sides by the corner radius — but with <code>notchWidth &gt; 0</code>, <code>NotchShape</code>'s side inset is <code>shoulderInset = (width − notchWidth)/18</code> ≈ 18.3pt at expanded width. The visible side margin is ~5.7pt against the 12pt bottom margin — the "pinched sides" the padding was written to prevent. The compensation should use <code>NotchMetrics.shoulderInset(width:notchWidth:)</code>.</p></div>
 </div>
@@ -399,14 +399,14 @@
   <div class="body"><p><code>topLevelSessions</code> excludes any session whose parent is present, and rows are emitted only for top-level sessions plus direct children. A grandchild (a sub-agent spawning its own sub-session, which OpenCode supports) is excluded from the top level and never returned by <code>children(of:)</code> for any rendered row.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">Seek bar is invisible to accessibility</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Seek bar is invisible to accessibility</span></div>
   <div class="loc">Notch/Views/MediaPlayerView.swift:97–163; ExpandedView.swift:100</div>
   <div class="body"><p>The scrubber is a bare Capsule ZStack with a DragGesture — no label, no value, no <code>.adjustable</code> action; VoiceOver users cannot perceive progress or seek at all, in contrast to the otherwise carefully labeled UI. Smaller gap: the expanded tab buttons never set <code>.isSelected</code>, so the current tab is not announced.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">In-place activity updates replay the attention pop the code explicitly tries to suppress</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">In-place activity updates replay the attention pop the code explicitly tries to suppress</span></div>
   <div class="loc">Notch/Managers/ActivityManager.swift:41–43; CompactView.swift:31</div>
   <div class="body"><p><code>publish()</code> carefully avoids resetting <code>cycleOffset</code> for a channel replacement, but unconditionally bumps <code>lastEventID</code>, and <code>CompactView</code> runs its <code>phaseAnimator</code> pop on that trigger — every agent status flip or charging-percent update replays the pop. The pop also fires on the media pill's artwork/equalizer when an unrelated activity arrives while media owns the pill: an attention cue with no referent.</p></div>
 </div>
@@ -433,8 +433,8 @@
   <div class="body"><p><code>Theme.Spacing</code>/<code>Theme.Radius</code> are referenced nowhere outside Theme.swift. The views hard-code a divergent set of radii (6, 12, 14, 16, 18) and paddings (8, 12, 14, 16, 18) — "reach for these instead of scattering magic numbers" is aspirational; there is no single spacing/radius rhythm and no one place to change it.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">Agent status→color mapping duplicated in three places, already diverging</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Agent status→color mapping duplicated in three places, already diverging</span></div>
   <div class="loc">ActivityPresenter.swift:94–102; AgentRowView.swift:107–115; CompactView.swift:130–136</div>
   <div class="body"><p><code>ActivityPresenter.agentTint</code>, <code>AgentRowView.statusColor</code> (an identical duplicate), and <code>CompactView.agentPixelTint</code> (running = retro green vs cyan elsewhere) each restate the mapping. ActivityPresenter exists precisely to centralize per-kind presentation; two of the three already disagree.</p></div>
 </div>
