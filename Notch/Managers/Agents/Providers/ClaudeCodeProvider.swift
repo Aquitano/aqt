@@ -70,6 +70,10 @@ final class ClaudeCodeProvider: AgentProviding {
     }
 
     func stop() {
+        // Invalidate any in-flight reconcile: its scan runs on a detached task that
+        // doesn't inherit cancellation, so without bumping the generation it would
+        // publish scanned sessions after disable() already sent onSessions([]).
+        reconcileGeneration += 1
         reconcileTask?.cancel()
         reconcileTask = nil
         reconcilePending = false
@@ -180,15 +184,17 @@ final class ClaudeCodeProvider: AgentProviding {
     }
 
     private func reconcile() async {
+        guard isEnabled else { return }
         reconcileGeneration += 1
         let generation = reconcileGeneration
         let scanner = ProcessScanner(lookup: processLookup)
         let scan = await Task.detached(priority: .utility) {
             scanner.scan()
         }.value
-        // A newer reconcile started while this scan ran (Task.detached doesn't
-        // inherit cancellation): drop this stale result so it can't clobber it.
-        guard generation == reconcileGeneration else { return }
+        // A newer reconcile started while this scan ran, or the feature was disabled
+        // (Task.detached doesn't inherit cancellation): drop this stale result so it
+        // can't clobber the current state or re-publish after disable().
+        guard isEnabled, generation == reconcileGeneration else { return }
         lastScan = scan
         rebuild()
     }
