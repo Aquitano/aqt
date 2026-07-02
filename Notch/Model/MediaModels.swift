@@ -26,9 +26,12 @@ struct NowPlayingTrack: Equatable {
 
     /// Interpolated playback position given a wall-clock reference.
     func position(asOf reference: Date, lastUpdate: Date) -> TimeInterval {
-        guard isPlaying, duration > 0 else { return min(elapsed, duration) }
-        let drift = reference.timeIntervalSince(lastUpdate)
-        return min(max(0, elapsed + drift), duration)
+        let base = isPlaying ? elapsed + reference.timeIntervalSince(lastUpdate) : elapsed
+        let floored = max(0, base)
+        // duration == 0 means "unknown" (live streams, some adapters). Clamping to
+        // it would discard the elapsed signal exactly when it's all we have, so only
+        // cap at duration when it's actually known.
+        return duration > 0 ? min(floored, duration) : floored
     }
 }
 
