@@ -117,6 +117,15 @@ final class AppEnvironment: ObservableObject {
     /// overlay panel so the device/share picker has a window to attach to.
     func share(urls: [URL], via method: ShareMethod) {
         guard !urls.isEmpty else { return }
+        // A share already in flight owns the only ShareCoordinator, which is the
+        // panel's path back to the passive-overlay state. Overwriting it here would
+        // deallocate it mid-share (NSSharingService.delegate is weak), so its
+        // endShareSheet() would never fire and the overlay would stay latched
+        // key-capable. Ignore the reentrant request.
+        guard shareCoordinator == nil else {
+            Log.tray.notice("Share already presenting; ignoring reentrant request")
+            return
+        }
         guard let service = sharingService(for: method, items: urls) else {
             Log.tray.error("Share unavailable via \(method.rawValue)")
             return
