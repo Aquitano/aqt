@@ -89,10 +89,30 @@ final class StatusReducerTests: XCTestCase {
 
     func testIdleNotificationWithoutScanIsIdle() {
         let resolved = StatusReducer.reduce(
-            hook: hook("Notification", at: later, message: "idle"),
+            hook: hook("Notification", at: later, message: "Claude is waiting for your input"),
             scan: nil
         )
         XCTAssertEqual(resolved, .init(status: .idle, verb: nil))
+    }
+
+    func testPermissionPromptMentioningWaitingStillNeedsAttention() {
+        // A permission prompt whose tool name/description contains "waiting" must not
+        // be demoted to an idle nudge by a bare-substring match.
+        let resolved = StatusReducer.reduce(
+            hook: hook("Notification", at: later,
+                       message: "Claude needs your permission to use waiting-room-cli"),
+            scan: nil
+        )
+        XCTAssertEqual(resolved.status, .needsAttention)
+    }
+
+    func testNotificationWithNilMessageNeedsAttention() {
+        // No message is not an idle nudge; a permission prompt can arrive without one.
+        let resolved = StatusReducer.reduce(
+            hook: hook("Notification", at: later, message: nil),
+            scan: nil
+        )
+        XCTAssertEqual(resolved.status, .needsAttention)
     }
 
     // MARK: - Stop / SessionStart

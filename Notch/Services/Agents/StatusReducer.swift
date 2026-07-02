@@ -75,9 +75,13 @@ enum StatusReducer {
     }
 
     /// Distinguish Claude's idle "waiting for your input" Notification from a
-    /// permission prompt, so the former doesn't read as needs-you.
+    /// permission prompt, so the former doesn't read as needs-you. Anchored to the
+    /// actual idle-nudge phrase rather than a bare "waiting"/"idle" substring, which
+    /// would demote a real permission prompt whose tool name or description happens
+    /// to contain either word.
     private static func isIdleNotification(_ message: String?) -> Bool {
         guard let message = message?.lowercased() else { return false }
-        return message.contains("waiting") || message.contains("idle")
+        return message.contains("waiting for your input")
+            || message.contains("waiting for input")
     }
 }
