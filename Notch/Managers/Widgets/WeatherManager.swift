@@ -26,8 +26,13 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
 
     func start() {
         authorization = manager.authorizationStatus
-        manager.requestWhenInUseAuthorization()
-        manager.requestLocation()
+        // Fetch when we already have permission, but don't prompt at launch: that
+        // stacks a dialog on top of the Focus prompt and reads as a freeze (the
+        // reason CalendarManager defers). The widget's "Enable Location" affordance
+        // requests access on demand instead.
+        if authorization == .authorizedAlways {
+            manager.requestLocation()
+        }
 
         settings.$temperatureUnit
             .dropFirst()
