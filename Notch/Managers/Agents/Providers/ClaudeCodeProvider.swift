@@ -146,9 +146,13 @@ final class ClaudeCodeProvider: AgentProviding {
         if let cwd = envelope.cwd { hookCwd[sid] = cwd }
         if envelope.hook == "SessionEnd" {
             // Tombstone the session for removal, and drop its hook state so it
-            // can't be resurrected on a later rebuild.
+            // can't be resurrected on a later rebuild. Also drop hookCwd: the
+            // reconciler derives expiredHookIDs from hookState.keys, so a cwd left
+            // behind here (this branch is reached with a cwd via the write above)
+            // could never be expired and would leak one entry per session.
             endedSessionIDs.insert(sid)
             hookState[sid] = nil
+            hookCwd[sid] = nil
         } else {
             endedSessionIDs.remove(sid)
             hookState[sid] = HookSnapshot(name: envelope.hook, time: Date(), message: envelope.message, tool: envelope.tool)

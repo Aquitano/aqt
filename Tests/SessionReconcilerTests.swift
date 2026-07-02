@@ -79,6 +79,30 @@ final class SessionReconcilerTests: XCTestCase {
         XCTAssertEqual(out.expiredHookIDs, ["h1"])
     }
 
+    func testHookStateWithoutCwdExpiresPastGraceInsteadOfLeaking() {
+        // A hookState entry with no matching cwd can't be surfaced; past the grace
+        // window it must be reported as expired so the caller can drop it, rather
+        // than lingering as a permanent entry.
+        let out = run {
+            $0.hookState = ["h1": hook("Notification", at: t0, message: "needs you")]
+            $0.hookCwd = [:]
+            $0.now = t0.addingTimeInterval(60)
+        }
+        XCTAssertNil(out.sessions["h1"])
+        XCTAssertEqual(out.expiredHookIDs, ["h1"])
+    }
+
+    func testHookStateWithoutCwdIsKeptWithinGrace() {
+        // Within grace it may just be a cwd-bearing hook that hasn't arrived yet.
+        let out = run {
+            $0.hookState = ["h1": hook("Notification", at: later, message: "needs you")]
+            $0.hookCwd = [:]
+            $0.now = later.addingTimeInterval(10)
+        }
+        XCTAssertNil(out.sessions["h1"])
+        XCTAssertTrue(out.expiredHookIDs.isEmpty)
+    }
+
     // MARK: - Events
 
     func testSessionStartHookEmitsStarted() {

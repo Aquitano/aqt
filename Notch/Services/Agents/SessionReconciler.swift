@@ -57,8 +57,19 @@ enum SessionReconciler {
         // a phantom (e.g. a stuck "needs you") on every rebuild.
         for sid in input.hookState.keys where sessions[sid] == nil {
             if input.endedSessionIDs.contains(sid) { continue }
-            guard let hook = input.hookState[sid], let cwd = input.hookCwd[sid] else { continue }
-            if input.now.timeIntervalSince(hook.time) <= input.graceWindow {
+            guard let hook = input.hookState[sid] else { continue }
+            let withinGrace = input.now.timeIntervalSince(hook.time) <= input.graceWindow
+            guard let cwd = input.hookCwd[sid] else {
+                // No cwd to build a session from. Left as-is it would be a permanent
+                // hookState entry (skipped by both the surface and expiry branches),
+                // so expire it once past the grace window.
+                if !withinGrace {
+                    expiredHookIDs.append(sid)
+                    emittedAttentionAt[sid] = nil
+                }
+                continue
+            }
+            if withinGrace {
                 sessions[sid] = AgentSession(
                     id: sid, kind: .claudeCode, project: agentProjectName(cwd), cwd: cwd,
                     status: .idle, startedAt: hook.time, lastActivity: hook.time,
