@@ -150,13 +150,24 @@ final class NotchWindowController {
         guard panel.isVisible else { return }
         let mouse = NSEvent.mouseLocation
         if !isDragSessionActive {
-            guard dragDropZone().contains(mouse) else { return }
+            guard dragDropZone().contains(mouse), dragCarriesFiles() else { return }
             isDragSessionActive = true
             panel.ignoresMouseEvents = false
             env.state.beginDropTargeting()
         }
         let zone = dropZone(for: mouse)
         if env.state.activeDropZone != zone { env.state.activeDropZone = zone }
+    }
+
+    /// The `.leftMouseDragged` monitor fires for every drag — text selections,
+    /// window drags, toolbar drags — so opening the drop chooser on position alone
+    /// hijacks ordinary drags that merely pass through the catch area. Only a drag
+    /// carrying file URLs on the drag pasteboard is a real file drop.
+    private func dragCarriesFiles() -> Bool {
+        NSPasteboard(name: .drag).canReadObject(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        )
     }
 
     /// The drop field under a screen point: left of the notch centre keeps, right
