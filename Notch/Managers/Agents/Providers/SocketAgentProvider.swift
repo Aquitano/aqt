@@ -26,6 +26,9 @@ final class SocketAgentProvider: AgentProviding {
     private var sessions: [String: AgentSession] = [:]
     private var pruneTask: Task<Void, Never>?
     private static let staleAfter: TimeInterval = 30 * 60
+    /// While a pid-tracked session is busy, re-check its liveness on this cadence so
+    /// a process killed mid-turn (no "ended" envelope) is dropped promptly.
+    private static let livenessRecheck: TimeInterval = 8
 
     init(kind: AgentKind,
          liveness: Liveness,
@@ -120,7 +123,7 @@ final class SocketAgentProvider: AgentProviding {
         sessions[sid] = session
         prune()
         publish()
-        scheduleStalePrune()
+        scheduleLivenessRecheck()
     }
 
     // MARK: - Mapping + events
@@ -167,7 +170,13 @@ final class SocketAgentProvider: AgentProviding {
         for (sid, session) in Array(sessions) {
             switch liveness {
             case .processPid:
-                if let pid = session.pid, !Self.isAlive(pid) { remove(sid, session) }
+                if let pid = session.pid {
+                    if !Self.isAlive(pid) { remove(sid, session) }
+                } else if now.timeIntervalSince(session.lastActivity) > Self.staleAfter {
+                    // No pid to check (peer pid was 0): fall back to staleness so it
+                    // can't live forever.
+                    remove(sid, session)
+                }
             case .staleness:
                 if now.timeIntervalSince(session.lastActivity) > Self.staleAfter { remove(sid, session) }
             }
@@ -179,15 +188,32 @@ final class SocketAgentProvider: AgentProviding {
         onEvent?(AgentEvent(kind: .ended, session: session, message: nil))
     }
 
-    /// One-shot re-prune so a stale session disappears without further events.
-    private func scheduleStalePrune() {
-        guard liveness == .staleness else { return }
+    /// Re-prune without further events. Staleness ages sessions out on a one-shot;
+    /// pid liveness re-checks on a cadence while any session is busy, re-arming
+    /// itself until nothing is busy, so a process killed mid-turn is dropped even
+    /// though no "ended" envelope ever arrives.
+    private func scheduleLivenessRecheck() {
         pruneTask?.cancel()
-        pruneTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(Self.staleAfter + 1))
-            guard !Task.isCancelled, let self else { return }
-            self.prune()
-            self.publish()
+        switch liveness {
+        case .staleness:
+            pruneTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(Self.staleAfter + 1))
+                guard !Task.isCancelled, let self else { return }
+                self.prune()
+                self.publish()
+            }
+        case .processPid:
+            guard sessions.values.contains(where: { $0.status.isBusy }) else {
+                pruneTask = nil
+                return
+            }
+            pruneTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(Self.livenessRecheck))
+                guard !Task.isCancelled, let self else { return }
+                self.prune()
+                self.publish()
+                self.scheduleLivenessRecheck()
+            }
         }
     }
 
