@@ -70,8 +70,19 @@ final class AgentManager: ObservableObject {
             provider.start()
         }
 
-        socketServer.start { [weak self] envelope, pid in
-            Task { @MainActor in self?.route(envelope, pid: pid) }
+        // Deliver envelopes through one serial stream instead of an independent
+        // Task per envelope. Independent tasks have no ordering guarantee, so two
+        // hooks fired back-to-back (e.g. PostToolUse then Stop) could be processed
+        // reversed — leaving a session stuck "Thinking" after the turn finished.
+        // A single consumer routes them in arrival order.
+        let (stream, continuation) = AsyncStream.makeStream(of: (HookEnvelope, pid_t).self)
+        socketServer.start { [continuation] envelope, pid in
+            continuation.yield((envelope, pid))
+        }
+        Task { @MainActor [weak self] in
+            for await (envelope, pid) in stream {
+                self?.route(envelope, pid: pid)
+            }
         }
 
         if settings.agentUsageLimits { try? installer.installClaudeUsage() }
