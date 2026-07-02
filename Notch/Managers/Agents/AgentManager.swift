@@ -25,6 +25,10 @@ final class AgentManager: ObservableObject {
     /// re-pops on a real change rather than every transcript write.
     private var pillSignature: String?
 
+    /// start() builds providers + the socket exactly once, so it can be called both
+    /// at launch and when the user flips the feature on at runtime.
+    private var hasStarted = false
+
     init(activities: ActivityManager, settings: Settings) {
         self.activities = activities
         self.settings = settings
@@ -32,7 +36,8 @@ final class AgentManager: ObservableObject {
     }
 
     func start() {
-        guard settings.agentsEnabled else { return }
+        guard settings.agentsEnabled, !hasStarted else { return }
+        hasStarted = true
 
         let installer = AgentConfigInstaller()
         providers = [

@@ -41,7 +41,15 @@ struct SettingsView: View {
 
     private var agentsSection: some View {
         Section {
-            Toggle("Watch coding agents", isOn: $settings.agentsEnabled)
+            // Build providers + the socket the moment the feature is switched on;
+            // binding straight to the setting left it a no-op until relaunch.
+            Toggle("Watch coding agents", isOn: Binding(
+                get: { settings.agentsEnabled },
+                set: { on in
+                    settings.agentsEnabled = on
+                    if on { agents.start() }
+                }
+            ))
             if settings.agentsEnabled {
                 Toggle("Notify when an agent needs you", isOn: $settings.agentNotifyAttention)
                 Toggle("Notify when an agent finishes", isOn: $settings.agentNotifyFinished)
