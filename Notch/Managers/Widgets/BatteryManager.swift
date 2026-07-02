@@ -13,6 +13,9 @@ final class BatteryManager: ObservableObject {
     @Published private(set) var isFullyCharged = false
     @Published private(set) var timeToEmpty: Int?     // minutes, nil if calculating
     @Published private(set) var lowPowerMode = false
+    /// False on a desktop Mac (or when only a UPS is attached), so the tile can hide
+    /// instead of showing a fake permanent 100%.
+    @Published private(set) var hasBattery = true
 
     private unowned let activities: ActivityManager
     private var runLoopSource: CFRunLoopSource?
@@ -49,26 +52,32 @@ final class BatteryManager: ObservableObject {
         guard let blob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
               let list = IOPSCopyPowerSourcesList(blob)?.takeRetainedValue() as? [CFTypeRef] else { return }
 
-        for source in list {
-            guard let description = IOPSGetPowerSourceDescription(blob, source)?.takeUnretainedValue() as? [String: Any]
-            else { continue }
+        // Pick the internal battery by type — not the first source, which could be a
+        // UPS — and treat its absence as "no battery" rather than a fake 100%.
+        let internalBattery = list.lazy
+            .compactMap { IOPSGetPowerSourceDescription(blob, $0)?.takeUnretainedValue() as? [String: Any] }
+            .first { ($0[kIOPSTypeKey] as? String) == kIOPSInternalBatteryType }
 
-            let current = description[kIOPSCurrentCapacityKey] as? Int ?? 0
-            let maximum = description[kIOPSMaxCapacityKey] as? Int ?? 100
-            let charging = description[kIOPSIsChargingKey] as? Bool ?? false
-            let state = description[kIOPSPowerSourceStateKey] as? String
-            let plugged = state == kIOPSACPowerValue
-            let raw = description[kIOPSTimeToEmptyKey] as? Int ?? -1
-
-            percent = maximum > 0 ? Int((Double(current) / Double(maximum) * 100).rounded()) : current
-            isCharging = charging
-            isPluggedIn = plugged
-            isFullyCharged = plugged && !charging && percent >= 100
-            timeToEmpty = raw > 0 ? raw : nil
-
-            evaluate()
-            break   // internal battery is the first source
+        guard let description = internalBattery else {
+            hasBattery = false
+            return
         }
+        hasBattery = true
+
+        let current = description[kIOPSCurrentCapacityKey] as? Int ?? 0
+        let maximum = description[kIOPSMaxCapacityKey] as? Int ?? 100
+        let charging = description[kIOPSIsChargingKey] as? Bool ?? false
+        let state = description[kIOPSPowerSourceStateKey] as? String
+        let plugged = state == kIOPSACPowerValue
+        let raw = description[kIOPSTimeToEmptyKey] as? Int ?? -1
+
+        percent = maximum > 0 ? Int((Double(current) / Double(maximum) * 100).rounded()) : current
+        isCharging = charging
+        isPluggedIn = plugged
+        isFullyCharged = plugged && !charging && percent >= 100
+        timeToEmpty = raw > 0 ? raw : nil
+
+        evaluate()
     }
 
     private func powerStateChanged() {
