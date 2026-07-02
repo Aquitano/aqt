@@ -9,6 +9,8 @@ struct WidgetGridView: View {
     @EnvironmentObject private var bluetooth: BluetoothBatteryManager
     @EnvironmentObject private var focus: FocusManager
     @EnvironmentObject private var weather: WeatherManager
+    @EnvironmentObject private var calendar: CalendarManager
+    @EnvironmentObject private var battery: BatteryManager
 
     private var hasInfoRow: Bool {
         settings.showWeatherWidget || settings.showCalendarWidget
@@ -29,12 +31,15 @@ struct WidgetGridView: View {
             bluetooth.refresh()
             focus.refresh()
             weather.refresh()
+            calendar.refresh()
         }
     }
 
     private var statusRow: some View {
         HStack(spacing: 10) {
-            BatteryWidgetView()
+            if battery.hasBattery {
+                BatteryWidgetView()
+            }
             FocusWidgetView()
             if !bluetooth.devices.isEmpty {
                 BluetoothWidgetView()

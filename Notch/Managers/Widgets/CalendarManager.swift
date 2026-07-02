@@ -16,6 +16,7 @@ final class CalendarManager: ObservableObject {
     private unowned let activities: ActivityManager
     private var reminderTasks: [Task<Void, Never>] = []
     private let reminderLead: TimeInterval = 5 * 60
+    private var cancellables = Set<AnyCancellable>()
 
     init(activities: ActivityManager) {
         self.activities = activities
@@ -28,10 +29,21 @@ final class CalendarManager: ObservableObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.reload() }
         }
+        // reload() pins its window to `now`, but only .EKEventStoreChanged re-runs it.
+        // Without a time axis, ended events linger, isInProgress styling goes stale,
+        // and the horizon freezes at launch. Coarse timer; .common so it fires during
+        // tracking too.
+        Timer.publish(every: 5 * 60, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in self?.reload() }
+            .store(in: &cancellables)
         // Don't trigger the TCC prompt at launch; that stacks dialogs on top of the
         // location prompt and feels like a freeze. The widget's "Enable" button asks.
         if authorization == .fullAccess { reload() }
     }
+
+    /// Pull fresh events now — used when the home surface appears.
+    func refresh() { reload() }
 
     func requestAccess() async {
         // Accessory apps don't auto-foreground, so the system prompt can appear
