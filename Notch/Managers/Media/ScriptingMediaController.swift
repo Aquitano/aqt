@@ -189,7 +189,24 @@ private extension MediaCommand {
         case .toggleShuffle:
             body = app == .music ? "set shuffle enabled to not (shuffle enabled)" : "set shuffling to not shuffling"
         case .toggleRepeat:
-            body = app == .music ? "set song repeat to one" : "set repeating to not repeating"
+            if app == .music {
+                // Music's `song repeat` is off/one/all, not a boolean. Unconditionally
+                // setting it to `one` meant the key could never turn repeat off again
+                // or reach `all`; cycle it so it behaves like a toggle (matching how
+                // Spotify's boolean repeat already toggles).
+                return """
+                tell application "Music"
+                    if song repeat is off then
+                        set song repeat to one
+                    else if song repeat is one then
+                        set song repeat to all
+                    else
+                        set song repeat to off
+                    end if
+                end tell
+                """
+            }
+            body = "set repeating to not repeating"
         }
         return "tell application \"\(name)\" to \(body)"
     }
