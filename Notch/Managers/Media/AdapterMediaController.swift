@@ -17,6 +17,8 @@ final class AdapterMediaController: MediaControlling {
 
     var onUpdate: ((NowPlayingTrack) -> Void)?
     var onArtwork: ((Data?) -> Void)?
+    /// Fired once if the perl bridge exits or crashes, so the owner can fall back.
+    var onStreamEnded: (() -> Void)?
     let capabilities: MediaCapabilities = .full
 
     private static let perlPath = "/usr/bin/perl"
@@ -27,6 +29,7 @@ final class AdapterMediaController: MediaControlling {
     private let decoder = JSONDecoder()
     private var buffer = Data()
     private var lastArtworkIdentity = ""
+    private var streamEnded = false
 
     init?() {
         guard FileManager.default.fileExists(atPath: Self.perlPath),
@@ -56,8 +59,20 @@ final class AdapterMediaController: MediaControlling {
 
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let chunk = handle.availableData
-            guard !chunk.isEmpty else { return }
+            // An empty read is EOF: the bridge exited. The fd stays readable-at-EOF
+            // and would re-invoke us forever (a spinning queue at high CPU), so clear
+            // the handler and recover.
+            guard !chunk.isEmpty else {
+                handle.readabilityHandler = nil
+                Task { @MainActor in self?.streamDidEnd() }
+                return
+            }
             self?.ingest(chunk)
+        }
+
+        // Backstop for the case where the process dies without the pipe reaching EOF.
+        process.terminationHandler = { [weak self] _ in
+            Task { @MainActor in self?.streamDidEnd() }
         }
 
         do {
@@ -69,8 +84,19 @@ final class AdapterMediaController: MediaControlling {
     }
 
     func stop() {
+        streamEnded = true
         streamProcess?.terminate()
         streamProcess = nil
+    }
+
+    /// Fire the fallback exactly once. `stop()` marks the stream ended first, so an
+    /// intentional teardown doesn't masquerade as a crash.
+    private func streamDidEnd() {
+        guard !streamEnded else { return }
+        streamEnded = true
+        streamProcess = nil
+        Log.media.notice("mediaremote-adapter stream ended; falling back")
+        onStreamEnded?()
     }
 
     func send(_ command: MediaCommand) {

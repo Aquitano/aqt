@@ -30,12 +30,32 @@ final class MediaManager: ObservableObject {
 
     func start() {
         let controller = makeController()
-        controller.onUpdate = { [weak self] track in self?.apply(track) }
-        controller.onArtwork = { [weak self] data in self?.applyArtwork(data) }
+        wire(controller)
         controller.start()
         self.controller = controller
         self.capabilities = controller.capabilities
         Log.media.info("Media controller: \(String(describing: type(of: controller)))")
+    }
+
+    private func wire(_ controller: MediaControlling) {
+        controller.onUpdate = { [weak self] track in self?.apply(track) }
+        controller.onArtwork = { [weak self] data in self?.applyArtwork(data) }
+        if let adapter = controller as? AdapterMediaController {
+            adapter.onStreamEnded = { [weak self] in self?.fallBackToScripting() }
+        }
+    }
+
+    /// The adapter's perl bridge died; swap in per-app scripting so playback control
+    /// keeps working instead of freezing on the last track forever.
+    private func fallBackToScripting() {
+        guard controller is AdapterMediaController else { return }
+        controller?.stop()
+        let scripting = ScriptingMediaController()
+        wire(scripting)
+        scripting.start()
+        controller = scripting
+        capabilities = scripting.capabilities
+        Log.media.notice("Media adapter stream died; fell back to scripting")
     }
 
     func send(_ command: MediaCommand) {
