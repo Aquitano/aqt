@@ -77,7 +77,7 @@
     <div class="count arch"><b>9</b>Architecture themes</div>
   </div>
   <p class="note">Findings tagged <span class="badge verified">verified</span> were confirmed line-by-line in this review pass, not just reported by a subsystem sweep.</p>
-  <p class="note">Remediation in progress: items tagged <span class="badge done">Fixed</span> have landed on branch <code>code-review-fixes-2026-07-02</code>, one commit per finding. So far: all <b>8 High</b>, both agent-config data-loss <b>Medium</b>s, plus 7 more Medium fixes across core / media / widgets. Build green, logic suite 74/74.</p>
+  <p class="note">Remediation in progress: items tagged <span class="badge done">Fixed</span> have landed on branch <code>code-review-fixes-2026-07-02</code>, one commit per finding. So far: all <b>8 High</b> and <b>18 Medium</b> across security, core, media, widgets, and the agent-watch pipeline (plus one Low). Build green, logic suite 76/76.</p>
 </div>
 
 <ul class="toc">
@@ -231,14 +231,14 @@
   <div class="body"><p><code>MediaManager.start()</code> runs on the main actor and <code>AdapterMediaController.init?</code> synchronously spawns perl and calls <code>process.waitUntilExit()</code> for the "test" probe. Loading the perl interpreter plus the framework check can take hundreds of milliseconds, freezing launch right after the window appears.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">Music "toggleRepeat" is not a toggle</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Music "toggleRepeat" is not a toggle</span></div>
   <div class="loc">Notch/Managers/Media/ScriptingMediaController.swift:192</div>
   <div class="body"><p>For Music the command unconditionally runs <code>set song repeat to one</code>, so once pressed the user can never turn repeat off (or reach "all") from the notch, while Spotify genuinely toggles. Two backends behind the same <code>MediaCommand.toggleRepeat</code> behave differently.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">Brightness HUD can display the previous volume value</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Brightness HUD can display the previous volume value</span></div>
   <div class="loc">Notch/Managers/HUDManager.swift:56–66; Notch/Services/Brightness.swift:33</div>
   <div class="body"><p>On a brightness key, <code>kind = .brightness; show()</code> fires immediately and <code>value</code> updates 50ms later — and only if <code>brightness.current()</code> succeeds. <code>DisplayServicesGetBrightness(CGMainDisplayID(), …)</code> fails when the main display is external (or the private symbol is missing), so the HUD renders the last volume level (e.g. 0.75) under a brightness glyph, every time.</p></div>
 </div>
@@ -285,20 +285,20 @@
 
 <h2 id="bugs-widgets">4. Bugs — widgets</h2>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">Battery: first power source assumed internal; desktop Macs show a fake permanent "100%"</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Battery: first power source assumed internal; desktop Macs show a fake permanent "100%"</span></div>
   <div class="loc">Notch/Managers/Widgets/BatteryManager.swift:52–71</div>
   <div class="body"><p><code>refresh()</code> takes the first entry of <code>IOPSCopyPowerSourcesList</code> with a <code>break // internal battery is the first source</code> and never checks <code>kIOPSTypeKey</code>, so a UPS can be read as the Mac's battery. On a desktop with no battery the list is empty, <code>percent</code> stays at its initial 100, and the battery tile renders a permanent fake 100%.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">Calendar data never advances with time — ended events linger, the horizon is frozen at launch</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Calendar data never advances with time — ended events linger, the horizon is frozen at launch</span></div>
   <div class="loc">Notch/Managers/Widgets/CalendarManager.swift:49–63</div>
   <div class="body"><p><code>reload()</code> builds its predicate with <code>withStart: now</code>, but nothing time-driven ever re-runs it — no timer, no day-change observer, and <code>WidgetGridView.onAppear</code> doesn't touch calendar. Hours after the last <code>.EKEventStoreChanged</code>, finished meetings still occupy the widget's rows, <code>isInProgress</code> styling is computed against a stale list, and events beyond the launch-time 7-day/25-item window never surface.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">Weather forecast decode can crash on a malformed API response</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Weather forecast decode can crash on a malformed API response</span></div>
   <div class="loc">Notch/Managers/Widgets/WeatherManager.swift:130–139</div>
   <div class="body"><p>Indices are derived only from <code>daily.time</code>, then used to subscript <code>weather_code</code>, <code>temperature_2m_max</code>, and <code>temperature_2m_min</code>. If Open-Meteo ever returns a shorter parallel array (partial data, API change), that's an out-of-bounds crash on untrusted network input. The same fetch path also parses API dates with a <code>DateFormatter</code> lacking <code>en_US_POSIX</code> and a timezone: a non-Gregorian system calendar parses "2026-07-02" wrong, and location-vs-device timezone differences can shift day labels by one (127–131).</p></div>
 </div>
@@ -330,14 +330,14 @@
 
 <h2 id="bugs-agents">5. Bugs — agent-watch pipeline</h2>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">Enabling "Watch coding agents" at runtime is a silent no-op</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Enabling "Watch coding agents" at runtime is a silent no-op</span></div>
   <div class="loc">Notch/Managers/Agents/AgentManager.swift:34–35; SettingsView.swift:44, 65, 78</div>
   <div class="body"><p><code>start()</code> runs once from <code>AppEnvironment.start()</code> behind <code>guard settings.agentsEnabled</code>; the Settings toggle binds straight to the setting and never calls <code>agents.start()</code>. Turning the feature on later builds no providers and no socket server — the "Coding agents" section renders with zero rows and the per-agent toggles no-op. The footer only warns that turning it <em>off</em> needs a relaunch.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title"><code>hookCwd</code> grows unbounded — one leaked entry per Claude session</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title"><code>hookCwd</code> grows unbounded — one leaked entry per Claude session</span></div>
   <div class="loc">Notch/Managers/Agents/Providers/ClaudeCodeProvider.swift:142; SessionReconciler.swift:58</div>
   <div class="body"><p>Every envelope with a cwd writes <code>hookCwd[sid]</code>, but SessionEnd clears only <code>hookState[sid]</code>. The reconciler derives <code>expiredHookIDs</code> by iterating <code>hookState.keys</code>, so a sid whose hookState is already gone can never be expired — <code>hookCwd</code> accumulates every session ever seen until relaunch. Related: a hook-only sid that arrives without a cwd leaves a permanent <code>hookState</code> entry that is skipped by both the surface and expiry branches (SessionReconciler.swift:60).</p></div>
 </div>
@@ -387,14 +387,14 @@
   <div class="body"><p>The content pads <code>12 + compactCornerRadius</code> (24pt) on the theory that the blob insets its sides by the corner radius — but with <code>notchWidth &gt; 0</code>, <code>NotchShape</code>'s side inset is <code>shoulderInset = (width − notchWidth)/18</code> ≈ 18.3pt at expanded width. The visible side margin is ~5.7pt against the 12pt bottom margin — the "pinched sides" the padding was written to prevent. The compensation should use <code>NotchMetrics.shoulderInset(width:notchWidth:)</code>.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">Seek bar snaps back after a scrub</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Seek bar snaps back after a scrub</span></div>
   <div class="loc">Notch/Views/MediaPlayerView.swift:139–144</div>
   <div class="body"><p><code>onEnded</code> runs <code>onScrub(target); isScrubbing = false</code> synchronously, but the seek is async — the next 0.5s TimelineView tick renders the pre-seek snapshot, so the fill visibly jumps back, then forward when the player reports the new position. Hold the scrub value (or optimistically update the snapshot) until the seek round-trips.</p></div>
 </div>
 
-<div class="finding">
-  <div class="head"><span class="badge med">Medium</span><span class="title">Sessions nested more than one level deep silently disappear from the agents list</span></div>
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Sessions nested more than one level deep silently disappear from the agents list</span></div>
   <div class="loc">Notch/Views/Agents/AgentsView.swift:37–47</div>
   <div class="body"><p><code>topLevelSessions</code> excludes any session whose parent is present, and rows are emitted only for top-level sessions plus direct children. A grandchild (a sub-agent spawning its own sub-session, which OpenCode supports) is excluded from the top level and never returned by <code>children(of:)</code> for any rendered row.</p></div>
 </div>
