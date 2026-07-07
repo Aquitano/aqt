@@ -77,12 +77,22 @@ struct NotchRootView: View {
                     ExpandedView(namespace: morph)
                         .frame(width: expandedSize.width, height: expandedSize.height, alignment: .top)
                         .opacity(state.isExpanded ? 1 : 0)
+                        .accessibilityAction(named: "Collapse notch") {
+                            state.collapse()
+                        }
                 }
 
                 if state.presentation == .compact {
                     CompactView(namespace: morph)
                         .frame(width: size.width, height: size.height, alignment: .top)
                         .transition(.opacity)
+                        // The pill expands on hover only, which VoiceOver can't do;
+                        // expose it as a button whose activation opens the panel.
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Notch")
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { state.expand() }
+                        .accessibilityAction(named: "Expand notch") { state.expand() }
                 }
             }
             .frame(width: size.width, height: size.height, alignment: .top)
