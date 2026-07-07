@@ -18,6 +18,9 @@ final class MediaManager: ObservableObject {
         case notRequested
         case starting
         case active
+        /// Artifacts found nowhere (bundle or Application Support): Settings
+        /// offers the guided install instead of a bare error.
+        case missing
         case unavailable(String)
     }
     @Published private(set) var adapterState: AdapterState = .notRequested
@@ -51,7 +54,7 @@ final class MediaManager: ObservableObject {
 
         if settings.enableMediaAdapter {
             guard let adapter = AdapterMediaController() else {
-                adapterState = .unavailable("The adapter bridge isn't bundled in this build (see README).")
+                adapterState = .missing
                 return
             }
             adapterState = .starting

@@ -169,14 +169,48 @@ struct SettingsView: View {
     private var mediaSection: some View {
         Section("Media") {
             Toggle("System-wide Now Playing (adapter)", isOn: $settings.enableMediaAdapter)
-            if settings.enableMediaAdapter, case .unavailable(let reason) = media.adapterState {
-                Label(reason, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+            if settings.enableMediaAdapter {
+                switch media.adapterState {
+                case .missing:
+                    adapterInstallOffer
+                case .unavailable(let reason):
+                    Label(reason, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                default:
+                    EmptyView()
+                }
             }
-            Text("Requires the bundled perl bridge (see README) and a relaunch to take effect.")
+            if AdapterMediaController.externalInstallPresent {
+                Button("Remove Installed Adapter") {
+                    try? FileManager.default.removeItem(at: AdapterMediaController.externalDirectory)
+                }
+                .controlSize(.small)
+            }
+            Text("Requires the mediaremote-adapter bridge (bundled or installed below) and a relaunch to take effect.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    /// The bridge exists in no known location. There is no prebuilt release to
+    /// download, so guide the user to the drop-in folder instead: open it in
+    /// Finder plus a link to the upstream instructions.
+    private var adapterInstallOffer: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("The adapter bridge isn't installed, so Now Playing is per-app only. Drop mediaremote-adapter.pl and MediaRemoteAdapter.framework into the adapter folder and relaunch.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Button("Open Adapter Folder") {
+                    let dir = AdapterMediaController.externalDirectory
+                    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                    NSWorkspace.shared.open(dir)
+                }
+                Link("Instructions", destination: URL(string: "https://github.com/ejbills/mediaremote-adapter")!)
+                    .font(.caption)
+            }
+            .controlSize(.small)
         }
     }
 

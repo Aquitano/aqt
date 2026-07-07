@@ -21,6 +21,21 @@ final class AdapterMediaController: MediaControlling {
     var onStreamEnded: (() -> Void)?
     let capabilities: MediaCapabilities = .full
 
+    /// The adapter's write-side sub-commands, which are fork-sensitive (reads come
+    /// from the JSON `stream` this app parses itself). A fork with different names
+    /// is a one-place edit here.
+    private enum Command {
+        static let test = "test"
+        static let stream = "stream"
+        static let send = "send"
+        static let playPause = "playpause"
+        static let next = "next"
+        static let previous = "previous"
+        static let seek = "seek"
+        static let shuffle = "shuffle"
+        static let repeatMode = "repeat"
+    }
+
     private static let perlPath = "/usr/bin/perl"
     private let scriptPath: String
     private let frameworkPath: String
@@ -33,26 +48,54 @@ final class AdapterMediaController: MediaControlling {
 
     init?() {
         guard FileManager.default.fileExists(atPath: Self.perlPath),
-              let script = Bundle.main.url(forResource: "mediaremote-adapter", withExtension: "pl"),
-              let framework = Bundle.main.privateFrameworksURL?
-                .appendingPathComponent("MediaRemoteAdapter.framework"),
-              FileManager.default.fileExists(atPath: framework.path)
+              let artifacts = Self.locateArtifacts()
         else { return nil }
 
-        self.scriptPath = script.path
-        self.frameworkPath = framework.path
+        self.scriptPath = artifacts.script.path
+        self.frameworkPath = artifacts.framework.path
+    }
+
+    /// Where Settings' guided setup drops a user-installed adapter. Checked before
+    /// the bundle so it works on builds without the artifacts and can override a
+    /// bundled copy without rebuilding the app.
+    static var externalDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Notch/adapter", isDirectory: true)
+    }
+
+    /// Both artifacts exist at the external location.
+    static var externalInstallPresent: Bool {
+        let dir = externalDirectory
+        return FileManager.default.fileExists(atPath: dir.appendingPathComponent(scriptName).path)
+            && FileManager.default.fileExists(atPath: dir.appendingPathComponent(frameworkName).path)
+    }
+
+    private static let scriptName = "mediaremote-adapter.pl"
+    private static let frameworkName = "MediaRemoteAdapter.framework"
+
+    private static func locateArtifacts() -> (script: URL, framework: URL)? {
+        if externalInstallPresent {
+            let dir = externalDirectory
+            return (dir.appendingPathComponent(scriptName), dir.appendingPathComponent(frameworkName))
+        }
+        guard let script = Bundle.main.url(forResource: "mediaremote-adapter", withExtension: "pl"),
+              let framework = Bundle.main.privateFrameworksURL?
+                .appendingPathComponent(frameworkName),
+              FileManager.default.fileExists(atPath: framework.path)
+        else { return nil }
+        return (script, framework)
     }
 
     /// The one-shot `test`: spawns perl and waits, which can take hundreds of ms, so
     /// it must run off the main thread. `nonisolated` and reads only immutable paths.
     nonisolated func probe() -> Bool {
-        Self.runOneShot(arguments: [scriptPath, frameworkPath, "test"]) == 0
+        Self.runOneShot(arguments: [scriptPath, frameworkPath, Command.test]) == 0
     }
 
     func start() {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: Self.perlPath)
-        process.arguments = [scriptPath, frameworkPath, "stream"]
+        process.arguments = [scriptPath, frameworkPath, Command.stream]
 
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -103,12 +146,12 @@ final class AdapterMediaController: MediaControlling {
     func send(_ command: MediaCommand) {
         let args: [String]
         switch command {
-        case .playPause: args = [scriptPath, frameworkPath, "send", "playpause"]
-        case .next: args = [scriptPath, frameworkPath, "send", "next"]
-        case .previous: args = [scriptPath, frameworkPath, "send", "previous"]
-        case let .seek(position): args = [scriptPath, frameworkPath, "seek", String(Int(position))]
-        case .toggleShuffle: args = [scriptPath, frameworkPath, "shuffle"]
-        case .toggleRepeat: args = [scriptPath, frameworkPath, "repeat"]
+        case .playPause: args = [scriptPath, frameworkPath, Command.send, Command.playPause]
+        case .next: args = [scriptPath, frameworkPath, Command.send, Command.next]
+        case .previous: args = [scriptPath, frameworkPath, Command.send, Command.previous]
+        case let .seek(position): args = [scriptPath, frameworkPath, Command.seek, String(Int(position))]
+        case .toggleShuffle: args = [scriptPath, frameworkPath, Command.shuffle]
+        case .toggleRepeat: args = [scriptPath, frameworkPath, Command.repeatMode]
         }
         DispatchQueue.global(qos: .userInitiated).async {
             _ = Self.runOneShot(arguments: args)

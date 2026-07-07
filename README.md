@@ -67,19 +67,31 @@ silently falls back to AppleScript.
 
 ### Enabling system-wide Now Playing
 
-1. Get a known-good `mediaremote-adapter.pl` and a prebuilt `MediaRemoteAdapter.framework`
-   from [ejbills/mediaremote-adapter](https://github.com/ejbills/mediaremote-adapter) (pin a
-   known-good commit — see the risk register in `BUILD_PLAN.md`).
-2. Add `mediaremote-adapter.pl` to the app target as a **bundle resource**.
-3. Add `MediaRemoteAdapter.framework` under **Contents/Frameworks**, code-signed, and
+The controller looks for the two artifacts in `~/Library/Application Support/Notch/adapter/`
+first, then in the app bundle. So there are two ways in:
+
+**Without rebuilding (recommended):** Settings → Media shows an install offer when the bridge
+is missing. "Open Adapter Folder" opens the drop-in location; put `mediaremote-adapter.pl` and
+a built `MediaRemoteAdapter.framework` from
+[ejbills/mediaremote-adapter](https://github.com/ejbills/mediaremote-adapter) there (pin a
+known-good commit — see the risk register in `BUILD_PLAN.md`) and relaunch. If the framework
+was downloaded rather than built locally, clear quarantine first or macOS will refuse to load
+it: `xattr -dr com.apple.quarantine ~/Library/Application\ Support/Notch/adapter`. "Remove
+Installed Adapter" deletes the folder and reverts to per-app scripting on relaunch.
+
+**Bundled into the app:**
+
+1. Add `mediaremote-adapter.pl` to the app target as a **bundle resource**.
+2. Add `MediaRemoteAdapter.framework` under **Contents/Frameworks**, code-signed, and
    **NOT linked** (do not add it to "Link Binary With Libraries" — hardened runtime / library
    validation will reject a linked, non-platform framework). In Xcode: "Embed Without Signing"
    is wrong here; embed it and ensure it's signed but not in the link phase.
-4. Keep `enableMediaAdapter` on in Settings (default). Relaunch.
+3. Keep `enableMediaAdapter` on in Settings (default). Relaunch.
 
 If the control sub-commands (`send`/`seek`/`shuffle`/`repeat`) don't match your pinned fork,
-adjust the argument strings in `Notch/Managers/Media/AdapterMediaController.swift` — **reads**
-go through the JSON `stream` which this app parses itself, so they're independent of those names.
+they live in one place: the `Command` enum in
+`Notch/Managers/Media/AdapterMediaController.swift` — **reads** go through the JSON `stream`
+which this app parses itself, so they're independent of those names.
 
 ## Architecture
 
