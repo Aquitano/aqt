@@ -59,6 +59,10 @@ struct AgentConfigInstaller {
     // (Claude runs a matcher-less group for every tool).
     private static let claudeHookEvents = ["Notification", "Stop", "SessionStart", "SessionEnd",
                                            "UserPromptSubmit", "PreToolUse", "PostToolUse"]
+    /// Installed separately: PermissionRequest blocks on the user's in-notch
+    /// decision, so it carries a long timeout instead of the 5s bound above.
+    private static let claudePermissionEvent = "PermissionRequest"
+    private static var claudeAllHookEvents: [String] { claudeHookEvents + [claudePermissionEvent] }
     private static let codexHookEvents = ["PermissionRequest", "PostToolUse", "SessionStart", "Stop", "UserPromptSubmit"]
     /// Distinctive tokens in our hook commands: the stable-path launcher binary
     /// (`notch-agent-hook`) and the legacy `… --agent-hook` flag. Matching these,
@@ -121,7 +125,7 @@ struct AgentConfigInstaller {
     /// predates the precise tool events). Requiring all of them lets start() upgrade
     /// an existing install in place the next time the app launches.
     func claudeBridgeInstalled() -> Bool {
-        hasCommand(at: claudeSettingsURL, events: Self.claudeHookEvents,
+        hasCommand(at: claudeSettingsURL, events: Self.claudeAllHookEvents,
                    matching: { $0.contains("notch-agent-hook") }, requireAll: true)
     }
 
@@ -134,10 +138,14 @@ struct AgentConfigInstaller {
         // the user's Claude turn to the 60s default.
         try installHooks(at: claudeSettingsURL, events: Self.claudeHookEvents,
                          command: launcherCommand(source: nil), timeout: 5)
+        // The permission hook blocks up to ~2 min on the user's decision; the
+        // timeout only has to outlast the client's own 120s wait.
+        try installHooks(at: claudeSettingsURL, events: [Self.claudePermissionEvent],
+                         command: launcherCommand(source: nil), timeout: 150)
     }
 
     func removeClaudeHooks() throws {
-        try removeHooks(at: claudeSettingsURL, events: Self.claudeHookEvents)
+        try removeHooks(at: claudeSettingsURL, events: Self.claudeAllHookEvents)
     }
 
     // MARK: - Codex (~/.codex/hooks.json)

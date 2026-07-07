@@ -13,7 +13,11 @@ struct AgentsView: View {
                     usagePanel(usage)
                 }
                 ForEach(sessionRows) { row in
-                    AgentRowView(session: row.session) { agents.jumpToTerminal(row.session) }
+                    AgentRowView(
+                        session: row.session,
+                        onJump: { agents.jumpToTerminal(row.session) },
+                        onPermission: { allow in agents.respondToPermission(row.session, allow: allow) }
+                    )
                         .padding(.leading, CGFloat(row.depth) * 22)
                         .opacity(row.depth > 0 ? 0.92 : 1)
                 }

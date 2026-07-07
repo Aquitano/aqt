@@ -164,7 +164,31 @@ final class AgentManager: ObservableObject {
             return
         }
         guard let kind = AgentKind(rawValue: envelope.agent) else { return }
+        // With in-notch approval off, release the blocked hook immediately so the
+        // terminal prompt appears without delay; the Notification hook that follows
+        // still produces the normal needs-attention surface.
+        if envelope.hook == "PermissionRequest", let requestId = envelope.requestId,
+           !settings.agentPermissionApproval {
+            socketServer.respond(requestId: requestId, decision: "ask")
+            return
+        }
         provider(for: kind)?.ingest(envelope, pid: pid)
+    }
+
+    /// Answer a session's pending permission request from the notch. On delivery,
+    /// feed a synthetic hook so the row leaves needs-attention at once instead of
+    /// waiting for Claude's next real hook.
+    func respondToPermission(_ session: AgentSession, allow: Bool) {
+        guard let requestId = session.permissionRequestId else { return }
+        socketServer.respond(requestId: requestId, decision: allow ? "allow" : "deny") { [weak self] delivered in
+            guard delivered else { return }
+            Task { @MainActor in
+                self?.provider(for: session.kind)?.ingest(HookEnvelope(
+                    agent: session.kind.rawValue, hook: "PermissionResolved", sessionId: session.id,
+                    cwd: session.cwd, pid: session.pid
+                ), pid: session.pid ?? 0)
+            }
+        }
     }
 
     private func updateSessions(_ sessions: [AgentSession], for kind: AgentKind) {

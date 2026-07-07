@@ -91,6 +91,27 @@ final class TranscriptParserTests: XCTestCase {
         XCTAssertNil(state.prompt)
     }
 
+    func testInterruptEntryIsIdle() {
+        // Esc writes a synthetic "[Request interrupted by user]" user entry and no
+        // Stop hook fires; it must read as idle, not a busy prompt.
+        let state = TranscriptParser.parse(transcript(
+            #"{"type":"user","message":{"content":"long task"}}"#,
+            #"{"type":"assistant","message":{"stop_reason":"tool_use","content":[{"type":"tool_use","name":"Bash"}]}}"#,
+            #"{"type":"user","message":{"content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]}}"#
+        ))
+        XCTAssertEqual(state.busy, .idle)
+        XCTAssertNil(state.verb)
+        XCTAssertEqual(state.prompt, "long task")
+    }
+
+    func testInterruptMarkerIsNotAPrompt() {
+        let state = TranscriptParser.parse(transcript(
+            #"{"type":"user","message":{"content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#
+        ))
+        XCTAssertEqual(state.busy, .idle)
+        XCTAssertNil(state.prompt)
+    }
+
     func testStatusComesFromNewestAssistantOnly() {
         // The reverse scan locks status on the newest (last) assistant: a terminal
         // end_turn after an earlier tool_use is idle, not editing.

@@ -2,9 +2,10 @@ import Darwin
 import Foundation
 
 /// Listens on `~/.notch/agents.sock` for line-delimited `HookEnvelope` JSON from
-/// the hook/notify clients. Fire-and-forget: each client connects, writes one
-/// line, and closes; there is no response dance (we watch, we don't approve), so
-/// this stays far simpler than a request/response broker.
+/// the hook/notify clients. Almost all traffic is fire-and-forget: the client
+/// connects, writes one line, and closes. The one exception is a blocking
+/// `PermissionRequest` hook, which keeps its connection open until `respond` is
+/// called with the user's decision (or the pending window lapses).
 ///
 /// All socket I/O runs on a private queue; decoded envelopes are handed to the
 /// handler, which hops to the main actor. Push-based via `DispatchSource` — no
@@ -18,6 +19,11 @@ final class AgentSocketServer: @unchecked Sendable {
     private var listenFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
     private var handler: (@Sendable (HookEnvelope, pid_t) -> Void)?
+    /// Open connections of blocked PermissionRequest hooks, by request id
+    /// (guarded by `queue`). Closed unanswered after `pendingWindow` — the hook
+    /// client treats that as "ask" and Claude falls back to its terminal prompt.
+    private var pendingReplies: [String: Int32] = [:]
+    private static let pendingWindow: TimeInterval = 130
 
     /// Bind, listen, and start accepting. `onEnvelope` is invoked on the I/O
     /// queue (its closure is responsible for hopping to the main actor).
@@ -105,7 +111,41 @@ final class AgentSocketServer: @unchecked Sendable {
         acceptSource = nil
         listenFD = -1
         handler = nil
+        for fd in pendingReplies.values { close(fd) }
+        pendingReplies = [:]
         unlink(AgentSocket.url.path)
+    }
+
+    // MARK: - Permission replies
+
+    /// Answer a blocked PermissionRequest hook. `decision` is "allow" / "deny" /
+    /// "ask". Completion (on main) reports whether the reply was delivered —
+    /// false when the hook already timed out and Claude is showing its own prompt.
+    func respond(requestId: String, decision: String, completion: @escaping @Sendable (Bool) -> Void = { _ in }) {
+        queue.async { [weak self] in
+            guard let self, let fd = self.pendingReplies.removeValue(forKey: requestId) else {
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            var line = Data("{\"decision\":\"\(decision)\"}".utf8)
+            line.append(0x0A)
+            let written = line.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+            close(fd)
+            DispatchQueue.main.async { completion(written == line.count) }
+        }
+    }
+
+    private func registerPendingReply(_ requestId: String, fd: Int32) {
+        queue.async { [weak self] in
+            guard let self else { close(fd); return }
+            // A duplicate request id would orphan the previous fd; close it first.
+            if let stale = self.pendingReplies.removeValue(forKey: requestId) { close(stale) }
+            self.pendingReplies[requestId] = fd
+            self.queue.asyncAfter(deadline: .now() + Self.pendingWindow) { [weak self] in
+                guard let self, let stale = self.pendingReplies.removeValue(forKey: requestId) else { return }
+                close(stale)
+            }
+        }
     }
 
     // MARK: - Accept / read
@@ -128,7 +168,8 @@ final class AgentSocketServer: @unchecked Sendable {
     }
 
     private func handleClient(_ client: Int32, handler: (@Sendable (HookEnvelope, pid_t) -> Void)?) {
-        defer { close(client) }
+        var keepOpen = false
+        defer { if !keepOpen { close(client) } }
 
         // Read with a short timeout so a hung peer can't wedge its io slot.
         let flags = fcntl(client, F_GETFL, 0)
@@ -143,6 +184,11 @@ final class AgentSocketServer: @unchecked Sendable {
             guard let envelope = try? JSONDecoder().decode(HookEnvelope.self, from: Data(line)) else {
                 continue
             }
+            // A blocking permission hook stays connected awaiting the decision.
+            if envelope.hook == "PermissionRequest", let requestId = envelope.requestId {
+                registerPendingReply(requestId, fd: client)
+                keepOpen = true
+            }
             let pid = envelope.pid.map { pid_t($0) } ?? peer
             handler?(envelope, pid)
         }
@@ -155,6 +201,10 @@ final class AgentSocketServer: @unchecked Sendable {
             let n = buffer.withUnsafeMutableBytes { read(fd, $0.baseAddress, $0.count) }
             guard n > 0 else { break } // 0 = EOF, <0 = error/timeout
             data.append(contentsOf: buffer[0..<n])
+            // A trailing newline ends the batch: every client writes whole lines,
+            // and returning here (instead of waiting for EOF) both avoids the 2s
+            // timeout and leaves a blocking permission client's connection usable.
+            if data.last == 0x0A { break }
             if data.count > 1 << 20 { break } // 1 MB sanity cap
         }
         return data

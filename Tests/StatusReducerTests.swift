@@ -115,6 +115,24 @@ final class StatusReducerTests: XCTestCase {
         XCTAssertEqual(resolved.status, .needsAttention)
     }
 
+    // MARK: - Permission requests
+
+    func testPermissionRequestNeedsAttention() {
+        // The blocking hook means the session is waiting on the user, whatever the
+        // transcript structure says.
+        let resolved = StatusReducer.reduce(
+            hook: hook("PermissionRequest", at: later, message: "Bash: rm -rf build"),
+            scan: scan(at: t0, busy: .tool)
+        )
+        XCTAssertEqual(resolved.status, .needsAttention)
+    }
+
+    func testPermissionResolvedIsRunning() {
+        let resolved = StatusReducer.reduce(hook: hook("PermissionResolved", at: later), scan: nil)
+        XCTAssertEqual(resolved.status, .running)
+        XCTAssertEqual(resolved.verb, "Thinking")
+    }
+
     // MARK: - Stop / SessionStart
 
     func testStopIsFinished() {

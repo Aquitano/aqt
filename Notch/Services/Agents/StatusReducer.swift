@@ -8,6 +8,8 @@ struct HookSnapshot: Equatable, Sendable {
     let time: Date
     let message: String?
     let tool: String?
+    /// Set on PermissionRequest hooks: the id the decision reply must carry.
+    var requestId: String? = nil
 }
 
 /// Decides a session's status + activity verb from the latest hook and the
@@ -51,8 +53,12 @@ enum StatusReducer {
                 // showing "needs you". A genuine prompt clears on its own once the
                 // user answers and the transcript advances past the hook time.
                 if !isIdleNotification(hook.message) { return Resolved(status: .needsAttention, verb: nil) }
+            case "PermissionRequest":
+                // The hook client is blocked on our allow/deny reply — the session
+                // is waiting on the user regardless of what the transcript says.
+                return Resolved(status: .needsAttention, verb: nil)
             case "Stop", "SessionEnd": return Resolved(status: .finished, verb: nil)
-            case "UserPromptSubmit", "PostToolUse":
+            case "UserPromptSubmit", "PostToolUse", "PermissionResolved":
                 // Turn just started, or a tool just finished and the model is working
                 // on what to do next.
                 return Resolved(status: .running, verb: "Thinking")

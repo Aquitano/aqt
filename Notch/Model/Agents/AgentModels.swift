@@ -97,6 +97,9 @@ struct AgentSession: Identifiable, Equatable, Sendable {
     var activityVerb: String?
     /// Parent session id when this is a sub-agent (Task), for grouping.
     var parentSessionID: String?
+    /// Pending interactive permission request (Claude's PermissionRequest hook is
+    /// blocked on our reply); non-nil enables the Approve/Deny row actions.
+    var permissionRequestId: String?
 }
 
 /// Tools whose execution applies a file edit, so a session running one reads as
@@ -172,6 +175,8 @@ struct HookEnvelope: Codable, Sendable {
     var project: String?
     /// Parent session id when this is a sub-agent, for grouping.
     var parent: String?
+    /// Correlates a blocking PermissionRequest hook with the app's decision reply.
+    var requestId: String?
 
     // Account-wide usage (status == "usage"), captured from Claude's statusLine.
     var fiveHourUsed: Double?

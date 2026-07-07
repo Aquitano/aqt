@@ -18,8 +18,10 @@ final class SessionReconcilerTests: XCTestCase {
         )
     }
 
-    private func hook(_ name: String, at: Date, message: String? = nil, tool: String? = nil) -> HookSnapshot {
-        HookSnapshot(name: name, time: at, message: message, tool: tool)
+    private func hook(
+        _ name: String, at: Date, message: String? = nil, tool: String? = nil, requestId: String? = nil
+    ) -> HookSnapshot {
+        HookSnapshot(name: name, time: at, message: message, tool: tool, requestId: requestId)
     }
 
     private func run(_ build: (inout SessionReconciler.Inputs) -> Void) -> SessionReconciler.Output {
@@ -166,6 +168,32 @@ final class SessionReconcilerTests: XCTestCase {
             $0.emittedAttentionAt = second.emittedAttentionAt
         }
         XCTAssertEqual(third.events.map(\.kind), [.needsAttention])
+    }
+
+    func testPermissionRequestStampsIdAndFiresAttention() {
+        let out = run {
+            $0.scan = [scanned("s1", at: t0)]
+            $0.hookState = ["s1": hook("PermissionRequest", at: later, message: "Bash: rm -rf build", requestId: "r1")]
+        }
+        XCTAssertEqual(out.sessions["s1"]?.status, .needsAttention)
+        XCTAssertEqual(out.sessions["s1"]?.permissionRequestId, "r1")
+        XCTAssertEqual(out.sessions["s1"]?.detail, "Bash: rm -rf build")
+        XCTAssertEqual(out.events.map(\.kind), [.needsAttention])
+    }
+
+    func testPermissionRequestIdClearsOnNewerHook() {
+        // Once any newer hook lands (answered, or timed out into the terminal
+        // prompt and the turn moved on), the Approve/Deny affordance must go away.
+        let out = run {
+            $0.scan = [scanned("s1", at: t0)]
+            $0.hookState = ["s1": hook("PermissionResolved", at: later)]
+            $0.previous = ["s1": AgentSession(
+                id: "s1", kind: .claudeCode, project: "proj", cwd: "/Users/x/proj",
+                status: .needsAttention, startedAt: t0, lastActivity: t0, permissionRequestId: "r1"
+            )]
+        }
+        XCTAssertNil(out.sessions["s1"]?.permissionRequestId)
+        XCTAssertEqual(out.sessions["s1"]?.status, .running)
     }
 
     func testStartedAtCarriesForwardFromPrevious() {

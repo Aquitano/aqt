@@ -67,7 +67,19 @@ enum TranscriptParser {
                     if !text.isEmpty { response = agentClip(text) }
                 }
             case "user":
-                if !foundStatus { status = .running; verb = "Thinking"; foundStatus = true }
+                if !foundStatus {
+                    // Esc writes a "[Request interrupted by user]" user entry and no
+                    // Stop hook ever fires, so without this the session lingers busy
+                    // until the next action or process death.
+                    if isInterrupt(obj["message"] as? [String: Any]) {
+                        status = .idle
+                        verb = nil
+                    } else {
+                        status = .running
+                        verb = "Thinking"
+                    }
+                    foundStatus = true
+                }
                 if prompt == nil, let message = obj["message"] as? [String: Any],
                    let text = userPrompt(message) {
                     prompt = agentClip(text)
@@ -80,6 +92,16 @@ enum TranscriptParser {
         return TranscriptState(branch: branch, busy: status, verb: verb, prompt: prompt, response: response)
     }
 
+    /// The synthetic user entry Claude writes when the user presses Esc mid-turn
+    /// ("[Request interrupted by user]" / "...for tool use]"). Ends the turn.
+    private static func isInterrupt(_ message: [String: Any]?) -> Bool {
+        guard let content = message?["content"] as? [[String: Any]] else { return false }
+        return content.contains {
+            ($0["type"] as? String) == "text"
+                && ($0["text"] as? String)?.hasPrefix("[Request interrupted by user") == true
+        }
+    }
+
     /// A user transcript entry is a real prompt only when its content is plain
     /// text — entries carrying a `tool_result` are tool output, not prompts.
     private static func userPrompt(_ message: [String: Any]) -> String? {
@@ -88,6 +110,7 @@ enum TranscriptParser {
         }
         guard let content = message["content"] as? [[String: Any]] else { return nil }
         if content.contains(where: { ($0["type"] as? String) == "tool_result" }) { return nil }
+        if isInterrupt(message) { return nil }
         let text = content
             .compactMap { ($0["type"] as? String) == "text" ? $0["text"] as? String : nil }
             .joined(separator: " ")

@@ -160,7 +160,10 @@ final class ClaudeCodeProvider: AgentProviding {
             hookCwd[sid] = nil
         } else {
             endedSessionIDs.remove(sid)
-            hookState[sid] = HookSnapshot(name: envelope.hook, time: Date(), message: envelope.message, tool: envelope.tool)
+            hookState[sid] = HookSnapshot(
+                name: envelope.hook, time: Date(), message: envelope.message,
+                tool: envelope.tool, requestId: envelope.requestId
+            )
         }
         rebuild()
         scheduleReconcile() // fill pid / branch / liveness
