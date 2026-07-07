@@ -102,9 +102,11 @@ Settings/       Settings (UserDefaults model), SettingsView
 **Concurrency:** managers are `@MainActor ObservableObject`s; heavy work (image decode,
 `system_profiler`, perl I/O, file copies) runs off-main and hops back only to publish.
 
-**No timers.** Everything is push-based (Combine, NotificationCenter, DistributedNotificationCenter,
-IOKit/CoreAudio run-loop sources, async sequences). Activity TTLs are one-shot `Task.sleep`s.
-The panel is `orderOut` when fully hidden and pauses work on occlusion.
+**Almost no timers.** Nearly everything is push-based (Combine, NotificationCenter,
+DistributedNotificationCenter, IOKit/CoreAudio run-loop sources, async sequences). Activity
+TTLs are one-shot `Task.sleep`s. The two exceptions are slow refresh cadences with no push
+source: weather (15 min) and the calendar countdown (5 min). The panel is `orderOut` when
+fully hidden and pauses work on occlusion.
 
 ## Known constraints
 
