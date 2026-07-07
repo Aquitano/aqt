@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var windowController: NotchWindowController!
     private var statusItem: NSStatusItem!
+    private var onboardingWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -19,10 +20,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.start()
         env.state.showCompact()
 
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(showOnboarding), name: .showOnboarding, object: nil
+        )
+        if !env.settings.hasCompletedOnboarding {
+            showOnboarding()
+        }
+
         Log.app.info("Notch launched")
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
+
+    // MARK: - Onboarding
+
+    /// First-run welcome tour; also reachable from Settings via `.showOnboarding`.
+    @objc private func showOnboarding() {
+        if onboardingWindow == nil {
+            let root = OnboardingView { [weak self] in
+                self?.onboardingWindow?.close()
+            }
+            .injectNotchEnvironment(env)
+
+            let window = NSWindow(contentViewController: NSHostingController(rootView: root))
+            window.styleMask = [.titled, .closable, .fullSizeContentView]
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.title = "Welcome to Notch"
+            // Closing only hides it; keep the instance so the tour can reopen.
+            window.isReleasedWhenClosed = false
+            window.center()
+            onboardingWindow = window
+        }
+        onboardingWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     // MARK: - Status item
 
@@ -94,4 +126,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func quit() {
         NSApp.terminate(nil)
     }
+}
+
+extension Notification.Name {
+    /// Present the welcome tour (posted by Settings; AppDelegate owns the window).
+    static let showOnboarding = Notification.Name("app.notch.showOnboarding")
 }

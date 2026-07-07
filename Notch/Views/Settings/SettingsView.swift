@@ -35,6 +35,9 @@ struct SettingsView: View {
             // this toggle and the in-notch one stay in sync.
             Toggle("Launch at Login", isOn: $settings.launchAtLogin)
             Toggle("Haptic feedback", isOn: $settings.hapticFeedback)
+            Button("Show Welcome Tour…") {
+                NotificationCenter.default.post(name: .showOnboarding, object: nil)
+            }
         }
     }
 
