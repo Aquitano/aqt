@@ -8,6 +8,9 @@ struct SettingsView: View {
     @EnvironmentObject private var settings: Settings
     @EnvironmentObject private var agents: AgentManager
     @EnvironmentObject private var media: MediaManager
+    @EnvironmentObject private var shortcuts: ShortcutsManager
+
+    @State private var shortcutToPin = ""
 
     var body: some View {
         Form {
@@ -235,7 +238,57 @@ struct SettingsView: View {
                 Text(WeatherSnapshot.TemperatureUnit.fahrenheit.suffix)
                     .tag(WeatherSnapshot.TemperatureUnit.fahrenheit)
             }
+
+            Toggle("Clock", isOn: $settings.showClockWidget)
+            if settings.showClockWidget {
+                TextField("Second time zone", text: $settings.clockSecondaryTimeZone,
+                          prompt: Text("e.g. Europe/Berlin (optional)"))
+            }
+
+            Toggle("Shortcuts", isOn: $settings.showShortcutsWidget)
+            if settings.showShortcutsWidget {
+                pinnedShortcutsEditor
+            }
+
+            Toggle("Quick note", isOn: $settings.showNoteWidget)
         }
+    }
+
+    private var pinnedShortcutsEditor: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(settings.pinnedShortcuts, id: \.self) { name in
+                HStack {
+                    Text(name)
+                    Spacer()
+                    Button {
+                        settings.pinnedShortcuts.removeAll { $0 == name }
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Unpin \(name)")
+                }
+            }
+
+            HStack {
+                Picker("Pin a shortcut", selection: $shortcutToPin) {
+                    Text("Choose…").tag("")
+                    ForEach(shortcuts.available.filter { !settings.pinnedShortcuts.contains($0) },
+                            id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                .labelsHidden()
+                Button("Pin") {
+                    guard !shortcutToPin.isEmpty else { return }
+                    settings.pinnedShortcuts.append(shortcutToPin)
+                    shortcutToPin = ""
+                }
+                .disabled(shortcutToPin.isEmpty)
+            }
+        }
+        .onAppear { shortcuts.refreshAvailable() }
     }
 
     // MARK: - Tray

@@ -344,5 +344,18 @@ final class NotchWindowController {
         panel.presentingShareSheet = false
     }
 
+    // MARK: - Text-editing key latch
+
+    /// Mirror of the share-sheet latch for in-panel text editing (quick note):
+    /// key only while the editor holds focus, passive overlay otherwise.
+    func beginTextEditing() {
+        panel.editingText = true
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    func endTextEditing() {
+        panel.editingText = false
+    }
+
     var window: NSWindow { panel }
 }

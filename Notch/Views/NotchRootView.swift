@@ -119,7 +119,7 @@ struct NotchRootView: View {
             presentation: state.presentation,
             notch: notchSize,
             tab: state.expandedTab,
-            hasInfoRow: settings.showWeatherWidget || settings.showCalendarWidget,
+            hasInfoRow: settings.hasInfoRowWidgets,
             trayEmpty: tray.items.isEmpty,
             compact: compactContent,
             dropActive: state.isDropActive
@@ -131,7 +131,7 @@ struct NotchRootView: View {
             presentation: .expanded,
             notch: notchSize,
             tab: state.expandedTab,
-            hasInfoRow: settings.showWeatherWidget || settings.showCalendarWidget,
+            hasInfoRow: settings.hasInfoRowWidgets,
             trayEmpty: tray.items.isEmpty,
             compact: .media,
             dropActive: state.isDropActive

@@ -39,6 +39,11 @@ final class Settings: ObservableObject {
         static let hotkeyEnabled = "hotkeyEnabled"
         static let hotkeyKeyCode = "hotkeyKeyCode"
         static let hotkeyModifiers = "hotkeyModifiers"
+        static let showClockWidget = "showClockWidget"
+        static let clockSecondaryTimeZone = "clockSecondaryTimeZone"
+        static let showShortcutsWidget = "showShortcutsWidget"
+        static let pinnedShortcuts = "pinnedShortcuts"
+        static let showNoteWidget = "showNoteWidget"
     }
 
     @Published var showHUD: Bool { didSet { defaults.set(showHUD, forKey: Key.showHUD) } }
@@ -79,6 +84,18 @@ final class Settings: ObservableObject {
     /// recording UI yet; changeable via `defaults write` until one exists.
     @Published var hotkeyKeyCode: Int { didSet { defaults.set(hotkeyKeyCode, forKey: Key.hotkeyKeyCode) } }
     @Published var hotkeyModifiers: Int { didSet { defaults.set(hotkeyModifiers, forKey: Key.hotkeyModifiers) } }
+    @Published var showClockWidget: Bool { didSet { defaults.set(showClockWidget, forKey: Key.showClockWidget) } }
+    /// Time-zone identifier for the clock tile's second line; empty = none.
+    @Published var clockSecondaryTimeZone: String { didSet { defaults.set(clockSecondaryTimeZone, forKey: Key.clockSecondaryTimeZone) } }
+    @Published var showShortcutsWidget: Bool { didSet { defaults.set(showShortcutsWidget, forKey: Key.showShortcutsWidget) } }
+    @Published var pinnedShortcuts: [String] { didSet { defaults.set(pinnedShortcuts, forKey: Key.pinnedShortcuts) } }
+    @Published var showNoteWidget: Bool { didSet { defaults.set(showNoteWidget, forKey: Key.showNoteWidget) } }
+
+    /// Widgets occupying the expanded home's info row. Drives both the grid and
+    /// the panel height, so the two can never disagree about an empty row.
+    var hasInfoRowWidgets: Bool {
+        showWeatherWidget || showCalendarWidget || showShortcutsWidget || showNoteWidget
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -112,6 +129,11 @@ final class Settings: ObservableObject {
             Key.hotkeyEnabled: false,
             Key.hotkeyKeyCode: 45,       // kVK_ANSI_N
             Key.hotkeyModifiers: 6144,   // controlKey | optionKey
+            Key.showClockWidget: false,
+            Key.clockSecondaryTimeZone: "",
+            Key.showShortcutsWidget: false,
+            Key.pinnedShortcuts: [String](),
+            Key.showNoteWidget: false,
         ])
         self.showHUD = defaults.bool(forKey: Key.showHUD)
         self.temperatureUnit = WeatherSnapshot.TemperatureUnit(
@@ -147,5 +169,10 @@ final class Settings: ObservableObject {
         self.hotkeyEnabled = defaults.bool(forKey: Key.hotkeyEnabled)
         self.hotkeyKeyCode = defaults.integer(forKey: Key.hotkeyKeyCode)
         self.hotkeyModifiers = defaults.integer(forKey: Key.hotkeyModifiers)
+        self.showClockWidget = defaults.bool(forKey: Key.showClockWidget)
+        self.clockSecondaryTimeZone = defaults.string(forKey: Key.clockSecondaryTimeZone) ?? ""
+        self.showShortcutsWidget = defaults.bool(forKey: Key.showShortcutsWidget)
+        self.pinnedShortcuts = defaults.stringArray(forKey: Key.pinnedShortcuts) ?? []
+        self.showNoteWidget = defaults.bool(forKey: Key.showNoteWidget)
     }
 }

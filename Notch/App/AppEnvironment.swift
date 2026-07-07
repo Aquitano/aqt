@@ -30,6 +30,8 @@ final class AppEnvironment: ObservableObject {
     let weather: WeatherManager
     let bluetooth: BluetoothBatteryManager
     let focus: FocusManager
+    let shortcuts: ShortcutsManager
+    let note: NoteManager
 
     /// Set by the AppDelegate once the window exists; used to anchor the AirDrop
     /// share sheet to a key-capable window. Weak to avoid a retain cycle.
@@ -65,6 +67,8 @@ final class AppEnvironment: ObservableObject {
         self.weather = WeatherManager(settings: settings)
         self.bluetooth = BluetoothBatteryManager(activities: activities)
         self.focus = FocusManager(activities: activities)
+        self.shortcuts = ShortcutsManager(activities: activities)
+        self.note = NoteManager(persistence: persistence)
     }
 
     /// Start all event-driven subscriptions. Called after the window is up.
@@ -192,5 +196,7 @@ extension View {
             .environmentObject(env.weather)
             .environmentObject(env.bluetooth)
             .environmentObject(env.focus)
+            .environmentObject(env.shortcuts)
+            .environmentObject(env.note)
     }
 }
