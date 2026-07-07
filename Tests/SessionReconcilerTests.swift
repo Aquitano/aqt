@@ -196,6 +196,21 @@ final class SessionReconcilerTests: XCTestCase {
         XCTAssertEqual(out.sessions["s1"]?.status, .running)
     }
 
+    func testPermissionRequestIdClearsOnTimeoutButNeedsAttentionRemains() {
+        let out = run {
+            $0.scan = [scanned("s1", at: t0, busy: .tool)]
+            $0.hookState = ["s1": hook("PermissionTimedOut", at: later)]
+            $0.previous = ["s1": AgentSession(
+                id: "s1", kind: .claudeCode, project: "proj", cwd: "/Users/x/proj",
+                status: .needsAttention, startedAt: t0, lastActivity: t0,
+                detail: "Bash: rm -rf build", permissionRequestId: "r1"
+            )]
+        }
+        XCTAssertNil(out.sessions["s1"]?.permissionRequestId)
+        XCTAssertEqual(out.sessions["s1"]?.status, .needsAttention)
+        XCTAssertEqual(out.sessions["s1"]?.detail, "Bash: rm -rf build")
+    }
+
     func testStartedAtCarriesForwardFromPrevious() {
         let prior = AgentSession(id: "s1", kind: .claudeCode, project: "proj", cwd: "/Users/x/proj",
                                  status: .running, startedAt: t0, lastActivity: t0)

@@ -26,7 +26,6 @@ final class FocusManager: ObservableObject {
         // Read the current grant without prompting. Prompting here stacks a dialog
         // on top of the location prompt and reads as a freeze; the tile's Enable
         // affordance requests access on demand (mirrors CalendarManager).
-        authorized = INFocusStatusCenter.default.authorizationStatus == .authorized
         refresh()
 
         NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
@@ -56,6 +55,7 @@ final class FocusManager: ObservableObject {
     }
 
     func refresh() {
+        authorized = INFocusStatusCenter.default.authorizationStatus == .authorized
         // Reading focusStatus without authorization spins up a DND XPC connection
         // that immediately fails ("Communication Notifications entitlement"), so
         // skip the query entirely until the user has granted Focus access.

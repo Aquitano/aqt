@@ -133,6 +133,15 @@ final class StatusReducerTests: XCTestCase {
         XCTAssertEqual(resolved.verb, "Thinking")
     }
 
+    func testPermissionTimedOutStillNeedsAttention() {
+        let resolved = StatusReducer.reduce(
+            hook: hook("PermissionTimedOut", at: later),
+            scan: scan(at: t0, busy: .tool)
+        )
+        XCTAssertEqual(resolved.status, .needsAttention)
+        XCTAssertNil(resolved.verb)
+    }
+
     // MARK: - Stop / SessionStart
 
     func testStopIsFinished() {

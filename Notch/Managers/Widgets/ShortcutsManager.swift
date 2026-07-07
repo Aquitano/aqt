@@ -56,12 +56,30 @@ final class ShortcutsManager: ObservableObject {
         } catch {
             return nil
         }
-        // Drain before waiting so a chatty shortcut can't deadlock on a full pipe.
-        let outData = stdout.fileHandleForReading.readDataToEndOfFile()
-        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
+        // Drain both pipes while the process runs. Reading stdout fully before
+        // stderr can still deadlock if the child fills stderr while stdout stays
+        // open.
+        let group = DispatchGroup()
+        let outCapture = PipeCapture()
+        let errCapture = PipeCapture()
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            outCapture.data = stdout.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            errCapture.data = stderr.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
         process.waitUntilExit()
+        group.wait()
         return (process.terminationStatus,
-                String(data: outData, encoding: .utf8) ?? "",
-                String(data: errData, encoding: .utf8) ?? "")
+                String(data: outCapture.data, encoding: .utf8) ?? "",
+                String(data: errCapture.data, encoding: .utf8) ?? "")
     }
+}
+
+private final class PipeCapture: @unchecked Sendable {
+    var data = Data()
 }

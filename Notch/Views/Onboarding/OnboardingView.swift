@@ -10,6 +10,7 @@ struct OnboardingView: View {
     @EnvironmentObject private var calendar: CalendarManager
     @EnvironmentObject private var weather: WeatherManager
     @EnvironmentObject private var focus: FocusManager
+    @EnvironmentObject private var agents: AgentManager
 
     let onFinish: () -> Void
 
@@ -49,7 +50,7 @@ struct OnboardingView: View {
                     toggleLabel(symbol: "power", title: "Launch at login",
                                 subtitle: "Start the notch when you log in.")
                 }
-                Toggle(isOn: $settings.agentsEnabled) {
+                Toggle(isOn: agentsEnabledBinding) {
                     toggleLabel(symbol: "terminal", title: "Watch coding agents",
                                 subtitle: "Follow Claude Code, Codex, and friends from the notch.")
                 }
@@ -136,5 +137,15 @@ struct OnboardingView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var agentsEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { settings.agentsEnabled },
+            set: { enabled in
+                settings.agentsEnabled = enabled
+                if enabled { agents.start() }
+            }
+        )
     }
 }

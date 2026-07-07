@@ -97,6 +97,7 @@ enum SessionReconciler {
             if let prev = input.previous[sid] {
                 session.startedAt = prev.startedAt
                 // Keep previously-captured detail if this cycle didn't see it.
+                session.detail = session.detail ?? prev.detail
                 session.terminalFocusURL = session.terminalFocusURL ?? prev.terminalFocusURL
                 session.terminalName = session.terminalName ?? prev.terminalName
                 session.lastPrompt = session.lastPrompt ?? prev.lastPrompt

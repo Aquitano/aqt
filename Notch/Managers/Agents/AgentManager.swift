@@ -23,6 +23,7 @@ final class AgentManager: ObservableObject {
     private let processLookup = ProcessLookup()
     private var providers: [AgentProviding] = []
     private var sessionsByKind: [AgentKind: [AgentSession]] = [:]
+    private var pendingPermissionRequests: [String: PendingPermission] = [:]
 
     /// Last pill summary signature (count + status + project), so the pill only
     /// re-pops on a real change rather than every transcript write.
@@ -81,6 +82,8 @@ final class AgentManager: ObservableObject {
         let (stream, continuation) = AsyncStream.makeStream(of: (HookEnvelope, pid_t).self)
         socketServer.start { [continuation] envelope, pid in
             continuation.yield((envelope, pid))
+        } onPermissionTimeout: { [weak self] requestId in
+            Task { @MainActor in self?.permissionTimedOut(requestId) }
         }
         Task { @MainActor [weak self] in
             for await (envelope, pid) in stream {
@@ -172,6 +175,11 @@ final class AgentManager: ObservableObject {
             socketServer.respond(requestId: requestId, decision: "ask")
             return
         }
+        if envelope.hook == "PermissionRequest", let requestId = envelope.requestId {
+            pendingPermissionRequests[requestId] = PendingPermission(
+                kind: kind, sessionId: envelope.sessionId, cwd: envelope.cwd, pid: pid
+            )
+        }
         provider(for: kind)?.ingest(envelope, pid: pid)
     }
 
@@ -181,14 +189,28 @@ final class AgentManager: ObservableObject {
     func respondToPermission(_ session: AgentSession, allow: Bool) {
         guard let requestId = session.permissionRequestId else { return }
         socketServer.respond(requestId: requestId, decision: allow ? "allow" : "deny") { [weak self] delivered in
-            guard delivered else { return }
             Task { @MainActor in
-                self?.provider(for: session.kind)?.ingest(HookEnvelope(
-                    agent: session.kind.rawValue, hook: "PermissionResolved", sessionId: session.id,
-                    cwd: session.cwd, pid: session.pid
-                ), pid: session.pid ?? 0)
+                guard let self else { return }
+                if delivered {
+                    self.pendingPermissionRequests[requestId] = nil
+                    self.provider(for: session.kind)?.ingest(HookEnvelope(
+                        agent: session.kind.rawValue, hook: "PermissionResolved", sessionId: session.id,
+                        cwd: session.cwd, pid: session.pid
+                    ), pid: session.pid ?? 0)
+                } else {
+                    self.permissionTimedOut(requestId)
+                }
             }
         }
+    }
+
+    private func permissionTimedOut(_ requestId: String) {
+        guard let pending = pendingPermissionRequests.removeValue(forKey: requestId),
+              let sessionId = pending.sessionId else { return }
+        provider(for: pending.kind)?.ingest(HookEnvelope(
+            agent: pending.kind.rawValue, hook: "PermissionTimedOut", sessionId: sessionId,
+            cwd: pending.cwd, pid: pending.pid
+        ), pid: pending.pid)
     }
 
     private func updateSessions(_ sessions: [AgentSession], for kind: AgentKind) {
@@ -221,4 +243,11 @@ final class AgentManager: ObservableObject {
             project: representative.project, status: status
         )
     }
+}
+
+private struct PendingPermission {
+    let kind: AgentKind
+    let sessionId: String?
+    let cwd: String?
+    let pid: pid_t
 }

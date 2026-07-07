@@ -19,6 +19,7 @@ final class AgentSocketServer: @unchecked Sendable {
     private var listenFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
     private var handler: (@Sendable (HookEnvelope, pid_t) -> Void)?
+    private var permissionTimeoutHandler: (@Sendable (String) -> Void)?
     /// Open connections of blocked PermissionRequest hooks, by request id
     /// (guarded by `queue`). Closed unanswered after `pendingWindow` — the hook
     /// client treats that as "ask" and Claude falls back to its terminal prompt.
@@ -27,8 +28,11 @@ final class AgentSocketServer: @unchecked Sendable {
 
     /// Bind, listen, and start accepting. `onEnvelope` is invoked on the I/O
     /// queue (its closure is responsible for hopping to the main actor).
-    func start(onEnvelope: @escaping @Sendable (HookEnvelope, pid_t) -> Void) {
-        queue.async { [weak self] in self?.bind(onEnvelope) }
+    func start(
+        onEnvelope: @escaping @Sendable (HookEnvelope, pid_t) -> Void,
+        onPermissionTimeout: @escaping @Sendable (String) -> Void = { _ in }
+    ) {
+        queue.async { [weak self] in self?.bind(onEnvelope, onPermissionTimeout: onPermissionTimeout) }
     }
 
     func stop() {
@@ -37,7 +41,10 @@ final class AgentSocketServer: @unchecked Sendable {
 
     // MARK: - Setup
 
-    private func bind(_ onEnvelope: @escaping @Sendable (HookEnvelope, pid_t) -> Void) {
+    private func bind(
+        _ onEnvelope: @escaping @Sendable (HookEnvelope, pid_t) -> Void,
+        onPermissionTimeout: @escaping @Sendable (String) -> Void
+    ) {
         let url = AgentSocket.url
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
@@ -97,6 +104,7 @@ final class AgentSocketServer: @unchecked Sendable {
 
         listenFD = fd
         handler = onEnvelope
+        permissionTimeoutHandler = onPermissionTimeout
 
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         source.setEventHandler { [weak self] in self?.acceptConnections() }
@@ -111,6 +119,7 @@ final class AgentSocketServer: @unchecked Sendable {
         acceptSource = nil
         listenFD = -1
         handler = nil
+        permissionTimeoutHandler = nil
         for fd in pendingReplies.values { close(fd) }
         pendingReplies = [:]
         unlink(AgentSocket.url.path)
@@ -144,6 +153,8 @@ final class AgentSocketServer: @unchecked Sendable {
             self.queue.asyncAfter(deadline: .now() + Self.pendingWindow) { [weak self] in
                 guard let self, let stale = self.pendingReplies.removeValue(forKey: requestId) else { return }
                 close(stale)
+                let handler = self.permissionTimeoutHandler
+                DispatchQueue.main.async { handler?(requestId) }
             }
         }
     }

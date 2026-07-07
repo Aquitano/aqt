@@ -57,6 +57,11 @@ enum StatusReducer {
                 // The hook client is blocked on our allow/deny reply — the session
                 // is waiting on the user regardless of what the transcript says.
                 return Resolved(status: .needsAttention, verb: nil)
+            case "PermissionTimedOut":
+                // The app can no longer answer the blocked hook; Claude has fallen
+                // back to its terminal prompt, so keep the needs-you state but drop
+                // the in-notch Approve/Deny controls.
+                return Resolved(status: .needsAttention, verb: nil)
             case "Stop", "SessionEnd": return Resolved(status: .finished, verb: nil)
             case "UserPromptSubmit", "PostToolUse", "PermissionResolved":
                 // Turn just started, or a tool just finished and the model is working
