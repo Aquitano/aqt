@@ -11,6 +11,9 @@ final class AgentManager: ObservableObject {
     @Published private(set) var sessions: [AgentSession] = []
     /// Account-wide Claude usage limits (when enabled), from the statusLine.
     @Published private(set) var usage: AgentUsage?
+    /// Last enable/install failure, for the Settings UI. Cleared on the next
+    /// successful toggle so stale errors don't linger.
+    @Published private(set) var integrationError: String?
 
     private let activities: ActivityManager
     private let settings: Settings
@@ -92,6 +95,7 @@ final class AgentManager: ObservableObject {
     /// Opt-in: wrap (or unwrap) Claude's statusLine to surface usage limits.
     func setUsageLimits(_ enabled: Bool) {
         let installer = AgentConfigInstaller()
+        integrationError = nil
         do {
             if enabled {
                 try installer.installClaudeUsage()
@@ -103,6 +107,7 @@ final class AgentManager: ObservableObject {
             }
         } catch {
             settings.agentUsageLimits = false
+            integrationError = "Couldn't update Claude usage limits: \(error.localizedDescription)"
             Log.agents.error("usage-limits toggle failed: \(String(describing: error))")
         }
     }
@@ -134,7 +139,16 @@ final class AgentManager: ObservableObject {
     func setEnabled(_ enabled: Bool, for kind: AgentKind) {
         guard let provider = provider(for: kind) else { return }
         objectWillChange.send()
-        if enabled { provider.enable() } else { provider.disable() }
+        integrationError = nil
+        if enabled {
+            do {
+                try provider.enable()
+            } catch {
+                integrationError = "Couldn't enable \(kind.displayName): \(error.localizedDescription)"
+            }
+        } else {
+            provider.disable()
+        }
     }
 
     // MARK: - Routing & reconciliation

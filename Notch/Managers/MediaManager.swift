@@ -12,6 +12,16 @@ final class MediaManager: ObservableObject {
     @Published private(set) var capabilities: MediaCapabilities = []
     @Published private(set) var isAvailable = false
 
+    /// Where the system-wide adapter ended up, for the Settings UI — the toggle
+    /// alone can't show that the adapter was requested but silently fell back.
+    enum AdapterState: Equatable {
+        case notRequested
+        case starting
+        case active
+        case unavailable(String)
+    }
+    @Published private(set) var adapterState: AdapterState = .notRequested
+
     /// Wall-clock of the last snapshot, so views can interpolate the seek bar.
     private(set) var lastUpdate = Date()
 
@@ -39,13 +49,23 @@ final class MediaManager: ObservableObject {
         self.capabilities = controller.capabilities
         Log.media.info("Media controller: \(String(describing: type(of: controller)))")
 
-        if settings.enableMediaAdapter, let adapter = AdapterMediaController() {
+        if settings.enableMediaAdapter {
+            guard let adapter = AdapterMediaController() else {
+                adapterState = .unavailable("The adapter bridge isn't bundled in this build (see README).")
+                return
+            }
+            adapterState = .starting
             Task.detached(priority: .userInitiated) {
-                guard adapter.probe() else {
-                    Log.media.notice("mediaremote-adapter test failed; staying on scripting")
-                    return
+                let probed = adapter.probe()
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    if probed {
+                        self.upgradeToAdapter(adapter)
+                    } else {
+                        self.adapterState = .unavailable("The adapter failed its self-test; using per-app control instead.")
+                        Log.media.notice("mediaremote-adapter test failed; staying on scripting")
+                    }
                 }
-                await MainActor.run { [weak self] in self?.upgradeToAdapter(adapter) }
             }
         }
     }
@@ -56,6 +76,7 @@ final class MediaManager: ObservableObject {
         adapter.start()
         controller = adapter
         capabilities = adapter.capabilities
+        adapterState = .active
         Log.media.info("Media controller upgraded to system-wide adapter")
     }
 
@@ -77,6 +98,7 @@ final class MediaManager: ObservableObject {
         scripting.start()
         controller = scripting
         capabilities = scripting.capabilities
+        adapterState = .unavailable("The adapter stopped; using per-app control instead.")
         Log.media.notice("Media adapter stream died; fell back to scripting")
     }
 

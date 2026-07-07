@@ -86,7 +86,7 @@ final class ClaudeCodeProvider: AgentProviding {
         }
     }
 
-    func enable() {
+    func enable() throws {
         do {
             try installer.installClaudeHooks()
             settings.agentClaudeEnabled = true
@@ -97,6 +97,7 @@ final class ClaudeCodeProvider: AgentProviding {
             // flag off so the UI keeps showing the Enable affordance.
             settings.agentClaudeEnabled = false
             Log.agents.error("Claude hook install failed: \(String(describing: error))")
+            throw error
         }
     }
 

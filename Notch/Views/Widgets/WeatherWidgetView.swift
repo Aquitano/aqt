@@ -15,6 +15,8 @@ struct WeatherWidgetView: View {
                 forecast(snapshot.daily)
             } else if needsLocationAccess {
                 accessPrompt
+            } else if weather.fetchFailed {
+                fetchFailedPrompt
             } else {
                 placeholder
             }
@@ -100,6 +102,32 @@ struct WeatherWidgetView: View {
     }
 
     // MARK: - Access prompt
+
+    /// Authorized but the fetch failed with nothing cached — say so and offer a
+    /// retry instead of the ambiguous em-dash placeholder.
+    private var fetchFailedPrompt: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 22))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.white.opacity(0.6))
+
+            Text("Couldn't load the weather.")
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                weather.refresh()
+            } label: {
+                Text("Retry")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+    }
 
     private var accessPrompt: some View {
         VStack(alignment: .leading, spacing: 8) {

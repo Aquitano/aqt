@@ -9,12 +9,21 @@ import Foundation
 /// clobbering the symlink with a plain file.
 struct AgentConfigInstaller {
 
-    enum InstallerError: Error {
+    enum InstallerError: Error, LocalizedError {
         /// The file exists but could not be read or parsed as a JSON object;
         /// we refuse to overwrite it (that would destroy the user's settings).
         case settingsUnreadable
         /// `hooks` exists but is not a JSON object; refuse to clobber it.
         case unexpectedHooksShape
+
+        var errorDescription: String? {
+            switch self {
+            case .settingsUnreadable:
+                return "The agent's settings file couldn't be parsed, so it was left untouched."
+            case .unexpectedHooksShape:
+                return "The agent's hooks configuration has an unexpected format, so it was left untouched."
+            }
+        }
     }
 
     /// The filesystem root all config paths hang off. Defaults to the user's home

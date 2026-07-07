@@ -7,6 +7,7 @@ import AppKit
 struct SettingsView: View {
     @EnvironmentObject private var settings: Settings
     @EnvironmentObject private var agents: AgentManager
+    @EnvironmentObject private var media: MediaManager
 
     var body: some View {
         Form {
@@ -89,9 +90,16 @@ struct SettingsView: View {
         } header: {
             Text("Coding agents")
         } footer: {
-            Text("Enabling installs an agent's opt-in hooks (e.g. ~/.claude/settings.json) so the notch can watch it; disabling removes them.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                if let error = agents.integrationError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                Text("Enabling installs an agent's opt-in hooks (e.g. ~/.claude/settings.json) so the notch can watch it; disabling removes them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -151,6 +159,11 @@ struct SettingsView: View {
     private var mediaSection: some View {
         Section("Media") {
             Toggle("System-wide Now Playing (adapter)", isOn: $settings.enableMediaAdapter)
+            if settings.enableMediaAdapter, case .unavailable(let reason) = media.adapterState {
+                Label(reason, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
             Text("Requires the bundled perl bridge (see README) and a relaunch to take effect.")
                 .font(.caption)
                 .foregroundStyle(.secondary)

@@ -58,7 +58,7 @@ final class SocketAgentProvider: AgentProviding {
         pruneTask = nil
     }
 
-    func enable() {
+    func enable() throws {
         do {
             try install()
             settings[keyPath: enabledKey] = true
@@ -66,6 +66,7 @@ final class SocketAgentProvider: AgentProviding {
         } catch {
             settings[keyPath: enabledKey] = false
             Log.agents.error("\(self.kind.rawValue) enable failed: \(String(describing: error))")
+            throw error
         }
     }
 

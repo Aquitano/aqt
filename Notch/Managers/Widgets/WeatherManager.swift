@@ -10,6 +10,9 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
 
     @Published private(set) var snapshot: WeatherSnapshot?
     @Published private(set) var authorization: CLAuthorizationStatus = .notDetermined
+    /// The last fetch failed and there is no snapshot to show — distinguishes
+    /// "couldn't load" (offer Retry) from "still loading" in the widget.
+    @Published private(set) var fetchFailed = false
 
     private let settings: Settings
     private let manager = CLLocationManager()
@@ -128,7 +131,10 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
             let response = try JSONDecoder().decode(OpenMeteoResponse.self, from: data)
             let placeName = await cityName(for: location)
             apply(response, unit: unit, placeName: placeName)
+            fetchFailed = false
         } catch {
+            // A stale snapshot beats an error tile; only flag when there's nothing to show.
+            fetchFailed = snapshot == nil
             Log.widgets.error("Weather fetch failed: \(error.localizedDescription)")
         }
     }
