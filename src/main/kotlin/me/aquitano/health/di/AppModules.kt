@@ -20,7 +20,6 @@ import me.aquitano.health.application.metric.cardiovascular.CardiovascularQueryS
 import me.aquitano.health.application.metric.cardiovascular.repository.CardiovascularRepository
 import me.aquitano.health.application.metric.cardiovascular.repository.CardiovascularWriteRepository
 import me.aquitano.health.application.metric.common.MetricWriteService
-import me.aquitano.health.application.metric.common.MetricsQueryService
 import me.aquitano.health.application.metric.dashboard.DashboardQueryService
 import me.aquitano.health.application.metric.scalar.ScalarMetricQueryService
 import me.aquitano.health.application.metric.scalar.ScalarSampleReadRepository
@@ -318,15 +317,6 @@ fun queryServicesModule(database: Database) = module {
             sleepRepository = get(),
             scalarRepository = get(),
             sleepNightService = get(),
-        )
-    }
-    single {
-        MetricsQueryService(
-            activityQueryService = get(),
-            stepQueryService = get(),
-            sleepQueryService = get(),
-            cardiovascularQueryService = get(),
-            dashboardQueryService = get(),
         )
     }
     single {

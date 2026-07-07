@@ -90,7 +90,7 @@ internal fun Route.readRoutes(services: ApplicationServices) {
     }
     get("/api/v2/steps") {
         call.respond<StepSamplesResponse>(
-            services.metricsQueryService.listStepSamples(
+            services.stepQueryService.listStepSamples(
                 call.queryParams()
             )
         )
@@ -105,7 +105,7 @@ internal fun Route.readRoutes(services: ApplicationServices) {
     get("/api/v2/steps/daily") {
         call.respond<StepDailySummariesResponse>(
             HttpStatusCode.OK,
-            services.metricsQueryService.listStepDailySummaries(
+            services.stepQueryService.listStepDailySummaries(
                 call.queryParams(),
                 services.clock.now()
             )
@@ -114,7 +114,7 @@ internal fun Route.readRoutes(services: ApplicationServices) {
     get("/api/v2/activity/summaries") {
         call.respond<ActivitySummariesResponse>(
             HttpStatusCode.OK,
-            services.metricsQueryService.listActivitySummaries(
+            services.activityQueryService.listActivitySummaries(
                 call.queryParams(),
                 services.clock.now()
             )
@@ -122,7 +122,7 @@ internal fun Route.readRoutes(services: ApplicationServices) {
     }.describeActivitySummaryReadOperation()
     get("/api/v2/sleep/sessions") {
         call.respond<SleepSessionsResponse>(
-            services.metricsQueryService.listSleepSessions(
+            services.sleepQueryService.listSleepSessions(
                 call.queryParams()
             )
         )
@@ -137,7 +137,7 @@ internal fun Route.readRoutes(services: ApplicationServices) {
     get("/api/v2/sleep/nights") {
         call.respond<SleepNightsResponse>(
             HttpStatusCode.OK,
-            services.metricsQueryService.listSleepNights(
+            services.sleepQueryService.listSleepNights(
                 call.queryParams(),
                 services.clock.now()
             )
@@ -159,7 +159,7 @@ internal fun Route.readRoutes(services: ApplicationServices) {
     )
     get("/api/v2/blood-pressure") {
         call.respond<BloodPressureMeasurementsResponse>(
-            services.metricsQueryService.listBloodPressure(call.queryParams())
+            services.cardiovascularQueryService.listBloodPressure(call.queryParams())
         )
     }.describeReadOperation(
         operationId = "listBloodPressureMeasurements",
@@ -173,7 +173,7 @@ internal fun Route.readRoutes(services: ApplicationServices) {
     get("/api/v2/dashboard/summary") {
         call.respond<DashboardSummaryResponse>(
             HttpStatusCode.OK,
-            services.metricsQueryService.dashboardSummary(
+            services.dashboardQueryService.dashboardSummary(
                 call.queryParams(),
                 services.clock.now()
             )

@@ -4,7 +4,11 @@ import io.ktor.server.application.*
 import me.aquitano.external.google.GeneratedGoogleHealthClient
 import me.aquitano.external.withings.KtorWithingsClient
 import me.aquitano.health.application.*
-import me.aquitano.health.application.metric.common.MetricsQueryService
+import me.aquitano.health.application.metric.activity.ActivityQueryService
+import me.aquitano.health.application.metric.cardiovascular.CardiovascularQueryService
+import me.aquitano.health.application.metric.dashboard.DashboardQueryService
+import me.aquitano.health.application.metric.sleep.SleepQueryService
+import me.aquitano.health.application.metric.steps.StepQueryService
 import me.aquitano.health.di.queryServicesModule
 import me.aquitano.health.di.repositoriesModule
 import me.aquitano.health.di.servicesModule
@@ -122,7 +126,11 @@ private fun Application.buildApplicationServices(): ApplicationServices {
     val apiKeyHasher by inject<ApiKeyHasher>()
     val clock by inject<UtcClock>()
     val ingestionService by inject<IngestionService>()
-    val metricsQueryService by inject<MetricsQueryService>()
+    val activityQueryService by inject<ActivityQueryService>()
+    val stepQueryService by inject<StepQueryService>()
+    val sleepQueryService by inject<SleepQueryService>()
+    val cardiovascularQueryService by inject<CardiovascularQueryService>()
+    val dashboardQueryService by inject<DashboardQueryService>()
     val sleepSummaryReadService by inject<SleepSummaryReadService>()
     val healthDayQueryService by inject<HealthDayQueryService>()
     val adminService by inject<AdminService>()
@@ -142,7 +150,11 @@ private fun Application.buildApplicationServices(): ApplicationServices {
         apiKeyHasher = apiKeyHasher,
         clock = clock,
         ingestionService = ingestionService,
-        metricsQueryService = metricsQueryService,
+        activityQueryService = activityQueryService,
+        stepQueryService = stepQueryService,
+        sleepQueryService = sleepQueryService,
+        cardiovascularQueryService = cardiovascularQueryService,
+        dashboardQueryService = dashboardQueryService,
         sleepSummaryReadService = sleepSummaryReadService,
         healthDayQueryService = healthDayQueryService,
         adminService = adminService,
@@ -164,7 +176,11 @@ data class ApplicationServices(
     val apiKeyHasher: ApiKeyHasher,
     val clock: UtcClock,
     val ingestionService: IngestionService,
-    val metricsQueryService: MetricsQueryService,
+    val activityQueryService: ActivityQueryService,
+    val stepQueryService: StepQueryService,
+    val sleepQueryService: SleepQueryService,
+    val cardiovascularQueryService: CardiovascularQueryService,
+    val dashboardQueryService: DashboardQueryService,
     val sleepSummaryReadService: SleepSummaryReadService,
     val healthDayQueryService: HealthDayQueryService,
     val adminService: AdminService,
