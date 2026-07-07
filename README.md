@@ -1,8 +1,11 @@
 # Notch
 
 A native macOS notch / Dynamic-Island app for **macOS 26 (Tahoe)**: Now Playing, live
-activities + HUDs, a file tray with AirDrop, and widgets (battery, calendar, weather,
-Bluetooth battery, focus). Built per [`BUILD_PLAN.md`](BUILD_PLAN.md).
+activities + HUDs, a file tray with AirDrop, coding-agent watching (Claude Code, Codex &
+friends, including in-notch approval of permission prompts), and widgets (battery, calendar,
+weather, Bluetooth battery, focus, clock, Shortcuts runner, quick note). First launch opens
+a welcome tour; an opt-in global hotkey (⌃⌥N) toggles the notch. Built per
+[`BUILD_PLAN.md`](BUILD_PLAN.md).
 
 Agent app (no Dock icon), Developer-ID signed, **not sandboxed**. Direct distribution only.
 

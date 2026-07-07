@@ -1,109 +1,43 @@
-# Polish Plan — remaining work
+# Polish Plan — status
 
-Continuation plan for the feature/UX round started on `code-review-fixes-2026-07-02`
-(2026-07-06). Tasks 1–3 of the round are done and verified; this file plans the rest.
-Build/test commands are at the bottom.
+Feature/UX round on `code-review-fixes-2026-07-02`, finished 2026-07-07. Everything below
+is committed in per-feature chunks; build/test commands are at the bottom.
 
-## Already landed on this branch (uncommitted)
+## Done
 
-- Small fixes: settings-window height mismatch, Home-tab empty state, doc "no timers"
-  claim corrected.
-- Error surfaces: agent enable/install failures shown in Settings (`AgentManager.integrationError`),
-  weather failed-fetch state with Retry (`WeatherManager.fetchFailed`), media adapter
-  fallback reason in Settings (`MediaManager.adapterState`), `InstallerError` is `LocalizedError`.
-- Agent-watch v2: interrupt stuck-busy fix (`TranscriptParser` treats
-  `[Request interrupted by user…]` as idle), in-notch PermissionRequest approval
-  (blocking hook → socket request/response → Approve/Deny in the agent row; opt-in via
-  `agentPermissionApproval`, off by default). Round-trip verified against a mock socket.
-  84 unit tests green.
+1. **Small fixes** — settings-window sizing, Home-tab empty state, timers doc claim.
+2. **Error surfaces** — `AgentManager.integrationError` in Settings, weather
+   failed-fetch Retry, media `adapterState` reason, `InstallerError: LocalizedError`.
+3. **Agent-watch v2** — Esc-interrupt reads idle; in-notch PermissionRequest approval
+   (blocking hook → socket reply, Approve/Deny in the row, opt-in
+   `agentPermissionApproval`). 84 unit tests green.
+4. **Onboarding** — `OnboardingView` + AppDelegate window on first launch
+   (`hasCompletedOnboarding`), re-entry via Settings → "Show Welcome Tour"
+   (`.showOnboarding` notification).
+5. **Keyboard & a11y** — global hotkey ⌃⌥N (Carbon `RegisterEventHotKey`, opt-in,
+   keyCode+modifiers stored for a future recorder); VoiceOver expand/collapse actions on
+   the pill and expanded body; relative text styles in agent rows + widget tiles (pill/HUD
+   deliberately fixed, noted in `NotchLayout`).
+6. **Media adapter** — drop-in path `~/Library/Application Support/Notch/adapter/`
+   checked before the bundle; Settings install offer (open folder + instructions) and
+   Remove button; fork-sensitive sub-commands folded into one `Command` enum.
+   *Deviation from plan:* upstream publishes **no prebuilt release**, so there is nothing
+   to download + checksum; the guided folder flow replaced the auto-download.
+7. **New widgets** — clock (status row, `TimelineView(.everyMinute)`, optional second
+   zone), Shortcuts runner (pinned names, errors via activity peek), quick note
+   (Persistence-backed; panel gained a text-editing key latch). All off by default;
+   `Settings.hasInfoRowWidgets` drives grid + panel height.
 
-Nothing is committed yet — commit in logical chunks before continuing (small fixes /
-error surfaces / agent-watch v2 / onboarding).
+## Manual verification still owed (screen was locked during the round)
 
-## 1. Onboarding (task #4 — in progress, ~60% done)
-
-Done so far:
-- `Settings.hasCompletedOnboarding` (default false).
-- `Notch/Views/Onboarding/OnboardingView.swift`: welcome header, permission rows
-  (Calendar / Location / Focus with live status + Enable), launch-at-login and
-  agents toggles, Get Started button. 440×560, standard window styling.
-
-Remaining:
-- **AppDelegate wiring**: `onboardingWindow: NSWindow?` +
-  `showOnboarding()` (NSHostingController + `injectNotchEnvironment(env)`, titled,
-  `.titled/.closable/.fullSizeContentView`, `isReleasedWhenClosed = false`, center,
-  activate). Call from `applicationDidFinishLaunching` when
-  `!env.settings.hasCompletedOnboarding`. `onFinish` closes the window.
-- **Re-entry point**: "Show Welcome Tour" button in Settings → General section
-  (needs a way for SettingsView to reach AppDelegate — simplest: post a
-  `Notification.Name.showOnboarding` that AppDelegate observes, matching the app's
-  push-based style).
-- Permission rows update live when granted mid-flow (managers publish authorization;
-  verify `weather.authorization` updates after the system dialog without relaunch).
-- Verify: `rm`-reset the defaults key, launch, complete the tour, relaunch → no tour.
-  `defaults delete com.aquitano.notch hasCompletedOnboarding` to re-test.
-
-## 2. Keyboard & accessibility (task #5)
-
-- **Global hotkey to toggle the notch**: Carbon `RegisterEventHotKey` wrapper
-  (`Services/HotKey.swift`), default ⌃⌥N, stored as keyCode+modifiers in Settings;
-  action = `state.expand()` / `state.hide()` (same as the status-item toggle).
-  Recording UI in Settings → General (a small key-capture field; keep it minimal —
-  fixed default + on/off toggle is an acceptable first cut).
-- **VoiceOver expansion path**: the pill is currently hover-only. Give the compact
-  view an accessibility action ("Expand notch") that calls `state.expand()`, and the
-  expanded chrome a "Collapse" action; verify tab strip and rows are reachable in
-  VoiceOver once expanded (labels already exist).
-- **Dynamic Type pass**: views use fixed point sizes. Scope: map the main text styles
-  to relative fonts (`.system(size:)` → `.font(.callout)/.caption` etc.) in
-  AgentRowView, widget tiles, and MediaPlayerView; anything geometry-critical
-  (pill, HUD) may stay fixed — note it in code.
-- Verify: hotkey toggles with another app frontmost; VoiceOver (⌘F5) can expand,
-  navigate tabs, activate Approve/Deny; text still fits at larger accessibility sizes.
-
-## 3. Media adapter experience (task #6)
-
-- **Guided setup instead of hand-bundling**: an "Install adapter…" affordance in
-  Settings → Media when `adapterState == .unavailable` because the bridge is missing.
-  Flow: explain what it is → download the pinned mediaremote-adapter release
-  (hardcoded URL + SHA-256, verify before use) into `~/Library/Application Support/Notch/adapter/`
-  → `AdapterMediaController` learns a second lookup path (Application Support first,
-  bundle second). Never auto-download; explicit user click, checksum-verified, and a
-  Remove button for reversibility.
-- **Fork drift**: the control sub-command strings are fork-dependent; keep them in one
-  `AdapterCommands` struct with a doc comment instead of scattered literals so a fork
-  change is a one-place edit.
-- **Visual extras (optional, after the above)**: audio-format badge (sample rate /
-  codec if the adapter exposes it), simple level visualizer behind the artwork.
-  Respect Reduce Motion (static bars) like the existing equalizer does.
-- Verify: fresh machine path — no adapter → Settings shows install offer → install →
-  relaunch → `adapterState == .active` and system-wide media appears; Remove reverts
-  to scripting.
-
-## 4. New widgets (task #7)
-
-Ship in this order; each is a settings-gated tile in `WidgetGridView`.
-
-- **Clock**: `ClockWidgetView` using the existing `clockString` helper; scoped
-  `TimelineView(.everyMinute)` so it only ticks while the expanded surface is
-  rendered (same pattern as TimerManager's pill tick). Optional second time zone.
-- **Shortcuts runner**: `ShortcutsManager` shells out to `/usr/bin/shortcuts run
-  <name>` off-main; Settings stores a small list of pinned shortcut names
-  (`shortcuts list` to populate a picker). Tile shows pinned shortcuts as buttons;
-  errors surface via the existing activity peek channel.
-- **Quick notes**: smallest useful cut — one persistent scratch note
-  (`Persistence`-backed string, TextEditor in a tile). No list, no sync.
-- Each: settings toggle in Widgets section + empty-state handling (the Home-tab
-  empty hint must account for the new tiles' toggles — update `hasInfoRow` logic).
-- Verify: toggles show/hide tiles; shortcuts actually run; note survives relaunch.
-
-## 5. Wrap-up
-
-- Update README feature list (permission approval, onboarding, new widgets, hotkey).
-- Update `agent-watch-feature` / `code-quality-findings` memory notes if behavior
-  changed further.
-- Run the full suite + a manual smoke of the expanded surface, then commit the
-  remaining chunks and consider a `/code-review` pass over the branch diff.
+- Launch flow: `defaults delete com.aquitano.notch hasCompletedOnboarding`, launch,
+  complete tour, relaunch → no tour. (Launch via `open <DerivedData>/…/Notch.app`; the
+  fresh build path will re-prompt Bluetooth TCC once.)
+- Hotkey toggles with another app frontmost; VoiceOver (⌘F5) expand/collapse; text at
+  larger accessibility sizes.
+- Quick-note typing (key latch), shortcut run + failure peek, clock second zone.
+- Adapter: drop artifacts into the folder (after `xattr -dr com.apple.quarantine`),
+  relaunch → `adapterState == .active`; Remove reverts to scripting.
 
 ## Build & test
 
