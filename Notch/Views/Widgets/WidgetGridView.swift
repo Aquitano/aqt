@@ -24,6 +24,9 @@ struct WidgetGridView: View {
             if hasInfoRow {
                 infoRow
                     .frame(maxHeight: .infinity)
+            } else {
+                emptyHint
+                    .frame(maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -45,6 +48,22 @@ struct WidgetGridView: View {
                 BluetoothWidgetView()
             }
         }
+    }
+
+    private var emptyHint: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "square.grid.2x2")
+                .font(.system(size: 22))
+                .foregroundStyle(.white.opacity(0.4))
+            Text("No widgets enabled")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+            Text("Turn on Weather or Calendar in Settings to fill this space.")
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.45))
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var infoRow: some View {

@@ -22,7 +22,6 @@ struct NotchApp: App {
         SwiftUI.Settings {
             SettingsView()
                 .injectNotchEnvironment(appDelegate.env)
-                .frame(width: 460, height: 520)
         }
     }
 }
