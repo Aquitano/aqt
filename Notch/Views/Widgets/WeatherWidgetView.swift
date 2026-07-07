@@ -40,7 +40,7 @@ struct WeatherWidgetView: View {
     private func current(_ s: WeatherSnapshot) -> some View {
         HStack(spacing: 10) {
             Image(systemName: s.symbolName)
-                .font(.system(size: 26, weight: .medium))
+                .font(.largeTitle.weight(.medium))
                 .symbolRenderingMode(.multicolor)
                 .frame(width: 32, height: 32)
 
@@ -80,7 +80,7 @@ struct WeatherWidgetView: View {
                             .foregroundStyle(.white.opacity(0.7))
 
                         Image(systemName: day.symbolName)
-                            .font(.system(size: 13))
+                            .font(.body)
                             .symbolRenderingMode(.multicolor)
                             .frame(height: 16)
 
@@ -113,7 +113,7 @@ struct WeatherWidgetView: View {
                 .foregroundStyle(.white.opacity(0.6))
 
             Text("Couldn't load the weather.")
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -121,7 +121,7 @@ struct WeatherWidgetView: View {
                 weather.refresh()
             } label: {
                 Text("Retry")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -137,7 +137,7 @@ struct WeatherWidgetView: View {
                 .foregroundStyle(.white.opacity(0.6))
 
             Text("Show local weather for your location.")
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -145,7 +145,7 @@ struct WeatherWidgetView: View {
                 weather.requestAccess()
             } label: {
                 Text("Enable Location")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)

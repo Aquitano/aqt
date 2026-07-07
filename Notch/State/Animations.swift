@@ -65,7 +65,9 @@ enum NotchMetrics {
 /// the panel never swallows clicks over its large but invisible surrounding frame.
 enum NotchLayout {
     /// Point size of the compact pill's trailing label. Shared with `CompactView`
-    /// so the width reserved here matches exactly what gets drawn.
+    /// so the width reserved here matches exactly what gets drawn. Deliberately
+    /// fixed (no Dynamic Type): the pill must fit the physical notch strip, whose
+    /// height doesn't scale with the user's text size.
     static let compactLabelFontSize: CGFloat = 12
 
     /// Resting horizontal padding the compact pill keeps clear of the rounded

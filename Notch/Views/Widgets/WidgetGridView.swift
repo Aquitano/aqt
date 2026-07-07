@@ -56,10 +56,10 @@ struct WidgetGridView: View {
                 .font(.system(size: 22))
                 .foregroundStyle(.white.opacity(0.4))
             Text("No widgets enabled")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.7))
             Text("Turn on Weather or Calendar in Settings to fill this space.")
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.45))
                 .multilineTextAlignment(.center)
         }

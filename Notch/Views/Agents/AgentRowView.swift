@@ -28,7 +28,7 @@ struct AgentRowView: View {
 
                     if let response = session.lastResponse, !response.isEmpty {
                         Text(response)
-                            .font(.system(size: 11))
+                            .font(.subheadline)
                             .foregroundStyle(.white.opacity(0.45))
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
@@ -52,11 +52,11 @@ struct AgentRowView: View {
 
     private var title: Text {
         var text = Text(session.project)
-            .font(.system(size: 13, weight: .semibold))
+            .font(.body.weight(.semibold))
             .foregroundStyle(.white)
         if let prompt = session.lastPrompt, !prompt.isEmpty {
             text = text + Text("  \(prompt)")
-                .font(.system(size: 13))
+                .font(.body)
                 .foregroundStyle(.white.opacity(0.5))
         }
         return text
@@ -66,13 +66,13 @@ struct AgentRowView: View {
         HStack(spacing: 6) {
             Circle().fill(statusColor).frame(width: 6, height: 6)
             Text(session.activityVerb ?? session.status.label)
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.6))
                 .lineLimit(1)
                 .truncationMode(.tail)
             if let branch = session.gitBranch, !branch.isEmpty {
                 Text("· \(branch)")
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.4))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -85,7 +85,7 @@ struct AgentRowView: View {
                 badge(terminal, tint: .white.opacity(0.5))
             }
             Text(uptime)
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .monospacedDigit()
                 .foregroundStyle(.white.opacity(0.45))
         }
@@ -97,7 +97,7 @@ struct AgentRowView: View {
         HStack(spacing: 8) {
             if let detail = session.detail, !detail.isEmpty {
                 Text(detail)
-                    .font(.system(size: 11).monospaced())
+                    .font(.subheadline.monospaced())
                     .foregroundStyle(.orange.opacity(0.9))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -118,7 +118,7 @@ struct AgentRowView: View {
 
     private func badge(_ text: String, tint: Color) -> some View {
         Text(text)
-            .font(.system(size: 10, weight: .semibold))
+            .font(.caption.weight(.semibold))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(tint.opacity(0.18), in: .capsule)

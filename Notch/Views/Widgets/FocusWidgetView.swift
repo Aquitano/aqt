@@ -30,12 +30,12 @@ struct FocusWidgetView: View {
             Spacer(minLength: 4)
 
             Text(focus.name ?? "Focus")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.headline)
                 .foregroundStyle(.white)
                 .lineLimit(1)
 
             Text(focus.isOn ? "On" : "Off")
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.6))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -55,7 +55,7 @@ struct FocusWidgetView: View {
                 focus.requestAccess()
             } label: {
                 Text("Enable")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
