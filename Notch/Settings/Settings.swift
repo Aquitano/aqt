@@ -35,6 +35,7 @@ final class Settings: ObservableObject {
         static let agentSoundFinished = "agentSoundFinished"
         static let agentUsageLimits = "agentUsageLimits"
         static let agentPermissionApproval = "agentPermissionApproval"
+        static let hasCompletedOnboarding = "hasCompletedOnboarding"
     }
 
     @Published var showHUD: Bool { didSet { defaults.set(showHUD, forKey: Key.showHUD) } }
@@ -69,6 +70,7 @@ final class Settings: ObservableObject {
     @Published var agentSoundFinished: String { didSet { defaults.set(agentSoundFinished, forKey: Key.agentSoundFinished) } }
     @Published var agentUsageLimits: Bool { didSet { defaults.set(agentUsageLimits, forKey: Key.agentUsageLimits) } }
     @Published var agentPermissionApproval: Bool { didSet { defaults.set(agentPermissionApproval, forKey: Key.agentPermissionApproval) } }
+    @Published var hasCompletedOnboarding: Bool { didSet { defaults.set(hasCompletedOnboarding, forKey: Key.hasCompletedOnboarding) } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -98,6 +100,7 @@ final class Settings: ObservableObject {
             Key.agentSoundFinished: "Glass",
             Key.agentUsageLimits: false,
             Key.agentPermissionApproval: false,
+            Key.hasCompletedOnboarding: false,
         ])
         self.showHUD = defaults.bool(forKey: Key.showHUD)
         self.temperatureUnit = WeatherSnapshot.TemperatureUnit(
@@ -129,5 +132,6 @@ final class Settings: ObservableObject {
         self.agentSoundFinished = defaults.string(forKey: Key.agentSoundFinished) ?? "Glass"
         self.agentUsageLimits = defaults.bool(forKey: Key.agentUsageLimits)
         self.agentPermissionApproval = defaults.bool(forKey: Key.agentPermissionApproval)
+        self.hasCompletedOnboarding = defaults.bool(forKey: Key.hasCompletedOnboarding)
     }
 }
