@@ -205,7 +205,8 @@ class WithingsNormalizer {
                                 measuredAt = measuredAtString,
                                 metricType = "basal_metabolic_rate",
                                 value = realValue,
-                                unit = "kcal/day",
+                                // Registry unit; ingestion validates against ScalarMetricRegistry.
+                                unit = "kcal",
                             )
                         )
                     }
