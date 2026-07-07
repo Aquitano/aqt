@@ -36,6 +36,9 @@ final class Settings: ObservableObject {
         static let agentUsageLimits = "agentUsageLimits"
         static let agentPermissionApproval = "agentPermissionApproval"
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
+        static let hotkeyEnabled = "hotkeyEnabled"
+        static let hotkeyKeyCode = "hotkeyKeyCode"
+        static let hotkeyModifiers = "hotkeyModifiers"
     }
 
     @Published var showHUD: Bool { didSet { defaults.set(showHUD, forKey: Key.showHUD) } }
@@ -71,6 +74,11 @@ final class Settings: ObservableObject {
     @Published var agentUsageLimits: Bool { didSet { defaults.set(agentUsageLimits, forKey: Key.agentUsageLimits) } }
     @Published var agentPermissionApproval: Bool { didSet { defaults.set(agentPermissionApproval, forKey: Key.agentPermissionApproval) } }
     @Published var hasCompletedOnboarding: Bool { didSet { defaults.set(hasCompletedOnboarding, forKey: Key.hasCompletedOnboarding) } }
+    @Published var hotkeyEnabled: Bool { didSet { defaults.set(hotkeyEnabled, forKey: Key.hotkeyEnabled) } }
+    /// Carbon virtual key code + modifier mask for the toggle-notch hotkey. No
+    /// recording UI yet; changeable via `defaults write` until one exists.
+    @Published var hotkeyKeyCode: Int { didSet { defaults.set(hotkeyKeyCode, forKey: Key.hotkeyKeyCode) } }
+    @Published var hotkeyModifiers: Int { didSet { defaults.set(hotkeyModifiers, forKey: Key.hotkeyModifiers) } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -101,6 +109,9 @@ final class Settings: ObservableObject {
             Key.agentUsageLimits: false,
             Key.agentPermissionApproval: false,
             Key.hasCompletedOnboarding: false,
+            Key.hotkeyEnabled: false,
+            Key.hotkeyKeyCode: 45,       // kVK_ANSI_N
+            Key.hotkeyModifiers: 6144,   // controlKey | optionKey
         ])
         self.showHUD = defaults.bool(forKey: Key.showHUD)
         self.temperatureUnit = WeatherSnapshot.TemperatureUnit(
@@ -133,5 +144,8 @@ final class Settings: ObservableObject {
         self.agentUsageLimits = defaults.bool(forKey: Key.agentUsageLimits)
         self.agentPermissionApproval = defaults.bool(forKey: Key.agentPermissionApproval)
         self.hasCompletedOnboarding = defaults.bool(forKey: Key.hasCompletedOnboarding)
+        self.hotkeyEnabled = defaults.bool(forKey: Key.hotkeyEnabled)
+        self.hotkeyKeyCode = defaults.integer(forKey: Key.hotkeyKeyCode)
+        self.hotkeyModifiers = defaults.integer(forKey: Key.hotkeyModifiers)
     }
 }

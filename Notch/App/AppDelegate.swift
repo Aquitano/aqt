@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -9,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowController: NotchWindowController!
     private var statusItem: NSStatusItem!
     private var onboardingWindow: NSWindow?
+    private let hotKey = HotKey()
+    private var hotkeyCancellable: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -23,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(
             self, selector: #selector(showOnboarding), name: .showOnboarding, object: nil
         )
+        setupHotkey()
         if !env.settings.hasCompletedOnboarding {
             showOnboarding()
         }
@@ -31,6 +35,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
+
+    // MARK: - Hotkey
+
+    private func setupHotkey() {
+        hotKey.onPress = { [weak self] in self?.toggleNotch() }
+        hotkeyCancellable = env.settings.$hotkeyEnabled
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                if enabled {
+                    self.hotKey.register(keyCode: UInt32(self.env.settings.hotkeyKeyCode),
+                                         modifiers: UInt32(self.env.settings.hotkeyModifiers))
+                } else {
+                    self.hotKey.unregister()
+                }
+            }
+    }
 
     // MARK: - Onboarding
 
