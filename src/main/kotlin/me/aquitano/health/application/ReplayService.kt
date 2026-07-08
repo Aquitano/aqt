@@ -12,7 +12,6 @@ import me.aquitano.health.api.dto.ReplayJobStartResponse
 import me.aquitano.health.api.dto.ReplayJobStatusResponse
 import me.aquitano.health.api.dto.ReplayRequest
 import me.aquitano.health.application.metric.common.MetricWriteService
-import me.aquitano.health.application.metric.common.affectedUtcDates
 import me.aquitano.health.domain.DerivedKind
 import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.NotFoundException
@@ -74,6 +73,7 @@ class ReplayService(
     private val mappingService: IngestionMappingService,
     private val metricWriteService: MetricWriteService,
     private val derivedRebuildExecutor: DerivedRebuildExecutor,
+    private val derivedRebuildRegistry: DerivedRebuildModuleRegistry,
     private val replayJobRepository: ReplayJobRepository,
     private val projectionWipeRepository: ProjectionWipeRepository,
     private val clock: UtcClock,
@@ -258,7 +258,11 @@ class ReplayService(
 
             if (plan.includesDerived) {
                 rows.forEach { row ->
-                    derivedDatesFor(row).forEach { (kind, dates) ->
+                    derivedRebuildRegistry.affectedDatesFor(
+                        row.recordType,
+                        row.recordStartAt,
+                        row.recordEndAt,
+                    ).forEach { (kind, dates) ->
                         affectedBySource
                             .getOrPut(row.sourceInstanceId) { mutableMapOf() }
                             .getOrPut(kind) { linkedSetOf() }
@@ -304,22 +308,6 @@ class ReplayService(
                     )
                 }
             }
-        }
-
-    private fun derivedDatesFor(row: ReplayRecordRow): Map<DerivedKind, Set<LocalDate>> =
-        when (row.recordType) {
-            RecordTypes.STEP_INTERVAL -> mapOf(
-                DerivedKind.STEP_SUMMARY to affectedUtcDates(
-                    row.recordStartAt,
-                    row.recordEndAt ?: row.recordStartAt.plusNanos(1),
-                ),
-            )
-
-            RecordTypes.SLEEP_SESSION -> mapOf(
-                DerivedKind.SLEEP_NIGHT to setOf((row.recordEndAt ?: row.recordStartAt).utcDate()),
-            )
-
-            else -> emptyMap()
         }
 
     private fun validate(request: ReplayRequest): ReplayPlan {

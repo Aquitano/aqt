@@ -1,5 +1,6 @@
 package me.aquitano.health.application.metric.common
 
+import me.aquitano.health.application.DerivedRebuildModuleRegistry
 import me.aquitano.health.application.metric.activity.repository.ActivitySummaryWriteRepository
 import me.aquitano.health.application.metric.cardiovascular.repository.CardiovascularWriteRepository
 import me.aquitano.health.application.metric.scalar.ScalarSampleWrite
@@ -17,7 +18,6 @@ import me.aquitano.health.domain.ScalarSampleRecord
 import me.aquitano.health.domain.SleepSessionRecord
 import me.aquitano.health.domain.SleepSummaryRecord
 import me.aquitano.health.domain.StepIntervalRecord
-import me.aquitano.health.shared.utcDate
 import java.time.Instant
 import java.time.LocalDate
 
@@ -32,6 +32,7 @@ class MetricWriteService(
     private val activitySummaryWriteRepository: ActivitySummaryWriteRepository,
     private val cardiovascularWriteRepository: CardiovascularWriteRepository,
     private val scalarSampleWriteRepository: ScalarSampleWriteRepository,
+    private val derivedRebuildRegistry: DerivedRebuildModuleRegistry,
 ) {
     /**
      * Writes a whole batch, bulk-inserting scalar samples in chunked multi-row statements
@@ -153,11 +154,10 @@ class MetricWriteService(
         return if (inserted) {
             MetricWriteResult(
                 created = MetricCreatedCounts.of(StructuralMetricKinds.STEP_SAMPLES to 1),
-                affectedDates = mapOf(
-                    DerivedKind.STEP_SUMMARY to affectedUtcDates(
-                        record.startAt,
-                        record.endAt,
-                    ),
+                affectedDates = derivedRebuildRegistry.affectedDatesFor(
+                    record.recordType,
+                    record.startAt,
+                    record.endAt,
                 ),
             )
         } else {
@@ -183,8 +183,10 @@ class MetricWriteService(
                     StructuralMetricKinds.SLEEP_SESSIONS to 1,
                     StructuralMetricKinds.SLEEP_STAGES to record.stages.size,
                 ),
-                affectedDates = mapOf(
-                    DerivedKind.SLEEP_NIGHT to setOf(record.endAt.utcDate()),
+                affectedDates = derivedRebuildRegistry.affectedDatesFor(
+                    record.recordType,
+                    record.startAt,
+                    record.endAt,
                 ),
             )
         } else {
@@ -276,17 +278,3 @@ data class MetricWriteResult(
     val duplicateSkipped: Int = 0,
     val affectedDates: Map<DerivedKind, Set<LocalDate>> = emptyMap(),
 )
-
-internal fun affectedUtcDates(
-    start: Instant,
-    exclusiveEnd: Instant,
-): Set<LocalDate> {
-    val lastIncludedDate = exclusiveEnd.minusNanos(1).utcDate()
-    val dates = linkedSetOf<LocalDate>()
-    var cursor = start.utcDate()
-    while (!cursor.isAfter(lastIncludedDate)) {
-        dates.add(cursor)
-        cursor = cursor.plusDays(1)
-    }
-    return dates
-}

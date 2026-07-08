@@ -13,6 +13,7 @@ import me.aquitano.health.api.dto.ReplayRequest
 import me.aquitano.health.api.dto.SleepSessionDto
 import me.aquitano.health.api.dto.StepIntervalDto
 import me.aquitano.health.test.metricWriteService
+import me.aquitano.health.domain.DerivedKind
 import me.aquitano.health.domain.RecordTypes
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.infrastructure.config.DatabaseConfig
@@ -24,6 +25,7 @@ import me.aquitano.health.infrastructure.repositories.ReplayJobRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.time.UtcClock
 import me.aquitano.health.test.PostgresTestDatabase
+import me.aquitano.health.test.derivedRebuildRegistry
 import me.aquitano.health.test.realDerivedRebuildExecutor
 import org.jetbrains.exposed.v1.jdbc.Database
 import java.time.Instant
@@ -117,6 +119,51 @@ class ReplayServiceTest {
     }
 
     @Test
+    fun replayOverDateRangeRebuildsEveryDerivedKind() = runBlocking {
+        val fixture = Fixture()
+        fixture.ingestMixedBatch()
+
+        // The fixture batch contains one record per derived kind; the shared registry mapping
+        // must route each of them to a rebuild, so no kind can drift out of the replay path.
+        fixture.execute("DELETE FROM step_daily_summaries")
+        fixture.execute("DELETE FROM sleep_nights")
+
+        val job = fixture.runReplay(
+            ReplayRequest(scope = "derived", fromDate = "2026-04-18", toDate = "2026-04-19")
+        )
+
+        assertEquals(ReplayJobStatus.Completed, job.status)
+        assertEquals(1, fixture.count("step_daily_summaries"))
+        assertEquals(1, fixture.count("sleep_nights"))
+    }
+
+    @Test
+    fun sharedAffectedDatesMappingCoversEveryDerivedKind() {
+        val registry = derivedRebuildRegistry()
+        val coveredKinds = listOf(
+            Triple(
+                RecordTypes.STEP_INTERVAL,
+                Instant.parse("2026-04-19T08:00:00Z"),
+                Instant.parse("2026-04-19T09:00:00Z"),
+            ),
+            Triple(
+                RecordTypes.SLEEP_SESSION,
+                Instant.parse("2026-04-18T22:00:00Z"),
+                Instant.parse("2026-04-19T06:00:00Z"),
+            ),
+        ).flatMap { (recordType, startAt, endAt) ->
+            registry.affectedDatesFor(recordType, startAt, endAt).keys
+        }.toSet()
+
+        assertEquals(
+            DerivedKind.entries.toSet(),
+            coveredKinds,
+            "every DerivedKind must be reachable from a replayable record type; " +
+                "extend this test's record list when adding a kind",
+        )
+    }
+
+    @Test
     fun replayRejectsUnknownScopeAndRecordTypes(): Unit = runBlocking {
         val fixture = Fixture()
         assertFailsWith<RequestValidationException> {
@@ -158,6 +205,7 @@ class ReplayServiceTest {
             mappingService = mappingService,
             metricWriteService = metricWriteService,
             derivedRebuildExecutor = derivedRebuildExecutor,
+            derivedRebuildRegistry = derivedRebuildRegistry(),
             replayJobRepository = ReplayJobRepository(database),
             projectionWipeRepository = ProjectionWipeRepository(),
             clock = clock,
