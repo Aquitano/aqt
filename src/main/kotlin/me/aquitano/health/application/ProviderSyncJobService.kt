@@ -67,7 +67,7 @@ class ProviderSyncJobService(
                     return existing.toStartDto()
                 }
         }
-        val job = repository.create(
+        val result = repository.create(
             id = UUID.randomUUID().toString(),
             providerCode = provider.descriptor.providerCode,
             providerInstanceId = domainRequest.providerInstanceId,
@@ -79,12 +79,20 @@ class ProviderSyncJobService(
             idempotencyKey = idempotencyKey,
             idempotencyRequestHash = idempotencyKey?.let { requestHash },
         )
+        val job = result.record
         if (idempotencyKey != null) {
             job.requireMatchingIdempotencyRequest(requestHash)
         }
-
-        scope.launch {
-            runJob(job.id, provider.descriptor.providerCode, domainRequest)
+        if (result.created) {
+            scope.launch {
+                runJob(job.id, provider.descriptor.providerCode, domainRequest)
+            }
+        } else {
+            providerSyncJobLogger.infoWithContext(
+                "provider_sync_job_idempotent_replay",
+                "provider" to provider.descriptor.providerCode,
+                "jobId" to job.id,
+            )
         }
 
         return job.toStartDto()

@@ -43,6 +43,8 @@ data class ProviderSyncJobRecord(
     val finishedAt: Instant?,
 )
 
+data class ProviderSyncJobCreateResult(val record: ProviderSyncJobRecord, val created: Boolean)
+
 class ProviderSyncJobRepository(private val database: Database) {
     suspend fun create(
         id: String,
@@ -55,7 +57,7 @@ class ProviderSyncJobRepository(private val database: Database) {
         now: Instant,
         idempotencyKey: String? = null,
         idempotencyRequestHash: String? = null,
-    ): ProviderSyncJobRecord =
+    ): ProviderSyncJobCreateResult =
         suspendDbTransaction(db = database) {
             if (idempotencyKey == null) {
                 ProviderSyncJobsTable.insert {
@@ -77,10 +79,10 @@ class ProviderSyncJobRepository(private val database: Database) {
                     it[createdAt] = now.toDbTimestamp()
                     it[updatedAt] = now.toDbTimestamp()
                 }
-                return@suspendDbTransaction getByIdInTransaction(id)!!
+                return@suspendDbTransaction ProviderSyncJobCreateResult(getByIdInTransaction(id)!!, created = true)
             }
 
-            ProviderSyncJobsTable.insertIgnore {
+            val inserted = ProviderSyncJobsTable.insertIgnore {
                 it[this.id] = id
                 it[this.providerCode] = providerCode
                 it[this.idempotencyKey] = idempotencyKey
@@ -98,8 +100,9 @@ class ProviderSyncJobRepository(private val database: Database) {
                 it[errorCount] = 0
                 it[createdAt] = now.toDbTimestamp()
                 it[updatedAt] = now.toDbTimestamp()
-            }
-            getByIdInTransaction(id) ?: findByIdempotencyKeyInTransaction(providerCode, idempotencyKey)!!
+            }.insertedCount > 0
+            val record = getByIdInTransaction(id) ?: findByIdempotencyKeyInTransaction(providerCode, idempotencyKey)!!
+            ProviderSyncJobCreateResult(record, created = inserted)
         }
 
     suspend fun get(id: String): ProviderSyncJobRecord? =

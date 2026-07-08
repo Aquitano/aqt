@@ -46,7 +46,7 @@ class ProviderSyncIdempotencyRepository(private val database: Database) {
         now: Instant,
     ) {
         suspendDbTransaction(db = database) {
-            // Concurrent duplicates both execute the sync; the first stored response wins.
+            // Last-resort guard; ProviderWorkflowService serializes same-key requests in-process.
             ProviderSyncIdempotencyTable.insertIgnore {
                 it[this.providerCode] = providerCode
                 it[this.idempotencyKey] = idempotencyKey

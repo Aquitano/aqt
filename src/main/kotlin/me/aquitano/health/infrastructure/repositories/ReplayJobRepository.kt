@@ -37,6 +37,8 @@ data class ReplayJobRecord(
     val finishedAt: Instant?,
 )
 
+data class ReplayJobCreateResult(val record: ReplayJobRecord, val created: Boolean)
+
 class ReplayJobRepository(private val database: Database) {
     suspend fun create(
         id: String,
@@ -48,7 +50,7 @@ class ReplayJobRepository(private val database: Database) {
         now: Instant,
         idempotencyKey: String? = null,
         idempotencyRequestHash: String? = null,
-    ): ReplayJobRecord =
+    ): ReplayJobCreateResult =
         suspendDbTransaction(db = database) {
             if (idempotencyKey == null) {
                 ReplayJobsTable.insert {
@@ -70,10 +72,10 @@ class ReplayJobRepository(private val database: Database) {
                     it[createdAt] = now.toDbTimestamp()
                     it[updatedAt] = now.toDbTimestamp()
                 }
-                return@suspendDbTransaction getByIdInTransaction(id)!!
+                return@suspendDbTransaction ReplayJobCreateResult(getByIdInTransaction(id)!!, created = true)
             }
 
-            ReplayJobsTable.insertIgnore {
+            val inserted = ReplayJobsTable.insertIgnore {
                 it[this.id] = id
                 it[this.idempotencyKey] = idempotencyKey
                 it[this.idempotencyRequestHash] = idempotencyRequestHash
@@ -91,8 +93,9 @@ class ReplayJobRepository(private val database: Database) {
                 it[mappingFailures] = 0
                 it[createdAt] = now.toDbTimestamp()
                 it[updatedAt] = now.toDbTimestamp()
-            }
-            getByIdInTransaction(id) ?: findByIdempotencyKeyInTransaction(idempotencyKey)!!
+            }.insertedCount > 0
+            val record = getByIdInTransaction(id) ?: findByIdempotencyKeyInTransaction(idempotencyKey)!!
+            ReplayJobCreateResult(record, created = inserted)
         }
 
     suspend fun get(id: String): ReplayJobRecord? =

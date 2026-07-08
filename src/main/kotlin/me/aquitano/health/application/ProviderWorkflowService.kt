@@ -10,6 +10,8 @@ import me.aquitano.health.infrastructure.repositories.ProviderOAuthStateConsumeR
 import me.aquitano.health.infrastructure.repositories.ProviderSyncIdempotencyRepository
 import me.aquitano.health.shared.AppJson
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import me.aquitano.health.infrastructure.logging.*
@@ -17,6 +19,7 @@ import java.security.SecureRandom
 import java.time.Duration
 import java.time.Instant
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 
 private val logger = KotlinLogging.logger {}
 
@@ -27,6 +30,13 @@ class ProviderWorkflowService(
     private val syncIdempotencyRepository: ProviderSyncIdempotencyRepository,
 ) {
     private val random = SecureRandom()
+
+    // Serializes lookup -> provider.sync -> store per Idempotency-Key so concurrent duplicates
+    // execute the provider once and the loser replays the stored response. Process-local
+    // (single-instance deployment); entries are never evicted, matching
+    // ProviderSyncPipeline.accountTokenLocks — safe removal needs reference counting, and at
+    // single-user volumes (ADR 0001) the map stays trivially small.
+    private val syncIdempotencyLocks = ConcurrentHashMap<String, Mutex>()
 
     suspend fun startOAuth(
         providerCode: String,
@@ -153,9 +163,11 @@ class ProviderWorkflowService(
             ?: throw NotFoundException("Provider '$providerCode' not found")
         val canonicalCode = provider.descriptor.providerCode
         val domainRequest = toDomainSyncRequest(request, now)
+        if (idempotencyKey == null) {
+            return provider.sync(domainRequest, now).toDto()
+        }
         val requestHash = syncRequestHash(request)
-        val canReplaySafely = domainRequest.providerInstanceId != null
-        if (idempotencyKey != null && canReplaySafely) {
+        return syncIdempotencyLocks.computeIfAbsent("$canonicalCode:$idempotencyKey") { Mutex() }.withLock {
             syncIdempotencyRepository.findResponse(canonicalCode, idempotencyKey)
                 ?.let { stored ->
                     if (stored.requestHash != requestHash) {
@@ -167,10 +179,8 @@ class ProviderWorkflowService(
                     runCatching { AppJson.decodeFromString<ProviderSyncResponse>(stored.responseJson) }
                         .getOrNull()
                 }
-                ?.let { return it }
-        }
-        val response = provider.sync(domainRequest, now).toDto()
-        if (idempotencyKey != null && canReplaySafely) {
+                ?.let { return@withLock it }
+            val response = provider.sync(domainRequest, now).toDto()
             syncIdempotencyRepository.storeResponse(
                 providerCode = canonicalCode,
                 idempotencyKey = idempotencyKey,
@@ -178,8 +188,8 @@ class ProviderWorkflowService(
                 responseJson = AppJson.encodeToString(response),
                 now = now,
             )
+            response
         }
-        return response
     }
 
     suspend fun sync(

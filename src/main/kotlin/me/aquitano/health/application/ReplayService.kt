@@ -106,7 +106,7 @@ class ReplayService(
                 return existing.toStartDto()
             }
         }
-        val job = replayJobRepository.create(
+        val result = replayJobRepository.create(
             id = UUID.randomUUID().toString(),
             scope = plan.scope,
             metricTypes = plan.recordTypes?.toList(),
@@ -117,12 +117,19 @@ class ReplayService(
             idempotencyKey = idempotencyKey,
             idempotencyRequestHash = idempotencyKey?.let { requestHash },
         )
+        val job = result.record
         if (idempotencyKey != null) {
             job.requireMatchingIdempotencyRequest(requestHash)
         }
-
-        scope.launch {
-            runJob(job.id, plan)
+        if (result.created) {
+            scope.launch {
+                runJob(job.id, plan)
+            }
+        } else {
+            replayLogger.infoWithContext(
+                "replay_job_idempotent_replay",
+                "jobId" to job.id,
+            )
         }
 
         return job.toStartDto()

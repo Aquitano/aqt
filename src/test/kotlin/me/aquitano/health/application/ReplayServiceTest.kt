@@ -164,6 +164,41 @@ class ReplayServiceTest {
     }
 
     @Test
+    fun repositoryCreateFlagsDuplicateIdempotencyKey() = runBlocking {
+        val repository = ReplayJobRepository(Fixture().database)
+        val key = "replay-repo-flag-key"
+        val id1 = java.util.UUID.randomUUID().toString()
+        val id2 = java.util.UUID.randomUUID().toString()
+
+        val first = repository.create(
+            id = id1,
+            scope = "projections",
+            metricTypes = null,
+            fromDate = null,
+            toDate = null,
+            wipe = false,
+            now = Instant.parse("2026-05-01T10:00:00Z"),
+            idempotencyKey = key,
+            idempotencyRequestHash = "hash-a",
+        )
+        val second = repository.create(
+            id = id2,
+            scope = "projections",
+            metricTypes = null,
+            fromDate = null,
+            toDate = null,
+            wipe = false,
+            now = Instant.parse("2026-05-01T10:00:00Z"),
+            idempotencyKey = key,
+            idempotencyRequestHash = "hash-a",
+        )
+
+        assertTrue(first.created)
+        assertTrue(!second.created)
+        assertEquals(id1, second.record.id)
+    }
+
+    @Test
     fun replayRejectsUnknownScopeAndRecordTypes(): Unit = runBlocking {
         val fixture = Fixture()
         assertFailsWith<RequestValidationException> {
