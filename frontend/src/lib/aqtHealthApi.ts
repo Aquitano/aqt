@@ -211,7 +211,7 @@ export async function getProviderSyncPageData(): Promise<ProviderSyncPageData> {
   const scheduledSyncConfigs =
     providerStatuses.ok
       ? await Promise.all(
-          providerStatuses.data.providers.flatMap((provider) =>
+          providerStatuses.data.items.flatMap((provider) =>
             provider.accounts.map((account) =>
               client.getScheduledSyncConfig(
                 provider.providerCode,

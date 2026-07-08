@@ -106,7 +106,7 @@ internal fun ingestionSummaryExample(duplicate: Boolean = false): ExampleObject 
 internal fun providerSyncRequestExample(): ExampleObject =
     jsonExample(
         summary = "Provider sync request",
-        value = ProviderSyncRequestDto(
+        value = ProviderSyncRequest(
             providerInstanceId = ExampleProviderInstanceId,
             from = ExampleFromAt,
             to = ExampleToAt,

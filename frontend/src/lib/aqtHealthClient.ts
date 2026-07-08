@@ -130,12 +130,12 @@ export function createAqtHealthClient() {
       ),
 
     listProviders: () =>
-      call<ApiSchema<"ProviderCatalogResponseDto">>((headers) =>
+      call<ApiSchema<"ProviderCatalogResponse">>((headers) =>
         rawClient.GET("/api/v2/providers", { headers }),
       ),
 
     listProviderStatuses: () =>
-      call<ApiSchema<"ProviderStatusCatalogResponseDto">>((headers) =>
+      call<ApiSchema<"ProviderStatusCatalogResponse">>((headers) =>
         rawClient.GET("/api/v2/providers/status", { headers }),
       ),
 
@@ -148,7 +148,7 @@ export function createAqtHealthClient() {
       ),
 
     listProviderAccounts: (providerCode: string) =>
-      call<ApiSchema<"ProviderAccountListResponseDto">>((headers) =>
+      call<ApiSchema<"ProviderAccountListResponse">>((headers) =>
         rawClient.GET("/api/v2/providers/{providerCode}/accounts", {
           headers,
           params: { path: { providerCode: providerCode as ProviderPathCode } },
@@ -156,7 +156,7 @@ export function createAqtHealthClient() {
       ),
 
     getProviderAccount: (providerCode: string, providerInstanceId: string) =>
-      call<ApiSchema<"ProviderAccountStatusResponseDto">>((headers) =>
+      call<ApiSchema<"ProviderAccountStatusResponse">>((headers) =>
         rawClient.GET("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}", {
           headers,
           params: {
@@ -169,7 +169,7 @@ export function createAqtHealthClient() {
       ),
 
     disconnectProviderAccount: (providerCode: string, providerInstanceId: string) =>
-      call<ApiSchema<"ProviderDisconnectResponseDto">>((headers) =>
+      call<ApiSchema<"ProviderDisconnectResponse">>((headers) =>
         rawClient.POST("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/disconnect", {
           headers,
           params: {
@@ -240,9 +240,9 @@ export function createAqtHealthClient() {
 
     syncProvider: (
       providerCode: string,
-      body: ApiSchema<"ProviderSyncRequestDto">,
+      body: ApiSchema<"ProviderSyncRequest">,
     ) =>
-      call<ApiSchema<"ProviderSyncResponseDto">>((headers) =>
+      call<ApiSchema<"ProviderSyncResponse">>((headers) =>
         longRunningClient.POST("/api/v2/providers/{providerCode}/sync", {
           body,
           headers,
@@ -252,7 +252,7 @@ export function createAqtHealthClient() {
 
     startProviderSyncJob: (
       providerCode: string,
-      body: ApiSchema<"ProviderSyncRequestDto">,
+      body: ApiSchema<"ProviderSyncRequest">,
     ) =>
       call<ProviderSyncJobStartResponse>((headers) =>
         fetchJson(`${apiBaseUrl}/api/v2/providers/${encodeURIComponent(providerCode)}/sync-jobs`, {

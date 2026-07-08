@@ -119,9 +119,9 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
     );
   }
 
-  const providers = catalog.data.providers.map((descriptor) => ({
+  const providers = catalog.data.items.map((descriptor) => ({
     descriptor,
-    status: statuses.data.providers.find((status) => status.providerCode === descriptor.providerCode),
+    status: statuses.data.items.find((status) => status.providerCode === descriptor.providerCode),
   }));
   const selectedProvider =
     providers.find((provider) => provider.descriptor.providerCode === selectedProviderCode) ??

@@ -55,11 +55,11 @@ function status(): ProviderStatus {
 }
 
 function catalog(): ApiResult<ProviderCatalogResponse> {
-  return { ok: true, data: { providers: [descriptor()] } };
+  return { ok: true, data: { items: [descriptor()] } };
 }
 
 function statuses(): ApiResult<ProviderStatusCatalogResponse> {
-  return { ok: true, data: { providers: [status()] } };
+  return { ok: true, data: { items: [status()] } };
 }
 
 function jobStatus(

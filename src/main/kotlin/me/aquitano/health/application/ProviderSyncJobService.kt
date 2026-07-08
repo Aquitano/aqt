@@ -7,17 +7,17 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
-import me.aquitano.health.api.dto.ProviderSyncJobItemResponseDto
-import me.aquitano.health.api.dto.ProviderSyncJobStartResponseDto
-import me.aquitano.health.api.dto.ProviderSyncJobStatusResponseDto
-import me.aquitano.health.api.dto.ProviderSyncRequestDto
-import me.aquitano.health.api.dto.ProviderSyncResponseDto
+import me.aquitano.health.api.dto.ProviderSyncJobItemResponse
+import me.aquitano.health.api.dto.ProviderSyncJobStartResponse
+import me.aquitano.health.api.dto.ProviderSyncJobStatusResponse
+import me.aquitano.health.api.dto.ProviderSyncRequest
+import me.aquitano.health.api.dto.ProviderSyncResponse
 import me.aquitano.health.domain.SyncJobStatus
 import me.aquitano.health.application.providersync.ProviderSyncItem
 import me.aquitano.health.application.providersync.ProviderSyncProgressSink
 import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.NotFoundException
-import me.aquitano.health.domain.ProviderSyncRequest
+import me.aquitano.health.domain.ProviderSyncRequest as DomainProviderSyncRequest
 import me.aquitano.health.infrastructure.repositories.ProviderSyncJobRecord
 import me.aquitano.health.infrastructure.repositories.ProviderSyncJobRepository
 import me.aquitano.health.shared.AppJson
@@ -47,10 +47,10 @@ class ProviderSyncJobService(
 
     suspend fun create(
         providerCode: String,
-        request: ProviderSyncRequestDto,
+        request: ProviderSyncRequest,
         now: Instant,
         idempotencyKey: String? = null,
-    ): ProviderSyncJobStartResponseDto {
+    ): ProviderSyncJobStartResponse {
         val provider = providerRegistry.getProvider(providerCode)
             ?: throw NotFoundException("Provider '$providerCode' not found")
         val domainRequest = workflowService.toDomainSyncRequest(request, now)
@@ -90,11 +90,11 @@ class ProviderSyncJobService(
         return job.toStartDto()
     }
 
-    suspend fun get(jobId: String): ProviderSyncJobStatusResponseDto =
+    suspend fun get(jobId: String): ProviderSyncJobStatusResponse =
         repository.get(jobId)?.toDto()
             ?: throw NotFoundException("Provider sync job '$jobId' not found")
 
-    suspend fun latest(providerCode: String?): ProviderSyncJobStatusResponseDto? {
+    suspend fun latest(providerCode: String?): ProviderSyncJobStatusResponse? {
         val canonicalProviderCode = providerCode
             ?.let { providerRegistry.getProvider(it)?.descriptor?.providerCode }
             ?: providerCode
@@ -104,7 +104,7 @@ class ProviderSyncJobService(
     private suspend fun runJob(
         jobId: String,
         providerCode: String,
-        request: ProviderSyncRequest,
+        request: DomainProviderSyncRequest,
     ) {
         repository.markRunning(jobId, clock.now())
         providerSyncJobLogger.infoWithContext(
@@ -175,8 +175,8 @@ class ProviderSyncJobService(
         }
     }
 
-    private fun ProviderSyncJobRecord.toStartDto(): ProviderSyncJobStartResponseDto =
-        ProviderSyncJobStartResponseDto(
+    private fun ProviderSyncJobRecord.toStartDto(): ProviderSyncJobStartResponse =
+        ProviderSyncJobStartResponse(
             jobId = id,
             status = SyncJobStatus.fromStored(status),
             createdAt = createdAt.toString(),
@@ -190,8 +190,8 @@ class ProviderSyncJobService(
         )
     }
 
-    private fun ProviderSyncJobRecord.toDto(): ProviderSyncJobStatusResponseDto =
-        ProviderSyncJobStatusResponseDto(
+    private fun ProviderSyncJobRecord.toDto(): ProviderSyncJobStatusResponse =
+        ProviderSyncJobStatusResponse(
             jobId = id,
             providerCode = providerCode,
             providerInstanceId = providerInstanceId,
@@ -212,7 +212,7 @@ class ProviderSyncJobService(
             updatedAt = updatedAt.toString(),
             finishedAt = finishedAt?.toString(),
             summary = summaryJson?.let {
-                runCatching { AppJson.decodeFromString<ProviderSyncResponseDto>(it) }.getOrNull()
+                runCatching { AppJson.decodeFromString<ProviderSyncResponse>(it) }.getOrNull()
             },
         )
 
@@ -220,15 +220,15 @@ class ProviderSyncJobService(
         dataType: String?,
         from: Instant?,
         to: Instant?,
-    ): ProviderSyncJobItemResponseDto? =
+    ): ProviderSyncJobItemResponse? =
         if (dataType == null || from == null || to == null) {
             null
         } else {
-            ProviderSyncJobItemResponseDto(dataType, from.toString(), to.toString())
+            ProviderSyncJobItemResponse(dataType, from.toString(), to.toString())
         }
 }
 
-private fun syncJobRequestHash(request: ProviderSyncRequestDto): String =
+private fun syncJobRequestHash(request: ProviderSyncRequest): String =
     idempotencyRequestHash(
         request.providerInstanceId?.takeIf { it.isNotBlank() },
         request.from,

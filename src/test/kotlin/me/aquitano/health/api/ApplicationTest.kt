@@ -212,13 +212,13 @@ class ApplicationTest {
         assertFalse("canonical" in healthDayParamNames)
 
         val schemas = body["components"]!!.jsonObject["schemas"]!!.jsonObject
-        val providerStatus = schemas["ProviderStatusResponseDto"]!!.jsonObject
+        val providerStatus = schemas["ProviderStatusResponse"]!!.jsonObject
         assertEquals(
             setOf("configure", "connect", "reconnect", "sync"),
             providerStatus["properties"]!!.jsonObject["nextAction"]!!.jsonObject["enum"]!!
                 .jsonArray.map { it.jsonPrimitive.content }.toSet(),
         )
-        val providerAccountStatus = schemas["ProviderAccountStatusResponseDto"]!!.jsonObject
+        val providerAccountStatus = schemas["ProviderAccountStatusResponse"]!!.jsonObject
         assertEquals(
             setOf("not_connected", "connected", "needs_reauth", "disconnected", "configuration_error"),
             providerAccountStatus["properties"]!!.jsonObject["status"]!!.jsonObject["enum"]!!

@@ -1,10 +1,10 @@
 package me.aquitano.health.application
 
-import me.aquitano.health.api.dto.ProviderAccountStatusResponseDto
+import me.aquitano.health.api.dto.ProviderAccountStatusResponse
 import me.aquitano.health.api.dto.ProviderAccountLifecycleStatus
 import me.aquitano.health.api.dto.ProviderNextAction
-import me.aquitano.health.api.dto.ProviderStatusCatalogResponseDto
-import me.aquitano.health.api.dto.ProviderStatusResponseDto
+import me.aquitano.health.api.dto.ProviderStatusCatalogResponse
+import me.aquitano.health.api.dto.ProviderStatusResponse
 import me.aquitano.health.api.dto.ProviderTokenStatus
 import me.aquitano.health.domain.HealthProvider
 import me.aquitano.health.domain.NotFoundException
@@ -19,16 +19,16 @@ class ProviderStatusService(
     private val providerRegistry: HealthProviderRegistry,
     private val providerOAuthRepository: ProviderOAuthRepository,
 ) {
-    suspend fun listProviderStatuses(now: Instant): ProviderStatusCatalogResponseDto =
-        ProviderStatusCatalogResponseDto(
-            providers = providerRegistry.listProviders()
+    suspend fun listProviderStatuses(now: Instant): ProviderStatusCatalogResponse =
+        ProviderStatusCatalogResponse(
+            items = providerRegistry.listProviders()
                 .map { it.toStatusDto(now) },
         )
 
     suspend fun getProviderStatus(
         providerCode: String,
         now: Instant
-    ): ProviderStatusResponseDto =
+    ): ProviderStatusResponse =
         providerRegistry.getProvider(providerCode)
             ?.toStatusDto(now)
             ?: throw NotFoundException("Provider '$providerCode' not found")
@@ -36,7 +36,7 @@ class ProviderStatusService(
     suspend fun listAccountStatuses(
         providerCode: String,
         now: Instant,
-    ): List<ProviderAccountStatusResponseDto> {
+    ): List<ProviderAccountStatusResponse> {
         val provider = providerRegistry.getProvider(providerCode)
             ?: throw NotFoundException("Provider '$providerCode' not found")
         val normalizedCode = providerRegistry.normalize(providerCode)
@@ -48,7 +48,7 @@ class ProviderStatusService(
         providerCode: String,
         providerInstanceId: String,
         now: Instant,
-    ): ProviderAccountStatusResponseDto {
+    ): ProviderAccountStatusResponse {
         val provider = providerRegistry.getProvider(providerCode)
             ?: throw NotFoundException("Provider '$providerCode' not found")
         val normalizedCode = providerRegistry.normalize(providerCode)
@@ -59,7 +59,7 @@ class ProviderStatusService(
         return account.toStatusDto(now, configured = provider.isConfigured())
     }
 
-    private suspend fun HealthProvider.toStatusDto(now: Instant): ProviderStatusResponseDto {
+    private suspend fun HealthProvider.toStatusDto(now: Instant): ProviderStatusResponse {
         val configured = isConfigured()
         val accounts = providerOAuthRepository.accountsByProvider(providerCode)
         val accountStatuses = accounts.map { it.toStatusDto(now, configured) }
@@ -79,7 +79,7 @@ class ProviderStatusService(
             else -> ProviderNextAction.Sync
         }
 
-        return ProviderStatusResponseDto(
+        return ProviderStatusResponse(
             providerCode = descriptor.providerCode,
             displayName = descriptor.displayName,
             configured = configured,
@@ -95,13 +95,13 @@ class ProviderStatusService(
         account: ProviderOAuthAccount,
         now: Instant,
         configured: Boolean,
-    ): ProviderAccountStatusResponseDto = account.toStatusDto(now, configured)
+    ): ProviderAccountStatusResponse = account.toStatusDto(now, configured)
 
     private suspend fun ProviderOAuthAccount.toStatusDto(
         now: Instant,
         configured: Boolean,
-    ): ProviderAccountStatusResponseDto =
-        ProviderAccountStatusResponseDto(
+    ): ProviderAccountStatusResponse =
+        ProviderAccountStatusResponse(
             providerInstanceId = providerInstanceId,
             status = lifecycleStatus(configured),
             connectedAt = (connectedAt ?: createdAt).toString(),

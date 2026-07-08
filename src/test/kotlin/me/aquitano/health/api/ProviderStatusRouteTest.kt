@@ -93,7 +93,7 @@ class ProviderStatusRouteTest {
 
         assertEquals(HttpStatusCode.OK, response.status)
         val google = response.bodyAsJsonObject()
-            .getValue("providers")
+            .getValue("items")
             .jsonArray
             .map { it.jsonObject }
             .single { it.string("providerCode") == "google-health" }

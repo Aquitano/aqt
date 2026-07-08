@@ -437,7 +437,7 @@ export interface paths {
         };
         /**
          * Summarize scalar samples per calendar day
-         * @description Returns one count/min/max/avg bucket per calendar day for the metric type within the requested timestamp range, grouped by the `timezone` day boundaries (UTC by default). Replaces per-day summary fan-out with a single ranged read. Unknown metric types return 404.
+         * @description Returns one count/min/max/avg bucket per calendar day for the metric type within the requested timestamp range, grouped by the `timezone` day boundaries (UTC by default). At least one of `from`/`to` is required to bound the scan. Replaces per-day summary fan-out with a single ranged read. Unknown metric types return 404.
          */
         get: operations["summarizeScalarSamplesDaily"];
         put?: never;
@@ -1037,8 +1037,8 @@ export interface components {
             metricsSkipped: components["schemas"]["MetricSkippedCountsResponse"];
             affectedStepSummaryDates: string[];
         };
-        /** ProviderWorkflowEndpointsResponseDto */
-        ProviderWorkflowEndpointsResponseDto: {
+        /** ProviderWorkflowEndpointsResponse */
+        ProviderWorkflowEndpointsResponse: {
             oauthStart?: string | null;
             oauthCallback?: string | null;
             accounts?: string | null;
@@ -1046,8 +1046,8 @@ export interface components {
             reconnect?: string | null;
             sync: string;
         };
-        /** ProviderDescriptorResponseDto */
-        ProviderDescriptorResponseDto: {
+        /** ProviderDescriptorResponse */
+        ProviderDescriptorResponse: {
             providerCode: string;
             displayName: string;
             authType: string;
@@ -1056,15 +1056,15 @@ export interface components {
             defaultDataTypes: string[];
             maxSyncRangeDays: number;
             supportsPageSize: boolean;
-            workflowEndpoints: components["schemas"]["ProviderWorkflowEndpointsResponseDto"];
+            workflowEndpoints: components["schemas"]["ProviderWorkflowEndpointsResponse"];
             aliases?: string[];
         };
-        /** ProviderCatalogResponseDto */
-        ProviderCatalogResponseDto: {
-            providers: components["schemas"]["ProviderDescriptorResponseDto"][];
+        /** ProviderCatalogResponse */
+        ProviderCatalogResponse: {
+            items: components["schemas"]["ProviderDescriptorResponse"][];
         };
-        /** ProviderAccountStatusResponseDto */
-        ProviderAccountStatusResponseDto: {
+        /** ProviderAccountStatusResponse */
+        ProviderAccountStatusResponse: {
             providerInstanceId: string;
             /** @enum {string} */
             status: "not_connected" | "connected" | "needs_reauth" | "disconnected" | "configuration_error";
@@ -1084,8 +1084,8 @@ export interface components {
             lastAuthErrorCode?: string | null;
             lastAuthErrorMessage?: string | null;
         };
-        /** ProviderStatusResponseDto */
-        ProviderStatusResponseDto: {
+        /** ProviderStatusResponse */
+        ProviderStatusResponse: {
             providerCode: string;
             displayName: string;
             configured: boolean;
@@ -1094,19 +1094,19 @@ export interface components {
             canSync: boolean;
             /** @enum {string} */
             nextAction: "configure" | "connect" | "reconnect" | "sync";
-            accounts: components["schemas"]["ProviderAccountStatusResponseDto"][];
+            accounts: components["schemas"]["ProviderAccountStatusResponse"][];
         };
-        /** ProviderStatusCatalogResponseDto */
-        ProviderStatusCatalogResponseDto: {
-            providers: components["schemas"]["ProviderStatusResponseDto"][];
+        /** ProviderStatusCatalogResponse */
+        ProviderStatusCatalogResponse: {
+            items: components["schemas"]["ProviderStatusResponse"][];
         };
-        /** ProviderAccountListResponseDto */
-        ProviderAccountListResponseDto: {
+        /** ProviderAccountListResponse */
+        ProviderAccountListResponse: {
             provider: string;
-            accounts: components["schemas"]["ProviderAccountStatusResponseDto"][];
+            accounts: components["schemas"]["ProviderAccountStatusResponse"][];
         };
-        /** ScheduledSyncCheckpointResponseDto */
-        ScheduledSyncCheckpointResponseDto: {
+        /** ScheduledSyncCheckpointResponse */
+        ScheduledSyncCheckpointResponse: {
             dataType: string;
             /** Format: date-time */
             checkpointAt?: string | null;
@@ -1115,8 +1115,8 @@ export interface components {
             /** Format: date-time */
             lastSuccessfulTo?: string | null;
         };
-        /** ScheduledSyncConfigResponseDto */
-        ScheduledSyncConfigResponseDto: {
+        /** ScheduledSyncConfigResponse */
+        ScheduledSyncConfigResponse: {
             providerCode: string;
             providerInstanceId: string;
             enabled: boolean;
@@ -1135,17 +1135,17 @@ export interface components {
             /** Format: date-time */
             nextRunAt?: string | null;
             lastErrorMessage?: string | null;
-            checkpoints: components["schemas"]["ScheduledSyncCheckpointResponseDto"][];
+            checkpoints: components["schemas"]["ScheduledSyncCheckpointResponse"][];
         };
-        /** ScheduledSyncConfigUpdateRequestDto */
-        ScheduledSyncConfigUpdateRequestDto: {
+        /** ScheduledSyncConfigUpdateRequest */
+        ScheduledSyncConfigUpdateRequest: {
             enabled?: boolean | null;
             dataTypes?: string[] | null;
             cadenceMinutes?: number | null;
             lookbackDays?: number | null;
         };
-        /** ProviderSyncBatchResponseDto */
-        ProviderSyncBatchResponseDto: {
+        /** ProviderSyncBatchResponse */
+        ProviderSyncBatchResponse: {
             dataType: string;
             batchId: number;
             duplicateBatch: boolean;
@@ -1157,21 +1157,21 @@ export interface components {
             duplicateMetricsSkipped: number;
             affectedStepSummaryDates: string[];
         };
-        /** ProviderSyncEmptyDataTypeResponseDto */
-        ProviderSyncEmptyDataTypeResponseDto: {
+        /** ProviderSyncEmptyDataTypeResponse */
+        ProviderSyncEmptyDataTypeResponse: {
             dataType: string;
             pagesFetched: number;
             sourceRecordsReceived: number;
             normalizedRecords: number;
         };
-        /** ProviderSyncErrorResponseDto */
-        ProviderSyncErrorResponseDto: {
+        /** ProviderSyncErrorResponse */
+        ProviderSyncErrorResponse: {
             dataType: string;
             code: string;
             message: string;
         };
-        /** ProviderSyncResponseDto */
-        ProviderSyncResponseDto: {
+        /** ProviderSyncResponse */
+        ProviderSyncResponse: {
             providerCode: string;
             providerInstanceId: string;
             /** Format: date-time */
@@ -1180,12 +1180,12 @@ export interface components {
             requestedTo: string;
             /** @enum {string} */
             status: "processed" | "partial_failed" | "failed";
-            batches: components["schemas"]["ProviderSyncBatchResponseDto"][];
-            emptyDataTypes: components["schemas"]["ProviderSyncEmptyDataTypeResponseDto"][];
-            errors: components["schemas"]["ProviderSyncErrorResponseDto"][];
+            batches: components["schemas"]["ProviderSyncBatchResponse"][];
+            emptyDataTypes: components["schemas"]["ProviderSyncEmptyDataTypeResponse"][];
+            errors: components["schemas"]["ProviderSyncErrorResponse"][];
         };
-        /** ScheduledSyncRunResponseDto */
-        ScheduledSyncRunResponseDto: {
+        /** ScheduledSyncRunResponse */
+        ScheduledSyncRunResponse: {
             providerCode: string;
             providerInstanceId: string;
             /** @enum {string} */
@@ -1195,10 +1195,10 @@ export interface components {
             /** Format: date-time */
             requestedTo?: string | null;
             errors: string[];
-            summaries: components["schemas"]["ProviderSyncResponseDto"][];
+            summaries: components["schemas"]["ProviderSyncResponse"][];
         };
-        /** ProviderDisconnectResponseDto */
-        ProviderDisconnectResponseDto: {
+        /** ProviderDisconnectResponse */
+        ProviderDisconnectResponse: {
             provider: string;
             providerInstanceId: string;
             disconnected: boolean;
@@ -1212,8 +1212,8 @@ export interface components {
             /** Format: date-time */
             expiresAt: string;
         };
-        /** ProviderSyncRequestDto */
-        ProviderSyncRequestDto: {
+        /** ProviderSyncRequest */
+        ProviderSyncRequest: {
             providerInstanceId?: string | null;
             /** Format: date-time */
             from?: string | null;
@@ -1222,24 +1222,24 @@ export interface components {
             dataTypes?: string[] | null;
             pageSize?: number | null;
         };
-        /** ProviderSyncJobStartResponseDto */
-        ProviderSyncJobStartResponseDto: {
+        /** ProviderSyncJobStartResponse */
+        ProviderSyncJobStartResponse: {
             jobId: string;
             /** @enum {string} */
             status: "queued" | "running" | "processed" | "partial_failed" | "failed";
             /** Format: date-time */
             createdAt: string;
         };
-        /** ProviderSyncJobItemResponseDto */
-        ProviderSyncJobItemResponseDto: {
+        /** ProviderSyncJobItemResponse */
+        ProviderSyncJobItemResponse: {
             dataType: string;
             /** Format: date-time */
             from: string;
             /** Format: date-time */
             to: string;
         };
-        /** ProviderSyncJobStatusResponseDto */
-        ProviderSyncJobStatusResponseDto: {
+        /** ProviderSyncJobStatusResponse */
+        ProviderSyncJobStatusResponse: {
             jobId: string;
             providerCode: string;
             providerInstanceId?: string | null;
@@ -1252,8 +1252,8 @@ export interface components {
             status: "queued" | "running" | "processed" | "partial_failed" | "failed";
             totalItems: number;
             completedItems: number;
-            currentItem?: components["schemas"]["ProviderSyncJobItemResponseDto"] | null;
-            lastCompletedItem?: components["schemas"]["ProviderSyncJobItemResponseDto"] | null;
+            currentItem?: components["schemas"]["ProviderSyncJobItemResponse"] | null;
+            lastCompletedItem?: components["schemas"]["ProviderSyncJobItemResponse"] | null;
             batchesCount: number;
             emptyCount: number;
             errorCount: number;
@@ -1266,7 +1266,7 @@ export interface components {
             updatedAt: string;
             /** Format: date-time */
             finishedAt?: string | null;
-            summary?: components["schemas"]["ProviderSyncResponseDto"] | null;
+            summary?: components["schemas"]["ProviderSyncResponse"] | null;
         };
         /** MetricCatalogEntryResponse */
         MetricCatalogEntryResponse: {
@@ -1953,7 +1953,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProviderCatalogResponseDto"];
+                    "application/json": components["schemas"]["ProviderCatalogResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -2025,7 +2025,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProviderStatusCatalogResponseDto"];
+                    "application/json": components["schemas"]["ProviderStatusCatalogResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -2100,7 +2100,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProviderDescriptorResponseDto"];
+                    "application/json": components["schemas"]["ProviderDescriptorResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -2184,7 +2184,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProviderStatusResponseDto"];
+                    "application/json": components["schemas"]["ProviderStatusResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -2268,7 +2268,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProviderAccountListResponseDto"];
+                    "application/json": components["schemas"]["ProviderAccountListResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -2353,7 +2353,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProviderAccountStatusResponseDto"];
+                    "application/json": components["schemas"]["ProviderAccountStatusResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -2438,7 +2438,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ScheduledSyncConfigResponseDto"];
+                    "application/json": components["schemas"]["ScheduledSyncConfigResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -2519,7 +2519,7 @@ export interface operations {
         /** @description Scheduled sync configuration fields to update. */
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ScheduledSyncConfigUpdateRequestDto"];
+                "application/json": components["schemas"]["ScheduledSyncConfigUpdateRequest"];
             };
         };
         responses: {
@@ -2528,7 +2528,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ScheduledSyncConfigResponseDto"];
+                    "application/json": components["schemas"]["ScheduledSyncConfigResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -2613,7 +2613,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ScheduledSyncRunResponseDto"];
+                    "application/json": components["schemas"]["ScheduledSyncRunResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -2716,7 +2716,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProviderDisconnectResponseDto"];
+                    "application/json": components["schemas"]["ProviderDisconnectResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -2977,7 +2977,7 @@ export interface operations {
         /** @description Provider sync request. Long historical ranges are accepted for backfill; providers split work into safe internal windows and may enforce page-size constraints advertised by the provider catalog. */
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProviderSyncRequestDto"];
+                "application/json": components["schemas"]["ProviderSyncRequest"];
             };
         };
         responses: {
@@ -2986,7 +2986,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProviderSyncResponseDto"];
+                    "application/json": components["schemas"]["ProviderSyncResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -3087,7 +3087,7 @@ export interface operations {
         /** @description Provider sync request. Long historical ranges are accepted for backfill and processed by the backend job worker. */
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProviderSyncRequestDto"];
+                "application/json": components["schemas"]["ProviderSyncRequest"];
             };
         };
         responses: {
@@ -3097,7 +3097,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProviderSyncJobStartResponseDto"];
+                    "application/json": components["schemas"]["ProviderSyncJobStartResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -3190,7 +3190,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProviderSyncJobStatusResponseDto"];
+                    "application/json": components["schemas"]["ProviderSyncJobStatusResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -3276,7 +3276,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProviderSyncJobStatusResponseDto"];
+                    "application/json": components["schemas"]["ProviderSyncJobStatusResponse"];
                 };
             };
             /** @description Request validation failed */
@@ -3695,12 +3695,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };

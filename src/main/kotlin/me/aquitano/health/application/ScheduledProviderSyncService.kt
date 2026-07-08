@@ -3,6 +3,7 @@ package me.aquitano.health.application
 import kotlinx.coroutines.CancellationException
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.*
+import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncCheckpointRecord
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncConfigRecord
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncRepository
@@ -42,7 +43,7 @@ class ScheduledProviderSyncService(
     suspend fun getConfig(
         providerCode: String,
         providerInstanceId: String,
-    ): ScheduledSyncConfigResponseDto {
+    ): ScheduledSyncConfigResponse {
         val provider = providerRegistry.getProvider(providerCode)
             ?: throw NotFoundException("Provider '$providerCode' not found")
         val normalizedCode = provider.providerCode
@@ -59,9 +60,9 @@ class ScheduledProviderSyncService(
     suspend fun updateConfig(
         providerCode: String,
         providerInstanceId: String,
-        request: ScheduledSyncConfigUpdateRequestDto,
+        request: ScheduledSyncConfigUpdateRequest,
         now: Instant,
-    ): ScheduledSyncConfigResponseDto {
+    ): ScheduledSyncConfigResponse {
         val provider = providerRegistry.getProvider(providerCode)
             ?: throw NotFoundException("Provider '$providerCode' not found")
         val normalizedCode = provider.providerCode
@@ -106,7 +107,7 @@ class ScheduledProviderSyncService(
         providerCode: String,
         providerInstanceId: String,
         now: Instant,
-    ): ScheduledSyncRunResponseDto {
+    ): ScheduledSyncRunResponse {
         val provider = providerRegistry.getProvider(providerCode)
             ?: throw NotFoundException("Provider '$providerCode' not found")
         val config = repository.getConfig(provider.providerCode, providerInstanceId)
@@ -120,7 +121,7 @@ class ScheduledProviderSyncService(
             code = "scheduled_sync_already_running",
             message = "A scheduled sync is already running for this provider account",
         )
-        return ScheduledSyncRunResponseDto(
+        return ScheduledSyncRunResponse(
             providerCode = provider.providerCode,
             providerInstanceId = providerInstanceId,
             status = SyncStatus.fromStored(result.status),
@@ -286,8 +287,8 @@ class ScheduledProviderSyncService(
         return value
     }
 
-    private fun ProviderSyncSummary.toDto(): ProviderSyncResponseDto =
-        ProviderSyncResponseDto(
+    private fun ProviderSyncSummary.toDto(): ProviderSyncResponse =
+        ProviderSyncResponse(
             providerCode = providerCode,
             providerInstanceId = providerInstanceId,
             requestedFrom = requestedFrom.toString(),
@@ -295,11 +296,11 @@ class ScheduledProviderSyncService(
             status = SyncStatus.fromStored(status),
             batches = batches.map { it.toDto() },
             emptyDataTypes = emptyDataTypes.map { it.toDto() },
-            errors = errors.map { ProviderSyncErrorResponseDto(it.dataType, it.code, it.message) },
+            errors = errors.map { ProviderSyncErrorResponse(it.dataType, it.code, it.message) },
         )
 
-    private fun ProviderSyncBatch.toDto(): ProviderSyncBatchResponseDto =
-        ProviderSyncBatchResponseDto(
+    private fun ProviderSyncBatch.toDto(): ProviderSyncBatchResponse =
+        ProviderSyncBatchResponse(
             dataType = dataType,
             batchId = batchId,
             duplicateBatch = duplicateBatch,
@@ -310,8 +311,8 @@ class ScheduledProviderSyncService(
             affectedStepSummaryDates = affectedStepSummaryDates,
         )
 
-    private fun ProviderSyncEmptyDataType.toDto(): ProviderSyncEmptyDataTypeResponseDto =
-        ProviderSyncEmptyDataTypeResponseDto(
+    private fun ProviderSyncEmptyDataType.toDto(): ProviderSyncEmptyDataTypeResponse =
+        ProviderSyncEmptyDataTypeResponse(
             dataType = dataType,
             pagesFetched = pagesFetched,
             sourceRecordsReceived = sourceRecordsReceived,
@@ -343,8 +344,8 @@ private const val DEFAULT_LOOKBACK_DAYS = 7
 
 private fun ScheduledSyncConfigRecord.toDto(
     checkpoints: List<ScheduledSyncCheckpointRecord>,
-): ScheduledSyncConfigResponseDto =
-    ScheduledSyncConfigResponseDto(
+): ScheduledSyncConfigResponse =
+    ScheduledSyncConfigResponse(
         providerCode = providerCode,
         providerInstanceId = providerInstanceId,
         enabled = enabled,
@@ -361,8 +362,8 @@ private fun ScheduledSyncConfigRecord.toDto(
         checkpoints = checkpoints.map { it.toDto() },
     )
 
-private fun ScheduledSyncCheckpointRecord.toDto(): ScheduledSyncCheckpointResponseDto =
-    ScheduledSyncCheckpointResponseDto(
+private fun ScheduledSyncCheckpointRecord.toDto(): ScheduledSyncCheckpointResponse =
+    ScheduledSyncCheckpointResponse(
         dataType = dataType,
         checkpointAt = checkpointAt?.toString(),
         lastSuccessfulFrom = lastSuccessfulFrom?.toString(),
