@@ -1,11 +1,11 @@
 package me.aquitano.health.application
 
-import me.aquitano.health.api.dto.ActivitySummaryDto
-import me.aquitano.health.api.dto.BloodPressureDto
-import me.aquitano.health.api.dto.SleepSessionDto
-import me.aquitano.health.api.dto.SleepStageDto
-import me.aquitano.health.api.dto.SleepSummaryDto
-import me.aquitano.health.api.dto.StepIntervalDto
+import me.aquitano.health.api.dto.ActivitySummary
+import me.aquitano.health.api.dto.BloodPressure
+import me.aquitano.health.api.dto.SleepSession
+import me.aquitano.health.api.dto.SleepStage
+import me.aquitano.health.api.dto.SleepSummary
+import me.aquitano.health.api.dto.StepInterval
 import me.aquitano.health.domain.ActivitySummaryRecord
 import me.aquitano.health.domain.BloodPressureRecord
 import me.aquitano.health.domain.SleepSessionRecord
@@ -21,7 +21,7 @@ import java.time.Instant
 
 internal fun mapStepInterval(
     field: String,
-    dto: StepIntervalDto,
+    dto: StepInterval,
     issues: MutableList<ValidationIssue>
 ): StepIntervalRecord? {
     val startAt = parseInstant(dto.startAt, "$field.startAt", issues)
@@ -65,7 +65,7 @@ internal fun mapStepInterval(
 
 internal fun mapSleepSession(
     field: String,
-    dto: SleepSessionDto,
+    dto: SleepSession,
     issues: MutableList<ValidationIssue>
 ): SleepSessionRecord? {
     val startAt = parseInstant(dto.startAt, "$field.startAt", issues)
@@ -106,7 +106,7 @@ internal fun mapSleepSession(
 
 private fun mapSleepStage(
     field: String,
-    dto: SleepStageDto,
+    dto: SleepStage,
     sessionStart: Instant?,
     sessionEnd: Instant?,
     issues: MutableList<ValidationIssue>,
@@ -157,7 +157,7 @@ private fun mapSleepStage(
 
 internal fun mapActivitySummary(
     field: String,
-    dto: ActivitySummaryDto,
+    dto: ActivitySummary,
     issues: MutableList<ValidationIssue>
 ): ActivitySummaryRecord? {
     val date = parseDate(dto.date, "$field.date", issues)
@@ -274,7 +274,7 @@ internal fun mapActivitySummary(
 
 internal fun mapSleepSummary(
     field: String,
-    dto: SleepSummaryDto,
+    dto: SleepSummary,
     issues: MutableList<ValidationIssue>
 ): SleepSummaryRecord? {
     val startAt = parseInstant(dto.startAt, "$field.startAt", issues)
@@ -457,7 +457,7 @@ internal fun mapSleepSummary(
 
 internal fun mapBloodPressure(
     field: String,
-    dto: BloodPressureDto,
+    dto: BloodPressure,
     issues: MutableList<ValidationIssue>
 ): BloodPressureRecord? {
     val measuredAt =

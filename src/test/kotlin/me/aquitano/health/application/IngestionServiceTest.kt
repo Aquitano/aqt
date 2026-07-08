@@ -5,7 +5,7 @@ import kotlinx.serialization.json.buildJsonObject
 import me.aquitano.health.domain.BatchStatus
 import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.api.dto.IngestionBatchRequest
-import me.aquitano.health.api.dto.StepIntervalDto
+import me.aquitano.health.api.dto.StepInterval
 import me.aquitano.health.test.metricWriteService
 import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
@@ -42,7 +42,7 @@ class IngestionServiceTest {
                 ingestedAt = "2026-04-19T10:00:00Z",
                 sourcePayload = buildJsonObject {},
                 records = listOf(
-                    StepIntervalDto(
+                    StepInterval(
                         providerRecordId = "steps-1",
                         startAt = "2026-04-19T08:00:00Z",
                         endAt = "2026-04-19T09:00:00Z",
@@ -94,7 +94,7 @@ class IngestionServiceTest {
             ingestedAt = "2026-04-20T10:00:00Z",
             sourcePayload = buildJsonObject {},
             records = listOf(
-                StepIntervalDto(
+                StepInterval(
                     providerRecordId = "steps-legacy",
                     startAt = "2026-04-20T08:00:00Z",
                     endAt = "2026-04-20T09:00:00Z",

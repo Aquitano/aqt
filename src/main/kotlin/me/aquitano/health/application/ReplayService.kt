@@ -6,7 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import me.aquitano.health.api.dto.IngestionRecordDto
+import me.aquitano.health.api.dto.IngestionRecord
 import me.aquitano.health.domain.ReplayJobStatus
 import me.aquitano.health.api.dto.ReplayJobStartResponse
 import me.aquitano.health.api.dto.ReplayJobStatusResponse
@@ -289,7 +289,7 @@ class ReplayService(
 
     private fun decodeAndMap(row: ReplayRecordRow) =
         runCatching {
-            AppJson.decodeFromString(IngestionRecordDto.serializer(), row.normalizedRecordJson)
+            AppJson.decodeFromString(IngestionRecord.serializer(), row.normalizedRecordJson)
         }.getOrElse { exception ->
             replayLogger.warnWithContext(
                 "replay_record_decode_failed",

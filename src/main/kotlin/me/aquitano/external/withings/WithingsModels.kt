@@ -130,7 +130,7 @@ data class WithingsFetchResult(
 
 data class WithingsNormalizedBatch(
     val sourcePayload: JsonObject,
-    val records: List<me.aquitano.health.api.dto.IngestionRecordDto>,
+    val records: List<me.aquitano.health.api.dto.IngestionRecord>,
 )
 
 class WithingsHttpException(

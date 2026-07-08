@@ -1,12 +1,12 @@
 package me.aquitano.health.application
 
-import me.aquitano.health.api.dto.BodyMeasurementDto
-import me.aquitano.health.api.dto.CardiovascularDto
-import me.aquitano.health.api.dto.ExtendedBodyMeasurementDto
-import me.aquitano.health.api.dto.HeartRateDto
-import me.aquitano.health.api.dto.HrvDto
-import me.aquitano.health.api.dto.RespiratoryRateDto
-import me.aquitano.health.api.dto.ScalarSampleDto
+import me.aquitano.health.api.dto.BodyMeasurement
+import me.aquitano.health.api.dto.Cardiovascular
+import me.aquitano.health.api.dto.ExtendedBodyMeasurement
+import me.aquitano.health.api.dto.HeartRate
+import me.aquitano.health.api.dto.Hrv
+import me.aquitano.health.api.dto.RespiratoryRate
+import me.aquitano.health.api.dto.ScalarSample
 import me.aquitano.health.domain.RecordTypes
 import me.aquitano.health.domain.ScalarSampleRecord
 import me.aquitano.health.domain.ValidationIssue
@@ -34,7 +34,7 @@ class IngestionScalarRecordMappersTest {
         val issues = mutableListOf<ValidationIssue>()
         return mapScalar(
             "records[0]",
-            ScalarSampleDto(
+            ScalarSample(
                 measuredAt = measuredAt,
                 metricType = metricType,
                 value = value,
@@ -66,7 +66,7 @@ class IngestionScalarRecordMappersTest {
             val issues = mutableListOf<ValidationIssue>()
             return mapHeartRate(
                 "records[0]",
-                HeartRateDto(measuredAt = measuredAt, bpm = bpm, context = "resting"),
+                HeartRate(measuredAt = measuredAt, bpm = bpm, context = "resting"),
                 issues,
             )
         }
@@ -89,7 +89,7 @@ class IngestionScalarRecordMappersTest {
             val issues = mutableListOf<ValidationIssue>()
             return mapRespiratoryRate(
                 "records[0]",
-                RespiratoryRateDto(measuredAt = measuredAt, breathsPerMinute = breaths),
+                RespiratoryRate(measuredAt = measuredAt, breathsPerMinute = breaths),
                 issues,
             )
         }
@@ -112,7 +112,7 @@ class IngestionScalarRecordMappersTest {
             val issues = mutableListOf<ValidationIssue>()
             return mapHrv(
                 "records[0]",
-                HrvDto(measuredAt = measuredAt, metricType = "rmssd", value = value, unit = "ms"),
+                Hrv(measuredAt = measuredAt, metricType = "rmssd", value = value, unit = "ms"),
                 issues,
             )
         }
@@ -133,7 +133,7 @@ class IngestionScalarRecordMappersTest {
             val issues = mutableListOf<ValidationIssue>()
             return mapBodyMeasurement(
                 "records[0]",
-                BodyMeasurementDto(measuredAt = measuredAt, bodyFatPercent = bodyFatPercent),
+                BodyMeasurement(measuredAt = measuredAt, bodyFatPercent = bodyFatPercent),
                 issues,
             )
         }
@@ -149,7 +149,7 @@ class IngestionScalarRecordMappersTest {
         assertNull(
             mapBodyMeasurement(
                 "records[0]",
-                BodyMeasurementDto(measuredAt = measuredAt, weightKg = 0.0),
+                BodyMeasurement(measuredAt = measuredAt, weightKg = 0.0),
                 issues,
             )
         )
@@ -161,7 +161,7 @@ class IngestionScalarRecordMappersTest {
             val issues = mutableListOf<ValidationIssue>()
             return mapCardiovascular(
                 "records[0]",
-                CardiovascularDto(
+                Cardiovascular(
                     measuredAt = measuredAt,
                     metricType = "pulse_wave_velocity",
                     value = value,
@@ -185,7 +185,7 @@ class IngestionScalarRecordMappersTest {
             val issues = mutableListOf<ValidationIssue>()
             return mapExtendedBodyMeasurement(
                 "records[0]",
-                ExtendedBodyMeasurementDto(
+                ExtendedBodyMeasurement(
                     measuredAt = measuredAt,
                     metricType = metricType,
                     value = value,
@@ -215,7 +215,7 @@ class IngestionScalarRecordMappersTest {
         assertNull(
             mapCardiovascular(
                 "records[0]",
-                CardiovascularDto(
+                Cardiovascular(
                     measuredAt = measuredAt,
                     metricType = "weight",
                     value = 80.0,

@@ -264,12 +264,12 @@ class ApplicationTest {
 
         val batchRequest = schemas["IngestionBatchRequest"]!!.jsonObject
         assertEquals(
-            "#/components/schemas/IngestionRecordDto",
+            "#/components/schemas/IngestionRecord",
             batchRequest["properties"]!!.jsonObject["records"]!!.jsonObject["items"]!!
                 .jsonObject["\$ref"]!!.jsonPrimitive.content,
         )
 
-        val recordSchema = schemas["IngestionRecordDto"]!!.jsonObject
+        val recordSchema = schemas["IngestionRecord"]!!.jsonObject
         val recordRefs = recordSchema["oneOf"]!!
             .jsonArray.map { it.jsonObject["\$ref"]!!.jsonPrimitive.content }
             .toSet()

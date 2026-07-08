@@ -1,13 +1,13 @@
 package me.aquitano.health.application
 
 import kotlinx.serialization.json.JsonObject
-import me.aquitano.health.api.dto.BodyMeasurementDto
-import me.aquitano.health.api.dto.CardiovascularDto
-import me.aquitano.health.api.dto.ExtendedBodyMeasurementDto
-import me.aquitano.health.api.dto.HeartRateDto
-import me.aquitano.health.api.dto.HrvDto
-import me.aquitano.health.api.dto.RespiratoryRateDto
-import me.aquitano.health.api.dto.ScalarSampleDto
+import me.aquitano.health.api.dto.BodyMeasurement
+import me.aquitano.health.api.dto.Cardiovascular
+import me.aquitano.health.api.dto.ExtendedBodyMeasurement
+import me.aquitano.health.api.dto.HeartRate
+import me.aquitano.health.api.dto.Hrv
+import me.aquitano.health.api.dto.RespiratoryRate
+import me.aquitano.health.api.dto.ScalarSample
 import me.aquitano.health.domain.BodyMetricTypes
 import me.aquitano.health.domain.BodySegments
 import me.aquitano.health.domain.RecordTypes
@@ -23,13 +23,13 @@ import me.aquitano.health.domain.ValidationIssueCodes
  *
  * The legacy per-family record types (heart_rate, hrv, body_measurement, ...) are
  * wire-compatible aliases for scalar samples: each adapter converts its DTO to the
- * equivalent [ScalarSampleDto] and delegates validation to the [ScalarMetricRegistry]
+ * equivalent [ScalarSample] and delegates validation to the [ScalarMetricRegistry]
  * descriptors, keeping the legacy record type and normalized JSON on the stored record.
  */
 
 internal fun mapBodyMeasurement(
     field: String,
-    dto: BodyMeasurementDto,
+    dto: BodyMeasurement,
     issues: MutableList<ValidationIssue>
 ): ScalarSampleRecord? {
     val measuredAt =
@@ -76,11 +76,11 @@ internal fun mapBodyMeasurement(
 
 internal fun mapHeartRate(
     field: String,
-    dto: HeartRateDto,
+    dto: HeartRate,
     issues: MutableList<ValidationIssue>
 ): ScalarSampleRecord? = mapScalarViaRegistry(
     field = field,
-    dto = ScalarSampleDto(
+    dto = ScalarSample(
         providerRecordId = dto.providerRecordId,
         measuredAt = dto.measuredAt,
         metricType = ScalarMetricTypes.HEART_RATE,
@@ -96,11 +96,11 @@ internal fun mapHeartRate(
 
 internal fun mapRespiratoryRate(
     field: String,
-    dto: RespiratoryRateDto,
+    dto: RespiratoryRate,
     issues: MutableList<ValidationIssue>
 ): ScalarSampleRecord? = mapScalarViaRegistry(
     field = field,
-    dto = ScalarSampleDto(
+    dto = ScalarSample(
         providerRecordId = dto.providerRecordId,
         measuredAt = dto.measuredAt,
         metricType = ScalarMetricTypes.RESPIRATORY_RATE,
@@ -116,11 +116,11 @@ internal fun mapRespiratoryRate(
 
 internal fun mapHrv(
     field: String,
-    dto: HrvDto,
+    dto: Hrv,
     issues: MutableList<ValidationIssue>
 ): ScalarSampleRecord? = mapScalarViaRegistry(
     field = field,
-    dto = ScalarSampleDto(
+    dto = ScalarSample(
         providerRecordId = dto.providerRecordId,
         measuredAt = dto.measuredAt,
         // Legacy hrv records carry the unprefixed metric type ("rmssd"); scalar metric
@@ -138,11 +138,11 @@ internal fun mapHrv(
 
 internal fun mapCardiovascular(
     field: String,
-    dto: CardiovascularDto,
+    dto: Cardiovascular,
     issues: MutableList<ValidationIssue>
 ): ScalarSampleRecord? = mapScalarViaRegistry(
     field = field,
-    dto = ScalarSampleDto(
+    dto = ScalarSample(
         providerRecordId = dto.providerRecordId,
         measuredAt = dto.measuredAt,
         metricType = dto.metricType,
@@ -157,11 +157,11 @@ internal fun mapCardiovascular(
 
 internal fun mapExtendedBodyMeasurement(
     field: String,
-    dto: ExtendedBodyMeasurementDto,
+    dto: ExtendedBodyMeasurement,
     issues: MutableList<ValidationIssue>
 ): ScalarSampleRecord? = mapScalarViaRegistry(
     field = field,
-    dto = ScalarSampleDto(
+    dto = ScalarSample(
         providerRecordId = dto.providerRecordId,
         measuredAt = dto.measuredAt,
         metricType = dto.metricType,
@@ -177,7 +177,7 @@ internal fun mapExtendedBodyMeasurement(
 
 internal fun mapScalar(
     field: String,
-    dto: ScalarSampleDto,
+    dto: ScalarSample,
     issues: MutableList<ValidationIssue>
 ): ScalarSampleRecord? = mapScalarViaRegistry(field, dto, issues)
 
@@ -189,7 +189,7 @@ internal fun mapScalar(
  */
 private fun mapScalarViaRegistry(
     field: String,
-    dto: ScalarSampleDto,
+    dto: ScalarSample,
     issues: MutableList<ValidationIssue>,
     recordType: String = RecordTypes.SCALAR,
     normalizedRecordJson: JsonObject = dto.toNormalizedJsonObject(),

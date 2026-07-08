@@ -4,14 +4,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.buildJsonObject
-import me.aquitano.health.api.dto.ActivitySummaryDto
-import me.aquitano.health.api.dto.HeartRateDto
+import me.aquitano.health.api.dto.ActivitySummary
+import me.aquitano.health.api.dto.HeartRate
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.domain.ReplayJobStatus
 import me.aquitano.health.api.dto.ReplayJobStatusResponse
 import me.aquitano.health.api.dto.ReplayRequest
-import me.aquitano.health.api.dto.SleepSessionDto
-import me.aquitano.health.api.dto.StepIntervalDto
+import me.aquitano.health.api.dto.SleepSession
+import me.aquitano.health.api.dto.StepInterval
 import me.aquitano.health.test.metricWriteService
 import me.aquitano.health.domain.DerivedKind
 import me.aquitano.health.domain.RecordTypes
@@ -220,24 +220,24 @@ class ReplayServiceTest {
                     ingestedAt = "2026-04-19T10:00:00Z",
                     sourcePayload = buildJsonObject {},
                     records = listOf(
-                        StepIntervalDto(
+                        StepInterval(
                             providerRecordId = "steps-1",
                             startAt = "2026-04-19T08:00:00Z",
                             endAt = "2026-04-19T09:00:00Z",
                             steps = 1200,
                         ),
-                        HeartRateDto(
+                        HeartRate(
                             providerRecordId = "hr-1",
                             measuredAt = "2026-04-19T08:30:00Z",
                             bpm = 64,
                             context = "resting",
                         ),
-                        SleepSessionDto(
+                        SleepSession(
                             providerRecordId = "sleep-1",
                             startAt = "2026-04-18T22:00:00Z",
                             endAt = "2026-04-19T06:00:00Z",
                         ),
-                        ActivitySummaryDto(
+                        ActivitySummary(
                             providerRecordId = "activity-1",
                             date = "2026-04-19",
                             distanceMeters = 4200.0,

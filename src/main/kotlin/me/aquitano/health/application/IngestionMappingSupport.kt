@@ -2,7 +2,7 @@ package me.aquitano.health.application
 
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
-import me.aquitano.health.api.dto.IngestionRecordDto
+import me.aquitano.health.api.dto.IngestionRecord
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.shared.AppJson
@@ -16,8 +16,8 @@ import java.util.Locale
  * null (or nothing) for invalid input so the caller can keep collecting issues.
  */
 
-internal fun IngestionRecordDto.toNormalizedJsonObject(): JsonObject =
-    AppJson.encodeToJsonElement(IngestionRecordDto.serializer(), this).jsonObject
+internal fun IngestionRecord.toNormalizedJsonObject(): JsonObject =
+    AppJson.encodeToJsonElement(IngestionRecord.serializer(), this).jsonObject
 
 internal fun normalizeProvider(
     value: String?,

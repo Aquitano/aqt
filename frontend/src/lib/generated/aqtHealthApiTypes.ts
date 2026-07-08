@@ -946,8 +946,8 @@ export interface components {
              */
             type: "scalar";
         };
-        /** SleepStageDto */
-        SleepStageDto: {
+        /** SleepStage */
+        SleepStage: {
             stage: string;
             /** Format: date-time */
             startAt: string;
@@ -961,7 +961,7 @@ export interface components {
             startAt: string;
             /** Format: date-time */
             endAt: string;
-            stages?: components["schemas"]["SleepStageDto"][];
+            stages?: components["schemas"]["SleepStage"][];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1023,8 +1023,8 @@ export interface components {
              */
             type: "step_interval";
         };
-        /** IngestionRecordDto */
-        IngestionRecordDto: components["schemas"]["activity_summary"] | components["schemas"]["blood_pressure"] | components["schemas"]["body_measurement"] | components["schemas"]["cardiovascular"] | components["schemas"]["extended_body_measurement"] | components["schemas"]["heart_rate"] | components["schemas"]["hrv"] | components["schemas"]["respiratory_rate"] | components["schemas"]["scalar"] | components["schemas"]["sleep_session"] | components["schemas"]["sleep_summary"] | components["schemas"]["step_interval"];
+        /** IngestionRecord */
+        IngestionRecord: components["schemas"]["activity_summary"] | components["schemas"]["blood_pressure"] | components["schemas"]["body_measurement"] | components["schemas"]["cardiovascular"] | components["schemas"]["extended_body_measurement"] | components["schemas"]["heart_rate"] | components["schemas"]["hrv"] | components["schemas"]["respiratory_rate"] | components["schemas"]["scalar"] | components["schemas"]["sleep_session"] | components["schemas"]["sleep_summary"] | components["schemas"]["step_interval"];
         /** IngestionBatchRequest */
         IngestionBatchRequest: {
             provider?: string | null;
@@ -1033,7 +1033,7 @@ export interface components {
             /** Format: date-time */
             ingestedAt?: string | null;
             sourcePayload?: components["schemas"]["JsonElement?"];
-            records?: components["schemas"]["IngestionRecordDto"][] | null;
+            records?: components["schemas"]["IngestionRecord"][] | null;
         };
         /** MetricSkippedCountsResponse */
         MetricSkippedCountsResponse: {

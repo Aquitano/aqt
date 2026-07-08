@@ -5,14 +5,14 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
-import me.aquitano.health.api.dto.BodyMeasurementDto
-import me.aquitano.health.api.dto.HeartRateDto
-import me.aquitano.health.api.dto.ActivitySummaryDto
-import me.aquitano.health.api.dto.HrvDto
-import me.aquitano.health.api.dto.RespiratoryRateDto
-import me.aquitano.health.api.dto.SleepSummaryDto
-import me.aquitano.health.api.dto.SleepSessionDto
-import me.aquitano.health.api.dto.StepIntervalDto
+import me.aquitano.health.api.dto.BodyMeasurement
+import me.aquitano.health.api.dto.HeartRate
+import me.aquitano.health.api.dto.ActivitySummary
+import me.aquitano.health.api.dto.Hrv
+import me.aquitano.health.api.dto.RespiratoryRate
+import me.aquitano.health.api.dto.SleepSummary
+import me.aquitano.health.api.dto.SleepSession
+import me.aquitano.health.api.dto.StepInterval
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -40,7 +40,7 @@ class WithingsNormalizerTest {
             )
         )
 
-        val body = assertIs<BodyMeasurementDto>(result.records.single())
+        val body = assertIs<BodyMeasurement>(result.records.single())
         assertEquals("withings:measure:123:body", body.providerRecordId)
         assertEquals(80.136, body.weightKg!!, 0.000001)
         assertEquals(21.4, body.bodyFatPercent!!, 0.000001)
@@ -72,8 +72,8 @@ class WithingsNormalizerTest {
             )
         )
 
-        val summary = assertIs<ActivitySummaryDto>(
-            result.records.filterIsInstance<ActivitySummaryDto>().single()
+        val summary = assertIs<ActivitySummary>(
+            result.records.filterIsInstance<ActivitySummary>().single()
         )
         assertEquals("withings:activity:2026-04-01:summary", summary.providerRecordId)
         assertEquals(800.5, summary.distanceMeters!!, 0.000001)
@@ -82,7 +82,7 @@ class WithingsNormalizerTest {
         assertEquals(15.0, summary.elevationMeters!!, 0.000001)
         assertEquals(60, summary.activeMinutes)
         assertEquals(74, summary.averageHeartRateBpm)
-        assertEquals(1, result.records.filterIsInstance<StepIntervalDto>().size)
+        assertEquals(1, result.records.filterIsInstance<StepInterval>().size)
     }
 
     @Test
@@ -100,7 +100,7 @@ class WithingsNormalizerTest {
             )
         )
 
-        val heartRate = assertIs<HeartRateDto>(result.records.single())
+        val heartRate = assertIs<HeartRate>(result.records.single())
         assertEquals("withings:measure:456:heart-pulse", heartRate.providerRecordId)
         assertEquals("2026-04-01T00:00:00Z", heartRate.measuredAt)
         assertEquals(62, heartRate.bpm)
@@ -139,8 +139,8 @@ class WithingsNormalizerTest {
             )
         )
 
-        val steps = assertIs<StepIntervalDto>(
-            result.records.filterIsInstance<StepIntervalDto>().single()
+        val steps = assertIs<StepInterval>(
+            result.records.filterIsInstance<StepInterval>().single()
         )
         assertEquals("withings:activity:2026-04-01", steps.providerRecordId)
         assertEquals("2026-04-01T00:00:00Z", steps.startAt)
@@ -164,8 +164,8 @@ class WithingsNormalizerTest {
             )
         )
 
-        val sleep = assertIs<SleepSessionDto>(
-            result.records.filterIsInstance<SleepSessionDto>().single()
+        val sleep = assertIs<SleepSession>(
+            result.records.filterIsInstance<SleepSession>().single()
         )
         assertEquals("withings:sleep-summary:1775001600:1775023200", sleep.providerRecordId)
         assertEquals("2026-04-01T00:00:00Z", sleep.startAt)
@@ -199,8 +199,8 @@ class WithingsNormalizerTest {
             )
         )
 
-        val summary = assertIs<SleepSummaryDto>(
-            result.records.filterIsInstance<SleepSummaryDto>().single()
+        val summary = assertIs<SleepSummary>(
+            result.records.filterIsInstance<SleepSummary>().single()
         )
         assertEquals("withings:sleep-summary:1775001600:1775023200:summary", summary.providerRecordId)
         assertEquals(21600, summary.timeInBedSeconds)
@@ -229,18 +229,18 @@ class WithingsNormalizerTest {
             )
         )
 
-        val sleep = assertIs<SleepSessionDto>(result.records.first())
+        val sleep = assertIs<SleepSession>(result.records.first())
         assertEquals(1, sleep.stages.size)
         assertEquals("light", sleep.stages[0].stage)
-        val heartRates = result.records.filterIsInstance<HeartRateDto>()
+        val heartRates = result.records.filterIsInstance<HeartRate>()
         assertEquals(2, heartRates.size)
         assertEquals("sleep", heartRates.first().context)
-        val respiratoryRate = assertIs<RespiratoryRateDto>(
-            result.records.filterIsInstance<RespiratoryRateDto>().single()
+        val respiratoryRate = assertIs<RespiratoryRate>(
+            result.records.filterIsInstance<RespiratoryRate>().single()
         )
         assertEquals("withings:sleep:rr:1775001600", respiratoryRate.providerRecordId)
         assertEquals(14, respiratoryRate.breathsPerMinute)
-        val hrv = assertIs<HrvDto>(result.records.filterIsInstance<HrvDto>().single())
+        val hrv = assertIs<Hrv>(result.records.filterIsInstance<Hrv>().single())
         assertEquals("withings:sleep:rmssd:1775001600", hrv.providerRecordId)
         assertEquals("rmssd", hrv.metricType)
         assertEquals(42.5, hrv.value, 0.000001)
@@ -262,7 +262,7 @@ class WithingsNormalizerTest {
             )
         )
 
-        val sessions = result.records.filterIsInstance<SleepSessionDto>()
+        val sessions = result.records.filterIsInstance<SleepSession>()
         assertEquals(1, sessions.size)
         assertEquals(1, sessions.first().stages.size)
         assertEquals("light", sessions.first().stages.first().stage)
@@ -289,10 +289,10 @@ class WithingsNormalizerTest {
             )
         )
 
-        val sessions = result.records.filterIsInstance<SleepSessionDto>()
+        val sessions = result.records.filterIsInstance<SleepSession>()
         assertEquals(1, sessions.size)
         assertEquals("light", sessions.first().stages.first().stage)
-        assertEquals(1, result.records.filterIsInstance<HeartRateDto>().size)
+        assertEquals(1, result.records.filterIsInstance<HeartRate>().size)
     }
 
     @Test
@@ -311,7 +311,7 @@ class WithingsNormalizerTest {
             )
         )
 
-        val sessions = result.records.filterIsInstance<SleepSessionDto>()
+        val sessions = result.records.filterIsInstance<SleepSession>()
         assertEquals(1, sessions.size)
         assertEquals(1, sessions.first().stages.size)
         assertEquals("light", sessions.first().stages.first().stage)
@@ -335,7 +335,7 @@ class WithingsNormalizerTest {
             )
         )
 
-        val sessions = result.records.filterIsInstance<SleepSessionDto>()
+        val sessions = result.records.filterIsInstance<SleepSession>()
         assertEquals(1, sessions.size)
         assertEquals("2026-04-01T00:00:00Z", sessions.first().startAt)
         assertEquals("2026-04-01T02:00:00Z", sessions.first().endAt)
@@ -368,7 +368,7 @@ class WithingsNormalizerTest {
             )
         )
 
-        val sessions = result.records.filterIsInstance<SleepSessionDto>()
+        val sessions = result.records.filterIsInstance<SleepSession>()
         assertEquals(2, sessions.size)
         assertEquals("2026-04-01T00:00:00Z", sessions[0].startAt)
         assertEquals("2026-04-01T01:00:00Z", sessions[0].endAt)

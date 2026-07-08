@@ -34,7 +34,7 @@ class GoogleHealthNormalizer {
     private fun normalizeDataPoint(
         dataType: String,
         dataPoint: JsonObject
-    ): IngestionRecordDto? {
+    ): IngestionRecord? {
         val point = (dataPoint["dataPoint"] as? JsonObject) ?: dataPoint
         return when (dataType) {
             "steps" -> normalizeSteps(dataType, point)
@@ -49,14 +49,14 @@ class GoogleHealthNormalizer {
     private fun normalizeSteps(
         dataType: String,
         point: JsonObject
-    ): StepIntervalDto? {
+    ): StepInterval? {
         val steps = point.obj("steps") ?: return null
         val interval = steps.obj("interval") ?: return null
         val startAt = interval.string("startTime") ?: return null
         val endAt = interval.string("endTime") ?: return null
         val count = steps.long("count") ?: return null
         if (count <= 0) return null
-        return StepIntervalDto(
+        return StepInterval(
             providerRecordId = providerRecordId(
                 dataType,
                 point,
@@ -72,7 +72,7 @@ class GoogleHealthNormalizer {
     private fun normalizeSleep(
         dataType: String,
         point: JsonObject
-    ): SleepSessionDto? {
+    ): SleepSession? {
         val sleep = point.obj("sleep") ?: return null
         val interval = sleep.obj("interval") ?: return null
         val startAt = interval.string("startTime") ?: return null
@@ -83,14 +83,14 @@ class GoogleHealthNormalizer {
                 mapSleepStage(stage.string("type")) ?: return@mapNotNull null
             val stageStart = stage.string("startTime") ?: return@mapNotNull null
             val stageEnd = stage.string("endTime") ?: return@mapNotNull null
-            SleepStageDto(
+            SleepStage(
                 stage = mapped,
                 startAt = stageStart,
                 endAt = stageEnd
             )
         }.orEmpty()
 
-        return SleepSessionDto(
+        return SleepSession(
             providerRecordId = providerRecordId(
                 dataType,
                 point,
@@ -106,7 +106,7 @@ class GoogleHealthNormalizer {
     private fun normalizeHeartRate(
         dataType: String,
         point: JsonObject
-    ): HeartRateDto? {
+    ): HeartRate? {
         val heartRate =
             point.obj("heartRate") ?: point.obj("heart_rate") ?: return null
         val sampleTime = heartRate.obj("sampleTime") ?: return null
@@ -114,7 +114,7 @@ class GoogleHealthNormalizer {
         val bpm = heartRate.long("beatsPerMinute") ?: heartRate.long("bpm")
         ?: return null
         if (bpm !in 25..250) return null
-        return HeartRateDto(
+        return HeartRate(
             providerRecordId = providerRecordId(
                 dataType,
                 point,
@@ -132,13 +132,13 @@ class GoogleHealthNormalizer {
     private fun normalizeWeight(
         dataType: String,
         point: JsonObject
-    ): BodyMeasurementDto? {
+    ): BodyMeasurement? {
         val weight = point.obj("weight") ?: return null
         val sampleTime = weight.obj("sampleTime") ?: return null
         val measuredAt = sampleTime.string("physicalTime") ?: return null
         val grams = weight.double("weightGrams") ?: return null
         if (grams <= 0.0) return null
-        return BodyMeasurementDto(
+        return BodyMeasurement(
             providerRecordId = providerRecordId(
                 dataType,
                 point,
@@ -153,14 +153,14 @@ class GoogleHealthNormalizer {
     private fun normalizeBodyFat(
         dataType: String,
         point: JsonObject
-    ): BodyMeasurementDto? {
+    ): BodyMeasurement? {
         val bodyFat =
             point.obj("bodyFat") ?: point.obj("body_fat") ?: return null
         val sampleTime = bodyFat.obj("sampleTime") ?: return null
         val measuredAt = sampleTime.string("physicalTime") ?: return null
         val percentage = bodyFat.double("percentage") ?: return null
         if (percentage !in 0.0..100.0) return null
-        return BodyMeasurementDto(
+        return BodyMeasurement(
             providerRecordId = providerRecordId(
                 dataType,
                 point,

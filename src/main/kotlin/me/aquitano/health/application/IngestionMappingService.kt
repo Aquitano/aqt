@@ -88,28 +88,28 @@ class IngestionMappingService {
      * Maps a single already-stored normalized record back to a HealthRecord, for replay.
      * Returns null when the record no longer passes current validation rules.
      */
-    fun mapRecord(dto: IngestionRecordDto): HealthRecord? =
+    fun mapRecord(dto: IngestionRecord): HealthRecord? =
         mapRecord(index = 0, dto = dto, issues = mutableListOf())
 
     private fun mapRecord(
         index: Int,
-        dto: IngestionRecordDto,
+        dto: IngestionRecord,
         issues: MutableList<ValidationIssue>
     ): HealthRecord? {
         val field = "records[$index]"
         return when (dto) {
-            is StepIntervalDto -> mapStepInterval(field, dto, issues)
-            is SleepSessionDto -> mapSleepSession(field, dto, issues)
-            is BodyMeasurementDto -> mapBodyMeasurement(field, dto, issues)
-            is HeartRateDto -> mapHeartRate(field, dto, issues)
-            is ActivitySummaryDto -> mapActivitySummary(field, dto, issues)
-            is SleepSummaryDto -> mapSleepSummary(field, dto, issues)
-            is RespiratoryRateDto -> mapRespiratoryRate(field, dto, issues)
-            is HrvDto -> mapHrv(field, dto, issues)
-            is BloodPressureDto -> mapBloodPressure(field, dto, issues)
-            is CardiovascularDto -> mapCardiovascular(field, dto, issues)
-            is ExtendedBodyMeasurementDto -> mapExtendedBodyMeasurement(field, dto, issues)
-            is ScalarSampleDto -> mapScalar(field, dto, issues)
+            is StepInterval -> mapStepInterval(field, dto, issues)
+            is SleepSession -> mapSleepSession(field, dto, issues)
+            is BodyMeasurement -> mapBodyMeasurement(field, dto, issues)
+            is HeartRate -> mapHeartRate(field, dto, issues)
+            is ActivitySummary -> mapActivitySummary(field, dto, issues)
+            is SleepSummary -> mapSleepSummary(field, dto, issues)
+            is RespiratoryRate -> mapRespiratoryRate(field, dto, issues)
+            is Hrv -> mapHrv(field, dto, issues)
+            is BloodPressure -> mapBloodPressure(field, dto, issues)
+            is Cardiovascular -> mapCardiovascular(field, dto, issues)
+            is ExtendedBodyMeasurement -> mapExtendedBodyMeasurement(field, dto, issues)
+            is ScalarSample -> mapScalar(field, dto, issues)
         }
     }
 }

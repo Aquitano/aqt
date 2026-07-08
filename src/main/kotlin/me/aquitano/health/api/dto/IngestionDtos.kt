@@ -16,38 +16,38 @@ data class IngestionBatchRequest(
     @JsonSchema.Format("date-time")
     val ingestedAt: String? = null,
     val sourcePayload: JsonElement? = null,
-    val records: List<IngestionRecordDto>? = null,
+    val records: List<IngestionRecord>? = null,
 )
 
 @Serializable
-sealed class IngestionRecordDto {
+sealed class IngestionRecord {
     abstract val providerRecordId: String?
 }
 
 @Serializable
 @SerialName("step_interval")
-data class StepIntervalDto(
+data class StepInterval(
     override val providerRecordId: String? = null,
     @JsonSchema.Format("date-time")
     val startAt: String,
     @JsonSchema.Format("date-time")
     val endAt: String,
     val steps: Int,
-) : IngestionRecordDto()
+) : IngestionRecord()
 
 @Serializable
 @SerialName("sleep_session")
-data class SleepSessionDto(
+data class SleepSession(
     override val providerRecordId: String? = null,
     @JsonSchema.Format("date-time")
     val startAt: String,
     @JsonSchema.Format("date-time")
     val endAt: String,
-    val stages: List<SleepStageDto> = emptyList(),
-) : IngestionRecordDto()
+    val stages: List<SleepStage> = emptyList(),
+) : IngestionRecord()
 
 @Serializable
-data class SleepStageDto(
+data class SleepStage(
     val stage: String,
     @JsonSchema.Format("date-time")
     val startAt: String,
@@ -57,7 +57,7 @@ data class SleepStageDto(
 
 @Serializable
 @SerialName("body_measurement")
-data class BodyMeasurementDto(
+data class BodyMeasurement(
     override val providerRecordId: String? = null,
     @JsonSchema.Format("date-time")
     val measuredAt: String,
@@ -68,21 +68,21 @@ data class BodyMeasurementDto(
     @JsonNames("waterPercent")
     val bodyWaterPercent: Double? = null,
     val visceralFatRating: Double? = null,
-) : IngestionRecordDto()
+) : IngestionRecord()
 
 @Serializable
 @SerialName("heart_rate")
-data class HeartRateDto(
+data class HeartRate(
     override val providerRecordId: String? = null,
     @JsonSchema.Format("date-time")
     val measuredAt: String,
     val bpm: Int,
     val context: String? = null,
-) : IngestionRecordDto()
+) : IngestionRecord()
 
 @Serializable
 @SerialName("activity_summary")
-data class ActivitySummaryDto(
+data class ActivitySummary(
     override val providerRecordId: String? = null,
     @JsonSchema.Format("date")
     val date: String,
@@ -97,11 +97,11 @@ data class ActivitySummaryDto(
     val averageHeartRateBpm: Int? = null,
     val minHeartRateBpm: Int? = null,
     val maxHeartRateBpm: Int? = null,
-) : IngestionRecordDto()
+) : IngestionRecord()
 
 @Serializable
 @SerialName("sleep_summary")
-data class SleepSummaryDto(
+data class SleepSummary(
     override val providerRecordId: String? = null,
     @JsonSchema.Format("date-time")
     val startAt: String,
@@ -135,21 +135,21 @@ data class SleepSummaryDto(
     val rrAverage: Double? = null,
     val rrMin: Double? = null,
     val rrMax: Double? = null,
-) : IngestionRecordDto()
+) : IngestionRecord()
 
 @Serializable
 @SerialName("respiratory_rate")
-data class RespiratoryRateDto(
+data class RespiratoryRate(
     override val providerRecordId: String? = null,
     @JsonSchema.Format("date-time")
     val measuredAt: String,
     val breathsPerMinute: Int,
     val context: String? = null,
-) : IngestionRecordDto()
+) : IngestionRecord()
 
 @Serializable
 @SerialName("hrv")
-data class HrvDto(
+data class Hrv(
     override val providerRecordId: String? = null,
     @JsonSchema.Format("date-time")
     val measuredAt: String,
@@ -157,33 +157,33 @@ data class HrvDto(
     val value: Double,
     val unit: String,
     val context: String? = null,
-) : IngestionRecordDto()
+) : IngestionRecord()
 
 @Serializable
 @SerialName("blood_pressure")
-data class BloodPressureDto(
+data class BloodPressure(
     override val providerRecordId: String? = null,
     @JsonSchema.Format("date-time")
     val measuredAt: String,
     val systolicMmhg: Int,
     val diastolicMmhg: Int,
     val heartRateBpm: Int? = null,
-) : IngestionRecordDto()
+) : IngestionRecord()
 
 @Serializable
 @SerialName("cardiovascular")
-data class CardiovascularDto(
+data class Cardiovascular(
     override val providerRecordId: String? = null,
     @JsonSchema.Format("date-time")
     val measuredAt: String,
     val metricType: String,
     val value: Double,
     val unit: String,
-) : IngestionRecordDto()
+) : IngestionRecord()
 
 @Serializable
 @SerialName("extended_body_measurement")
-data class ExtendedBodyMeasurementDto(
+data class ExtendedBodyMeasurement(
     override val providerRecordId: String? = null,
     @JsonSchema.Format("date-time")
     val measuredAt: String,
@@ -191,11 +191,11 @@ data class ExtendedBodyMeasurementDto(
     val value: Double,
     val unit: String,
     val segment: String? = null,
-) : IngestionRecordDto()
+) : IngestionRecord()
 
 @Serializable
 @SerialName("scalar")
-data class ScalarSampleDto(
+data class ScalarSample(
     override val providerRecordId: String? = null,
     @JsonSchema.Format("date-time")
     val measuredAt: String,
@@ -204,7 +204,7 @@ data class ScalarSampleDto(
     val unit: String,
     val context: String? = null,
     val segment: String? = null,
-) : IngestionRecordDto()
+) : IngestionRecord()
 
 @Serializable
 data class IngestionSummaryResponse(

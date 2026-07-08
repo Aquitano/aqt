@@ -39,7 +39,7 @@ class WithingsNormalizer {
         return WithingsNormalizedBatch(sourcePayload, records)
     }
 
-    private fun normalizeActivity(records: List<JsonObject>): List<IngestionRecordDto> =
+    private fun normalizeActivity(records: List<JsonObject>): List<IngestionRecord> =
         buildList {
             records.forEach { record ->
                 val date = record.string("date")
@@ -48,7 +48,7 @@ class WithingsNormalizer {
                 val steps = record.int("steps")
                 if (steps != null && steps > 0) {
                     add(
-                        StepIntervalDto(
+                        StepInterval(
                             providerRecordId = "withings:activity:$date",
                             startAt = date.atStartOfDay()
                                 .toInstant(ZoneOffset.UTC)
@@ -67,7 +67,7 @@ class WithingsNormalizer {
             }
         }
 
-    private fun normalizeMeasures(records: List<JsonObject>): List<IngestionRecordDto> =
+    private fun normalizeMeasures(records: List<JsonObject>): List<IngestionRecord> =
         buildList {
             records.forEach { group ->
                 val measuredAt = group.long("date") ?: group.long("created")
@@ -90,9 +90,9 @@ class WithingsNormalizer {
                 var diastolicMmhg: Int? = null
                 var bpHeartRate: Int? = null
 
-                // Extended body metrics and cardiovascular as individual DTOs
-                val extendedMetrics = mutableListOf<ExtendedBodyMeasurementDto>()
-                val cardiovascularMetrics = mutableListOf<CardiovascularDto>()
+                // Extended body metrics and cardiovascular as individual records
+                val extendedMetrics = mutableListOf<ExtendedBodyMeasurement>()
+                val cardiovascularMetrics = mutableListOf<Cardiovascular>()
 
                 measures.mapNotNull { it as? JsonObject }.forEach { measure ->
                     val type = measure.int("type") ?: return@forEach
@@ -102,7 +102,7 @@ class WithingsNormalizer {
                     when (type) {
                         1 -> if (realValue > 0.0) weightKg = realValue
                         5 -> if (realValue > 0.0) extendedMetrics.add(
-                            ExtendedBodyMeasurementDto(
+                            ExtendedBodyMeasurement(
                                 providerRecordId = providerId(grpid, "fat_free_mass"),
                                 measuredAt = measuredAtString,
                                 metricType = "fat_free_mass",
@@ -112,7 +112,7 @@ class WithingsNormalizer {
                         )
                         6 -> if (realValue in 0.0..100.0) bodyFatPercent = realValue
                         8 -> if (realValue > 0.0) extendedMetrics.add(
-                            ExtendedBodyMeasurementDto(
+                            ExtendedBodyMeasurement(
                                 providerRecordId = providerId(grpid, "fat_mass"),
                                 measuredAt = measuredAtString,
                                 metricType = "fat_mass",
@@ -133,7 +133,7 @@ class WithingsNormalizer {
                         76 -> if (realValue > 0.0) muscleKg = realValue
                         77 -> if (realValue in 0.0..100.0) waterPercent = realValue
                         88 -> if (realValue > 0.0) extendedMetrics.add(
-                            ExtendedBodyMeasurementDto(
+                            ExtendedBodyMeasurement(
                                 providerRecordId = providerId(grpid, "bone_mass"),
                                 measuredAt = measuredAtString,
                                 metricType = "bone_mass",
@@ -142,7 +142,7 @@ class WithingsNormalizer {
                             )
                         )
                         91 -> if (realValue > 0.0) cardiovascularMetrics.add(
-                            CardiovascularDto(
+                            Cardiovascular(
                                 providerRecordId = providerId(grpid, "pulse_wave_velocity"),
                                 measuredAt = measuredAtString,
                                 metricType = "pulse_wave_velocity",
@@ -151,7 +151,7 @@ class WithingsNormalizer {
                             )
                         )
                         130 -> if (realValue >= 0.0) extendedMetrics.add(
-                            ExtendedBodyMeasurementDto(
+                            ExtendedBodyMeasurement(
                                 providerRecordId = providerId(grpid, "extracellular_water"),
                                 measuredAt = measuredAtString,
                                 metricType = "extracellular_water",
@@ -160,7 +160,7 @@ class WithingsNormalizer {
                             )
                         )
                         135 -> if (realValue >= 0.0) extendedMetrics.add(
-                            ExtendedBodyMeasurementDto(
+                            ExtendedBodyMeasurement(
                                 providerRecordId = providerId(grpid, "intracellular_water"),
                                 measuredAt = measuredAtString,
                                 metricType = "intracellular_water",
@@ -181,7 +181,7 @@ class WithingsNormalizer {
                             "segmental_fat_free_mass", "kg", realValue
                         )
                         139 -> if (realValue > 0.0) cardiovascularMetrics.add(
-                            CardiovascularDto(
+                            Cardiovascular(
                                 providerRecordId = providerId(grpid, "vascular_age"),
                                 measuredAt = measuredAtString,
                                 metricType = "vascular_age",
@@ -190,7 +190,7 @@ class WithingsNormalizer {
                             )
                         )
                         155 -> if (realValue.toInt() in 25..250) cardiovascularMetrics.add(
-                            CardiovascularDto(
+                            Cardiovascular(
                                 providerRecordId = providerId(grpid, "standing_heart_rate"),
                                 measuredAt = measuredAtString,
                                 metricType = "standing_heart_rate",
@@ -200,7 +200,7 @@ class WithingsNormalizer {
                         )
                         170 -> if (realValue > 0.0) visceralFatRating = realValue
                         173 -> if (realValue > 0.0) extendedMetrics.add(
-                            ExtendedBodyMeasurementDto(
+                            ExtendedBodyMeasurement(
                                 providerRecordId = providerId(grpid, "basal_metabolic_rate"),
                                 measuredAt = measuredAtString,
                                 metricType = "basal_metabolic_rate",
@@ -221,7 +221,7 @@ class WithingsNormalizer {
                     visceralFatRating != null
                 ) {
                     add(
-                        BodyMeasurementDto(
+                        BodyMeasurement(
                             providerRecordId = "withings:measure:$grpid:body",
                             measuredAt = measuredAtString,
                             weightKg = weightKg,
@@ -236,7 +236,7 @@ class WithingsNormalizer {
                 // Emit standalone heart rate sample
                 heartPulse?.let {
                     add(
-                        HeartRateDto(
+                        HeartRate(
                             providerRecordId = "withings:measure:$grpid:heart-pulse",
                             measuredAt = measuredAtString,
                             bpm = it,
@@ -248,7 +248,7 @@ class WithingsNormalizer {
                 // Emit blood pressure if both systolic and diastolic present
                 if (systolicMmhg != null && diastolicMmhg != null && systolicMmhg > diastolicMmhg) {
                     add(
-                        BloodPressureDto(
+                        BloodPressure(
                             providerRecordId = "withings:measure:$grpid:bp",
                             measuredAt = measuredAtString,
                             systolicMmhg = systolicMmhg,
@@ -268,7 +268,7 @@ class WithingsNormalizer {
         "withings:measure:$grpid:$suffix"
 
     private fun addSegmentalMetric(
-        target: MutableList<ExtendedBodyMeasurementDto>,
+        target: MutableList<ExtendedBodyMeasurement>,
         grpid: String,
         measuredAtString: String,
         measure: JsonObject,
@@ -279,7 +279,7 @@ class WithingsNormalizer {
         val segmentCode = measure.string("zone") ?: return
         val segment = mapSegment(segmentCode) ?: return
         target.add(
-            ExtendedBodyMeasurementDto(
+            ExtendedBodyMeasurement(
                 providerRecordId = "withings:measure:$grpid:$metricType:$segment",
                 measuredAt = measuredAtString,
                 metricType = metricType,
@@ -299,14 +299,14 @@ class WithingsNormalizer {
         else -> null
     }
 
-    private fun normalizeSleepSummary(records: List<JsonObject>): List<IngestionRecordDto> =
+    private fun normalizeSleepSummary(records: List<JsonObject>): List<IngestionRecord> =
         buildList {
             records.forEach { record ->
                 val start = record.long("startdate") ?: return@forEach
                 val end = record.long("enddate") ?: return@forEach
                 if (start >= end) return@forEach
                 add(
-                    SleepSessionDto(
+                    SleepSession(
                         providerRecordId = "withings:sleep-summary:$start:$end",
                         startAt = Instant.ofEpochSecond(start).toString(),
                         endAt = Instant.ofEpochSecond(end).toString(),
@@ -325,7 +325,7 @@ class WithingsNormalizer {
                     data.nonNegativeLong("wakeup_latency")
                         ?: data.nonNegativeLong("durationtowakeup")
                 val sleepScore = data.int("sleep_score")?.takeIf { it in 0..100 }
-                val summary = SleepSummaryDto(
+                val summary = SleepSummary(
                     providerRecordId = "withings:sleep-summary:$start:$end:summary",
                     startAt = Instant.ofEpochSecond(start).toString(),
                     endAt = Instant.ofEpochSecond(end).toString(),
@@ -368,7 +368,7 @@ class WithingsNormalizer {
             }
         }
 
-    private fun normalizeSleep(records: List<JsonObject>): List<IngestionRecordDto> {
+    private fun normalizeSleep(records: List<JsonObject>): List<IngestionRecord> {
         val segments = records.mapNotNull { record ->
             val start =
                 record.sleepInstant("startdate") ?: return@mapNotNull null
@@ -385,7 +385,7 @@ class WithingsNormalizer {
             val instant = record.sleepInstant("timestamp")
                 ?: record.sleepInstant("startdate")
                 ?: return@mapNotNull null
-            HeartRateDto(
+            HeartRate(
                 providerRecordId = "withings:sleep:hr:${instant.epochSecond}",
                 measuredAt = instant.toString(),
                 bpm = bpm,
@@ -399,7 +399,7 @@ class WithingsNormalizer {
             val instant = record.sleepInstant("timestamp")
                 ?: record.sleepInstant("startdate")
                 ?: return@mapNotNull null
-            RespiratoryRateDto(
+            RespiratoryRate(
                 providerRecordId = "withings:sleep:rr:${instant.epochSecond}",
                 measuredAt = instant.toString(),
                 breathsPerMinute = breathsPerMinute,
@@ -413,7 +413,7 @@ class WithingsNormalizer {
             val instant = record.sleepInstant("timestamp")
                 ?: record.sleepInstant("startdate")
                 ?: return@mapNotNull null
-            HrvDto(
+            Hrv(
                 providerRecordId = "withings:sleep:rmssd:${instant.epochSecond}",
                 measuredAt = instant.toString(),
                 metricType = "rmssd",
@@ -429,12 +429,12 @@ class WithingsNormalizer {
                     val start = sessionSegments.first().start
                     val end = sessionSegments.last().end
                     if (!start.isBefore(end)) return@mapNotNull null
-                    SleepSessionDto(
+                    SleepSession(
                         providerRecordId = "withings:sleep:${start.epochSecond}:${end.epochSecond}",
                         startAt = start.toString(),
                         endAt = end.toString(),
                         stages = sessionSegments.map { segment ->
-                            SleepStageDto(
+                            SleepStage(
                                 stage = segment.stage,
                                 startAt = segment.start.toString(),
                                 endAt = segment.end.toString(),
@@ -457,7 +457,7 @@ class WithingsNormalizer {
                     val stage = mapSleepStage(current.second.sleepState())
                         ?: return@mapNotNull null
                     if (!current.first.isBefore(next.first)) return@mapNotNull null
-                    SleepStageDto(
+                    SleepStage(
                         stage = stage,
                         startAt = current.first.toString(),
                         endAt = next.first.toString(),
@@ -467,7 +467,7 @@ class WithingsNormalizer {
             val start = sessionRecords.first().first
             val end = sessionRecords.last().first
             if (!start.isBefore(end)) return@mapNotNull null
-            SleepSessionDto(
+            SleepSession(
                 providerRecordId = "withings:sleep:${start.epochSecond}:${end.epochSecond}",
                 startAt = start.toString(),
                 endAt = end.toString(),
@@ -531,8 +531,8 @@ class WithingsNormalizer {
             else -> "unknown"
         }
 
-    private fun JsonObject.toActivitySummary(date: LocalDate): ActivitySummaryDto =
-        ActivitySummaryDto(
+    private fun JsonObject.toActivitySummary(date: LocalDate): ActivitySummary =
+        ActivitySummary(
             providerRecordId = "withings:activity:$date:summary",
             date = date.toString(),
             distanceMeters = nonNegativeDouble("distance"),
@@ -548,7 +548,7 @@ class WithingsNormalizer {
             maxHeartRateBpm = validHeartRate("hr_max"),
         )
 
-    private fun ActivitySummaryDto.hasAnyMetric(): Boolean =
+    private fun ActivitySummary.hasAnyMetric(): Boolean =
         distanceMeters != null ||
             activeEnergyKcal != null ||
             totalEnergyKcal != null ||
@@ -561,7 +561,7 @@ class WithingsNormalizer {
             minHeartRateBpm != null ||
             maxHeartRateBpm != null
 
-    private fun SleepSummaryDto.hasAnyMetric(): Boolean =
+    private fun SleepSummary.hasAnyMetric(): Boolean =
         timeInBedSeconds != null ||
             totalSleepSeconds != null ||
             lightSleepSeconds != null ||

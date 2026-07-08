@@ -3,7 +3,7 @@ package me.aquitano.health.application.providersync
 import me.aquitano.health.infrastructure.time.UtcClock
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
-import me.aquitano.health.api.dto.StepIntervalDto
+import me.aquitano.health.api.dto.StepInterval
 import me.aquitano.health.domain.*
 import java.time.Duration
 import java.time.Instant
@@ -217,7 +217,7 @@ class ProviderSyncPipelineTest {
                 sourceRecordsReceived = 1,
                 sourcePayload = buildJsonObject {},
                 records = listOf(
-                    StepIntervalDto(
+                    StepInterval(
                         providerRecordId = "steps-1",
                         startAt = "2026-04-01T08:00:00Z",
                         endAt = "2026-04-01T09:00:00Z",

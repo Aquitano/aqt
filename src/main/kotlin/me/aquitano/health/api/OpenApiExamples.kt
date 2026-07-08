@@ -44,30 +44,30 @@ internal fun ingestionBatchExample(): ExampleObject =
                 put("job", JsonPrimitive("daily-sync"))
             },
             records = listOf(
-                StepIntervalDto(
+                StepInterval(
                     providerRecordId = "steps-1",
                     startAt = ExampleStepStartAt,
                     endAt = ExampleStepEndAt,
                     steps = 1200,
                 ),
-                SleepSessionDto(
+                SleepSession(
                     providerRecordId = "sleep-1",
                     startAt = ExampleSleepStartAt,
                     endAt = ExampleSleepEndAt,
                     stages = listOf(
-                        SleepStageDto(
+                        SleepStage(
                             stage = "deep",
                             startAt = ExampleSleepStageStartAt,
                             endAt = ExampleSleepStageEndAt,
                         )
                     ),
                 ),
-                BodyMeasurementDto(
+                BodyMeasurement(
                     providerRecordId = "weight-1",
                     measuredAt = ExampleBodyMeasuredAt,
                     weightKg = 78.4,
                 ),
-                HeartRateDto(
+                HeartRate(
                     providerRecordId = "hr-1",
                     measuredAt = ExampleHeartRateMeasuredAt,
                     bpm = 62,
