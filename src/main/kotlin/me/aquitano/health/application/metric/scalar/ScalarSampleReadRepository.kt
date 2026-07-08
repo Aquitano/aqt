@@ -6,8 +6,8 @@ import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.infrastructure.database.tables.CanonicalScalarSamplesView
 import me.aquitano.health.infrastructure.database.tables.ScalarSamplesTable
 import me.aquitano.health.infrastructure.database.toDbTimestamp
-import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
-import me.aquitano.health.infrastructure.repositories.common.TimeFilterMode
+import me.aquitano.health.application.metric.common.repository.BaseMetricReadRepository
+import me.aquitano.health.application.metric.common.repository.TimeFilterMode
 import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
@@ -28,7 +28,7 @@ import java.time.Instant
  * canonical_scalar_samples view (cross-provider dedup per 30s bin); `canonical = false`
  * reads every stored sample.
  */
-class ScalarSampleReadRepository : BaseMetricRepository() {
+class ScalarSampleReadRepository : BaseMetricReadRepository() {
     fun list(
         filters: ReadFilters,
         metricTypes: Set<String>,

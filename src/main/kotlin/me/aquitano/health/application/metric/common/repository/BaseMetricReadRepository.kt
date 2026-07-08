@@ -1,10 +1,6 @@
-package me.aquitano.health.infrastructure.repositories.common
+package me.aquitano.health.application.metric.common.repository
 
 import me.aquitano.health.application.metric.common.MetricReadRepository
-import me.aquitano.health.application.metric.common.repository.DailyReadFilters
-import me.aquitano.health.application.metric.common.repository.ReadFilters
-import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
-import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
@@ -20,14 +16,16 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
 /**
- * Base class for metric-specific read repositories.
+ * Base class for metric-specific read-model repositories.
  *
- * Extracts the common query-building helpers that every metric repository needs
- * (source metadata resolution, provider filtering, condition composition, sort
- * order conversion) so that concrete repositories only contain table-specific
+ * These repositories build Exposed queries but never open transactions; the
+ * calling service owns the transaction boundary. Extracts the common
+ * query-building helpers that every metric repository needs (source metadata
+ * resolution, provider filtering, condition composition, sort order
+ * conversion) so that concrete repositories only contain table-specific
  * query logic.
  */
-abstract class BaseMetricRepository : MetricReadRepository {
+abstract class BaseMetricReadRepository : MetricReadRepository {
 
     override fun sourceMetadataFor(sourceIds: Set<Int>): Map<Int, SourceMetadata> {
         if (sourceIds.isEmpty()) return emptyMap()

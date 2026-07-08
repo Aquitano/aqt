@@ -4,12 +4,12 @@ import me.aquitano.health.application.metric.common.keysetFetchLimit
 import me.aquitano.health.application.metric.common.repository.*
 import me.aquitano.health.infrastructure.database.tables.*
 import me.aquitano.health.infrastructure.database.toApiString
-import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
+import me.aquitano.health.application.metric.common.repository.BaseMetricReadRepository
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.*
 
-class CardiovascularRepository : BaseMetricRepository() {
+class CardiovascularRepository : BaseMetricReadRepository() {
     fun listBloodPressure(filters: ReadFilters): Pair<List<BloodPressureMeasurementRow>, Map<Int, SourceMetadata>> {
         val where = timestampConditions(
             filters = filters,

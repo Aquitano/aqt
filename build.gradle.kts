@@ -10,6 +10,7 @@ val postgresql_jdbc_version: String by project
 val testcontainers_version: String by project
 val kotlinx_coroutines_version: String by project
 val kotlin_logging_version: String by project
+val konsist_version: String by project
 
 plugins {
     kotlin("jvm") version "2.3.0"
@@ -84,6 +85,7 @@ dependencies {
     testImplementation("io.ktor:ktor-client-mock")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
     testImplementation("org.testcontainers:postgresql:$testcontainers_version")
+    testImplementation("com.lemonappdev:konsist:$konsist_version")
 }
 
 val integrationTestClasses = listOf(

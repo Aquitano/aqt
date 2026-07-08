@@ -4,14 +4,14 @@ import me.aquitano.health.application.metric.common.keysetFetchLimit
 import me.aquitano.health.application.metric.common.repository.*
 import me.aquitano.health.infrastructure.database.tables.*
 import me.aquitano.health.infrastructure.database.toApiString
-import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
-import me.aquitano.health.infrastructure.repositories.common.TimeFilterMode
+import me.aquitano.health.application.metric.common.repository.BaseMetricReadRepository
+import me.aquitano.health.application.metric.common.repository.TimeFilterMode
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.jdbc.*
 import java.time.Instant
 
-class SleepRepository : BaseMetricRepository() {
+class SleepRepository : BaseMetricReadRepository() {
     fun listSleepSessions(filters: ReadFilters): Triple<List<SleepSessionRow>, Map<Int, List<SleepStageRow>>, Map<Int, SourceMetadata>> {
         val where = timestampConditions(
             filters = filters,

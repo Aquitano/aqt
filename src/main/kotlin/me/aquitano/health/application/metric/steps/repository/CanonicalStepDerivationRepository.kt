@@ -11,8 +11,8 @@ import me.aquitano.health.infrastructure.database.tables.CanonicalStepSamplesTab
 import me.aquitano.health.infrastructure.database.tables.StepSamplesTable
 import me.aquitano.health.infrastructure.database.toApiString
 import me.aquitano.health.infrastructure.database.toDbTimestamp
-import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
-import me.aquitano.health.infrastructure.repositories.common.TimeFilterMode
+import me.aquitano.health.application.metric.common.repository.BaseMetricReadRepository
+import me.aquitano.health.application.metric.common.repository.TimeFilterMode
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import java.time.Instant
@@ -59,7 +59,7 @@ data class CanonicalDashboardStepsSummary(
     val sourceInstanceIds: Set<Int>,
 )
 
-class CanonicalStepDerivationRepository : BaseMetricRepository() {
+class CanonicalStepDerivationRepository : BaseMetricReadRepository() {
     fun listRawSamplesForDay(dayStart: Instant, dayEnd: Instant): List<StepSampleRow> =
         StepSamplesTable.selectAll()
             .where {

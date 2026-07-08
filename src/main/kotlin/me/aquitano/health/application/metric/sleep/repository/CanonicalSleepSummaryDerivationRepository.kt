@@ -6,12 +6,12 @@ import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.infrastructure.database.tables.CanonicalSleepSummariesTable
 import me.aquitano.health.infrastructure.database.tables.SleepSummariesTable
 import me.aquitano.health.infrastructure.database.toApiString
-import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
+import me.aquitano.health.application.metric.common.repository.BaseMetricReadRepository
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.selectAll
 
 /** Reads through the canonical_sleep_summaries view (rank winner per UTC start date, see V15). */
-class CanonicalSleepSummaryDerivationRepository : BaseMetricRepository() {
+class CanonicalSleepSummaryDerivationRepository : BaseMetricReadRepository() {
     fun listCanonicalSleepSummaries(
         filters: ReadFilters,
     ): Pair<List<SleepSummaryRow>, Map<Int, SourceMetadata>> {

@@ -3,12 +3,12 @@ package me.aquitano.health.application.metric.steps.repository
 import me.aquitano.health.application.metric.common.repository.*
 import me.aquitano.health.infrastructure.database.tables.*
 import me.aquitano.health.infrastructure.database.toApiString
-import me.aquitano.health.infrastructure.repositories.common.BaseMetricRepository
-import me.aquitano.health.infrastructure.repositories.common.TimeFilterMode
+import me.aquitano.health.application.metric.common.repository.BaseMetricReadRepository
+import me.aquitano.health.application.metric.common.repository.TimeFilterMode
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 
-class StepRepository : BaseMetricRepository() {
+class StepRepository : BaseMetricReadRepository() {
     fun listStepSamples(filters: ReadFilters): Pair<List<StepSampleRow>, Map<Int, SourceMetadata>> {
         val where = timestampConditions(
             filters = filters,
