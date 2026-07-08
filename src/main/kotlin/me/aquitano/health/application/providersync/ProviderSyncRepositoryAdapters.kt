@@ -4,6 +4,7 @@ import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.application.IngestionService
 import me.aquitano.health.domain.MetricCreatedCounts
 import me.aquitano.health.domain.ProviderSyncBatch
+import me.aquitano.health.domain.SyncStatus
 import me.aquitano.health.infrastructure.repositories.ACCOUNT_STATUS_NEEDS_REAUTH
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthAccount
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
@@ -99,11 +100,11 @@ class ProviderOAuthSyncRunPort(
 
     override suspend fun finish(
         runId: Int,
-        status: String,
+        status: SyncStatus,
         finishedAt: Instant,
         errorMessage: String?,
     ) {
-        repository.finishSyncRun(runId, status, finishedAt, errorMessage)
+        repository.finishSyncRun(runId, status.stored, finishedAt, errorMessage)
     }
 }
 

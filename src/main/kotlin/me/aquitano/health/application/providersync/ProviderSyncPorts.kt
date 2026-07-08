@@ -1,6 +1,7 @@
 package me.aquitano.health.application.providersync
 
 import me.aquitano.health.domain.ProviderSyncBatch
+import me.aquitano.health.domain.SyncStatus
 import java.time.Instant
 
 interface ProviderSyncAccountPort {
@@ -51,7 +52,7 @@ interface ProviderSyncRunPort {
 
     suspend fun finish(
         runId: Int,
-        status: String,
+        status: SyncStatus,
         finishedAt: Instant,
         errorMessage: String?,
     )

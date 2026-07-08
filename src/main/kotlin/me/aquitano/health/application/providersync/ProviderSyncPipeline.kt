@@ -223,9 +223,9 @@ class ProviderSyncPipeline(
         }
 
         val status = when {
-            errors.isEmpty() -> "processed"
-            batches.isEmpty() -> "failed"
-            else -> "partial_failed"
+            errors.isEmpty() -> SyncStatus.Processed
+            batches.isEmpty() -> SyncStatus.Failed
+            else -> SyncStatus.PartialFailed
         }
         runs.finish(
             runId = runId,
@@ -237,13 +237,13 @@ class ProviderSyncPipeline(
         val context = mapOf(
             "provider" to adapter.providerCode,
             "syncRunId" to runId,
-            "status" to status,
+            "status" to status.stored,
             "batchCount" to batches.size,
             "errorCount" to errors.size
         )
         when (status) {
-            "processed" -> logger.infoWithContext("provider_sync_completed", context)
-            "partial_failed" -> logger.warnWithContext("provider_sync_completed", context)
+            SyncStatus.Processed -> logger.infoWithContext("provider_sync_completed", context)
+            SyncStatus.PartialFailed -> logger.warnWithContext("provider_sync_completed", context)
             else -> logger.errorWithContext("provider_sync_completed", context)
         }
 
@@ -257,7 +257,7 @@ class ProviderSyncPipeline(
             providerInstanceId = account.providerInstanceId,
             requestedFrom = plan.requestedFrom,
             requestedTo = plan.requestedTo,
-            status = status,
+            status = status.stored,
             batches = batches,
             errors = errors,
             emptyDataTypes = emptyDataTypes,

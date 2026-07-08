@@ -354,7 +354,7 @@ class ProviderSyncPipelineTest {
 
         override suspend fun finish(
             runId: Int,
-            status: String,
+            status: SyncStatus,
             finishedAt: Instant,
             errorMessage: String?,
         ) = Unit

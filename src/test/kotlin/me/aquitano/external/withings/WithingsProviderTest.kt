@@ -449,7 +449,6 @@ class WithingsProviderTest {
             repository = providerRepository,
             client = client,
             normalizer = WithingsNormalizer(),
-            ingestionService = ingestionService,
             syncPipeline = me.aquitano.health.application.providersync.ProviderSyncPipeline(
                 accounts = me.aquitano.health.application.providersync.ProviderOAuthSyncAccountPort(
                     providerRepository,

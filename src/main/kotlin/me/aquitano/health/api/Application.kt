@@ -1,17 +1,12 @@
 package me.aquitano.health.api
 
 import io.ktor.server.application.*
-import me.aquitano.external.google.GeneratedGoogleHealthClient
-import me.aquitano.external.withings.KtorWithingsClient
 import me.aquitano.health.application.*
-import me.aquitano.health.application.metric.activity.ActivityQueryService
-import me.aquitano.health.application.metric.cardiovascular.CardiovascularQueryService
-import me.aquitano.health.application.metric.dashboard.DashboardQueryService
-import me.aquitano.health.application.metric.sleep.SleepQueryService
-import me.aquitano.health.application.metric.steps.StepQueryService
-import me.aquitano.health.di.queryServicesModule
-import me.aquitano.health.di.repositoriesModule
-import me.aquitano.health.di.servicesModule
+import me.aquitano.health.di.adminReplayModule
+import me.aquitano.health.di.coreModule
+import me.aquitano.health.di.ingestionModule
+import me.aquitano.health.di.metricsReadModule
+import me.aquitano.health.di.providersModule
 import me.aquitano.health.infrastructure.config.toAppConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
 import me.aquitano.health.infrastructure.repositories.SupportRepository
@@ -57,9 +52,11 @@ fun Application.module() {
     install(Koin) {
         slf4jLogger()
         modules(
-            repositoriesModule(database, appConfig),
-            servicesModule(database, appConfig),
-            queryServicesModule(database),
+            coreModule(database, appConfig),
+            ingestionModule(),
+            metricsReadModule(),
+            providersModule(appConfig),
+            adminReplayModule(),
         )
     }
 
@@ -103,91 +100,15 @@ fun Application.module() {
     val bootstrapService by inject<ApiClientBootstrapService>()
     bootstrapService.bootstrap()
 
-    // Assemble the services bag for route handlers and wire routes
-    val services = buildApplicationServices()
+    val supportRepository by inject<SupportRepository>()
+    val apiKeyHasher by inject<ApiKeyHasher>()
+
     configureHttp(corsConfig = appConfig.cors)
     configureMetrics(appConfig = appConfig, sharedHttpClient = httpClient)
     configureAuthentication(
-        supportRepository = services.supportRepository,
-        apiKeyHasher = services.apiKeyHasher,
-        clock = services.clock,
-    )
-    configureRoutes(services = services)
-}
-
-/**
- * Pulls all resolved singletons from the Koin container and assembles the
- * [ApplicationServices] bag that route handlers use.  The bag deliberately
- * hides Koin from the route layer.
- */
-private fun Application.buildApplicationServices(): ApplicationServices {
-    val supportRepository by inject<SupportRepository>()
-    val apiKeyHasher by inject<ApiKeyHasher>()
-    val clock by inject<UtcClock>()
-    val ingestionService by inject<IngestionService>()
-    val activityQueryService by inject<ActivityQueryService>()
-    val stepQueryService by inject<StepQueryService>()
-    val sleepQueryService by inject<SleepQueryService>()
-    val cardiovascularQueryService by inject<CardiovascularQueryService>()
-    val dashboardQueryService by inject<DashboardQueryService>()
-    val sleepSummaryReadService by inject<SleepSummaryReadService>()
-    val healthDayQueryService by inject<HealthDayQueryService>()
-    val adminService by inject<AdminService>()
-    val providerRegistry by inject<HealthProviderRegistry>()
-    val providerDiscoveryService by inject<ProviderDiscoveryService>()
-    val scalarMetricQueryService by inject<me.aquitano.health.application.metric.scalar.ScalarMetricQueryService>()
-    val providerStatusService by inject<ProviderStatusService>()
-    val providerWorkflowService by inject<ProviderWorkflowService>()
-    val providerSyncJobService by inject<ProviderSyncJobService>()
-    val scheduledProviderSyncService by inject<ScheduledProviderSyncService>()
-    val trendQueryService by inject<TrendQueryService>()
-    val replayService by inject<ReplayService>()
-
-    return ApplicationServices(
         supportRepository = supportRepository,
         apiKeyHasher = apiKeyHasher,
         clock = clock,
-        ingestionService = ingestionService,
-        activityQueryService = activityQueryService,
-        stepQueryService = stepQueryService,
-        sleepQueryService = sleepQueryService,
-        cardiovascularQueryService = cardiovascularQueryService,
-        dashboardQueryService = dashboardQueryService,
-        sleepSummaryReadService = sleepSummaryReadService,
-        healthDayQueryService = healthDayQueryService,
-        adminService = adminService,
-        providerRegistry = providerRegistry,
-        providerDiscoveryService = providerDiscoveryService,
-        scalarMetricQueryService = scalarMetricQueryService,
-        providerStatusService = providerStatusService,
-        providerWorkflowService = providerWorkflowService,
-        providerSyncJobService = providerSyncJobService,
-        scheduledProviderSyncService = scheduledProviderSyncService,
-        trendQueryService = trendQueryService,
-        replayService = replayService,
     )
+    configureRoutes()
 }
-
-data class ApplicationServices(
-    val supportRepository: SupportRepository,
-    val apiKeyHasher: ApiKeyHasher,
-    val clock: UtcClock,
-    val ingestionService: IngestionService,
-    val activityQueryService: ActivityQueryService,
-    val stepQueryService: StepQueryService,
-    val sleepQueryService: SleepQueryService,
-    val cardiovascularQueryService: CardiovascularQueryService,
-    val dashboardQueryService: DashboardQueryService,
-    val sleepSummaryReadService: SleepSummaryReadService,
-    val healthDayQueryService: HealthDayQueryService,
-    val adminService: AdminService,
-    val providerRegistry: HealthProviderRegistry,
-    val providerDiscoveryService: ProviderDiscoveryService,
-    val scalarMetricQueryService: me.aquitano.health.application.metric.scalar.ScalarMetricQueryService,
-    val providerStatusService: ProviderStatusService,
-    val providerWorkflowService: ProviderWorkflowService,
-    val providerSyncJobService: ProviderSyncJobService,
-    val scheduledProviderSyncService: ScheduledProviderSyncService,
-    val trendQueryService: TrendQueryService,
-    val replayService: ReplayService,
-)

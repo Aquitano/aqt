@@ -1,10 +1,6 @@
 package me.aquitano.external.withings
 
 import io.ktor.http.URLBuilder
-import me.aquitano.health.application.IngestionService
-import me.aquitano.health.application.providersync.IngestionProviderSyncPort
-import me.aquitano.health.application.providersync.ProviderOAuthSyncAccountPort
-import me.aquitano.health.application.providersync.ProviderOAuthSyncRunPort
 import me.aquitano.health.application.providersync.ProviderSyncAdapter
 import me.aquitano.health.application.providersync.ProviderSyncPipeline
 import me.aquitano.health.domain.*
@@ -22,16 +18,8 @@ class WithingsProvider(
     private val repository: ProviderOAuthRepository,
     private val client: WithingsClient,
     normalizer: WithingsNormalizer,
-    ingestionService: IngestionService,
+    private val syncPipeline: ProviderSyncPipeline,
     private val syncAdapter: ProviderSyncAdapter = WithingsSyncAdapter(client, normalizer),
-    private val syncPipeline: ProviderSyncPipeline = ProviderSyncPipeline(
-        accounts = ProviderOAuthSyncAccountPort(
-            repository,
-            config.tokenEncryptionKey,
-        ),
-        runs = ProviderOAuthSyncRunPort(repository),
-        ingestion = IngestionProviderSyncPort(ingestionService),
-    ),
 ) : HealthProvider {
     override val providerCode: String = WITHINGS_PROVIDER_CODE
 

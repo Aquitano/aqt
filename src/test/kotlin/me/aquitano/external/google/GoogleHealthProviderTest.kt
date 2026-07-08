@@ -575,7 +575,6 @@ class GoogleHealthProviderTest {
             repository = providerRepository,
             client = client,
             normalizer = GoogleHealthNormalizer(),
-            ingestionService = ingestionService,
             syncPipeline = me.aquitano.health.application.providersync.ProviderSyncPipeline(
                 accounts = me.aquitano.health.application.providersync.ProviderOAuthSyncAccountPort(
                     providerRepository,

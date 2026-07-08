@@ -8,13 +8,27 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.routing.openapi.*
 import me.aquitano.health.api.dto.*
+import me.aquitano.health.application.ProviderDiscoveryService
+import me.aquitano.health.application.ProviderStatusService
+import me.aquitano.health.application.ProviderSyncJobService
+import me.aquitano.health.application.ProviderWorkflowService
+import me.aquitano.health.application.ScheduledProviderSyncService
 import me.aquitano.health.domain.NotFoundException
+import me.aquitano.health.infrastructure.time.UtcClock
+import org.koin.ktor.ext.inject
 import kotlin.reflect.typeOf
 
 /** Provider discovery, OAuth account, scheduled-sync, and sync-job routes. */
-internal fun Route.providerRoutes(services: ApplicationServices) {
+internal fun Route.providerRoutes() {
+    val clock by application.inject<UtcClock>()
+    val providerDiscoveryService by application.inject<ProviderDiscoveryService>()
+    val providerStatusService by application.inject<ProviderStatusService>()
+    val providerWorkflowService by application.inject<ProviderWorkflowService>()
+    val scheduledProviderSyncService by application.inject<ScheduledProviderSyncService>()
+    val providerSyncJobService by application.inject<ProviderSyncJobService>()
+
     get("/api/v2/providers") {
-        call.respond<ProviderCatalogResponse>(services.providerDiscoveryService.listProviders())
+        call.respond<ProviderCatalogResponse>(providerDiscoveryService.listProviders())
     }.describe {
         operationId = "listProviders"
         tag("Providers")
@@ -26,8 +40,8 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
     }
     get("/api/v2/providers/status") {
         call.respond<ProviderStatusCatalogResponse>(
-            services.providerStatusService.listProviderStatuses(
-                services.clock.now()
+            providerStatusService.listProviderStatuses(
+                clock.now()
             )
         )
     }.describe {
@@ -42,7 +56,7 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
     get("/api/v2/providers/{providerCode}") {
         val code = call.providerCode()
         call.respond<ProviderDescriptorResponse>(
-            services.providerDiscoveryService.getProvider(
+            providerDiscoveryService.getProvider(
                 code
             )
         )
@@ -58,9 +72,9 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
     get("/api/v2/providers/{providerCode}/status") {
         val code = call.providerCode()
         call.respond<ProviderStatusResponse>(
-            services.providerStatusService.getProviderStatus(
+            providerStatusService.getProviderStatus(
                 code,
-                services.clock.now()
+                clock.now()
             )
         )
     }.describe {
@@ -76,9 +90,9 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
     get("/api/v2/providers/{providerCode}/accounts") {
         val code = call.providerCode()
         call.respond<ProviderAccountListResponse>(
-            services.providerWorkflowService.listAccounts(
+            providerWorkflowService.listAccounts(
                 code,
-                services.clock.now(),
+                clock.now(),
             )
         )
     }.describe {
@@ -95,10 +109,10 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
         val code = call.providerCode()
         val providerInstanceId = call.requiredPathParam("providerInstanceId")
         call.respond<ProviderAccountStatusResponse>(
-            services.providerWorkflowService.getAccount(
+            providerWorkflowService.getAccount(
                 code,
                 providerInstanceId,
-                services.clock.now(),
+                clock.now(),
             )
         )
     }.describe {
@@ -115,7 +129,7 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
         val code = call.providerCode()
         val providerInstanceId = call.requiredPathParam("providerInstanceId")
         call.respond<ScheduledSyncConfigResponse>(
-            services.scheduledProviderSyncService.getConfig(
+            scheduledProviderSyncService.getConfig(
                 providerCode = code,
                 providerInstanceId = providerInstanceId,
             )
@@ -134,11 +148,11 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
         val code = call.providerCode()
         val providerInstanceId = call.requiredPathParam("providerInstanceId")
         call.respond<ScheduledSyncConfigResponse>(
-            services.scheduledProviderSyncService.updateConfig(
+            scheduledProviderSyncService.updateConfig(
                 providerCode = code,
                 providerInstanceId = providerInstanceId,
                 request = call.receive<ScheduledSyncConfigUpdateRequest>(),
-                now = services.clock.now(),
+                now = clock.now(),
             )
         )
     }.describe {
@@ -158,10 +172,10 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
         val code = call.providerCode()
         val providerInstanceId = call.requiredPathParam("providerInstanceId")
         call.respond<ScheduledSyncRunResponse>(
-            services.scheduledProviderSyncService.runNow(
+            scheduledProviderSyncService.runNow(
                 providerCode = code,
                 providerInstanceId = providerInstanceId,
-                now = services.clock.now(),
+                now = clock.now(),
             )
         )
     }.describe {
@@ -178,10 +192,10 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
         val code = call.providerCode()
         val providerInstanceId = call.requiredPathParam("providerInstanceId")
         call.respond<ProviderDisconnectResponse>(
-            services.providerWorkflowService.disconnect(
+            providerWorkflowService.disconnect(
                 code,
                 providerInstanceId,
-                services.clock.now(),
+                clock.now(),
             )
         )
     }.describe {
@@ -198,10 +212,10 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
         val code = call.providerCode()
         val providerInstanceId = call.requiredPathParam("providerInstanceId")
         call.respond<ProviderOAuthStartResponse>(
-            services.providerWorkflowService.reconnect(
+            providerWorkflowService.reconnect(
                 code,
                 providerInstanceId,
-                services.clock.now(),
+                clock.now(),
             )
         )
     }.describe {
@@ -217,9 +231,9 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
     get("/api/v2/providers/{providerCode}/oauth/start") {
         val code = call.providerCode()
         call.respond<ProviderOAuthStartResponse>(
-            services.providerWorkflowService.startOAuth(
+            providerWorkflowService.startOAuth(
                 code,
-                services.clock.now()
+                clock.now()
             )
         )
     }.describe {
@@ -236,10 +250,10 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
         val code = call.providerCode()
         call.respond<ProviderSyncResponse>(
             HttpStatusCode.OK,
-            services.providerWorkflowService.sync(
+            providerWorkflowService.sync(
                 providerCode = code,
                 request = call.receive<ProviderSyncRequest>(),
-                now = services.clock.now(),
+                now = clock.now(),
                 idempotencyKey = call.idempotencyKey(),
             )
         )
@@ -263,10 +277,10 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
         val code = call.providerCode()
         call.respond<ProviderSyncJobStartResponse>(
             HttpStatusCode.Accepted,
-            services.providerSyncJobService.create(
+            providerSyncJobService.create(
                 providerCode = code,
                 request = call.receive<ProviderSyncRequest>(),
-                now = services.clock.now(),
+                now = clock.now(),
                 idempotencyKey = call.idempotencyKey(),
             )
         )
@@ -297,7 +311,7 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
     }
     get("/api/v2/providers/{providerCode}/sync-jobs/latest") {
         val code = call.providerCode()
-        val job = services.providerSyncJobService.latest(code)
+        val job = providerSyncJobService.latest(code)
             ?: throw NotFoundException("Provider sync job not found")
         call.respond(HttpStatusCode.OK, job)
     }.describe {
@@ -311,7 +325,7 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
     }
     get("/api/v2/providers/{providerCode}/sync-jobs/{jobId}") {
         val jobId = call.requiredPathParam("jobId")
-        call.respond(HttpStatusCode.OK, services.providerSyncJobService.get(jobId))
+        call.respond(HttpStatusCode.OK, providerSyncJobService.get(jobId))
     }.describe {
         operationId = "getProviderSyncJob"
         tag("Providers")
