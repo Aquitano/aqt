@@ -41,6 +41,14 @@
   --hue-resp: #5ec9e8;
   --hue-hrv: #a3d977;
   --hue-bp: #e87ba0;
+  --hue-score: #a78bfa;
+
+  /* Chart strokes — border hue at chart-specific tints */
+  --chart-grid: rgba(148, 168, 196, 0.08);
+  --chart-axis: rgba(148, 168, 196, 0.14);
+  --chart-cursor: rgba(148, 168, 196, 0.2);
+  --chart-guide: rgba(148, 168, 196, 0.25);
+  --chart-guide-strong: rgba(148, 168, 196, 0.3);
 
   /* Spacing */
   --s-1: 4px;

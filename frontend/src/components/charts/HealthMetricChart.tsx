@@ -1,7 +1,7 @@
 "use client";
 
 import { Maximize2 } from "lucide-react";
-import { useId, useMemo, useState, useSyncExternalStore } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -13,6 +13,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { formatChartValue, formatDateTime } from "@/lib/format";
+import { useHydrated } from "@/lib/useHydrated";
 import styles from "./HealthMetricChart.module.css";
 
 export type ChartPointDetail = {
@@ -72,7 +74,7 @@ export function HealthMetricChart({
   onExpand,
 }: HealthMetricChartProps) {
   const titleId = useId();
-  const isClient = useClientReady();
+  const isClient = useHydrated();
   const initialVisible = useMemo(
     () => new Set(defaultVisibleMetricKeys?.length ? defaultVisibleMetricKeys : series.map((item) => item.key)),
     [defaultVisibleMetricKeys, series],
@@ -125,13 +127,13 @@ export function HealthMetricChart({
             initialDimension={{ width: 320, height: typeof height === "number" ? height : 280 }}
           >
             <LineChart data={data} margin={{ top: 10, right: 18, bottom: 8, left: -12 }}>
-              <CartesianGrid stroke="rgba(148,168,196,0.08)" vertical={false} />
+              <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
               <XAxis
                 dataKey="label"
                 minTickGap={28}
                 tick={{ fill: "var(--fg-dim)", fontSize: 11 }}
                 tickLine={false}
-                axisLine={{ stroke: "rgba(148,168,196,0.14)" }}
+                axisLine={{ stroke: "var(--chart-axis)" }}
               />
               <YAxis
                 width={52}
@@ -143,12 +145,12 @@ export function HealthMetricChart({
               {referenceValue !== undefined ? (
                 <ReferenceLine
                   y={referenceValue}
-                  stroke="rgba(148,168,196,0.25)"
+                  stroke="var(--chart-guide)"
                   strokeDasharray="4 4"
                   ifOverflow="extendDomain"
                 />
               ) : null}
-              <Tooltip content={<ChartTooltip series={series} />} cursor={{ stroke: "rgba(148,168,196,0.2)" }} />
+              <Tooltip content={<ChartTooltip series={series} />} cursor={{ stroke: "var(--chart-cursor)" }} />
               <Legend
                 verticalAlign="bottom"
                 content={() => (
@@ -195,14 +197,6 @@ export function HealthMetricChart({
   );
 }
 
-function useClientReady(): boolean {
-  return useSyncExternalStore(
-    () => () => undefined,
-    () => true,
-    () => false,
-  );
-}
-
 function ChartHeader({
   title,
   titleId,
@@ -238,7 +232,7 @@ function ChartTooltip({ active, payload, series }: TooltipProps & { series: Heal
 
   return (
     <div className={styles.tooltip}>
-      <div className={styles.tooltipTitle}>{formatTooltipDate(datum.timestamp)}</div>
+      <div className={styles.tooltipTitle}>{formatDateTime(datum.timestamp)}</div>
       {visiblePayload.map((item) => {
         const metricKey = String(item.dataKey);
         const detail = datum.details[metricKey];
@@ -247,7 +241,7 @@ function ChartTooltip({ active, payload, series }: TooltipProps & { series: Heal
           <div className={styles.tooltipRow} key={metricKey}>
             <span className={styles.tooltipSwatch} style={{ background: metric?.color ?? item.color }} />
             <span>{metric?.label ?? metricKey}</span>
-            <strong>{formatValue(Number(item.value), detail?.unit ?? metric?.unit)}</strong>
+            <strong>{formatChartValue(Number(item.value), detail?.unit ?? metric?.unit)}</strong>
             {detail?.source ? <small>{detail.source}</small> : null}
           </div>
         );
@@ -256,16 +250,3 @@ function ChartTooltip({ active, payload, series }: TooltipProps & { series: Heal
   );
 }
 
-function formatTooltipDate(timestamp: number): string {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "n/a";
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function formatValue(value: number, unit?: string): string {
-  const formatted = new Intl.NumberFormat("en", { maximumFractionDigits: 1 }).format(value);
-  return unit ? `${formatted} ${unit}` : formatted;
-}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useSyncExternalStore } from "react";
+import { useId } from "react";
 import {
   Area,
   AreaChart,
@@ -11,7 +11,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { formatAxisDate, formatChartValue, formatFullDate } from "@/lib/format";
 import type { TrendPoint } from "@/lib/trends";
+import { useHydrated } from "@/lib/useHydrated";
 import styles from "./TrendChart.module.css";
 
 type TrendChartProps = {
@@ -34,7 +36,7 @@ type TooltipProps = { active?: boolean; payload?: TooltipEntry[] };
 
 export function TrendChart({ points, color, unit, label, average, height = 340 }: TrendChartProps) {
   const gradientId = useId();
-  const isClient = useClientReady();
+  const isClient = useHydrated();
   const data: ChartDatum[] = points.map((point) => ({
     date: point.date,
     label: formatAxisDate(point.date),
@@ -56,13 +58,13 @@ export function TrendChart({ points, color, unit, label, average, height = 340 }
                 <stop offset="0.85" stopColor={color} stopOpacity="0.02" />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="rgba(148,168,196,0.08)" vertical={false} />
+            <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
             <XAxis
               dataKey="label"
               minTickGap={32}
               tick={{ fill: "var(--fg-dim)", fontSize: 11 }}
               tickLine={false}
-              axisLine={{ stroke: "rgba(148,168,196,0.14)" }}
+              axisLine={{ stroke: "var(--chart-axis)" }}
             />
             <YAxis
               width={48}
@@ -74,14 +76,14 @@ export function TrendChart({ points, color, unit, label, average, height = 340 }
             {typeof average === "number" ? (
               <ReferenceLine
                 y={average}
-                stroke="rgba(148,168,196,0.3)"
+                stroke="var(--chart-guide-strong)"
                 strokeDasharray="4 4"
                 ifOverflow="extendDomain"
               />
             ) : null}
             <Tooltip
               content={<TrendTooltip unit={unit} label={label} color={color} />}
-              cursor={{ stroke: "rgba(148,168,196,0.25)" }}
+              cursor={{ stroke: "var(--chart-guide)" }}
             />
             <Area
               type="monotone"
@@ -118,33 +120,8 @@ function TrendTooltip({
       <div className={styles.tooltipRow}>
         <span className={styles.swatch} style={{ background: color }} />
         <span>{label}</span>
-        <strong>{formatValue(datum.value, unit)}</strong>
+        <strong>{formatChartValue(datum.value, unit)}</strong>
       </div>
     </div>
   );
-}
-
-function useClientReady(): boolean {
-  return useSyncExternalStore(
-    () => () => undefined,
-    () => true,
-    () => false,
-  );
-}
-
-function formatAxisDate(date: string): string {
-  const parsed = new Date(`${date}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return date;
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(parsed);
-}
-
-function formatFullDate(date: string): string {
-  const parsed = new Date(`${date}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return date;
-  return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(parsed);
-}
-
-function formatValue(value: number, unit: string): string {
-  const formatted = new Intl.NumberFormat("en", { maximumFractionDigits: 1 }).format(value);
-  return unit ? `${formatted} ${unit}` : formatted;
 }

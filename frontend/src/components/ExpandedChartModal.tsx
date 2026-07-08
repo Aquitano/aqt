@@ -8,6 +8,7 @@ import {
   HealthMetricChart,
   type ChartPointDetail,
 } from "@/components/charts/HealthMetricChart";
+import { formatChartValue, formatDateTime } from "@/lib/format";
 import styles from "./ExpandedChartModal.module.css";
 
 export type ChartSummary = {
@@ -110,7 +111,7 @@ export function ExpandedChartModal({
                   <tr key={detail.id}>
                     <td>{formatDateTime(detail.at)}</td>
                     <td>{detail.label}</td>
-                    <td>{formatValue(detail.value, detail.unit)}</td>
+                    <td>{formatChartValue(detail.value, detail.unit)}</td>
                     <td>{detail.source ?? "n/a"}</td>
                   </tr>
                 ))}
@@ -129,16 +130,3 @@ export function ExpandedChartModal({
   }
 }
 
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function formatValue(value: number, unit?: string): string {
-  const formatted = new Intl.NumberFormat("en", { maximumFractionDigits: 1 }).format(value);
-  return unit ? `${formatted} ${unit}` : formatted;
-}

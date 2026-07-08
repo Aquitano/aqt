@@ -160,7 +160,7 @@ export function buildTrendStats(input: TrendsInput): TrendStat[] {
 
   stats.push(
     summarize(
-      { key: "sleep_score", label: "Sleep score", unit: "", color: "#a78bfa", goodWhen: "up" },
+      { key: "sleep_score", label: "Sleep score", unit: "", color: "var(--hue-score)", goodWhen: "up" },
       dailyAggregate(
         (input.sleep?.items ?? [])
           .filter((item) => typeof item.sleepScore === "number")

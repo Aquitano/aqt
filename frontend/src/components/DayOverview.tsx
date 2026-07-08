@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { Bars } from "@/components/charts/Bars";
 import { SleepTimeline } from "@/components/charts/SleepTimeline";
-import { Sparkline } from "@/components/charts/Sparkline";
+import { BucketSparkline } from "@/components/charts/BucketSparkline";
 import { AnimatedNumber } from "@/components/motion/AnimatedNumber";
 import { formatDuration, formatMeasurement, formatNumber } from "@/lib/format";
 import type { HealthDayBucket, HealthDayResponse } from "@/lib/types";
@@ -35,7 +35,7 @@ export function DayOverview({ day, weightDelta7d, weightDelta7dUnit }: DayOvervi
           value={formatMeasurement(day?.weight?.latest?.value, day?.weight?.latest?.unit)}
         />
         <div className={styles.chart}>
-          <Sparkline buckets={weightBuckets} />
+          <BucketSparkline buckets={weightBuckets} />
         </div>
       </article>
 
@@ -67,7 +67,7 @@ export function DayOverview({ day, weightDelta7d, weightDelta7dUnit }: DayOvervi
           avg {day?.heartRate?.avgBpm != null ? `${Math.round(day.heartRate.avgBpm)} bpm` : "n/a"}
         </div>
         <div className={styles.chart}>
-          <Sparkline buckets={day?.heartRate?.buckets ?? []} />
+          <BucketSparkline buckets={day?.heartRate?.buckets ?? []} />
         </div>
       </article>
 

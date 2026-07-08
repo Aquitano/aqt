@@ -1,6 +1,6 @@
 import { useId } from "react";
 
-type SparklineProps = {
+type ValueSparklineProps = {
   values: number[];
   color: string;
   width?: number;
@@ -9,7 +9,7 @@ type SparklineProps = {
 };
 
 /** Minimal inline trend glyph: an area-filled polyline normalized to its range. */
-export function Sparkline({ values, color, width = 120, height = 36, className }: SparklineProps) {
+export function ValueSparkline({ values, color, width = 120, height = 36, className }: ValueSparklineProps) {
   const gradientId = useId();
   if (values.length === 0) {
     return <svg className={className} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" />;

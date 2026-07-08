@@ -19,6 +19,7 @@ import type {
   SleepSummariesResponse,
   StepDailySummariesResponse,
 } from "@/lib/types";
+import { formatAxisDate, formatChartValue } from "@/lib/format";
 import styles from "./HealthDataVisualizations.module.css";
 
 const bodyMetricConfig: Record<string, { label: string; color: string }> = {
@@ -626,28 +627,17 @@ function buildSummaries(details: ChartPointDetail[], visibleMetricKeys: string[]
 
   return [
     { label: "Metric", value: latest?.label ?? metricKey },
-    { label: "Latest", value: latest ? formatValue(latest.value, unit) : "n/a" },
-    { label: "Min", value: values.length ? formatValue(Math.min(...values), unit) : "n/a" },
-    { label: "Max", value: values.length ? formatValue(Math.max(...values), unit) : "n/a" },
-    { label: "Average", value: average !== undefined ? formatValue(average, unit) : "n/a" },
+    { label: "Latest", value: latest ? formatChartValue(latest.value, unit) : "n/a" },
+    { label: "Min", value: values.length ? formatChartValue(Math.min(...values), unit) : "n/a" },
+    { label: "Max", value: values.length ? formatChartValue(Math.max(...values), unit) : "n/a" },
+    { label: "Average", value: average !== undefined ? formatChartValue(average, unit) : "n/a" },
     { label: "Delta", value: delta !== undefined ? formatSignedValue(delta, unit) : "n/a" },
   ];
 }
 
-function formatAxisDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
-}
-
-function formatValue(value: number, unit?: string): string {
-  const formatted = new Intl.NumberFormat("en", { maximumFractionDigits: 1 }).format(value);
-  return unit ? `${formatted} ${unit}` : formatted;
-}
-
 function formatSignedValue(value: number, unit?: string): string {
   const sign = value > 0 ? "+" : "";
-  return `${sign}${formatValue(value, unit)}`;
+  return `${sign}${formatChartValue(value, unit)}`;
 }
 
 function sourceLabel(source?: { provider: string; providerInstanceId: string } | null): string | undefined {

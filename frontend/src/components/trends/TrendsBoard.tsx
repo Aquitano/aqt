@@ -4,7 +4,7 @@ import { ArrowDownRight, ArrowRight, ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 import type { TrendChange, TrendStat } from "@/lib/trends";
 import { insightSentence } from "@/lib/trends";
-import { Sparkline } from "./Sparkline";
+import { ValueSparkline } from "./ValueSparkline";
 import { TrendChart } from "./TrendChart";
 import styles from "./TrendsBoard.module.css";
 
@@ -79,7 +79,7 @@ export function TrendsBoard({ stats }: TrendsBoardProps) {
                 <ChangeChip change={stat.change7d} stat={stat} window="7d" />
                 <ChangeChip change={stat.change30d} stat={stat} window="30d" />
               </span>
-              <Sparkline
+              <ValueSparkline
                 className={styles.cardSpark}
                 values={stat.points.map((point) => point.value)}
                 color={stat.color}
