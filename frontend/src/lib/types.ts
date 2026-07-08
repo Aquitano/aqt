@@ -162,6 +162,17 @@ export type HealthDataPageData = HealthStatusData & {
   metricCatalog: ApiResult<MetricCatalogResponse>;
 };
 
+/**
+ * The page data with each field left as an unresolved promise, so the route can
+ * fire every request up front and stream sections in as their own data settles
+ * rather than blocking first paint on the slowest fetch.
+ */
+export type HealthDataPageSources = {
+  [K in keyof HealthDataPageData]: K extends "apiBaseUrl"
+    ? HealthDataPageData[K]
+    : Promise<HealthDataPageData[K]>;
+};
+
 export type TrendsPageData = HealthStatusData & {
   fromDate: string;
   toDate: string;

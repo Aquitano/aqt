@@ -1,6 +1,6 @@
 import type {
   ApiResult,
-  HealthDataPageData,
+  HealthDataPageSources,
   HealthDayModuleName,
   HealthDayResponse,
   IngestionBatchDetailResponse,
@@ -39,59 +39,36 @@ export async function getHealthStatus(): Promise<HealthStatusData> {
   };
 }
 
-export async function getHealthDataPageData(
+/**
+ * Fires every health-data request without awaiting so the route can wrap each
+ * section in its own Suspense boundary and stream results independently. The
+ * requests still run concurrently, exactly as the previous single `Promise.all`
+ * did, but no section blocks first paint on the slowest fetch (the per-day
+ * heart-rate fan-out in particular). Catalog and `latest*` extras are kept for
+ * response parity even where the current view does not render them.
+ */
+export function getHealthDataPageSources(
   fromDate: string,
   toDate: string,
   timezone: string,
-): Promise<HealthDataPageData> {
+): HealthDataPageSources {
   const client = createAqtHealthClient();
-  const apiBaseUrl = client.apiBaseUrl;
-  const metricCatalog = await getMetricCatalog();
   const measurementsFrom = dateOnlyToUtcInstant(fromDate);
   const measurementsTo = dayAfterDateOnlyToUtcInstant(toDate);
 
-  const [
-    health,
-    summary,
-    trends,
-    healthDay,
-    dailySteps,
-    activitySummaries,
-    bodyMeasurements,
-    latestHeartRate,
-    heartRateDaily,
-    sleepNights,
-    sleepSummaries,
-    respiratoryRates,
-    hrvSamples,
-    latestActivity,
-    latestSleepSummary,
-    latestRespiratoryRate,
-    latestHrv,
-    bloodPressure,
-    latestBloodPressure,
-    cardiovascular,
-    latestCardiovascular,
-    extendedBodyMeasurements,
-    latestExtendedBodyMeasurement,
-  ] = await Promise.all([
-    client.getHealth(),
-    client.getDashboardSummary({
-      fromDate,
-      toDate,
-    }),
-    client.getDashboardTrends({
-      periodDays: 7,
-      toDate,
-    }),
-    getHealthDay({
+  return {
+    apiBaseUrl: client.apiBaseUrl,
+    health: client.getHealth(),
+    summary: client.getDashboardSummary({ fromDate, toDate }),
+    trends: client.getDashboardTrends({ periodDays: 7, toDate }),
+    healthDay: getHealthDay({
       date: toDate,
       timezone,
       modules: ["steps", "heartRate", "weight", "sleep"],
       includeSource: true,
     }),
-    client.listDailyStepSummaries({ fromDate, toDate, includeSource: true }),
-    client.listActivitySummaries({
+    dailySteps: client.listDailyStepSummaries({ fromDate, toDate, includeSource: true }),
+    activitySummaries: client.listActivitySummaries({
       fromDate,
       toDate,
       includeSource: true,
@@ -99,7 +76,7 @@ export async function getHealthDataPageData(
       order: "desc",
       limit: 5000,
     }),
-    client.listBodyMeasurements({
+    bodyMeasurements: client.listBodyMeasurements({
       from: measurementsFrom,
       to: measurementsTo,
       includeSource: true,
@@ -107,10 +84,10 @@ export async function getHealthDataPageData(
       order: "desc",
       limit: 5000,
     }),
-    client.listHeartRateSamples({ latest: true, includeSource: true }),
-    fetchHeartRateDaily(client, fromDate, toDate),
-    client.listSleepNights({ fromDate, toDate, timezone, includeSource: true }),
-    client.listSleepSummaries({
+    latestHeartRate: client.listHeartRateSamples({ latest: true, includeSource: true }),
+    heartRateDaily: fetchHeartRateDaily(client, fromDate, toDate),
+    sleepNights: client.listSleepNights({ fromDate, toDate, timezone, includeSource: true }),
+    sleepSummaries: client.listSleepSummaries({
       from: measurementsFrom,
       to: measurementsTo,
       includeSource: true,
@@ -118,7 +95,7 @@ export async function getHealthDataPageData(
       order: "desc",
       limit: 5000,
     }),
-    client.listRespiratoryRateSamples({
+    respiratoryRates: client.listRespiratoryRateSamples({
       from: measurementsFrom,
       to: measurementsTo,
       includeSource: true,
@@ -126,7 +103,7 @@ export async function getHealthDataPageData(
       order: "desc",
       limit: 5000,
     }),
-    client.listHrvSamples({
+    hrvSamples: client.listHrvSamples({
       from: measurementsFrom,
       to: measurementsTo,
       includeSource: true,
@@ -134,11 +111,11 @@ export async function getHealthDataPageData(
       order: "desc",
       limit: 5000,
     }),
-    client.getLatestActivitySummary({ date: toDate, includeSource: true }),
-    client.getLatestSleepSummary({ includeSource: true }),
-    client.listRespiratoryRateSamples({ latest: true, includeSource: true }),
-    client.listHrvSamples({ latest: true, includeSource: true }),
-    client.listBloodPressure({
+    latestActivity: client.getLatestActivitySummary({ date: toDate, includeSource: true }),
+    latestSleepSummary: client.getLatestSleepSummary({ includeSource: true }),
+    latestRespiratoryRate: client.listRespiratoryRateSamples({ latest: true, includeSource: true }),
+    latestHrv: client.listHrvSamples({ latest: true, includeSource: true }),
+    bloodPressure: client.listBloodPressure({
       from: measurementsFrom,
       to: measurementsTo,
       includeSource: true,
@@ -146,8 +123,8 @@ export async function getHealthDataPageData(
       order: "desc",
       limit: 5000,
     }),
-    client.getLatestBloodPressure({ includeSource: true }),
-    client.listCardiovascular({
+    latestBloodPressure: client.getLatestBloodPressure({ includeSource: true }),
+    cardiovascular: client.listCardiovascular({
       from: measurementsFrom,
       to: measurementsTo,
       includeSource: true,
@@ -155,8 +132,8 @@ export async function getHealthDataPageData(
       order: "desc",
       limit: 5000,
     }),
-    client.getLatestCardiovascular({ includeSource: true }),
-    client.listExtendedBodyMeasurements({
+    latestCardiovascular: client.getLatestCardiovascular({ includeSource: true }),
+    extendedBodyMeasurements: client.listExtendedBodyMeasurements({
       from: measurementsFrom,
       to: measurementsTo,
       includeSource: true,
@@ -164,35 +141,8 @@ export async function getHealthDataPageData(
       order: "desc",
       limit: 5000,
     }),
-    client.getLatestExtendedBodyMeasurement({ includeSource: true }),
-  ]);
-
-  return {
-    apiBaseUrl,
-    health,
-    summary,
-    trends,
-    healthDay,
-    dailySteps,
-    activitySummaries,
-    bodyMeasurements,
-    latestHeartRate,
-    heartRateDaily,
-    sleepNights,
-    sleepSummaries,
-    respiratoryRates,
-    hrvSamples,
-    latestActivity,
-    latestSleepSummary,
-    latestRespiratoryRate,
-    latestHrv,
-    bloodPressure,
-    latestBloodPressure,
-    cardiovascular,
-    latestCardiovascular,
-    extendedBodyMeasurements,
-    latestExtendedBodyMeasurement,
-    metricCatalog,
+    latestExtendedBodyMeasurement: client.getLatestExtendedBodyMeasurement({ includeSource: true }),
+    metricCatalog: getMetricCatalog(),
   };
 }
 
