@@ -12,10 +12,11 @@ import type {
   ProviderStatusCatalogResponse,
   ScheduledSyncConfig,
   ScheduledSyncRunResponse,
-  ProviderSyncRequest,
   ProviderSyncResponse,
   ProviderSyncJobStatusResponse,
 } from "@/lib/types";
+import { formatDateTime } from "@/lib/format";
+import { ErrorNotice } from "./ErrorNotice";
 import styles from "./ProviderSyncPanel.module.css";
 
 type ProviderSyncPanelProps = {
@@ -112,8 +113,8 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
         <div className={styles.heading}>
           <h2>Provider sync</h2>
         </div>
-        {!catalog.ok ? <ErrorBlock result={catalog} /> : null}
-        {!statuses.ok ? <ErrorBlock result={statuses} /> : null}
+        {!catalog.ok ? <ErrorNotice result={catalog} /> : null}
+        {!statuses.ok ? <ErrorNotice result={statuses} /> : null}
       </section>
     );
   }
@@ -420,11 +421,6 @@ type ActiveSyncJob = {
   jobId: string;
 };
 
-type SyncItem = {
-  label: string;
-  payload: ProviderSyncRequest;
-};
-
 function SyncProgressView({ job }: { job: ProviderSyncJobStatusResponse }) {
   const completedPercent = job.totalItems > 0
     ? Math.round((job.completedItems / job.totalItems) * 100)
@@ -658,7 +654,7 @@ function ProviderAccountRow({
 }
 
 function ScheduledRunResult({ result }: { result: ApiResult<ScheduledSyncRunResponse> }) {
-  if (!result.ok) return <ErrorBlock result={result} />;
+  if (!result.ok) return <ErrorNotice result={result} />;
 
   return (
     <div className={styles.result}>
@@ -679,7 +675,7 @@ function ScheduledRunResult({ result }: { result: ApiResult<ScheduledSyncRunResp
 
 function SyncResult({ result }: { result: ApiResult<ProviderSyncResponse> }) {
   if (!result.ok) {
-    return <ErrorBlock result={result} />;
+    return <ErrorNotice result={result} />;
   }
 
   const created = result.data.batches.reduce(
@@ -705,50 +701,6 @@ function SyncResult({ result }: { result: ApiResult<ProviderSyncResponse> }) {
           ))}
         </ul>
       ) : null}
-    </div>
-  );
-}
-
-export function buildProviderSyncItems(
-  descriptor: ProviderDescriptor,
-  payload: ProviderSyncRequest,
-): SyncItem[] {
-  const dataTypes = payload.dataTypes && payload.dataTypes.length > 0
-    ? payload.dataTypes
-    : descriptor.defaultDataTypes;
-  const from = parseSyncInstant(payload.from);
-  const to = parseSyncInstant(payload.to);
-
-  if (!from || !to || from.getTime() >= to.getTime()) {
-    return [{
-      label: "Default sync window",
-      payload: {
-        ...payload,
-        dataTypes: dataTypes.length > 0 ? dataTypes : undefined,
-      },
-    }];
-  }
-
-  return dataTypes.flatMap((dataType) =>
-    syncWindows(from, to, providerProgressWindowDays()).map((window) => ({
-      label: `${formatDataType(dataType)} ${formatWindowLabel(window.from, window.to)}`,
-      payload: {
-        ...payload,
-        from: window.from.toISOString(),
-        to: window.to.toISOString(),
-        dataTypes: [dataType],
-      },
-    })),
-  );
-}
-
-function ErrorBlock({ result }: { result: ApiResult<unknown> }) {
-  if (result.ok) return null;
-
-  return (
-    <div className={styles.errorNotice}>
-      {result.status ? <strong>HTTP {result.status}: </strong> : null}
-      {result.message}
     </div>
   );
 }
@@ -815,12 +767,6 @@ function formatDataType(value: string): string {
     .join(" ");
 }
 
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
-}
-
 function toIso(value: FormDataEntryValue | null): string | undefined {
   if (typeof value !== "string" || !value) return undefined;
   const date = new Date(value);
@@ -833,35 +779,6 @@ function toPositiveInteger(value: FormDataEntryValue | null): number | undefined
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
   return parsed;
-}
-
-function parseSyncInstant(value?: string | null): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function syncWindows(
-  from: Date,
-  to: Date,
-  windowDays: number,
-): Array<{ from: Date; to: Date }> {
-  const windows: Array<{ from: Date; to: Date }> = [];
-  const windowMs = windowDays * 24 * 60 * 60 * 1000;
-  let windowFrom = from.getTime();
-  const targetTo = to.getTime();
-
-  while (windowFrom < targetTo) {
-    const windowTo = Math.min(windowFrom + windowMs, targetTo);
-    windows.push({ from: new Date(windowFrom), to: new Date(windowTo) });
-    windowFrom = windowTo;
-  }
-
-  return windows.length > 0 ? windows : [{ from, to }];
-}
-
-function providerProgressWindowDays(): number {
-  return 31;
 }
 
 function formatWindowLabel(from: Date, to: Date): string {
