@@ -20,41 +20,6 @@ data class IngestionBatchRequest(
 )
 
 @Serializable
-@JsonSchema.OneOf(
-    StepIntervalDto::class,
-    SleepSessionDto::class,
-    BodyMeasurementDto::class,
-    HeartRateDto::class,
-    ActivitySummaryDto::class,
-    SleepSummaryDto::class,
-    RespiratoryRateDto::class,
-    HrvDto::class,
-    BloodPressureDto::class,
-    CardiovascularDto::class,
-    ExtendedBodyMeasurementDto::class,
-    ScalarSampleDto::class,
-)
-@JsonSchema.Discriminator(
-    "type",
-    JsonSchema.Discriminator.Mapping("step_interval", StepIntervalDto::class),
-    JsonSchema.Discriminator.Mapping("sleep_session", SleepSessionDto::class),
-    JsonSchema.Discriminator.Mapping(
-        "body_measurement",
-        BodyMeasurementDto::class
-    ),
-    JsonSchema.Discriminator.Mapping("heart_rate", HeartRateDto::class),
-    JsonSchema.Discriminator.Mapping("activity_summary", ActivitySummaryDto::class),
-    JsonSchema.Discriminator.Mapping("sleep_summary", SleepSummaryDto::class),
-    JsonSchema.Discriminator.Mapping("respiratory_rate", RespiratoryRateDto::class),
-    JsonSchema.Discriminator.Mapping("hrv", HrvDto::class),
-    JsonSchema.Discriminator.Mapping("blood_pressure", BloodPressureDto::class),
-    JsonSchema.Discriminator.Mapping("cardiovascular", CardiovascularDto::class),
-    JsonSchema.Discriminator.Mapping(
-        "extended_body_measurement",
-        ExtendedBodyMeasurementDto::class
-    ),
-    JsonSchema.Discriminator.Mapping("scalar", ScalarSampleDto::class),
-)
 sealed class IngestionRecordDto {
     abstract val providerRecordId: String?
 }

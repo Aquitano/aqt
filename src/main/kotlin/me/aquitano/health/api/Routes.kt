@@ -134,7 +134,12 @@ fun Application.configureRoutes() {
                 description =
                     "Accepts a trusted normalized health data batch, stores the source payload for audit/reprocessing, writes structured metric tables, and treats repeated provider/batch identifiers idempotently. A duplicate batch returns 200 OK with `duplicateBatch=true`; a newly processed batch returns 201 Created."
                 requiresBearerAuth()
-                ingestionBatchJsonRequest()
+                jsonRequest<IngestionBatchRequest>(
+                    descriptionText =
+                        "Normalized ingestion batch. Fields are nullable at the transport layer where provider adapters may omit them, but validation enforces provider, providerInstanceId, batch identity, and record-specific required fields.",
+                    exampleName = "batch",
+                    example = ingestionBatchExample(),
+                )
                 responses {
                     HttpStatusCode.Created {
                         description = "Batch accepted and processed"

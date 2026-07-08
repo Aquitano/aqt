@@ -3,7 +3,6 @@
 package me.aquitano.health.api
 
 import io.ktor.openapi.*
-import io.ktor.server.routing.openapi.*
 import io.ktor.utils.io.*
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -11,24 +10,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import me.aquitano.health.api.dto.*
-import me.aquitano.health.domain.RecordTypes
 import me.aquitano.health.shared.AppJson
-import kotlin.reflect.typeOf
 
 internal const val BearerApiKeySecurityScheme = "bearerApiKey"
-internal const val StepIntervalSchemaName = "StepIntervalDto"
-internal const val SleepSessionSchemaName = "SleepSessionDto"
-internal const val BodyMeasurementSchemaName = "BodyMeasurementDto"
-internal const val HeartRateSchemaName = "HeartRateDto"
-internal const val ActivitySummarySchemaName = "ActivitySummaryDto"
-internal const val SleepSummarySchemaName = "SleepSummaryDto"
-internal const val RespiratoryRateSchemaName = "RespiratoryRateDto"
-internal const val HrvSchemaName = "HrvDto"
-internal const val BloodPressureSchemaName = "BloodPressureDto"
-internal const val CardiovascularSchemaName = "CardiovascularDto"
-internal const val ExtendedBodyMeasurementSchemaName = "ExtendedBodyMeasurementDto"
-internal const val ScalarSampleSchemaName = "ScalarSampleDto"
 internal fun openApiInfo(): OpenApiInfo =
     OpenApiInfo(
         title = "aqt-health",
@@ -114,7 +98,7 @@ private fun sanitizeOperation(operation: JsonElement): JsonElement {
 
 private fun openApiComponents(): Components =
     Components(
-        schemas = ingestionRecordComponentSchemas(),
+        schemas = emptyMap(),
         securitySchemes = mapOf(
             BearerApiKeySecurityScheme to ReferenceOr.Value<SecurityScheme>(
                 HttpSecurityScheme(
@@ -130,75 +114,3 @@ private fun openApiComponents(): Components =
             ),
         ),
     )
-
-private fun ingestionRecordComponentSchemas(): Map<String, JsonSchema> =
-    mapOf(
-        StepIntervalSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<StepIntervalDto>()),
-        SleepSessionSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<SleepSessionDto>()),
-        BodyMeasurementSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<BodyMeasurementDto>()),
-        HeartRateSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<HeartRateDto>()),
-        ActivitySummarySchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<ActivitySummaryDto>()),
-        SleepSummarySchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<SleepSummaryDto>()),
-        RespiratoryRateSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<RespiratoryRateDto>()),
-        HrvSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<HrvDto>()),
-        BloodPressureSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<BloodPressureDto>()),
-        CardiovascularSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<CardiovascularDto>()),
-        ExtendedBodyMeasurementSchemaName to
-            KotlinxJsonSchemaInference.buildSchema(typeOf<ExtendedBodyMeasurementDto>()),
-        ScalarSampleSchemaName to KotlinxJsonSchemaInference.buildSchema(typeOf<ScalarSampleDto>()),
-    )
-internal fun ingestionRecordSchema(): JsonSchema =
-    JsonSchema(
-        oneOf = listOf(
-            ReferenceOr.schema(StepIntervalSchemaName),
-            ReferenceOr.schema(SleepSessionSchemaName),
-            ReferenceOr.schema(BodyMeasurementSchemaName),
-            ReferenceOr.schema(HeartRateSchemaName),
-            ReferenceOr.schema(ActivitySummarySchemaName),
-            ReferenceOr.schema(SleepSummarySchemaName),
-            ReferenceOr.schema(RespiratoryRateSchemaName),
-            ReferenceOr.schema(HrvSchemaName),
-            ReferenceOr.schema(BloodPressureSchemaName),
-            ReferenceOr.schema(CardiovascularSchemaName),
-            ReferenceOr.schema(ExtendedBodyMeasurementSchemaName),
-            ReferenceOr.schema(ScalarSampleSchemaName),
-        ),
-        discriminator = JsonSchemaDiscriminator(
-            propertyName = "type",
-            mapping = mapOf(
-                RecordTypes.STEP_INTERVAL to componentSchemaRef(
-                    StepIntervalSchemaName
-                ),
-                RecordTypes.SLEEP_SESSION to componentSchemaRef(
-                    SleepSessionSchemaName
-                ),
-                RecordTypes.BODY_MEASUREMENT to componentSchemaRef(
-                    BodyMeasurementSchemaName
-                ),
-                RecordTypes.HEART_RATE to componentSchemaRef(HeartRateSchemaName),
-                RecordTypes.ACTIVITY_SUMMARY to componentSchemaRef(
-                    ActivitySummarySchemaName
-                ),
-                RecordTypes.SLEEP_SUMMARY to componentSchemaRef(
-                    SleepSummarySchemaName
-                ),
-                RecordTypes.RESPIRATORY_RATE to componentSchemaRef(
-                    RespiratoryRateSchemaName
-                ),
-                RecordTypes.HRV to componentSchemaRef(HrvSchemaName),
-                RecordTypes.BLOOD_PRESSURE to componentSchemaRef(
-                    BloodPressureSchemaName
-                ),
-                RecordTypes.CARDIOVASCULAR to componentSchemaRef(
-                    CardiovascularSchemaName
-                ),
-                RecordTypes.EXTENDED_BODY_MEASUREMENT to componentSchemaRef(
-                    ExtendedBodyMeasurementSchemaName
-                ),
-                RecordTypes.SCALAR to componentSchemaRef(ScalarSampleSchemaName),
-            )
-        ),
-    )
-
-private fun componentSchemaRef(schemaName: String): String =
-    "#/components/schemas/$schemaName"

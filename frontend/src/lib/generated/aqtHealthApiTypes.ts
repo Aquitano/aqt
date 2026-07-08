@@ -772,71 +772,44 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** step_interval */
-        StepIntervalDto: {
-            providerRecordId?: string | null;
-            /** Format: date-time */
-            startAt: string;
-            /** Format: date-time */
-            endAt: string;
-            steps: number;
+        /** HealthResponse */
+        HealthResponse: {
+            status: string;
+            service: string;
+            time: string;
+        };
+        /** ErrorDetail */
+        ErrorDetail: {
+            field: string;
             /**
-             * @description discriminator enum property added by openapi-typescript
+             * @description Machine-readable validation issue code for this field.
              * @enum {string}
              */
-            type: "step_interval";
+            code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
+            message: string;
         };
-        /** sleep_session */
-        SleepSessionDto: {
-            providerRecordId?: string | null;
-            /** Format: date-time */
-            startAt: string;
-            /** Format: date-time */
-            endAt: string;
-            stages?: {
-                stage: string;
-                /** Format: date-time */
-                startAt: string;
-                /** Format: date-time */
-                endAt: string;
-            }[];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "sleep_session";
+        /** ErrorBody */
+        ErrorBody: {
+            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
+            code: string;
+            message: string;
+            requestId: string;
+            details?: components["schemas"]["ErrorDetail"][] | null;
         };
-        /** body_measurement */
-        BodyMeasurementDto: {
-            providerRecordId?: string | null;
-            /** Format: date-time */
-            measuredAt: string;
-            weightKg?: number | null;
-            bodyFatPercent?: number | null;
-            muscleKg?: number | null;
-            bodyWaterPercent?: number | null;
-            visceralFatRating?: number | null;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "body_measurement";
+        /** ErrorResponse */
+        ErrorResponse: {
+            error: components["schemas"]["ErrorBody"];
         };
-        /** heart_rate */
-        HeartRateDto: {
-            providerRecordId?: string | null;
-            /** Format: date-time */
-            measuredAt: string;
-            bpm: number;
-            context?: string | null;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "heart_rate";
+        /** ProviderOAuthCallbackResponse */
+        ProviderOAuthCallbackResponse: {
+            provider: string;
+            providerInstanceId: string;
+            connected: boolean;
         };
+        /** JsonElement? */
+        "JsonElement?": Record<string, never> | null;
         /** activity_summary */
-        ActivitySummaryDto: {
+        activity_summary: {
             providerRecordId?: string | null;
             /** Format: date */
             date: string;
@@ -857,8 +830,146 @@ export interface components {
              */
             type: "activity_summary";
         };
+        /** blood_pressure */
+        blood_pressure: {
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            measuredAt: string;
+            systolicMmhg: number;
+            diastolicMmhg: number;
+            heartRateBpm?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "blood_pressure";
+        };
+        /** body_measurement */
+        body_measurement: {
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            measuredAt: string;
+            weightKg?: number | null;
+            bodyFatPercent?: number | null;
+            muscleKg?: number | null;
+            bodyWaterPercent?: number | null;
+            visceralFatRating?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "body_measurement";
+        };
+        /** cardiovascular */
+        cardiovascular: {
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            measuredAt: string;
+            metricType: string;
+            value: number;
+            unit: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "cardiovascular";
+        };
+        /** extended_body_measurement */
+        extended_body_measurement: {
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            measuredAt: string;
+            metricType: string;
+            value: number;
+            unit: string;
+            segment?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "extended_body_measurement";
+        };
+        /** heart_rate */
+        heart_rate: {
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            measuredAt: string;
+            bpm: number;
+            context?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "heart_rate";
+        };
+        /** hrv */
+        hrv: {
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            measuredAt: string;
+            metricType: string;
+            value: number;
+            unit: string;
+            context?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "hrv";
+        };
+        /** respiratory_rate */
+        respiratory_rate: {
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            measuredAt: string;
+            breathsPerMinute: number;
+            context?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "respiratory_rate";
+        };
+        /** scalar */
+        scalar: {
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            measuredAt: string;
+            metricType: string;
+            value: number;
+            unit: string;
+            context?: string | null;
+            segment?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "scalar";
+        };
+        /** SleepStageDto */
+        SleepStageDto: {
+            stage: string;
+            /** Format: date-time */
+            startAt: string;
+            /** Format: date-time */
+            endAt: string;
+        };
+        /** sleep_session */
+        sleep_session: {
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            startAt: string;
+            /** Format: date-time */
+            endAt: string;
+            stages?: components["schemas"]["SleepStageDto"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sleep_session";
+        };
         /** sleep_summary */
-        SleepSummaryDto: {
+        sleep_summary: {
             providerRecordId?: string | null;
             /** Format: date-time */
             startAt: string;
@@ -898,126 +1009,31 @@ export interface components {
              */
             type: "sleep_summary";
         };
-        /** respiratory_rate */
-        RespiratoryRateDto: {
+        /** step_interval */
+        step_interval: {
             providerRecordId?: string | null;
             /** Format: date-time */
-            measuredAt: string;
-            breathsPerMinute: number;
-            context?: string | null;
+            startAt: string;
+            /** Format: date-time */
+            endAt: string;
+            steps: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "respiratory_rate";
+            type: "step_interval";
         };
-        /** hrv */
-        HrvDto: {
-            providerRecordId?: string | null;
+        /** IngestionRecordDto */
+        IngestionRecordDto: components["schemas"]["activity_summary"] | components["schemas"]["blood_pressure"] | components["schemas"]["body_measurement"] | components["schemas"]["cardiovascular"] | components["schemas"]["extended_body_measurement"] | components["schemas"]["heart_rate"] | components["schemas"]["hrv"] | components["schemas"]["respiratory_rate"] | components["schemas"]["scalar"] | components["schemas"]["sleep_session"] | components["schemas"]["sleep_summary"] | components["schemas"]["step_interval"];
+        /** IngestionBatchRequest */
+        IngestionBatchRequest: {
+            provider?: string | null;
+            providerInstanceId?: string | null;
+            batchExternalId?: string | null;
             /** Format: date-time */
-            measuredAt: string;
-            metricType: string;
-            value: number;
-            unit: string;
-            context?: string | null;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "hrv";
-        };
-        /** blood_pressure */
-        BloodPressureDto: {
-            providerRecordId?: string | null;
-            /** Format: date-time */
-            measuredAt: string;
-            systolicMmhg: number;
-            diastolicMmhg: number;
-            heartRateBpm?: number | null;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "blood_pressure";
-        };
-        /** cardiovascular */
-        CardiovascularDto: {
-            providerRecordId?: string | null;
-            /** Format: date-time */
-            measuredAt: string;
-            metricType: string;
-            value: number;
-            unit: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "cardiovascular";
-        };
-        /** extended_body_measurement */
-        ExtendedBodyMeasurementDto: {
-            providerRecordId?: string | null;
-            /** Format: date-time */
-            measuredAt: string;
-            metricType: string;
-            value: number;
-            unit: string;
-            segment?: string | null;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "extended_body_measurement";
-        };
-        /** scalar */
-        ScalarSampleDto: {
-            providerRecordId?: string | null;
-            /** Format: date-time */
-            measuredAt: string;
-            metricType: string;
-            value: number;
-            unit: string;
-            context?: string | null;
-            segment?: string | null;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "scalar";
-        };
-        /** HealthResponse */
-        HealthResponse: {
-            status: string;
-            service: string;
-            time: string;
-        };
-        /** ErrorDetail */
-        ErrorDetail: {
-            field: string;
-            /**
-             * @description Machine-readable validation issue code for this field.
-             * @enum {string}
-             */
-            code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
-            message: string;
-        };
-        /** ErrorBody */
-        ErrorBody: {
-            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
-            code: string;
-            message: string;
-            requestId: string;
-            details?: components["schemas"]["ErrorDetail"][] | null;
-        };
-        /** ErrorResponse */
-        ErrorResponse: {
-            error: components["schemas"]["ErrorBody"];
-        };
-        /** ProviderOAuthCallbackResponse */
-        ProviderOAuthCallbackResponse: {
-            provider: string;
-            providerInstanceId: string;
-            connected: boolean;
+            ingestedAt?: string | null;
+            sourcePayload?: components["schemas"]["JsonElement?"];
+            records?: components["schemas"]["IngestionRecordDto"][] | null;
         };
         /** MetricSkippedCountsResponse */
         MetricSkippedCountsResponse: {
@@ -1618,8 +1634,6 @@ export interface components {
             items: components["schemas"]["IngestionBatchAdminResponse"][];
             meta: components["schemas"]["ReadResponseMeta"];
         };
-        /** JsonElement? */
-        "JsonElement?": Record<string, never> | null;
         /** IngestionRecordAdminResponse */
         IngestionRecordAdminResponse: {
             id: number;
@@ -1865,21 +1879,7 @@ export interface operations {
         /** @description Normalized ingestion batch. Fields are nullable at the transport layer where provider adapters may omit them, but validation enforces provider, providerInstanceId, batch identity, and record-specific required fields. */
         requestBody: {
             content: {
-                "application/json": {
-                    /** @example withings */
-                    provider?: string;
-                    /** @example withings:123456 */
-                    providerInstanceId?: string;
-                    /** @example withings-2026-04-02T00:00:00Z */
-                    batchExternalId?: string;
-                    /**
-                     * Format: date-time
-                     * @example 2026-04-02T08:15:30Z
-                     */
-                    ingestedAt?: string;
-                    sourcePayload?: Record<string, never>;
-                    records?: (components["schemas"]["StepIntervalDto"] | components["schemas"]["SleepSessionDto"] | components["schemas"]["BodyMeasurementDto"] | components["schemas"]["HeartRateDto"] | components["schemas"]["ActivitySummaryDto"] | components["schemas"]["SleepSummaryDto"] | components["schemas"]["RespiratoryRateDto"] | components["schemas"]["HrvDto"] | components["schemas"]["BloodPressureDto"] | components["schemas"]["CardiovascularDto"] | components["schemas"]["ExtendedBodyMeasurementDto"] | components["schemas"]["ScalarSampleDto"])[];
-                };
+                "application/json": components["schemas"]["IngestionBatchRequest"];
             };
         };
         responses: {
