@@ -1,41 +1,24 @@
 import { formatDateTime, formatDuration, formatMeasurement, formatNumber } from "@/lib/format";
 import type { SleepSummary } from "@/lib/types";
-import { EmptyState, sourceLabel } from "./shared";
-import styles from "./tables.module.css";
+import { DataTable, type Column } from "./DataTable";
+import { sourceLabel } from "./shared";
 
-type Props = {
-  items: SleepSummary[];
-};
+const columns: Column<SleepSummary>[] = [
+  { header: "Start", cell: (item) => formatDateTime(item.startAt) },
+  { header: "Sleep", cell: (item) => formatDuration(item.totalSleepSeconds) },
+  { header: "Score", cell: (item) => formatNumber(item.sleepScore) },
+  { header: "Efficiency", cell: (item) => formatMeasurement(item.sleepEfficiencyPercent, "%") },
+  { header: "Wakeups", cell: (item) => formatNumber(item.wakeupCount) },
+  { header: "Source", cell: (item) => sourceLabel(item.source), muted: true },
+];
 
-export function SleepSummariesTable({ items }: Props) {
-  if (items.length === 0) return <EmptyState label="No sleep summaries found." />;
-
+export function SleepSummariesTable({ items }: { items: SleepSummary[] }) {
   return (
-    <div className={styles.wrapper}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Start</th>
-            <th>Sleep</th>
-            <th>Score</th>
-            <th>Efficiency</th>
-            <th>Wakeups</th>
-            <th>Source</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td>{formatDateTime(item.startAt)}</td>
-              <td>{formatDuration(item.totalSleepSeconds)}</td>
-              <td>{formatNumber(item.sleepScore)}</td>
-              <td>{formatMeasurement(item.sleepEfficiencyPercent, "%")}</td>
-              <td>{formatNumber(item.wakeupCount)}</td>
-              <td className={styles.muted}>{sourceLabel(item.source)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      items={items}
+      columns={columns}
+      emptyLabel="No sleep summaries found."
+      rowKey={(item) => item.id}
+    />
   );
 }

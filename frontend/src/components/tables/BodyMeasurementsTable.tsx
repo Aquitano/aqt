@@ -1,37 +1,22 @@
 import { formatDateTime, formatMeasurement } from "@/lib/format";
 import type { BodyMeasurement } from "@/lib/types";
-import { EmptyState, sourceLabel } from "./shared";
-import styles from "./tables.module.css";
+import { DataTable, type Column } from "./DataTable";
+import { sourceLabel } from "./shared";
 
-type Props = {
-  items: BodyMeasurement[];
-};
+const columns: Column<BodyMeasurement>[] = [
+  { header: "Measured", cell: (item) => formatDateTime(item.measuredAt) },
+  { header: "Metric", cell: (item) => item.metricType },
+  { header: "Value", cell: (item) => formatMeasurement(item.value, item.unit) },
+  { header: "Source", cell: (item) => sourceLabel(item.source), muted: true },
+];
 
-export function BodyMeasurementsTable({ items }: Props) {
-  if (items.length === 0) return <EmptyState label="No body measurements found." />;
-
+export function BodyMeasurementsTable({ items }: { items: BodyMeasurement[] }) {
   return (
-    <div className={styles.wrapper}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Measured</th>
-            <th>Metric</th>
-            <th>Value</th>
-            <th>Source</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td>{formatDateTime(item.measuredAt)}</td>
-              <td>{item.metricType}</td>
-              <td>{formatMeasurement(item.value, item.unit)}</td>
-              <td className={styles.muted}>{sourceLabel(item.source)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      items={items}
+      columns={columns}
+      emptyLabel="No body measurements found."
+      rowKey={(item) => item.id}
+    />
   );
 }

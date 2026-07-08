@@ -1,37 +1,22 @@
 import { formatNumber } from "@/lib/format";
 import type { StepDailySummary } from "@/lib/types";
-import { EmptyState, sourceLabel } from "./shared";
-import styles from "./tables.module.css";
+import { DataTable, type Column } from "./DataTable";
+import { sourceLabel } from "./shared";
 
-type Props = {
-  items: StepDailySummary[];
-};
+const columns: Column<StepDailySummary>[] = [
+  { header: "Date", cell: (item) => item.date },
+  { header: "Steps", cell: (item) => formatNumber(item.steps) },
+  { header: "Samples", cell: (item) => formatNumber(item.sampleCount), muted: true },
+  { header: "Source", cell: (item) => sourceLabel(item.source), muted: true },
+];
 
-export function DailyStepsTable({ items }: Props) {
-  if (items.length === 0) return <EmptyState label="No daily step summaries found." />;
-
+export function DailyStepsTable({ items }: { items: StepDailySummary[] }) {
   return (
-    <div className={styles.wrapper}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Steps</th>
-            <th>Samples</th>
-            <th>Source</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={`${item.date}-${item.source?.providerInstanceId ?? "all"}`}>
-              <td>{item.date}</td>
-              <td>{formatNumber(item.steps)}</td>
-              <td className={styles.muted}>{formatNumber(item.sampleCount)}</td>
-              <td className={styles.muted}>{sourceLabel(item.source)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      items={items}
+      columns={columns}
+      emptyLabel="No daily step summaries found."
+      rowKey={(item) => `${item.date}-${item.source?.providerInstanceId ?? "all"}`}
+    />
   );
 }

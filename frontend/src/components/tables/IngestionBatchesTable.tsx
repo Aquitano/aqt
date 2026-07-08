@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import type { IngestionBatch } from "@/lib/types";
-import { EmptyState } from "./shared";
+import { DataTable, type Column } from "./DataTable";
 import styles from "./tables.module.css";
 
 type Props = {
@@ -21,36 +21,21 @@ function badgeClass(status: string): string {
 }
 
 export function IngestionBatchesTable({ items, getHref }: Props) {
-  if (items.length === 0) return <EmptyState label="No ingestion batches found." />;
+  const columns: Column<IngestionBatch>[] = [
+    { header: "ID", cell: (item) => (getHref ? <Link href={getHref(item)}>{item.id}</Link> : item.id) },
+    { header: "Status", cell: (item) => <span className={badgeClass(item.status)}>{item.status}</span> },
+    { header: "Provider", cell: (item) => item.providerInstanceId || item.provider, muted: true },
+    { header: "Records", cell: (item) => formatNumber(item.recordCount) },
+    { header: "Ingested", cell: (item) => formatDateTime(item.ingestedAt), muted: true },
+    { header: "Error", cell: (item) => item.errorMessage ?? "", muted: true },
+  ];
 
   return (
-    <div className={styles.wrapper}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Status</th>
-            <th>Provider</th>
-            <th>Records</th>
-            <th>Ingested</th>
-            <th>Error</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td>{getHref ? <Link href={getHref(item)}>{item.id}</Link> : item.id}</td>
-              <td>
-                <span className={badgeClass(item.status)}>{item.status}</span>
-              </td>
-              <td className={styles.muted}>{item.providerInstanceId || item.provider}</td>
-              <td>{formatNumber(item.recordCount)}</td>
-              <td className={styles.muted}>{formatDateTime(item.ingestedAt)}</td>
-              <td className={styles.muted}>{item.errorMessage ?? ""}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      items={items}
+      columns={columns}
+      emptyLabel="No ingestion batches found."
+      rowKey={(item) => item.id}
+    />
   );
 }

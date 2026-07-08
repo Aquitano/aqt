@@ -1,41 +1,27 @@
 import { formatDateTime, formatDuration } from "@/lib/format";
 import type { SleepSession } from "@/lib/types";
-import { EmptyState, sourceLabel } from "./shared";
-import styles from "./tables.module.css";
+import { DataTable, type Column } from "./DataTable";
+import { sourceLabel } from "./shared";
 
-type Props = {
-  items: SleepSession[];
-};
+const columns: Column<SleepSession>[] = [
+  { header: "Start", cell: (item) => formatDateTime(item.startAt) },
+  { header: "End", cell: (item) => formatDateTime(item.endAt) },
+  { header: "Duration", cell: (item) => formatDuration(item.durationSeconds) },
+  {
+    header: "Stages",
+    cell: (item) => item.stages.map((stage) => stage.stage).join(", ") || "n/a",
+    muted: true,
+  },
+  { header: "Source", cell: (item) => sourceLabel(item.source), muted: true },
+];
 
-export function SleepSessionsTable({ items }: Props) {
-  if (items.length === 0) return <EmptyState label="No sleep sessions found." />;
-
+export function SleepSessionsTable({ items }: { items: SleepSession[] }) {
   return (
-    <div className={styles.wrapper}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Start</th>
-            <th>End</th>
-            <th>Duration</th>
-            <th>Stages</th>
-            <th>Source</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td>{formatDateTime(item.startAt)}</td>
-              <td>{formatDateTime(item.endAt)}</td>
-              <td>{formatDuration(item.durationSeconds)}</td>
-              <td className={styles.muted}>
-                {item.stages.map((stage) => stage.stage).join(", ") || "n/a"}
-              </td>
-              <td className={styles.muted}>{sourceLabel(item.source)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      items={items}
+      columns={columns}
+      emptyLabel="No sleep sessions found."
+      rowKey={(item) => item.id}
+    />
   );
 }

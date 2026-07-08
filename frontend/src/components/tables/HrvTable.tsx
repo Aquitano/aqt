@@ -1,39 +1,23 @@
 import { formatDateTime, formatMeasurement } from "@/lib/format";
 import type { HrvSample } from "@/lib/types";
-import { EmptyState, sourceLabel } from "./shared";
-import styles from "./tables.module.css";
+import { DataTable, type Column } from "./DataTable";
+import { sourceLabel } from "./shared";
 
-type Props = {
-  items: HrvSample[];
-};
+const columns: Column<HrvSample>[] = [
+  { header: "Measured", cell: (item) => formatDateTime(item.measuredAt) },
+  { header: "Metric", cell: (item) => item.metricType.toUpperCase() },
+  { header: "Value", cell: (item) => formatMeasurement(item.value, item.unit) },
+  { header: "Context", cell: (item) => item.context, muted: true },
+  { header: "Source", cell: (item) => sourceLabel(item.source), muted: true },
+];
 
-export function HrvTable({ items }: Props) {
-  if (items.length === 0) return <EmptyState label="No HRV samples found." />;
-
+export function HrvTable({ items }: { items: HrvSample[] }) {
   return (
-    <div className={styles.wrapper}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Measured</th>
-            <th>Metric</th>
-            <th>Value</th>
-            <th>Context</th>
-            <th>Source</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td>{formatDateTime(item.measuredAt)}</td>
-              <td>{item.metricType.toUpperCase()}</td>
-              <td>{formatMeasurement(item.value, item.unit)}</td>
-              <td className={styles.muted}>{item.context}</td>
-              <td className={styles.muted}>{sourceLabel(item.source)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      items={items}
+      columns={columns}
+      emptyLabel="No HRV samples found."
+      rowKey={(item) => item.id}
+    />
   );
 }

@@ -1,7 +1,7 @@
 import { formatDateTime, formatMeasurement } from "@/lib/format";
 import type { CardiovascularMeasurement } from "@/lib/types";
-import { EmptyState, sourceLabel } from "./shared";
-import styles from "./tables.module.css";
+import { DataTable, type Column } from "./DataTable";
+import { sourceLabel } from "./shared";
 
 const METRIC_LABELS: Record<string, string> = {
   pulse_wave_velocity: "Pulse Wave Velocity",
@@ -13,35 +13,20 @@ function metricLabel(metricType: string): string {
   return METRIC_LABELS[metricType] ?? metricType;
 }
 
-type Props = {
-  items: CardiovascularMeasurement[];
-};
+const columns: Column<CardiovascularMeasurement>[] = [
+  { header: "Time", cell: (item) => formatDateTime(item.measuredAt) },
+  { header: "Metric", cell: (item) => metricLabel(item.metricType) },
+  { header: "Value", cell: (item) => formatMeasurement(item.value, item.unit) },
+  { header: "Source", cell: (item) => sourceLabel(item.source), muted: true },
+];
 
-export function CardiovascularTable({ items }: Props) {
-  if (items.length === 0) return <EmptyState label="No cardiovascular measurements found" />;
-
+export function CardiovascularTable({ items }: { items: CardiovascularMeasurement[] }) {
   return (
-    <div className={styles.wrapper}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Metric</th>
-            <th>Value</th>
-            <th>Source</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td>{formatDateTime(item.measuredAt)}</td>
-              <td>{metricLabel(item.metricType)}</td>
-              <td>{formatMeasurement(item.value, item.unit)}</td>
-              <td className={styles.muted}>{sourceLabel(item.source)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      items={items}
+      columns={columns}
+      emptyLabel="No cardiovascular measurements found"
+      rowKey={(item) => item.id}
+    />
   );
 }

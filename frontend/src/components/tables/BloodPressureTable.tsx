@@ -1,41 +1,24 @@
 import { formatDateTime } from "@/lib/format";
 import type { BloodPressureMeasurement } from "@/lib/types";
-import { EmptyState, sourceLabel } from "./shared";
-import styles from "./tables.module.css";
+import { DataTable, type Column } from "./DataTable";
+import { sourceLabel } from "./shared";
 
-type Props = {
-  items: BloodPressureMeasurement[];
-};
+const columns: Column<BloodPressureMeasurement>[] = [
+  { header: "Time", cell: (item) => formatDateTime(item.measuredAt) },
+  { header: "Systolic", cell: (item) => `${item.systolicMmhg} mmHg` },
+  { header: "Diastolic", cell: (item) => `${item.diastolicMmhg} mmHg` },
+  { header: "Reading", cell: (item) => `${item.systolicMmhg}/${item.diastolicMmhg} mmHg` },
+  { header: "HR", cell: (item) => (item.heartRateBpm != null ? `${item.heartRateBpm} bpm` : "-") },
+  { header: "Source", cell: (item) => sourceLabel(item.source), muted: true },
+];
 
-export function BloodPressureTable({ items }: Props) {
-  if (items.length === 0) return <EmptyState label="No blood pressure readings found" />;
-
+export function BloodPressureTable({ items }: { items: BloodPressureMeasurement[] }) {
   return (
-    <div className={styles.wrapper}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Systolic</th>
-            <th>Diastolic</th>
-            <th>Reading</th>
-            <th>HR</th>
-            <th>Source</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td>{formatDateTime(item.measuredAt)}</td>
-              <td>{item.systolicMmhg} mmHg</td>
-              <td>{item.diastolicMmhg} mmHg</td>
-              <td>{item.systolicMmhg}/{item.diastolicMmhg} mmHg</td>
-              <td>{item.heartRateBpm != null ? `${item.heartRateBpm} bpm` : "-"}</td>
-              <td className={styles.muted}>{sourceLabel(item.source)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      items={items}
+      columns={columns}
+      emptyLabel="No blood pressure readings found"
+      rowKey={(item) => item.id}
+    />
   );
 }

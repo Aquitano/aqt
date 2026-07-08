@@ -1,37 +1,22 @@
 import { formatDateTime } from "@/lib/format";
 import type { HeartRateSample } from "@/lib/types";
-import { EmptyState, sourceLabel } from "./shared";
-import styles from "./tables.module.css";
+import { DataTable, type Column } from "./DataTable";
+import { sourceLabel } from "./shared";
 
-type Props = {
-  items: HeartRateSample[];
-};
+const columns: Column<HeartRateSample>[] = [
+  { header: "Measured", cell: (item) => formatDateTime(item.measuredAt) },
+  { header: "BPM", cell: (item) => item.value },
+  { header: "Context", cell: (item) => item.context, muted: true },
+  { header: "Source", cell: (item) => sourceLabel(item.source), muted: true },
+];
 
-export function HeartRateTable({ items }: Props) {
-  if (items.length === 0) return <EmptyState label="No heart-rate samples found." />;
-
+export function HeartRateTable({ items }: { items: HeartRateSample[] }) {
   return (
-    <div className={styles.wrapper}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Measured</th>
-            <th>BPM</th>
-            <th>Context</th>
-            <th>Source</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td>{formatDateTime(item.measuredAt)}</td>
-              <td>{item.value}</td>
-              <td className={styles.muted}>{item.context}</td>
-              <td className={styles.muted}>{sourceLabel(item.source)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      items={items}
+      columns={columns}
+      emptyLabel="No heart-rate samples found."
+      rowKey={(item) => item.id}
+    />
   );
 }
