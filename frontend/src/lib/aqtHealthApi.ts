@@ -416,51 +416,37 @@ export async function runScheduledSyncNow(
   return createAqtHealthClient().runScheduledSyncNow(providerCode, providerInstanceId);
 }
 
+/** Bounds the daily heart-rate query window to the most recent stretch of days. */
+const MAX_HEART_RATE_DAILY_DAYS = 92;
+
 /**
- * Builds a per-day heart-rate series (avg/min/max) across the range. The scalar
- * `/summary` endpoint aggregates server-side, so we issue one cheap summary call
- * per local day rather than charting hundreds of thousands of raw samples.
+ * Builds a per-day heart-rate series (avg/min/max) across the range in one request. The scalar
+ * `/daily` endpoint buckets by UTC calendar day server-side, so we send the full range instead of
+ * charting hundreds of thousands of raw samples or fanning out one request per day.
  */
 async function fetchHeartRateDaily(
   client: ReturnType<typeof createAqtHealthClient>,
   fromDate: string,
   toDate: string,
 ): Promise<HeartRateDailyPoint[]> {
-  const days = enumerateDays(fromDate, toDate);
-  const summaries = await Promise.all(
-    days.map((date) =>
-      client.getScalarSummary("heart_rate", {
-        from: dateOnlyToUtcInstant(date),
-        to: dayAfterDateOnlyToUtcInstant(date),
-      }),
-    ),
-  );
+  const earliest = addUtcDays(toDate, -(MAX_HEART_RATE_DAILY_DAYS - 1));
+  const from = fromDate < earliest ? earliest : fromDate;
 
-  const points: HeartRateDailyPoint[] = [];
-  days.forEach((date, index) => {
-    const result = summaries[index];
-    if (!result.ok || result.data.count === 0) return;
-    points.push({
-      date,
-      count: result.data.count,
-      avg: result.data.avgValue ?? null,
-      min: result.data.minValue ?? null,
-      max: result.data.maxValue ?? null,
-    });
+  const result = await client.getScalarDailySummaries("heart_rate", {
+    from: dateOnlyToUtcInstant(from),
+    to: dayAfterDateOnlyToUtcInstant(toDate),
   });
-  return points;
-}
+  if (!result.ok) return [];
 
-/** Inclusive list of YYYY-MM-DD days, capped to the most recent `maxDays` to bound fan-out. */
-function enumerateDays(fromDate: string, toDate: string, maxDays = 92): string[] {
-  const earliest = addUtcDays(toDate, -(maxDays - 1));
-  let cursor = fromDate < earliest ? earliest : fromDate;
-  const days: string[] = [];
-  while (cursor <= toDate) {
-    days.push(cursor);
-    cursor = addUtcDays(cursor, 1);
-  }
-  return days;
+  return result.data.items
+    .filter((item) => item.count > 0)
+    .map((item) => ({
+      date: item.date,
+      count: item.count,
+      avg: item.avgValue ?? null,
+      min: item.minValue ?? null,
+      max: item.maxValue ?? null,
+    }));
 }
 
 function ingestionStatus(value?: string): "processed" | "failed" | undefined {

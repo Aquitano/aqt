@@ -428,6 +428,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/metrics/{metricType}/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summarize scalar samples per calendar day
+         * @description Returns one count/min/max/avg bucket per calendar day for the metric type within the requested timestamp range, grouped by the `timezone` day boundaries (UTC by default). Replaces per-day summary fan-out with a single ranged read. Unknown metric types return 404.
+         */
+        get: operations["summarizeScalarSamplesDaily"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/health/day": {
         parameters: {
             query?: never;
@@ -1298,6 +1318,20 @@ export interface components {
             maxValue?: number | null;
             avgValue?: number | null;
             latest?: components["schemas"]["ScalarSampleResponse"] | null;
+        };
+        /** ScalarDailySummaryResponse */
+        ScalarDailySummaryResponse: {
+            /** Format: date */
+            date: string;
+            count: number;
+            minValue?: number | null;
+            maxValue?: number | null;
+            avgValue?: number | null;
+        };
+        /** ScalarDailySummariesResponse */
+        ScalarDailySummariesResponse: {
+            items: components["schemas"]["ScalarDailySummaryResponse"][];
+            meta: components["schemas"]["ReadResponseMeta"];
         };
         /** HealthDayBucketResponse */
         HealthDayBucketResponse: {
@@ -3575,6 +3609,98 @@ export interface operations {
                                  * @enum {string}
                                  */
                                 code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    summarizeScalarSamplesDaily: {
+        parameters: {
+            query?: {
+                /** @description Inclusive start timestamp. */
+                from?: string;
+                /** @description Exclusive end timestamp. */
+                to?: string;
+                /** @description IANA timezone that defines the calendar-day buckets. Defaults to UTC. */
+                timezone?: string;
+                /** @description Source provider filter. */
+                provider?: string;
+                /** @description Source provider account or instance filter. */
+                providerInstanceId?: string;
+                /** @description Accepted for parity with other reads; daily summaries carry no source metadata. */
+                includeSource?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Scalar metric type from the metric catalog. */
+                metricType: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScalarDailySummariesResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
                                 message: string;
                             }[] | null;
                         };

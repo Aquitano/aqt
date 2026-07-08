@@ -120,6 +120,7 @@ class ApplicationTest {
             "/api/v2/sleep/summaries",
             "/api/v2/metrics/{metricType}",
             "/api/v2/metrics/{metricType}/summary",
+            "/api/v2/metrics/{metricType}/daily",
             "/api/v2/blood-pressure",
             "/api/v2/dashboard/summary",
             "/api/v2/admin/ingestion/batches",

@@ -44,6 +44,9 @@ type ScalarSamplesQuery = NonNullable<
 type ScalarSummaryQuery = NonNullable<
   paths["/api/v2/metrics/{metricType}/summary"]["get"]["parameters"]["query"]
 >;
+type ScalarDailySummariesQuery = NonNullable<
+  paths["/api/v2/metrics/{metricType}/daily"]["get"]["parameters"]["query"]
+>;
 type SleepNightsQuery = NonNullable<paths["/api/v2/sleep/nights"]["get"]["parameters"]["query"]>;
 type SleepSummariesQuery = NonNullable<
   paths["/api/v2/sleep/summaries"]["get"]["parameters"]["query"]
@@ -316,6 +319,14 @@ export function createAqtHealthClient() {
     getScalarSummary: (metricType: string, query: ScalarSummaryQuery) =>
       call<ApiSchema<"ScalarSummaryResponse">>((headers) =>
         rawClient.GET("/api/v2/metrics/{metricType}/summary", {
+          headers,
+          params: { path: { metricType }, query },
+        }),
+      ),
+
+    getScalarDailySummaries: (metricType: string, query: ScalarDailySummariesQuery) =>
+      call<ApiSchema<"ScalarDailySummariesResponse">>((headers) =>
+        rawClient.GET("/api/v2/metrics/{metricType}/daily", {
           headers,
           params: { path: { metricType }, query },
         }),

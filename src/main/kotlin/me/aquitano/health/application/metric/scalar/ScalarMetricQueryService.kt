@@ -2,9 +2,13 @@ package me.aquitano.health.application.metric.scalar
 
 import me.aquitano.health.api.dto.MetricCatalogEntryResponse
 import me.aquitano.health.api.dto.MetricTypeCatalogResponse
+import me.aquitano.health.api.dto.ReadResponseMeta
+import me.aquitano.health.api.dto.ScalarDailySummariesResponse
+import me.aquitano.health.api.dto.ScalarDailySummaryResponse
 import me.aquitano.health.api.dto.ScalarSamplesResponse
 import me.aquitano.health.api.dto.ScalarSummaryResponse
 import me.aquitano.health.application.metric.common.BaseReadService
+import me.aquitano.health.application.metric.common.Orders
 import me.aquitano.health.application.metric.common.QueryParamSpecs
 import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.application.metric.common.SortFields
@@ -13,7 +17,10 @@ import me.aquitano.health.application.metric.common.meta
 import me.aquitano.health.application.metric.common.readFilters
 import me.aquitano.health.application.metric.common.summaryFilters
 import me.aquitano.health.domain.NotFoundException
+import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ScalarMetricRegistry
+import me.aquitano.health.domain.ValidationIssue
+import me.aquitano.health.domain.ValidationIssueCodes
 import org.jetbrains.exposed.v1.jdbc.Database
 
 /**
@@ -76,6 +83,45 @@ class ScalarMetricQueryService(
                 maxValue = summary.maxValue,
                 avgValue = summary.avgValue,
                 latest = latest?.toScalarResponse(sourceMetadata),
+            )
+        }
+    }
+
+    suspend fun summaryDaily(metricType: String, params: QueryParams): ScalarDailySummariesResponse {
+        requireKnown(metricType)
+        return dbQuery {
+            val filters = params.summaryFilters(SortFields.MEASURED_AT)
+            if (filters.from == null && filters.to == null) {
+                throw RequestValidationException(
+                    listOf(
+                        ValidationIssue(
+                            field = "from",
+                            code = ValidationIssueCodes.Required,
+                            message = "at least one of from or to is required",
+                        )
+                    )
+                )
+            }
+            val zone = params.timezone()
+            val items = scalarRepository
+                .summarizeDaily(filters, setOf(metricType), canonical = true, zone)
+                .map {
+                    ScalarDailySummaryResponse(
+                        date = it.date.toString(),
+                        count = it.count,
+                        minValue = it.minValue,
+                        maxValue = it.maxValue,
+                        avgValue = it.avgValue,
+                    )
+                }
+            ScalarDailySummariesResponse(
+                items = items,
+                meta = ReadResponseMeta(
+                    count = items.size,
+                    limit = items.size,
+                    sort = SortFields.DATE,
+                    order = Orders.ASC,
+                ),
             )
         }
     }

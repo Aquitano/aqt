@@ -8,7 +8,10 @@ import me.aquitano.health.infrastructure.database.tables.ScalarSamplesTable
 import me.aquitano.health.infrastructure.database.toDbTimestamp
 import me.aquitano.health.application.metric.common.repository.BaseMetricReadRepository
 import me.aquitano.health.application.metric.common.repository.TimeFilterMode
+import org.jetbrains.exposed.v1.core.Expression
+import org.jetbrains.exposed.v1.core.Function
 import org.jetbrains.exposed.v1.core.Op
+import org.jetbrains.exposed.v1.core.QueryBuilder
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
@@ -19,9 +22,14 @@ import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.max
 import org.jetbrains.exposed.v1.core.min
+import org.jetbrains.exposed.v1.core.stringLiteral
+import org.jetbrains.exposed.v1.javatime.JavaLocalDateColumnType
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import java.time.Instant
+import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.ZoneId
 
 /**
  * Reads for all point-in-time scalar metrics. `canonical = true` reads through the
@@ -144,6 +152,44 @@ class ScalarSampleReadRepository : BaseMetricReadRepository() {
             }
     }
 
+    /**
+     * Per-day min/max/avg/count for the range, bucketed by the calendar day of [zone]. Callers pass
+     * UTC to reproduce the day boundaries the frontend derives from `dateOnlyToUtcInstant`.
+     */
+    fun summarizeDaily(
+        filters: ReadFilters,
+        metricTypes: Set<String>,
+        canonical: Boolean,
+        zone: ZoneId,
+    ): List<ScalarDailySummaryRow> {
+        val table = source(canonical)
+        val where = timestampConditions(
+            filters = filters,
+            sourceInstanceIdColumn = table.sourceInstanceId,
+            fromColumn = table.measuredAt,
+        ).whereOrNull() ?: return emptyList()
+
+        val dayExpression = LocalDayOf(table.measuredAt, zone.id)
+        val countExpression = table.valueColumn.count()
+        val minExpression = table.valueColumn.min()
+        val maxExpression = table.valueColumn.max()
+        val avgExpression = table.valueColumn.avg()
+        return table.query
+            .select(dayExpression, countExpression, minExpression, maxExpression, avgExpression)
+            .where(where and (table.metricType inList metricTypes))
+            .groupBy(dayExpression)
+            .orderBy(dayExpression to SortOrder.ASC)
+            .map {
+                ScalarDailySummaryRow(
+                    date = it[dayExpression],
+                    count = it[countExpression].toInt(),
+                    minValue = it[minExpression],
+                    maxValue = it[maxExpression],
+                    avgValue = it[avgExpression]?.toDouble(),
+                )
+            }
+    }
+
     private fun source(canonical: Boolean): ScalarSource =
         if (canonical) canonicalSource else rawSource
 
@@ -199,5 +245,27 @@ class ScalarSampleReadRepository : BaseMetricReadRepository() {
                 context = row[CanonicalScalarSamplesView.context],
                 segment = row[CanonicalScalarSamplesView.segment],
             )
+    }
+}
+
+/**
+ * Truncates a `timestamptz` to the calendar day of [zoneId]. Postgres `date_trunc` runs in the
+ * session timezone, so the explicit `AT TIME ZONE` conversion is what keeps a sample on either side
+ * of local midnight in the correct day rather than silently misbucketing on the session's zone.
+ *
+ * The zone is inlined as a literal (not a bound parameter) so the identical expression renders in
+ * both SELECT and GROUP BY; a parameter would emit two distinct placeholders that Postgres refuses
+ * to treat as the same grouping key. [zoneId] is a validated IANA identifier from `ZoneId.of`.
+ */
+private class LocalDayOf(
+    private val timestamp: Expression<OffsetDateTime>,
+    private val zoneId: String,
+) : Function<LocalDate>(JavaLocalDateColumnType()) {
+    override fun toQueryBuilder(queryBuilder: QueryBuilder) = queryBuilder {
+        append("CAST(date_trunc('day', ")
+        append(timestamp)
+        append(" AT TIME ZONE ")
+        append(stringLiteral(zoneId))
+        append(") AS DATE)")
     }
 }

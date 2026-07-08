@@ -105,6 +105,22 @@ internal fun Operation.Builder.scalarSummaryQueryParameters() {
     )
 }
 
+internal fun Operation.Builder.scalarDailySummaryQueryParameters() {
+    metricTypePathParameter()
+    instantRangeParameters(
+        fromDescription = "Inclusive start timestamp.",
+        toDescription = "Exclusive end timestamp.",
+    )
+    timezoneParameter(
+        description = "IANA timezone that defines the calendar-day buckets. Defaults to UTC.",
+        default = "UTC",
+    )
+    providerFilterParameters(
+        includeSourceDescription =
+            "Accepted for parity with other reads; daily summaries carry no source metadata.",
+    )
+}
+
 internal fun Operation.Builder.dailyStepQueryParameters() {
     dailyReadQueryParameters()
     dateRangeQueryParameters("UTC date")

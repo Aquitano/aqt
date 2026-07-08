@@ -404,6 +404,56 @@ class ReadApiRouteTest {
     }
 
     @Test
+    fun dailyScalarSummariesBucketSamplesByTimezoneDay() = testApplication {
+        configureTestApplication()
+        ingestBoundaryHeartRateBatch()
+
+        val utc =
+            authorizedGet("/api/v2/metrics/heart_rate/daily?from=2026-04-19T00:00:00Z&to=2026-04-21T00:00:00Z")
+        assertEquals(HttpStatusCode.OK, utc.status)
+        val utcItems = utc.items()
+        assertEquals(2, utcItems.size)
+
+        val firstDay = utcItems[0].jsonObject
+        assertEquals("2026-04-19", firstDay["date"]!!.jsonPrimitive.content)
+        assertEquals(1, firstDay["count"]!!.jsonPrimitive.int)
+        assertEquals(60.0, firstDay["avgValue"]!!.jsonPrimitive.double)
+
+        // The 00:00Z sample must land in the next UTC day, not spill back into 04-19.
+        val secondDay = utcItems[1].jsonObject
+        assertEquals("2026-04-20", secondDay["date"]!!.jsonPrimitive.content)
+        assertEquals(2, secondDay["count"]!!.jsonPrimitive.int)
+        assertEquals(70.0, secondDay["minValue"]!!.jsonPrimitive.double)
+        assertEquals(80.0, secondDay["maxValue"]!!.jsonPrimitive.double)
+        assertEquals(75.0, secondDay["avgValue"]!!.jsonPrimitive.double)
+
+        // A non-UTC zone shifts the boundary: all three samples fall on the same local day.
+        val newYork =
+            authorizedGet(
+                "/api/v2/metrics/heart_rate/daily?from=2026-04-19T00:00:00Z&to=2026-04-21T00:00:00Z&timezone=America/New_York"
+            )
+        assertEquals(HttpStatusCode.OK, newYork.status)
+        val nyItems = newYork.items()
+        assertEquals(1, nyItems.size)
+        assertEquals("2026-04-19", nyItems[0].jsonObject["date"]!!.jsonPrimitive.content)
+        assertEquals(3, nyItems[0].jsonObject["count"]!!.jsonPrimitive.int)
+        assertEquals(60.0, nyItems[0].jsonObject["minValue"]!!.jsonPrimitive.double)
+        assertEquals(80.0, nyItems[0].jsonObject["maxValue"]!!.jsonPrimitive.double)
+    }
+
+    @Test
+    fun dailyScalarSummariesRequireATimeRange() = testApplication {
+        configureTestApplication()
+
+        val response = authorizedGet("/api/v2/metrics/heart_rate/daily")
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertEquals(
+            "validation_failed",
+            response.jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
+        )
+    }
+
+    @Test
     fun sleepNightsReturnCompleteSessionsByLocalizedEndDate() = testApplication {
         configureTestApplication()
         ingestSleepNightBatch()
@@ -694,6 +744,16 @@ class ReadApiRouteTest {
         return response.jsonBody()["batchId"]!!.jsonPrimitive.int
     }
 
+    private suspend fun ApplicationTestBuilder.ingestBoundaryHeartRateBatch(): Int {
+        val response = client.post("/api/v2/ingestion/batches") {
+            authorized()
+            contentType(ContentType.Application.Json)
+            setBody(boundaryHeartRatePayload())
+        }
+        assertEquals(HttpStatusCode.Created, response.status)
+        return response.jsonBody()["batchId"]!!.jsonPrimitive.int
+    }
+
     private suspend fun ApplicationTestBuilder.ingestSleepNightBatch(): Int {
         val response = client.post("/api/v2/ingestion/batches") {
             authorized()
@@ -946,6 +1006,39 @@ class ReadApiRouteTest {
               "wakeupCount": 1,
               "wasoSeconds": 240,
               "sleepScore": 91
+            }
+          ]
+        }
+        """.trimIndent()
+
+    private fun boundaryHeartRatePayload(): String =
+        """
+        {
+          "provider": "health-connect",
+          "providerInstanceId": "pixel-8-health-connect",
+          "batchExternalId": "hr-boundary-batch",
+          "ingestedAt": "2026-04-20T08:00:00Z",
+          "sourcePayload": {
+            "exportId": "hr-boundary-batch"
+          },
+          "records": [
+            {
+              "type": "heart_rate",
+              "providerRecordId": "hr-boundary-1",
+              "measuredAt": "2026-04-19T23:30:00Z",
+              "bpm": 60
+            },
+            {
+              "type": "heart_rate",
+              "providerRecordId": "hr-boundary-2",
+              "measuredAt": "2026-04-20T00:00:00Z",
+              "bpm": 70
+            },
+            {
+              "type": "heart_rate",
+              "providerRecordId": "hr-boundary-3",
+              "measuredAt": "2026-04-20T00:30:00Z",
+              "bpm": 80
             }
           ]
         }

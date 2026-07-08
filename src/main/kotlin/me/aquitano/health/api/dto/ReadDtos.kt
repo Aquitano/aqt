@@ -192,6 +192,22 @@ data class ScalarSummaryResponse(
 )
 
 @Serializable
+data class ScalarDailySummariesResponse(
+    val items: List<ScalarDailySummaryResponse>,
+    val meta: ReadResponseMeta,
+)
+
+@Serializable
+data class ScalarDailySummaryResponse(
+    @JsonSchema.Format("date")
+    val date: String,
+    val count: Int,
+    val minValue: Double? = null,
+    val maxValue: Double? = null,
+    val avgValue: Double? = null,
+)
+
+@Serializable
 data class MetricCatalogEntryResponse(
     val metricType: String,
     val family: String,
