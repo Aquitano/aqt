@@ -1,6 +1,6 @@
 package me.aquitano.health.application
 
-import me.aquitano.health.api.dto.BatchStatus
+import me.aquitano.health.domain.BatchStatus
 import me.aquitano.health.api.dto.IngestionBatchAdminResponse
 import me.aquitano.health.api.dto.IngestionBatchDetailResponse
 import me.aquitano.health.api.dto.IngestionBatchesResponse

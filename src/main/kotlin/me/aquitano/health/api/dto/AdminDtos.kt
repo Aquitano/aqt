@@ -3,6 +3,8 @@ package me.aquitano.health.api.dto
 import io.ktor.openapi.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import me.aquitano.health.domain.BatchStatus
+import me.aquitano.health.domain.ReplayJobStatus
 
 @Serializable
 data class IngestionBatchesResponse(

@@ -85,7 +85,7 @@ class ProviderSyncPipeline(
                 batchExternalId = batchExternalId,
                 now = now,
             )
-            if (existingBatch?.status == "processed") {
+            if (existingBatch?.status == BatchStatus.Processed) {
                 batches += cachedBatchResponse(item.dataType, existingBatch.id)
                 logger.infoWithContext(
                     "provider_sync_cache_hit",

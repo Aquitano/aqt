@@ -12,7 +12,7 @@ import me.aquitano.health.api.dto.ProviderSyncJobStartResponseDto
 import me.aquitano.health.api.dto.ProviderSyncJobStatusResponseDto
 import me.aquitano.health.api.dto.ProviderSyncRequestDto
 import me.aquitano.health.api.dto.ProviderSyncResponseDto
-import me.aquitano.health.api.dto.SyncJobStatus
+import me.aquitano.health.domain.SyncJobStatus
 import me.aquitano.health.application.providersync.ProviderSyncItem
 import me.aquitano.health.application.providersync.ProviderSyncProgressSink
 import me.aquitano.health.domain.NotFoundException

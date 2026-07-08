@@ -121,7 +121,9 @@ class IngestionProviderSyncPort(
             providerInstanceId = providerInstanceId,
             batchExternalId = batchExternalId,
             now = now,
-        )?.let { ExistingProviderBatch(it.id, it.status) }
+        )?.let { batch ->
+            batch.status?.let { ExistingProviderBatch(batch.id, it) }
+        }
 
     override suspend fun ingest(
         command: ProviderIngestionCommand,

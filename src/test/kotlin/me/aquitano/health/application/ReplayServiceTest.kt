@@ -7,7 +7,7 @@ import kotlinx.serialization.json.buildJsonObject
 import me.aquitano.health.api.dto.ActivitySummaryDto
 import me.aquitano.health.api.dto.HeartRateDto
 import me.aquitano.health.api.dto.IngestionBatchRequest
-import me.aquitano.health.api.dto.ReplayJobStatus
+import me.aquitano.health.domain.ReplayJobStatus
 import me.aquitano.health.api.dto.ReplayJobStatusResponse
 import me.aquitano.health.api.dto.ReplayRequest
 import me.aquitano.health.api.dto.SleepSessionDto

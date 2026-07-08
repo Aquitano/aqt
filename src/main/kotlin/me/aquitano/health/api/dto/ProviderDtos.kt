@@ -3,6 +3,8 @@ package me.aquitano.health.api.dto
 import io.ktor.openapi.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import me.aquitano.health.domain.SyncJobStatus
+import me.aquitano.health.domain.SyncStatus
 
 @Serializable
 data class ProviderCatalogResponseDto(

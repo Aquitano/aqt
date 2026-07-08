@@ -1,10 +1,10 @@
-package me.aquitano.health.api.dto
+package me.aquitano.health.domain
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Wire enums for the status strings stored as TEXT in the database. Each entry's
+ * Lifecycle enums for the status strings stored as TEXT in the database. Each entry's
  * [stored] value is the exact persisted string; [fromStored] fails loudly so a new
  * or corrupted DB value surfaces as a 500 instead of silently leaking through the API.
  */
@@ -20,8 +20,11 @@ enum class BatchStatus(val stored: String) {
     Failed("failed");
 
     companion object {
-        fun fromStored(value: String): BatchStatus =
+        fun fromStoredOrNull(value: String): BatchStatus? =
             entries.firstOrNull { it.stored == value }
+
+        fun fromStored(value: String): BatchStatus =
+            fromStoredOrNull(value)
                 ?: error("Unknown ingestion batch status '$value'")
     }
 }

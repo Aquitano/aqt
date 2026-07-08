@@ -9,6 +9,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.serializer
 import me.aquitano.external.withings.WITHINGS_PROVIDER_CODE
 import me.aquitano.health.api.dto.*
+import me.aquitano.health.domain.BatchStatus
 import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.shared.AppJson
 

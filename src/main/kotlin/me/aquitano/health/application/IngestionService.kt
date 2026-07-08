@@ -1,6 +1,5 @@
 package me.aquitano.health.application
 
-import me.aquitano.health.api.dto.BatchStatus
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
 import me.aquitano.health.api.dto.MetricSkippedCountsResponse
@@ -77,7 +76,7 @@ class IngestionService(
                             it
                         )
                     }
-                if (existingBatch?.status == "processed") {
+                if (existingBatch?.status == BatchStatus.Processed) {
                     logger.infoWithContext(
                         "ingestion_batch_duplicate",
                         "batchId" to existingBatch.id,
@@ -86,7 +85,7 @@ class IngestionService(
                     return@suspendDbTransaction IngestionTransactionResult.Success(
                         IngestionSummaryResponse(
                             batchId = existingBatch.id,
-                            status = BatchStatus.fromStored(existingBatch.status),
+                            status = BatchStatus.Processed,
                             duplicateBatch = true,
                             recordsReceived = validated.records.size,
                             ingestionRecordsStored = 0,
@@ -100,7 +99,7 @@ class IngestionService(
                         MetricCreatedCounts(),
                     )
                 }
-                if (existingBatch?.status == "failed") {
+                if (existingBatch?.status == BatchStatus.Failed) {
                     val existingBatchExternalId = existingBatch.batchExternalId
                         ?: throw ConflictException(
                             "ingestion_batch_invalid_state",
@@ -119,7 +118,7 @@ class IngestionService(
                 } else if (existingBatch != null) {
                     throw ConflictException(
                         "ingestion_batch_in_progress",
-                        "Batch '${validated.batchExternalId}' already exists with status '${existingBatch.status}'",
+                        "Batch '${validated.batchExternalId}' already exists with status '${existingBatch.storedStatus}'",
                     )
                 }
 

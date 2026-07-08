@@ -6,6 +6,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonNames
 import kotlinx.serialization.json.JsonElement
+import me.aquitano.health.domain.BatchStatus
 
 @Serializable
 data class IngestionBatchRequest(

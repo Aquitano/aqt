@@ -25,7 +25,7 @@ class ProviderSyncPipelineTest {
     fun processedBatchCacheSkipsProviderFetch() = runBlocking {
         val accountPort = FakeAccountPort()
         val ingestion = FakeIngestionPort(
-            existingBatch = ExistingProviderBatch(id = 42, status = "processed"),
+            existingBatch = ExistingProviderBatch(id = 42, status = BatchStatus.Processed),
         )
         val adapter = FakeAdapter()
         val pipeline = ProviderSyncPipeline(accountPort, FakeRunPort(), ingestion)
