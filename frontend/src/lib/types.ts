@@ -55,38 +55,9 @@ export type ProviderSyncResponse = ApiSchema<"ProviderSyncResponse">;
 export type ProviderSyncBatch = ApiSchema<"ProviderSyncBatchResponse">;
 export type ProviderSyncError = ApiSchema<"ProviderSyncErrorResponse">;
 export type ProviderSyncEmptyDataType = ApiSchema<"ProviderSyncEmptyDataTypeResponse">;
-export type ProviderSyncJobStartResponse = {
-  jobId: string;
-  status: string;
-  createdAt: string;
-};
-export type ProviderSyncJobItem = {
-  dataType: string;
-  from: string;
-  to: string;
-};
-export type ProviderSyncJobStatusResponse = {
-  jobId: string;
-  providerCode: string;
-  providerInstanceId?: string | null;
-  requestedFrom: string;
-  requestedTo: string;
-  dataTypes?: string[] | null;
-  status: string;
-  totalItems: number;
-  completedItems: number;
-  currentItem?: ProviderSyncJobItem | null;
-  lastCompletedItem?: ProviderSyncJobItem | null;
-  batchesCount: number;
-  emptyCount: number;
-  errorCount: number;
-  errorMessage?: string | null;
-  createdAt: string;
-  startedAt?: string | null;
-  updatedAt: string;
-  finishedAt?: string | null;
-  summary?: ProviderSyncResponse | null;
-};
+export type ProviderSyncJobStartResponse = ApiSchema<"ProviderSyncJobStartResponse">;
+export type ProviderSyncJobItem = ApiSchema<"ProviderSyncJobItemResponse">;
+export type ProviderSyncJobStatusResponse = ApiSchema<"ProviderSyncJobStatusResponse">;
 export type ProviderStatusCatalogResponse = ApiSchema<"ProviderStatusCatalogResponse">;
 export type ProviderStatus = ApiSchema<"ProviderStatusResponse">;
 export type ProviderAccountStatus = ApiSchema<"ProviderAccountStatusResponse">;
@@ -97,19 +68,8 @@ export type ScheduledSyncRunResponse = ApiSchema<"ScheduledSyncRunResponse">;
 export type MetricCatalogResponse = ApiSchema<"MetricTypeCatalogResponse">;
 export type DashboardTrendsResponse = ApiSchema<"DashboardTrendsResponse">;
 
-// New expanded metric types (will be part of generated API after codegen)
-export interface BloodPressureMeasurement {
-  id: number;
-  measuredAt: string;
-  systolicMmhg: number;
-  diastolicMmhg: number;
-  heartRateBpm?: number | null;
-  source?: SourceMetadata | null;
-}
-export interface BloodPressureMeasurementsResponse {
-  items: BloodPressureMeasurement[];
-  meta: ReadResponseMeta;
-}
+export type BloodPressureMeasurement = ApiSchema<"BloodPressureMeasurementResponse">;
+export type BloodPressureMeasurementsResponse = ApiSchema<"BloodPressureMeasurementsResponse">;
 export type BloodPressureLatestResponse = BloodPressureMeasurementsResponse;
 
 export type CardiovascularMeasurement = ScalarSample;
