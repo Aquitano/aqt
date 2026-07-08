@@ -4,40 +4,6 @@
  */
 
 export interface paths {
-    "/metrics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": unknown;
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v2/admin/health": {
         parameters: {
             query?: never;
@@ -58,7 +24,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v2/admin/ingestion/batches": {
+    "/api/v2/providers/{providerCode}/oauth/callback": {
         parameters: {
             query?: never;
             header?: never;
@@ -66,110 +32,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List ingestion batches
-         * @description Lists ingestion batches by received timestamp and optional status for administrative inspection.
+         * Complete provider OAuth flow
+         * @description Public OAuth redirect target. Exchanges a provider authorization code for stored encrypted tokens, or returns a provider-error response when the provider redirects with `error`.
          */
-        get: operations["listIngestionBatches"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v2/admin/ingestion/batches/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get ingestion batch detail
-         * @description Returns one ingestion batch with stored record-level detail for audit and debugging.
-         */
-        get: operations["getIngestionBatch"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v2/admin/ingestion/failures": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List failed ingestion batches
-         * @description Lists ingestion batches with failure status for administrative inspection.
-         */
-        get: operations["listIngestionFailures"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v2/admin/replay": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Replay projections from the raw event log
-         * @description Starts a background job that rebuilds metric projections and/or derived tables from stored ingestion records for the requested date range. Replay is idempotent; with wipe=true the affected projection rows are deleted and rewritten, without it the job acts as a verification pass whose counters report how many writes would have been missing.
-         */
-        post: operations["startReplay"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v2/admin/replay/latest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get latest replay job
-         * @description Returns the most recently created replay job.
-         */
-        get: operations["getLatestReplayJob"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v2/admin/replay/{jobId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get replay job progress
-         * @description Returns progress counters (records replayed, metrics written, duplicates skipped, mapping failures) and the current day item of a replay job.
-         */
-        get: operations["getReplayJob"];
+        get: operations["completeProviderOAuth"];
         put?: never;
         post?: never;
         delete?: never;
@@ -325,9 +191,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get scheduled provider sync configuration */
+        /**
+         * Get scheduled provider sync configuration
+         * @description Returns the background sync configuration for one provider account, including cadence, lookback window, selected data types, per-data-type checkpoints, and last success/failure state. Accounts without stored configuration return the disabled defaults.
+         */
         get: operations["getScheduledProviderSync"];
-        /** Update scheduled provider sync configuration */
+        /**
+         * Update scheduled provider sync configuration
+         * @description Upserts the background sync configuration for one provider account. Omitted fields keep their current (or default) values; enabling the schedule sets the next run to now.
+         */
         put: operations["updateScheduledProviderSync"];
         post?: never;
         delete?: never;
@@ -345,7 +217,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Run scheduled provider sync immediately */
+        /**
+         * Run scheduled provider sync immediately
+         * @description Executes the configured scheduled sync for one provider account right away using the stored data types and checkpoints. Returns 409 when scheduled sync is not configured or a run is already in progress.
+         */
         post: operations["runScheduledProviderSyncNow"];
         delete?: never;
         options?: never;
@@ -413,26 +288,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v2/providers/{providerCode}/oauth/callback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Complete provider OAuth flow
-         * @description Public OAuth redirect target. Exchanges a provider authorization code for stored encrypted tokens, or returns a provider-error response when the provider redirects with `error`.
-         */
-        get: operations["completeProviderOAuth"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v2/providers/{providerCode}/sync": {
         parameters: {
             query?: never;
@@ -444,7 +299,7 @@ export interface paths {
         put?: never;
         /**
          * Synchronize provider data
-         * @description Fetches data from the selected provider for the requested range/data types, normalizes records, ingests resulting batches, and returns per-data-type batch, empty-result, and error details. Provider sync can return partial errors while still storing successful data types.
+         * @description Fetches data from the selected provider for the requested range/data types, normalizes records, ingests resulting batches, and returns per-data-type batch, empty-result, and error details. Provider sync can return partial errors while still storing successful data types. Repeating a completed request with the same Idempotency-Key returns the stored response without syncing again; failed requests are not stored, so retrying them re-runs the sync.
          */
         post: operations["syncProvider"];
         delete?: never;
@@ -464,7 +319,7 @@ export interface paths {
         put?: never;
         /**
          * Start a background provider sync job
-         * @description Creates a durable manual provider sync job and returns immediately. The backend processes provider-safe chunks sequentially; clients can poll the job endpoint for progress and final summary after page reloads.
+         * @description Creates a durable manual provider sync job and returns immediately. The backend processes provider-safe chunks sequentially; clients can poll the job endpoint for progress and final summary after page reloads. Repeating the request with the same Idempotency-Key returns the already-created job instead of starting a new one.
          */
         post: operations["startProviderSyncJob"];
         delete?: never;
@@ -773,6 +628,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/admin/ingestion/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List ingestion batches
+         * @description Lists ingestion batches by received timestamp and optional status for administrative inspection.
+         */
+        get: operations["listIngestionBatches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/admin/ingestion/batches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get ingestion batch detail
+         * @description Returns one ingestion batch with stored record-level detail for audit and debugging.
+         */
+        get: operations["getIngestionBatch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/admin/ingestion/failures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List failed ingestion batches
+         * @description Lists ingestion batches with failure status for administrative inspection.
+         */
+        get: operations["listIngestionFailures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/admin/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay projections from the raw event log
+         * @description Starts a background job that rebuilds metric projections and/or derived tables from stored ingestion records for the requested date range. Replay is idempotent; with wipe=true the affected projection rows are deleted and rewritten, without it the job acts as a verification pass whose counters report how many writes would have been missing. Repeating the request with the same Idempotency-Key returns the already-created job instead of starting a new one.
+         */
+        post: operations["startReplay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/admin/replay/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get latest replay job
+         * @description Returns the most recently created replay job.
+         */
+        get: operations["getLatestReplayJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/admin/replay/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get replay job progress
+         * @description Returns progress counters (records replayed, metrics written, duplicates skipped, mapping failures) and the current day item of a replay job.
+         */
+        get: operations["getReplayJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1013,117 +988,11 @@ export interface components {
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
         };
-        /** IngestionBatchAdminResponse */
-        IngestionBatchAdminResponse: {
-            id: number;
+        /** ProviderOAuthCallbackResponse */
+        ProviderOAuthCallbackResponse: {
             provider: string;
             providerInstanceId: string;
-            batchExternalId?: string | null;
-            /** @enum {string} */
-            status: "received" | "processed" | "failed";
-            /** Format: date-time */
-            ingestedAt: string;
-            /** Format: date-time */
-            receivedAt: string;
-            /** Format: date-time */
-            processedAt?: string | null;
-            errorMessage?: string | null;
-            recordCount: number;
-        };
-        /** ReadResponseMeta */
-        ReadResponseMeta: {
-            count: number;
-            limit: number;
-            sort: string;
-            order: string;
-            nextCursor?: string | null;
-        };
-        /** IngestionBatchesResponse */
-        IngestionBatchesResponse: {
-            items: components["schemas"]["IngestionBatchAdminResponse"][];
-            meta: components["schemas"]["ReadResponseMeta"];
-        };
-        /** JsonElement? */
-        "JsonElement?": Record<string, never> | null;
-        /** IngestionRecordAdminResponse */
-        IngestionRecordAdminResponse: {
-            id: number;
-            recordType: string;
-            providerRecordId?: string | null;
-            /** Format: date-time */
-            recordStartAt?: string | null;
-            /** Format: date-time */
-            recordEndAt?: string | null;
-            /** Format: date-time */
-            createdAt: string;
-            normalizedRecord?: components["schemas"]["JsonElement?"];
-        };
-        /** IngestionBatchDetailResponse */
-        IngestionBatchDetailResponse: {
-            id: number;
-            provider: string;
-            providerInstanceId: string;
-            batchExternalId?: string | null;
-            /** @enum {string} */
-            status: "received" | "processed" | "failed";
-            /** Format: date-time */
-            ingestedAt: string;
-            /** Format: date-time */
-            receivedAt: string;
-            /** Format: date-time */
-            processedAt?: string | null;
-            errorMessage?: string | null;
-            recordCount: number;
-            records: components["schemas"]["IngestionRecordAdminResponse"][];
-            sourcePayload?: components["schemas"]["JsonElement?"];
-            normalizedPayload?: components["schemas"]["JsonElement?"];
-        };
-        /** ReplayRequest */
-        ReplayRequest: {
-            scope?: string;
-            metricTypes?: string[] | null;
-            /** Format: date */
-            fromDate?: string | null;
-            /** Format: date */
-            toDate?: string | null;
-            wipe?: boolean;
-        };
-        /** ReplayJobStartResponse */
-        ReplayJobStartResponse: {
-            jobId: string;
-            /** @enum {string} */
-            status: "queued" | "running" | "completed" | "failed";
-            /** Format: date-time */
-            createdAt: string;
-        };
-        /** ReplayJobStatusResponse */
-        ReplayJobStatusResponse: {
-            jobId: string;
-            scope: string;
-            metricTypes?: string[] | null;
-            /** Format: date */
-            fromDate?: string | null;
-            /** Format: date */
-            toDate?: string | null;
-            wipe: boolean;
-            /** @enum {string} */
-            status: "queued" | "running" | "completed" | "failed";
-            totalItems: number;
-            completedItems: number;
-            currentItem?: string | null;
-            recordsReplayed: number;
-            metricsWritten: number;
-            duplicatesSkipped: number;
-            mappingFailures: number;
-            errorMessage?: string | null;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            startedAt?: string | null;
-            /** Format: date-time */
-            updatedAt: string;
-            /** Format: date-time */
-            finishedAt?: string | null;
+            connected: boolean;
         };
         /** MetricSkippedCountsResponse */
         MetricSkippedCountsResponse: {
@@ -1318,12 +1187,6 @@ export interface components {
             /** Format: date-time */
             expiresAt: string;
         };
-        /** ProviderOAuthCallbackResponse */
-        ProviderOAuthCallbackResponse: {
-            provider: string;
-            providerInstanceId: string;
-            connected: boolean;
-        };
         /** ProviderSyncRequestDto */
         ProviderSyncRequestDto: {
             providerInstanceId?: string | null;
@@ -1408,6 +1271,14 @@ export interface components {
             context?: string | null;
             segment?: string | null;
             source?: components["schemas"]["SourceMetadataResponse"] | null;
+        };
+        /** ReadResponseMeta */
+        ReadResponseMeta: {
+            count: number;
+            limit: number;
+            sort: string;
+            order: string;
+            nextCursor?: string | null;
         };
         /** ScalarSamplesResponse */
         ScalarSamplesResponse: {
@@ -1686,6 +1557,110 @@ export interface components {
             sleep?: components["schemas"]["SleepTrend"] | null;
             weight?: components["schemas"]["WeightTrend"] | null;
         };
+        /** IngestionBatchAdminResponse */
+        IngestionBatchAdminResponse: {
+            id: number;
+            provider: string;
+            providerInstanceId: string;
+            batchExternalId?: string | null;
+            /** @enum {string} */
+            status: "received" | "processed" | "failed";
+            /** Format: date-time */
+            ingestedAt: string;
+            /** Format: date-time */
+            receivedAt: string;
+            /** Format: date-time */
+            processedAt?: string | null;
+            errorMessage?: string | null;
+            recordCount: number;
+        };
+        /** IngestionBatchesResponse */
+        IngestionBatchesResponse: {
+            items: components["schemas"]["IngestionBatchAdminResponse"][];
+            meta: components["schemas"]["ReadResponseMeta"];
+        };
+        /** JsonElement? */
+        "JsonElement?": Record<string, never> | null;
+        /** IngestionRecordAdminResponse */
+        IngestionRecordAdminResponse: {
+            id: number;
+            recordType: string;
+            providerRecordId?: string | null;
+            /** Format: date-time */
+            recordStartAt?: string | null;
+            /** Format: date-time */
+            recordEndAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            normalizedRecord?: components["schemas"]["JsonElement?"];
+        };
+        /** IngestionBatchDetailResponse */
+        IngestionBatchDetailResponse: {
+            id: number;
+            provider: string;
+            providerInstanceId: string;
+            batchExternalId?: string | null;
+            /** @enum {string} */
+            status: "received" | "processed" | "failed";
+            /** Format: date-time */
+            ingestedAt: string;
+            /** Format: date-time */
+            receivedAt: string;
+            /** Format: date-time */
+            processedAt?: string | null;
+            errorMessage?: string | null;
+            recordCount: number;
+            records: components["schemas"]["IngestionRecordAdminResponse"][];
+            sourcePayload?: components["schemas"]["JsonElement?"];
+            normalizedPayload?: components["schemas"]["JsonElement?"];
+        };
+        /** ReplayRequest */
+        ReplayRequest: {
+            scope?: string;
+            metricTypes?: string[] | null;
+            /** Format: date */
+            fromDate?: string | null;
+            /** Format: date */
+            toDate?: string | null;
+            wipe?: boolean;
+        };
+        /** ReplayJobStartResponse */
+        ReplayJobStartResponse: {
+            jobId: string;
+            /** @enum {string} */
+            status: "queued" | "running" | "completed" | "failed";
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** ReplayJobStatusResponse */
+        ReplayJobStatusResponse: {
+            jobId: string;
+            scope: string;
+            metricTypes?: string[] | null;
+            /** Format: date */
+            fromDate?: string | null;
+            /** Format: date */
+            toDate?: string | null;
+            wipe: boolean;
+            /** @enum {string} */
+            status: "queued" | "running" | "completed" | "failed";
+            totalItems: number;
+            completedItems: number;
+            currentItem?: string | null;
+            recordsReplayed: number;
+            metricsWritten: number;
+            duplicatesSkipped: number;
+            mappingFailures: number;
+            errorMessage?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            startedAt?: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            finishedAt?: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -1745,91 +1720,20 @@ export interface operations {
             };
         };
     };
-    listIngestionBatches: {
+    completeProviderOAuth: {
         parameters: {
             query?: {
-                /** @description Batch status filter. */
-                status?: "received" | "processed" | "failed";
-                /** @description Inclusive received-at start timestamp. */
-                from?: string;
-                /** @description Exclusive received-at end timestamp. */
-                to?: string;
-                /** @description Maximum number of items. Defaults to 100 and cannot exceed 1000 for admin list endpoints. */
-                limit?: number;
-                /** @description Opaque cursor from `meta.nextCursor` for the next page. Admin batch lists are sorted by receivedAt desc. */
-                cursor?: string;
+                /** @description OAuth authorization code */
+                code?: string;
+                /** @description OAuth state value */
+                state?: string;
+                /** @description OAuth provider error */
+                error?: string;
             };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IngestionBatchesResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    getIngestionBatch: {
-        parameters: {
-            query?: never;
             header?: never;
             path: {
-                /** @description Ingestion batch id */
-                id: number;
+                /** @description Provider code. Current examples are `google-health` and `withings`. */
+                providerCode: "google-health" | "withings";
             };
             cookie?: never;
         };
@@ -1840,20 +1744,11 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IngestionBatchDetailResponse"];
+                    "application/json": components["schemas"]["ProviderOAuthCallbackResponse"];
                 };
             };
             /** @description Request validation failed */
             400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1879,305 +1774,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    listIngestionFailures: {
-        parameters: {
-            query?: {
-                /** @description Batch status filter. */
-                status?: "received" | "processed" | "failed";
-                /** @description Inclusive received-at start timestamp. */
-                from?: string;
-                /** @description Exclusive received-at end timestamp. */
-                to?: string;
-                /** @description Maximum number of items. Defaults to 100 and cannot exceed 1000 for admin list endpoints. */
-                limit?: number;
-                /** @description Opaque cursor from `meta.nextCursor` for the next page. Admin batch lists are sorted by receivedAt desc. */
-                cursor?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IngestionBatchesResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    startReplay: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description Replay request. scope selects the projections stage, the derived rebuild stage, or both; metricTypes limits the replay to specific record types; omitting the date range replays all stored history. */
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReplayRequest"];
-            };
-        };
-        responses: {
-            /** @description Replay job accepted */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReplayJobStartResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    getLatestReplayJob: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReplayJobStatusResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Resource not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
-    getReplayJob: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Replay job id returned by startReplay */
-                jobId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReplayJobStatusResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Missing or invalid API key */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Resource not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
+            /** @description Upstream provider request failed */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3254,96 +2852,13 @@ export interface operations {
             };
         };
     };
-    completeProviderOAuth: {
-        parameters: {
-            query?: {
-                /** @description OAuth authorization code */
-                code?: string;
-                /** @description OAuth state value */
-                state?: string;
-                /** @description OAuth provider error */
-                error?: string;
-            };
-            header?: never;
-            path: {
-                /** @description Provider code. Current examples are `google-health` and `withings`. */
-                providerCode: "google-health" | "withings";
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProviderOAuthCallbackResponse"];
-                };
-            };
-            /** @description Request validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Resource not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unexpected server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Upstream provider request failed */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Error response */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** me.aquitano.health.api.ErrorBody */
-                        error: {
-                            code: string;
-                            message: string;
-                            requestId: string;
-                            details?: {
-                                field: string;
-                                code: string;
-                                message: string;
-                            }[] | null;
-                        };
-                    };
-                };
-            };
-        };
-    };
     syncProvider: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional client-generated key that makes the request idempotent. Repeating a request with the same key returns the result of the first request instead of performing the work again. */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 /** @description Provider code. Current examples are `google-health` and `withings`. */
                 providerCode: "google-health" | "withings";
@@ -3445,7 +2960,10 @@ export interface operations {
     startProviderSyncJob: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional client-generated key that makes the request idempotent. Repeating a request with the same key returns the result of the first request instead of performing the work again. */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 /** @description Provider code. Current examples are `google-health` and `withings`. */
                 providerCode: "google-health" | "withings";
@@ -4686,6 +4204,54 @@ export interface operations {
                     "application/json": components["schemas"]["DashboardSummaryResponse"];
                 };
             };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
         };
     };
     getDashboardTrends: {
@@ -4721,6 +4287,472 @@ export interface operations {
             };
             /** @description Missing or invalid API key */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    listIngestionBatches: {
+        parameters: {
+            query?: {
+                /** @description Batch status filter. */
+                status?: "received" | "processed" | "failed";
+                /** @description Inclusive received-at start timestamp. */
+                from?: string;
+                /** @description Exclusive received-at end timestamp. */
+                to?: string;
+                /** @description Maximum number of items. Defaults to 100 and cannot exceed 1000 for admin list endpoints. */
+                limit?: number;
+                /** @description Opaque cursor from `meta.nextCursor` for the next page. Admin batch lists are sorted by receivedAt desc. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionBatchesResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getIngestionBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Ingestion batch id */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionBatchDetailResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    listIngestionFailures: {
+        parameters: {
+            query?: {
+                /** @description Batch status filter. */
+                status?: "received" | "processed" | "failed";
+                /** @description Inclusive received-at start timestamp. */
+                from?: string;
+                /** @description Exclusive received-at end timestamp. */
+                to?: string;
+                /** @description Maximum number of items. Defaults to 100 and cannot exceed 1000 for admin list endpoints. */
+                limit?: number;
+                /** @description Opaque cursor from `meta.nextCursor` for the next page. Admin batch lists are sorted by receivedAt desc. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionBatchesResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    startReplay: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client-generated key that makes the request idempotent. Repeating a request with the same key returns the result of the first request instead of performing the work again. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Replay request. scope selects the projections stage, the derived rebuild stage, or both; metricTypes limits the replay to specific record types; omitting the date range replays all stored history. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Replay job accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayJobStartResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getLatestReplayJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayJobStatusResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** me.aquitano.health.api.ErrorBody */
+                        error: {
+                            code: string;
+                            message: string;
+                            requestId: string;
+                            details?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[] | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getReplayJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Replay job id returned by startReplay */
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayJobStatusResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid API key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

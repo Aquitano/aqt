@@ -5,7 +5,7 @@ package me.aquitano.health.api
 import io.ktor.openapi.*
 import io.ktor.utils.io.*
 import me.aquitano.external.withings.WITHINGS_PROVIDER_CODE
-import me.aquitano.health.api.dto.BatchStatus
+import me.aquitano.health.domain.BatchStatus
 import me.aquitano.health.api.dto.HealthDayModuleName
 import me.aquitano.health.application.metric.common.EnumParamSpec
 import me.aquitano.health.application.metric.common.LimitParamSpec
