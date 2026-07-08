@@ -23,7 +23,7 @@ import { formatAxisDate, formatChartValue } from "@/lib/format";
 import styles from "./HealthDataVisualizations.module.css";
 
 const bodyMetricConfig: Record<string, { label: string; color: string }> = {
-  weight: { label: "Weight", color: "#45d6a4" },
+  weight: { label: "Weight", color: "var(--hue-weight)" },
   body_fat: { label: "Body fat", color: "#eab265" },
   muscle: { label: "Muscle", color: "#8b9dff" },
   water: { label: "Water", color: "#5ec9e8" },
@@ -346,7 +346,7 @@ function buildStepsChart(items: StepDailySummariesResponse["items"]): Normalized
       source: sourceLabel(item.source),
     }));
 
-  return detailsToChart(details, [{ key: "steps", label: "Steps", color: "#eab265", unit: "steps" }], ["steps"]);
+  return detailsToChart(details, [{ key: "steps", label: "Steps", color: "var(--hue-steps)", unit: "steps" }], ["steps"]);
 }
 
 function buildActivityChart(items: ActivitySummariesResponse["items"]): NormalizedChart {
@@ -453,7 +453,7 @@ function buildSleepChart(sleepNights?: SleepNightsResponse): NormalizedChart {
       source: sourceLabel(session.source),
     }));
 
-  return detailsToChart(details, [{ key: "sleep", label: "Sleep", color: "#8b9dff", unit: "h" }], ["sleep"]);
+  return detailsToChart(details, [{ key: "sleep", label: "Sleep", color: "var(--hue-sleep)", unit: "h" }], ["sleep"]);
 }
 
 function buildSleepSummaryChart(items: SleepSummariesResponse["items"]): NormalizedChart {
@@ -533,7 +533,7 @@ function buildRespiratoryRateChart(items: RespiratoryRateSamplesResponse["items"
 
   return detailsToChart(
     details,
-    [{ key: "respiratory_rate", label: "Respiratory rate", color: "#5ec9e8", unit: items[0]?.unit }],
+    [{ key: "respiratory_rate", label: "Respiratory rate", color: "var(--hue-resp)", unit: items[0]?.unit }],
     ["respiratory_rate"],
   );
 }
