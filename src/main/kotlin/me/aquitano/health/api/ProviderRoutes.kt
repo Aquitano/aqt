@@ -9,9 +9,6 @@ import io.ktor.server.routing.*
 import io.ktor.server.routing.openapi.*
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.NotFoundException
-import me.aquitano.health.domain.RequestValidationException
-import me.aquitano.health.domain.ValidationIssue
-import me.aquitano.health.domain.ValidationIssueCodes
 import kotlin.reflect.typeOf
 
 /** Provider discovery, OAuth account, scheduled-sync, and sync-job routes. */
@@ -96,8 +93,7 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
     }
     get("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}") {
         val code = call.providerCode()
-        val providerInstanceId = call.parameters["providerInstanceId"]
-            ?: throw RequestValidationException(listOf(ValidationIssue("providerInstanceId")))
+        val providerInstanceId = call.requiredPathParam("providerInstanceId")
         call.respond<ProviderAccountStatusResponseDto>(
             services.providerWorkflowService.getAccount(
                 code,
@@ -117,8 +113,7 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
     }
     get("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync") {
         val code = call.providerCode()
-        val providerInstanceId = call.parameters["providerInstanceId"]
-            ?: throw RequestValidationException(listOf(ValidationIssue("providerInstanceId")))
+        val providerInstanceId = call.requiredPathParam("providerInstanceId")
         call.respond<ScheduledSyncConfigResponseDto>(
             services.scheduledProviderSyncService.getConfig(
                 providerCode = code,
@@ -137,8 +132,7 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
     }
     put("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync") {
         val code = call.providerCode()
-        val providerInstanceId = call.parameters["providerInstanceId"]
-            ?: throw RequestValidationException(listOf(ValidationIssue("providerInstanceId")))
+        val providerInstanceId = call.requiredPathParam("providerInstanceId")
         call.respond<ScheduledSyncConfigResponseDto>(
             services.scheduledProviderSyncService.updateConfig(
                 providerCode = code,
@@ -162,8 +156,7 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
     }
     post("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync/run") {
         val code = call.providerCode()
-        val providerInstanceId = call.parameters["providerInstanceId"]
-            ?: throw RequestValidationException(listOf(ValidationIssue("providerInstanceId")))
+        val providerInstanceId = call.requiredPathParam("providerInstanceId")
         call.respond<ScheduledSyncRunResponseDto>(
             services.scheduledProviderSyncService.runNow(
                 providerCode = code,
@@ -183,8 +176,7 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
     }
     post("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/disconnect") {
         val code = call.providerCode()
-        val providerInstanceId = call.parameters["providerInstanceId"]
-            ?: throw RequestValidationException(listOf(ValidationIssue("providerInstanceId")))
+        val providerInstanceId = call.requiredPathParam("providerInstanceId")
         call.respond<ProviderDisconnectResponseDto>(
             services.providerWorkflowService.disconnect(
                 code,
@@ -204,8 +196,7 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
     }
     post("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/reconnect") {
         val code = call.providerCode()
-        val providerInstanceId = call.parameters["providerInstanceId"]
-            ?: throw RequestValidationException(listOf(ValidationIssue("providerInstanceId")))
+        val providerInstanceId = call.requiredPathParam("providerInstanceId")
         call.respond<ProviderOAuthStartResponse>(
             services.providerWorkflowService.reconnect(
                 code,
@@ -319,16 +310,7 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
         errorResponses(notFound = true)
     }
     get("/api/v2/providers/{providerCode}/sync-jobs/{jobId}") {
-        val jobId = call.parameters["jobId"]?.takeIf { it.isNotBlank() }
-            ?: throw RequestValidationException(
-                listOf(
-                    ValidationIssue(
-                        field = "jobId",
-                        code = ValidationIssueCodes.Required,
-                        message = "is required",
-                    )
-                )
-            )
+        val jobId = call.requiredPathParam("jobId")
         call.respond(HttpStatusCode.OK, services.providerSyncJobService.get(jobId))
     }.describe {
         operationId = "getProviderSyncJob"

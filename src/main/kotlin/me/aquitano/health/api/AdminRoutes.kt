@@ -9,9 +9,6 @@ import io.ktor.server.routing.*
 import io.ktor.server.routing.openapi.*
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.NotFoundException
-import me.aquitano.health.domain.RequestValidationException
-import me.aquitano.health.domain.ValidationIssue
-import me.aquitano.health.domain.ValidationIssueCodes
 import kotlin.reflect.typeOf
 
 /** Ingestion batch inspection and replay administration routes. */
@@ -115,16 +112,7 @@ internal fun Route.adminRoutes(services: ApplicationServices) {
         errorResponses(notFound = true)
     }
     get("/api/v2/admin/replay/{jobId}") {
-        val jobId = call.parameters["jobId"]?.takeIf { it.isNotBlank() }
-            ?: throw RequestValidationException(
-                listOf(
-                    ValidationIssue(
-                        field = "jobId",
-                        code = ValidationIssueCodes.Required,
-                        message = "is required",
-                    )
-                )
-            )
+        val jobId = call.requiredPathParam("jobId")
         call.respond(HttpStatusCode.OK, services.replayService.get(jobId))
     }.describe {
         operationId = "getReplayJob"

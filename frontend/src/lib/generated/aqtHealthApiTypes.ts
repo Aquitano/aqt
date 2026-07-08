@@ -974,11 +974,16 @@ export interface components {
         /** ErrorDetail */
         ErrorDetail: {
             field: string;
-            code: string;
+            /**
+             * @description Machine-readable validation issue code for this field.
+             * @enum {string}
+             */
+            code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
             message: string;
         };
         /** ErrorBody */
         ErrorBody: {
+            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
             code: string;
             message: string;
             requestId: string;
@@ -1706,12 +1711,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -1792,12 +1802,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -1943,12 +1958,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -2010,12 +2030,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -2089,12 +2114,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -2168,12 +2198,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -2247,12 +2282,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -2327,12 +2367,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -2407,12 +2452,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -2492,12 +2542,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -2590,12 +2645,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -2679,12 +2739,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -2759,12 +2824,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -2838,12 +2908,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -2943,12 +3018,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -3040,12 +3120,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -3119,12 +3204,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -3200,12 +3290,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -3267,12 +3362,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -3369,12 +3469,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -3459,12 +3564,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -3540,12 +3650,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -3628,12 +3743,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -3718,12 +3838,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -3808,12 +3933,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -3896,12 +4026,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -3986,12 +4121,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -4074,12 +4214,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -4162,12 +4307,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -4240,12 +4390,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -4312,12 +4467,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -4390,12 +4550,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -4469,12 +4634,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -4547,12 +4717,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -4623,12 +4798,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -4699,12 +4879,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };
@@ -4778,12 +4963,17 @@ export interface operations {
                     "application/json": {
                         /** me.aquitano.health.api.ErrorBody */
                         error: {
+                            /** @description Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, `not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, `scheduled_sync_already_running`, or `withings_needs_reauth`). */
                             code: string;
                             message: string;
                             requestId: string;
                             details?: {
                                 field: string;
-                                code: string;
+                                /**
+                                 * @description Machine-readable validation issue code for this field.
+                                 * @enum {string}
+                                 */
+                                code: "required" | "invalid_format" | "unsupported_value" | "out_of_range" | "invalid_range" | "invalid_state";
                                 message: string;
                             }[] | null;
                         };

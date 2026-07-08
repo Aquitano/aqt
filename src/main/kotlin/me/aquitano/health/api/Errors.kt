@@ -1,11 +1,15 @@
+@file:OptIn(ExperimentalKtorApi::class)
+
 package me.aquitano.health.api
 
 import io.ktor.http.*
+import io.ktor.openapi.JsonSchema
 import io.ktor.server.application.*
 import io.ktor.server.plugins.*
 import io.ktor.server.plugins.callid.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.response.*
+import io.ktor.utils.io.ExperimentalKtorApi
 import kotlinx.serialization.Serializable
 import me.aquitano.health.domain.*
 import me.aquitano.health.domain.NotFoundException
@@ -193,6 +197,12 @@ data class ErrorResponse(
 
 @Serializable
 data class ErrorBody(
+    @JsonSchema.Description(
+        "Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, " +
+            "`not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return " +
+            "provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, " +
+            "`scheduled_sync_already_running`, or `withings_needs_reauth`)."
+    )
     val code: String,
     val message: String,
     val requestId: String,
@@ -202,6 +212,15 @@ data class ErrorBody(
 @Serializable
 data class ErrorDetail(
     val field: String,
+    @JsonSchema.Description("Machine-readable validation issue code for this field.")
+    @JsonSchema.Enum(
+        ValidationIssueCodes.Required,
+        ValidationIssueCodes.InvalidFormat,
+        ValidationIssueCodes.UnsupportedValue,
+        ValidationIssueCodes.OutOfRange,
+        ValidationIssueCodes.InvalidRange,
+        ValidationIssueCodes.InvalidState,
+    )
     val code: String,
     val message: String,
 )

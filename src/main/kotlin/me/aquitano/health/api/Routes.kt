@@ -184,6 +184,14 @@ internal fun ApplicationCall.metricTypePath(): String {
     return metricType
 }
 
+internal fun ApplicationCall.requiredPathParam(name: String): String {
+    val value = parameters[name]
+    if (value.isNullOrBlank()) {
+        throw RequestValidationException(listOf(ValidationIssue(field = name)))
+    }
+    return value
+}
+
 internal fun ApplicationCall.idempotencyKey(): String? =
     request.headers["Idempotency-Key"]?.trim()?.takeIf { it.isNotEmpty() }
 
