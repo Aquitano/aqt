@@ -249,6 +249,7 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
                 providerCode = code,
                 request = call.receive<ProviderSyncRequestDto>(),
                 now = services.clock.now(),
+                idempotencyKey = call.idempotencyKey(),
             )
         )
     }.describe {
@@ -256,9 +257,10 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
         tag("Providers")
         summary = "Synchronize provider data"
         description =
-            "Fetches data from the selected provider for the requested range/data types, normalizes records, ingests resulting batches, and returns per-data-type batch, empty-result, and error details. Provider sync can return partial errors while still storing successful data types."
+            "Fetches data from the selected provider for the requested range/data types, normalizes records, ingests resulting batches, and returns per-data-type batch, empty-result, and error details. Provider sync can return partial errors while still storing successful data types. Repeating a completed request with the same Idempotency-Key returns the stored response without syncing again; failed requests are not stored, so retrying them re-runs the sync."
         requiresBearerAuth()
         providerCodePath()
+        idempotencyKeyHeader()
         jsonRequest<ProviderSyncRequestDto>(
             "Provider sync request. Long historical ranges are accepted for backfill; providers split work into safe internal windows and may enforce page-size constraints advertised by the provider catalog.",
             "syncRequest",
@@ -274,6 +276,7 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
                 providerCode = code,
                 request = call.receive<ProviderSyncRequestDto>(),
                 now = services.clock.now(),
+                idempotencyKey = call.idempotencyKey(),
             )
         )
     }.describe {
@@ -281,9 +284,10 @@ internal fun Route.providerRoutes(services: ApplicationServices) {
         tag("Providers")
         summary = "Start a background provider sync job"
         description =
-            "Creates a durable manual provider sync job and returns immediately. The backend processes provider-safe chunks sequentially; clients can poll the job endpoint for progress and final summary after page reloads."
+            "Creates a durable manual provider sync job and returns immediately. The backend processes provider-safe chunks sequentially; clients can poll the job endpoint for progress and final summary after page reloads. Repeating the request with the same Idempotency-Key returns the already-created job instead of starting a new one."
         requiresBearerAuth()
         providerCodePath()
+        idempotencyKeyHeader()
         jsonRequest<ProviderSyncRequestDto>(
             "Provider sync request. Long historical ranges are accepted for backfill and processed by the backend job worker.",
             "syncJobRequest",

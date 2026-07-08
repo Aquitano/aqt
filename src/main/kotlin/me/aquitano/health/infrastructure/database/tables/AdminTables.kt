@@ -6,6 +6,8 @@ import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
 
 object ReplayJobsTable : Table("replay_jobs") {
     val id = text("id")
+    val idempotencyKey = text("idempotency_key").nullable()
+    val idempotencyRequestHash = text("idempotency_request_hash").nullable()
     val scope = text("scope")
     val metricTypes = text("metric_types").nullable()
     val fromDate = date("from_date").nullable()

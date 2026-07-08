@@ -42,6 +42,7 @@ import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.PendingDerivedRebuildRepository
 import me.aquitano.health.infrastructure.repositories.ProjectionWipeRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
+import me.aquitano.health.infrastructure.repositories.ProviderSyncIdempotencyRepository
 import me.aquitano.health.infrastructure.repositories.ProviderSyncJobRepository
 import me.aquitano.health.infrastructure.repositories.ReplayJobRepository
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncRepository
@@ -64,6 +65,7 @@ fun repositoriesModule(database: Database, config: AppConfig) = module {
     single { IngestionRepository() }
     single { ProviderOAuthRepository(database) }
     single { ProviderSyncJobRepository(database) }
+    single { ProviderSyncIdempotencyRepository(database) }
     single { ReplayJobRepository(database) }
     single { PendingDerivedRebuildRepository(database) }
     single { ProjectionWipeRepository() }
@@ -246,6 +248,7 @@ fun servicesModule(database: Database, config: AppConfig) = module {
             providerRegistry = get(),
             providerOAuthRepository = get(),
             providerStatusService = get(),
+            syncIdempotencyRepository = get(),
         )
     }
     single {

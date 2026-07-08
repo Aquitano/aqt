@@ -7,6 +7,7 @@ import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.insertIgnore
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import org.jetbrains.exposed.v1.jdbc.update
@@ -15,6 +16,7 @@ import java.time.LocalDate
 
 data class ReplayJobRecord(
     val id: String,
+    val idempotencyRequestHash: String?,
     val scope: String,
     val metricTypes: List<String>?,
     val fromDate: LocalDate?,
@@ -44,10 +46,37 @@ class ReplayJobRepository(private val database: Database) {
         toDate: LocalDate?,
         wipe: Boolean,
         now: Instant,
+        idempotencyKey: String? = null,
+        idempotencyRequestHash: String? = null,
     ): ReplayJobRecord =
         suspendDbTransaction(db = database) {
-            ReplayJobsTable.insert {
+            if (idempotencyKey == null) {
+                ReplayJobsTable.insert {
+                    it[this.id] = id
+                    it[this.idempotencyKey] = null
+                    it[this.idempotencyRequestHash] = null
+                    it[this.scope] = scope
+                    it[this.metricTypes] = metricTypes?.joinToString(",")
+                    it[this.fromDate] = fromDate
+                    it[this.toDate] = toDate
+                    it[this.wipe] = wipe
+                    it[status] = "queued"
+                    it[totalItems] = 0
+                    it[completedItems] = 0
+                    it[recordsReplayed] = 0
+                    it[metricsWritten] = 0
+                    it[duplicatesSkipped] = 0
+                    it[mappingFailures] = 0
+                    it[createdAt] = now.toDbTimestamp()
+                    it[updatedAt] = now.toDbTimestamp()
+                }
+                return@suspendDbTransaction getByIdInTransaction(id)!!
+            }
+
+            ReplayJobsTable.insertIgnore {
                 it[this.id] = id
+                it[this.idempotencyKey] = idempotencyKey
+                it[this.idempotencyRequestHash] = idempotencyRequestHash
                 it[this.scope] = scope
                 it[this.metricTypes] = metricTypes?.joinToString(",")
                 it[this.fromDate] = fromDate
@@ -63,11 +92,16 @@ class ReplayJobRepository(private val database: Database) {
                 it[createdAt] = now.toDbTimestamp()
                 it[updatedAt] = now.toDbTimestamp()
             }
-            getByIdInTransaction(id)!!
+            getByIdInTransaction(id) ?: findByIdempotencyKeyInTransaction(idempotencyKey)!!
         }
 
     suspend fun get(id: String): ReplayJobRecord? =
         suspendDbTransaction(db = database) { getByIdInTransaction(id) }
+
+    suspend fun findByIdempotencyKey(idempotencyKey: String): ReplayJobRecord? =
+        suspendDbTransaction(db = database) {
+            findByIdempotencyKeyInTransaction(idempotencyKey)
+        }
 
     suspend fun latest(): ReplayJobRecord? =
         suspendDbTransaction(db = database) {
@@ -155,9 +189,18 @@ class ReplayJobRepository(private val database: Database) {
             .map { it.toRecord() }
             .singleOrNull()
 
+    private fun findByIdempotencyKeyInTransaction(idempotencyKey: String): ReplayJobRecord? =
+        ReplayJobsTable
+            .selectAll()
+            .where { ReplayJobsTable.idempotencyKey eq idempotencyKey }
+            .limit(1)
+            .map { it.toRecord() }
+            .singleOrNull()
+
     private fun ResultRow.toRecord(): ReplayJobRecord =
         ReplayJobRecord(
             id = this[ReplayJobsTable.id],
+            idempotencyRequestHash = this[ReplayJobsTable.idempotencyRequestHash],
             scope = this[ReplayJobsTable.scope],
             metricTypes = this[ReplayJobsTable.metricTypes]
                 ?.split(",")
@@ -179,4 +222,5 @@ class ReplayJobRepository(private val database: Database) {
             updatedAt = this[ReplayJobsTable.updatedAt].toInstant(),
             finishedAt = this[ReplayJobsTable.finishedAt]?.toInstant(),
         )
+
 }

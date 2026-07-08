@@ -22,6 +22,16 @@ internal fun Operation.Builder.providerCodePath() {
     }
 }
 
+internal fun Operation.Builder.idempotencyKeyHeader() {
+    parameters {
+        header("Idempotency-Key") {
+            description =
+                "Optional client-generated key that makes the request idempotent. Repeating a request with the same key returns the result of the first request instead of performing the work again."
+            schema = stringSchema(example = "9b2f4a1e-manual-sync-2026-07-07")
+        }
+    }
+}
+
 internal fun Operation.Builder.readQueryParameters(
     includeLatest: Boolean = false,
     sortValues: List<String>,

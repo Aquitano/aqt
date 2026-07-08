@@ -15,6 +15,7 @@ import me.aquitano.health.api.dto.ProviderSyncResponseDto
 import me.aquitano.health.domain.SyncJobStatus
 import me.aquitano.health.application.providersync.ProviderSyncItem
 import me.aquitano.health.application.providersync.ProviderSyncProgressSink
+import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.domain.ProviderSyncRequest
 import me.aquitano.health.infrastructure.repositories.ProviderSyncJobRecord
@@ -48,10 +49,24 @@ class ProviderSyncJobService(
         providerCode: String,
         request: ProviderSyncRequestDto,
         now: Instant,
+        idempotencyKey: String? = null,
     ): ProviderSyncJobStartResponseDto {
         val provider = providerRegistry.getProvider(providerCode)
             ?: throw NotFoundException("Provider '$providerCode' not found")
         val domainRequest = workflowService.toDomainSyncRequest(request, now)
+        val requestHash = syncJobRequestHash(request)
+        if (idempotencyKey != null) {
+            repository.findByIdempotencyKey(provider.descriptor.providerCode, idempotencyKey)
+                ?.let { existing ->
+                    existing.requireMatchingIdempotencyRequest(requestHash)
+                    providerSyncJobLogger.infoWithContext(
+                        "provider_sync_job_idempotent_replay",
+                        "provider" to provider.descriptor.providerCode,
+                        "jobId" to existing.id,
+                    )
+                    return existing.toStartDto()
+                }
+        }
         val job = repository.create(
             id = UUID.randomUUID().toString(),
             providerCode = provider.descriptor.providerCode,
@@ -61,17 +76,18 @@ class ProviderSyncJobService(
             dataTypes = domainRequest.dataTypes,
             pageSize = domainRequest.pageSize,
             now = now,
+            idempotencyKey = idempotencyKey,
+            idempotencyRequestHash = idempotencyKey?.let { requestHash },
         )
+        if (idempotencyKey != null) {
+            job.requireMatchingIdempotencyRequest(requestHash)
+        }
 
         scope.launch {
             runJob(job.id, provider.descriptor.providerCode, domainRequest)
         }
 
-        return ProviderSyncJobStartResponseDto(
-            jobId = job.id,
-            status = SyncJobStatus.fromStored(job.status),
-            createdAt = job.createdAt.toString(),
-        )
+        return job.toStartDto()
     }
 
     suspend fun get(jobId: String): ProviderSyncJobStatusResponseDto =
@@ -159,6 +175,21 @@ class ProviderSyncJobService(
         }
     }
 
+    private fun ProviderSyncJobRecord.toStartDto(): ProviderSyncJobStartResponseDto =
+        ProviderSyncJobStartResponseDto(
+            jobId = id,
+            status = SyncJobStatus.fromStored(status),
+            createdAt = createdAt.toString(),
+        )
+
+    private fun ProviderSyncJobRecord.requireMatchingIdempotencyRequest(requestHash: String) {
+        if (idempotencyRequestHash == requestHash) return
+        throw ConflictException(
+            "idempotency_key_conflict",
+            "Idempotency-Key was already used for a different provider sync request.",
+        )
+    }
+
     private fun ProviderSyncJobRecord.toDto(): ProviderSyncJobStatusResponseDto =
         ProviderSyncJobStatusResponseDto(
             jobId = id,
@@ -196,3 +227,12 @@ class ProviderSyncJobService(
             ProviderSyncJobItemResponseDto(dataType, from.toString(), to.toString())
         }
 }
+
+private fun syncJobRequestHash(request: ProviderSyncRequestDto): String =
+    idempotencyRequestHash(
+        request.providerInstanceId?.takeIf { it.isNotBlank() },
+        request.from,
+        request.to,
+        request.dataTypes?.distinct()?.idempotencyListPart(),
+        request.pageSize?.toString(),
+    )

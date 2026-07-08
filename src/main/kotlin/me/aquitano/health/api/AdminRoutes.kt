@@ -77,6 +77,7 @@ internal fun Route.adminRoutes(services: ApplicationServices) {
             services.replayService.create(
                 request = call.receive<ReplayRequest>(),
                 now = services.clock.now(),
+                idempotencyKey = call.idempotencyKey(),
             )
         )
     }.describe {
@@ -84,8 +85,9 @@ internal fun Route.adminRoutes(services: ApplicationServices) {
         tag("Admin")
         summary = "Replay projections from the raw event log"
         description =
-            "Starts a background job that rebuilds metric projections and/or derived tables from stored ingestion records for the requested date range. Replay is idempotent; with wipe=true the affected projection rows are deleted and rewritten, without it the job acts as a verification pass whose counters report how many writes would have been missing."
+            "Starts a background job that rebuilds metric projections and/or derived tables from stored ingestion records for the requested date range. Replay is idempotent; with wipe=true the affected projection rows are deleted and rewritten, without it the job acts as a verification pass whose counters report how many writes would have been missing. Repeating the request with the same Idempotency-Key returns the already-created job instead of starting a new one."
         requiresBearerAuth()
+        idempotencyKeyHeader()
         jsonRequest<ReplayRequest>(
             "Replay request. scope selects the projections stage, the derived rebuild stage, or both; metricTypes limits the replay to specific record types; omitting the date range replays all stored history.",
         )

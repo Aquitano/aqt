@@ -20,6 +20,7 @@ import me.aquitano.health.infrastructure.database.DatabaseFactory
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.PendingDerivedRebuildRepository
 import me.aquitano.health.infrastructure.repositories.ProviderOAuthRepository
+import me.aquitano.health.infrastructure.repositories.ProviderSyncIdempotencyRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.TokenCipher
 import me.aquitano.health.test.PostgresTestDatabase
@@ -594,6 +595,7 @@ class GoogleHealthProviderTest {
             providerRegistry = providerRegistry,
             providerOAuthRepository = providerRepository,
             providerStatusService = providerStatusService,
+            syncIdempotencyRepository = ProviderSyncIdempotencyRepository(database),
         )
 
         suspend fun storeAccount(

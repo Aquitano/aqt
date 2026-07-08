@@ -27,6 +27,7 @@ fun Application.configureHttp(corsConfig: CorsConfig) {
         allowMethod(HttpMethod.Delete)
         allowHeader(HttpHeaders.Authorization)
         allowHeader(HttpHeaders.ContentType)
+        allowHeader("Idempotency-Key")
         allowNonSimpleContentTypes = true
         allowCredentials = true
         corsConfig.origins.forEach { origin ->

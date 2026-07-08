@@ -184,6 +184,9 @@ internal fun ApplicationCall.metricTypePath(): String {
     return metricType
 }
 
+internal fun ApplicationCall.idempotencyKey(): String? =
+    request.headers["Idempotency-Key"]?.trim()?.takeIf { it.isNotEmpty() }
+
 internal fun ApplicationCall.providerCode(): String {
     val code = parameters["providerCode"]
     if (code.isNullOrBlank()) {

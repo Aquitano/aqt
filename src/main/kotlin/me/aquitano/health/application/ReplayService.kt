@@ -14,6 +14,7 @@ import me.aquitano.health.api.dto.ReplayRequest
 import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.application.metric.common.affectedUtcDates
 import me.aquitano.health.domain.DerivedKind
+import me.aquitano.health.domain.ConflictException
 import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.domain.RecordTypes
 import me.aquitano.health.domain.RequestValidationException
@@ -88,8 +89,23 @@ class ReplayService(
         scope.cancel()
     }
 
-    suspend fun create(request: ReplayRequest, now: Instant): ReplayJobStartResponse {
+    suspend fun create(
+        request: ReplayRequest,
+        now: Instant,
+        idempotencyKey: String? = null,
+    ): ReplayJobStartResponse {
         val plan = validate(request)
+        val requestHash = plan.idempotencyRequestHash()
+        if (idempotencyKey != null) {
+            replayJobRepository.findByIdempotencyKey(idempotencyKey)?.let { existing ->
+                existing.requireMatchingIdempotencyRequest(requestHash)
+                replayLogger.infoWithContext(
+                    "replay_job_idempotent_replay",
+                    "jobId" to existing.id,
+                )
+                return existing.toStartDto()
+            }
+        }
         val job = replayJobRepository.create(
             id = UUID.randomUUID().toString(),
             scope = plan.scope,
@@ -98,16 +114,32 @@ class ReplayService(
             toDate = plan.toDate,
             wipe = plan.wipe,
             now = now,
+            idempotencyKey = idempotencyKey,
+            idempotencyRequestHash = idempotencyKey?.let { requestHash },
         )
+        if (idempotencyKey != null) {
+            job.requireMatchingIdempotencyRequest(requestHash)
+        }
 
         scope.launch {
             runJob(job.id, plan)
         }
 
-        return ReplayJobStartResponse(
-            jobId = job.id,
-            status = ReplayJobStatus.fromStored(job.status),
-            createdAt = job.createdAt.toString(),
+        return job.toStartDto()
+    }
+
+    private fun ReplayJobRecord.toStartDto(): ReplayJobStartResponse =
+        ReplayJobStartResponse(
+            jobId = id,
+            status = ReplayJobStatus.fromStored(status),
+            createdAt = createdAt.toString(),
+        )
+
+    private fun ReplayJobRecord.requireMatchingIdempotencyRequest(requestHash: String) {
+        if (idempotencyRequestHash == requestHash) return
+        throw ConflictException(
+            "idempotency_key_conflict",
+            "Idempotency-Key was already used for a different replay request.",
         )
     }
 
@@ -385,6 +417,15 @@ class ReplayService(
             finishedAt = finishedAt?.toString(),
         )
 }
+
+private fun ReplayPlan.idempotencyRequestHash(): String =
+    idempotencyRequestHash(
+        scope,
+        recordTypes?.sorted()?.idempotencyListPart(),
+        fromDate?.toString(),
+        toDate?.toString(),
+        wipe.toString(),
+    )
 
 private data class ReplayPlan(
     val scope: String,
