@@ -2,8 +2,8 @@ package me.aquitano.health.application
 
 import me.aquitano.health.api.dto.SleepSummariesResponse
 import me.aquitano.health.application.metric.common.BaseReadService
+import me.aquitano.health.application.metric.common.QueryParamSpecs
 import me.aquitano.health.application.metric.common.QueryParams
-import me.aquitano.health.application.metric.common.SortFields
 import me.aquitano.health.application.metric.common.keysetPage
 import me.aquitano.health.application.metric.common.meta
 import me.aquitano.health.application.metric.common.readFilters
@@ -18,8 +18,7 @@ class SleepSummaryReadService(
     suspend fun list(params: QueryParams): SleepSummariesResponse =
         dbQuery {
             val filters = params.readFilters(
-                defaultSort = SortFields.END_AT,
-                allowedSorts = setOf(SortFields.END_AT),
+                sortSpec = QueryParamSpecs.sortByEndAt,
                 latestSupported = true,
             )
             val (rows, sourceMetadata) = canonicalRepository.listCanonicalSleepSummaries(filters)

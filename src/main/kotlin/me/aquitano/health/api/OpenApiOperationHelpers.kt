@@ -9,6 +9,7 @@ import io.ktor.server.routing.openapi.*
 import io.ktor.utils.io.*
 import me.aquitano.external.withings.WITHINGS_PROVIDER_CODE
 import me.aquitano.health.api.dto.*
+import me.aquitano.health.application.metric.common.EnumParamSpec
 import kotlin.reflect.typeOf
 
 internal fun Operation.Builder.publicEndpoint() {
@@ -183,9 +184,8 @@ internal fun Route.describeReadOperation(
     summary: String,
     descriptionText: String,
     includeLatest: Boolean = false,
-    sortValues: List<String>,
-    defaultSort: String,
-    sortExample: String = defaultSort,
+    sortSpec: EnumParamSpec,
+    sortExample: String = sortSpec.default,
 ): Route = describe {
     this.operationId = operationId
     tag("Read")
@@ -194,8 +194,7 @@ internal fun Route.describeReadOperation(
     requiresBearerAuth()
     readQueryParameters(
         includeLatest = includeLatest,
-        sortValues = sortValues,
-        defaultSort = defaultSort,
+        sortSpec = sortSpec,
         sortExample = sortExample,
     )
     errorResponses()

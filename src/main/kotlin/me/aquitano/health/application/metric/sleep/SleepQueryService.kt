@@ -4,8 +4,8 @@ import me.aquitano.health.api.dto.SleepNightsResponse
 import me.aquitano.health.api.dto.SleepSessionsResponse
 import me.aquitano.health.application.SleepNightService
 import me.aquitano.health.application.metric.common.BaseReadService
+import me.aquitano.health.application.metric.common.QueryParamSpecs
 import me.aquitano.health.application.metric.common.QueryParams
-import me.aquitano.health.application.metric.common.SortFields
 import me.aquitano.health.application.metric.common.keysetPage
 import me.aquitano.health.application.metric.common.meta
 import me.aquitano.health.application.metric.common.readFilters
@@ -30,8 +30,7 @@ class SleepQueryService(
     suspend fun listSleepSessions(params: QueryParams): SleepSessionsResponse =
         dbQuery {
             val filters = params.readFilters(
-                defaultSort = SortFields.START_AT,
-                allowedSorts = setOf(SortFields.START_AT),
+                sortSpec = QueryParamSpecs.sortByStartAt,
                 latestSupported = true,
             )
             val (sessions, sourceMetadata) =

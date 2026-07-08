@@ -5,6 +5,7 @@ import me.aquitano.health.api.dto.MetricTypeCatalogResponse
 import me.aquitano.health.api.dto.ScalarSamplesResponse
 import me.aquitano.health.api.dto.ScalarSummaryResponse
 import me.aquitano.health.application.metric.common.BaseReadService
+import me.aquitano.health.application.metric.common.QueryParamSpecs
 import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.application.metric.common.SortFields
 import me.aquitano.health.application.metric.common.keysetPage
@@ -39,11 +40,10 @@ class ScalarMetricQueryService(
 
     suspend fun list(metricType: String, params: QueryParams): ScalarSamplesResponse {
         requireKnown(metricType)
-        val raw = params.boolean("raw", default = false)
+        val raw = params.boolean(QueryParamSpecs.raw)
         return dbQuery {
             val filters = params.readFilters(
-                defaultSort = SortFields.MEASURED_AT,
-                allowedSorts = setOf(SortFields.MEASURED_AT),
+                sortSpec = QueryParamSpecs.sortByMeasuredAt,
                 latestSupported = true,
             )
             val (rows, sourceMetadata) =

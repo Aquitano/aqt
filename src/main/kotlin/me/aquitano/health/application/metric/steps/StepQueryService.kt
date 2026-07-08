@@ -5,8 +5,8 @@ import me.aquitano.health.api.dto.StepDailySummaryResponse
 import me.aquitano.health.api.dto.StepSampleResponse
 import me.aquitano.health.api.dto.StepSamplesResponse
 import me.aquitano.health.application.metric.common.BaseReadService
+import me.aquitano.health.application.metric.common.QueryParamSpecs
 import me.aquitano.health.application.metric.common.QueryParams
-import me.aquitano.health.application.metric.common.SortFields
 import me.aquitano.health.application.metric.common.dailyReadFilters
 import me.aquitano.health.application.metric.common.keysetPage
 import me.aquitano.health.application.metric.common.meta
@@ -28,8 +28,7 @@ class StepQueryService(
     suspend fun listStepSamples(params: QueryParams): StepSamplesResponse =
         dbQuery {
             val filters = params.readFilters(
-                defaultSort = SortFields.START_AT,
-                allowedSorts = setOf(SortFields.START_AT),
+                sortSpec = QueryParamSpecs.sortByStartAt,
                 latestSupported = true,
             )
             val (rows, sourceMetadata) =

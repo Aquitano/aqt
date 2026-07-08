@@ -8,6 +8,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.routing.openapi.*
 import me.aquitano.health.api.dto.*
+import me.aquitano.health.application.metric.common.QueryParamSpecs
 import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
@@ -99,8 +100,7 @@ internal fun Route.readRoutes(services: ApplicationServices) {
         summary = "List step samples",
         descriptionText = "Returns canonical step samples filtered by timestamp range, source provider, provider instance, source metadata inclusion, item limit, and sort order. Use `latest=true` to return the latest matching sample only.",
         includeLatest = true,
-        sortValues = listOf("startAt"),
-        defaultSort = "startAt",
+        sortSpec = QueryParamSpecs.sortByStartAt,
     )
     get("/api/v2/steps/daily") {
         call.respond<StepDailySummariesResponse>(
@@ -131,8 +131,7 @@ internal fun Route.readRoutes(services: ApplicationServices) {
         summary = "List sleep sessions",
         descriptionText = "Returns sleep sessions with nested stages. Use `latest=true` to return the latest matching session only.",
         includeLatest = true,
-        sortValues = listOf("startAt"),
-        defaultSort = "startAt",
+        sortSpec = QueryParamSpecs.sortByStartAt,
     )
     get("/api/v2/sleep/nights") {
         call.respond<SleepNightsResponse>(
@@ -154,8 +153,7 @@ internal fun Route.readRoutes(services: ApplicationServices) {
         summary = "List sleep summaries",
         descriptionText = "Returns aggregate sleep summary records such as sleep score, efficiency, latency, wakeups, WASO, and stage-duration totals. Use `latest=true` to return the latest matching summary only.",
         includeLatest = true,
-        sortValues = listOf("endAt"),
-        defaultSort = "endAt",
+        sortSpec = QueryParamSpecs.sortByEndAt,
     )
     get("/api/v2/blood-pressure") {
         call.respond<BloodPressureMeasurementsResponse>(
@@ -166,8 +164,7 @@ internal fun Route.readRoutes(services: ApplicationServices) {
         summary = "List blood pressure measurements",
         descriptionText = "Returns paired systolic/diastolic blood-pressure measurements filtered by timestamp and source. Use `latest=true` to return the latest matching measurement only.",
         includeLatest = true,
-        sortValues = listOf("measuredAt"),
-        defaultSort = "measuredAt",
+        sortSpec = QueryParamSpecs.sortByMeasuredAt,
     )
 
     get("/api/v2/dashboard/summary") {

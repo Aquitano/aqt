@@ -115,6 +115,9 @@ class QueryParams(
             )
         )
 
+    internal fun boolean(spec: BooleanParamSpec): Boolean =
+        boolean(spec.name, spec.default)
+
     fun boolean(name: String, default: Boolean): Boolean {
         val value = optional(name) ?: return default
         return when (value.lowercase()) {
@@ -132,25 +135,25 @@ class QueryParams(
         }
     }
 
-    fun limit(default: Int, max: Int): Int {
-        val value = optional("limit") ?: return default
+    internal fun limit(spec: LimitParamSpec): Int {
+        val value = optional(spec.name) ?: return spec.default
         val parsed = value.toIntOrNull()
             ?: throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        field = "limit",
+                        field = spec.name,
                         code = ValidationIssueCodes.InvalidFormat,
                         message = "must be an integer",
                     )
                 )
             )
-        if (parsed !in 1..max) {
+        if (parsed !in spec.min..spec.max) {
             throw RequestValidationException(
                 listOf(
                     ValidationIssue(
-                        field = "limit",
+                        field = spec.name,
                         code = ValidationIssueCodes.OutOfRange,
-                        message = "must be between 1 and $max",
+                        message = "must be between ${spec.min} and ${spec.max}",
                     )
                 )
             )
@@ -174,6 +177,9 @@ class QueryParams(
         }
         return normalized
     }
+
+    internal fun sort(spec: EnumParamSpec): String =
+        sort(spec.allowed, spec.default)
 
     fun sort(allowedValues: Set<String>, default: String): String {
         val value = optional("sort") ?: return default

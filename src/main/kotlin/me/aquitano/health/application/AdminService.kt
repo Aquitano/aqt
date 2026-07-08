@@ -6,6 +6,7 @@ import me.aquitano.health.api.dto.IngestionBatchDetailResponse
 import me.aquitano.health.api.dto.IngestionBatchesResponse
 import me.aquitano.health.api.dto.IngestionRecordAdminResponse
 import me.aquitano.health.api.dto.ReadResponseMeta
+import me.aquitano.health.application.metric.common.QueryParamSpecs
 import me.aquitano.health.application.metric.common.QueryParams
 import me.aquitano.health.application.metric.common.keysetFetchLimit
 import me.aquitano.health.application.metric.common.keysetPage
@@ -25,12 +26,7 @@ class AdminService(
 ) {
     suspend fun listBatches(params: QueryParams): IngestionBatchesResponse {
         val status = params.optional("status")
-        if (status != null && status !in setOf(
-                "received",
-                "processed",
-                "failed"
-            )
-        ) {
+        if (status != null && BatchStatus.entries.none { it.stored == status }) {
             throw RequestValidationException(
                 listOf(
                     ValidationIssue(
@@ -47,7 +43,7 @@ class AdminService(
         val sort = "receivedAt"
         val order = "desc"
         val cursor = params.cursor(sort, order)
-        val limit = params.limit(default = 100, max = 1000)
+        val limit = params.limit(QueryParamSpecs.adminLimit)
         return dbQuery {
             val page = ingestionRepository
                 .listBatches(status, from, to, keysetFetchLimit(limit), cursor)
