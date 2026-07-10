@@ -16,6 +16,9 @@
 - `MediaRemoteAdapter.framework` must be embedded + signed but never linked into Notch; `/usr/bin/perl` loads its executable and the `get` response gates activation.
 - App semantic iconography uses `PixelIcon`: crisp 7×7 glyphs keyed by existing semantic symbol names. Keep SF Symbols out of custom notch surfaces; retain real artwork and file thumbnails as content.
 - The compact live audio meter uses ScreenCaptureKit audio-only capture through `AudioVisualizerManager`; keep capture opt-in and active only while compact media is visible, playing, and unobscured. Analyze mono PCM off-main and publish no faster than 30 fps.
+- `LSMultipleInstancesProhibited` makes Xcode Run fail immediately with `IDELaunchErrorDomain` code 20 when a prior Notch menu-bar process is still alive. Quit/terminate the existing Notch instance before launching under Xcode; the error is not necessarily a signing failure.
+- The physical notch-sized `.compact` presentation is the persistent hover target even when it has no side content. Reserve `.hidden` for the explicit menu/hotkey toggle; hiding on an empty activity queue makes hover reopening impossible.
+- Agent notification sounds use the synthesized 8-bit square-wave palette in `AgentSoundPlayer`; keep cues short, rate-limited, and generated in code, and normalize legacy macOS sound names when reading settings.
 
 ## 3. User Preferences
 
@@ -27,3 +30,4 @@
 - Turnkey system-wide Now Playing completed: pinned package, bundled launcher, build verifier, protocol decoding, automatic fallback, real `get`/`loop` + app lifecycle smoke tests, signed embedding, Debug/Release/analyze, and 90 tests pass. Live Music/Spotify/Safari/Podcasts control checks remain a manual pre-distribution matrix; signed update pipeline remains tracked externally.
 - Retro icon pass completed: all custom notch surfaces and the menu-bar item use the shared 7×7 `PixelIcon` family; the macOS app-icon set now carries the same stepped notch and pixel-waveform identity. Debug, Release, and static analysis pass after regeneration.
 - Compact media controls completed: independent persisted toggles for compact Now Playing and its real three-band audio visualizer, explicit Screen & System Audio Recording permission UI, no fake playback animation, and clean fallback to other compact activities. Debug/Release/analyze and 95 tests pass.
+- Compact-media regression pass completed: disabling compact Now Playing preserves the base hover target, the home tab glyph is optically centered, and agent notifications use a selectable synthesized 8-bit palette. Debug, unsigned Release, static analysis, and 99 tests pass; signed Release still requires a local Developer ID identity/team.
