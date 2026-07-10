@@ -114,6 +114,7 @@ targets:
       - path: Notch/Services/Agents/TranscriptParser.swift
       - path: Notch/Services/Agents/SessionReconciler.swift
       - path: Notch/Services/Agents/AgentConfigInstaller.swift
+      - path: Notch/Services/Agents/AgentSoundPlayer.swift
       - path: Notch/Managers/Widgets/BatteryPolicy.swift
       - path: Notch/Managers/Widgets/CalendarReminders.swift
       - path: Notch/Model/Activity.swift

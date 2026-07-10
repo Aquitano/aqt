@@ -132,9 +132,9 @@ final class Settings: ObservableObject {
             Key.agentAutoExpandOnAttention: false,
             Key.agentSystemNotifications: false,
             Key.agentNotifySound: false,
-            Key.agentSoundStarted: "",
-            Key.agentSoundAttention: "Ping",
-            Key.agentSoundFinished: "Glass",
+            Key.agentSoundStarted: AgentSound.boot.rawValue,
+            Key.agentSoundAttention: AgentSound.alert.rawValue,
+            Key.agentSoundFinished: AgentSound.complete.rawValue,
             Key.agentUsageLimits: false,
             Key.agentPermissionApproval: false,
             Key.hasCompletedOnboarding: false,
@@ -174,9 +174,15 @@ final class Settings: ObservableObject {
         self.agentAutoExpandOnAttention = defaults.bool(forKey: Key.agentAutoExpandOnAttention)
         self.agentSystemNotifications = defaults.bool(forKey: Key.agentSystemNotifications)
         self.agentNotifySound = defaults.bool(forKey: Key.agentNotifySound)
-        self.agentSoundStarted = defaults.string(forKey: Key.agentSoundStarted) ?? ""
-        self.agentSoundAttention = defaults.string(forKey: Key.agentSoundAttention) ?? "Ping"
-        self.agentSoundFinished = defaults.string(forKey: Key.agentSoundFinished) ?? "Glass"
+        self.agentSoundStarted = AgentSound.normalizedName(
+            defaults.string(forKey: Key.agentSoundStarted), fallback: .boot
+        )
+        self.agentSoundAttention = AgentSound.normalizedName(
+            defaults.string(forKey: Key.agentSoundAttention), fallback: .alert
+        )
+        self.agentSoundFinished = AgentSound.normalizedName(
+            defaults.string(forKey: Key.agentSoundFinished), fallback: .complete
+        )
         self.agentUsageLimits = defaults.bool(forKey: Key.agentUsageLimits)
         self.agentPermissionApproval = defaults.bool(forKey: Key.agentPermissionApproval)
         self.hasCompletedOnboarding = defaults.bool(forKey: Key.hasCompletedOnboarding)

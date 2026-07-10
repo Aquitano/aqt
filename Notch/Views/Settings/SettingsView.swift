@@ -75,7 +75,7 @@ struct SettingsView: View {
                     set: { agents.setUsageLimits($0) }
                 ))
                 Toggle("System notifications", isOn: $settings.agentSystemNotifications)
-                Toggle("Play a sound", isOn: $settings.agentNotifySound)
+                Toggle("Play 8-bit sounds", isOn: $settings.agentNotifySound)
                 if settings.agentNotifySound {
                     soundPicker("Needs-you sound", $settings.agentSoundAttention)
                     soundPicker("Finished sound", $settings.agentSoundFinished)
