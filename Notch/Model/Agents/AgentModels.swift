@@ -29,7 +29,7 @@ enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// SF Symbol for the agent glyph in list rows.
+    /// Semantic icon key resolved by the app-wide pixel glyph renderer.
     var symbol: String {
         switch self {
         case .claudeCode: return "sparkles"

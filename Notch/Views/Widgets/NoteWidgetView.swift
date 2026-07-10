@@ -11,9 +11,8 @@ struct NoteWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Image(systemName: "note.text")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.7))
+                PixelIcon(systemName: "note.text", size: 15,
+                          tint: .white.opacity(0.7))
                 Text("Note")
                     .font(.headline)
                     .foregroundStyle(.white)

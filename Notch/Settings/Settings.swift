@@ -14,6 +14,8 @@ final class Settings: ObservableObject {
         static let temperatureUnit = "temperatureUnit"
         static let launchAtLogin = "launchAtLogin"
         static let enableMediaAdapter = "enableMediaAdapter"
+        static let showCompactNowPlaying = "showCompactNowPlaying"
+        static let showAudioVisualizer = "showAudioVisualizer"
         static let hapticFeedback = "hapticFeedback"
         static let trayTTLDays = "trayTTLDays"
         static let showWeatherWidget = "showWeatherWidget"
@@ -57,6 +59,12 @@ final class Settings: ObservableObject {
         }
     }
     @Published var enableMediaAdapter: Bool { didSet { defaults.set(enableMediaAdapter, forKey: Key.enableMediaAdapter) } }
+    @Published var showCompactNowPlaying: Bool {
+        didSet { defaults.set(showCompactNowPlaying, forKey: Key.showCompactNowPlaying) }
+    }
+    @Published var showAudioVisualizer: Bool {
+        didSet { defaults.set(showAudioVisualizer, forKey: Key.showAudioVisualizer) }
+    }
     @Published var hapticFeedback: Bool { didSet { defaults.set(hapticFeedback, forKey: Key.hapticFeedback) } }
     @Published var trayTTLDays: Int { didSet { defaults.set(trayTTLDays, forKey: Key.trayTTLDays) } }
     @Published var showWeatherWidget: Bool { didSet { defaults.set(showWeatherWidget, forKey: Key.showWeatherWidget) } }
@@ -104,6 +112,10 @@ final class Settings: ObservableObject {
             Key.temperatureUnit: WeatherSnapshot.TemperatureUnit.celsius.rawValue,
             Key.launchAtLogin: false,
             Key.enableMediaAdapter: true,
+            Key.showCompactNowPlaying: true,
+            // Capturing real system-audio levels requires an explicit privacy grant.
+            // Keep it opt-in so an update never surprises the user with a prompt.
+            Key.showAudioVisualizer: false,
             Key.hapticFeedback: true,
             Key.trayTTLDays: 7,
             Key.showWeatherWidget: true,
@@ -144,6 +156,8 @@ final class Settings: ObservableObject {
         // not fire during init, so reading this never triggers a register() call.
         self.launchAtLogin = LoginItem.isEnabled
         self.enableMediaAdapter = defaults.bool(forKey: Key.enableMediaAdapter)
+        self.showCompactNowPlaying = defaults.bool(forKey: Key.showCompactNowPlaying)
+        self.showAudioVisualizer = defaults.bool(forKey: Key.showAudioVisualizer)
         self.hapticFeedback = defaults.bool(forKey: Key.hapticFeedback)
         self.trayTTLDays = defaults.integer(forKey: Key.trayTTLDays)
         self.showWeatherWidget = defaults.bool(forKey: Key.showWeatherWidget)

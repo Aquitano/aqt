@@ -87,9 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "rectangle.tophalf.inset.filled",
-                                   accessibilityDescription: "Notch")
-            button.image?.isTemplate = true
+            button.image = PixelIconImage.image(systemName: "rectangle.tophalf.inset.filled")
         }
 
         let menu = NSMenu()

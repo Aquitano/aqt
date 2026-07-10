@@ -20,6 +20,7 @@ final class AppEnvironment: ObservableObject {
 
     let activities: ActivityManager
     let media: MediaManager
+    let audioVisualizer: AudioVisualizerManager
     let hud: HUDManager
     let tray: TrayManager
     let timer: TimerManager
@@ -58,6 +59,7 @@ final class AppEnvironment: ObservableObject {
         self.activities = activities
 
         self.media = MediaManager(activities: activities, imageCache: imageCache, settings: settings)
+        self.audioVisualizer = AudioVisualizerManager()
         self.hud = HUDManager(settings: settings, audio: audio)
         self.tray = TrayManager(persistence: persistence, imageCache: imageCache, settings: settings, activities: activities)
         self.timer = TimerManager(activities: activities)
@@ -96,6 +98,7 @@ final class AppEnvironment: ObservableObject {
         guard renderingActive != active else { return }
         renderingActive = active
         media.setRenderingActive(active)
+        if !active { audioVisualizer.setActive(false) }
     }
 
     /// Open the AirDrop sheet pre-loaded with the given tray items, anchored to
@@ -228,6 +231,7 @@ extension View {
             .environmentObject(env.state)
             .environmentObject(env.activities)
             .environmentObject(env.media)
+            .environmentObject(env.audioVisualizer)
             .environmentObject(env.hud)
             .environmentObject(env.tray)
             .environmentObject(env.agents)

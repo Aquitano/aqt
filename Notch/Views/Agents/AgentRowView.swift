@@ -12,10 +12,7 @@ struct AgentRowView: View {
     var body: some View {
         Button(action: onJump) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: session.kind.symbol)
-                    .font(.system(size: 16, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(kindTint)
+                PixelIcon(systemName: session.kind.symbol, size: 18, tint: kindTint)
                     .frame(width: 26)
 
                 VStack(alignment: .leading, spacing: 5) {

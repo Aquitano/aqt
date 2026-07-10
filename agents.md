@@ -2,7 +2,7 @@
 
 ## 1. Project Patterns & Conventions
 
-- Native macOS 26 app generated with XcodeGen from `project.yml`; no external Swift package dependencies by default.
+- Native macOS 26 app generated with XcodeGen from `project.yml`; the system-wide media bridge is the sole external package and is pinned to an exact revision, embedded without linking.
 - Managers are `@MainActor` observable objects. File/process/network work should use nonisolated helpers or dedicated workers and return to the main actor only to publish state.
 - Build with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` because the system-selected developer directory may point at Command Line Tools.
 - Keep the main app, `notch-hook`, and hostless logic tests independently buildable.
@@ -13,11 +13,17 @@
 - macOS XCTest execution needs access to `testmanagerd`; restricted sandboxes can compile tests but cannot run them.
 - The `NotchTests` target compiles production source files directly, so helper signatures and its explicit source list must stay synchronized.
 - Agent integration mutates user-owned CLI configuration; writes must be coordinated and preserve concurrent edits.
+- `MediaRemoteAdapter.framework` must be embedded + signed but never linked into Notch; `/usr/bin/perl` loads its executable and the `get` response gates activation.
+- App semantic iconography uses `PixelIcon`: crisp 7×7 glyphs keyed by existing semantic symbol names. Keep SF Symbols out of custom notch surfaces; retain real artwork and file thumbnails as content.
+- The compact live audio meter uses ScreenCaptureKit audio-only capture through `AudioVisualizerManager`; keep capture opt-in and active only while compact media is visible, playing, and unobscured. Analyze mono PCM off-main and publish no faster than 30 fps.
 
 ## 3. User Preferences
 
 - Fix release blockers comprehensively, verify them, and commit the completed work.
+- Prefer the retro pixel-art visual language from the agent activity animation across all icons and lightweight state motion.
 
 ## 4. Current Context / Scratchpad
 
-- Release hardening completed: Debug/Release builds, static analysis, 87 logic tests, and native app launch smoke all pass. Remaining distribution work is tracked externally (system-wide media adapter and signed update pipeline).
+- Turnkey system-wide Now Playing completed: pinned package, bundled launcher, build verifier, protocol decoding, automatic fallback, real `get`/`loop` + app lifecycle smoke tests, signed embedding, Debug/Release/analyze, and 90 tests pass. Live Music/Spotify/Safari/Podcasts control checks remain a manual pre-distribution matrix; signed update pipeline remains tracked externally.
+- Retro icon pass completed: all custom notch surfaces and the menu-bar item use the shared 7×7 `PixelIcon` family; the macOS app-icon set now carries the same stepped notch and pixel-waveform identity. Debug, Release, and static analysis pass after regeneration.
+- Compact media controls completed: independent persisted toggles for compact Now Playing and its real three-band audio visualizer, explicit Screen & System Audio Recording permission UI, no fake playback animation, and clean fallback to other compact activities. Debug/Release/analyze and 95 tests pass.

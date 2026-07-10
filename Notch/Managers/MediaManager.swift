@@ -34,6 +34,7 @@ final class MediaManager: ObservableObject {
 
     private var controller: MediaControlling?
     private var renderingActive = true
+    private var cancellables = Set<AnyCancellable>()
 
     init(activities: ActivityManager, imageCache: ImageCache, settings: Settings) {
         self.activities = activities
@@ -42,6 +43,14 @@ final class MediaManager: ObservableObject {
     }
 
     func start() {
+        settings.$showCompactNowPlaying
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                self.activities.setNowPlaying(active: enabled && !self.track.isEmpty)
+            }
+            .store(in: &cancellables)
+
         // Start on the always-available scripting controller so launch never blocks
         // on the adapter's synchronous perl probe (hundreds of ms). If the adapter is
         // enabled and its probe passes off-main, upgrade to it in place.
@@ -59,14 +68,15 @@ final class MediaManager: ObservableObject {
             }
             adapterState = .starting
             Task.detached(priority: .userInitiated) {
-                let probed = adapter.probe()
+                let probe = adapter.probe()
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    if probed {
+                    switch probe {
+                    case .available:
                         self.upgradeToAdapter(adapter)
-                    } else {
-                        self.adapterState = .unavailable("The adapter failed its self-test; using per-app control instead.")
-                        Log.media.notice("mediaremote-adapter test failed; staying on scripting")
+                    case .unavailable(let reason):
+                        self.adapterState = .unavailable("\(reason) Using per-app control instead.")
+                        Log.media.notice("mediaremote-adapter self-test failed; staying on scripting")
                     }
                 }
             }
@@ -76,9 +86,12 @@ final class MediaManager: ObservableObject {
     private func upgradeToAdapter(_ adapter: AdapterMediaController) {
         controller?.stop()
         wire(adapter)
-        adapter.start()
         controller = adapter
         capabilities = adapter.capabilities
+        adapter.start()
+        // start() may synchronously report a launch failure and install the
+        // scripting fallback. Do not overwrite that failure state with active.
+        guard controller === adapter else { return }
         adapterState = .active
         Log.media.info("Media controller upgraded to system-wide adapter")
     }
@@ -127,7 +140,7 @@ final class MediaManager: ObservableObject {
         track = newTrack
         lastUpdate = Date()
         isAvailable = true
-        activities.setNowPlaying(active: !newTrack.isEmpty)
+        activities.setNowPlaying(active: settings.showCompactNowPlaying && !newTrack.isEmpty)
         if newTrack.isEmpty || identityChanged {
             artwork = nil
         }

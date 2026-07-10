@@ -24,6 +24,9 @@ targets:
       - path: Notch
         excludes:
           - "**/*.md"
+          - "Resources/mediaremote-adapter.pl"
+      - path: Notch/Resources/mediaremote-adapter.pl
+        buildPhase: resources
     dependencies:
       # Embed the standalone hook tool so the launcher can exec it instead of
       # the full app (a few ms vs. loading AppKit/SwiftUI per hook).
@@ -33,12 +36,14 @@ targets:
         codeSign: true
         copy:
           destination: resources
-      # The mediaremote-adapter system-wide Now Playing bridge is an opt-in.
-      # To enable it: uncomment the package at the bottom of this file + the
-      # dependency below, then read README.md "Enabling system-wide Now Playing".
-      # The app code is guarded by #if canImport(MediaRemoteAdapter), so leaving
-      # it out changes nothing.
-      # - package: mediaremote-adapter
+      # Build and embed the pinned dynamic bridge, but deliberately do not link it
+      # into Notch. /usr/bin/perl loads its executable at runtime so mediaremoted
+      # sees a platform-binary client; linking it from the app breaks that model.
+      - package: mediaremote-adapter
+        product: MediaRemoteAdapter
+        embed: true
+        link: false
+        codeSign: true
     settings:
       base:
         PRODUCT_NAME: Notch
@@ -66,6 +71,10 @@ targets:
           CODE_SIGN_STYLE: Automatic
           DEVELOPMENT_TEAM: KRZZXX9G3M
           CODE_SIGN_IDENTITY: "Apple Development"
+    postBuildScripts:
+      - path: Scripts/verify_media_adapter.sh
+        name: Verify bundled media adapter
+        basedOnDependencyAnalysis: false
 
   # Standalone agent hook client. Foundation-only, no AppKit — the launcher in
   # ~/.notch/bin execs this per hook. Shares HookClient/HookEnvelope with the app.
@@ -108,7 +117,10 @@ targets:
       - path: Notch/Managers/Widgets/BatteryPolicy.swift
       - path: Notch/Managers/Widgets/CalendarReminders.swift
       - path: Notch/Model/Activity.swift
+      - path: Notch/Model/MediaModels.swift
       - path: Notch/Model/SystemModels.swift
+      - path: Notch/Managers/Media/MediaAdapterPayload.swift
+      - path: Notch/Managers/Audio/AudioLevelAnalysis.swift
       - path: Notch/Window/HitRegion.swift
       - path: Notch/State/Animations.swift
       - path: Notch/State/NotchState.swift
@@ -134,7 +146,7 @@ schemes:
       targets:
         - NotchTests
 
-# packages:
-#   mediaremote-adapter:
-#     url: https://github.com/ejbills/mediaremote-adapter
-#     branch: main
+packages:
+  mediaremote-adapter:
+    url: https://github.com/ejbills/mediaremote-adapter
+    revision: cf30c4f1af29b5829d859f088f8dbdf12611a046

@@ -59,12 +59,12 @@ final class NotchState: ObservableObject {
 
     // MARK: - Transitions
 
-    func hoverChanged(_ hovering: Bool) {
+    func hoverChanged(_ hovering: Bool, hasCompactContent: Bool = true) {
         isHovering = hovering
         if hovering {
             hoverExpand()
         } else {
-            collapse()
+            collapse(hasCompactContent: hasCompactContent)
         }
     }
 

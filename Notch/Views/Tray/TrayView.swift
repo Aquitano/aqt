@@ -30,8 +30,8 @@ struct TrayView: View {
 
     private var emptyHint: some View {
         VStack(spacing: 8) {
-            Image(systemName: "tray.and.arrow.down")
-                .font(.system(size: 26, weight: .regular))
+            PixelIcon(systemName: "tray.and.arrow.down", size: 28,
+                      tint: .white.opacity(0.55))
             Text("Drop files here")
                 .font(.callout)
         }

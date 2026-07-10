@@ -30,9 +30,8 @@ struct DropChooserView: View {
     private func zone(_ id: DropZone, title: String, subtitle: String, systemImage: String) -> some View {
         let targeted = state.activeDropZone == id
         return VStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.system(size: 26, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
+            PixelIcon(systemName: systemImage, size: 28,
+                      tint: .white.opacity(targeted ? 1 : 0.85))
             VStack(spacing: 2) {
                 Text(title)
                     .font(.system(size: 14, weight: .semibold))

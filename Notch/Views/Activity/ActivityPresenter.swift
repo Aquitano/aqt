@@ -7,7 +7,7 @@ import SwiftUI
 /// a producer being able to shift notch geometry by editing a label on the model.
 enum ActivityPresenter {
 
-    /// SF Symbol shown in the compact pill and the activity card.
+    /// Semantic icon key shown through the shared pixel glyph renderer.
     static func symbol(for kind: Activity.Kind) -> String {
         switch kind {
         case .nowPlaying: return "music.note"

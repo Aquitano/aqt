@@ -11,9 +11,7 @@ struct BatteryWidgetView: View {
             HStack(spacing: 6) {
                 BatteryIndicator(level: battery.percent, charging: battery.isCharging, tint: indicatorTint)
                 if battery.lowPowerMode {
-                    Image(systemName: "leaf.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.yellow)
+                    PixelIcon(systemName: "leaf.fill", size: 12, tint: .yellow)
                 }
                 Spacer(minLength: 0)
             }

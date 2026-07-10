@@ -5,15 +5,17 @@ import AppKit
 /// notch gap, and a trailing slot. The host already draws the black blob, so
 /// this view stays white-on-clear and never adds glass.
 ///
-/// Idle is cheap on purpose. The only motion is data-driven and one-shot:
-/// the now-playing bars pulse via a `phaseAnimator(trigger:)` keyed off each
-/// media snapshot, and a "pop" fires once per new activity. No render loop,
-/// no `repeatForever`.
+/// Idle is cheap on purpose. The audio meter is fed by real capture samples only
+/// while this compact media surface is visible and playing; everything else is
+/// data-driven and one-shot. No render loop and no `repeatForever`.
 struct CompactView: View {
     let namespace: Namespace.ID
 
     @EnvironmentObject private var media: MediaManager
     @EnvironmentObject private var activities: ActivityManager
+    @EnvironmentObject private var settings: Settings
+    @EnvironmentObject private var visualizer: AudioVisualizerManager
+    @EnvironmentObject private var env: AppEnvironment
 
     @Environment(\.notchGeometry) private var notchSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -22,6 +24,10 @@ struct CompactView: View {
         content
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onChange(of: visualizerRequested, initial: true) { _, active in
+                visualizer.setActive(active)
+            }
+            .onDisappear { visualizer.setActive(false) }
     }
 
     /// One-shot attention pop on a new event. Applied to each slot's content (not
@@ -37,14 +43,10 @@ struct CompactView: View {
 
     @ViewBuilder
     private var content: some View {
-        if !media.track.isEmpty {
+        if showCompactMedia {
             pill(
                 leading: artworkThumbnail,
-                trailing: NowPlayingIndicator(
-                    isPlaying: media.track.isPlaying,
-                    trigger: media.lastUpdate,
-                    reduceMotion: reduceMotion
-                )
+                trailing: mediaTrailing
             )
         } else if let activity = activities.compactActivity {
             pill(
@@ -84,6 +86,28 @@ struct CompactView: View {
 
     // MARK: - Media slots
 
+    private var showCompactMedia: Bool {
+        settings.showCompactNowPlaying && !media.track.isEmpty
+    }
+
+    private var visualizerRequested: Bool {
+        showCompactMedia
+            && settings.showAudioVisualizer
+            && media.track.isPlaying
+            && env.renderingActive
+    }
+
+    @ViewBuilder
+    private var mediaTrailing: some View {
+        if settings.showAudioVisualizer {
+            LiveAudioVisualizer(levels: visualizer.levels)
+        } else {
+            // Keep the flanking slots symmetrical so album art never shifts the
+            // physical notch off-centre when the meter is disabled.
+            Color.clear.frame(width: 14, height: 12)
+        }
+    }
+
     private var artSize: CGFloat {
         max(18, min(26, notchSize.height - 10))
     }
@@ -97,9 +121,8 @@ struct CompactView: View {
             } else {
                 ZStack {
                     Rectangle().fill(.white.opacity(0.12))
-                    Image(systemName: "music.note")
-                        .font(.system(size: artSize * 0.5, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.8))
+                    PixelIcon(systemName: "music.note", size: artSize * 0.55,
+                              tint: .white.opacity(0.8))
                 }
             }
         }
@@ -121,9 +144,8 @@ struct CompactView: View {
             PixelWorkingIndicator(active: status.isBusy, tint: agentPixelTint(status))
                 .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: agentPixelTint(status))
         } else {
-            Image(systemName: ActivityPresenter.symbol(for: activity.kind))
-                .font(.system(size: 13, weight: .semibold))
-                .symbolRenderingMode(.hierarchical)
+            PixelIcon(systemName: ActivityPresenter.symbol(for: activity.kind),
+                      size: 15, tint: .white)
         }
     }
 
@@ -168,53 +190,38 @@ struct CompactView: View {
     }
 }
 
-/// Tiny now-playing equalizer. Bars pulse only while playing, and only when a
-/// new media snapshot arrives (`trigger`), so there is no perpetual animation.
-private struct NowPlayingIndicator: View {
-    let isPlaying: Bool
-    let trigger: Date
-    let reduceMotion: Bool
+/// Three real frequency bands (bass, mids, treble), quantized to whole-point
+/// heights to preserve the retro pixel edge. The analyzer already applies a fast
+/// attack and gentle release, so adding another animation here would only add lag.
+private struct LiveAudioVisualizer: View {
+    let levels: AudioLevels
 
-    private let barCount = 4
-    private let barWidth: CGFloat = 2.5
+    private let barCount = 3
+    private let barWidth: CGFloat = 3
     private let maxHeight: CGFloat = 12
 
-    /// rest -> peak -> settle; ends calm so the resting frame looks intentional.
-    private let phases: [Int] = [0, 1, 2]
-
     var body: some View {
-        HStack(alignment: .bottom, spacing: 2.5) {
+        HStack(alignment: .bottom, spacing: 2) {
             ForEach(0..<barCount, id: \.self) { index in
-                bar(index)
+                Rectangle()
+                    .fill(.white)
+                    .frame(width: barWidth, height: height(for: level(at: index)))
             }
         }
         .frame(height: maxHeight, alignment: .bottom)
         .accessibilityHidden(true)
     }
 
-    @ViewBuilder
-    private func bar(_ index: Int) -> some View {
-        let shape = Capsule(style: .continuous)
-            .fill(.white)
-            .frame(width: barWidth)
-
-        if isPlaying && !reduceMotion {
-            shape.phaseAnimator(phases, trigger: trigger) { view, phase in
-                view.frame(height: height(bar: index, phase: phase))
-            } animation: { _ in
-                .easeInOut(duration: 0.22)
-            }
-        } else {
-            shape.frame(height: maxHeight * 0.42)
+    private func level(at index: Int) -> Float {
+        switch index {
+        case 0: levels.low
+        case 1: levels.mid
+        default: levels.high
         }
     }
 
-    private func height(bar: Int, phase: Int) -> CGFloat {
-        let pattern: [[CGFloat]] = [
-            [0.45, 0.70, 0.50, 0.65],   // rest
-            [1.00, 0.40, 0.90, 0.50],   // peak
-            [0.60, 0.80, 0.45, 0.70],   // settle
-        ]
-        return maxHeight * pattern[phase][bar]
+    private func height(for level: Float) -> CGFloat {
+        let clamped = min(1, max(0, CGFloat(level)))
+        return 2 + round(clamped * 5) * 2
     }
 }

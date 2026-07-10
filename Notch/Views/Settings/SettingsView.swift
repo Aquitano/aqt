@@ -8,6 +8,7 @@ struct SettingsView: View {
     @EnvironmentObject private var settings: Settings
     @EnvironmentObject private var agents: AgentManager
     @EnvironmentObject private var media: MediaManager
+    @EnvironmentObject private var visualizer: AudioVisualizerManager
     @EnvironmentObject private var shortcuts: ShortcutsManager
 
     @State private var shortcutToPin = ""
@@ -105,7 +106,8 @@ struct SettingsView: View {
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 if let error = agents.integrationError {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                    PixelLabel(title: error, systemName: "exclamationmark.triangle.fill",
+                               size: 13, tint: .orange)
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
@@ -171,49 +173,96 @@ struct SettingsView: View {
 
     private var mediaSection: some View {
         Section("Media") {
+            Toggle("Show compact Now Playing", isOn: $settings.showCompactNowPlaying)
+            Toggle("Live three-band audio visualizer", isOn: Binding(
+                get: { settings.showAudioVisualizer },
+                set: { enabled in
+                    settings.showAudioVisualizer = enabled
+                    if enabled {
+                        visualizer.requestPermission()
+                    } else {
+                        visualizer.setActive(false)
+                    }
+                }
+            ))
+            .disabled(!settings.showCompactNowPlaying)
+
+            if settings.showAudioVisualizer {
+                visualizerStatus
+            }
+
             Toggle("System-wide Now Playing (adapter)", isOn: $settings.enableMediaAdapter)
             if settings.enableMediaAdapter {
                 switch media.adapterState {
+                case .starting:
+                    PixelLabel(title: "Checking the bundled adapter…", systemName: "hourglass",
+                               size: 13, tint: .primary.opacity(0.6))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .active:
+                    PixelLabel(title: "System-wide Now Playing is active",
+                               systemName: "checkmark.circle.fill", size: 13, tint: .green)
+                        .font(.caption)
+                        .foregroundStyle(.green)
                 case .missing:
-                    adapterInstallOffer
-                case .unavailable(let reason):
-                    Label(reason, systemImage: "exclamationmark.triangle.fill")
+                    PixelLabel(title: "The bundled adapter is missing; using Music and Spotify fallback.",
+                               systemName: "exclamationmark.triangle.fill", size: 13, tint: .orange)
                         .font(.caption)
                         .foregroundStyle(.orange)
-                default:
+                case .unavailable(let reason):
+                    PixelLabel(title: reason, systemName: "exclamationmark.triangle.fill",
+                               size: 13, tint: .orange)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                case .notRequested:
                     EmptyView()
                 }
             }
-            if AdapterMediaController.externalInstallPresent {
-                Button("Remove Installed Adapter") {
-                    try? FileManager.default.removeItem(at: AdapterMediaController.externalDirectory)
-                }
-                .controlSize(.small)
-            }
-            Text("Requires the mediaremote-adapter bridge (bundled or installed below) and a relaunch to take effect.")
+            Text("The audited adapter is included with Notch. Changes to this toggle take effect after relaunch.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        .onAppear {
+            visualizer.refreshPermissionState(required: settings.showAudioVisualizer)
+        }
     }
 
-    /// The bridge exists in no known location. There is no prebuilt release to
-    /// download, so guide the user to the drop-in folder instead: open it in
-    /// Finder plus a link to the upstream instructions.
-    private var adapterInstallOffer: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("The adapter bridge isn't installed, so Now Playing is per-app only. Drop mediaremote-adapter.pl and MediaRemoteAdapter.framework into the adapter folder and relaunch.")
+    @ViewBuilder
+    private var visualizerStatus: some View {
+        switch visualizer.captureState {
+        case .idle:
+            Text("The meter captures only while compact Now Playing is visible and audio is playing.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                Button("Open Adapter Folder") {
-                    let dir = AdapterMediaController.externalDirectory
-                    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                    NSWorkspace.shared.open(dir)
-                }
-                Link("Instructions", destination: URL(string: "https://github.com/ejbills/mediaremote-adapter")!)
-                    .font(.caption)
+        case .permissionRequired:
+            LabeledContent {
+                Button("Open") { PrivacyPane.screenRecording.open() }
+                    .controlSize(.small)
+            } label: {
+                PixelLabel(
+                    title: "Allow Screen & System Audio Recording",
+                    systemName: "exclamationmark.triangle.fill",
+                    size: 13,
+                    tint: .orange
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
             }
-            .controlSize(.small)
+        case .starting:
+            PixelLabel(title: "Starting live audio meter…", systemName: "hourglass",
+                       size: 13, tint: .primary.opacity(0.6))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .active:
+            PixelLabel(title: "Live audio meter is active", systemName: "checkmark.circle.fill",
+                       size: 13, tint: .green)
+                .font(.caption)
+                .foregroundStyle(.green)
+        case .failed(let reason):
+            PixelLabel(title: reason, systemName: "exclamationmark.triangle.fill",
+                       size: 13, tint: .orange)
+                .font(.caption)
+                .foregroundStyle(.orange)
         }
     }
 
@@ -263,7 +312,8 @@ struct SettingsView: View {
                     Button {
                         settings.pinnedShortcuts.removeAll { $0 == name }
                     } label: {
-                        Image(systemName: "minus.circle.fill")
+                        PixelIcon(systemName: "minus.circle.fill", size: 13,
+                                  tint: .primary.opacity(0.6))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
@@ -346,6 +396,7 @@ struct SettingsView: View {
 /// right pane on current macOS.
 private enum PrivacyPane: String, CaseIterable, Identifiable {
     case inputMonitoring
+    case screenRecording
     case calendars
     case automation
     case location
@@ -355,6 +406,7 @@ private enum PrivacyPane: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .inputMonitoring: return "Input Monitoring"
+        case .screenRecording: return "Screen & System Audio Recording"
         case .calendars: return "Calendars"
         case .automation: return "Automation"
         case .location: return "Location Services"
@@ -365,6 +417,7 @@ private enum PrivacyPane: String, CaseIterable, Identifiable {
         let base = "x-apple.systempreferences:com.apple.preference.security?"
         switch self {
         case .inputMonitoring: return base + "Privacy_ListenEvent"
+        case .screenRecording: return base + "Privacy_ScreenCapture"
         case .calendars: return base + "Privacy_Calendars"
         case .automation: return base + "Privacy_Automation"
         case .location: return base + "Privacy_LocationServices"

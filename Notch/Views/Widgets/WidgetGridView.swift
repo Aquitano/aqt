@@ -56,9 +56,8 @@ struct WidgetGridView: View {
 
     private var emptyHint: some View {
         VStack(spacing: 6) {
-            Image(systemName: "square.grid.2x2")
-                .font(.system(size: 22))
-                .foregroundStyle(.white.opacity(0.4))
+            PixelIcon(systemName: "square.grid.2x2", size: 22,
+                      tint: .white.opacity(0.4))
             Text("No widgets enabled")
                 .font(.body.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.7))

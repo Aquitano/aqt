@@ -225,7 +225,7 @@ private struct OpenMeteoResponse: Decodable {
     }
 }
 
-/// WMO weather-code → our own SF Symbols + text (no Apple condition enum).
+/// WMO weather-code → semantic pixel-icon keys + text (no Apple condition enum).
 enum WMO {
     static func symbol(for code: Int, isDay: Bool) -> String {
         switch code {

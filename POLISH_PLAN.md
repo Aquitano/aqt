@@ -18,11 +18,10 @@ is committed in per-feature chunks; build/test commands are at the bottom.
    keyCode+modifiers stored for a future recorder); VoiceOver expand/collapse actions on
    the pill and expanded body; relative text styles in agent rows + widget tiles (pill/HUD
    deliberately fixed, noted in `NotchLayout`).
-6. **Media adapter** — drop-in path `~/Library/Application Support/Notch/adapter/`
-   checked before the bundle; Settings install offer (open folder + instructions) and
-   Remove button; fork-sensitive sub-commands folded into one `Command` enum.
-   *Deviation from plan:* upstream publishes **no prebuilt release**, so there is nothing
-   to download + checksum; the guided folder flow replaced the auto-download.
+6. **Media adapter** — upstream pinned at an exact revision, reproducibly built by SwiftPM,
+   embedded + signed without linking, bundled launcher checksum/ABI verified during every
+   app build, and gated at runtime by a bounded `get` protocol probe. Stream failures fall
+   back to Music/Spotify automatically; no manual installation or runtime download remains.
 7. **New widgets** — clock (status row, `TimelineView(.everyMinute)`, optional second
    zone), Shortcuts runner (pinned names, errors via activity peek), quick note
    (Persistence-backed; panel gained a text-editing key latch). All off by default;
@@ -39,8 +38,8 @@ The permission- and hardware-dependent interaction matrix still needs a human pa
 - Hotkey toggles with another app frontmost; VoiceOver (⌘F5) expand/collapse; text at
   larger accessibility sizes.
 - Quick-note typing (key latch), shortcut run + failure peek, clock second zone.
-- Adapter: drop artifacts into the folder (after `xattr -dr com.apple.quarantine`),
-  relaunch → `adapterState == .active`; Remove reverts to scripting.
+- Adapter: play/pause/seek from Music, Spotify, Safari, and Podcasts; confirm source identity,
+  artwork, and automatic scripting fallback after disabling the adapter for a relaunch.
 
 ## Build & test
 

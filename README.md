@@ -24,9 +24,9 @@ open Notch.xcodeproj        # then run, or:
 xcodebuild -project Notch.xcodeproj -scheme Notch -configuration Debug build
 ```
 
-There are **no external Swift package dependencies** — the app uses system frameworks only,
-so it builds without any package resolution step. (`swift-collections` from the plan was
-dropped in favour of a plain array; the `mediaremote-adapter` bridge is an opt-in, see below.)
+The sole Swift package dependency is the audited `mediaremote-adapter`, pinned to an exact
+revision in `project.yml`. It is embedded as a runtime bridge and deliberately not linked into
+the app binary. All other features use system frameworks.
 
 ### Signing
 
@@ -47,6 +47,7 @@ The app requests these lazily; deny-able without crashing:
 |---|---|---|
 | Volume/brightness HUD | Input Monitoring | first media-key press (System Settings → Privacy → Input Monitoring) |
 | Media (Music/Spotify fallback) | Automation (Apple Events) | first control of Music/Spotify |
+| Live three-band audio visualizer | Screen & System Audio Recording | enabling the visualizer in Settings |
 | Calendar widget | Calendars (full access) | "Enable Calendar" in the widget |
 | Weather | Location (optional) | "Enable Location" in the widget |
 | AirPods/BT battery | — (system_profiler) | none for battery; Bluetooth prompt only for future live AirPods |
@@ -55,46 +56,29 @@ The app requests these lazily; deny-able without crashing:
 
 ## Now Playing: the two paths
 
-By default the app reads Now Playing from **Music and Spotify via AppleScript** (push-driven by
-each app's distributed notifications). This works out of the box and needs only Automation
-permission.
+System-wide Now Playing is included and enabled by default. It covers Music, Spotify,
+browsers, Podcasts, and any other app publishing through macOS MediaRemote. The framework is
+built from [ejbills/mediaremote-adapter](https://github.com/ejbills/mediaremote-adapter) at
+the exact revision recorded in `project.yml`, embedded and signed, but deliberately **not
+linked** into Notch. `/usr/bin/perl` loads it at runtime so the request is hosted by a platform
+binary.
 
-For **system-wide** Now Playing (any app: browsers, podcasts, etc.), enable the
-`mediaremote-adapter` perl bridge. Unentitled apps can't read `MRMediaRemoteGetNowPlayingInfo`
-since macOS 15.4, so the app shells out to `/usr/bin/perl` (a platform binary that passes the
-daemon's entitlement check) running the adapter script.
+At launch, Notch runs the adapter's one-shot `get` command off-main. The bridge must exit
+successfully and emit either `NIL` or a valid protocol frame before Notch switches away from
+the always-available Music/Spotify AppleScript controller. A missing artifact, protocol drift,
+timeout, or stream crash automatically restores that fallback.
 
-`AdapterMediaController` drives it directly with `Process` (no SPM dependency). It activates at
-runtime **only** when both artifacts are bundled and its `test` command exits 0; otherwise it
-silently falls back to AppleScript.
+Compact Now Playing and its three-band live audio visualizer have independent toggles in
+Settings. The visualizer uses ScreenCaptureKit audio buffers to measure bass, mids, and treble;
+it does not capture video, excludes Notch's own process audio, publishes at no more than 30 fps,
+and stops completely whenever playback pauses, the compact pill disappears, the window is
+occluded, or the feature is disabled.
 
-### Enabling system-wide Now Playing
-
-The controller looks for the two artifacts in `~/Library/Application Support/Notch/adapter/`
-first, then in the app bundle. So there are two ways in:
-
-**Without rebuilding (recommended):** Settings → Media shows an install offer when the bridge
-is missing. "Open Adapter Folder" opens the drop-in location; put `mediaremote-adapter.pl` and
-a built `MediaRemoteAdapter.framework` from
-[ejbills/mediaremote-adapter](https://github.com/ejbills/mediaremote-adapter) there (pin a
-known-good commit — see the risk register in `BUILD_PLAN.md`) and relaunch. If the framework
-was downloaded rather than built locally, clear quarantine first or macOS will refuse to load
-it: `xattr -dr com.apple.quarantine ~/Library/Application\ Support/Notch/adapter`. "Remove
-Installed Adapter" deletes the folder and reverts to per-app scripting on relaunch.
-
-**Bundled into the app:**
-
-1. Add `mediaremote-adapter.pl` to the app target as a **bundle resource**.
-2. Add `MediaRemoteAdapter.framework` under **Contents/Frameworks**, code-signed, and
-   **NOT linked** (do not add it to "Link Binary With Libraries" — hardened runtime / library
-   validation will reject a linked, non-platform framework). In Xcode: "Embed Without Signing"
-   is wrong here; embed it and ensure it's signed but not in the link phase.
-3. Keep `enableMediaAdapter` on in Settings (default). Relaunch.
-
-If the control sub-commands (`send`/`seek`/`shuffle`/`repeat`) don't match your pinned fork,
-they live in one place: the `Command` enum in
-`Notch/Managers/Media/AdapterMediaController.swift` — **reads** go through the JSON `stream`
-which this app parses itself, so they're independent of those names.
+The build runs `Scripts/verify_media_adapter.sh`, which checks the bundled launcher's pinned
+checksum, framework ABI, placement, signature when signing is enabled, and—critically—that
+neither app binary links the framework. No runtime download, quarantine bypass, or manual
+artifact installation is used. See [`docs/MEDIA_ADAPTER.md`](docs/MEDIA_ADAPTER.md) for the
+pin, validation matrix, diagnostics, and rollback procedure.
 
 ## Architecture
 
@@ -105,7 +89,8 @@ App/            NotchApp (@main), AppDelegate (status item, lifecycle), AppEnvir
 Window/         NotchPanel (borderless non-activating), NotchWindowController, ScreenGeometry
 State/          NotchState (presentation machine), Animations (the asymmetric springs)
 Model/          Activity, MediaModels, SystemModels, DropItem
-Managers/       MediaManager (+ Media/ controllers), HUDManager, ActivityManager, TrayManager,
+Managers/       MediaManager (+ Media/ controllers), AudioVisualizerManager, HUDManager,
+                ActivityManager, TrayManager,
                 Widgets/ (Battery, Calendar, Weather, BluetoothBattery, Focus)
 Services/       ImageCache (ImageIO downsample), Persistence, AudioHardware (CoreAudio),
                 Brightness (DisplayServices dlopen), SystemDefinedTap (listen-only event tap)
@@ -114,8 +99,13 @@ Views/          NotchRootView + NotchShape, Compact/Expanded, Media/, HUD/, Acti
 Settings/       Settings (UserDefaults model), SettingsView
 ```
 
+**Iconography:** custom controls and status glyphs use one crisp 7×7 pixel system,
+matching the agent working indicator. Semantic color remains feature-driven; album artwork
+and file thumbnails remain native content rather than being stylized.
+
 **Concurrency:** managers are `@MainActor ObservableObject`s; heavy work (image decode,
-`system_profiler`, perl I/O, file copies) runs off-main and hops back only to publish.
+`system_profiler`, perl I/O, system-audio analysis, file copies) runs off-main and hops back
+only to publish.
 
 **Almost no timers.** Nearly everything is push-based (Combine, NotificationCenter,
 DistributedNotificationCenter, IOKit/CoreAudio run-loop sources, async sequences). Activity
@@ -125,8 +115,8 @@ fully hidden and pauses work on occlusion.
 
 ## Known constraints
 
-- System-wide Now Playing still requires the optional, separately built
-  `mediaremote-adapter` artifacts described above; Music and Spotify work out of the box.
+- System-wide Now Playing uses a private MediaRemote bridge that Apple can change in a macOS
+  update; the runtime self-test automatically falls back to Music/Spotify if that happens.
 - Direct distribution still needs a Developer ID signing/notarization/update pipeline.
 - No fullscreen / lock-screen presence (decided): `collectionBehavior` only, no CGS/SkyLight.
 - Third-party notification mirroring is out of scope; Quick Peeks are self-generated

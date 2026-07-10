@@ -88,10 +88,11 @@ final class NotchWindowController {
         // so a pill that grows/shrinks under a stationary cursor kept the stale
         // answer — a click on a just-appeared pill fell through, or one beside a
         // shrunk pill was swallowed, until the next move. Re-run on content changes.
-        Publishers.Merge3(
+        Publishers.Merge4(
             env.media.$track.map { _ in () },
             env.activities.$activities.map { _ in () },
-            env.tray.$items.map { _ in () }
+            env.tray.$items.map { _ in () },
+            env.settings.$showCompactNowPlaying.map { _ in () }
         )
         .receive(on: DispatchQueue.main)
         .sink { [weak self] in self?.updatePassthrough() }
@@ -270,7 +271,7 @@ final class NotchWindowController {
             hasInfoRow: env.settings.showWeatherWidget || env.settings.showCalendarWidget,
             trayEmpty: env.tray.items.isEmpty,
             compact: NotchLayout.compactContent(
-                hasMedia: !env.media.track.isEmpty,
+                hasMedia: env.settings.showCompactNowPlaying && !env.media.track.isEmpty,
                 isAgent: env.activities.compactActivity?.isAgent ?? false,
                 activityLabel: env.activities.compactActivity.map { ActivityPresenter.compactLabel(for: $0.kind) }
             ),
@@ -317,8 +318,8 @@ final class NotchWindowController {
         // meaningful (and visible) when no track is playing.
         guard panel.isVisible,
               env.state.presentation == .compact,
-              env.media.track.isEmpty,
-              env.activities.activities.count > 1 else { return false }
+              (!env.settings.showCompactNowPlaying || env.media.track.isEmpty),
+              env.activities.compactActivityCount > 1 else { return false }
         return interactiveContentRect().insetBy(dx: -8, dy: -8).contains(NSEvent.mouseLocation)
     }
 

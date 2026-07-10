@@ -61,10 +61,9 @@ struct ExpandedView: View {
             NSApp.activate(ignoringOtherApps: true)
             openSettings()
         } label: {
-            Image(systemName: "gearshape")
-                .font(.system(size: 14, weight: .semibold))
+            PixelIcon(systemName: "gearshape", size: 16,
+                      tint: Color.white.opacity(0.5))
                 .frame(width: 46, height: 32)
-                .foregroundStyle(Color.white.opacity(0.5))
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -81,10 +80,9 @@ struct ExpandedView: View {
             Haptics.tap(.levelChange)
             state.select(tab: tab)
         } label: {
-            Image(systemName: tab.symbol)
-                .font(.system(size: 14, weight: .semibold))
+            PixelIcon(systemName: tab.symbol, size: 16,
+                      tint: selected ? Color.white : Color.white.opacity(0.5))
                 .frame(width: 46, height: 32)
-                .foregroundStyle(selected ? Color.white : Color.white.opacity(0.5))
                 .background {
                     // One shared pill that slides between tabs as the selection
                     // moves. A capsule so its curvature matches the capsule strip

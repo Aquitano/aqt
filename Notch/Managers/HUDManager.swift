@@ -87,7 +87,7 @@ final class HUDManager: ObservableObject {
         dismissTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(self?.visibleDuration ?? 1.6))
             guard !Task.isCancelled else { return }
-            withAnimation(.easeIn(duration: 0.25)) { self?.isVisible = false }
+            withAnimation(.easeOut(duration: 0.18)) { self?.isVisible = false }
         }
     }
 }

@@ -45,9 +45,8 @@ struct MediaPlayerView: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(.white.opacity(0.08))
                     .overlay {
-                        Image(systemName: "music.note")
-                            .font(.system(size: 32, weight: .medium))
-                            .foregroundStyle(.secondary)
+                        PixelIcon(systemName: "music.note", size: 34,
+                                  tint: .white.opacity(0.55))
                     }
             }
         }

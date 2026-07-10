@@ -26,11 +26,20 @@ final class ActivityManager: ObservableObject {
         }
     }
 
+    /// Now Playing owns a dedicated compact presentation (artwork + meter), so
+    /// its bookkeeping activity must never reappear as a generic music-note pill
+    /// when that presentation is disabled.
+    private var compactOrdered: [Activity] {
+        ordered.filter { !isNowPlaying($0) }
+    }
+
     var compactActivity: Activity? {
-        let list = ordered
+        let list = compactOrdered
         guard !list.isEmpty else { return nil }
         return list[cycleOffset % list.count]
     }
+
+    var compactActivityCount: Int { compactOrdered.count }
 
     // MARK: - Mutation
 
@@ -96,7 +105,7 @@ final class ActivityManager: ObservableObject {
     /// Rotate which queued activity the compact pill shows. `cycleOffset` is not a
     /// `@Published` property, so notify observers explicitly.
     func cycle(forward: Bool = true) {
-        let count = activities.count
+        let count = compactOrdered.count
         guard count > 1 else { return }
         objectWillChange.send()
         cycleOffset = ((cycleOffset + (forward ? 1 : -1)) % count + count) % count
@@ -112,6 +121,9 @@ final class ActivityManager: ObservableObject {
             publish(Activity(kind: .nowPlaying, priority: .ambient, createdAt: Date()))
         } else {
             activities.removeAll { isNowPlaying($0) }
+            if compactOrdered.isEmpty, state.presentation == .compact {
+                state.hide()
+            }
         }
     }
 

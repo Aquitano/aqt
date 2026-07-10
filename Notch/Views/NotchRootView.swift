@@ -78,7 +78,7 @@ struct NotchRootView: View {
                         .frame(width: expandedSize.width, height: expandedSize.height, alignment: .top)
                         .opacity(state.isExpanded ? 1 : 0)
                         .accessibilityAction(named: "Collapse notch") {
-                            state.collapse()
+                            state.collapse(hasCompactContent: compactContent != .none)
                         }
                 }
 
@@ -108,7 +108,7 @@ struct NotchRootView: View {
 
     private var compactContent: NotchLayout.CompactContent {
         NotchLayout.compactContent(
-            hasMedia: !media.track.isEmpty,
+            hasMedia: settings.showCompactNowPlaying && !media.track.isEmpty,
             isAgent: activities.compactActivity?.isAgent ?? false,
             activityLabel: activities.compactActivity.map { ActivityPresenter.compactLabel(for: $0.kind) }
         )
@@ -143,7 +143,7 @@ struct NotchRootView: View {
         // hover-swell) updates in lockstep with the expand/collapse timers. On exit
         // it settles back to the compact pill, keeping the panel on-screen and
         // mouse-tracking alive so the next hover can expand again.
-        state.hoverChanged(hovering)
+        state.hoverChanged(hovering, hasCompactContent: compactContent != .none)
     }
 }
 

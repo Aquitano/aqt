@@ -121,9 +121,8 @@ struct AgentsView: View {
 
     private var emptyState: some View {
         VStack(spacing: 6) {
-            Image(systemName: "terminal")
-                .font(.system(size: 22))
-                .foregroundStyle(.white.opacity(0.4))
+            PixelIcon(systemName: "terminal", size: 22,
+                      tint: .white.opacity(0.4))
             Text("No active agents")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.7))

@@ -31,9 +31,7 @@ struct BatteryIndicator: View {
                     .frame(width: max(6, (width - 4) * fraction + 4))
 
                 if charging {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 8, weight: .heavy))
-                        .foregroundStyle(.white)
+                    PixelIcon(systemName: "bolt.fill", size: 9, tint: .white)
                         .frame(maxWidth: .infinity)
                         .shadow(radius: 1)
                 }

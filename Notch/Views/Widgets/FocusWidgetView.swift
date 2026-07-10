@@ -23,9 +23,8 @@ struct FocusWidgetView: View {
 
     private var status: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Image(systemName: focus.isOn ? "moon.fill" : "moon")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(focus.isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.white.opacity(0.7)))
+            PixelIcon(systemName: focus.isOn ? "moon.fill" : "moon", size: 17,
+                      tint: focus.isOn ? .accentColor : .white.opacity(0.7))
 
             Spacer(minLength: 4)
 
@@ -45,9 +44,8 @@ struct FocusWidgetView: View {
     /// confidently show "Off" for an unknown state, unfixable from the UI.
     private var accessPrompt: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Image(systemName: "moon.zzz")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.7))
+            PixelIcon(systemName: "moon.zzz", size: 17,
+                      tint: .white.opacity(0.7))
 
             Spacer(minLength: 4)
 

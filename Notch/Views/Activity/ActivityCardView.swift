@@ -12,11 +12,9 @@ struct ActivityCardView: View {
         let content = ActivityPresenter.card(for: activity.kind)
 
         HStack(spacing: 10) {
-            Image(systemName: ActivityPresenter.symbol(for: activity.kind))
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(content.tint)
+            PixelIcon(systemName: ActivityPresenter.symbol(for: activity.kind),
+                      size: 17, tint: content.tint)
                 .frame(width: 22)
-                .symbolRenderingMode(.hierarchical)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(content.title)

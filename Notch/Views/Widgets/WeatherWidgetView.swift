@@ -39,9 +39,8 @@ struct WeatherWidgetView: View {
 
     private func current(_ s: WeatherSnapshot) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: s.symbolName)
-                .font(.largeTitle.weight(.medium))
-                .symbolRenderingMode(.multicolor)
+            PixelIcon(systemName: s.symbolName, size: 32,
+                      tint: weatherTint(s.symbolName))
                 .frame(width: 32, height: 32)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -79,9 +78,8 @@ struct WeatherWidgetView: View {
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.white.opacity(0.7))
 
-                        Image(systemName: day.symbolName)
-                            .font(.body)
-                            .symbolRenderingMode(.multicolor)
+                        PixelIcon(systemName: day.symbolName, size: 16,
+                                  tint: weatherTint(day.symbolName))
                             .frame(height: 16)
 
                         // High and low share a line to keep the row to a single
@@ -107,10 +105,8 @@ struct WeatherWidgetView: View {
     /// retry instead of the ambiguous em-dash placeholder.
     private var fetchFailedPrompt: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "wifi.exclamationmark")
-                .font(.system(size: 22))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.white.opacity(0.6))
+            PixelIcon(systemName: "wifi.exclamationmark", size: 22,
+                      tint: .white.opacity(0.6))
 
             Text("Couldn't load the weather.")
                 .font(.callout)
@@ -131,10 +127,8 @@ struct WeatherWidgetView: View {
 
     private var accessPrompt: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "location.slash")
-                .font(.system(size: 22))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.white.opacity(0.6))
+            PixelIcon(systemName: "location.slash", size: 22,
+                      tint: .white.opacity(0.6))
 
             Text("Show local weather for your location.")
                 .font(.callout)
@@ -158,10 +152,8 @@ struct WeatherWidgetView: View {
 
     private var placeholder: some View {
         HStack(spacing: 10) {
-            Image(systemName: "location.slash")
-                .font(.system(size: 22))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.white.opacity(0.6))
+            PixelIcon(systemName: "location.slash", size: 22,
+                      tint: .white.opacity(0.6))
 
             VStack(alignment: .leading, spacing: 1) {
                 Text("—")
@@ -177,5 +169,14 @@ struct WeatherWidgetView: View {
 
     private func weekday(for date: Date) -> String {
         date.formatted(.dateTime.weekday(.abbreviated))
+    }
+
+    private func weatherTint(_ symbol: String) -> Color {
+        if symbol.contains("sun") { return .yellow }
+        if symbol.contains("rain") || symbol.contains("drizzle") { return .cyan }
+        if symbol.contains("snow") { return .white }
+        if symbol.contains("bolt") { return .purple }
+        if symbol.contains("moon") { return .indigo }
+        return .white.opacity(0.72)
     }
 }

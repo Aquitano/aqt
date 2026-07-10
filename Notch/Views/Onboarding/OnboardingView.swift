@@ -83,9 +83,8 @@ struct OnboardingView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            Image(systemName: "rectangle.tophalf.inset.filled")
-                .font(.system(size: 40, weight: .medium))
-                .foregroundStyle(.tint)
+            PixelIcon(systemName: "rectangle.tophalf.inset.filled", size: 42,
+                      tint: .accentColor)
             Text("Welcome to Notch")
                 .font(.title2.weight(.semibold))
             Text("Media, agents, widgets, and a file shelf — all living in the notch. Grant what you'd like to use; everything can also be enabled later, in place.")
@@ -101,9 +100,7 @@ struct OnboardingView: View {
         granted: Bool, request: @escaping () -> Void
     ) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 17))
-                .foregroundStyle(.tint)
+            PixelIcon(systemName: symbol, size: 18, tint: .accentColor)
                 .frame(width: 26)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.body.weight(.medium))
@@ -111,10 +108,7 @@ struct OnboardingView: View {
             }
             Spacer()
             if granted {
-                Label("On", systemImage: "checkmark.circle.fill")
-                    .labelStyle(.iconOnly)
-                    .foregroundStyle(.green)
-                    .font(.system(size: 18))
+                PixelIcon(systemName: "checkmark.circle.fill", size: 18, tint: .green)
                     .accessibilityLabel("\(title) access granted")
             } else {
                 Button("Enable", action: request)
@@ -127,9 +121,7 @@ struct OnboardingView: View {
 
     private func toggleLabel(symbol: String, title: String, subtitle: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 15))
-                .foregroundStyle(.tint)
+            PixelIcon(systemName: symbol, size: 16, tint: .accentColor)
                 .frame(width: 26)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.body.weight(.medium))

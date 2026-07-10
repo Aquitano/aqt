@@ -9,9 +9,8 @@ struct ShortcutsWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "square.2.layers.3d")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.7))
+                PixelIcon(systemName: "square.2.layers.3d", size: 15,
+                          tint: .white.opacity(0.7))
                 Text("Shortcuts")
                     .font(.headline)
                     .foregroundStyle(.white)
