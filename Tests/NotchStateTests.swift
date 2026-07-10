@@ -20,4 +20,17 @@ final class NotchStateTests: XCTestCase {
 
         XCTAssertEqual(state.presentation, .hidden)
     }
+
+    func testImmediateCollapseSkipsHoverExitGracePeriod() {
+        let state = NotchState()
+        state.expand()
+        state.select(tab: .media)
+
+        state.collapseImmediately()
+
+        XCTAssertEqual(state.presentation, .compact)
+        XCTAssertTrue(state.isCollapsing)
+        XCTAssertEqual(state.expandedTab, .media,
+                       "the active body stays mounted until the close animation finishes")
+    }
 }

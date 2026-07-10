@@ -19,6 +19,7 @@
 - `LSMultipleInstancesProhibited` makes Xcode Run fail immediately with `IDELaunchErrorDomain` code 20 when a prior Notch menu-bar process is still alive. Quit/terminate the existing Notch instance before launching under Xcode; the error is not necessarily a signing failure.
 - The physical notch-sized `.compact` presentation is the persistent hover target even when it has no side content. Reserve `.hidden` for the explicit menu/hotkey toggle; hiding on an empty activity queue makes hover reopening impossible.
 - Agent notification sounds use the synthesized 8-bit square-wave palette in `AgentSoundPlayer`; keep cues short, rate-limited, and generated in code, and normalize legacy macOS sound names when reading settings.
+- Opening a separate app window from the expanded notch must call `NotchState.collapseImmediately()` before activating that window; hover-exit collapse has an intentional grace delay and is not a reliable dismissal mechanism for explicit navigation.
 
 ## 3. User Preferences
 

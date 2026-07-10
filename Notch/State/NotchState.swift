@@ -145,25 +145,42 @@ final class NotchState: ObservableObject {
         collapseTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(160))
             guard let self, !Task.isCancelled else { return }
-            let target: Presentation = .compact
-            guard self.presentation != target else { return }
-            // Set `isCollapsing` before the state flip so the expanded body stays
-            // mounted across it (fading + clipped by the blob) instead of unmounting
-            // the instant `presentation` leaves `.expanded`. Only when closing from
-            // the open panel; an already compact notch has nothing to retract.
-            // Reset the tab only after the close completes (see `holdCollapsing`);
-            // resetting it inside the close animation cross-fades the still-mounted
-            // expanded body to home while it shrinks. An already compact notch has
-            // no mounted body, so it can reset immediately.
-            let wasExpanded = self.presentation == .expanded
-            if wasExpanded {
-                self.holdCollapsing()
-            } else {
-                self.expandedTab = .home
-            }
-            withAnimation(NotchAnimation.close(reduceMotion: self.reduceMotion)) {
-                self.presentation = target
-            }
+            self.collapseTask = nil
+            self.performCollapse()
+        }
+    }
+
+    /// Collapse without the hover-exit grace period. Use when another app window
+    /// is about to replace the notch as the active surface (for example Settings),
+    /// so the expanded panel does not remain behind it while waiting for pointer
+    /// tracking to notice the transition.
+    func collapseImmediately() {
+        guard !isDropActive else { return }
+        cancelPendingExpand()
+        collapseTask?.cancel()
+        collapseTask = nil
+        performCollapse()
+    }
+
+    private func performCollapse() {
+        let target: Presentation = .compact
+        guard presentation != target else { return }
+        // Set `isCollapsing` before the state flip so the expanded body stays
+        // mounted across it (fading + clipped by the blob) instead of unmounting
+        // the instant `presentation` leaves `.expanded`. Only when closing from
+        // the open panel; an already compact notch has nothing to retract.
+        // Reset the tab only after the close completes (see `holdCollapsing`);
+        // resetting it inside the close animation cross-fades the still-mounted
+        // expanded body to home while it shrinks. An already compact notch has
+        // no mounted body, so it can reset immediately.
+        let wasExpanded = presentation == .expanded
+        if wasExpanded {
+            holdCollapsing()
+        } else {
+            expandedTab = .home
+        }
+        withAnimation(NotchAnimation.close(reduceMotion: reduceMotion)) {
+            presentation = target
         }
     }
 

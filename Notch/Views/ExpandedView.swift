@@ -55,6 +55,9 @@ struct ExpandedView: View {
     private var gearButton: some View {
         Button {
             Haptics.tap(.levelChange)
+            // Settings replaces the notch as the active surface. Collapse before
+            // activating its window instead of waiting for a hover-exit event.
+            state.collapseImmediately()
             // An accessory app isn't frontmost when the notch panel is clicked, so
             // openSettings() alone leaves the window buried or unshown. Activate
             // first to reliably surface it (mirrors the status-item menu path).

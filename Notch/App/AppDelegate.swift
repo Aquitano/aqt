@@ -140,6 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
+        env.state.collapseImmediately()
         NSApp.activate(ignoringOtherApps: true)
         // macOS 14+ selector; fall back to the legacy one just in case.
         if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
