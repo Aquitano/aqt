@@ -59,12 +59,12 @@ final class NotchState: ObservableObject {
 
     // MARK: - Transitions
 
-    func hoverChanged(_ hovering: Bool, hasCompactContent: Bool = true) {
+    func hoverChanged(_ hovering: Bool) {
         isHovering = hovering
         if hovering {
             hoverExpand()
         } else {
-            collapse(hasCompactContent: hasCompactContent)
+            collapse()
         }
     }
 
@@ -134,23 +134,26 @@ final class NotchState: ObservableObject {
         isDropActive = false
     }
 
-    /// Collapse to the compact pill when there is something to show, otherwise hide.
-    func collapse(hasCompactContent: Bool = true) {
+    /// Collapse to the physical notch-sized hover target. The compact presentation
+    /// remains on-screen even without side content; otherwise ordering the panel
+    /// out would make the notch impossible to reopen by hovering it. `.hidden` is
+    /// reserved for the explicit status-menu / keyboard toggle.
+    func collapse() {
         guard !isDropActive else { return }
         cancelPendingExpand()
         collapseTask?.cancel()
         collapseTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(160))
             guard let self, !Task.isCancelled else { return }
-            let target: Presentation = hasCompactContent ? .compact : .hidden
+            let target: Presentation = .compact
             guard self.presentation != target else { return }
             // Set `isCollapsing` before the state flip so the expanded body stays
             // mounted across it (fading + clipped by the blob) instead of unmounting
             // the instant `presentation` leaves `.expanded`. Only when closing from
-            // the open panel; a compact->hidden collapse has nothing to retract.
+            // the open panel; an already compact notch has nothing to retract.
             // Reset the tab only after the close completes (see `holdCollapsing`);
             // resetting it inside the close animation cross-fades the still-mounted
-            // expanded body to home while it shrinks. A compact->hidden collapse has
+            // expanded body to home while it shrinks. An already compact notch has
             // no mounted body, so it can reset immediately.
             let wasExpanded = self.presentation == .expanded
             if wasExpanded {

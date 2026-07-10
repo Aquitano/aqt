@@ -211,7 +211,7 @@ final class NotchWindowController {
         // A drag that only flew over the notch (dropped elsewhere) leaves it open
         // on the tray; collapse unless the drop landed on the panel itself.
         if !interactiveContentRect().contains(NSEvent.mouseLocation) {
-            env.state.collapse(hasCompactContent: true)
+            env.state.collapse()
         }
         updatePassthrough()
     }

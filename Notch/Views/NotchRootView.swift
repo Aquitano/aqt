@@ -78,7 +78,7 @@ struct NotchRootView: View {
                         .frame(width: expandedSize.width, height: expandedSize.height, alignment: .top)
                         .opacity(state.isExpanded ? 1 : 0)
                         .accessibilityAction(named: "Collapse notch") {
-                            state.collapse(hasCompactContent: compactContent != .none)
+                            state.collapse()
                         }
                 }
 
@@ -143,7 +143,7 @@ struct NotchRootView: View {
         // hover-swell) updates in lockstep with the expand/collapse timers. On exit
         // it settles back to the compact pill, keeping the panel on-screen and
         // mouse-tracking alive so the next hover can expand again.
-        state.hoverChanged(hovering, hasCompactContent: compactContent != .none)
+        state.hoverChanged(hovering)
     }
 }
 
@@ -170,7 +170,7 @@ private struct NotchDropDelegate: DropDelegate {
         // also misses the exit, so without this a drag-away or Esc leaves
         // isDropActive true and collapse() bails forever, pinning the panel open.
         state.endDropTargeting()
-        state.collapse(hasCompactContent: true)
+        state.collapse()
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {

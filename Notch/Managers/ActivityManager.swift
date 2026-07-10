@@ -121,9 +121,6 @@ final class ActivityManager: ObservableObject {
             publish(Activity(kind: .nowPlaying, priority: .ambient, createdAt: Date()))
         } else {
             activities.removeAll { isNowPlaying($0) }
-            if compactOrdered.isEmpty, state.presentation == .compact {
-                state.hide()
-            }
         }
     }
 
