@@ -48,7 +48,7 @@ The app requests these lazily; deny-able without crashing:
 | Volume/brightness HUD | Input Monitoring | first media-key press (System Settings → Privacy → Input Monitoring) |
 | Media (Music/Spotify fallback) | Automation (Apple Events) | first control of Music/Spotify |
 | Calendar widget | Calendars (full access) | "Enable Calendar" in the widget |
-| Weather | Location (optional) | on first launch |
+| Weather | Location (optional) | "Enable Location" in the widget |
 | AirPods/BT battery | — (system_profiler) | none for battery; Bluetooth prompt only for future live AirPods |
 | Focus badge | Focus status | on first launch |
 | Battery, tray, AirDrop | none | — |
@@ -125,10 +125,9 @@ fully hidden and pauses work on occlusion.
 
 ## Known constraints
 
-- Built on Linux without an Xcode toolchain, so the source is authored without compiler
-  feedback. Expect to fix a few SDK-specific signatures on first build — the private
-  `DisplayServices` brightness symbol and the CoreAudio `VirtualMainVolume` selector are the
-  most likely to need a tweak; both are isolated to one file each.
+- System-wide Now Playing still requires the optional, separately built
+  `mediaremote-adapter` artifacts described above; Music and Spotify work out of the box.
+- Direct distribution still needs a Developer ID signing/notarization/update pipeline.
 - No fullscreen / lock-screen presence (decided): `collectionBehavior` only, no CGS/SkyLight.
 - Third-party notification mirroring is out of scope; Quick Peeks are self-generated
   (battery / device connect / focus / timer).

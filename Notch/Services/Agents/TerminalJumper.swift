@@ -20,17 +20,21 @@ struct TerminalJumper {
         // Precise path: the tab exports a focus deep link (e.g. Warp's
         // warp://session/<uuid>); opening it selects the exact tab. The terminal
         // gets activated as a side effect of handling the URL.
-        if let focusURL, let url = URL(string: focusURL) {
+        if let focusURL, let url = URL(string: focusURL),
+           url.scheme?.lowercased() == "warp" {
             NSWorkspace.shared.open(url)
             return
         }
 
-        guard let pid = resolvePID(pid, cwd: cwd) else {
-            Log.agents.notice("terminal jump: no pid or focus URL for session")
-            return
-        }
         let lookup = processLookup
         Task {
+            let resolvedPID = await Task.detached {
+                Self.resolvePID(pid, cwd: cwd, lookup: lookup)
+            }.value
+            guard let pid = resolvedPID else {
+                Log.agents.notice("terminal jump: no pid or trusted focus URL for session")
+                return
+            }
             // Try a terminal-specific precise focus (selects the exact tab/pane).
             let handled = await Task.detached { Self.focusPrecise(pid: pid, lookup: lookup) }.value
             if !handled {
@@ -123,11 +127,15 @@ struct TerminalJumper {
 
     /// Use the known pid, else find any live process in the session's cwd (its
     /// ancestor chain still leads to the hosting terminal).
-    private func resolvePID(_ pid: pid_t?, cwd: String?) -> pid_t? {
-        if let pid, processLookup.name(of: pid) != nil { return pid }
+    nonisolated private static func resolvePID(
+        _ pid: pid_t?,
+        cwd: String?,
+        lookup: ProcessLookup
+    ) -> pid_t? {
+        if let pid, lookup.name(of: pid) != nil { return pid }
         guard let cwd else { return nil }
-        let target = processLookup.normalize(cwd)
-        return processLookup.allPIDs().first { processLookup.cwd(of: $0) == target }
+        let target = lookup.normalize(cwd)
+        return lookup.allPIDs().first { lookup.cwd(of: $0) == target }
     }
 
     private static func activateTerminal(forPID pid: pid_t, lookup: ProcessLookup) {

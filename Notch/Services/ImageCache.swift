@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 /// Downsamples artwork with ImageIO (never decodes full-res into an NSImage) and
 /// keeps results in a cost-limited cache. A 3000x3000 cover is ~36 MB decoded vs
 /// ~0.5 MB downsampled, so this is the single biggest RAM lever in the app.
-final class ImageCache {
+final class ImageCache: @unchecked Sendable {
 
     private let cache = NSCache<NSString, NSImage>()
     private let session: URLSession

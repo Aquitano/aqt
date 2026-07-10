@@ -42,7 +42,7 @@ final class BatteryManager: ObservableObject {
         NotificationCenter.default.addObserver(
             forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main
         ) { [weak self] _ in
-            self?.powerStateChanged()
+            MainActor.assumeIsolated { self?.powerStateChanged() }
         }
 
         refresh()

@@ -36,7 +36,7 @@ final class AdapterMediaController: MediaControlling {
         static let repeatMode = "repeat"
     }
 
-    private static let perlPath = "/usr/bin/perl"
+    nonisolated private static let perlPath = "/usr/bin/perl"
     private let scriptPath: String
     private let frameworkPath: String
 
@@ -111,7 +111,7 @@ final class AdapterMediaController: MediaControlling {
                 Task { @MainActor in self?.streamDidEnd() }
                 return
             }
-            self?.ingest(chunk)
+            Task { @MainActor in self?.ingest(chunk) }
         }
 
         // Backstop for the case where the process dies without the pipe reaching EOF.

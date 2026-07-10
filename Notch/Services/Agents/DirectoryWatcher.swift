@@ -10,14 +10,14 @@ final class DirectoryWatcher: @unchecked Sendable {
     private let latency: CFTimeInterval
     private let queue = DispatchQueue(label: "com.aquitano.notch.dirwatcher")
     private var stream: FSEventStreamRef?
-    private var onChange: (([String]) -> Void)?
+    private var onChange: (@Sendable ([String]) -> Void)?
 
     init(path: String, latency: CFTimeInterval = 0.2) {
         self.path = path
         self.latency = latency
     }
 
-    func start(onChange: @escaping ([String]) -> Void) {
+    func start(onChange: @escaping @Sendable ([String]) -> Void) {
         queue.async { [weak self] in self?.begin(onChange) }
     }
 
@@ -36,7 +36,7 @@ final class DirectoryWatcher: @unchecked Sendable {
         }
     }
 
-    private func begin(_ onChange: @escaping ([String]) -> Void) {
+    private func begin(_ onChange: @escaping @Sendable ([String]) -> Void) {
         guard stream == nil else { return }
         self.onChange = onChange
 

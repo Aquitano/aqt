@@ -40,7 +40,7 @@ final class FocusManager: ObservableObject {
         switch INFocusStatusCenter.default.authorizationStatus {
         case .notDetermined:
             INFocusStatusCenter.default.requestAuthorization { [weak self] status in
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self?.authorized = status == .authorized
                     self?.refresh()
                 }

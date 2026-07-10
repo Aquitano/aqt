@@ -23,6 +23,9 @@ final class NotchWindowController {
     /// the activity queue by a single step.
     private var cycleCooldown = false
 
+    /// Anchor for AppKit popovers such as the third-party sharing picker.
+    var panelContentView: NSView? { panel.contentView }
+
     init(env: AppEnvironment) {
         self.env = env
         self.geometry = ScreenGeometry.current()
@@ -49,8 +52,9 @@ final class NotchWindowController {
         setupMouseTracking()
     }
 
-    deinit {
+    func stop() {
         for monitor in mouseMonitors { NSEvent.removeMonitor(monitor) }
+        mouseMonitors.removeAll()
     }
 
     // MARK: - Wiring

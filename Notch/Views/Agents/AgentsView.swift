@@ -7,6 +7,12 @@ struct AgentsView: View {
     @EnvironmentObject private var agents: AgentManager
 
     var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { _ in
+            content
+        }
+    }
+
+    private var content: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 10) {
                 if let usage = agents.usage {

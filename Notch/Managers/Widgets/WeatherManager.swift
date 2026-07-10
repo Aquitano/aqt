@@ -19,6 +19,7 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
     private let session = URLSession(configuration: .default)
     private var lastLocation: CLLocation?
     private var cancellables = Set<AnyCancellable>()
+    private var fetchGeneration = 0
 
     init(settings: Settings) {
         self.settings = settings
@@ -33,7 +34,7 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
         // stacks a dialog on top of the Focus prompt and reads as a freeze (the
         // reason CalendarManager defers). The widget's "Enable Location" affordance
         // requests access on demand instead.
-        if authorization == .authorizedAlways {
+        if Self.hasLocationAccess(authorization) {
             manager.requestLocation()
         }
 
@@ -60,7 +61,7 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
     func refresh() {
         if let location = lastLocation {
             Task { await fetch(for: location) }
-        } else if manager.authorizationStatus == .authorizedAlways {
+        } else if Self.hasLocationAccess(manager.authorizationStatus) {
             manager.requestLocation()
         }
     }
@@ -90,10 +91,12 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
     // since init runs on the main actor), so asserting isolation is safe and lets
     // the delegate conformance stay off the main actor.
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        MainActor.assumeIsolated {
-            authorization = manager.authorizationStatus
-            if authorization == .authorizedAlways {
-                manager.requestLocation()
+        let status = manager.authorizationStatus
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.authorization = status
+            if Self.hasLocationAccess(status) {
+                self.manager.requestLocation()
             }
         }
     }
@@ -113,6 +116,8 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
     // MARK: - Fetch
 
     private func fetch(for location: CLLocation) async {
+        fetchGeneration += 1
+        let generation = fetchGeneration
         let unit = settings.temperatureUnit
         var components = URLComponents(string: "https://api.open-meteo.com/v1/forecast")!
         components.queryItems = [
@@ -127,12 +132,17 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
         guard let url = components.url else { return }
 
         do {
-            let (data, _) = try await session.data(from: url)
-            let response = try JSONDecoder().decode(OpenMeteoResponse.self, from: data)
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+                throw URLError(.badServerResponse)
+            }
+            let forecast = try JSONDecoder().decode(OpenMeteoResponse.self, from: data)
             let placeName = await cityName(for: location)
-            apply(response, unit: unit, placeName: placeName)
+            guard generation == fetchGeneration else { return }
+            apply(forecast, unit: unit, placeName: placeName)
             fetchFailed = false
         } catch {
+            guard generation == fetchGeneration else { return }
             // A stale snapshot beats an error tile; only flag when there's nothing to show.
             fetchFailed = snapshot == nil
             Log.widgets.error("Weather fetch failed: \(error.localizedDescription)")
@@ -190,6 +200,10 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
             unit: unit,
             daily: days
         )
+    }
+
+    nonisolated private static func hasLocationAccess(_ status: CLAuthorizationStatus) -> Bool {
+        status == .authorizedAlways
     }
 }
 

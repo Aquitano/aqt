@@ -4,7 +4,7 @@ import Foundation
 /// One global hotkey via Carbon `RegisterEventHotKey`. Unlike an event tap this
 /// needs no Input Monitoring grant and consumes the chord system-wide, which is
 /// exactly right for a "toggle the notch" shortcut.
-final class HotKey {
+final class HotKey: @unchecked Sendable {
 
     /// Fired on the main queue.
     var onPress: (() -> Void)?

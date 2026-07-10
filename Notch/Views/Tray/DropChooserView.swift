@@ -55,6 +55,6 @@ struct DropChooserView: View {
                 }
         }
         .scaleEffect(targeted ? 1.02 : 1)
-        .animation(.snappy(duration: 0.18), value: targeted)
+        .animation(state.reduceMotion ? nil : .snappy(duration: 0.18), value: targeted)
     }
 }

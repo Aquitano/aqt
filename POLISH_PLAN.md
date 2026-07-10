@@ -28,7 +28,10 @@ is committed in per-feature chunks; build/test commands are at the bottom.
    (Persistence-backed; panel gained a text-editing key latch). All off by default;
    `Settings.hasInfoRowWidgets` drives grid + panel height.
 
-## Manual verification still owed (screen was locked during the round)
+## Manual interaction verification before distribution
+
+Native startup smoke-tested from the generated `.app` on macOS 26.5.2 on 2026-07-10.
+The permission- and hardware-dependent interaction matrix still needs a human pass:
 
 - Launch flow: `defaults delete com.aquitano.notch hasCompletedOnboarding`, launch,
   complete tour, relaunch → no tour. (Launch via `open <DerivedData>/…/Notch.app`; the

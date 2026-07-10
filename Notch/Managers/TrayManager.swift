@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Combine
 import UniformTypeIdentifiers
 import QuickLookThumbnailing
 
@@ -19,6 +20,7 @@ final class TrayManager: ObservableObject {
     private let settings: Settings
     private unowned let activities: ActivityManager
     private let storeFile = "tray.json"
+    private var cancellables = Set<AnyCancellable>()
 
     init(persistence: Persistence, imageCache: ImageCache, settings: Settings, activities: ActivityManager) {
         self.persistence = persistence
@@ -33,6 +35,18 @@ final class TrayManager: ObservableObject {
     func start() {
         pruneExpired()
         clearStaging()
+        preloadThumbnails()
+
+        settings.$trayTTLDays
+            .dropFirst()
+            .sink { [weak self] _ in self?.pruneExpired() }
+            .store(in: &cancellables)
+        Publishers.Merge(
+            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification),
+            NotificationCenter.default.publisher(for: .NSCalendarDayChanged)
+        )
+        .sink { [weak self] _ in self?.pruneExpired() }
+        .store(in: &cancellables)
     }
 
     // MARK: - Inbound
@@ -62,8 +76,12 @@ final class TrayManager: ObservableObject {
             // dying drag URL, so it can finish whenever; nudge the shelf to re-read
             // when it lands.
             Task { @MainActor [weak self] in self?.add(item) }
-            Self.makeThumbnail(for: item, root: self.storageRoot) { [weak self] in
-                Task { @MainActor in self?.objectWillChange.send() }
+            Self.makeThumbnail(for: item, root: self.storageRoot) { [weak self] image in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let image { self.imageCache.store(image, forKey: self.thumbnailKey(for: item)) }
+                    self.objectWillChange.send()
+                }
             }
         }
     }
@@ -80,8 +98,7 @@ final class TrayManager: ObservableObject {
     /// `completion` runs on the main actor with the staged copies.
     func stageForShare(_ providers: [NSItemProvider], completion: @escaping @MainActor ([URL]) -> Void) {
         let group = DispatchGroup()
-        let lock = NSLock()
-        var staged: [URL] = []
+        let staged = URLAccumulator()
 
         for provider in providers {
             let typeIdentifier = provider.registeredTypeIdentifiers.first(where: {
@@ -96,12 +113,12 @@ final class TrayManager: ObservableObject {
                     return
                 }
                 guard let dest = Self.stageCopy(url, root: root) else { return }
-                lock.lock(); staged.append(dest); lock.unlock()
+                staged.append(dest)
             }
         }
 
         group.notify(queue: .main) {
-            MainActor.assumeIsolated { completion(staged) }
+            MainActor.assumeIsolated { completion(staged.values) }
         }
     }
 
@@ -128,13 +145,7 @@ final class TrayManager: ObservableObject {
     }
 
     func thumbnail(for item: DropItem) -> NSImage? {
-        let key = "tray.\(item.id.uuidString)"
-        if let cached = imageCache.image(forKey: key) { return cached }
-        let url = item.thumbnailURL(relativeTo: storageRoot)
-        guard let data = try? Data(contentsOf: url),
-              let image = imageCache.downsample(data: data, maxDimension: 160) else { return nil }
-        imageCache.store(image, forKey: key)
-        return image
+        imageCache.image(forKey: thumbnailKey(for: item))
     }
 
     // MARK: - Persistence / TTL
@@ -148,7 +159,13 @@ final class TrayManager: ObservableObject {
         let cutoff = Date().addingTimeInterval(-Double(settings.trayTTLDays) * 86_400)
         let expired = items.filter { $0.addedAt < cutoff }
         guard !expired.isEmpty else { return }
-        for item in expired { remove(item) }
+        let expiredIDs = Set(expired.map(\.id))
+        for item in expired {
+            let folder = storageRoot.appendingPathComponent(item.id.uuidString, isDirectory: true)
+            try? FileManager.default.removeItem(at: folder)
+        }
+        items.removeAll { expiredIDs.contains($0.id) }
+        persist()
     }
 
     /// Staged share copies are transient; clear any left over from a prior run.
@@ -158,9 +175,36 @@ final class TrayManager: ObservableObject {
         for entry in entries { try? fm.removeItem(at: entry) }
     }
 
+    /// Release temporary share-on-drop copies as soon as the picker completes.
+    func clearShareStaging() {
+        clearStaging()
+    }
+
+    private func thumbnailKey(for item: DropItem) -> String {
+        "tray.\(item.id.uuidString)"
+    }
+
+    private func preloadThumbnails() {
+        let root = storageRoot
+        let cache = imageCache
+        let pending = items.map { ($0, thumbnailKey(for: $0)) }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            var loaded = false
+            for (item, key) in pending where cache.image(forKey: key) == nil {
+                let url = item.thumbnailURL(relativeTo: root)
+                guard let data = try? Data(contentsOf: url),
+                      let image = cache.downsample(data: data, maxDimension: 160) else { continue }
+                cache.store(image, forKey: key)
+                loaded = true
+            }
+            guard loaded else { return }
+            Task { @MainActor in self?.objectWillChange.send() }
+        }
+    }
+
     // MARK: - Off-main file work
 
-    private static func copyIntoStorage(_ source: URL, root: URL, typeIdentifier: String) -> DropItem? {
+    nonisolated private static func copyIntoStorage(_ source: URL, root: URL, typeIdentifier: String) -> DropItem? {
         let id = UUID()
         let folder = root.appendingPathComponent(id.uuidString, isDirectory: true)
         let fileName = source.lastPathComponent
@@ -183,7 +227,7 @@ final class TrayManager: ObservableObject {
         }
     }
 
-    private static func stageCopy(_ source: URL, root: URL) -> URL? {
+    nonisolated private static func stageCopy(_ source: URL, root: URL) -> URL? {
         let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let destination = folder.appendingPathComponent(source.lastPathComponent)
         do {
@@ -196,7 +240,11 @@ final class TrayManager: ObservableObject {
         }
     }
 
-    private static func makeThumbnail(for item: DropItem, root: URL, completion: @escaping () -> Void) {
+    nonisolated private static func makeThumbnail(
+        for item: DropItem,
+        root: URL,
+        completion: @escaping @Sendable (NSImage?) -> Void
+    ) {
         let fileURL = item.url(relativeTo: root)
         let request = QLThumbnailGenerator.Request(
             fileAt: fileURL,
@@ -205,11 +253,31 @@ final class TrayManager: ObservableObject {
             representationTypes: .all
         )
         QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, _ in
-            defer { completion() }
-            guard let cg = representation?.cgImage else { return }
+            guard let cg = representation?.cgImage else { completion(nil); return }
             let rep = NSBitmapImageRep(cgImage: cg)
-            guard let data = rep.representation(using: .png, properties: [:]) else { return }
+            guard let data = rep.representation(using: .png, properties: [:]) else {
+                completion(nil)
+                return
+            }
             try? data.write(to: item.thumbnailURL(relativeTo: root), options: .atomic)
+            completion(NSImage(cgImage: cg, size: NSSize(width: 160, height: 160)))
         }
+    }
+}
+
+private final class URLAccumulator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [URL] = []
+
+    func append(_ url: URL) {
+        lock.lock()
+        storage.append(url)
+        lock.unlock()
+    }
+
+    var values: [URL] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
     }
 }

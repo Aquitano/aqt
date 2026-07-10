@@ -87,10 +87,14 @@ final class CalendarManager: ObservableObject {
         for reminder in CalendarReminders.pending(events: events, now: now, lead: reminderLead) {
             let delay = reminder.fireAt.timeIntervalSince(now)
             let title = reminder.title
+            let startsAt = reminder.fireAt.addingTimeInterval(reminderLead)
+            let leadMinutes = max(1, Int((reminderLead / 60).rounded()))
             reminderTasks.append(Task { [weak self] in
                 try? await Task.sleep(for: .seconds(delay))
-                guard !Task.isCancelled else { return }
-                self?.activities.peek(title: title, message: "Starts in 5 min",
+                // A sleeping Mac may resume after the meeting already started. Do
+                // not announce a stale reminder in that case.
+                guard !Task.isCancelled, Date() < startsAt else { return }
+                self?.activities.peek(title: title, message: "Starts in \(leadMinutes) min",
                                       symbol: "calendar", tint: .accent, ttl: 6)
             })
         }

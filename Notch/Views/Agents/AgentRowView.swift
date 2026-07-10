@@ -51,15 +51,16 @@ struct AgentRowView: View {
     }
 
     private var title: Text {
-        var text = Text(session.project)
+        let project = Text(session.project)
             .font(.body.weight(.semibold))
             .foregroundStyle(.white)
         if let prompt = session.lastPrompt, !prompt.isEmpty {
-            text = text + Text("  \(prompt)")
+            let detail = Text(prompt)
                 .font(.body)
                 .foregroundStyle(.white.opacity(0.5))
+            return Text("\(project)  \(detail)")
         }
-        return text
+        return project
     }
 
     private var metaRow: some View {

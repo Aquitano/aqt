@@ -1,12 +1,14 @@
 import Foundation
 
 /// JSON persistence rooted at ~/Library/Application Support/Notch.
-/// Small, synchronous, and only touched from background contexts for file I/O.
-final class Persistence {
+/// Small JSON persistence layer. Encoding happens at the call site; writes are
+/// serialized off-main so adding/removing tray items never stalls SwiftUI layout.
+final class Persistence: @unchecked Sendable {
 
     let rootDirectory: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let writeQueue = DispatchQueue(label: "com.aquitano.notch.persistence", qos: .utility)
 
     init() {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -37,6 +39,14 @@ final class Persistence {
     func save<T: Encodable>(_ value: T, to fileName: String) {
         let url = rootDirectory.appendingPathComponent(fileName)
         guard let data = try? encoder.encode(value) else { return }
-        try? data.write(to: url, options: .atomic)
+        writeQueue.async {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// Drain pending writes during orderly app termination so the last note or
+    /// tray mutation cannot be lost merely because disk I/O is asynchronous.
+    func flush() {
+        writeQueue.sync {}
     }
 }

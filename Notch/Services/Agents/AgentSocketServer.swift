@@ -13,11 +13,21 @@ import Foundation
 final class AgentSocketServer: @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "com.aquitano.notch.agentsocket")
-    /// Per-client reads run here so one slow/hung peer can't stall accepting or
-    /// delivering the others.
-    private let ioQueue = DispatchQueue(label: "com.aquitano.notch.agentsocket.io", attributes: .concurrent)
+    /// Bound client concurrency so malformed local peers cannot consume the entire
+    /// cooperative thread pool. Each read also has one total deadline below.
+    private let ioQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "com.aquitano.notch.agentsocket.io"
+        queue.qualityOfService = .utility
+        queue.maxConcurrentOperationCount = 16
+        return queue
+    }()
     private var listenFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
+    /// True only after this server successfully bound the filesystem node. A
+    /// second app instance that detects an existing live listener must never
+    /// unlink that listener's socket when it later tears down.
+    private var ownsSocket = false
     private var handler: (@Sendable (HookEnvelope, pid_t) -> Void)?
     private var permissionTimeoutHandler: (@Sendable (String) -> Void)?
     /// Open connections of blocked PermissionRequest hooks, by request id
@@ -45,15 +55,25 @@ final class AgentSocketServer: @unchecked Sendable {
         _ onEnvelope: @escaping @Sendable (HookEnvelope, pid_t) -> Void,
         onPermissionTimeout: @escaping @Sendable (String) -> Void
     ) {
+        guard listenFD < 0, acceptSource == nil else { return }
         let url = AgentSocket.url
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
+        chmod(url.deletingLastPathComponent().path, 0o700)
 
         let path = url.path
-        unlink(path) // clear a stale socket from a previous run
+        if FileManager.default.fileExists(atPath: path) {
+            // Never steal a live socket from an installed/dev instance. Only unlink
+            // when no listener accepts the probe, which identifies a stale node.
+            guard !Self.canConnect(to: path) else {
+                Log.agents.notice("agent socket already owned by another Notch instance")
+                return
+            }
+            unlink(path)
+        }
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else {
@@ -88,6 +108,7 @@ final class AgentSocketServer: @unchecked Sendable {
             close(fd)
             return
         }
+        ownsSocket = true
 
         chmod(path, 0o600)
 
@@ -99,6 +120,8 @@ final class AgentSocketServer: @unchecked Sendable {
         guard listen(fd, 8) == 0 else {
             Log.agents.error("agent socket: listen() failed errno=\(errno)")
             close(fd)
+            unlink(path)
+            ownsSocket = false
             return
         }
 
@@ -120,9 +143,13 @@ final class AgentSocketServer: @unchecked Sendable {
         listenFD = -1
         handler = nil
         permissionTimeoutHandler = nil
+        ioQueue.cancelAllOperations()
         for fd in pendingReplies.values { close(fd) }
         pendingReplies = [:]
-        unlink(AgentSocket.url.path)
+        if ownsSocket {
+            unlink(AgentSocket.url.path)
+            ownsSocket = false
+        }
     }
 
     // MARK: - Permission replies
@@ -138,9 +165,10 @@ final class AgentSocketServer: @unchecked Sendable {
             }
             var line = Data("{\"decision\":\"\(decision)\"}".utf8)
             line.append(0x0A)
+            let expectedByteCount = line.count
             let written = line.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
             close(fd)
-            DispatchQueue.main.async { completion(written == line.count) }
+            DispatchQueue.main.async { completion(written == expectedByteCount) }
         }
     }
 
@@ -171,7 +199,7 @@ final class AgentSocketServer: @unchecked Sendable {
             // Snapshot the handler on the accept queue, then hand the blocking
             // read off to a concurrent queue so peers don't serialize.
             let handler = self.handler
-            ioQueue.async { [weak self] in
+            ioQueue.addOperation { [weak self] in
                 guard let self else { close(client); return }
                 self.handleClient(client, handler: handler)
             }
@@ -182,14 +210,8 @@ final class AgentSocketServer: @unchecked Sendable {
         var keepOpen = false
         defer { if !keepOpen { close(client) } }
 
-        // Read with a short timeout so a hung peer can't wedge its io slot.
-        let flags = fcntl(client, F_GETFL, 0)
-        _ = fcntl(client, F_SETFL, flags & ~O_NONBLOCK)
-        var tv = timeval(tv_sec: 2, tv_usec: 0)
-        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
-
         let peer = peerPID(of: client)
-        let data = readAll(client)
+        let data = readAll(client, timeout: 2)
 
         for line in data.split(separator: 0x0A) where !line.isEmpty {
             guard let envelope = try? JSONDecoder().decode(HookEnvelope.self, from: Data(line)) else {
@@ -200,15 +222,30 @@ final class AgentSocketServer: @unchecked Sendable {
                 registerPendingReply(requestId, fd: client)
                 keepOpen = true
             }
-            let pid = envelope.pid.map { pid_t($0) } ?? peer
+            // In-process plugins connect directly, so the kernel peer pid is the
+            // trustworthy liveness handle. Short-lived hook tools may report their
+            // parent agent/shell pid, but those providers do not use pid liveness.
+            let pid: pid_t
+            if envelope.agent == AgentKind.openCode.rawValue || envelope.agent == AgentKind.ohMyPi.rawValue {
+                pid = peer
+            } else {
+                pid = envelope.pid.map { pid_t($0) } ?? peer
+            }
             handler?(envelope, pid)
         }
     }
 
-    private func readAll(_ fd: Int32) -> Data {
+    private func readAll(_ fd: Int32, timeout: TimeInterval) -> Data {
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 4096)
+        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(timeout * 1_000_000_000)
         while true {
+            let now = DispatchTime.now().uptimeNanoseconds
+            guard now < deadline else { break }
+            var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            let remainingMilliseconds = Int32(min((deadline - now) / 1_000_000, UInt64(Int32.max)))
+            let ready = poll(&descriptor, 1, remainingMilliseconds)
+            guard ready > 0, descriptor.revents & Int16(POLLIN | POLLHUP) != 0 else { break }
             let n = buffer.withUnsafeMutableBytes { read(fd, $0.baseAddress, $0.count) }
             guard n > 0 else { break } // 0 = EOF, <0 = error/timeout
             data.append(contentsOf: buffer[0..<n])
@@ -219,6 +256,28 @@ final class AgentSocketServer: @unchecked Sendable {
             if data.count > 1 << 20 { break } // 1 MB sanity cap
         }
         return data
+    }
+
+    private static func canConnect(to path: String) -> Bool {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        let bytes = path.utf8CString
+        guard bytes.count <= MemoryLayout.size(ofValue: address.sun_path) else { return false }
+        withUnsafeMutablePointer(to: &address.sun_path) { destination in
+            destination.withMemoryRebound(to: CChar.self, capacity: bytes.count) { chars in
+                bytes.withUnsafeBufferPointer { chars.update(from: $0.baseAddress!, count: bytes.count) }
+            }
+        }
+        let length = socklen_t(MemoryLayout<sockaddr_un>.size)
+        return withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(fd, $0, length) == 0
+            }
+        }
     }
 
     private func peerPID(of fd: Int32) -> pid_t {

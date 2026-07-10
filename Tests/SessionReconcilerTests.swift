@@ -198,7 +198,7 @@ final class SessionReconcilerTests: XCTestCase {
 
     func testPermissionRequestIdClearsOnTimeoutButNeedsAttentionRemains() {
         let out = run {
-            $0.scan = [scanned("s1", at: t0, busy: .tool)]
+            $0.scan = [scanned("s1", busy: .tool, at: t0)]
             $0.hookState = ["s1": hook("PermissionTimedOut", at: later)]
             $0.previous = ["s1": AgentSession(
                 id: "s1", kind: .claudeCode, project: "proj", cwd: "/Users/x/proj",

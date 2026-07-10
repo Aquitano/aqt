@@ -130,34 +130,32 @@ final class AppEnvironment: ObservableObject {
             Log.tray.notice("Share already presenting; ignoring reentrant request")
             return
         }
-        guard let service = sharingService(for: method, items: urls) else {
-            Log.tray.error("Share unavailable via \(method.rawValue)")
-            return
-        }
-
         let coordinator = ShareCoordinator { [weak self] in
             self?.windowController?.endShareSheet()
+            self?.tray.clearShareStaging()
             // Release after the delegate callback unwinds.
             DispatchQueue.main.async { self?.shareCoordinator = nil }
         }
         shareCoordinator = coordinator
-        service.delegate = coordinator
 
         windowController?.beginShareSheet {
-            service.perform(withItems: urls)
-        }
-    }
-
-    private func sharingService(for method: ShareMethod, items: [URL]) -> NSSharingService? {
-        switch method {
-        case .airdrop:
-            let service = NSSharingService(named: .sendViaAirDrop)
-            return (service?.canPerform(withItems: items) ?? false) ? service : nil
-        case .blip:
-            // No named constant for third-party services; match the one the system
-            // offers for these items by title.
-            return NSSharingService.sharingServices(forItems: items).first {
-                $0.title.localizedCaseInsensitiveContains(method.serviceMatch)
+            switch method {
+            case .airdrop:
+                guard let service = NSSharingService(named: .sendViaAirDrop),
+                      service.canPerform(withItems: urls) else {
+                    Log.tray.error("AirDrop is unavailable for these items")
+                    coordinator.finish()
+                    return
+                }
+                service.delegate = coordinator
+                service.perform(withItems: urls)
+            case .blip:
+                guard let view = self.windowController?.panelContentView else {
+                    Log.tray.error("Share picker has no anchor view")
+                    coordinator.finish()
+                    return
+                }
+                coordinator.presentPicker(items: urls, matching: method.serviceMatch, in: view)
             }
         }
     }
@@ -165,15 +163,57 @@ final class AppEnvironment: ObservableObject {
 
 /// Keeps the overlay panel key for the whole async AirDrop interaction, restoring
 /// the passive-overlay state only when the share finishes, fails, or is cancelled.
-private final class ShareCoordinator: NSObject, NSSharingServiceDelegate {
+@MainActor
+private final class ShareCoordinator: NSObject, NSSharingServiceDelegate, @preconcurrency NSSharingServicePickerDelegate {
     private let onFinish: () -> Void
+    private var picker: NSSharingServicePicker?
+    private var serviceMatch: String?
+    private var didFinish = false
     init(onFinish: @escaping () -> Void) { self.onFinish = onFinish }
 
+    func presentPicker(items: [URL], matching serviceMatch: String, in view: NSView) {
+        self.serviceMatch = serviceMatch
+        let picker = NSSharingServicePicker(items: items)
+        picker.delegate = self
+        self.picker = picker
+        picker.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
+    }
+
+    func sharingServicePicker(
+        _ sharingServicePicker: NSSharingServicePicker,
+        sharingServicesForItems items: [Any],
+        proposedSharingServices proposedServices: [NSSharingService]
+    ) -> [NSSharingService] {
+        guard let serviceMatch else { return proposedServices }
+        return proposedServices.filter { $0.title.localizedCaseInsensitiveContains(serviceMatch) }
+    }
+
+    func sharingServicePicker(
+        _ sharingServicePicker: NSSharingServicePicker,
+        delegateFor sharingService: NSSharingService
+    ) -> (any NSSharingServiceDelegate)? {
+        self
+    }
+
+    func sharingServicePicker(
+        _ sharingServicePicker: NSSharingServicePicker,
+        didChoose sharingService: NSSharingService?
+    ) {
+        if sharingService == nil { finish() }
+    }
+
     func sharingService(_ sharingService: NSSharingService, didShareItems items: [Any]) {
-        onFinish()
+        finish()
     }
 
     func sharingService(_ sharingService: NSSharingService, didFailToShareItems items: [Any], error: Error) {
+        finish()
+    }
+
+    func finish() {
+        guard !didFinish else { return }
+        didFinish = true
+        picker = nil
         onFinish()
     }
 }

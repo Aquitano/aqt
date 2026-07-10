@@ -98,6 +98,15 @@ struct ProcessLookup: Sendable {
         return pid_t(info.pbi_ppid)
     }
 
+    func startDate(of pid: pid_t) -> Date? {
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
+        let seconds = TimeInterval(info.pbi_start_tvsec)
+        let microseconds = TimeInterval(info.pbi_start_tvusec) / 1_000_000
+        return Date(timeIntervalSince1970: seconds + microseconds)
+    }
+
     /// Controlling terminal device of a process (e.g. "/dev/ttys003"), or nil if
     /// it has none (daemonized / no pty). The most portable cross-terminal handle.
     func controllingTTY(of pid: pid_t) -> String? {
@@ -122,6 +131,34 @@ struct ProcessLookup: Sendable {
             }
         }
         return path.isEmpty ? nil : normalize(path)
+    }
+
+    /// Paths of vnode-backed files currently open by a process. Claude normally
+    /// keeps its active transcript open, which gives us the missing pid → session-id
+    /// link when multiple sessions share one working directory.
+    func openFilePaths(of pid: pid_t) -> [String] {
+        let needed = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
+        guard needed > 0 else { return [] }
+        let capacity = Int(needed) / MemoryLayout<proc_fdinfo>.stride
+        var descriptors = [proc_fdinfo](repeating: proc_fdinfo(), count: capacity)
+        let written = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, &descriptors, needed)
+        guard written > 0 else { return [] }
+
+        let count = Int(written) / MemoryLayout<proc_fdinfo>.stride
+        return descriptors.prefix(count).compactMap { descriptor in
+            guard descriptor.proc_fdtype == UInt32(PROX_FDTYPE_VNODE) else { return nil }
+            var info = vnode_fdinfowithpath()
+            let size = Int32(MemoryLayout<vnode_fdinfowithpath>.size)
+            guard proc_pidfdinfo(pid, descriptor.proc_fd, PROC_PIDFDVNODEPATHINFO, &info, size) == size else {
+                return nil
+            }
+            let path = withUnsafePointer(to: &info.pvip.vip_path) {
+                $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) {
+                    String(cString: $0)
+                }
+            }
+            return path.isEmpty ? nil : normalize(path)
+        }
     }
 
     /// Walk pid → ppid (capped) until `match` accepts a process, returning that
