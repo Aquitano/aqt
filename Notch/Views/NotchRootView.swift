@@ -16,6 +16,7 @@ struct NotchRootView: View {
 
     @Environment(\.notchGeometry) private var notchSize
     @Environment(\.notchExpandedWidth) private var expandedWidth
+    @Environment(\.notchUsesVirtualChrome) private var usesVirtualChrome
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Namespace private var morph
@@ -63,7 +64,12 @@ struct NotchRootView: View {
         let hoverGrow = state.presentation == .compact && state.isHovering && !state.isDropActive
 
         return ZStack {
-            NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius, notchWidth: notchSize.width)
+            NotchShape(
+                topRadius: NotchMetrics.compactCornerRadius,
+                bottomRadius: bottomRadius,
+                usesVirtualChrome: usesVirtualChrome,
+                notchWidth: notchSize.width
+            )
                 .fill(.black)
                 .shadow(color: .black.opacity(expanded ? 0.45 : 0), radius: 18, y: 8)
 
@@ -98,12 +104,22 @@ struct NotchRootView: View {
                 }
             }
             .frame(width: size.width, height: size.height, alignment: .top)
-            .clipShape(NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius, notchWidth: notchSize.width))
+            .clipShape(NotchShape(
+                topRadius: NotchMetrics.compactCornerRadius,
+                bottomRadius: bottomRadius,
+                usesVirtualChrome: usesVirtualChrome,
+                notchWidth: notchSize.width
+            ))
         }
         .frame(width: size.width, height: size.height)
         .scaleEffect(hoverGrow ? 1.06 : 1.0, anchor: .top)
         .animation(NotchAnimation.hoverGrow(reduceMotion: state.reduceMotion), value: hoverGrow)
-        .contentShape(NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius, notchWidth: notchSize.width))
+        .contentShape(NotchShape(
+            topRadius: NotchMetrics.compactCornerRadius,
+            bottomRadius: bottomRadius,
+            usesVirtualChrome: usesVirtualChrome,
+            notchWidth: notchSize.width
+        ))
         .onHover { hovering in handleHover(hovering) }
         .frame(maxWidth: .infinity, alignment: .center)
     }

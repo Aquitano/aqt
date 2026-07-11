@@ -83,6 +83,7 @@ final class NotchPanelHost {
         let root = NotchRootView(showsHUD: showsHUD)
             .environment(\.notchGeometry, geometry.notchSize)
             .environment(\.notchExpandedWidth, geometry.expandedWidth)
+            .environment(\.notchUsesVirtualChrome, geometry.usesVirtualChrome)
             .environment(\.notchControlsSharedRendering, controlsSharedRendering)
             .injectNotchEnvironment(env, state: state)
         hostingView.rootView = AnyView(root)

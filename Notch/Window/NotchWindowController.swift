@@ -70,7 +70,10 @@ final class NotchWindowController {
 
         for display in targets {
             let profile = env.settings.displayProfile(for: display.key)
-            let geometry = ScreenGeometry.make(for: display, profile: profile)
+            let geometry = ScreenGeometry.make(
+                for: display, profile: profile,
+                virtualMode: env.settings.virtualNotchMode
+            )
             if let host = hosts[display.key] {
                 host.update(
                     geometry: geometry,
@@ -268,6 +271,12 @@ final class NotchWindowController {
             .store(in: &cancellables)
 
         env.settings.$displayProfiles
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.reconcileHosts() }
+            .store(in: &cancellables)
+
+        env.settings.$virtualNotchMode
             .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.reconcileHosts() }

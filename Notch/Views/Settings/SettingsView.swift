@@ -58,6 +58,12 @@ struct SettingsView: View {
 
             if let display = selectedDisplay {
                 Divider()
+                Picker("Virtual notch", selection: $settings.virtualNotchMode) {
+                    ForEach(VirtualNotchMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                VirtualNotchPreview(display: display, mode: settings.virtualNotchMode)
                 Picker("Customize", selection: $customizedDisplayKey) {
                     ForEach(displays, id: \.key) { option in
                         Text(option.name).tag(option.key)
@@ -93,7 +99,7 @@ struct SettingsView: View {
         } header: {
             Text("Display")
         } footer: {
-            Text("Built-in falls back to the main display while unavailable. Notchless screens use a virtual pill; offsets are limited to virtual pills so content never moves away from a camera housing.")
+            Text("Automatic uses pill chrome on notchless screens. Physical camera housing space is always protected, including Always mode. Built-in falls back to the main display while unavailable.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -502,6 +508,63 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+private struct VirtualNotchPreview: View {
+    let display: DisplayDescriptor
+    let mode: VirtualNotchMode
+
+    private var virtual: Bool { mode.usesVirtualChrome(for: display) }
+
+    private var description: String {
+        if display.hasPhysicalNotch {
+            return virtual ? "Virtual chrome around physical notch" : "Physical notch chrome"
+        }
+        return virtual ? "Detached virtual pill" : "Top-edge notch"
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack(alignment: .top) {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(.black.opacity(0.14))
+                if virtual {
+                    Capsule()
+                        .fill(.black)
+                        .frame(width: 48, height: 13)
+                        .padding(.top, 5)
+                } else {
+                    UnevenRoundedRectangle(
+                        bottomLeadingRadius: 6, bottomTrailingRadius: 6
+                    )
+                    .fill(.black)
+                    .frame(width: 48, height: 13)
+                }
+                if display.hasPhysicalNotch {
+                    Capsule()
+                        .fill(.gray.opacity(0.65))
+                        .frame(width: 22, height: 3)
+                        .padding(.top, virtual ? 8 : 3)
+                }
+            }
+            .frame(width: 92, height: 48)
+            .overlay {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(.secondary.opacity(0.25), lineWidth: 1)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(display.name)
+                    .lineLimit(1)
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(display.name), \(description)")
     }
 }
 

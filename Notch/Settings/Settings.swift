@@ -48,6 +48,7 @@ final class Settings: ObservableObject {
         static let showNoteWidget = "showNoteWidget"
         static let displayPlacement = "displayPlacement"
         static let followActiveDisplay = "followActiveDisplay"
+        static let virtualNotchMode = "virtualNotchMode"
         static let displayProfiles = "displayProfiles"
     }
 
@@ -107,6 +108,9 @@ final class Settings: ObservableObject {
     @Published var followActiveDisplay: Bool {
         didSet { defaults.set(followActiveDisplay, forKey: Key.followActiveDisplay) }
     }
+    @Published var virtualNotchMode: VirtualNotchMode {
+        didSet { defaults.set(virtualNotchMode.rawValue, forKey: Key.virtualNotchMode) }
+    }
     @Published var displayProfiles: [DisplayProfile] {
         didSet {
             if let data = try? JSONEncoder().encode(displayProfiles) {
@@ -164,6 +168,7 @@ final class Settings: ObservableObject {
             Key.showNoteWidget: false,
             Key.displayPlacement: DisplayPlacement.builtIn.rawValue,
             Key.followActiveDisplay: false,
+            Key.virtualNotchMode: VirtualNotchMode.automatic.rawValue,
         ])
         self.showHUD = defaults.bool(forKey: Key.showHUD)
         self.temperatureUnit = WeatherSnapshot.TemperatureUnit(
@@ -216,6 +221,9 @@ final class Settings: ObservableObject {
             rawValue: defaults.string(forKey: Key.displayPlacement) ?? "builtIn"
         ) ?? .builtIn
         self.followActiveDisplay = defaults.bool(forKey: Key.followActiveDisplay)
+        self.virtualNotchMode = VirtualNotchMode(
+            rawValue: defaults.string(forKey: Key.virtualNotchMode) ?? "automatic"
+        ) ?? .automatic
         self.displayProfiles = defaults.data(forKey: Key.displayProfiles)
             .flatMap { try? JSONDecoder().decode([DisplayProfile].self, from: $0) } ?? []
     }

@@ -14,6 +14,10 @@ private struct NotchControlsSharedRenderingKey: EnvironmentKey {
     static let defaultValue = true
 }
 
+private struct NotchVirtualChromeKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
     /// The physical notch size, injected by the window controller.
     var notchGeometry: CGSize {
@@ -33,6 +37,12 @@ extension EnvironmentValues {
     var notchControlsSharedRendering: Bool {
         get { self[NotchControlsSharedRenderingKey.self] }
         set { self[NotchControlsSharedRenderingKey.self] = newValue }
+    }
+
+    /// Whether this host draws detached pill chrome instead of a top-edge notch.
+    var notchUsesVirtualChrome: Bool {
+        get { self[NotchVirtualChromeKey.self] }
+        set { self[NotchVirtualChromeKey.self] = newValue }
     }
 }
 

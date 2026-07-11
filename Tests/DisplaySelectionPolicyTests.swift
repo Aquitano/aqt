@@ -119,6 +119,24 @@ final class DisplaySelectionPolicyTests: XCTestCase {
         XCTAssertEqual(profile.expandedWidthAdjustment, 180)
     }
 
+    func testAutomaticVirtualChromeOnlyTargetsNotchlessDisplays() {
+        XCTAssertFalse(VirtualNotchMode.automatic.usesVirtualChrome(
+            for: display("built-in", builtIn: true)
+        ))
+        XCTAssertTrue(VirtualNotchMode.automatic.usesVirtualChrome(
+            for: display("external")
+        ))
+    }
+
+    func testExplicitVirtualModesIgnoreDisplayHardware() {
+        let physical = display("built-in", builtIn: true)
+        let notchless = display("external")
+        XCTAssertTrue(VirtualNotchMode.always.usesVirtualChrome(for: physical))
+        XCTAssertTrue(VirtualNotchMode.always.usesVirtualChrome(for: notchless))
+        XCTAssertFalse(VirtualNotchMode.never.usesVirtualChrome(for: physical))
+        XCTAssertFalse(VirtualNotchMode.never.usesVirtualChrome(for: notchless))
+    }
+
     func testStableKeySurvivesReconnectWhenSerialExists() {
         let before = DisplayDescriptor.stableKey(
             unitNumber: 7, vendor: 10, model: 20, serial: 30,

@@ -20,6 +20,32 @@ enum DisplayPlacement: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Chooses whether a display uses detached pill chrome or the traditional
+/// top-edge notch shape. Geometry remains physical-notch-safe in every mode.
+enum VirtualNotchMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case automatic
+    case always
+    case never
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .automatic: return "Automatic"
+        case .always: return "Always"
+        case .never: return "Never"
+        }
+    }
+
+    func usesVirtualChrome(for display: DisplayDescriptor) -> Bool {
+        switch self {
+        case .automatic: return !display.hasPhysicalNotch
+        case .always: return true
+        case .never: return false
+        }
+    }
+}
+
 /// Per-display layout tuning. Adjustments are relative to the measured physical
 /// notch or the standard virtual pill and are clamped before use.
 struct DisplayProfile: Codable, Equatable, Sendable, Identifiable {

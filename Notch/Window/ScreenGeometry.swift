@@ -12,6 +12,7 @@ struct ScreenGeometry: Equatable {
     /// Notch size in the panel's own (top-anchored) layout terms.
     let notchSize: CGSize
     let hasRealNotch: Bool
+    let usesVirtualChrome: Bool
     let expandedWidth: CGFloat
 
     static func == (lhs: ScreenGeometry, rhs: ScreenGeometry) -> Bool {
@@ -29,7 +30,8 @@ struct ScreenGeometry: Equatable {
         placement: DisplayPlacement,
         followActiveDisplay: Bool,
         activeDisplayKey: String?,
-        profiles: [DisplayProfile]
+        profiles: [DisplayProfile],
+        virtualMode: VirtualNotchMode = .automatic
     ) -> ScreenGeometry {
         let selection = DisplaySelectionPolicy.resolve(
             displays: DisplayInventory.current(), placement: placement,
@@ -39,10 +41,14 @@ struct ScreenGeometry: Equatable {
         let target = selection.targets.first ?? DisplayInventory.fallback()
         let profile = profiles.first(where: { $0.displayKey == target.key })
             ?? .standard(for: target.key)
-        return make(for: target, profile: profile)
+        return make(for: target, profile: profile, virtualMode: virtualMode)
     }
 
-    static func make(for display: DisplayDescriptor, profile: DisplayProfile) -> ScreenGeometry {
+    static func make(
+        for display: DisplayDescriptor,
+        profile: DisplayProfile,
+        virtualMode: VirtualNotchMode = .automatic
+    ) -> ScreenGeometry {
         let profile = profile.normalized
         let hasRealNotch = display.hasPhysicalNotch
         let baseHeight = hasRealNotch ? display.safeAreaTop : NotchMetrics.fallbackNotchSize.height
@@ -99,6 +105,7 @@ struct ScreenGeometry: Equatable {
             panelFrame: panelFrame,
             notchSize: CGSize(width: notchWidth, height: notchHeight),
             hasRealNotch: hasRealNotch,
+            usesVirtualChrome: virtualMode.usesVirtualChrome(for: display),
             expandedWidth: expandedWidth
         )
     }

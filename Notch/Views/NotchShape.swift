@@ -6,6 +6,7 @@ import SwiftUI
 struct NotchShape: Shape {
     var topRadius: CGFloat
     var bottomRadius: CGFloat
+    var usesVirtualChrome = false
 
     /// Physical notch width. The concave top shoulders inset the body by the top
     /// radius on each side, so the *visible* body is narrower than `rect.width`.
@@ -32,6 +33,33 @@ struct NotchShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
+        if usesVirtualChrome {
+            let tr = min(topRadius, min(rect.width, rect.height) / 2)
+            let br = min(bottomRadius, min(rect.width, rect.height) / 2)
+            path.move(to: CGPoint(x: rect.minX + tr, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX - tr, y: rect.minY))
+            path.addQuadCurve(
+                to: CGPoint(x: rect.maxX, y: rect.minY + tr),
+                control: CGPoint(x: rect.maxX, y: rect.minY)
+            )
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - br))
+            path.addQuadCurve(
+                to: CGPoint(x: rect.maxX - br, y: rect.maxY),
+                control: CGPoint(x: rect.maxX, y: rect.maxY)
+            )
+            path.addLine(to: CGPoint(x: rect.minX + br, y: rect.maxY))
+            path.addQuadCurve(
+                to: CGPoint(x: rect.minX, y: rect.maxY - br),
+                control: CGPoint(x: rect.minX, y: rect.maxY)
+            )
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + tr))
+            path.addQuadCurve(
+                to: CGPoint(x: rect.minX + tr, y: rect.minY),
+                control: CGPoint(x: rect.minX, y: rect.minY)
+            )
+            path.closeSubpath()
+            return path
+        }
         let tr: CGFloat = notchWidth > 0
             ? NotchMetrics.shoulderInset(width: rect.width, notchWidth: notchWidth)
             : min(topRadius, rect.width / 2)
