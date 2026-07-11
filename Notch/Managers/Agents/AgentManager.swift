@@ -219,8 +219,15 @@ final class AgentManager: ObservableObject {
             return
         }
         if envelope.hook == "PermissionRequest", let requestId = envelope.requestId {
+            let request = AgentPermissionWireValidator.validated(
+                envelope.permission, matchingRequestId: requestId
+            )
             pendingPermissionRequests[requestId] = PendingPermission(
-                kind: kind, sessionId: envelope.sessionId, cwd: envelope.cwd, pid: pid
+                kind: kind, sessionId: envelope.sessionId, cwd: envelope.cwd, pid: pid,
+                request: request,
+                risk: request.map {
+                    PermissionRiskClassifier.classify(request: $0, cwd: envelope.cwd)
+                }
             )
         }
         provider(for: kind)?.ingest(envelope, pid: pid)
@@ -297,4 +304,6 @@ private struct PendingPermission {
     let sessionId: String?
     let cwd: String?
     let pid: pid_t
+    let request: AgentPermissionRequest?
+    let risk: AgentPermissionRisk?
 }

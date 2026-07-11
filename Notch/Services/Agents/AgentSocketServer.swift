@@ -263,11 +263,13 @@ final class AgentSocketServer: @unchecked Sendable {
             let n = buffer.withUnsafeMutableBytes { read(fd, $0.baseAddress, $0.count) }
             guard n > 0 else { break } // 0 = EOF, <0 = error/timeout
             data.append(contentsOf: buffer[0..<n])
+            // Both bundled clients enforce this cap before sending. Reject a
+            // larger local-peer envelope rather than decoding unbounded input.
+            if data.count > AgentPermissionLimits.maximumEnvelopeBytes { return Data() }
             // A trailing newline ends the batch: every client writes whole lines,
             // and returning here (instead of waiting for EOF) both avoids the 2s
             // timeout and leaves a blocking permission client's connection usable.
             if data.last == 0x0A { break }
-            if data.count > 1 << 20 { break } // 1 MB sanity cap
         }
         return data
     }

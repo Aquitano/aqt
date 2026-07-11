@@ -177,6 +177,9 @@ struct HookEnvelope: Codable, Sendable {
     var parent: String?
     /// Correlates a blocking PermissionRequest hook with the app's decision reply.
     var requestId: String?
+    /// Versioned, allowlisted detail for a permission request. Optional so hooks
+    /// and app versions predating structured requests remain wire-compatible.
+    var permission: AgentPermissionRequest? = nil
 
     // Account-wide usage (status == "usage"), captured from Claude's statusLine.
     var fiveHourUsed: Double?

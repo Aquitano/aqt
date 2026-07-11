@@ -40,6 +40,14 @@ enum HookClient {
     /// so Claude falls back to its normal terminal prompt.
     private static func runClaudePermission(_ json: [String: Any]) -> Never {
         let tool = json["tool_name"] as? String
+        let requestId = UUID().uuidString
+        let requestedAt = Date()
+        let permission = AgentPermissionExtractor.makeRequest(
+            toolName: tool,
+            input: json["tool_input"] as? [String: Any],
+            requestId: requestId,
+            requestedAt: requestedAt
+        )
         let envelope = HookEnvelope(
             agent: AgentKind.claudeCode.rawValue,
             hook: "PermissionRequest",
@@ -49,7 +57,8 @@ enum HookClient {
             message: permissionSummary(tool: tool, input: json["tool_input"] as? [String: Any]),
             pid: getppid(),
             tool: tool,
-            requestId: UUID().uuidString
+            requestId: requestId,
+            permission: permission
         )
         guard let reply = sendAwaitingReply(envelope, timeoutSeconds: 120),
               let object = (try? JSONSerialization.jsonObject(with: reply)) as? [String: Any],
@@ -199,6 +208,7 @@ enum HookClient {
     private static func connectAndWrite(_ envelope: HookEnvelope) -> Int32? {
         guard var line = try? JSONEncoder().encode(envelope) else { return nil }
         line.append(0x0A)
+        guard line.count <= AgentPermissionLimits.maximumEnvelopeBytes else { return nil }
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return nil }

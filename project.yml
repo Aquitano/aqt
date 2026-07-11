@@ -83,6 +83,7 @@ targets:
     platform: macOS
     sources:
       - path: Notch/Model/Agents/AgentModels.swift
+      - path: Notch/Model/Agents/AgentPermission.swift
       - path: Notch/Services/Agents/AgentSocketPath.swift
       - path: Notch/App/HookClient.swift
       - path: HookTool
@@ -109,6 +110,7 @@ targets:
     sources:
       - path: Tests
       - path: Notch/Model/Agents/AgentModels.swift
+      - path: Notch/Model/Agents/AgentPermission.swift
       - path: Notch/Model/Agents/ScannedSession.swift
       - path: Notch/Services/Agents/StatusReducer.swift
       - path: Notch/Services/Agents/TranscriptParser.swift
