@@ -268,7 +268,9 @@ final class NotchWindowController {
             notch: geometry.notchSize,
             panelFrame: geometry.panelFrame,
             tab: env.state.expandedTab,
-            hasInfoRow: env.settings.showWeatherWidget || env.settings.showCalendarWidget,
+            // Keep hit-testing in lockstep with the SwiftUI layout. Shortcuts and
+            // Note occupy this same row even when Weather/Calendar are disabled.
+            hasInfoRow: env.settings.hasInfoRowWidgets,
             trayEmpty: env.tray.items.isEmpty,
             compact: NotchLayout.compactContent(
                 hasMedia: env.settings.showCompactNowPlaying && !env.media.track.isEmpty,
