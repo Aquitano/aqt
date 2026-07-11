@@ -123,6 +123,9 @@ targets:
       - path: Notch/Model/MediaModels.swift
       - path: Notch/Model/SystemModels.swift
       - path: Notch/Model/DisplayModels.swift
+      - path: Notch/Model/DropItem.swift
+      - path: Notch/Services/TrayIngestionPipeline.swift
+      - path: Notch/Services/Persistence.swift
       - path: Notch/Managers/Media/MediaAdapterPayload.swift
       - path: Notch/Managers/Audio/AudioLevelAnalysis.swift
       - path: Notch/Window/HitRegion.swift

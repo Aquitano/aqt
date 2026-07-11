@@ -11,6 +11,8 @@ import QuickLookThumbnailing
 final class TrayManager: ObservableObject {
 
     @Published private(set) var items: [DropItem] = []
+    @Published private(set) var collections: [TrayCollection] = [.shelf]
+    @Published private(set) var loadIssue: String?
 
     let storageRoot: URL
     /// Temp copies for share-on-drop, kept out of the shelf and wiped each launch.
@@ -20,6 +22,9 @@ final class TrayManager: ObservableObject {
     private let settings: Settings
     private unowned let activities: ActivityManager
     private let storeFile = "tray.json"
+    private let legacyBackupFile = "tray.v1.backup.json"
+    private let corruptBackupFile = "tray.corrupt.backup.json"
+    private let ingestionPipeline: TrayIngestionPipeline
     private var cancellables = Set<AnyCancellable>()
 
     init(persistence: Persistence, imageCache: ImageCache, settings: Settings, activities: ActivityManager) {
@@ -29,13 +34,69 @@ final class TrayManager: ObservableObject {
         self.activities = activities
         self.storageRoot = persistence.directory(named: "CopiedItems")
         self.shareStagingRoot = persistence.directory(named: "ShareStaging")
-        self.items = persistence.load([DropItem].self, from: storeFile) ?? []
+        self.ingestionPipeline = TrayIngestionPipeline(storageRoot: self.storageRoot)
+        let storageRoot = self.storageRoot
+
+        if let data = persistence.loadData(from: storeFile) {
+            if let store = persistence.decode(TrayStore.self, from: data),
+               store.schemaVersion == TrayStore.currentSchemaVersion {
+                let result = TrayStoreValidation.visibleStore(
+                    store, fileExists: { relativePath in
+                        FileManager.default.fileExists(
+                            atPath: storageRoot.appendingPathComponent(relativePath).path
+                        ) && FileManager.default.isReadableFile(
+                            atPath: storageRoot.appendingPathComponent(relativePath).path
+                        )
+                    }
+                )
+                self.collections = result.store.collections
+                self.items = result.store.items
+                if result.quarantinedItemCount > 0 {
+                    self.loadIssue = "\(result.quarantinedItemCount) missing tray item(s) were hidden."
+                }
+                // A successfully decoded v2 store proves the prior migration
+                // survived one clean launch, so its one-time backup may go.
+                if result.quarantinedItemCount == 0 {
+                    persistence.removeFile(named: legacyBackupFile)
+                }
+            } else if let legacy = persistence.decode([LegacyDropItem].self, from: data) {
+                let result = TrayStoreMigration.migrate(
+                    legacy, ttlDays: settings.trayTTLDays,
+                    fileExists: { relativePath in
+                        FileManager.default.fileExists(
+                            atPath: storageRoot.appendingPathComponent(relativePath).path
+                        ) && FileManager.default.isReadableFile(
+                            atPath: storageRoot.appendingPathComponent(relativePath).path
+                        )
+                    }
+                )
+                if persistence.writeBackupIfMissing(data, to: legacyBackupFile),
+                   persistence.saveSynchronously(result.store, to: storeFile) {
+                    self.collections = result.store.collections
+                    self.items = result.store.items
+                    if result.quarantinedItemCount > 0 {
+                        self.loadIssue = "\(result.quarantinedItemCount) missing tray item(s) were hidden."
+                    }
+                } else {
+                    self.loadIssue = "The existing tray could not be migrated safely."
+                }
+            } else {
+                _ = persistence.writeBackupIfMissing(data, to: corruptBackupFile)
+                self.loadIssue = "The tray index is unreadable; stored files were left untouched."
+            }
+        }
     }
 
     func start() {
         pruneExpired()
         clearStaging()
         preloadThumbnails()
+        if let loadIssue {
+            activities.peek(
+                title: "Tray needs attention", message: loadIssue,
+                symbol: "exclamationmark.triangle.fill", tint: .warning
+            )
+        }
 
         settings.$trayTTLDays
             .dropFirst()
@@ -64,33 +125,65 @@ final class TrayManager: ObservableObject {
             UTType($0)?.conforms(to: .data) ?? false
         }) ?? UTType.data.identifier
 
+        let pipeline = ingestionPipeline
+        let context = ingestionContext(collectionID: TrayCollection.shelfID)
         provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { [weak self] url, error in
             guard let self, let url else {
-                if let error { Log.tray.error("Drop failed: \(error.localizedDescription)") }
+                if error != nil { Log.tray.error("Drop provider failed") }
                 return
             }
             // Copy bytes out synchronously; `url` dies when this handler returns.
-            guard let item = Self.copyIntoStorage(url, root: self.storageRoot, typeIdentifier: typeIdentifier) else { return }
-            // Add immediately — the shelf entry and "Added to Shelf" peek shouldn't
-            // wait on thumbnailing. The thumbnail reads the persisted copy, not the
-            // dying drag URL, so it can finish whenever; nudge the shelf to re-read
-            // when it lands.
-            Task { @MainActor [weak self] in self?.add(item) }
-            Self.makeThumbnail(for: item, root: self.storageRoot) { [weak self] image in
-                Task { @MainActor in
-                    guard let self else { return }
-                    if let image { self.imageCache.store(image, forKey: self.thumbnailKey(for: item)) }
-                    self.objectWillChange.send()
-                }
+            guard let item = try? pipeline.materialize(
+                .file(url, typeIdentifier: typeIdentifier), context: context
+            ) else {
+                Log.tray.error("Tray materialization failed")
+                return
+            }
+            Task { @MainActor [weak self] in self?.add([item]) }
+        }
+    }
+
+    /// Common entry point for paste, screenshots, generated archives, and any
+    /// future source that already owns stable bytes or a file URL.
+    func ingest(
+        _ inputs: [TrayIngestionInput],
+        collectionID: UUID = TrayCollection.shelfID
+    ) {
+        guard !inputs.isEmpty else { return }
+        let pipeline = ingestionPipeline
+        let context = ingestionContext(collectionID: collectionID)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let results = inputs.compactMap { input in
+                try? pipeline.materialize(input, context: context)
+            }
+            Task { @MainActor [weak self] in
+                self?.add(results)
             }
         }
     }
 
-    private func add(_ item: DropItem) {
-        items.insert(item, at: 0)
+    private func add(_ newItems: [DropItem]) {
+        guard !newItems.isEmpty else { return }
+        items.insert(contentsOf: newItems, at: 0)
         persist()
-        activities.peek(title: "Added to Shelf", message: item.fileName,
-                        symbol: "tray.and.arrow.down.fill", tint: .success)
+        let message = newItems.count == 1
+            ? newItems[0].displayName
+            : "\(newItems.count) items"
+        activities.peek(
+            title: "Added to Shelf", message: message,
+            symbol: "tray.and.arrow.down.fill", tint: .success
+        )
+        for item in newItems {
+            Self.makeThumbnail(for: item, root: storageRoot) { [weak self] image in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let image {
+                        self.imageCache.store(image, forKey: self.thumbnailKey(for: item))
+                    }
+                    self.objectWillChange.send()
+                }
+            }
+        }
     }
 
     /// Copy dropped files into the staging dir for an immediate share (the drop
@@ -151,13 +244,20 @@ final class TrayManager: ObservableObject {
     // MARK: - Persistence / TTL
 
     private func persist() {
-        persistence.save(items, to: storeFile)
+        persistence.save(
+            TrayStore(
+                schemaVersion: TrayStore.currentSchemaVersion,
+                collections: collections, items: items
+            ).normalized,
+            to: storeFile
+        )
     }
 
     private func pruneExpired() {
-        guard settings.trayTTLDays > 0 else { return }
-        let cutoff = Date().addingTimeInterval(-Double(settings.trayTTLDays) * 86_400)
-        let expired = items.filter { $0.addedAt < cutoff }
+        let now = Date()
+        let expired = items.filter {
+            !$0.isPinned && $0.expiresAt.map { $0 <= now } == true
+        }
         guard !expired.isEmpty else { return }
         let expiredIDs = Set(expired.map(\.id))
         for item in expired {
@@ -166,6 +266,19 @@ final class TrayManager: ObservableObject {
         }
         items.removeAll { expiredIDs.contains($0.id) }
         persist()
+    }
+
+    private func ingestionContext(collectionID: UUID) -> TrayIngestionContext {
+        let addedAt = Date()
+        let days = collections.first(where: { $0.id == collectionID })?
+            .expiryDaysOverride ?? settings.trayTTLDays
+        return TrayIngestionContext(
+            collectionID: collectionID,
+            expiresAt: days > 0
+                ? addedAt.addingTimeInterval(Double(days) * 86_400)
+                : nil,
+            addedAt: addedAt
+        )
     }
 
     /// Staged share copies are transient; clear any left over from a prior run.
@@ -203,29 +316,6 @@ final class TrayManager: ObservableObject {
     }
 
     // MARK: - Off-main file work
-
-    nonisolated private static func copyIntoStorage(_ source: URL, root: URL, typeIdentifier: String) -> DropItem? {
-        let id = UUID()
-        let folder = root.appendingPathComponent(id.uuidString, isDirectory: true)
-        let fileName = source.lastPathComponent
-        let destination = folder.appendingPathComponent(fileName)
-        do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: source, to: destination)
-            let size = (try? destination.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            return DropItem(
-                id: id,
-                fileName: fileName,
-                relativePath: "\(id.uuidString)/\(fileName)",
-                byteSize: Int64(size),
-                addedAt: Date(),
-                typeIdentifier: typeIdentifier
-            )
-        } catch {
-            Log.tray.error("Copy into storage failed: \(error.localizedDescription)")
-            return nil
-        }
-    }
 
     nonisolated private static func stageCopy(_ source: URL, root: URL) -> URL? {
         let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
