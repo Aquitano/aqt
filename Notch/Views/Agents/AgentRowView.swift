@@ -6,8 +6,6 @@ import SwiftUI
 struct AgentRowView: View {
     let session: AgentSession
     let onJump: () -> Void
-    /// Answer the pending permission request (true = allow). Nil hides the actions.
-    var onPermission: ((Bool) -> Void)?
 
     var body: some View {
         Button(action: onJump) {
@@ -32,9 +30,6 @@ struct AgentRowView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    if session.permissionRequestId != nil, let onPermission {
-                        permissionActions(onPermission)
-                    }
                 }
             }
             .padding(.horizontal, 14)
@@ -87,31 +82,6 @@ struct AgentRowView: View {
                 .monospacedDigit()
                 .foregroundStyle(.white.opacity(0.45))
         }
-    }
-
-    /// Inline Approve / Deny for a pending permission request. The row itself is
-    /// a jump button, so these stop propagation via their own button styles.
-    private func permissionActions(_ respond: @escaping (Bool) -> Void) -> some View {
-        HStack(spacing: 8) {
-            if let detail = session.detail, !detail.isEmpty {
-                Text(detail)
-                    .font(.subheadline.monospaced())
-                    .foregroundStyle(.orange.opacity(0.9))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            Spacer(minLength: 6)
-            Button("Deny") { respond(false) }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .tint(.red)
-            Button("Approve") { respond(true) }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .tint(.green)
-        }
-        .padding(.top, 2)
-        .accessibilityElement(children: .contain)
     }
 
     private func badge(_ text: String, tint: Color) -> some View {

@@ -333,3 +333,77 @@ final class PermissionRiskClassifierTests: XCTestCase {
         XCTAssertTrue(result.reasons.contains(reason), "Missing \(reason)", file: file, line: line)
     }
 }
+
+final class AgentPermissionStateMachineTests: XCTestCase {
+    func testPendingAcceptsExactlyOneDecision() {
+        let responding = AgentPermissionStateMachine.transition(
+            from: .pending, event: .respond(.allow)
+        )
+        XCTAssertEqual(responding, .responding(.allow))
+        XCTAssertNil(AgentPermissionStateMachine.transition(
+            from: responding!, event: .respond(.deny)
+        ))
+    }
+
+    func testDeliveryUsesOriginalDecision() {
+        XCTAssertEqual(AgentPermissionStateMachine.transition(
+            from: .responding(.allow), event: .delivered
+        ), .approved)
+        XCTAssertEqual(AgentPermissionStateMachine.transition(
+            from: .responding(.deny), event: .delivered
+        ), .denied)
+    }
+
+    func testDeliveryFailureAndExpiryAreTerminal() {
+        let failed = AgentPermissionStateMachine.transition(
+            from: .responding(.allow), event: .deliveryFailed
+        )
+        XCTAssertEqual(failed, .deliveryFailed)
+        XCTAssertEqual(AgentPermissionStateMachine.transition(
+            from: failed!, event: .expire
+        ), .expired)
+        XCTAssertNil(AgentPermissionStateMachine.transition(
+            from: .expired, event: .delivered
+        ))
+    }
+
+    func testUnsupportedProviderCannotBecomeActionable() {
+        let pending = fixture(canRespond: false, state: .pending)
+        XCTAssertFalse(pending.isActionable(at: Date(timeIntervalSince1970: 1_001)))
+    }
+
+    func testDeadlineDisablesPendingRequest() {
+        let pending = fixture(canRespond: true, state: .pending)
+        XCTAssertTrue(pending.isActionable(at: Date(timeIntervalSince1970: 1_001)))
+        XCTAssertFalse(pending.isActionable(at: Date(timeIntervalSince1970: 1_121)))
+    }
+
+    func testAuditSummaryIncludesEvidenceAndActionability() {
+        let summary = AgentPermissionAuditSummary.make(pending: fixture(), session: nil)
+        XCTAssertTrue(summary.contains("Agent: Claude Code"))
+        XCTAssertTrue(summary.contains("Command: swift test"))
+        XCTAssertTrue(summary.contains("Affected paths:"))
+        XCTAssertTrue(summary.contains("Risk: low"))
+    }
+
+    private func fixture(
+        canRespond: Bool = true,
+        state: AgentPermissionRequestState = .pending
+    ) -> PendingAgentPermission {
+        let requested = Date(timeIntervalSince1970: 1_000)
+        let request = AgentPermissionRequest(
+            schemaVersion: 1, requestId: "r", toolName: "Bash", operation: .execute,
+            command: "swift test", paths: ["Package.swift"], pathSource: .explicit,
+            url: nil, description: nil, rawInputSummary: nil,
+            requestedAt: requested, replyDeadline: requested.addingTimeInterval(120),
+            commandTruncated: false, inputTruncated: false
+        )
+        return PendingAgentPermission(
+            id: "r", kind: .claudeCode, sessionId: "s", cwd: "/project", pid: 1,
+            request: request,
+            risk: AgentPermissionRisk(level: .low, reasons: [.knownLocalBuild]),
+            receivedAt: requested, replyDeadline: requested.addingTimeInterval(120),
+            canRespond: canRespond, state: state
+        )
+    }
+}

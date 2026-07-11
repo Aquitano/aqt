@@ -1,5 +1,6 @@
 import Combine
 import SwiftUI
+import AppKit
 
 /// Aggregates the per-agent providers, owns the shared socket + process lookup +
 /// notifier, reconciles their sessions into one published list, and mirrors the
@@ -14,6 +15,7 @@ final class AgentManager: ObservableObject {
     /// Last enable/install failure, for the Settings UI. Cleared on the next
     /// successful toggle so stale errors don't linger.
     @Published private(set) var integrationError: String?
+    @Published private(set) var permissionRequests: [String: PendingAgentPermission] = [:]
 
     private let activities: ActivityManager
     private let settings: Settings
@@ -23,7 +25,9 @@ final class AgentManager: ObservableObject {
     private let processLookup = ProcessLookup()
     private var providers: [AgentProviding] = []
     private var sessionsByKind: [AgentKind: [AgentSession]] = [:]
-    private var pendingPermissionRequests: [String: PendingPermission] = [:]
+    private var permissionDeadlineTasks: [String: Task<Void, Never>] = [:]
+    private var permissionCleanupTasks: [String: Task<Void, Never>] = [:]
+    private var permissionApprovalCancellable: AnyCancellable?
     private var streamTask: Task<Void, Never>?
     private var streamGeneration = 0
 
@@ -39,6 +43,11 @@ final class AgentManager: ObservableObject {
         self.activities = activities
         self.settings = settings
         self.notifier = AgentNotifier(activities: activities, settings: settings)
+        self.permissionApprovalCancellable = settings.$agentPermissionApproval
+            .dropFirst()
+            .sink { [weak self] enabled in
+                if !enabled { self?.disablePermissionResponses() }
+            }
     }
 
     func start() {
@@ -86,7 +95,11 @@ final class AgentManager: ObservableObject {
         socketServer.stop()
         providers.forEach { $0.stop() }
 
-        pendingPermissionRequests = [:]
+        permissionDeadlineTasks.values.forEach { $0.cancel() }
+        permissionDeadlineTasks = [:]
+        permissionCleanupTasks.values.forEach { $0.cancel() }
+        permissionCleanupTasks = [:]
+        permissionRequests = [:]
         sessionsByKind = [:]
         sessions = []
         usage = nil
@@ -172,6 +185,11 @@ final class AgentManager: ObservableObject {
             .jump(toPID: session.pid, cwd: session.cwd, focusURL: session.terminalFocusURL)
     }
 
+    func jumpToTerminal(_ pending: PendingAgentPermission) {
+        TerminalJumper(processLookup: processLookup)
+            .jump(toPID: pending.pid, cwd: pending.cwd)
+    }
+
     /// Pull fresh state now — used when the Agents tab appears.
     func refresh() {
         guard isRunning else { return }
@@ -210,25 +228,32 @@ final class AgentManager: ObservableObject {
             return
         }
         guard let kind = AgentKind(rawValue: envelope.agent) else { return }
-        // With in-notch approval off, release the blocked hook immediately so the
-        // terminal prompt appears without delay; the Notification hook that follows
-        // still produces the normal needs-attention surface.
-        if envelope.hook == "PermissionRequest", let requestId = envelope.requestId,
-           !settings.agentPermissionApproval {
-            socketServer.respond(requestId: requestId, decision: "ask")
-            return
-        }
         if envelope.hook == "PermissionRequest", let requestId = envelope.requestId {
             let request = AgentPermissionWireValidator.validated(
                 envelope.permission, matchingRequestId: requestId
             )
-            pendingPermissionRequests[requestId] = PendingPermission(
+            let receivedAt = Date()
+            let canRespond = kind == .claudeCode && settings.agentPermissionApproval
+            let deadline = min(request?.replyDeadline ?? receivedAt.addingTimeInterval(120),
+                               receivedAt.addingTimeInterval(120))
+            let risk = request.map {
+                PermissionRiskClassifier.classify(request: $0, cwd: envelope.cwd)
+            } ?? AgentPermissionRisk(level: .unknown, reasons: [.missingEvidence])
+            permissionRequests[requestId] = PendingAgentPermission(
+                id: requestId,
                 kind: kind, sessionId: envelope.sessionId, cwd: envelope.cwd, pid: pid,
                 request: request,
-                risk: request.map {
-                    PermissionRiskClassifier.classify(request: $0, cwd: envelope.cwd)
-                }
+                risk: risk, receivedAt: receivedAt, replyDeadline: deadline,
+                canRespond: canRespond, state: canRespond ? .pending : .expired
             )
+            if canRespond {
+                schedulePermissionDeadline(requestId, deadline: deadline)
+            } else {
+                if kind == .claudeCode {
+                    socketServer.respond(requestId: requestId, decision: "ask")
+                }
+                schedulePermissionCleanup(requestId, after: 12)
+            }
         }
         provider(for: kind)?.ingest(envelope, pid: pid)
     }
@@ -238,32 +263,111 @@ final class AgentManager: ObservableObject {
     /// waiting for Claude's next real hook.
     func respondToPermission(_ session: AgentSession, allow: Bool) {
         guard let requestId = session.permissionRequestId else { return }
+        respondToPermission(requestId: requestId, decision: allow ? .allow : .deny)
+    }
+
+    func respondToPermission(requestId: String, decision: AgentPermissionDecision) {
+        guard settings.agentPermissionApproval,
+              var pending = permissionRequests[requestId],
+              let next = AgentPermissionStateMachine.transition(
+                from: pending.state, event: .respond(decision)
+              ) else { return }
+        pending.state = next
+        permissionRequests[requestId] = pending
+        permissionDeadlineTasks[requestId]?.cancel()
+        permissionDeadlineTasks[requestId] = nil
         let generation = streamGeneration
-        socketServer.respond(requestId: requestId, decision: allow ? "allow" : "deny") { [weak self] delivered in
+        socketServer.respond(requestId: requestId, decision: decision.rawValue) { [weak self] delivered in
             Task { @MainActor in
                 guard let self, self.isRunning,
                       self.streamGeneration == generation else { return }
+                guard var current = self.permissionRequests[requestId] else { return }
                 if delivered {
-                    self.pendingPermissionRequests[requestId] = nil
-                    self.provider(for: session.kind)?.ingest(HookEnvelope(
-                        agent: session.kind.rawValue, hook: "PermissionResolved", sessionId: session.id,
-                        cwd: session.cwd, pid: session.pid
-                    ), pid: session.pid ?? 0)
+                    guard let state = AgentPermissionStateMachine.transition(
+                        from: current.state, event: .delivered
+                    ) else { return }
+                    current.state = state
+                    self.permissionRequests[requestId] = current
+                    if let sessionId = current.sessionId {
+                        self.provider(for: current.kind)?.ingest(HookEnvelope(
+                            agent: current.kind.rawValue, hook: "PermissionResolved",
+                            sessionId: sessionId, cwd: current.cwd, pid: current.pid
+                        ), pid: current.pid)
+                    }
+                    self.schedulePermissionCleanup(requestId, after: 3)
                 } else {
-                    self.permissionTimedOut(requestId)
+                    guard let state = AgentPermissionStateMachine.transition(
+                        from: current.state, event: .deliveryFailed
+                    ) else { return }
+                    current.state = state
+                    self.permissionRequests[requestId] = current
+                    self.publishPermissionTimeout(current)
+                    self.schedulePermissionCleanup(requestId, after: 5)
                 }
             }
         }
     }
 
     private func permissionTimedOut(_ requestId: String) {
-        guard isRunning,
-              let pending = pendingPermissionRequests.removeValue(forKey: requestId),
-              let sessionId = pending.sessionId else { return }
+        guard isRunning, var pending = permissionRequests[requestId],
+              let state = AgentPermissionStateMachine.transition(
+                from: pending.state, event: .expire
+              ) else { return }
+        pending.state = state
+        permissionRequests[requestId] = pending
+        publishPermissionTimeout(pending)
+        schedulePermissionCleanup(requestId, after: 8)
+    }
+
+    private func publishPermissionTimeout(_ pending: PendingAgentPermission) {
+        guard let sessionId = pending.sessionId else { return }
         provider(for: pending.kind)?.ingest(HookEnvelope(
             agent: pending.kind.rawValue, hook: "PermissionTimedOut", sessionId: sessionId,
             cwd: pending.cwd, pid: pending.pid
         ), pid: pending.pid)
+    }
+
+    private func schedulePermissionDeadline(_ requestId: String, deadline: Date) {
+        permissionDeadlineTasks[requestId]?.cancel()
+        permissionDeadlineTasks[requestId] = Task { @MainActor [weak self] in
+            let delay = max(0, deadline.timeIntervalSinceNow)
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.socketServer.respond(requestId: requestId, decision: "ask")
+            self.permissionTimedOut(requestId)
+            self.permissionDeadlineTasks[requestId] = nil
+        }
+    }
+
+    private func schedulePermissionCleanup(_ requestId: String, after delay: TimeInterval) {
+        permissionCleanupTasks[requestId]?.cancel()
+        permissionCleanupTasks[requestId] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.permissionRequests[requestId] = nil
+            self.permissionCleanupTasks[requestId] = nil
+        }
+    }
+
+    private func disablePermissionResponses() {
+        let pendingIds = permissionRequests.compactMap { $0.value.state == .pending ? $0.key : nil }
+        for requestId in pendingIds {
+            guard var pending = permissionRequests[requestId] else { continue }
+            if pending.kind == .claudeCode {
+                socketServer.respond(requestId: requestId, decision: "ask")
+            }
+            pending.state = .expired
+            permissionRequests[requestId] = pending
+            permissionDeadlineTasks[requestId]?.cancel()
+            permissionDeadlineTasks[requestId] = nil
+            schedulePermissionCleanup(requestId, after: 8)
+        }
+    }
+
+    func copyPermissionSummary(_ pending: PendingAgentPermission, session: AgentSession?) {
+        let summary = AgentPermissionAuditSummary.make(pending: pending, session: session)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(summary, forType: .string)
     }
 
     private func updateSessions(_ sessions: [AgentSession], for kind: AgentKind) {
@@ -297,13 +401,4 @@ final class AgentManager: ObservableObject {
             project: representative.project, status: status
         )
     }
-}
-
-private struct PendingPermission {
-    let kind: AgentKind
-    let sessionId: String?
-    let cwd: String?
-    let pid: pid_t
-    let request: AgentPermissionRequest?
-    let risk: AgentPermissionRisk?
 }

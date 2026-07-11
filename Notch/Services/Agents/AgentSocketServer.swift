@@ -232,7 +232,8 @@ final class AgentSocketServer: @unchecked Sendable {
                 continue
             }
             // A blocking permission hook stays connected awaiting the decision.
-            if envelope.hook == "PermissionRequest", let requestId = envelope.requestId {
+            if envelope.agent == AgentKind.claudeCode.rawValue,
+               envelope.hook == "PermissionRequest", let requestId = envelope.requestId {
                 registerPendingReply(requestId, fd: client, generation: generation)
                 keepOpen = true
             }

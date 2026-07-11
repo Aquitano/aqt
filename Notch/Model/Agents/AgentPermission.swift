@@ -375,6 +375,95 @@ struct AgentPermissionRisk: Equatable, Sendable {
     let reasons: [AgentPermissionRiskReason]
 }
 
+enum AgentPermissionDecision: String, Equatable, Sendable {
+    case allow
+    case deny
+}
+
+enum AgentPermissionRequestState: Equatable, Sendable {
+    case pending
+    case responding(AgentPermissionDecision)
+    case approved
+    case denied
+    case deliveryFailed
+    case expired
+}
+
+enum AgentPermissionStateEvent: Equatable, Sendable {
+    case respond(AgentPermissionDecision)
+    case delivered
+    case deliveryFailed
+    case expire
+}
+
+enum AgentPermissionStateMachine {
+    static func transition(
+        from state: AgentPermissionRequestState,
+        event: AgentPermissionStateEvent
+    ) -> AgentPermissionRequestState? {
+        switch (state, event) {
+        case (.pending, .respond(let decision)):
+            return .responding(decision)
+        case (.responding(.allow), .delivered):
+            return .approved
+        case (.responding(.deny), .delivered):
+            return .denied
+        case (.responding, .deliveryFailed):
+            return .deliveryFailed
+        case (.pending, .expire), (.responding, .expire), (.deliveryFailed, .expire):
+            return .expired
+        default:
+            return nil
+        }
+    }
+}
+
+struct PendingAgentPermission: Identifiable, Equatable, Sendable {
+    let id: String
+    let kind: AgentKind
+    let sessionId: String?
+    let cwd: String?
+    let pid: pid_t
+    let request: AgentPermissionRequest?
+    let risk: AgentPermissionRisk
+    let receivedAt: Date
+    let replyDeadline: Date
+    let canRespond: Bool
+    var state: AgentPermissionRequestState
+
+    func isActionable(at date: Date) -> Bool {
+        canRespond && state == .pending && date < replyDeadline
+    }
+}
+
+enum AgentPermissionAuditSummary {
+    static func make(pending: PendingAgentPermission, session: AgentSession?) -> String {
+        let request = pending.request
+        var lines = [
+            "Agent: \(pending.kind.displayName)",
+            "Project: \(session?.project ?? agentProjectName(pending.cwd))"
+        ]
+        if let branch = session?.gitBranch { lines.append("Branch: \(branch)") }
+        if let terminal = session?.terminalName { lines.append("Terminal: \(terminal)") }
+        if let cwd = pending.cwd { lines.append("Working directory: \(cwd)") }
+        if let tool = request?.toolName { lines.append("Tool: \(tool)") }
+        lines.append("Operation: \(request?.operation.rawValue ?? "unknown")")
+        if let command = request?.command {
+            lines.append("Command: \(command)\(request?.commandTruncated == true ? " [truncated]" : "")")
+        }
+        if let url = request?.url { lines.append("URL: \(url)") }
+        if let request, !request.paths.isEmpty {
+            lines.append(request.pathSource == .explicit ? "Affected paths:" : "Possible paths:")
+            lines.append(contentsOf: request.paths.map { "- \($0)" })
+        }
+        lines.append("Risk: \(pending.risk.level.rawValue)")
+        lines.append("Reasons: \(pending.risk.reasons.map(\.rawValue).joined(separator: ", "))")
+        lines.append("Requested: \((request?.requestedAt ?? pending.receivedAt).formatted(.iso8601))")
+        lines.append("Actionable: \(pending.isActionable(at: Date()) ? "yes" : "no")")
+        return lines.joined(separator: "\n")
+    }
+}
+
 /// Advisory, deterministic classification. It never authorizes a request and
 /// never reads the filesystem; the same structured evidence always yields the
 /// same level and ordered reason codes.

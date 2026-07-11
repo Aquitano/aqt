@@ -5,6 +5,7 @@ import SwiftUI
 /// stays focused on what's actually running.
 struct AgentsView: View {
     @EnvironmentObject private var agents: AgentManager
+    @State private var selectedPermissionId: String?
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { _ in
@@ -18,11 +19,20 @@ struct AgentsView: View {
                 if let usage = agents.usage {
                     usagePanel(usage)
                 }
+                if let pending = selectedPermission {
+                    permissionCard(pending)
+                }
                 ForEach(sessionRows) { row in
                     AgentRowView(
                         session: row.session,
-                        onJump: { agents.jumpToTerminal(row.session) },
-                        onPermission: { allow in agents.respondToPermission(row.session, allow: allow) }
+                        onJump: {
+                            if let requestId = row.session.permissionRequestId,
+                               agents.permissionRequests[requestId] != nil {
+                                selectedPermissionId = requestId
+                            } else {
+                                agents.jumpToTerminal(row.session)
+                            }
+                        }
                     )
                         .padding(.leading, CGFloat(row.depth) * 22)
                         .opacity(row.depth > 0 ? 0.92 : 1)
@@ -36,6 +46,41 @@ struct AgentsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear { agents.refresh() }
+        .onAppear { selectBestPermissionIfNeeded() }
+        .onChange(of: permissionIds) { _, _ in selectBestPermissionIfNeeded() }
+    }
+
+    private var permissionIds: [String] { agents.permissionRequests.keys.sorted() }
+
+    private var selectedPermission: PendingAgentPermission? {
+        selectedPermissionId.flatMap { agents.permissionRequests[$0] }
+    }
+
+    private func selectBestPermissionIfNeeded() {
+        if let selectedPermissionId, agents.permissionRequests[selectedPermissionId] != nil { return }
+        selectedPermissionId = agents.permissionRequests.values.sorted(by: permissionOrder).first?.id
+    }
+
+    private func permissionOrder(_ lhs: PendingAgentPermission, _ rhs: PendingAgentPermission) -> Bool {
+        let lhsUrgent = lhs.risk.level == .high || lhs.risk.level == .unknown
+        let rhsUrgent = rhs.risk.level == .high || rhs.risk.level == .unknown
+        if lhsUrgent != rhsUrgent { return lhsUrgent }
+        return lhs.receivedAt < rhs.receivedAt
+    }
+
+    private func permissionCard(_ pending: PendingAgentPermission) -> some View {
+        let session = agents.sessions.first { $0.id == pending.sessionId }
+        return AgentPermissionCard(
+            pending: pending,
+            session: session,
+            onApprove: { agents.respondToPermission(requestId: pending.id, decision: .allow) },
+            onDeny: { agents.respondToPermission(requestId: pending.id, decision: .deny) },
+            onJump: {
+                if let session { agents.jumpToTerminal(session) }
+                else { agents.jumpToTerminal(pending) }
+            },
+            onCopy: { agents.copyPermissionSummary(pending, session: session) }
+        )
     }
 
     private struct Row: Identifiable {

@@ -133,6 +133,12 @@ enum HookClient {
         let event = (json["hook_event_name"] as? String) ?? "unknown"
         let toolName = json["tool_name"] as? String
         let toolInput = json["tool_input"] as? [String: Any]
+        let permissionRequestId = event == "PermissionRequest" ? UUID().uuidString : nil
+        let permission = permissionRequestId.map {
+            AgentPermissionExtractor.makeRequest(
+                toolName: toolName, input: toolInput, requestId: $0
+            )
+        }
 
         var status = "busy"
         var message: String?
@@ -159,7 +165,9 @@ enum HookClient {
             tool: toolName,
             prompt: prompt,
             response: response,
-            model: json["model"] as? String
+            model: json["model"] as? String,
+            requestId: permissionRequestId,
+            permission: permission
         ))
         exit(0)
     }
