@@ -107,6 +107,8 @@ final class NotchWindowController {
         guard let key = interactionHostKey, let host = hosts[key] else { return }
         let hasTransientInteraction = host.panel.presentingShareSheet
             || host.panel.editingText
+            || host.panel.interactingWithTray
+            || host.panel.previewing
             || (isDragSessionActive && dragHostKey == key)
         let instruction = DisplayHostMigrationPolicy.instruction(
             targetStillAvailable: desiredKeys.contains(key),
@@ -123,6 +125,8 @@ final class NotchWindowController {
         case .endTransientInteractionAndCollapse:
             host.panel.presentingShareSheet = false
             host.panel.editingText = false
+            host.panel.interactingWithTray = false
+            host.panel.previewing = false
             if dragHostKey == key {
                 isDragSessionActive = false
                 dragHostKey = nil
@@ -395,6 +399,8 @@ final class NotchWindowController {
               !isDragSessionActive,
               interactionHost?.panel.presentingShareSheet != true,
               interactionHost?.panel.editingText != true,
+              interactionHost?.panel.interactingWithTray != true,
+              interactionHost?.panel.previewing != true,
               env.state.presentation != .expanded,
               let candidate = DisplayInventory.displayKey(containing: NSEvent.mouseLocation),
               candidate != activeDisplayKey else { return }
@@ -422,12 +428,13 @@ final class NotchWindowController {
     private func dragMoved() {
         let mouse = NSEvent.mouseLocation
         if !isDragSessionActive {
-            guard dragCarriesFiles(),
+            guard let representation = dragRepresentation(),
                   let host = hosts.values.first(where: { dragDropZone($0).contains(mouse) }) else { return }
             isDragSessionActive = true
             dragHostKey = host.displayKey
             interactionHostKey = host.displayKey
             host.panel.ignoresMouseEvents = false
+            host.state.activeDropRepresentation = representation
             host.state.beginDropTargeting()
             updateHostRoles()
         }
@@ -436,10 +443,9 @@ final class NotchWindowController {
         if host.state.activeDropZone != zone { host.state.activeDropZone = zone }
     }
 
-    private func dragCarriesFiles() -> Bool {
-        NSPasteboard(name: .drag).canReadObject(
-            forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]
-        )
+    private func dragRepresentation() -> TrayRepresentationKind? {
+        let identifiers = NSPasteboard(name: .drag).types?.map(\.rawValue) ?? []
+        return TrayDropCapabilities.preferredKind(for: identifiers)
     }
 
     private func dropZone(for point: NSPoint, host: NotchPanelHost) -> DropZone {
@@ -574,6 +580,8 @@ final class NotchWindowController {
         for other in hosts.values where other.displayKey != host.displayKey {
             other.panel.presentingShareSheet = false
             other.panel.editingText = false
+            other.panel.interactingWithTray = false
+            other.panel.previewing = false
         }
         host.panel.presentingShareSheet = true
         host.panel.makeKeyAndOrderFront(nil)
@@ -592,6 +600,8 @@ final class NotchWindowController {
         for other in hosts.values where other.displayKey != host.displayKey {
             other.panel.presentingShareSheet = false
             other.panel.editingText = false
+            other.panel.interactingWithTray = false
+            other.panel.previewing = false
         }
         host.panel.editingText = true
         host.panel.makeKeyAndOrderFront(nil)
@@ -600,6 +610,34 @@ final class NotchWindowController {
     func endTextEditing() {
         for host in hosts.values where host.panel.editingText {
             host.panel.editingText = false
+        }
+    }
+
+    func beginTrayInteraction() {
+        chooseInteractionHostAtPointer()
+        guard let host = interactionHost else { return }
+        for other in hosts.values where other.displayKey != host.displayKey {
+            other.panel.interactingWithTray = false
+            other.panel.previewing = false
+        }
+        host.panel.interactingWithTray = true
+        host.panel.makeKeyAndOrderFront(nil)
+    }
+
+    func endTrayInteraction() {
+        for host in hosts.values where host.panel.interactingWithTray {
+            host.panel.interactingWithTray = false
+        }
+    }
+
+    func beginPreviewing() {
+        beginTrayInteraction()
+        interactionHost?.panel.previewing = true
+    }
+
+    func endPreviewing() {
+        for host in hosts.values where host.panel.previewing {
+            host.panel.previewing = false
         }
     }
 

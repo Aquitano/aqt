@@ -3,6 +3,38 @@ import UniformTypeIdentifiers
 import XCTest
 
 final class TrayStoreTests: XCTestCase {
+    func testRepresentationPriorityIsFileImageURLThenText() {
+        XCTAssertEqual(TrayDropCapabilities.preferredKind(for: [
+            UTType.plainText.identifier, UTType.url.identifier,
+            UTType.png.identifier, UTType.fileURL.identifier
+        ]), .fileURLs)
+        XCTAssertEqual(TrayDropCapabilities.preferredKind(for: [
+            UTType.plainText.identifier, UTType.url.identifier, UTType.png.identifier
+        ]), .image)
+        XCTAssertEqual(TrayDropCapabilities.preferredKind(for: [
+            UTType.plainText.identifier, UTType.url.identifier
+        ]), .webURL)
+        XCTAssertEqual(TrayDropCapabilities.preferredKind(for: [
+            UTType.utf8PlainText.identifier
+        ]), .plainText)
+    }
+
+    func testDropCapabilitiesRejectUnrelatedData() {
+        XCTAssertNil(TrayDropCapabilities.preferredKind(for: [UTType.audio.identifier]))
+    }
+
+    func testFileNameValidationAndCollisionResolution() {
+        XCTAssertNil(TrayFileNamePolicy.validated("../escape"))
+        XCTAssertNil(TrayFileNamePolicy.validated("a/b"))
+        XCTAssertEqual(TrayFileNamePolicy.validated(" résumé.txt "), "résumé.txt")
+        XCTAssertEqual(
+            TrayFileNamePolicy.availableName(
+                "Report.txt", existing: ["report.txt", "Report 2.txt"]
+            ),
+            "Report 3.txt"
+        )
+    }
+
     func testStoreRoundTripPreservesRichMetadata() throws {
         let item = TrayItem(
             id: UUID(), kind: .text, displayName: "note.txt",

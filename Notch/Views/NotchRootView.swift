@@ -45,7 +45,7 @@ struct NotchRootView: View {
         // don't resolve reliably, and SwiftUI's drop location proved unreliable too,
         // so the two chooser fields are pure visuals and the field is resolved from
         // the live cursor position in screen space (see `dropZoneAtCursor`).
-        .onDrop(of: [.fileURL, .data], delegate: NotchDropDelegate(
+        .onDrop(of: TrayDropCapabilities.acceptedTypes, delegate: NotchDropDelegate(
             state: state,
             resolveZone: { env.windowController?.dropZoneAtCursor() ?? .keep },
             onKeep: { tray.handleDrop($0) },
@@ -177,7 +177,7 @@ private struct NotchDropDelegate: DropDelegate {
     let onShare: ([NSItemProvider]) -> Bool
 
     func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [.fileURL, .data])
+        info.hasItemsConforming(to: TrayDropCapabilities.acceptedTypes)
     }
 
     func dropEntered(info: DropInfo) {
@@ -199,7 +199,7 @@ private struct NotchDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         let target = resolveZone()
-        let providers = info.itemProviders(for: [.fileURL, .data])
+        let providers = info.itemProviders(for: TrayDropCapabilities.acceptedTypes)
         state.activeDropZone = nil
         state.isDropActive = false
         let accepted = target == .share ? onShare(providers) : onKeep(providers)

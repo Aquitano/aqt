@@ -104,7 +104,7 @@ final class AppEnvironment: ObservableObject {
     /// Open the AirDrop sheet pre-loaded with the given tray items, anchored to
     /// the (temporarily key) overlay panel.
     func airDrop(_ items: [DropItem]) {
-        share(urls: items.map { $0.url(relativeTo: tray.storageRoot) }, via: .airdrop)
+        share(items: items.map { $0.url(relativeTo: tray.storageRoot) }, via: .airdrop)
     }
 
     /// Share freshly dropped files via the user's configured method. The drop
@@ -114,16 +114,16 @@ final class AppEnvironment: ObservableObject {
     func shareDrop(_ providers: [NSItemProvider]) -> Bool {
         guard !providers.isEmpty else { return false }
         let method = settings.shareMethod
-        tray.stageForShare(providers) { [weak self] urls in
-            self?.share(urls: urls, via: method)
+        tray.stageForShare(providers) { [weak self] items in
+            self?.share(items: items, via: method)
         }
         return true
     }
 
     /// Present a sharing service for `urls`, anchored to the (temporarily key)
     /// overlay panel so the device/share picker has a window to attach to.
-    func share(urls: [URL], via method: ShareMethod) {
-        guard !urls.isEmpty else { return }
+    func share(items: [Any], via method: ShareMethod) {
+        guard !items.isEmpty else { return }
         // A share already in flight owns the only ShareCoordinator, which is the
         // panel's path back to the passive-overlay state. Overwriting it here would
         // deallocate it mid-share (NSSharingService.delegate is weak), so its
@@ -145,20 +145,20 @@ final class AppEnvironment: ObservableObject {
             switch method {
             case .airdrop:
                 guard let service = NSSharingService(named: .sendViaAirDrop),
-                      service.canPerform(withItems: urls) else {
+                      service.canPerform(withItems: items) else {
                     Log.tray.error("AirDrop is unavailable for these items")
                     coordinator.finish()
                     return
                 }
                 service.delegate = coordinator
-                service.perform(withItems: urls)
+                service.perform(withItems: items)
             case .blip:
                 guard let view = self.windowController?.panelContentView else {
                     Log.tray.error("Share picker has no anchor view")
                     coordinator.finish()
                     return
                 }
-                coordinator.presentPicker(items: urls, matching: method.serviceMatch, in: view)
+                coordinator.presentPicker(items: items, matching: method.serviceMatch, in: view)
             }
         }
     }
@@ -174,7 +174,7 @@ private final class ShareCoordinator: NSObject, NSSharingServiceDelegate, @preco
     private var didFinish = false
     init(onFinish: @escaping () -> Void) { self.onFinish = onFinish }
 
-    func presentPicker(items: [URL], matching serviceMatch: String, in view: NSView) {
+    func presentPicker(items: [Any], matching serviceMatch: String, in view: NSView) {
         self.serviceMatch = serviceMatch
         let picker = NSSharingServicePicker(items: items)
         picker.delegate = self

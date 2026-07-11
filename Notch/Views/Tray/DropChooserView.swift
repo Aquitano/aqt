@@ -13,18 +13,42 @@ struct DropChooserView: View {
         HStack(spacing: 12) {
             zone(
                 .keep,
-                title: "Keep",
-                subtitle: "Add to shelf",
+                title: keepTitle,
+                subtitle: keepSubtitle,
                 systemImage: "tray.and.arrow.down.fill"
             )
             zone(
                 .share,
-                title: settings.shareMethod.actionTitle,
-                subtitle: "Share now",
-                systemImage: settings.shareMethod.symbol
+                title: shareTitle,
+                subtitle: shareSubtitle,
+                systemImage: shareSymbol
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var keepTitle: String {
+        switch state.activeDropRepresentation {
+        case .webURL: return "Keep Link"
+        case .plainText: return "Keep Text"
+        default: return "Keep"
+        }
+    }
+
+    private var keepSubtitle: String { "Add to Shelf" }
+
+    private var shareTitle: String {
+        state.activeDropRepresentation == .webURL
+            ? "Open / Share"
+            : settings.shareMethod.actionTitle
+    }
+
+    private var shareSubtitle: String {
+        state.activeDropRepresentation == .plainText ? "Share text" : "Share now"
+    }
+
+    private var shareSymbol: String {
+        state.activeDropRepresentation == .webURL ? "link" : settings.shareMethod.symbol
     }
 
     private func zone(_ id: DropZone, title: String, subtitle: String, systemImage: String) -> some View {

@@ -88,7 +88,7 @@ private enum PixelGlyph {
     case minus, trash, terminal, shuffle, repeatMode, note, moon, leaf, clock
     case calendar, bolt, share, radio, wifi, location, speaker, mute, sun
     case cloud, rain, snow, fog, storm, headphones, keyboard, mouse, layers
-    case spark, code, braces, shell, battery
+    case spark, code, braces, shell, battery, eye, clipboard, link
 
     static func resolve(_ rawName: String) -> PixelGlyph {
         let name = rawName.lowercased()
@@ -122,6 +122,9 @@ private enum PixelGlyph {
         if name.contains("clock") || name.contains("timer") { return .clock }
         if name.contains("calendar") { return .calendar }
         if name.contains("battery") { return .battery }
+        if name.contains("clipboard") { return .clipboard }
+        if name.contains("eye") { return .eye }
+        if name.contains("link") { return .link }
         if name.contains("bolt") { return .bolt }
         if name.contains("airdrop") || name.contains("paperplane") { return .share }
         if name.contains("wifi") { return .wifi }
@@ -182,6 +185,9 @@ private enum PixelGlyph {
         case .braces: return bits("..##.##", ".#...#.", ".#...#.", "##...##", ".#...#.", ".#...#.", "..##.##")
         case .shell: return bits("..###..", ".#...#.", "#.#.#.#", "#.....#", ".#.#.#.", "..###..", "...#...")
         case .battery: return bits(".......", ".#####.", "#.....#", "#.###.#", "#.###.#", "#.....#", ".#####.")
+        case .eye: return bits(".......", "..###..", ".#...#.", "#..#..#", ".#...#.", "..###..", ".......")
+        case .clipboard: return bits("..###..", ".#####.", ".#...#.", ".#.###.", ".#...#.", ".#####.", ".......")
+        case .link: return bits(".......", ".###...", "#...#..", "..###..", ".#...#.", "..###..", ".......")
         }
     }
 

@@ -124,6 +124,7 @@ targets:
       - path: Notch/Model/SystemModels.swift
       - path: Notch/Model/DisplayModels.swift
       - path: Notch/Model/DropItem.swift
+      - path: Notch/Model/TrayTransfer.swift
       - path: Notch/Services/TrayIngestionPipeline.swift
       - path: Notch/Services/Persistence.swift
       - path: Notch/Managers/Media/MediaAdapterPayload.swift

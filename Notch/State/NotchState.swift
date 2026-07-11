@@ -44,6 +44,7 @@ final class NotchState: ObservableObject {
     /// Which drop field the pointer is currently over during a file drag, for the
     /// chooser's highlight. Set by the root drop delegate.
     @Published var activeDropZone: DropZone?
+    @Published var activeDropRepresentation: TrayRepresentationKind?
 
     /// True from the start of a collapse until the close animation ends. Keeps the
     /// expanded body mounted (fading, clipped by the shrinking blob) for the whole
@@ -132,6 +133,7 @@ final class NotchState: ObservableObject {
         // both this (via the window controller) and SwiftUI's performDrop; clearing
         // the zone here would race that and misroute the drop to the shelf.
         isDropActive = false
+        activeDropRepresentation = nil
     }
 
     /// Collapse to the physical notch-sized hover target. The compact presentation
