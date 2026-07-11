@@ -15,7 +15,8 @@ protocol AgentProviding: AnyObject {
     /// Whether the opt-in integration is currently installed/active.
     var isEnabled: Bool { get }
 
-    /// Begin watching (only meaningful once enabled). Idempotent.
+    /// Begin watching (only meaningful once enabled). `stop()` discards transient
+    /// sessions but leaves the integration installed so watching can resume cleanly.
     func start()
     func stop()
 

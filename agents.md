@@ -20,6 +20,8 @@
 - The physical notch-sized `.compact` presentation is the persistent hover target even when it has no side content. Reserve `.hidden` for the explicit menu/hotkey toggle; hiding on an empty activity queue makes hover reopening impossible.
 - Agent notification sounds use the synthesized 8-bit square-wave palette in `AgentSoundPlayer`; keep cues short, rate-limited, and generated in code, and normalize legacy macOS sound names when reading settings.
 - Opening a separate app window from the expanded notch must call `NotchState.collapseImmediately()` before activating that window; hover-exit collapse has an intentional grace delay and is not a reliable dismissal mechanism for explicit navigation.
+- Keep window hit-region snapshots sourced from the same aggregate layout properties as SwiftUI (`Settings.hasInfoRowWidgets`); duplicating individual widget flags makes newly added rows visible but click-through.
+- The master agent-watch switch pauses providers and the Unix socket without uninstalling per-agent hooks. Stop/start must invalidate queued socket events and discard transient provider sessions so stale activity cannot return after resume.
 
 ## 3. User Preferences
 
@@ -32,3 +34,4 @@
 - Retro icon pass completed: all custom notch surfaces and the menu-bar item use the shared 7×7 `PixelIcon` family; the macOS app-icon set now carries the same stepped notch and pixel-waveform identity. Debug, Release, and static analysis pass after regeneration.
 - Compact media controls completed: independent persisted toggles for compact Now Playing and its real three-band audio visualizer, explicit Screen & System Audio Recording permission UI, no fake playback animation, and clean fallback to other compact activities. Debug/Release/analyze and 95 tests pass.
 - Compact-media regression pass completed: disabling compact Now Playing preserves the base hover target, the home tab glyph is optically centered, and agent notifications use a selectable synthesized 8-bit palette. Debug, unsigned Release, static analysis, and 99 tests pass; signed Release still requires a local Developer ID identity/team.
+- Release-readiness correctness fixes completed: all info-row widgets now expand the interactive hit region, and the master agent-watch switch immediately stops/restarts providers and its socket while preserving installed integrations. Debug, universal unsigned Release, and 100 tests pass.

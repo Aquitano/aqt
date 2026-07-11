@@ -134,10 +134,7 @@ struct OnboardingView: View {
     private var agentsEnabledBinding: Binding<Bool> {
         Binding(
             get: { settings.agentsEnabled },
-            set: { enabled in
-                settings.agentsEnabled = enabled
-                if enabled { agents.start() }
-            }
+            set: { agents.setWatchingEnabled($0) }
         )
     }
 }

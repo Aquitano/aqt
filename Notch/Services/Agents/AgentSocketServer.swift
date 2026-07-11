@@ -24,6 +24,8 @@ final class AgentSocketServer: @unchecked Sendable {
     }()
     private var listenFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
+    /// Invalidates reads/timeouts queued by an earlier stop/start cycle.
+    private var generation = 0
     /// True only after this server successfully bound the filesystem node. A
     /// second app instance that detects an existing live listener must never
     /// unlink that listener's socket when it later tears down.
@@ -56,6 +58,7 @@ final class AgentSocketServer: @unchecked Sendable {
         onPermissionTimeout: @escaping @Sendable (String) -> Void
     ) {
         guard listenFD < 0, acceptSource == nil else { return }
+        generation += 1
         let url = AgentSocket.url
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
@@ -131,15 +134,16 @@ final class AgentSocketServer: @unchecked Sendable {
 
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         source.setEventHandler { [weak self] in self?.acceptConnections() }
-        source.setCancelHandler { close(fd) }
         acceptSource = source
         source.resume()
         Log.agents.info("agent socket listening at \(path)")
     }
 
     private func teardown() {
+        generation += 1
         acceptSource?.cancel()
         acceptSource = nil
+        if listenFD >= 0 { close(listenFD) }
         listenFD = -1
         handler = nil
         permissionTimeoutHandler = nil
@@ -172,14 +176,19 @@ final class AgentSocketServer: @unchecked Sendable {
         }
     }
 
-    private func registerPendingReply(_ requestId: String, fd: Int32) {
+    private func registerPendingReply(_ requestId: String, fd: Int32, generation: Int) {
         queue.async { [weak self] in
             guard let self else { close(fd); return }
+            guard self.generation == generation, self.listenFD >= 0 else {
+                close(fd)
+                return
+            }
             // A duplicate request id would orphan the previous fd; close it first.
             if let stale = self.pendingReplies.removeValue(forKey: requestId) { close(stale) }
             self.pendingReplies[requestId] = fd
             self.queue.asyncAfter(deadline: .now() + Self.pendingWindow) { [weak self] in
-                guard let self, let stale = self.pendingReplies.removeValue(forKey: requestId) else { return }
+                guard let self, self.generation == generation,
+                      let stale = self.pendingReplies.removeValue(forKey: requestId) else { return }
                 close(stale)
                 let handler = self.permissionTimeoutHandler
                 DispatchQueue.main.async { handler?(requestId) }
@@ -199,14 +208,19 @@ final class AgentSocketServer: @unchecked Sendable {
             // Snapshot the handler on the accept queue, then hand the blocking
             // read off to a concurrent queue so peers don't serialize.
             let handler = self.handler
+            let generation = self.generation
             ioQueue.addOperation { [weak self] in
                 guard let self else { close(client); return }
-                self.handleClient(client, handler: handler)
+                self.handleClient(client, handler: handler, generation: generation)
             }
         }
     }
 
-    private func handleClient(_ client: Int32, handler: (@Sendable (HookEnvelope, pid_t) -> Void)?) {
+    private func handleClient(
+        _ client: Int32,
+        handler: (@Sendable (HookEnvelope, pid_t) -> Void)?,
+        generation: Int
+    ) {
         var keepOpen = false
         defer { if !keepOpen { close(client) } }
 
@@ -219,7 +233,7 @@ final class AgentSocketServer: @unchecked Sendable {
             }
             // A blocking permission hook stays connected awaiting the decision.
             if envelope.hook == "PermissionRequest", let requestId = envelope.requestId {
-                registerPendingReply(requestId, fd: client)
+                registerPendingReply(requestId, fd: client, generation: generation)
                 keepOpen = true
             }
             // In-process plugins connect directly, so the kernel peer pid is the

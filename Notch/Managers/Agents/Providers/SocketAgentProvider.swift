@@ -56,6 +56,8 @@ final class SocketAgentProvider: AgentProviding {
     func stop() {
         pruneTask?.cancel()
         pruneTask = nil
+        sessions = [:]
+        onSessions?([])
     }
 
     func enable() throws {
@@ -74,8 +76,6 @@ final class SocketAgentProvider: AgentProviding {
         settings[keyPath: enabledKey] = false
         try? uninstall()
         stop()
-        sessions = [:]
-        onSessions?([])
     }
 
     func refresh() {

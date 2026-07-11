@@ -50,14 +50,9 @@ struct SettingsView: View {
 
     private var agentsSection: some View {
         Section {
-            // Build providers + the socket the moment the feature is switched on;
-            // binding straight to the setting left it a no-op until relaunch.
             Toggle("Watch coding agents", isOn: Binding(
                 get: { settings.agentsEnabled },
-                set: { on in
-                    settings.agentsEnabled = on
-                    if on { agents.start() }
-                }
+                set: { agents.setWatchingEnabled($0) }
             ))
             if settings.agentsEnabled {
                 Toggle("Notify when an agent needs you", isOn: $settings.agentNotifyAttention)
@@ -85,7 +80,7 @@ struct SettingsView: View {
         } header: {
             Text("Agents")
         } footer: {
-            Text("Turning Watch off takes effect on relaunch.")
+            Text("Turning Watch off pauses agent monitoring without removing installed integrations.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

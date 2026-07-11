@@ -84,6 +84,13 @@ final class ClaudeCodeProvider: AgentProviding {
             NotificationCenter.default.removeObserver(activationObserver)
             self.activationObserver = nil
         }
+        sessionsByID = [:]
+        hookState = [:]
+        hookCwd = [:]
+        endedSessionIDs = []
+        emittedAttentionAt = [:]
+        lastScan = []
+        onSessions?([])
     }
 
     func enable() throws {
@@ -110,13 +117,6 @@ final class ClaudeCodeProvider: AgentProviding {
             Log.agents.error("Claude hook removal failed: \(String(describing: error))")
         }
         stop()
-        sessionsByID = [:]
-        hookState = [:]
-        hookCwd = [:]
-        endedSessionIDs = []
-        emittedAttentionAt = [:]
-        lastScan = []
-        onSessions?([])
     }
 
     private func beginWatching() {

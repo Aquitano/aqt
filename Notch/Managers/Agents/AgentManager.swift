@@ -24,14 +24,16 @@ final class AgentManager: ObservableObject {
     private var providers: [AgentProviding] = []
     private var sessionsByKind: [AgentKind: [AgentSession]] = [:]
     private var pendingPermissionRequests: [String: PendingPermission] = [:]
+    private var streamTask: Task<Void, Never>?
+    private var streamGeneration = 0
 
     /// Last pill summary signature (count + status + project), so the pill only
     /// re-pops on a real change rather than every transcript write.
     private var pillSignature: String?
 
-    /// start() builds providers + the socket exactly once, so it can be called both
-    /// at launch and when the user flips the feature on at runtime.
-    private var hasStarted = false
+    /// Providers are configured once, but watching can be paused/resumed by the
+    /// master switch without uninstalling any per-agent integration.
+    private var isRunning = false
 
     init(activities: ActivityManager, settings: Settings) {
         self.activities = activities
@@ -40,9 +42,66 @@ final class AgentManager: ObservableObject {
     }
 
     func start() {
-        guard settings.agentsEnabled, !hasStarted else { return }
-        hasStarted = true
+        guard settings.agentsEnabled, !isRunning else { return }
+        configureProvidersIfNeeded()
+        isRunning = true
 
+        providers.forEach { $0.start() }
+
+        // Deliver envelopes through one serial stream instead of an independent
+        // Task per envelope. Independent tasks have no ordering guarantee, so two
+        // hooks fired back-to-back (e.g. PostToolUse then Stop) could be processed
+        // reversed — leaving a session stuck "Thinking" after the turn finished.
+        // A single consumer routes them in arrival order.
+        streamGeneration += 1
+        let generation = streamGeneration
+        let (stream, continuation) = AsyncStream.makeStream(of: (HookEnvelope, pid_t).self)
+        socketServer.start { [continuation] envelope, pid in
+            continuation.yield((envelope, pid))
+        } onPermissionTimeout: { [weak self] requestId in
+            Task { @MainActor in
+                guard let self, self.streamGeneration == generation else { return }
+                self.permissionTimedOut(requestId)
+            }
+        }
+        streamTask = Task { @MainActor [weak self] in
+            for await (envelope, pid) in stream {
+                guard let self, self.streamGeneration == generation else { return }
+                self.route(envelope, pid: pid)
+            }
+        }
+
+        let installer = AgentConfigInstaller()
+        if settings.agentUsageLimits { try? installer.installClaudeUsage() }
+    }
+
+    /// Pause every provider and the shared socket while preserving the user's
+    /// installed integrations. Re-enabling calls `start()` on the same providers.
+    func stop() {
+        guard isRunning else { return }
+        isRunning = false
+        streamGeneration += 1
+        streamTask?.cancel()
+        streamTask = nil
+        socketServer.stop()
+        providers.forEach { $0.stop() }
+
+        pendingPermissionRequests = [:]
+        sessionsByKind = [:]
+        sessions = []
+        usage = nil
+        syncPill([])
+    }
+
+    /// The single entry point for both master switches so persisted state and the
+    /// live subsystem can never disagree.
+    func setWatchingEnabled(_ enabled: Bool) {
+        settings.agentsEnabled = enabled
+        if enabled { start() } else { stop() }
+    }
+
+    private func configureProvidersIfNeeded() {
+        guard providers.isEmpty else { return }
         let installer = AgentConfigInstaller()
         providers = [
             ClaudeCodeProvider(processLookup: processLookup, settings: settings),
@@ -65,33 +124,15 @@ final class AgentManager: ObservableObject {
             ),
         ]
         for provider in providers {
+            let kind = provider.kind
             provider.onSessions = { [weak self] sessions in
-                self?.updateSessions(sessions, for: provider.kind)
+                self?.updateSessions(sessions, for: kind)
             }
             provider.onEvent = { [weak self] event in
-                self?.notifier.notify(event)
-            }
-            provider.start()
-        }
-
-        // Deliver envelopes through one serial stream instead of an independent
-        // Task per envelope. Independent tasks have no ordering guarantee, so two
-        // hooks fired back-to-back (e.g. PostToolUse then Stop) could be processed
-        // reversed — leaving a session stuck "Thinking" after the turn finished.
-        // A single consumer routes them in arrival order.
-        let (stream, continuation) = AsyncStream.makeStream(of: (HookEnvelope, pid_t).self)
-        socketServer.start { [continuation] envelope, pid in
-            continuation.yield((envelope, pid))
-        } onPermissionTimeout: { [weak self] requestId in
-            Task { @MainActor in self?.permissionTimedOut(requestId) }
-        }
-        Task { @MainActor [weak self] in
-            for await (envelope, pid) in stream {
-                self?.route(envelope, pid: pid)
+                guard let self, self.isRunning else { return }
+                self.notifier.notify(event)
             }
         }
-
-        if settings.agentUsageLimits { try? installer.installClaudeUsage() }
     }
 
 
@@ -133,6 +174,7 @@ final class AgentManager: ObservableObject {
 
     /// Pull fresh state now — used when the Agents tab appears.
     func refresh() {
+        guard isRunning else { return }
         providers.forEach { $0.refresh() }
     }
 
@@ -157,6 +199,7 @@ final class AgentManager: ObservableObject {
     // MARK: - Routing & reconciliation
 
     private func route(_ envelope: HookEnvelope, pid: pid_t) {
+        guard isRunning else { return }
         if envelope.status == "usage" {
             usage = AgentUsage(
                 fiveHourUsedPercent: envelope.fiveHourUsed ?? 0,
@@ -188,9 +231,11 @@ final class AgentManager: ObservableObject {
     /// waiting for Claude's next real hook.
     func respondToPermission(_ session: AgentSession, allow: Bool) {
         guard let requestId = session.permissionRequestId else { return }
+        let generation = streamGeneration
         socketServer.respond(requestId: requestId, decision: allow ? "allow" : "deny") { [weak self] delivered in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, self.isRunning,
+                      self.streamGeneration == generation else { return }
                 if delivered {
                     self.pendingPermissionRequests[requestId] = nil
                     self.provider(for: session.kind)?.ingest(HookEnvelope(
@@ -205,7 +250,8 @@ final class AgentManager: ObservableObject {
     }
 
     private func permissionTimedOut(_ requestId: String) {
-        guard let pending = pendingPermissionRequests.removeValue(forKey: requestId),
+        guard isRunning,
+              let pending = pendingPermissionRequests.removeValue(forKey: requestId),
               let sessionId = pending.sessionId else { return }
         provider(for: pending.kind)?.ingest(HookEnvelope(
             agent: pending.kind.rawValue, hook: "PermissionTimedOut", sessionId: sessionId,
@@ -214,6 +260,7 @@ final class AgentManager: ObservableObject {
     }
 
     private func updateSessions(_ sessions: [AgentSession], for kind: AgentKind) {
+        guard isRunning else { return }
         sessionsByKind[kind] = sessions
         let merged = AgentKind.allCases
             .flatMap { sessionsByKind[$0] ?? [] }
