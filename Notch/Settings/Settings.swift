@@ -46,6 +46,7 @@ final class Settings: ObservableObject {
         static let showShortcutsWidget = "showShortcutsWidget"
         static let pinnedShortcuts = "pinnedShortcuts"
         static let showNoteWidget = "showNoteWidget"
+        static let displayPlacement = "displayPlacement"
     }
 
     @Published var showHUD: Bool { didSet { defaults.set(showHUD, forKey: Key.showHUD) } }
@@ -98,6 +99,9 @@ final class Settings: ObservableObject {
     @Published var showShortcutsWidget: Bool { didSet { defaults.set(showShortcutsWidget, forKey: Key.showShortcutsWidget) } }
     @Published var pinnedShortcuts: [String] { didSet { defaults.set(pinnedShortcuts, forKey: Key.pinnedShortcuts) } }
     @Published var showNoteWidget: Bool { didSet { defaults.set(showNoteWidget, forKey: Key.showNoteWidget) } }
+    @Published var displayPlacement: DisplayPlacement {
+        didSet { defaults.set(displayPlacement.rawValue, forKey: Key.displayPlacement) }
+    }
 
     /// Widgets occupying the expanded home's info row. Drives both the grid and
     /// the panel height, so the two can never disagree about an empty row.
@@ -146,6 +150,7 @@ final class Settings: ObservableObject {
             Key.showShortcutsWidget: false,
             Key.pinnedShortcuts: [String](),
             Key.showNoteWidget: false,
+            Key.displayPlacement: DisplayPlacement.builtIn.rawValue,
         ])
         self.showHUD = defaults.bool(forKey: Key.showHUD)
         self.temperatureUnit = WeatherSnapshot.TemperatureUnit(
@@ -194,5 +199,8 @@ final class Settings: ObservableObject {
         self.showShortcutsWidget = defaults.bool(forKey: Key.showShortcutsWidget)
         self.pinnedShortcuts = defaults.stringArray(forKey: Key.pinnedShortcuts) ?? []
         self.showNoteWidget = defaults.bool(forKey: Key.showNoteWidget)
+        self.displayPlacement = DisplayPlacement(
+            rawValue: defaults.string(forKey: Key.displayPlacement) ?? "builtIn"
+        ) ?? .builtIn
     }
 }

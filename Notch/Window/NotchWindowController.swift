@@ -28,7 +28,7 @@ final class NotchWindowController {
 
     init(env: AppEnvironment) {
         self.env = env
-        self.geometry = ScreenGeometry.current()
+        self.geometry = ScreenGeometry.current(placement: env.settings.displayPlacement)
 
         self.panel = NotchPanel(contentRect: geometry.panelFrame)
 
@@ -63,6 +63,15 @@ final class NotchWindowController {
         // Pin to the notch when displays change.
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .debounce(for: .milliseconds(150), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.recomputeGeometry() }
+            .store(in: &cancellables)
+
+        // Placement changes apply live through the same transaction as a physical
+        // dock/undock event, keeping the frame, SwiftUI geometry, and hit region in
+        // lockstep.
+        env.settings.$displayPlacement
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.recomputeGeometry() }
             .store(in: &cancellables)
 
@@ -282,7 +291,7 @@ final class NotchWindowController {
     }
 
     private func recomputeGeometry() {
-        let next = ScreenGeometry.current()
+        let next = ScreenGeometry.current(placement: env.settings.displayPlacement)
         guard next != geometry else { return }
         geometry = next
         panel.setFrame(next.panelFrame, display: true)

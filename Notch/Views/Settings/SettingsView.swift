@@ -16,6 +16,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             generalSection
+            displaySection
             agentsSection
             if settings.agentsEnabled {
                 agentIntegrationsSection
@@ -29,6 +30,23 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 460, height: 560)
+    }
+
+    // MARK: - Display
+
+    private var displaySection: some View {
+        Section {
+            Picker("Show Notch on", selection: $settings.displayPlacement) {
+                Text(DisplayPlacement.builtIn.title).tag(DisplayPlacement.builtIn)
+                Text(DisplayPlacement.main.title).tag(DisplayPlacement.main)
+            }
+        } header: {
+            Text("Display")
+        } footer: {
+            Text("Built-in automatically falls back to the main display while the MacBook display is unavailable.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - General

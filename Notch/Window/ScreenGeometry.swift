@@ -3,7 +3,7 @@ import AppKit
 /// Resolves the physical notch rectangle and the larger panel rectangle that
 /// surrounds it. Recomputed on every display-parameter change.
 struct ScreenGeometry: Equatable {
-    let screen: NSScreen
+    let display: DisplayDescriptor
     /// The black bezel notch, in screen coordinates (bottom-left origin).
     let notchFrame: NSRect
     /// The panel's frame: a region around the notch with room for the expanded
@@ -20,25 +20,29 @@ struct ScreenGeometry: Equatable {
         lhs.notchFrame == rhs.notchFrame && lhs.panelFrame == rhs.panelFrame
     }
 
-    /// Build geometry for the best target screen (the built-in notched panel),
-    /// falling back to the main screen with a simulated pill.
-    static func current() -> ScreenGeometry {
-        let screen = preferredScreen()
-        let inset = screen.safeAreaInsets
+    /// Resolve the selected display and build its geometry. Built-in placement
+    /// falls back to main while docked with the lid closed.
+    static func current(placement: DisplayPlacement) -> ScreenGeometry {
+        let selection = DisplaySelectionPolicy.resolve(
+            displays: DisplayInventory.current(), placement: placement
+        )
+        return make(for: selection.targets.first ?? DisplayInventory.fallback())
+    }
 
-        let hasRealNotch = inset.top > 0
-        let notchHeight = hasRealNotch ? inset.top : NotchMetrics.fallbackNotchSize.height
+    static func make(for display: DisplayDescriptor) -> ScreenGeometry {
+        let hasRealNotch = display.hasPhysicalNotch
+        let notchHeight = hasRealNotch ? display.safeAreaTop : NotchMetrics.fallbackNotchSize.height
 
         let notchWidth: CGFloat
         if hasRealNotch,
-           let left = screen.auxiliaryTopLeftArea?.width,
-           let right = screen.auxiliaryTopRightArea?.width {
-            notchWidth = screen.frame.width - left - right
+           let left = display.auxiliaryLeftWidth,
+           let right = display.auxiliaryRightWidth {
+            notchWidth = display.frame.width - left - right
         } else {
             notchWidth = NotchMetrics.fallbackNotchSize.width
         }
 
-        let frame = screen.frame
+        let frame = display.frame
         let notchFrame = NSRect(
             x: frame.midX - notchWidth / 2,
             y: frame.maxY - notchHeight,
@@ -56,20 +60,11 @@ struct ScreenGeometry: Equatable {
         )
 
         return ScreenGeometry(
-            screen: screen,
+            display: display,
             notchFrame: notchFrame,
             panelFrame: panelFrame,
             notchSize: CGSize(width: notchWidth, height: notchHeight),
             hasRealNotch: hasRealNotch
         )
-    }
-
-    /// Prefer the built-in notched display; else the screen with the menu bar;
-    /// else the first screen. Never assume `screens[0]` is built-in.
-    private static func preferredScreen() -> NSScreen {
-        if let notched = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) {
-            return notched
-        }
-        return NSScreen.main ?? NSScreen.screens.first ?? NSScreen()
     }
 }

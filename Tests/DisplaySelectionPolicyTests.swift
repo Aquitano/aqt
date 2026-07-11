@@ -1,0 +1,101 @@
+import CoreGraphics
+import XCTest
+
+final class DisplaySelectionPolicyTests: XCTestCase {
+    private func display(
+        _ key: String,
+        x: CGFloat = 0,
+        builtIn: Bool = false,
+        main: Bool = false
+    ) -> DisplayDescriptor {
+        DisplayDescriptor(
+            key: key,
+            displayID: UInt32(abs(key.hashValue % 10_000)),
+            name: key,
+            frame: CGRect(x: x, y: 0, width: 1_920, height: 1_080),
+            safeAreaTop: builtIn ? 32 : 0,
+            auxiliaryLeftWidth: nil,
+            auxiliaryRightWidth: nil,
+            isBuiltIn: builtIn,
+            isMain: main
+        )
+    }
+
+    func testBuiltInPlacementIgnoresInputOrdering() {
+        let external = display("external", main: true)
+        let builtIn = display("built-in", x: -1_512, builtIn: true)
+
+        let result = DisplaySelectionPolicy.resolve(
+            displays: [external, builtIn], placement: .builtIn
+        )
+
+        XCTAssertEqual(result.targets.map(\.key), ["built-in"])
+        XCTAssertEqual(result.reason, .requested)
+    }
+
+    func testBuiltInPlacementFallsBackToMainWhenLidIsClosed() {
+        let secondary = display("secondary", x: -1_920)
+        let main = display("main", main: true)
+
+        let result = DisplaySelectionPolicy.resolve(
+            displays: [secondary, main], placement: .builtIn
+        )
+
+        XCTAssertEqual(result.targets.map(\.key), ["main"])
+        XCTAssertEqual(result.reason, .builtInUnavailable)
+    }
+
+    func testMainPlacementFallsBackToBuiltInWhenMainFlagIsMissing() {
+        let external = display("external", x: 1_512)
+        let builtIn = display("built-in", builtIn: true)
+
+        let result = DisplaySelectionPolicy.resolve(
+            displays: [external, builtIn], placement: .main
+        )
+
+        XCTAssertEqual(result.targets.map(\.key), ["built-in"])
+        XCTAssertEqual(result.reason, .mainUnavailable)
+    }
+
+    func testAllPlacementIsDeterministicAndPutsMainFirst() {
+        let right = display("right", x: 1_920)
+        let builtInMain = display("built-in", builtIn: true, main: true)
+        let left = display("left", x: -1_920)
+
+        let result = DisplaySelectionPolicy.resolve(
+            displays: [right, builtInMain, left], placement: .all
+        )
+
+        XCTAssertEqual(result.targets.map(\.key), ["built-in", "left", "right"])
+    }
+
+    func testNoDisplaysReturnsExplicitEmptySelection() {
+        let result = DisplaySelectionPolicy.resolve(displays: [], placement: .main)
+        XCTAssertTrue(result.targets.isEmpty)
+        XCTAssertEqual(result.reason, .noDisplays)
+    }
+
+    func testStableKeySurvivesReconnectWhenSerialExists() {
+        let before = DisplayDescriptor.stableKey(
+            unitNumber: 7, vendor: 10, model: 20, serial: 30,
+            name: "Studio Display", isBuiltIn: false
+        )
+        let after = DisplayDescriptor.stableKey(
+            unitNumber: 99, vendor: 10, model: 20, serial: 30,
+            name: "Studio Display", isBuiltIn: false
+        )
+        XCTAssertEqual(before, after)
+    }
+
+    func testSeriallessIdenticalDisplaysRemainDistinctWhileOnline() {
+        let first = DisplayDescriptor.stableKey(
+            unitNumber: 7, vendor: 10, model: 20, serial: 0,
+            name: "Generic Panel", isBuiltIn: false
+        )
+        let second = DisplayDescriptor.stableKey(
+            unitNumber: 8, vendor: 10, model: 20, serial: 0,
+            name: "Generic Panel", isBuiltIn: false
+        )
+        XCTAssertNotEqual(first, second)
+    }
+}

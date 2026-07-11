@@ -1,0 +1,120 @@
+import CoreGraphics
+import Foundation
+
+/// Where the notch should live. `.all` is part of the policy model now so the
+/// multi-panel milestone can build on the same tested selection rules; the UI
+/// exposes it only once the window coordinator can host every target.
+enum DisplayPlacement: String, Codable, CaseIterable, Identifiable, Sendable {
+    case builtIn
+    case main
+    case all
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .builtIn: return "Built-in Display"
+        case .main: return "Main Display"
+        case .all: return "All Displays"
+        }
+    }
+}
+
+/// AppKit-free snapshot of one online display. Keeping selection inputs as
+/// values makes dock/undock behavior deterministic and hostless-testable.
+struct DisplayDescriptor: Equatable, Sendable {
+    let key: String
+    let displayID: UInt32
+    let name: String
+    let frame: CGRect
+    let safeAreaTop: CGFloat
+    let auxiliaryLeftWidth: CGFloat?
+    let auxiliaryRightWidth: CGFloat?
+    let isBuiltIn: Bool
+    let isMain: Bool
+
+    var hasPhysicalNotch: Bool { safeAreaTop > 0 }
+
+    /// Public CoreGraphics exposes vendor/model/serial but not a persistent
+    /// display UUID. Serial is stable across reconnects when the monitor reports
+    /// one; otherwise the hardware unit number is a better fallback than the
+    /// transient direct-display id and distinguishes identical online panels.
+    static func stableKey(
+        unitNumber: UInt32,
+        vendor: UInt32,
+        model: UInt32,
+        serial: UInt32,
+        name: String,
+        isBuiltIn: Bool
+    ) -> String {
+        if isBuiltIn {
+            return "builtin-\(vendor)-\(model)-\(serial)"
+        }
+        if serial != 0 {
+            return "display-\(vendor)-\(model)-\(serial)"
+        }
+        let normalizedName = name
+            .lowercased()
+            .unicodeScalars
+            .map { CharacterSet.alphanumerics.contains($0) ? String($0) : "-" }
+            .joined()
+        let slug = normalizedName.split(separator: "-").joined(separator: "-")
+        return "display-\(vendor)-\(model)-\(slug)-unit\(unitNumber)"
+    }
+}
+
+struct DisplaySelection: Equatable, Sendable {
+    enum Reason: Equatable, Sendable {
+        case requested
+        case builtInUnavailable
+        case mainUnavailable
+        case noDisplays
+    }
+
+    let targets: [DisplayDescriptor]
+    let reason: Reason
+}
+
+/// Pure display-target resolution. Never relies on `NSScreen.screens` ordering.
+enum DisplaySelectionPolicy {
+    static func resolve(
+        displays: [DisplayDescriptor],
+        placement: DisplayPlacement
+    ) -> DisplaySelection {
+        guard !displays.isEmpty else {
+            return DisplaySelection(targets: [], reason: .noDisplays)
+        }
+
+        let ordered = displays.sorted(by: displayOrder)
+        switch placement {
+        case .builtIn:
+            if let builtIn = ordered.first(where: \.isBuiltIn) {
+                return DisplaySelection(targets: [builtIn], reason: .requested)
+            }
+            if let main = ordered.first(where: \.isMain) {
+                return DisplaySelection(targets: [main], reason: .builtInUnavailable)
+            }
+            return DisplaySelection(targets: [ordered[0]], reason: .builtInUnavailable)
+
+        case .main:
+            if let main = ordered.first(where: \.isMain) {
+                return DisplaySelection(targets: [main], reason: .requested)
+            }
+            if let builtIn = ordered.first(where: \.isBuiltIn) {
+                return DisplaySelection(targets: [builtIn], reason: .mainUnavailable)
+            }
+            return DisplaySelection(targets: [ordered[0]], reason: .mainUnavailable)
+
+        case .all:
+            return DisplaySelection(targets: ordered, reason: .requested)
+        }
+    }
+
+    private static func displayOrder(_ lhs: DisplayDescriptor, _ rhs: DisplayDescriptor) -> Bool {
+        if lhs.isMain != rhs.isMain { return lhs.isMain }
+        if lhs.isBuiltIn != rhs.isBuiltIn { return lhs.isBuiltIn }
+        if lhs.frame.minX != rhs.frame.minX { return lhs.frame.minX < rhs.frame.minX }
+        if lhs.frame.minY != rhs.frame.minY { return lhs.frame.minY > rhs.frame.minY }
+        return lhs.key < rhs.key
+    }
+}
