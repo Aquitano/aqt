@@ -15,10 +15,12 @@ final class HitRegionTests: XCTestCase {
         hasInfoRow: Bool = false,
         trayEmpty: Bool = true,
         compact: NotchLayout.CompactContent = .none,
-        dropActive: Bool = false
+        dropActive: Bool = false,
+        expandedWidth: CGFloat = NotchMetrics.expandedWidth
     ) -> LayoutSnapshot {
         LayoutSnapshot(
-            presentation: presentation, notch: notch, panelFrame: panel, tab: tab,
+            presentation: presentation, notch: notch, expandedWidth: expandedWidth,
+            panelFrame: panel, tab: tab,
             hasInfoRow: hasInfoRow, trayEmpty: trayEmpty, compact: compact, dropActive: dropActive
         )
     }
@@ -92,5 +94,11 @@ final class HitRegionTests: XCTestCase {
             let rect = HitRegion.rect(snap)
             XCTAssertEqual(rect.midX, panel.midX, accuracy: 0.001)
         }
+    }
+
+    func testExpandedWidthUsesDisplayProfile() {
+        let rect = HitRegion.rect(snapshot(.expanded, expandedWidth: 620))
+        XCTAssertEqual(rect.width, 620, accuracy: 0.001)
+        XCTAssertEqual(rect.midX, panel.midX, accuracy: 0.001)
     }
 }

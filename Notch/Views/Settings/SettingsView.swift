@@ -12,6 +12,8 @@ struct SettingsView: View {
     @EnvironmentObject private var shortcuts: ShortcutsManager
 
     @State private var shortcutToPin = ""
+    @State private var displays: [DisplayDescriptor] = []
+    @State private var customizedDisplayKey = ""
 
     var body: some View {
         Form {
@@ -30,6 +32,12 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 460, height: 560)
+        .onAppear { refreshDisplays() }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didChangeScreenParametersNotification
+        )) { _ in
+            refreshDisplays()
+        }
     }
 
     // MARK: - Display
@@ -40,12 +48,101 @@ struct SettingsView: View {
                 Text(DisplayPlacement.builtIn.title).tag(DisplayPlacement.builtIn)
                 Text(DisplayPlacement.main.title).tag(DisplayPlacement.main)
             }
+            .disabled(settings.followActiveDisplay)
+
+            Toggle("Only show on active display", isOn: $settings.followActiveDisplay)
+
+            if let display = selectedDisplay {
+                Divider()
+                Picker("Customize", selection: $customizedDisplayKey) {
+                    ForEach(displays, id: \.key) { option in
+                        Text(option.name).tag(option.key)
+                    }
+                }
+                displaySlider(
+                    "Compact width", value: profileBinding(\.compactWidthAdjustment),
+                    range: display.hasPhysicalNotch ? 0...160 : -40...160, suffix: " pt"
+                )
+                displaySlider(
+                    "Compact height", value: profileBinding(\.compactHeightAdjustment),
+                    range: display.hasPhysicalNotch ? 0...20 : -6...20, suffix: " pt"
+                )
+                displaySlider(
+                    "Expanded width", value: profileBinding(\.expandedWidthAdjustment),
+                    range: -80...180, suffix: " pt"
+                )
+                if !display.hasPhysicalNotch {
+                    displaySlider(
+                        "Horizontal offset", value: profileBinding(\.horizontalOffset),
+                        range: -240...240, suffix: " pt"
+                    )
+                    displaySlider(
+                        "Top offset", value: profileBinding(\.verticalOffset),
+                        range: 0...80, suffix: " pt"
+                    )
+                }
+                Button("Reset Display Size and Position") {
+                    settings.resetDisplayProfile(for: display.key)
+                }
+                .controlSize(.small)
+            }
         } header: {
             Text("Display")
         } footer: {
-            Text("Built-in automatically falls back to the main display while the MacBook display is unavailable.")
+            Text("Built-in falls back to the main display while unavailable. Notchless screens use a virtual pill; offsets are limited to virtual pills so content never moves away from a camera housing.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private var selectedDisplay: DisplayDescriptor? {
+        if let customized = displays.first(where: { $0.key == customizedDisplayKey }) {
+            return customized
+        }
+        return DisplaySelectionPolicy.resolve(
+            displays: displays, placement: settings.displayPlacement
+        ).targets.first
+    }
+
+    private func profileBinding(_ keyPath: WritableKeyPath<DisplayProfile, Double>) -> Binding<Double> {
+        Binding(
+            get: {
+                guard let display = selectedDisplay else { return 0 }
+                return settings.displayProfile(for: display.key)[keyPath: keyPath]
+            },
+            set: { value in
+                guard let display = selectedDisplay else { return }
+                var profile = settings.displayProfile(for: display.key)
+                profile[keyPath: keyPath] = value
+                settings.updateDisplayProfile(profile)
+            }
+        )
+    }
+
+    private func displaySlider(
+        _ title: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        suffix: String
+    ) -> some View {
+        LabeledContent(title) {
+            HStack(spacing: 8) {
+                Slider(value: value, in: range, step: 2)
+                    .frame(width: 180)
+                Text("\(Int(value.wrappedValue))\(suffix)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 48, alignment: .trailing)
+            }
+        }
+    }
+
+    private func refreshDisplays() {
+        displays = DisplayInventory.current()
+        if !displays.contains(where: { $0.key == customizedDisplayKey }) {
+            customizedDisplayKey = DisplaySelectionPolicy.resolve(
+                displays: displays, placement: settings.displayPlacement
+            ).targets.first?.key ?? displays.first?.key ?? ""
         }
     }
 

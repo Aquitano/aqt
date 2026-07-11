@@ -6,11 +6,22 @@ private struct NotchGeometryKey: EnvironmentKey {
     static let defaultValue: CGSize = NotchMetrics.fallbackNotchSize
 }
 
+private struct NotchExpandedWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat = NotchMetrics.expandedWidth
+}
+
 extension EnvironmentValues {
     /// The physical notch size, injected by the window controller.
     var notchGeometry: CGSize {
         get { self[NotchGeometryKey.self] }
         set { self[NotchGeometryKey.self] = newValue }
+    }
+
+    /// Per-display expanded width, injected from the same geometry snapshot as
+    /// the physical/virtual notch size.
+    var notchExpandedWidth: CGFloat {
+        get { self[NotchExpandedWidthKey.self] }
+        set { self[NotchExpandedWidthKey.self] = newValue }
     }
 }
 

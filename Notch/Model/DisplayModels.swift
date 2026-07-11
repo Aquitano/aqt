@@ -20,6 +20,39 @@ enum DisplayPlacement: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Per-display layout tuning. Adjustments are relative to the measured physical
+/// notch or the standard virtual pill and are clamped before use.
+struct DisplayProfile: Codable, Equatable, Sendable, Identifiable {
+    var displayKey: String
+    var compactWidthAdjustment: Double = 0
+    var compactHeightAdjustment: Double = 0
+    var horizontalOffset: Double = 0
+    var verticalOffset: Double = 0
+    var expandedWidthAdjustment: Double = 0
+
+    var id: String { displayKey }
+
+    static func standard(for displayKey: String) -> DisplayProfile {
+        DisplayProfile(displayKey: displayKey)
+    }
+
+    var normalized: DisplayProfile {
+        var copy = self
+        copy.compactWidthAdjustment = compactWidthAdjustment.clamped(to: -40...160)
+        copy.compactHeightAdjustment = compactHeightAdjustment.clamped(to: -6...20)
+        copy.horizontalOffset = horizontalOffset.clamped(to: -240...240)
+        copy.verticalOffset = verticalOffset.clamped(to: 0...80)
+        copy.expandedWidthAdjustment = expandedWidthAdjustment.clamped(to: -80...180)
+        return copy
+    }
+}
+
+extension Double {
+    func clamped(to range: ClosedRange<Double>) -> Double {
+        min(max(self, range.lowerBound), range.upperBound)
+    }
+}
+
 /// AppKit-free snapshot of one online display. Keeping selection inputs as
 /// values makes dock/undock behavior deterministic and hostless-testable.
 struct DisplayDescriptor: Equatable, Sendable {
@@ -66,6 +99,8 @@ struct DisplayDescriptor: Equatable, Sendable {
 struct DisplaySelection: Equatable, Sendable {
     enum Reason: Equatable, Sendable {
         case requested
+        case activeDisplay
+        case activeDisplayUnavailable
         case builtInUnavailable
         case mainUnavailable
         case noDisplays
@@ -79,13 +114,23 @@ struct DisplaySelection: Equatable, Sendable {
 enum DisplaySelectionPolicy {
     static func resolve(
         displays: [DisplayDescriptor],
-        placement: DisplayPlacement
+        placement: DisplayPlacement,
+        followActiveDisplay: Bool = false,
+        activeDisplayKey: String? = nil
     ) -> DisplaySelection {
         guard !displays.isEmpty else {
             return DisplaySelection(targets: [], reason: .noDisplays)
         }
 
         let ordered = displays.sorted(by: displayOrder)
+        if followActiveDisplay, placement != .all {
+            if let activeDisplayKey,
+               let active = ordered.first(where: { $0.key == activeDisplayKey }) {
+                return DisplaySelection(targets: [active], reason: .activeDisplay)
+            }
+            let fallback = resolve(displays: displays, placement: placement)
+            return DisplaySelection(targets: fallback.targets, reason: .activeDisplayUnavailable)
+        }
         switch placement {
         case .builtIn:
             if let builtIn = ordered.first(where: \.isBuiltIn) {

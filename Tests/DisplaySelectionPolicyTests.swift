@@ -75,6 +75,50 @@ final class DisplaySelectionPolicyTests: XCTestCase {
         XCTAssertEqual(result.reason, .noDisplays)
     }
 
+    func testFollowActiveDisplayOverridesSinglePlacement() {
+        let builtIn = display("built-in", builtIn: true, main: true)
+        let external = display("external", x: 1_512)
+        let result = DisplaySelectionPolicy.resolve(
+            displays: [builtIn, external], placement: .builtIn,
+            followActiveDisplay: true, activeDisplayKey: "external"
+        )
+        XCTAssertEqual(result.targets.map(\.key), ["external"])
+        XCTAssertEqual(result.reason, .activeDisplay)
+    }
+
+    func testFollowActiveFallsBackWhenPointerTargetDisappears() {
+        let builtIn = display("built-in", builtIn: true, main: true)
+        let result = DisplaySelectionPolicy.resolve(
+            displays: [builtIn], placement: .builtIn,
+            followActiveDisplay: true, activeDisplayKey: "disconnected"
+        )
+        XCTAssertEqual(result.targets.map(\.key), ["built-in"])
+        XCTAssertEqual(result.reason, .activeDisplayUnavailable)
+    }
+
+    func testAllPlacementIgnoresFollowActiveDisplay() {
+        let main = display("main", main: true)
+        let other = display("other", x: 1_920)
+        let result = DisplaySelectionPolicy.resolve(
+            displays: [main, other], placement: .all,
+            followActiveDisplay: true, activeDisplayKey: "other"
+        )
+        XCTAssertEqual(result.targets.map(\.key), ["main", "other"])
+    }
+
+    func testDisplayProfileClampsEveryAdjustment() {
+        let profile = DisplayProfile(
+            displayKey: "display", compactWidthAdjustment: 999,
+            compactHeightAdjustment: -999, horizontalOffset: 999,
+            verticalOffset: -999, expandedWidthAdjustment: 999
+        ).normalized
+        XCTAssertEqual(profile.compactWidthAdjustment, 160)
+        XCTAssertEqual(profile.compactHeightAdjustment, -6)
+        XCTAssertEqual(profile.horizontalOffset, 240)
+        XCTAssertEqual(profile.verticalOffset, 0)
+        XCTAssertEqual(profile.expandedWidthAdjustment, 180)
+    }
+
     func testStableKeySurvivesReconnectWhenSerialExists() {
         let before = DisplayDescriptor.stableKey(
             unitNumber: 7, vendor: 10, model: 20, serial: 30,

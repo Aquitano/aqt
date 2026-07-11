@@ -47,6 +47,8 @@ final class Settings: ObservableObject {
         static let pinnedShortcuts = "pinnedShortcuts"
         static let showNoteWidget = "showNoteWidget"
         static let displayPlacement = "displayPlacement"
+        static let followActiveDisplay = "followActiveDisplay"
+        static let displayProfiles = "displayProfiles"
     }
 
     @Published var showHUD: Bool { didSet { defaults.set(showHUD, forKey: Key.showHUD) } }
@@ -102,6 +104,16 @@ final class Settings: ObservableObject {
     @Published var displayPlacement: DisplayPlacement {
         didSet { defaults.set(displayPlacement.rawValue, forKey: Key.displayPlacement) }
     }
+    @Published var followActiveDisplay: Bool {
+        didSet { defaults.set(followActiveDisplay, forKey: Key.followActiveDisplay) }
+    }
+    @Published var displayProfiles: [DisplayProfile] {
+        didSet {
+            if let data = try? JSONEncoder().encode(displayProfiles) {
+                defaults.set(data, forKey: Key.displayProfiles)
+            }
+        }
+    }
 
     /// Widgets occupying the expanded home's info row. Drives both the grid and
     /// the panel height, so the two can never disagree about an empty row.
@@ -151,6 +163,7 @@ final class Settings: ObservableObject {
             Key.pinnedShortcuts: [String](),
             Key.showNoteWidget: false,
             Key.displayPlacement: DisplayPlacement.builtIn.rawValue,
+            Key.followActiveDisplay: false,
         ])
         self.showHUD = defaults.bool(forKey: Key.showHUD)
         self.temperatureUnit = WeatherSnapshot.TemperatureUnit(
@@ -202,5 +215,23 @@ final class Settings: ObservableObject {
         self.displayPlacement = DisplayPlacement(
             rawValue: defaults.string(forKey: Key.displayPlacement) ?? "builtIn"
         ) ?? .builtIn
+        self.followActiveDisplay = defaults.bool(forKey: Key.followActiveDisplay)
+        self.displayProfiles = defaults.data(forKey: Key.displayProfiles)
+            .flatMap { try? JSONDecoder().decode([DisplayProfile].self, from: $0) } ?? []
+    }
+
+    func displayProfile(for displayKey: String) -> DisplayProfile {
+        displayProfiles.first(where: { $0.displayKey == displayKey })
+            ?? .standard(for: displayKey)
+    }
+
+    func updateDisplayProfile(_ profile: DisplayProfile) {
+        let profile = profile.normalized
+        displayProfiles.removeAll { $0.displayKey == profile.displayKey }
+        displayProfiles.append(profile)
+    }
+
+    func resetDisplayProfile(for displayKey: String) {
+        displayProfiles.removeAll { $0.displayKey == displayKey }
     }
 }

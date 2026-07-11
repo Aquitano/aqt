@@ -12,6 +12,7 @@ struct ExpandedView: View {
     @EnvironmentObject private var settings: Settings
 
     @Environment(\.notchGeometry) private var notchSize
+    @Environment(\.notchExpandedWidth) private var expandedWidth
     @Environment(\.openSettings) private var openSettings
 
     @Namespace private var tabNamespace
@@ -27,7 +28,7 @@ struct ExpandedView: View {
             // back to read as a consistent 12pt visible margin like the bottom;
             // using the corner radius left the sides pinched.
             .padding(.horizontal, 12 + NotchMetrics.shoulderInset(
-                width: NotchMetrics.expandedWidth, notchWidth: notchSize.width))
+                width: expandedWidth, notchWidth: notchSize.width))
             .padding(.bottom, 12)
             // Keep the tap targets well clear of the physical notch / menu-bar band,
             // which otherwise crowds the top tab row and eats clicks near the notch.

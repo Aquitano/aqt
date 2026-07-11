@@ -14,6 +14,7 @@ struct NotchRootView: View {
     @EnvironmentObject private var settings: Settings
 
     @Environment(\.notchGeometry) private var notchSize
+    @Environment(\.notchExpandedWidth) private var expandedWidth
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Namespace private var morph
@@ -118,6 +119,7 @@ struct NotchRootView: View {
         NotchLayout.contentSize(
             presentation: state.presentation,
             notch: notchSize,
+            expandedWidth: expandedWidth,
             tab: state.expandedTab,
             hasInfoRow: settings.hasInfoRowWidgets,
             trayEmpty: tray.items.isEmpty,
@@ -130,6 +132,7 @@ struct NotchRootView: View {
         NotchLayout.contentSize(
             presentation: .expanded,
             notch: notchSize,
+            expandedWidth: expandedWidth,
             tab: state.expandedTab,
             hasInfoRow: settings.hasInfoRowWidgets,
             trayEmpty: tray.items.isEmpty,

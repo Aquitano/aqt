@@ -24,6 +24,10 @@ enum DisplayInventory {
         )
     }
 
+    static func displayKey(containing point: CGPoint) -> String? {
+        current().first(where: { $0.frame.contains(point) })?.key
+    }
+
     private static func descriptor(for screen: NSScreen) -> DisplayDescriptor? {
         let key = NSDeviceDescriptionKey("NSScreenNumber")
         guard let number = screen.deviceDescription[key] as? NSNumber else { return nil }

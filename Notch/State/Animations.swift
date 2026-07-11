@@ -176,6 +176,7 @@ enum NotchLayout {
 
     static func contentSize(presentation: NotchState.Presentation,
                             notch: CGSize,
+                            expandedWidth: CGFloat = NotchMetrics.expandedWidth,
                             tab: NotchState.ExpandedTab,
                             hasInfoRow: Bool,
                             trayEmpty: Bool,
@@ -191,7 +192,7 @@ enum NotchLayout {
             let body = dropActive
                 ? dropChooserHeight
                 : expandedBodyHeight(tab: tab, hasInfoRow: hasInfoRow, trayEmpty: trayEmpty)
-            return CGSize(width: NotchMetrics.expandedWidth, height: body + notch.height)
+            return CGSize(width: expandedWidth, height: body + notch.height)
         }
     }
 }

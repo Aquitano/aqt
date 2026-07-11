@@ -22,18 +22,28 @@ final class NotchWindowController {
     /// Debounce so one trackpad flick (which fires many scroll events) advances
     /// the activity queue by a single step.
     private var cycleCooldown = false
+    private var activeDisplayKey: String?
+    private var activeDisplayCandidate: String?
+    private var activeDisplayTask: Task<Void, Never>?
 
     /// Anchor for AppKit popovers such as the third-party sharing picker.
     var panelContentView: NSView? { panel.contentView }
 
     init(env: AppEnvironment) {
         self.env = env
-        self.geometry = ScreenGeometry.current(placement: env.settings.displayPlacement)
+        self.activeDisplayKey = DisplayInventory.displayKey(containing: NSEvent.mouseLocation)
+        self.geometry = ScreenGeometry.current(
+            placement: env.settings.displayPlacement,
+            followActiveDisplay: env.settings.followActiveDisplay,
+            activeDisplayKey: activeDisplayKey,
+            profiles: env.settings.displayProfiles
+        )
 
         self.panel = NotchPanel(contentRect: geometry.panelFrame)
 
         let root = NotchRootView()
             .environment(\.notchGeometry, geometry.notchSize)
+            .environment(\.notchExpandedWidth, geometry.expandedWidth)
             .injectNotchEnvironment(env)
         self.hostingView = NSHostingView(rootView: AnyView(root))
         hostingView.frame = NSRect(origin: .zero, size: geometry.panelFrame.size)
@@ -53,6 +63,7 @@ final class NotchWindowController {
     }
 
     func stop() {
+        activeDisplayTask?.cancel()
         for monitor in mouseMonitors { NSEvent.removeMonitor(monitor) }
         mouseMonitors.removeAll()
     }
@@ -70,6 +81,26 @@ final class NotchWindowController {
         // dock/undock event, keeping the frame, SwiftUI geometry, and hit region in
         // lockstep.
         env.settings.$displayPlacement
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.recomputeGeometry() }
+            .store(in: &cancellables)
+
+        env.settings.$followActiveDisplay
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                if enabled {
+                    self.activeDisplayKey = DisplayInventory.displayKey(
+                        containing: NSEvent.mouseLocation
+                    )
+                }
+                self.recomputeGeometry()
+            }
+            .store(in: &cancellables)
+
+        env.settings.$displayProfiles
             .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.recomputeGeometry() }
@@ -172,7 +203,39 @@ final class NotchWindowController {
             env.state.endDropTargeting()
         }
         if env.state.activeDropZone != nil { env.state.activeDropZone = nil }
+        considerActiveDisplay()
         updatePassthrough()
+    }
+
+    /// Follow the display containing the pointer only after it remains there for
+    /// a moment. This prevents a virtual pill from bouncing between adjacent
+    /// screens while the pointer crosses their shared top edge.
+    private func considerActiveDisplay() {
+        guard env.settings.followActiveDisplay,
+              env.settings.displayPlacement != .all,
+              !isDragSessionActive,
+              !panel.presentingShareSheet,
+              !panel.editingText,
+              env.state.presentation != .expanded,
+              let candidate = DisplayInventory.displayKey(containing: NSEvent.mouseLocation),
+              candidate != activeDisplayKey else { return }
+        guard candidate != activeDisplayCandidate else { return }
+        activeDisplayCandidate = candidate
+        activeDisplayTask?.cancel()
+        activeDisplayTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(260))
+            guard let self else { return }
+            defer {
+                if self.activeDisplayCandidate == candidate {
+                    self.activeDisplayCandidate = nil
+                }
+            }
+            guard !Task.isCancelled,
+                  self.activeDisplayCandidate == candidate,
+                  DisplayInventory.displayKey(containing: NSEvent.mouseLocation) == candidate else { return }
+            self.activeDisplayKey = candidate
+            self.recomputeGeometry()
+        }
     }
 
     /// When a file drag reaches the notch's catch area, make the panel interactive
@@ -275,6 +338,7 @@ final class NotchWindowController {
         LayoutSnapshot(
             presentation: env.state.presentation,
             notch: geometry.notchSize,
+            expandedWidth: geometry.expandedWidth,
             panelFrame: geometry.panelFrame,
             tab: env.state.expandedTab,
             // Keep hit-testing in lockstep with the SwiftUI layout. Shortcuts and
@@ -291,7 +355,15 @@ final class NotchWindowController {
     }
 
     private func recomputeGeometry() {
-        let next = ScreenGeometry.current(placement: env.settings.displayPlacement)
+        if activeDisplayKey == nil || !DisplayInventory.current().contains(where: { $0.key == activeDisplayKey }) {
+            activeDisplayKey = DisplayInventory.displayKey(containing: NSEvent.mouseLocation)
+        }
+        let next = ScreenGeometry.current(
+            placement: env.settings.displayPlacement,
+            followActiveDisplay: env.settings.followActiveDisplay,
+            activeDisplayKey: activeDisplayKey,
+            profiles: env.settings.displayProfiles
+        )
         guard next != geometry else { return }
         geometry = next
         panel.setFrame(next.panelFrame, display: true)
@@ -299,6 +371,7 @@ final class NotchWindowController {
         hostingView.rootView = AnyView(
             NotchRootView()
                 .environment(\.notchGeometry, next.notchSize)
+                .environment(\.notchExpandedWidth, next.expandedWidth)
                 .injectNotchEnvironment(env)
         )
     }
