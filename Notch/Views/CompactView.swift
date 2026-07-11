@@ -18,6 +18,7 @@ struct CompactView: View {
     @EnvironmentObject private var env: AppEnvironment
 
     @Environment(\.notchGeometry) private var notchSize
+    @Environment(\.notchControlsSharedRendering) private var controlsSharedRendering
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -25,9 +26,11 @@ struct CompactView: View {
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onChange(of: visualizerRequested, initial: true) { _, active in
-                visualizer.setActive(active)
+                if controlsSharedRendering { visualizer.setActive(active) }
             }
-            .onDisappear { visualizer.setActive(false) }
+            .onDisappear {
+                if controlsSharedRendering { visualizer.setActive(false) }
+            }
     }
 
     /// One-shot attention pop on a new event. Applied to each slot's content (not

@@ -47,10 +47,14 @@ struct SettingsView: View {
             Picker("Show Notch on", selection: $settings.displayPlacement) {
                 Text(DisplayPlacement.builtIn.title).tag(DisplayPlacement.builtIn)
                 Text(DisplayPlacement.main.title).tag(DisplayPlacement.main)
+                Text(DisplayPlacement.all.title).tag(DisplayPlacement.all)
             }
-            .disabled(settings.followActiveDisplay)
+            // Keep the picker usable if an older/defaults-edited install ever
+            // contains the otherwise invalid `all + follow active` combination.
+            .disabled(settings.followActiveDisplay && settings.displayPlacement != .all)
 
             Toggle("Only show on active display", isOn: $settings.followActiveDisplay)
+                .disabled(settings.displayPlacement == .all)
 
             if let display = selectedDisplay {
                 Divider()

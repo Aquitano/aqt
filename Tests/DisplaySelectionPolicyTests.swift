@@ -142,4 +142,57 @@ final class DisplaySelectionPolicyTests: XCTestCase {
         )
         XCTAssertNotEqual(first, second)
     }
+
+    func testHostInteractionOwnerSurvivesActiveDisplayChanges() {
+        let key = DisplayHostPolicy.interactionKey(
+            availableKeys: ["left", "right"], current: "left", active: "right"
+        )
+        XCTAssertEqual(key, "left")
+    }
+
+    func testHostInteractionFallsBackWhenOwnerDisconnects() {
+        let key = DisplayHostPolicy.interactionKey(
+            availableKeys: ["right"], current: "left", active: "right"
+        )
+        XCTAssertEqual(key, "right")
+    }
+
+    func testSharedRenderingPrimaryFollowsActiveDisplay() {
+        let key = DisplayHostPolicy.primaryKey(
+            availableKeys: ["left", "right"], active: "right", interaction: "left"
+        )
+        XCTAssertEqual(key, "right")
+    }
+
+    func testMigrationKeepsPresentationWhenInteractionDisplayRemains() {
+        let instruction = DisplayHostMigrationPolicy.instruction(
+            targetStillAvailable: true, wasExpanded: true,
+            wasHovering: true, hasTransientInteraction: true
+        )
+        XCTAssertEqual(instruction, .keepPresentation)
+    }
+
+    func testMigrationCollapsesHoverExpansionWhenDisplayDisappears() {
+        let instruction = DisplayHostMigrationPolicy.instruction(
+            targetStillAvailable: false, wasExpanded: true,
+            wasHovering: true, hasTransientInteraction: false
+        )
+        XCTAssertEqual(instruction, .collapse)
+    }
+
+    func testMigrationRestoresProgrammaticExpansionOnReplacement() {
+        let instruction = DisplayHostMigrationPolicy.instruction(
+            targetStillAvailable: false, wasExpanded: true,
+            wasHovering: false, hasTransientInteraction: false
+        )
+        XCTAssertEqual(instruction, .restoreProgrammaticExpansion)
+    }
+
+    func testMigrationEndsTransientInteractionBeforeRemovingHost() {
+        let instruction = DisplayHostMigrationPolicy.instruction(
+            targetStillAvailable: false, wasExpanded: true,
+            wasHovering: false, hasTransientInteraction: true
+        )
+        XCTAssertEqual(instruction, .endTransientInteractionAndCollapse)
+    }
 }

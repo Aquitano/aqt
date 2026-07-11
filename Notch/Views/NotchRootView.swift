@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 /// compact/expanded morph, the HUD overlay, and the drop target. All hit-testing
 /// is scoped to the actual content so the rest of the panel stays click-through.
 struct NotchRootView: View {
+    var showsHUD = true
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var state: NotchState
     @EnvironmentObject private var hud: HUDManager
@@ -23,7 +24,7 @@ struct NotchRootView: View {
         ZStack(alignment: .top) {
             Color.clear.allowsHitTesting(false)
 
-            if hud.isVisible {
+            if showsHUD && hud.isVisible {
                 HUDOverlayView(namespace: morph)
                     .padding(.top, notchSize.height + 12)
                     .transition(.opacity.combined(with: .move(edge: .top)))

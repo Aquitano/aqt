@@ -163,3 +163,51 @@ enum DisplaySelectionPolicy {
         return lhs.key < rhs.key
     }
 }
+
+/// Pure key selection shared by the multi-panel coordinator. Interaction keeps
+/// its current owner while valid; passive shared work follows the active screen.
+enum DisplayHostPolicy {
+    static func interactionKey(
+        availableKeys: Set<String>,
+        current: String?,
+        active: String?
+    ) -> String? {
+        if let current, availableKeys.contains(current) { return current }
+        if let active, availableKeys.contains(active) { return active }
+        return availableKeys.sorted().first
+    }
+
+    static func primaryKey(
+        availableKeys: Set<String>,
+        active: String?,
+        interaction: String?
+    ) -> String? {
+        if let active, availableKeys.contains(active) { return active }
+        if let interaction, availableKeys.contains(interaction) { return interaction }
+        return availableKeys.sorted().first
+    }
+}
+
+enum DisplayHostMigrationInstruction: Equatable, Sendable {
+    case keepPresentation
+    case collapse
+    case endTransientInteractionAndCollapse
+    case restoreProgrammaticExpansion
+}
+
+/// Describes how presentation should survive removal of its owning display.
+/// The coordinator performs the AppKit cleanup; this value policy stays
+/// hostless so disconnect and placement-change behavior is deterministic.
+enum DisplayHostMigrationPolicy {
+    static func instruction(
+        targetStillAvailable: Bool,
+        wasExpanded: Bool,
+        wasHovering: Bool,
+        hasTransientInteraction: Bool
+    ) -> DisplayHostMigrationInstruction {
+        if targetStillAvailable { return .keepPresentation }
+        if hasTransientInteraction { return .endTransientInteractionAndCollapse }
+        guard wasExpanded else { return .keepPresentation }
+        return wasHovering ? .collapse : .restoreProgrammaticExpansion
+    }
+}

@@ -224,11 +224,11 @@ private final class ShareCoordinator: NSObject, NSSharingServiceDelegate, @preco
 extension View {
     /// Inject every manager so views can `@EnvironmentObject` exactly what they need.
     @MainActor
-    func injectNotchEnvironment(_ env: AppEnvironment) -> some View {
+    func injectNotchEnvironment(_ env: AppEnvironment, state: NotchState? = nil) -> some View {
         self
             .environmentObject(env)
             .environmentObject(env.settings)
-            .environmentObject(env.state)
+            .environmentObject(state ?? env.state)
             .environmentObject(env.activities)
             .environmentObject(env.media)
             .environmentObject(env.audioVisualizer)

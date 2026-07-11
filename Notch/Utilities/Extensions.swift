@@ -10,6 +10,10 @@ private struct NotchExpandedWidthKey: EnvironmentKey {
     static let defaultValue: CGFloat = NotchMetrics.expandedWidth
 }
 
+private struct NotchControlsSharedRenderingKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
 extension EnvironmentValues {
     /// The physical notch size, injected by the window controller.
     var notchGeometry: CGSize {
@@ -22,6 +26,13 @@ extension EnvironmentValues {
     var notchExpandedWidth: CGFloat {
         get { self[NotchExpandedWidthKey.self] }
         set { self[NotchExpandedWidthKey.self] = newValue }
+    }
+
+    /// True for the one host allowed to start/stop shared capture work. Secondary
+    /// compact mirrors render shared samples but never own their lifecycle.
+    var notchControlsSharedRendering: Bool {
+        get { self[NotchControlsSharedRenderingKey.self] }
+        set { self[NotchControlsSharedRenderingKey.self] = newValue }
     }
 }
 
