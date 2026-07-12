@@ -439,6 +439,9 @@ final class NotchWindowController {
             updateHostRoles()
         }
         guard let host = dragHost else { return }
+        host.state.isOptionMoveActive = env.settings.trayMoveEnabled
+            && NSEvent.modifierFlags.contains(.option)
+            && !originalFileURLsForDrop().isEmpty
         let zone = dropZone(for: mouse, host: host)
         if host.state.activeDropZone != zone { host.state.activeDropZone = zone }
     }
@@ -455,6 +458,18 @@ final class NotchWindowController {
     func dropZoneAtCursor() -> DropZone {
         let host = dragHost ?? hostAtCursor() ?? interactionHost
         return host.map { dropZone(for: NSEvent.mouseLocation, host: $0) } ?? .keep
+    }
+
+    func originalFileURLsForDrop() -> [URL] {
+        guard env.settings.trayMoveEnabled else { return [] }
+        let pasteboard = NSPasteboard(name: .drag)
+        let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] ?? []
+        guard !urls.isEmpty,
+              urls.allSatisfy({ TrayManager.moveEligibility(for: $0) == .eligible })
+        else { return [] }
+        return urls
     }
 
     private func dragEnded() {
@@ -527,7 +542,8 @@ final class NotchWindowController {
                 isAgent: env.activities.compactActivity?.isAgent ?? false,
                 activityLabel: env.activities.compactActivity.map {
                     ActivityPresenter.compactLabel(for: $0.kind)
-                }
+                },
+                trayItemCount: env.tray.items.count
             ),
             dropActive: host.state.isDropActive
         )

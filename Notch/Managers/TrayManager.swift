@@ -12,6 +12,7 @@ final class TrayManager: ObservableObject {
 
     @Published private(set) var items: [DropItem] = []
     @Published private(set) var collections: [TrayCollection] = [.shelf]
+    @Published private(set) var activeCollectionID = TrayCollection.shelfID
     @Published private(set) var loadIssue: String?
     let quickLook = TrayQuickLookController()
 
@@ -27,6 +28,15 @@ final class TrayManager: ObservableObject {
     private let corruptBackupFile = "tray.corrupt.backup.json"
     private let ingestionPipeline: TrayIngestionPipeline
     private var cancellables = Set<AnyCancellable>()
+    private var expiryTask: Task<Void, Never>?
+
+    var activeItems: [TrayItem] {
+        items.filter { $0.collectionID == activeCollectionID }
+    }
+
+    var activeCollection: TrayCollection {
+        collections.first(where: { $0.id == activeCollectionID }) ?? .shelf
+    }
 
     init(persistence: Persistence, imageCache: ImageCache, settings: Settings, activities: ActivityManager) {
         self.persistence = persistence
@@ -86,6 +96,10 @@ final class TrayManager: ObservableObject {
                 self.loadIssue = "The tray index is unreadable; stored files were left untouched."
             }
         }
+        if let savedID = UUID(uuidString: settings.trayLastCollectionID),
+           collections.contains(where: { $0.id == savedID }) {
+            activeCollectionID = savedID
+        }
     }
 
     func start() {
@@ -99,22 +113,25 @@ final class TrayManager: ObservableObject {
             )
         }
 
-        settings.$trayTTLDays
-            .dropFirst()
-            .sink { [weak self] _ in self?.pruneExpired() }
-            .store(in: &cancellables)
         Publishers.Merge(
             NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification),
             NotificationCenter.default.publisher(for: .NSCalendarDayChanged)
         )
         .sink { [weak self] _ in self?.pruneExpired() }
         .store(in: &cancellables)
+        scheduleNearestExpiry()
     }
 
     // MARK: - Inbound
 
     /// Returns immediately (correct drop animation); ingestion continues async.
-    func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+    func handleDrop(
+        _ providers: [NSItemProvider],
+        moveOriginalURLs: [URL] = []
+    ) -> Bool {
+        if settings.trayMoveEnabled, !moveOriginalURLs.isEmpty {
+            return moveOriginalFiles(moveOriginalURLs, collectionID: activeCollectionID)
+        }
         guard !providers.isEmpty else { return false }
         let batch = TrayProviderIngestionBatch(expectedCount: providers.count) { [weak self] result in
             Task { @MainActor [weak self] in
@@ -135,7 +152,7 @@ final class TrayManager: ObservableObject {
             return
         }
         let pipeline = ingestionPipeline
-        let context = ingestionContext(collectionID: TrayCollection.shelfID)
+        let context = ingestionContext(collectionID: activeCollectionID)
 
         switch kind {
         case .fileURLs:
@@ -207,11 +224,11 @@ final class TrayManager: ObservableObject {
     /// future source that already owns stable bytes or a file URL.
     func ingest(
         _ inputs: [TrayIngestionInput],
-        collectionID: UUID = TrayCollection.shelfID
+        collectionID: UUID? = nil
     ) {
         guard !inputs.isEmpty else { return }
         let pipeline = ingestionPipeline
-        let context = ingestionContext(collectionID: collectionID)
+        let context = ingestionContext(collectionID: collectionID ?? activeCollectionID)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             var failed = 0
             let results = inputs.compactMap { input -> TrayItem? in
@@ -303,12 +320,16 @@ final class TrayManager: ObservableObject {
         }
         items.insert(contentsOf: newItems, at: 0)
         persist()
+        scheduleNearestExpiry()
         var message = newItems.count == 1
             ? newItems[0].displayName
             : "\(newItems.count) items"
         if failedCount > 0 { message += " · \(failedCount) failed" }
+        let destinationName = collections.first(where: {
+            $0.id == newItems[0].collectionID
+        })?.name ?? "Shelf"
         activities.peek(
-            title: "Added to Shelf", message: message,
+            title: "Added to \(destinationName)", message: message,
             symbol: "tray.and.arrow.down.fill", tint: .success
         )
         for item in newItems {
@@ -368,22 +389,149 @@ final class TrayManager: ObservableObject {
 
     // MARK: - Mutation
 
-    func remove(_ item: DropItem) {
-        quickLook.closeIfContains([item.id])
-        items.removeAll { $0.id == item.id }
-        let folder = storageRoot.appendingPathComponent(item.id.uuidString, isDirectory: true)
-        try? FileManager.default.removeItem(at: folder)
+    func selectCollection(_ id: UUID) {
+        guard collections.contains(where: { $0.id == id }) else { return }
+        activeCollectionID = id
+        settings.trayLastCollectionID = id.uuidString
+    }
+
+    @discardableResult
+    func createCollection(named proposedName: String, expiryDays: Int? = nil) -> Bool {
+        guard let name = TrayFileNamePolicy.validated(proposedName),
+              !collections.contains(where: {
+                  $0.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+              }) else { return false }
+        let collection = TrayCollection(
+            id: UUID(), name: name, createdAt: Date(),
+            expiryDaysOverride: expiryDays, sortOrder: collections.count
+        )
+        collections.append(collection)
+        persist()
+        selectCollection(collection.id)
+        return true
+    }
+
+    @discardableResult
+    func renameCollection(_ id: UUID, to proposedName: String) -> Bool {
+        guard id != TrayCollection.shelfID,
+              let name = TrayFileNamePolicy.validated(proposedName),
+              let index = collections.firstIndex(where: { $0.id == id }),
+              !collections.contains(where: {
+                  $0.id != id && $0.name.compare(
+                      name, options: [.caseInsensitive, .diacriticInsensitive]
+                  ) == .orderedSame
+              }) else { return false }
+        collections[index].name = name
+        persist()
+        return true
+    }
+
+    func reorderCollection(_ id: UUID, by offset: Int) {
+        guard id != TrayCollection.shelfID,
+              let current = collections.firstIndex(where: { $0.id == id }) else { return }
+        let destination = min(max(current + offset, 1), collections.count - 1)
+        guard destination != current else { return }
+        let moved = collections.remove(at: current)
+        collections.insert(moved, at: destination)
+        for index in collections.indices { collections[index].sortOrder = index }
         persist()
     }
 
-    func clear() {
-        quickLook.closeIfContains(Set(items.map(\.id)))
-        for item in items {
-            let folder = storageRoot.appendingPathComponent(item.id.uuidString, isDirectory: true)
-            try? FileManager.default.removeItem(at: folder)
-        }
-        items.removeAll()
+    func setCollectionExpiry(_ id: UUID, days: Int?) {
+        guard let index = collections.firstIndex(where: { $0.id == id }) else { return }
+        collections[index].expiryDaysOverride = days
         persist()
+    }
+
+    func deleteCollection(_ id: UUID, policy: TrayCollectionDeletionPolicy) {
+        guard id != TrayCollection.shelfID,
+              collections.contains(where: { $0.id == id }) else { return }
+        let affected = items.filter { $0.collectionID == id }
+        quickLook.closeIfContains(Set(affected.map(\.id)))
+        if policy == .moveItemsToShelf {
+            for index in items.indices where items[index].collectionID == id {
+                items[index].collectionID = TrayCollection.shelfID
+            }
+            finishDeletingCollection(id)
+            return
+        }
+        deletePayloads(for: affected) { [weak self] deletedIDs, failedIDs in
+            guard let self else { return }
+            self.items.removeAll { deletedIDs.contains($0.id) }
+            for index in self.items.indices where failedIDs.contains(self.items[index].id) {
+                self.items[index].collectionID = TrayCollection.shelfID
+                self.items[index].cleanupError = true
+            }
+            self.finishDeletingCollection(id)
+            if !failedIDs.isEmpty {
+                self.activities.peek(
+                    title: "Cleanup Incomplete",
+                    message: "\(failedIDs.count) item(s) moved to Shelf for retry",
+                    symbol: "exclamationmark.triangle.fill", tint: .warning
+                )
+            }
+        }
+    }
+
+    private func finishDeletingCollection(_ id: UUID) {
+        collections.removeAll { $0.id == id }
+        for index in collections.indices { collections[index].sortOrder = index }
+        if activeCollectionID == id { selectCollection(TrayCollection.shelfID) }
+        persist()
+        scheduleNearestExpiry()
+    }
+
+    func move(_ selected: [TrayItem], to collectionID: UUID) {
+        guard collections.contains(where: { $0.id == collectionID }) else { return }
+        let ids = Set(selected.map(\.id))
+        guard !ids.isEmpty else { return }
+        quickLook.closeIfContains(ids)
+        for index in items.indices where ids.contains(items[index].id) {
+            items[index].collectionID = collectionID
+        }
+        persist()
+        scheduleNearestExpiry()
+    }
+
+    func extend(_ selected: [TrayItem], byDays days: Int) {
+        let ids = Set(selected.map(\.id))
+        let now = Date()
+        for index in items.indices where ids.contains(items[index].id) {
+            items[index].isPinned = false
+            items[index].cleanupError = nil
+            let base = max(items[index].expiresAt ?? now, now)
+            items[index].expiresAt = base.addingTimeInterval(Double(days) * 86_400)
+        }
+        persist()
+        scheduleNearestExpiry()
+    }
+
+    func applyGlobalTTLToExistingItems() {
+        items = TrayExpiryPolicy.applying(days: settings.trayTTLDays, to: items)
+        persist()
+        pruneExpired()
+    }
+
+    func expiryPresentation(for item: TrayItem, now: Date = Date()) -> TrayExpiryPresentation? {
+        let days = collections.first(where: { $0.id == item.collectionID })?
+            .expiryDaysOverride ?? settings.trayTTLDays
+        return TrayExpiryPresentation.make(for: item, now: now, lifetimeDays: days)
+    }
+
+    func soonestExpiry(in collectionID: UUID, now: Date = Date()) -> TrayExpiryPresentation? {
+        let collectionItems = items.filter { $0.collectionID == collectionID }
+        guard let item = collectionItems.filter({ !$0.isPinned }).min(by: {
+            ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture)
+        }), let expiry = item.expiresAt, expiry.timeIntervalSince(now) < 86_400 else { return nil }
+        return expiryPresentation(for: item, now: now)
+    }
+
+    func remove(_ item: DropItem) {
+        remove([item])
+    }
+
+    func clear() {
+        remove(items)
     }
 
     func fileURL(for item: DropItem) -> URL {
@@ -398,7 +546,7 @@ final class TrayManager: ObservableObject {
         items.filter { ids.contains($0.id) }
     }
 
-    func itemProvider(for item: TrayItem) -> NSItemProvider {
+    func itemProvider(for item: TrayItem, movingIDs: Set<UUID>? = nil) -> NSItemProvider {
         let managedURL = fileURL(for: item)
         let provider = NSItemProvider(contentsOf: managedURL) ?? NSItemProvider()
         provider.suggestedName = item.displayName
@@ -414,6 +562,16 @@ final class TrayManager: ObservableObject {
             }
         case .file, .image:
             break
+        }
+        let ids = movingIDs ?? [item.id]
+        if let data = try? JSONEncoder().encode(Array(ids)) {
+            provider.registerDataRepresentation(
+                forTypeIdentifier: TrayDropCapabilities.internalItemIDsType,
+                visibility: .ownProcess
+            ) { completion in
+                completion(data, nil)
+                return nil
+            }
         }
         return provider
     }
@@ -449,27 +607,39 @@ final class TrayManager: ObservableObject {
     func setPinned(_ selected: [TrayItem], pinned: Bool) {
         guard !selected.isEmpty else { return }
         let ids = Set(selected.map(\.id))
-        let newExpiry = pinned ? nil : ingestionContext(
-            collectionID: selected[0].collectionID
-        ).expiresAt
         for index in items.indices where ids.contains(items[index].id) {
             items[index].isPinned = pinned
-            items[index].expiresAt = newExpiry
+            items[index].cleanupError = nil
+            let days = collections.first(where: {
+                $0.id == items[index].collectionID
+            })?.expiryDaysOverride ?? settings.trayTTLDays
+            items[index].expiresAt = pinned ? nil : TrayExpiryPolicy.deadline(
+                addedAt: Date(), days: days
+            )
         }
         persist()
+        scheduleNearestExpiry()
     }
 
     func remove(_ selected: [TrayItem]) {
         let ids = Set(selected.map(\.id))
         guard !ids.isEmpty else { return }
         quickLook.closeIfContains(ids)
-        for item in selected {
-            try? FileManager.default.removeItem(at: storageRoot.appendingPathComponent(
-                item.id.uuidString, isDirectory: true
-            ))
+        deletePayloads(for: selected) { [weak self] deletedIDs, failedIDs in
+            guard let self else { return }
+            self.items.removeAll { deletedIDs.contains($0.id) }
+            for index in self.items.indices where failedIDs.contains(self.items[index].id) {
+                self.items[index].cleanupError = true
+            }
+            self.persist()
+            self.scheduleNearestExpiry()
+            if !failedIDs.isEmpty {
+                self.activities.peek(
+                    title: "Remove Incomplete", message: "Will retry later",
+                    symbol: "exclamationmark.triangle.fill", tint: .warning
+                )
+            }
         }
-        items.removeAll { ids.contains($0.id) }
-        persist()
     }
 
     func rename(_ item: TrayItem, to proposedName: String) {
@@ -533,6 +703,100 @@ final class TrayManager: ObservableObject {
         }
     }
 
+    private func moveOriginalFiles(_ urls: [URL], collectionID: UUID) -> Bool {
+        var seen = Set<String>()
+        let sources = urls.filter {
+            $0.isFileURL && seen.insert($0.standardizedFileURL.path).inserted
+        }
+        guard !sources.isEmpty else { return false }
+        let pipeline = ingestionPipeline
+        let root = storageRoot
+        let context = ingestionContext(collectionID: collectionID)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var result = TrayMoveBatchResult()
+            for source in sources {
+                guard Self.moveEligibility(for: source) == .eligible else {
+                    if let item = try? pipeline.materialize(
+                        .file(source, typeIdentifier: Self.inferredTypeIdentifier(for: source)),
+                        context: context
+                    ) {
+                        result.items.append(item)
+                        result.originalsRetained += 1
+                    } else {
+                        result.failed += 1
+                    }
+                    continue
+                }
+
+                let coordinator = NSFileCoordinator()
+                if Self.isSameVolume(source, root),
+                   let movedItem = Self.coordinateSameVolumeMove(
+                       source: source, coordinator: coordinator,
+                       pipeline: pipeline, context: context
+                   ) {
+                    result.items.append(movedItem)
+                    continue
+                }
+                var coordinationError: NSError?
+                var item: TrayItem?
+                coordinator.coordinate(
+                    readingItemAt: source, options: [], error: &coordinationError
+                ) { coordinatedURL in
+                    item = try? pipeline.materialize(
+                        .file(
+                            coordinatedURL,
+                            typeIdentifier: Self.inferredTypeIdentifier(for: coordinatedURL)
+                        ),
+                        context: context
+                    )
+                }
+                guard coordinationError == nil, let item,
+                      Self.verifyManaged(item: item, root: root) else {
+                    if let item {
+                        try? FileManager.default.removeItem(at: root.appendingPathComponent(
+                            item.id.uuidString, isDirectory: true
+                        ))
+                    }
+                    result.failed += 1
+                    continue
+                }
+
+                var deletionError: NSError?
+                var removed = false
+                coordinator.coordinate(
+                    writingItemAt: source, options: .forDeleting, error: &deletionError
+                ) { coordinatedURL in
+                    do {
+                        try FileManager.default.removeItem(at: coordinatedURL)
+                        removed = true
+                    } catch {
+                        removed = false
+                    }
+                }
+                result.items.append(item)
+                if !removed || deletionError != nil { result.originalsRetained += 1 }
+            }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.add(result.items, failedCount: result.failed)
+                if result.originalsRetained > 0 {
+                    self.activities.peek(
+                        title: "Copied; Original Retained",
+                        message: "\(result.originalsRetained) source item(s) could not be removed",
+                        symbol: "exclamationmark.triangle.fill", tint: .warning
+                    )
+                } else if !result.items.isEmpty {
+                    self.activities.peek(
+                        title: "Moved to \(self.activeCollection.name)",
+                        message: result.items.count == 1 ? result.items[0].displayName : "\(result.items.count) items",
+                        symbol: "tray.and.arrow.down.fill", tint: .success
+                    )
+                }
+            }
+        }
+        return true
+    }
+
     // MARK: - Persistence / TTL
 
     private func persist() {
@@ -546,19 +810,63 @@ final class TrayManager: ObservableObject {
     }
 
     private func pruneExpired() {
+        expiryTask?.cancel()
         let now = Date()
         let expired = items.filter {
             !$0.isPinned && $0.expiresAt.map { $0 <= now } == true
         }
-        guard !expired.isEmpty else { return }
+        guard !expired.isEmpty else {
+            scheduleNearestExpiry()
+            return
+        }
         let expiredIDs = Set(expired.map(\.id))
         quickLook.closeIfContains(expiredIDs)
-        for item in expired {
-            let folder = storageRoot.appendingPathComponent(item.id.uuidString, isDirectory: true)
-            try? FileManager.default.removeItem(at: folder)
+        deletePayloads(for: expired) { [weak self] deletedIDs, failedIDs in
+            guard let self else { return }
+            self.items.removeAll { deletedIDs.contains($0.id) }
+            for index in self.items.indices where failedIDs.contains(self.items[index].id) {
+                self.items[index].cleanupError = true
+            }
+            self.persist()
+            self.scheduleNearestExpiry()
         }
-        items.removeAll { expiredIDs.contains($0.id) }
-        persist()
+    }
+
+    private func scheduleNearestExpiry() {
+        expiryTask?.cancel()
+        guard let deadline = TrayExpiryPolicy.nearestDeadline(in: items, after: Date()) else {
+            expiryTask = nil
+            return
+        }
+        let delay = max(deadline.timeIntervalSinceNow, 0)
+        expiryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            self?.pruneExpired()
+        }
+    }
+
+    private func deletePayloads(
+        for selected: [TrayItem],
+        completion: @escaping @MainActor @Sendable (Set<UUID>, Set<UUID>) -> Void
+    ) {
+        let root = storageRoot
+        DispatchQueue.global(qos: .utility).async {
+            var deleted = Set<UUID>()
+            var failed = Set<UUID>()
+            for item in selected {
+                let folder = root.appendingPathComponent(item.id.uuidString, isDirectory: true)
+                do {
+                    if FileManager.default.fileExists(atPath: folder.path) {
+                        try FileManager.default.removeItem(at: folder)
+                    }
+                    deleted.insert(item.id)
+                } catch {
+                    failed.insert(item.id)
+                }
+            }
+            Task { @MainActor in completion(deleted, failed) }
+        }
     }
 
     private func ingestionContext(collectionID: UUID) -> TrayIngestionContext {
@@ -567,9 +875,7 @@ final class TrayManager: ObservableObject {
             .expiryDaysOverride ?? settings.trayTTLDays
         return TrayIngestionContext(
             collectionID: collectionID,
-            expiresAt: days > 0
-                ? addedAt.addingTimeInterval(Double(days) * 86_400)
-                : nil,
+            expiresAt: TrayExpiryPolicy.deadline(addedAt: addedAt, days: days),
             addedAt: addedAt
         )
     }
@@ -630,6 +936,61 @@ final class TrayManager: ObservableObject {
         }
         return UTType(filenameExtension: url.pathExtension)?.identifier
             ?? UTType.data.identifier
+    }
+
+    nonisolated static func moveEligibility(for source: URL) -> TrayMoveEligibility {
+        let values = try? source.resourceValues(forKeys: [
+            .volumeIsReadOnlyKey, .isUbiquitousItemKey,
+            .ubiquitousItemDownloadingStatusKey
+        ])
+        let descriptor = TrayMoveSourceDescriptor(
+            isFileURL: source.isFileURL,
+            isWritable: FileManager.default.isWritableFile(
+                atPath: source.deletingLastPathComponent().path
+            ),
+            volumeIsReadOnly: values?.volumeIsReadOnly ?? true,
+            isUbiquitous: values?.isUbiquitousItem ?? false,
+            isDownloaded: values?.isUbiquitousItem != true
+                || values?.ubiquitousItemDownloadingStatus == .current
+        )
+        return TrayMoveEligibility.evaluate(descriptor)
+    }
+
+    nonisolated private static func isSameVolume(_ source: URL, _ destinationRoot: URL) -> Bool {
+        let sourceID = try? source.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier
+        let destinationID = try? destinationRoot.resourceValues(
+            forKeys: [.volumeIdentifierKey]
+        ).volumeIdentifier
+        guard let sourceID, let destinationID else { return false }
+        return String(describing: sourceID) == String(describing: destinationID)
+    }
+
+    nonisolated private static func coordinateSameVolumeMove(
+        source: URL,
+        coordinator: NSFileCoordinator,
+        pipeline: TrayIngestionPipeline,
+        context: TrayIngestionContext
+    ) -> TrayItem? {
+        var coordinationError: NSError?
+        var item: TrayItem?
+        coordinator.coordinate(
+            writingItemAt: source, options: .forMoving, error: &coordinationError
+        ) { coordinatedURL in
+            item = try? pipeline.materializeMovingFile(
+                coordinatedURL,
+                typeIdentifier: inferredTypeIdentifier(for: coordinatedURL),
+                context: context
+            )
+        }
+        return coordinationError == nil ? item : nil
+    }
+
+    nonisolated private static func verifyManaged(item: TrayItem, root: URL) -> Bool {
+        let url = item.url(relativeTo: root)
+        guard FileManager.default.isReadableFile(atPath: url.path),
+              let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
+        else { return false }
+        return values.isDirectory == true || Int64(values.fileSize ?? -1) == item.byteSize
     }
 
     nonisolated private static func webURL(from value: NSSecureCoding?) -> URL? {
@@ -774,6 +1135,12 @@ private enum TrayRenameTransactionResult: Sendable {
 private struct TrayArchiveWorkspace: Sendable {
     let folder: URL
     let archive: URL
+}
+
+private struct TrayMoveBatchResult: Sendable {
+    var items: [TrayItem] = []
+    var originalsRetained = 0
+    var failed = 0
 }
 
 private struct TrayProviderIngestionResult: Sendable {

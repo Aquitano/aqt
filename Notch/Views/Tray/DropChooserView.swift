@@ -28,6 +28,7 @@ struct DropChooserView: View {
     }
 
     private var keepTitle: String {
+        if state.isOptionMoveActive { return "Move to Shelf" }
         switch state.activeDropRepresentation {
         case .webURL: return "Keep Link"
         case .plainText: return "Keep Text"
@@ -35,7 +36,9 @@ struct DropChooserView: View {
         }
     }
 
-    private var keepSubtitle: String { "Add to Shelf" }
+    private var keepSubtitle: String {
+        state.isOptionMoveActive ? "Original removed after verification" : "Add to Shelf"
+    }
 
     private var shareTitle: String {
         state.activeDropRepresentation == .webURL

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -48,7 +49,9 @@ struct NotchRootView: View {
         .onDrop(of: TrayDropCapabilities.acceptedTypes, delegate: NotchDropDelegate(
             state: state,
             resolveZone: { env.windowController?.dropZoneAtCursor() ?? .keep },
-            onKeep: { tray.handleDrop($0) },
+            moveEnabled: { settings.trayMoveEnabled },
+            originalFileURLs: { env.windowController?.originalFileURLsForDrop() ?? [] },
+            onKeep: { tray.handleDrop($0, moveOriginalURLs: $1) },
             onShare: { env.shareDrop($0) }
         ))
     }
@@ -128,7 +131,8 @@ struct NotchRootView: View {
         NotchLayout.compactContent(
             hasMedia: settings.showCompactNowPlaying && !media.track.isEmpty,
             isAgent: activities.compactActivity?.isAgent ?? false,
-            activityLabel: activities.compactActivity.map { ActivityPresenter.compactLabel(for: $0.kind) }
+            activityLabel: activities.compactActivity.map { ActivityPresenter.compactLabel(for: $0.kind) },
+            trayItemCount: tray.items.count
         )
     }
 
@@ -173,7 +177,9 @@ struct NotchRootView: View {
 private struct NotchDropDelegate: DropDelegate {
     let state: NotchState
     let resolveZone: () -> DropZone
-    let onKeep: ([NSItemProvider]) -> Bool
+    let moveEnabled: () -> Bool
+    let originalFileURLs: () -> [URL]
+    let onKeep: ([NSItemProvider], [URL]) -> Bool
     let onShare: ([NSItemProvider]) -> Bool
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -194,7 +200,10 @@ private struct NotchDropDelegate: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .copy)
+        let canMove = moveEnabled()
+            && NSEvent.modifierFlags.contains(.option)
+            && !originalFileURLs().isEmpty
+        return DropProposal(operation: canMove ? .move : .copy)
     }
 
     func performDrop(info: DropInfo) -> Bool {
@@ -202,7 +211,9 @@ private struct NotchDropDelegate: DropDelegate {
         let providers = info.itemProviders(for: TrayDropCapabilities.acceptedTypes)
         state.activeDropZone = nil
         state.isDropActive = false
-        let accepted = target == .share ? onShare(providers) : onKeep(providers)
+        let moveURLs = moveEnabled() && NSEvent.modifierFlags.contains(.option)
+            ? originalFileURLs() : []
+        let accepted = target == .share ? onShare(providers) : onKeep(providers, moveURLs)
         if accepted { Haptics.tap(.alignment) }
         Log.tray.notice("drop routed to \(target == .share ? "share" : "keep")")
         return accepted

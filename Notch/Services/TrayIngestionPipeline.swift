@@ -90,6 +90,48 @@ struct TrayIngestionPipeline: Sendable {
         }
     }
 
+    /// Same-volume destructive ingress. The move and metadata creation form one
+    /// recoverable transaction: if validation fails after the filesystem move,
+    /// the source is restored before the managed folder is removed.
+    func materializeMovingFile(
+        _ source: URL,
+        typeIdentifier: String,
+        context: TrayIngestionContext
+    ) throws -> TrayItem {
+        let id = UUID()
+        let folder = storageRoot.appendingPathComponent(id.uuidString, isDirectory: true)
+        let name = try Self.validatedName(source.lastPathComponent)
+        let destination = folder.appendingPathComponent(name)
+        do {
+            try FileManager.default.createDirectory(
+                at: folder, withIntermediateDirectories: true
+            )
+            try FileManager.default.moveItem(at: source, to: destination)
+            do {
+                let size = try Self.byteSize(of: destination)
+                let type = UTType(typeIdentifier)
+                return TrayItem(
+                    id: id,
+                    kind: type?.conforms(to: .image) == true ? .image : .file,
+                    displayName: name, relativePath: "\(id.uuidString)/\(name)",
+                    text: nil, sourceURL: nil, typeIdentifier: typeIdentifier,
+                    byteSize: size, addedAt: context.addedAt,
+                    expiresAt: context.expiresAt, collectionID: context.collectionID,
+                    isPinned: context.expiresAt == nil
+                )
+            } catch {
+                try? FileManager.default.moveItem(at: destination, to: source)
+                throw error
+            }
+        } catch let error as TrayIngestionError {
+            try? FileManager.default.removeItem(at: folder)
+            throw error
+        } catch {
+            try? FileManager.default.removeItem(at: folder)
+            throw TrayIngestionError.materializationFailed
+        }
+    }
+
     private static func validatedName(_ proposed: String) throws -> String {
         let name = proposed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name != ".", name != "..",

@@ -18,6 +18,8 @@ final class Settings: ObservableObject {
         static let showAudioVisualizer = "showAudioVisualizer"
         static let hapticFeedback = "hapticFeedback"
         static let trayTTLDays = "trayTTLDays"
+        static let trayMoveEnabled = "trayMoveEnabled"
+        static let trayLastCollectionID = "trayLastCollectionID"
         static let showWeatherWidget = "showWeatherWidget"
         static let showCalendarWidget = "showCalendarWidget"
         static let shareMethod = "shareMethod"
@@ -71,6 +73,12 @@ final class Settings: ObservableObject {
     }
     @Published var hapticFeedback: Bool { didSet { defaults.set(hapticFeedback, forKey: Key.hapticFeedback) } }
     @Published var trayTTLDays: Int { didSet { defaults.set(trayTTLDays, forKey: Key.trayTTLDays) } }
+    @Published var trayMoveEnabled: Bool {
+        didSet { defaults.set(trayMoveEnabled, forKey: Key.trayMoveEnabled) }
+    }
+    var trayLastCollectionID: String {
+        didSet { defaults.set(trayLastCollectionID, forKey: Key.trayLastCollectionID) }
+    }
     @Published var showWeatherWidget: Bool { didSet { defaults.set(showWeatherWidget, forKey: Key.showWeatherWidget) } }
     @Published var showCalendarWidget: Bool { didSet { defaults.set(showCalendarWidget, forKey: Key.showCalendarWidget) } }
     @Published var shareMethod: ShareMethod { didSet { defaults.set(shareMethod.rawValue, forKey: Key.shareMethod) } }
@@ -138,6 +146,8 @@ final class Settings: ObservableObject {
             Key.showAudioVisualizer: false,
             Key.hapticFeedback: true,
             Key.trayTTLDays: 7,
+            Key.trayMoveEnabled: false,
+            Key.trayLastCollectionID: TrayCollection.shelfID.uuidString,
             Key.showWeatherWidget: true,
             Key.showCalendarWidget: true,
             Key.shareMethod: ShareMethod.airdrop.rawValue,
@@ -183,6 +193,9 @@ final class Settings: ObservableObject {
         self.showAudioVisualizer = defaults.bool(forKey: Key.showAudioVisualizer)
         self.hapticFeedback = defaults.bool(forKey: Key.hapticFeedback)
         self.trayTTLDays = defaults.integer(forKey: Key.trayTTLDays)
+        self.trayMoveEnabled = defaults.bool(forKey: Key.trayMoveEnabled)
+        self.trayLastCollectionID = defaults.string(forKey: Key.trayLastCollectionID)
+            ?? TrayCollection.shelfID.uuidString
         self.showWeatherWidget = defaults.bool(forKey: Key.showWeatherWidget)
         self.showCalendarWidget = defaults.bool(forKey: Key.showCalendarWidget)
         self.shareMethod = ShareMethod(rawValue: defaults.string(forKey: Key.shareMethod) ?? "airdrop") ?? .airdrop

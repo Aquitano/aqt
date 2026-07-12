@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// A keyboard-capable temporary workspace. Selection changes are intentionally
 /// instant: arrows, Command-click, Space, and Command-V are frequent actions and
@@ -14,14 +15,18 @@ struct TrayView: View {
     @State private var renameItem: TrayItem?
     @State private var renameText = ""
     @State private var confirmLargePaste = false
+    @State private var collectionEditor: CollectionEditor?
+    @State private var collectionName = ""
+    @State private var collectionPendingDeletion: TrayCollection?
     @FocusState private var hasKeyboardFocus: Bool
 
-    private let tileSize = CGSize(width: 82, height: 96)
+    private let tileSize = CGSize(width: 82, height: 110)
     private let thumbSize: CGFloat = 50
 
     var body: some View {
         VStack(spacing: 10) {
-            if tray.items.isEmpty { emptyHint } else { itemRow }
+            collectionBar
+            if tray.activeItems.isEmpty { emptyHint } else { itemRow }
             toolbar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -60,11 +65,11 @@ struct TrayView: View {
             tray.quickLook.close()
             env.windowController?.endTrayInteraction()
         }
-        .onChange(of: tray.items.map(\.id)) { _, ids in
+        .onChange(of: tray.activeItems.map(\.id)) { _, ids in
             selection.formIntersection(ids)
         }
         .confirmationDialog(
-            "Paste a large batch into Shelf?",
+            "Paste a large batch into \(tray.activeCollection.name)?",
             isPresented: $confirmLargePaste,
             titleVisibility: .visible
         ) {
@@ -84,13 +89,109 @@ struct TrayView: View {
             }
             Button("Cancel", role: .cancel) { renameItem = nil }
         }
+        .alert(collectionEditor?.title ?? "Collection", isPresented: Binding(
+            get: { collectionEditor != nil },
+            set: { if !$0 { collectionEditor = nil } }
+        )) {
+            TextField("Name", text: $collectionName)
+            Button(collectionEditor?.actionTitle ?? "Save") { commitCollectionEdit() }
+            Button("Cancel", role: .cancel) { collectionEditor = nil }
+        }
+        .confirmationDialog(
+            "Delete \(collectionPendingDeletion?.name ?? "Collection")?",
+            isPresented: Binding(
+                get: { collectionPendingDeletion != nil },
+                set: { if !$0 { collectionPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Move Items to Shelf") { deletePendingCollection(.moveItemsToShelf) }
+            Button("Delete Items", role: .destructive) { deletePendingCollection(.deleteItems) }
+            Button("Cancel", role: .cancel) { collectionPendingDeletion = nil }
+        } message: {
+            Text("You can keep this collection’s items on Shelf or remove their managed copies.")
+        }
+    }
+
+    private var collectionBar: some View {
+        HStack(spacing: 6) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(tray.collections.sorted(by: { $0.sortOrder < $1.sortOrder })) { collection in
+                        collectionButton(collection)
+                    }
+                }
+            }
+            Button {
+                collectionName = ""
+                collectionEditor = .create
+            } label: {
+                PixelIcon(systemName: "plus", size: 12, tint: .white.opacity(0.78))
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+            .help("New collection")
+            .accessibilityLabel("New collection")
+        }
+        .frame(height: 26)
+    }
+
+    private func collectionButton(_ collection: TrayCollection) -> some View {
+        let active = tray.activeCollectionID == collection.id
+        return Button {
+            selection.removeAll()
+            tray.selectCollection(collection.id)
+        } label: {
+            HStack(spacing: 4) {
+                Text(collection.name)
+                    .font(.system(size: 11, weight: active ? .semibold : .regular))
+                if tray.soonestExpiry(in: collection.id) != nil {
+                    Circle().fill(.orange).frame(width: 5, height: 5)
+                }
+            }
+            .foregroundStyle(.white.opacity(active ? 0.95 : 0.58))
+            .padding(.horizontal, 9)
+            .frame(height: 24)
+            .background(.white.opacity(active ? 0.14 : 0.04), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .onDrop(
+            of: [UTType(importedAs: TrayDropCapabilities.internalItemIDsType)],
+            isTargeted: nil
+        ) { providers in
+            moveInternalDrop(providers, to: collection.id)
+        }
+        .contextMenu {
+            if collection.id != TrayCollection.shelfID {
+                Button("Rename…") {
+                    collectionName = collection.name
+                    collectionEditor = .rename(collection.id)
+                }
+                Button("Move Left") { tray.reorderCollection(collection.id, by: -1) }
+                Button("Move Right") { tray.reorderCollection(collection.id, by: 1) }
+                Menu("New Item Expiry") {
+                    Button("Use Global Setting") {
+                        tray.setCollectionExpiry(collection.id, days: nil)
+                    }
+                    ForEach([1, 3, 7, 14, 30], id: \.self) { days in
+                        Button("\(days) day\(days == 1 ? "" : "s")") {
+                            tray.setCollectionExpiry(collection.id, days: days)
+                        }
+                    }
+                }
+                Divider()
+                Button("Delete Collection…", role: .destructive) {
+                    collectionPendingDeletion = collection
+                }
+            }
+        }
     }
 
     private var emptyHint: some View {
         VStack(spacing: 8) {
             PixelIcon(systemName: "tray.and.arrow.down", size: 28,
                       tint: .white.opacity(0.55))
-            Text("Drop or paste files, images, links, and text")
+            Text("Drop or paste into \(tray.activeCollection.name)")
                 .font(.callout)
         }
         .foregroundStyle(.secondary)
@@ -100,9 +201,14 @@ struct TrayView: View {
     private var itemRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHGrid(rows: [GridItem(.fixed(tileSize.height))], spacing: 10) {
-                ForEach(tray.items) { item in
+                ForEach(tray.activeItems) { item in
                     tile(for: item)
-                        .onDrag { tray.itemProvider(for: item) }
+                        .onDrag {
+                            tray.itemProvider(
+                                for: item,
+                                movingIDs: selection.contains(item.id) ? selection : [item.id]
+                            )
+                        }
                         .contextMenu { contextMenu(for: item) }
                 }
             }
@@ -130,6 +236,20 @@ struct TrayView: View {
                     Text(Self.sizeText(item.byteSize))
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
+                    if let expiry = tray.expiryPresentation(for: item) {
+                        Text(expiry.label)
+                            .font(.system(size: 8, weight: expiry.isUrgent ? .semibold : .regular))
+                            .foregroundStyle(expiry.isUrgent ? .orange : .secondary)
+                            .lineLimit(1)
+                        Capsule()
+                            .fill(expiry.isUrgent ? .orange.opacity(0.8) : .white.opacity(0.32))
+                            .frame(width: 54 * expiry.fractionRemaining, height: 2)
+                            .frame(width: 54, alignment: .leading)
+                    } else if item.isPinned {
+                        Text("kept")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .padding(8)
@@ -171,6 +291,23 @@ struct TrayView: View {
             actionButton("arrow.up.forward.app", label: "Open", disabled: selectedItems.isEmpty) {
                 selectedItems.forEach(tray.open)
             }
+            Menu {
+                ForEach(tray.collections.filter { $0.id != tray.activeCollectionID }) { collection in
+                    Button(collection.name) { tray.move(selectedItems, to: collection.id) }
+                }
+            } label: {
+                PixelIcon(
+                    systemName: "folder", size: 14,
+                    tint: .white.opacity(selectedItems.isEmpty ? 0.28 : 0.82)
+                )
+                .frame(width: 28, height: 26)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .disabled(selectedItems.isEmpty || tray.collections.count < 2)
+            .help("Move to collection")
+            .accessibilityLabel("Move to collection")
             actionButton(settings.shareMethod.symbol, label: "Share", disabled: selectedItems.isEmpty) {
                 shareSelection()
             }
@@ -218,6 +355,13 @@ struct TrayView: View {
             Button("Rename…") { beginRename(only) }
         }
         Button("Share") { share(chosen) }
+        Menu("Move to Collection") {
+            ForEach(tray.collections.filter { $0.id != tray.activeCollectionID }) { collection in
+                Button(collection.name) { tray.move(chosen, to: collection.id) }
+            }
+        }
+        Button("Extend 1 Day") { tray.extend(chosen, byDays: 1) }
+        Button("Extend 7 Days") { tray.extend(chosen, byDays: 7) }
         let allPinned = chosen.allSatisfy(\.isPinned)
         Button(allPinned ? "Unpin" : "Keep Indefinitely") {
             tray.setPinned(chosen, pinned: !allPinned)
@@ -247,16 +391,17 @@ struct TrayView: View {
     }
 
     private func moveSelection(by offset: Int) {
-        guard !tray.items.isEmpty else { return }
+        let visible = tray.activeItems
+        guard !visible.isEmpty else { return }
         let current = selection.first.flatMap { id in
-            tray.items.firstIndex(where: { $0.id == id })
-        } ?? (offset > 0 ? -1 : tray.items.count)
-        let next = min(max(current + offset, 0), tray.items.count - 1)
-        selection = [tray.items[next].id]
+            visible.firstIndex(where: { $0.id == id })
+        } ?? (offset > 0 ? -1 : visible.count)
+        let next = min(max(current + offset, 0), visible.count - 1)
+        selection = [visible[next].id]
     }
 
     private func previewSelection() {
-        let chosen = selectedItems.isEmpty ? Array(tray.items.prefix(1)) : selectedItems
+        let chosen = selectedItems.isEmpty ? Array(tray.activeItems.prefix(1)) : selectedItems
         preview(chosen)
     }
 
@@ -300,18 +445,76 @@ struct TrayView: View {
         renameItem = item
     }
 
+    private func commitCollectionEdit() {
+        guard let editor = collectionEditor else { return }
+        switch editor {
+        case .create:
+            _ = tray.createCollection(named: collectionName)
+        case .rename(let id):
+            _ = tray.renameCollection(id, to: collectionName)
+        }
+        collectionEditor = nil
+    }
+
+    private func deletePendingCollection(_ policy: TrayCollectionDeletionPolicy) {
+        guard let collection = collectionPendingDeletion else { return }
+        tray.deleteCollection(collection.id, policy: policy)
+        collectionPendingDeletion = nil
+        selection.removeAll()
+    }
+
+    private func moveInternalDrop(_ providers: [NSItemProvider], to collectionID: UUID) -> Bool {
+        guard let provider = providers.first(where: {
+            $0.hasItemConformingToTypeIdentifier(TrayDropCapabilities.internalItemIDsType)
+        }) else { return false }
+        provider.loadDataRepresentation(
+            forTypeIdentifier: TrayDropCapabilities.internalItemIDsType
+        ) { data, _ in
+            guard let data,
+                  let ids = try? JSONDecoder().decode([UUID].self, from: data) else { return }
+            Task { @MainActor in
+                let moved = tray.items(withIDs: Set(ids))
+                tray.move(moved, to: collectionID)
+                selection.subtract(ids)
+            }
+        }
+        return true
+    }
+
     private func thumbnail(for item: TrayItem) -> NSImage {
         tray.thumbnail(for: item) ?? NSWorkspace.shared.icon(for: item.contentType)
     }
 
     private var countText: String {
         if selection.isEmpty {
-            return tray.items.count == 1 ? "1 item" : "\(tray.items.count) items"
+            let visible = tray.activeItems.count
+            return tray.items.count == visible
+                ? (visible == 1 ? "1 item" : "\(visible) items")
+                : "\(visible) here · \(tray.items.count) total"
         }
         return "\(selection.count) selected"
     }
 
     private static func sizeText(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    private enum CollectionEditor: Equatable {
+        case create
+        case rename(UUID)
+
+        var title: String {
+            switch self {
+            case .create: return "New Collection"
+            case .rename: return "Rename Collection"
+            }
+        }
+
+        var actionTitle: String {
+            switch self {
+            case .create: return "Create"
+            case .rename: return "Rename"
+            }
+        }
     }
 }

@@ -111,10 +111,18 @@ enum NotchLayout {
     /// Resolve the compact content from the live state. Media wins over an
     /// activity (mirrors `CompactView`), so all three readers stay in sync. An
     /// agent activity is its own fixed-width case so status changes don't resize.
-    static func compactContent(hasMedia: Bool, isAgent: Bool, activityLabel: String?) -> CompactContent {
+    static func compactContent(
+        hasMedia: Bool,
+        isAgent: Bool,
+        activityLabel: String?,
+        trayItemCount: Int = 0
+    ) -> CompactContent {
         if hasMedia { return .media }
         if isAgent { return .agent }
         if let label = activityLabel { return .activity(label: label) }
+        if trayItemCount > 0 {
+            return .activity(label: trayItemCount == 1 ? "1 item" : "\(trayItemCount) items")
+        }
         return .none
     }
 
@@ -166,7 +174,7 @@ enum NotchLayout {
         case .home: return hasInfoRow ? 296 : 175
         case .agents: return 320
         case .media: return 220
-        case .tray: return trayEmpty ? 180 : 246
+        case .tray: return trayEmpty ? 204 : 286
         }
     }
 

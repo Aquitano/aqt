@@ -10,6 +10,7 @@ struct SettingsView: View {
     @EnvironmentObject private var media: MediaManager
     @EnvironmentObject private var visualizer: AudioVisualizerManager
     @EnvironmentObject private var shortcuts: ShortcutsManager
+    @EnvironmentObject private var tray: TrayManager
 
     @State private var shortcutToPin = ""
     @State private var displays: [DisplayDescriptor] = []
@@ -470,6 +471,13 @@ struct SettingsView: View {
                 value: $settings.trayTTLDays,
                 in: 1...90
             )
+            Button("Apply to Existing Unpinned Items") {
+                tray.applyGlobalTTLToExistingItems()
+            }
+            Toggle("Allow Option-drag to move originals", isOn: $settings.trayMoveEnabled)
+            Text("When enabled, Option-drop removes eligible originals only after Notch verifies its managed copy.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

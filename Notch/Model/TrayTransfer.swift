@@ -9,6 +9,7 @@ enum TrayRepresentationKind: String, Equatable, Sendable {
 }
 
 enum TrayDropCapabilities {
+    static let internalItemIDsType = "com.aquitano.notch.tray-item-ids"
     static let acceptedTypes: [UTType] = [
         .fileURL, .image, .url, .plainText, .utf8PlainText
     ]

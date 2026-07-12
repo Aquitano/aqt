@@ -72,6 +72,7 @@ struct TrayItem: Identifiable, Codable, Equatable, Hashable, Sendable {
     var expiresAt: Date?
     var collectionID: UUID
     var isPinned: Bool
+    var cleanupError: Bool? = nil
 
     var fileName: String {
         get { displayName }

@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindow: NSWindow?
     private let hotKey = HotKey()
     private var hotkeyCancellable: AnyCancellable?
+    private var trayMenuCancellable: AnyCancellable?
+    private var clearTrayMenuItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -93,7 +95,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         addItem(to: menu, title: "Toggle Notch", action: #selector(toggleNotch))
-        addItem(to: menu, title: "Clear Tray", action: #selector(clearTray))
+        let clearTrayItem = NSMenuItem(title: "Clear Tray (0)", action: #selector(clearTray), keyEquivalent: "")
+        clearTrayItem.target = self
+        menu.addItem(clearTrayItem)
+        clearTrayMenuItem = clearTrayItem
+        trayMenuCancellable = env.tray.$items
+            .sink { [weak self] items in
+                self?.clearTrayMenuItem?.title = "Clear Tray (\(items.count))"
+                self?.clearTrayMenuItem?.isEnabled = !items.isEmpty
+            }
 
         let timerItem = NSMenuItem(title: "Start Timer", action: nil, keyEquivalent: "")
         let timerMenu = NSMenu()

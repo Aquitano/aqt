@@ -45,6 +45,7 @@ final class NotchState: ObservableObject {
     /// chooser's highlight. Set by the root drop delegate.
     @Published var activeDropZone: DropZone?
     @Published var activeDropRepresentation: TrayRepresentationKind?
+    @Published var isOptionMoveActive = false
 
     /// True from the start of a collapse until the close animation ends. Keeps the
     /// expanded body mounted (fading, clipped by the shrinking blob) for the whole
@@ -134,6 +135,7 @@ final class NotchState: ObservableObject {
         // the zone here would race that and misroute the drop to the shelf.
         isDropActive = false
         activeDropRepresentation = nil
+        isOptionMoveActive = false
     }
 
     /// Collapse to the physical notch-sized hover target. The compact presentation

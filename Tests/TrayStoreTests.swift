@@ -180,6 +180,27 @@ final class TrayStoreTests: XCTestCase {
         XCTAssertEqual(entries ?? [], [])
     }
 
+    func testPipelineSameVolumeMovePublishesManagedPayloadAndRemovesSource() throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("move-me.txt")
+        try Data("move".utf8).write(to: source)
+        let storage = root.appendingPathComponent("storage", isDirectory: true)
+        let pipeline = TrayIngestionPipeline(storageRoot: storage)
+        let item = try pipeline.materializeMovingFile(
+            source, typeIdentifier: UTType.plainText.identifier,
+            context: .init(
+                collectionID: TrayCollection.shelfID, expiresAt: nil,
+                addedAt: Date(timeIntervalSince1970: 100)
+            )
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertTrue(FileManager.default.isReadableFile(
+            atPath: item.url(relativeTo: storage).path
+        ))
+        XCTAssertEqual(item.byteSize, 4)
+    }
+
     func testBackupIsCreatedOnceAndCanBeRetiredAfterCleanLaunch() throws {
         let root = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -190,6 +211,75 @@ final class TrayStoreTests: XCTestCase {
         XCTAssertEqual(persistence.loadData(from: "tray.v1.backup.json"), first)
         persistence.removeFile(named: "tray.v1.backup.json")
         XCTAssertNil(persistence.loadData(from: "tray.v1.backup.json"))
+    }
+
+    func testCollectionDeletionCanReassignOrDeleteItems() {
+        let collection = TrayCollection(
+            id: UUID(), name: "Sprint", createdAt: .distantPast,
+            expiryDaysOverride: 2, sortOrder: 1
+        )
+        var item = fixtureItem()
+        item.collectionID = collection.id
+        let collections = [TrayCollection.shelf, collection]
+
+        let reassigned = TrayCollectionPolicy.deleting(
+            collectionID: collection.id, policy: .moveItemsToShelf,
+            collections: collections, items: [item]
+        )
+        XCTAssertEqual(reassigned?.items.first?.collectionID, TrayCollection.shelfID)
+        XCTAssertEqual(reassigned?.itemIDsToDelete, [])
+
+        let deleted = TrayCollectionPolicy.deleting(
+            collectionID: collection.id, policy: .deleteItems,
+            collections: collections, items: [item]
+        )
+        XCTAssertEqual(deleted?.items, [])
+        XCTAssertEqual(deleted?.itemIDsToDelete, [item.id])
+        XCTAssertNil(TrayCollectionPolicy.deleting(
+            collectionID: TrayCollection.shelfID, policy: .deleteItems,
+            collections: collections, items: [item]
+        ))
+    }
+
+    func testExpiryInheritanceExtensionAndNearestDeadline() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        var first = fixtureItem()
+        first.isPinned = false
+        first.addedAt = now
+        first.expiresAt = TrayExpiryPolicy.deadline(addedAt: now, days: 2)
+        var second = fixtureItem()
+        second.isPinned = false
+        second.addedAt = now
+        second.expiresAt = TrayExpiryPolicy.deadline(addedAt: now, days: 4)
+        XCTAssertEqual(
+            TrayExpiryPolicy.nearestDeadline(in: [second, first], after: now),
+            first.expiresAt
+        )
+        let updated = TrayExpiryPolicy.applying(days: 7, to: [first, second])
+        XCTAssertEqual(updated[0].expiresAt, now.addingTimeInterval(7 * 86_400))
+        XCTAssertEqual(
+            TrayExpiryPresentation.make(for: first, now: now, lifetimeDays: 2)?.label,
+            "2d left"
+        )
+    }
+
+    func testMoveEligibilityAndVerifiedOutcome() {
+        XCTAssertEqual(TrayMoveEligibility.evaluate(.init(
+            isFileURL: true, isWritable: true, volumeIsReadOnly: false,
+            isUbiquitous: false, isDownloaded: true
+        )), .eligible)
+        XCTAssertEqual(TrayMoveEligibility.evaluate(.init(
+            isFileURL: true, isWritable: true, volumeIsReadOnly: false,
+            isUbiquitous: true, isDownloaded: false
+        )), .copyOnly)
+        XCTAssertEqual(
+            TrayMoveOutcome.resolve(destinationVerified: true, sourceRemoved: false),
+            .copiedOriginalRetained
+        )
+        XCTAssertEqual(
+            TrayMoveOutcome.resolve(destinationVerified: false, sourceRemoved: true),
+            .failed
+        )
     }
 
     private func fixtureItem() -> TrayItem {

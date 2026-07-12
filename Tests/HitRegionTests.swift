@@ -52,6 +52,14 @@ final class HitRegionTests: XCTestCase {
         assertRect(HitRegion.rect(snapshot(.compact, compact: .media)), x: 335, y: 564, w: 330, h: 36)
     }
 
+    func testCompactTrayCountUsesTotalCountFallback() {
+        let content = NotchLayout.compactContent(
+            hasMedia: false, isAgent: false, activityLabel: nil, trayItemCount: 3
+        )
+        XCTAssertEqual(content, .activity(label: "3 items"))
+        XCTAssertGreaterThan(NotchLayout.compactExtraWidth(content), 0)
+    }
+
     func testExpandedHomeNoInfoRow() {
         // body 175 + notch 32 = 207; width 540 -> x = 500 - 270.
         assertRect(HitRegion.rect(snapshot(.expanded, tab: .home)), x: 230, y: 393, w: 540, h: 207)
@@ -68,8 +76,9 @@ final class HitRegionTests: XCTestCase {
     }
 
     func testExpandedTrayEmptyVsFilled() {
-        assertRect(HitRegion.rect(snapshot(.expanded, tab: .tray, trayEmpty: true)), x: 230, y: 388, w: 540, h: 212)
-        assertRect(HitRegion.rect(snapshot(.expanded, tab: .tray, trayEmpty: false)), x: 230, y: 322, w: 540, h: 278)
+        // Collections and visible expiry add one compact row to the tray body.
+        assertRect(HitRegion.rect(snapshot(.expanded, tab: .tray, trayEmpty: true)), x: 230, y: 364, w: 540, h: 236)
+        assertRect(HitRegion.rect(snapshot(.expanded, tab: .tray, trayEmpty: false)), x: 230, y: 282, w: 540, h: 318)
     }
 
     func testDropActiveOverridesTabHeight() {

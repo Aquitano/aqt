@@ -16,6 +16,7 @@ struct CompactView: View {
     @EnvironmentObject private var settings: Settings
     @EnvironmentObject private var visualizer: AudioVisualizerManager
     @EnvironmentObject private var env: AppEnvironment
+    @EnvironmentObject private var tray: TrayManager
 
     @Environment(\.notchGeometry) private var notchSize
     @Environment(\.notchControlsSharedRendering) private var controlsSharedRendering
@@ -55,6 +56,13 @@ struct CompactView: View {
             pill(
                 leading: activityIcon(activity),
                 trailing: activityLabel(activity)
+            )
+        } else if !tray.items.isEmpty {
+            pill(
+                leading: PixelIcon(systemName: "tray.full", size: 15, tint: .white),
+                trailing: Text(tray.items.count == 1 ? "1 item" : "\(tray.items.count) items")
+                    .font(.system(size: NotchLayout.compactLabelFontSize, weight: .medium))
+                    .lineLimit(1)
             )
         } else {
             Color.clear
