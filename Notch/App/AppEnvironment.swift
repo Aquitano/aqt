@@ -23,6 +23,7 @@ final class AppEnvironment: ObservableObject {
     let audioVisualizer: AudioVisualizerManager
     let hud: HUDManager
     let tray: TrayManager
+    let screenshots: ScreenshotMonitor
     let timer: TimerManager
     let agents: AgentManager
 
@@ -61,7 +62,9 @@ final class AppEnvironment: ObservableObject {
         self.media = MediaManager(activities: activities, imageCache: imageCache, settings: settings)
         self.audioVisualizer = AudioVisualizerManager()
         self.hud = HUDManager(settings: settings, audio: audio)
-        self.tray = TrayManager(persistence: persistence, imageCache: imageCache, settings: settings, activities: activities)
+        let tray = TrayManager(persistence: persistence, imageCache: imageCache, settings: settings, activities: activities)
+        self.tray = tray
+        self.screenshots = ScreenshotMonitor(settings: settings, activities: activities, tray: tray)
         self.timer = TimerManager(activities: activities)
         self.agents = AgentManager(activities: activities, settings: settings)
         self.battery = BatteryManager(activities: activities)
@@ -86,6 +89,7 @@ final class AppEnvironment: ObservableObject {
         media.start()
         hud.start()
         tray.start()
+        screenshots.start()
         agents.start()
         battery.start()
         calendar.start()
@@ -234,6 +238,7 @@ extension View {
             .environmentObject(env.audioVisualizer)
             .environmentObject(env.hud)
             .environmentObject(env.tray)
+            .environmentObject(env.screenshots)
             .environmentObject(env.agents)
             .environmentObject(env.battery)
             .environmentObject(env.calendar)

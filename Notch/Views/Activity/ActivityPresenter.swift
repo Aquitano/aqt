@@ -20,6 +20,7 @@ enum ActivityPresenter {
         case let .peek(_, _, symbol, _): return symbol
         case .timer: return "timer"
         case let .agent(_, kind, _, _): return kind.symbol
+        case .screenshotCandidates: return "photo"
         }
     }
 
@@ -42,6 +43,8 @@ enum ActivityPresenter {
         // Terse in the pill (it hugs the notch); the pixel glyph shows activity,
         // the expanded card carries detail. Show the count when more than one runs.
         case let .agent(count, _, _, status): return count > 1 ? "\(count) agents" : status.label
+        case let .screenshotCandidates(candidates):
+            return ScreenshotCandidatePolicy.coalescedLabel(count: candidates.count)
         }
     }
 
@@ -88,6 +91,13 @@ enum ActivityPresenter {
                 ? "\(count) agents · \(status.label)"
                 : "\(kind.shortName) · \(status.label)"
             return Card(title: count > 1 ? "Agents" : project, subtitle: subtitle, tint: agentTint(status))
+
+        case let .screenshotCandidates(candidates):
+            return Card(
+                title: ScreenshotCandidatePolicy.coalescedLabel(count: candidates.count),
+                subtitle: "Add to Shelf, preview, or dismiss",
+                tint: .cyan
+            )
         }
     }
 

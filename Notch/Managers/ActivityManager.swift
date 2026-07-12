@@ -88,6 +88,21 @@ final class ActivityManager: ObservableObject {
         ids.forEach { remove(id: $0) }
     }
 
+    func publishScreenshotCandidates(_ candidates: [ScreenshotCandidate]) {
+        publish(Activity(
+            kind: .screenshotCandidates(candidates), priority: .high,
+            createdAt: Date(), ttl: 30
+        ))
+    }
+
+    func removeScreenshotCandidates() {
+        let ids = activities.compactMap { activity -> UUID? in
+            if case .screenshotCandidates = activity.kind { return activity.id }
+            return nil
+        }
+        ids.forEach { remove(id: $0) }
+    }
+
     /// Open the panel on the Agents tab — used when a session needs attention and
     /// the user opted into auto-expand.
     func requestAutoExpand() {
@@ -157,6 +172,7 @@ final class ActivityManager: ObservableObject {
         case let .deviceConnected(name, _, _): return "device.\(name)"
         case let .audioRoute(name, _): return "route.\(name)"
         case .agent: return "agents"
+        case .screenshotCandidates: return "screenshots"
         case .peek, .timer: return nil
         }
     }

@@ -10,6 +10,7 @@ struct ExpandedView: View {
 
     @EnvironmentObject private var state: NotchState
     @EnvironmentObject private var settings: Settings
+    @EnvironmentObject private var screenshots: ScreenshotMonitor
 
     @Environment(\.notchGeometry) private var notchSize
     @Environment(\.notchExpandedWidth) private var expandedWidth
@@ -125,9 +126,12 @@ struct ExpandedView: View {
     }
 
     private var home: some View {
-        // The compact pill already surfaces transient activities, so home stays a
-        // clean, fixed-height dashboard.
-        WidgetGridView()
+        VStack(spacing: 10) {
+            if !screenshots.candidates.isEmpty {
+                ScreenshotCandidateCard()
+            }
+            WidgetGridView()
+        }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }

@@ -19,6 +19,7 @@ final class Settings: ObservableObject {
         static let hapticFeedback = "hapticFeedback"
         static let trayTTLDays = "trayTTLDays"
         static let trayMoveEnabled = "trayMoveEnabled"
+        static let offerScreenshots = "offerScreenshots"
         static let trayLastCollectionID = "trayLastCollectionID"
         static let showWeatherWidget = "showWeatherWidget"
         static let showCalendarWidget = "showCalendarWidget"
@@ -75,6 +76,9 @@ final class Settings: ObservableObject {
     @Published var trayTTLDays: Int { didSet { defaults.set(trayTTLDays, forKey: Key.trayTTLDays) } }
     @Published var trayMoveEnabled: Bool {
         didSet { defaults.set(trayMoveEnabled, forKey: Key.trayMoveEnabled) }
+    }
+    @Published var offerScreenshots: Bool {
+        didSet { defaults.set(offerScreenshots, forKey: Key.offerScreenshots) }
     }
     var trayLastCollectionID: String {
         didSet { defaults.set(trayLastCollectionID, forKey: Key.trayLastCollectionID) }
@@ -147,6 +151,7 @@ final class Settings: ObservableObject {
             Key.hapticFeedback: true,
             Key.trayTTLDays: 7,
             Key.trayMoveEnabled: false,
+            Key.offerScreenshots: false,
             Key.trayLastCollectionID: TrayCollection.shelfID.uuidString,
             Key.showWeatherWidget: true,
             Key.showCalendarWidget: true,
@@ -194,6 +199,7 @@ final class Settings: ObservableObject {
         self.hapticFeedback = defaults.bool(forKey: Key.hapticFeedback)
         self.trayTTLDays = defaults.integer(forKey: Key.trayTTLDays)
         self.trayMoveEnabled = defaults.bool(forKey: Key.trayMoveEnabled)
+        self.offerScreenshots = defaults.bool(forKey: Key.offerScreenshots)
         self.trayLastCollectionID = defaults.string(forKey: Key.trayLastCollectionID)
             ?? TrayCollection.shelfID.uuidString
         self.showWeatherWidget = defaults.bool(forKey: Key.showWeatherWidget)

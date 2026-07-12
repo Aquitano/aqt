@@ -478,6 +478,10 @@ struct SettingsView: View {
             Text("When enabled, Option-drop removes eligible originals only after Notch verifies its managed copy.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Toggle("Offer new screenshots in Notch", isOn: $settings.offerScreenshots)
+            Text("Watches only your configured screenshot folder and never copies a screenshot until you choose Add to Shelf.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

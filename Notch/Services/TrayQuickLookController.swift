@@ -30,6 +30,20 @@ final class TrayQuickLookController: NSObject, ObservableObject,
         isVisible = true
     }
 
+    func present(urls: [URL], onClose: @escaping () -> Void) {
+        guard !urls.isEmpty, let panel = QLPreviewPanel.shared() else { return }
+        if isVisible { finish() }
+        itemIDs = []
+        previewURLs = urls
+        self.onClose = onClose
+        panel.dataSource = self
+        panel.delegate = self
+        panel.currentPreviewItemIndex = 0
+        panel.reloadData()
+        panel.makeKeyAndOrderFront(nil)
+        isVisible = true
+    }
+
     func close() {
         guard isVisible else { return }
         QLPreviewPanel.shared()?.orderOut(nil)

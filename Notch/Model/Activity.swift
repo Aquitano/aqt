@@ -43,6 +43,7 @@ struct Activity: Identifiable, Equatable {
         case peek(title: String, message: String, symbol: String, tint: PeekTint)
         case timer(name: String, endsAt: Date)
         case agent(count: Int, kind: AgentKind, project: String, status: AgentStatus)
+        case screenshotCandidates([ScreenshotCandidate])
     }
 
     enum PeekTint: Equatable {

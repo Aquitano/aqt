@@ -41,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         windowController?.stop()
         env.agents.stop()
+        env.screenshots.stop()
         env.persistence.flush()
     }
 
