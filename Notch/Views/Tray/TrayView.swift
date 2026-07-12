@@ -34,6 +34,10 @@ struct TrayView: View {
         .padding(.vertical, 12)
         .focusable()
         .focused($hasKeyboardFocus)
+        // The container takes keyboard focus for Space/arrows/Command-V, but the
+        // system focus halo reads as a bright debug rectangle around the Shelf.
+        // Selection tiles already provide the visible keyboard-focus affordance.
+        .focusEffectDisabled()
         .onKeyPress(.space) {
             previewSelection()
             return .handled

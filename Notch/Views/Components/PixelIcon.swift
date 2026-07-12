@@ -14,9 +14,14 @@ struct PixelIcon: View {
         Canvas(rendersAsynchronously: false) { context, canvasSize in
             let cell = max(1, floor(min(canvasSize.width, canvasSize.height) / 7))
             let content = cell * 7
+            let opticalOffset = glyph.opticalOffset
             let origin = CGPoint(
-                x: floor((canvasSize.width - content) / 2),
-                y: floor((canvasSize.height - content) / 2)
+                // Preserve the true center when an icon size leaves an odd point
+                // outside the integer-cell grid. On Retina displays the half-point
+                // lands on a physical pixel; flooring here biased every such icon
+                // toward the leading/top edge of its control.
+                x: (canvasSize.width - content) / 2 + opticalOffset.x * cell,
+                y: (canvasSize.height - content) / 2 + opticalOffset.y * cell
             )
             for (row, bits) in glyph.rows.enumerated() {
                 for column in 0..<7 where bits & UInt8(1 << (6 - column)) != 0 {
@@ -61,8 +66,9 @@ enum PixelIconImage {
             NSColor.black.setFill()
             let cell = max(1, floor(min(rect.width, rect.height) / 7))
             let content = cell * 7
-            let x = floor((rect.width - content) / 2)
-            let y = floor((rect.height - content) / 2)
+            let opticalOffset = glyph.opticalOffset
+            let x = (rect.width - content) / 2 + opticalOffset.x * cell
+            let y = (rect.height - content) / 2 + opticalOffset.y * cell
             for (row, bits) in glyph.rows.enumerated() {
                 for column in 0..<7 where bits & UInt8(1 << (6 - column)) != 0 {
                     NSRect(
@@ -89,6 +95,7 @@ private enum PixelGlyph {
     case calendar, bolt, share, radio, wifi, location, speaker, mute, sun
     case cloud, rain, snow, fog, storm, headphones, keyboard, mouse, layers
     case spark, code, braces, shell, battery, eye, clipboard, link
+    case plus, pause, folder, open, photo, power
 
     static func resolve(_ rawName: String) -> PixelGlyph {
         let name = rawName.lowercased()
@@ -103,9 +110,15 @@ private enum PixelGlyph {
         if name.contains("moon") { return .moon }
         if name.contains("sun") || name.contains("brightness") { return .sun }
         if name.contains("music") { return .music }
+        if name.contains("pause") { return .pause }
         if name.contains("backward") { return .backward }
+        if name.contains("arrow.up.forward") { return .open }
         if name.contains("forward") || name.contains("play") { return .play }
         if name.contains("tray") { return .tray }
+        if name.contains("folder") { return .folder }
+        if name.contains("photo") { return .photo }
+        if name.contains("power") { return .power }
+        if name.contains("plus") { return .plus }
         if name.contains("square.2.layers") { return .layers }
         if name.contains("square.grid") { return .grid }
         if name.contains("gear") { return .gear }
@@ -188,6 +201,26 @@ private enum PixelGlyph {
         case .eye: return bits(".......", "..###..", ".#...#.", "#..#..#", ".#...#.", "..###..", ".......")
         case .clipboard: return bits("..###..", ".#####.", ".#...#.", ".#.###.", ".#...#.", ".#####.", ".......")
         case .link: return bits(".......", ".###...", "#...#..", "..###..", ".#...#.", "..###..", ".......")
+        case .plus: return bits(".......", "...#...", "...#...", ".#####.", "...#...", "...#...", ".......")
+        case .pause: return bits(".......", ".##.##.", ".##.##.", ".##.##.", ".##.##.", ".##.##.", ".......")
+        case .folder: return bits(".......", ".##....", ".#####.", ".#....#", ".#....#", ".#####.", ".......")
+        case .open: return bits("...#...", "..###..", ".#.#.#.", "...#...", "##.#.##", "#.....#", "#######")
+        case .photo: return bits(".......", "..#....", ".#####.", "#.....#", "#.#.#.#", "#..#..#", "#######")
+        case .power: return bits("...#...", "...#...", ".#.#.#.", "#.....#", "#.....#", ".#...#.", "..###..")
+        }
+    }
+
+    /// Sub-cell optical corrections for glyphs whose silhouettes cannot be
+    /// balanced on an odd 7×7 grid using whole rows alone. Values are expressed
+    /// in grid cells so the adjustment scales with every requested icon size.
+    var opticalOffset: CGPoint {
+        switch self {
+        case .terminal:
+            return CGPoint(x: 0, y: -0.5)
+        case .clipboard:
+            return CGPoint(x: 0, y: 0.5)
+        default:
+            return .zero
         }
     }
 
