@@ -22,6 +22,10 @@ One place for every message I've ever sent or received, searchable in millisecon
 | Discord | GDPR data package ("Request my data"), dropped into inbox | manual, ~quarterly |
 | LinkedIn | official data export CSV, dropped into inbox | manual, ~quarterly |
 | WhatsApp | per-chat "Export chat" zips from the phone, dropped into inbox | manual |
+| ChatGPT | official data export zip (conversations.json, message tree incl. regenerated branches) | manual, on demand |
+| Claude.ai | official data export zip (conversations.json) | manual, on demand |
+| Claude Code | local session .jsonl transcripts (user/assistant text only, tool noise dropped) | `bank import claude-code ~/.claude/projects` |
+| anything else | `bank import json` — JSON array or NDJSON on stdin/file | agents, scripts |
 
 Deliberately inside ToS everywhere. If WhatsApp manual export gets old, the escape hatches are (a) one-shot Android backup decrypt (`wa-crypt-tools`) for deep backfill, (b) a whatsmeow linked-device bridge for live capture — both documented here so the schema already fits them.
 

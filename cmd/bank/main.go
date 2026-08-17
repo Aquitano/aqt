@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aquitano/aqt-bank/internal/aichat"
 	"github.com/aquitano/aqt-bank/internal/archive"
 	"github.com/aquitano/aqt-bank/internal/blob"
 	"github.com/aquitano/aqt-bank/internal/discord"
@@ -36,6 +37,9 @@ Usage:
   bank import mbox [--source s] <file>...     mbox files (default source: gmail)
   bank import discord <package.zip|dir>...    Discord GDPR data package
   bank import linkedin <zip|csv|dir>...       LinkedIn data export
+  bank import chatgpt <export.zip|json|dir>   ChatGPT data export
+  bank import claude <export.zip|json|dir>    Claude.ai data export
+  bank import claude-code <file.jsonl|dir>    Claude Code session transcripts
   bank import json [--source s] <file|->      arbitrary JSON/NDJSON messages
                                               (the escape hatch for agents; - reads stdin)
   bank search <query> [flags]                 full-text search (BM25, fuzzy)
@@ -151,7 +155,7 @@ func cmdSync(ctx context.Context, args []string) error {
 
 func cmdImport(ctx context.Context, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: bank import <whatsapp|eml|mbox|discord|linkedin|json> <path>...")
+		return fmt.Errorf("usage: bank import <whatsapp|eml|mbox|discord|linkedin|chatgpt|claude|claude-code|json> <path>...")
 	}
 	kind := args[0]
 	fs := flag.NewFlagSet("import "+kind, flag.ExitOnError)
@@ -213,6 +217,21 @@ func cmdImport(ctx context.Context, args []string) error {
 			}
 			fmt.Printf("linkedin: %d new, %d already known, %d empty rows skipped\n",
 				res.Inserted, res.Duplicates, res.Skipped)
+		case "chatgpt", "claude", "claude-code":
+			var res aichat.Result
+			switch kind {
+			case "chatgpt":
+				res, err = aichat.ImportChatGPT(ctx, st, archiveDir, path)
+			case "claude":
+				res, err = aichat.ImportClaude(ctx, st, archiveDir, path)
+			case "claude-code":
+				res, err = aichat.ImportClaudeCode(ctx, st, archiveDir, path)
+			}
+			if err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			fmt.Printf("%s: %d conversations, %d new, %d already known, %d empty skipped\n",
+				kind, res.Conversations, res.Inserted, res.Duplicates, res.Skipped)
 		case "json":
 			var input []byte
 			var rawRef string
@@ -243,7 +262,7 @@ func cmdImport(ctx context.Context, args []string) error {
 			}
 			fmt.Println()
 		default:
-			return fmt.Errorf("unknown import source %q (whatsapp, eml, mbox, discord, linkedin, json)", kind)
+			return fmt.Errorf("unknown import source %q (whatsapp, eml, mbox, discord, linkedin, chatgpt, claude, claude-code, json)", kind)
 		}
 	}
 	return nil
@@ -381,11 +400,11 @@ func cmdStats(ctx context.Context, args []string) error {
 	}
 	var total int64
 	for _, s := range stats {
-		fmt.Printf("%-10s %8d messages  %s — %s\n",
+		fmt.Printf("%-12s %8d messages  %s — %s\n",
 			s.Source, s.Messages, s.Earliest.Format("2006-01-02"), s.Latest.Format("2006-01-02"))
 		total += s.Messages
 	}
-	fmt.Printf("%-10s %8d messages\n", "total", total)
+	fmt.Printf("%-12s %8d messages\n", "total", total)
 	return nil
 }
 
