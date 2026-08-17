@@ -69,7 +69,7 @@ func NewToken(dataDir, name string) (string, error) {
 		return "", err
 	}
 	token := "bank_" + hex.EncodeToString(raw[:])
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return "", err
 	}
 	if err := writeTokens(dataDir, append(entries, tokenEntry{Name: name, Hash: hashToken(token)})); err != nil {
