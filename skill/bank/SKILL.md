@@ -86,7 +86,7 @@ Rules:
 - Do not invent a source name. Check `bank stats` and reuse the existing agent-notes-style source if one is there; only create a new one when the owner asks.
 - Set an explicit `sent_at` for anything that describes a moment other than now.
 - Every import is a write to the shared archive — say what you are about to store before storing it.
-- `attachments[].path` is read on the machine that holds the blob store, so over `BANK_URL` it means a path on the server, not on this laptop. A path the server cannot open shows up as `1 entries rejected` while the message itself still lands.
+- `attachments[].path` only works for local imports (the file is read into the blob store on this machine). Over `BANK_URL` any entry carrying attachments is rejected whole — `1 entries rejected`, nothing inserted — so strip attachments before remote imports, or run the import on the server.
 
 ## Cautions
 
