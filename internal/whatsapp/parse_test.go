@@ -1,0 +1,78 @@
+package whatsapp
+
+import (
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestParseAndroidDayFirst(t *testing.T) {
+	chat := strings.Join([]string{
+		"13/05/24, 21:07 - Messages and calls are end-to-end encrypted. No one outside of this chat can read them.",
+		"13/05/24, 21:08 - Alice: hey Thomas",
+		"how are you?",
+		"13/05/24, 21:09 - Thomas: good!",
+		"13/05/24, 21:10 - Alice: IMG-20240513-WA0001.jpg (file attached)",
+		"look at this",
+		"14/05/24, 09:00 - Alice: <Media omitted>",
+	}, "\n")
+
+	msgs, err := ParseChat(strings.NewReader(chat))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 4 {
+		t.Fatalf("got %d messages, want 4: %+v", len(msgs), msgs)
+	}
+	if msgs[0].Body != "hey Thomas\nhow are you?" {
+		t.Errorf("multiline body = %q", msgs[0].Body)
+	}
+	want := time.Date(2024, 5, 13, 21, 8, 0, 0, time.Local)
+	if !msgs[0].SentAt.Equal(want) {
+		t.Errorf("sent_at = %v, want %v", msgs[0].SentAt, want)
+	}
+	if msgs[2].AttachmentName != "IMG-20240513-WA0001.jpg" || msgs[2].Body != "look at this" {
+		t.Errorf("attachment parse: name=%q body=%q", msgs[2].AttachmentName, msgs[2].Body)
+	}
+	if !IsMediaOmitted(msgs[3].Body) {
+		t.Errorf("media omitted not detected: %q", msgs[3].Body)
+	}
+}
+
+func TestParseIOSMonthFirst12h(t *testing.T) {
+	chat := strings.Join([]string{
+		"‎[05/13/24, 9:07:12 PM] Alice: hi",
+		"[05/13/24, 9:08:01 PM] Alice: ‎<attached: 00000012-PHOTO-2024-05-13.jpg>",
+		"[05/14/24, 12:15:00 AM] Thomas: late reply",
+	}, "\n")
+
+	msgs, err := ParseChat(strings.NewReader(chat))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("got %d messages, want 3: %+v", len(msgs), msgs)
+	}
+	want := time.Date(2024, 5, 13, 21, 7, 12, 0, time.Local)
+	if !msgs[0].SentAt.Equal(want) {
+		t.Errorf("sent_at = %v, want %v (month-first + PM)", msgs[0].SentAt, want)
+	}
+	if msgs[1].AttachmentName != "00000012-PHOTO-2024-05-13.jpg" {
+		t.Errorf("ios attachment = %q", msgs[1].AttachmentName)
+	}
+	if h := msgs[2].SentAt.Hour(); h != 0 {
+		t.Errorf("12 AM parsed as hour %d", h)
+	}
+}
+
+func TestThreadName(t *testing.T) {
+	for in, want := range map[string]string{
+		"WhatsApp Chat with Alice Example.txt": "Alice Example",
+		"WhatsApp Chat - Bob.zip":              "Bob",
+		"random-export.txt":                    "random-export",
+	} {
+		if got := ThreadName(in); got != want {
+			t.Errorf("ThreadName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

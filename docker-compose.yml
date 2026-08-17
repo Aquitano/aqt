@@ -1,0 +1,18 @@
+# ParadeDB = Postgres + pg_search (BM25 full-text search extension).
+# On the VPS, put the volume on the LUKS-encrypted mount.
+services:
+  db:
+    image: paradedb/paradedb:latest
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bank
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bank}
+      POSTGRES_DB: bank
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      # Postgres 18+ images want the mount at /var/lib/postgresql (not .../data)
+      - pgdata:/var/lib/postgresql
+
+volumes:
+  pgdata:
