@@ -41,7 +41,7 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, cleanup, err := saveUpload(r)
+	path, cleanup, err := saveUpload(r, s.dataDir)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -62,7 +62,10 @@ func (s *Server) importJSON(ctx context.Context, source string, body []byte) (ge
 	if err != nil {
 		return generic.Result{}, err
 	}
-	return generic.Import(ctx, s.db, s.blobs, source, rawRef, body, time.Now())
+	// Attachment paths would resolve on the server's filesystem — an arbitrary
+	// file-read primitive for token holders, and never what a remote caller
+	// means anyway. Local imports keep them.
+	return generic.Import(ctx, s.db, s.blobs, source, rawRef, body, time.Now(), false)
 }
 
 func (s *Server) importFile(ctx context.Context, kind, source, path string) (any, error) {
@@ -91,8 +94,9 @@ func (s *Server) importFile(ctx context.Context, kind, source, path string) (any
 }
 
 // saveUpload writes the multipart "file" part into a fresh temp dir, keeping the
-// original basename — importers derive thread names and sources from it.
-func saveUpload(r *http.Request) (string, func(), error) {
+// original basename — importers derive thread names and sources from it. Staged
+// under the data dir, not /tmp: uploads can be Takeout-sized and tmpfs is small.
+func saveUpload(r *http.Request, dataDir string) (string, func(), error) {
 	mr, err := r.MultipartReader()
 	if err != nil {
 		return "", nil, fmt.Errorf("expected multipart/form-data with a file field: %w", err)
@@ -114,7 +118,12 @@ func saveUpload(r *http.Request) (string, func(), error) {
 			part.Close()
 			return "", nil, fmt.Errorf("upload has no usable filename")
 		}
-		dir, err := os.MkdirTemp("", "bank-upload-")
+		staging := filepath.Join(dataDir, "tmp")
+		if err := os.MkdirAll(staging, 0o700); err != nil {
+			part.Close()
+			return "", nil, err
+		}
+		dir, err := os.MkdirTemp(staging, "upload-")
 		if err != nil {
 			part.Close()
 			return "", nil, err

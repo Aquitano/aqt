@@ -41,12 +41,30 @@ func readTokens(dataDir string) ([]tokenEntry, error) {
 	return out, nil
 }
 
+// writeTokens is atomic: a crash mid-write must not truncate the only record
+// of every client's token digest (plaintexts are unrecoverable by design).
 func writeTokens(dataDir string, entries []tokenEntry) error {
 	var b strings.Builder
 	for _, e := range entries {
 		fmt.Fprintf(&b, "%s:%s\n", e.Name, e.Hash)
 	}
-	return os.WriteFile(TokensPath(dataDir), []byte(b.String()), 0o600)
+	tmp, err := os.CreateTemp(dataDir, ".tokens-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.WriteString(b.String()); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), TokensPath(dataDir))
 }
 
 // NewToken generates a token for name and stores only its digest. The returned

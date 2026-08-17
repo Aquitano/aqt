@@ -93,6 +93,15 @@ func TestMessageDigestStability(t *testing.T) {
 	}
 }
 
+func TestMessageDigestMediaOmittedMatchesMedia(t *testing.T) {
+	at := time.Date(2024, 5, 13, 21, 41, 0, 0, time.Local)
+	withMedia := ParsedMessage{Sender: "Alice", Body: "", AttachmentName: "IMG-0001.jpg", SentAt: at}
+	omitted := ParsedMessage{Sender: "Alice", Body: "<Media omitted>", SentAt: at}
+	if messageDigest("Alice", withMedia, map[string]int{}) != messageDigest("Alice", omitted, map[string]int{}) {
+		t.Error("without-media and with-media exports of the same message must share an id, or healAttachment can never fire")
+	}
+}
+
 func TestThreadName(t *testing.T) {
 	for in, want := range map[string]string{
 		"WhatsApp Chat with Alice Example.txt": "Alice Example",

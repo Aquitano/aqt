@@ -51,7 +51,10 @@ type entry struct {
 	} `json:"attachments"`
 }
 
-func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSource, rawRef string, input []byte, now time.Time) (Result, error) {
+// allowAttachmentPaths gates attachments[].path (read from the local
+// filesystem): true for local CLI imports, false when the entries arrived
+// over HTTP — server-side path reads are an arbitrary-file-read primitive.
+func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSource, rawRef string, input []byte, now time.Time, allowAttachmentPaths bool) (Result, error) {
 	var res Result
 	entries, err := parseEntries(input)
 	if err != nil {
@@ -65,6 +68,11 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSour
 		if err := validate(e); err != nil {
 			res.Failed++
 			fmt.Fprintf(os.Stderr, "bank: json entry %d: %v\n", i, err)
+			continue
+		}
+		if len(e.Attachments) > 0 && !allowAttachmentPaths {
+			res.Failed++
+			fmt.Fprintf(os.Stderr, "bank: json entry %d: attachments[].path is only supported for local imports, not over BANK_URL\n", i)
 			continue
 		}
 		sentAt, err := parseSentAt(e.SentAt)

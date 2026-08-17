@@ -166,9 +166,18 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 // messageDigest derives a stable external_id. Wall-clock time is hashed as
 // written in the export (never converted through a zone) so the same file
 // imported on machines in different timezones dedups; identical messages in
-// the same minute get an occurrence counter so none are dropped.
+// the same minute get an occurrence counter so none are dropped. The media
+// filename stays out of the digest and "<Media omitted>" bodies hash as
+// empty, so a without-media export and a with-media export of the same chat
+// produce the same ids (letting healAttachment fill in the media later);
+// captions are lossy in without-media exports, so captioned media can still
+// duplicate — inherent to the format.
 func messageDigest(thread string, pm ParsedMessage, seen map[string]int) string {
-	base := thread + "\x00" + pm.SentAt.Format("2006-01-02T15:04:05") + "\x00" + pm.Sender + "\x00" + pm.Body + "\x00" + pm.AttachmentName
+	body := pm.Body
+	if IsMediaOmitted(body) {
+		body = ""
+	}
+	base := thread + "\x00" + pm.SentAt.Format("2006-01-02T15:04:05") + "\x00" + pm.Sender + "\x00" + body
 	n := seen[base]
 	seen[base] = n + 1
 	if n > 0 {

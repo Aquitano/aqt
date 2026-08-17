@@ -42,7 +42,8 @@ func New(db *store.Store, blobs *blob.Store, dataDir, archiveDir string) *Server
 	return &Server{db: db, read: db, blobs: blobs, archiveDir: archiveDir, dataDir: dataDir}
 }
 
-const maxUpload = 1 << 30
+// Sized for Gmail Takeout mboxes, which routinely exceed 1 GiB.
+const maxUpload = 16 << 30
 
 func (s *Server) Handler() http.Handler {
 	v1 := http.NewServeMux()
@@ -71,8 +72,9 @@ func (s *Server) ListenAndServe(addr string) error {
 
 func (s *Server) requireToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if token == r.Header.Get("Authorization") || !VerifyToken(s.dataDir, token) {
+		const prefix = "bearer " // scheme is case-insensitive per RFC 7235
+		auth := r.Header.Get("Authorization")
+		if len(auth) <= len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) || !VerifyToken(s.dataDir, auth[len(prefix):]) {
 			writeErr(w, http.StatusUnauthorized, "invalid or missing bearer token")
 			return
 		}

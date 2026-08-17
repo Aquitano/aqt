@@ -133,7 +133,7 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
 	err := s.pool.QueryRow(ctx, `
 		insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref)
 		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		on conflict (source, external_id) do nothing
+		on conflict do nothing
 		returning id`,
 		m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef,
 	).Scan(&id)
@@ -182,7 +182,7 @@ func (s *Store) InsertAttachment(ctx context.Context, a Attachment) error {
 	_, err := s.pool.Exec(ctx, `
 		insert into attachments (message_id, filename, mime_type, size_bytes, sha256)
 		values ($1, $2, $3, $4, $5)`,
-		a.MessageID, a.Filename, a.MimeType, a.SizeBytes, a.SHA256)
+		a.MessageID, cleanText(a.Filename), cleanText(a.MimeType), a.SizeBytes, a.SHA256)
 	return err
 }
 

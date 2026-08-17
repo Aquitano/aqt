@@ -264,7 +264,7 @@ func cmdImport(ctx context.Context, args []string) error {
 					return err
 				}
 			}
-			res, err := generic.Import(ctx, st, blobs, *source, rawRef, input, time.Now())
+			res, err := generic.Import(ctx, st, blobs, *source, rawRef, input, time.Now(), true)
 			if err != nil {
 				return fmt.Errorf("%s: %w", path, err)
 			}

@@ -40,6 +40,13 @@ func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef str
 			r.Skipped++
 			continue
 		}
+		if m.ExternalID == "" {
+			// One malformed export record (a mapping node without an id, a
+			// transcript line without a uuid) must not abort the whole import.
+			r.Skipped++
+			fmt.Fprintf(os.Stderr, "bank: %s: skipping record without an id in %q\n", source, m.Thread)
+			continue
+		}
 		if m.SentAt.IsZero() {
 			m.SentAt = time.Unix(0, 0) // unknown date: obvious epoch sentinel
 		}

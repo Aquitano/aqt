@@ -100,7 +100,7 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 		}
 		res.Channels++
 		for _, m := range msgs {
-			if m.Body == "" {
+			if m.Body == "" || m.ID == "" {
 				res.Skipped++
 				continue
 			}
