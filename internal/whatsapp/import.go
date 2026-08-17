@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aquitano/aqt-bank/internal/archive"
 	"github.com/aquitano/aqt-bank/internal/blob"
 	"github.com/aquitano/aqt-bank/internal/store"
 )
@@ -112,7 +113,7 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 		return res, fmt.Errorf("%s: no messages parsed — not a WhatsApp export?", path)
 	}
 
-	rawRef, err := archiveOriginal(archiveDir, path)
+	rawRef, err := archive.Copy(archiveDir, "whatsapp", path)
 	if err != nil {
 		return res, err
 	}
@@ -163,41 +164,4 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 		res.Attachments++
 	}
 	return res, nil
-}
-
-// archiveOriginal copies the input into archive/whatsapp/ under a
-// content-hash prefix so distinct exports with the same name never collide.
-func archiveOriginal(archiveDir, path string) (string, error) {
-	src, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer src.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, src); err != nil {
-		return "", err
-	}
-	prefix := hex.EncodeToString(h.Sum(nil))[:12]
-
-	dir := filepath.Join(archiveDir, "whatsapp")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	rel := filepath.Join("whatsapp", prefix+"-"+filepath.Base(path))
-	dest := filepath.Join(archiveDir, rel)
-	if _, err := os.Stat(dest); err == nil {
-		return rel, nil
-	}
-	if _, err := src.Seek(0, io.SeekStart); err != nil {
-		return "", err
-	}
-	out, err := os.Create(dest)
-	if err != nil {
-		return "", err
-	}
-	if _, err := io.Copy(out, src); err != nil {
-		out.Close()
-		return "", err
-	}
-	return rel, out.Close()
 }

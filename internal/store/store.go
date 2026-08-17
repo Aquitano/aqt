@@ -132,6 +132,34 @@ func (s *Store) InsertAttachment(ctx context.Context, a Attachment) error {
 	return err
 }
 
+// HasMessage lets importers skip expensive fetches for already-archived mail.
+func (s *Store) HasMessage(ctx context.Context, source, externalID string) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx,
+		`select exists (select 1 from messages where source = $1 and external_id = $2)`,
+		source, externalID).Scan(&exists)
+	return exists, err
+}
+
+// GetSyncState returns the stored JSON state for a source, or nil if none.
+func (s *Store) GetSyncState(ctx context.Context, source string) ([]byte, error) {
+	var state []byte
+	err := s.pool.QueryRow(ctx,
+		`select state from sync_state where source = $1`, source).Scan(&state)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	return state, err
+}
+
+func (s *Store) SetSyncState(ctx context.Context, source string, state []byte) error {
+	_, err := s.pool.Exec(ctx, `
+		insert into sync_state (source, state) values ($1, $2)
+		on conflict (source) do update set state = excluded.state, updated_at = now()`,
+		source, state)
+	return err
+}
+
 type SearchOpts struct {
 	Source string
 	From   string

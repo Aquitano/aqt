@@ -14,6 +14,10 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt-bank/internal/blob"
+	"github.com/aquitano/aqt-bank/internal/discord"
+	"github.com/aquitano/aqt-bank/internal/eml"
+	"github.com/aquitano/aqt-bank/internal/gmail"
+	"github.com/aquitano/aqt-bank/internal/linkedin"
 	"github.com/aquitano/aqt-bank/internal/store"
 	"github.com/aquitano/aqt-bank/internal/whatsapp"
 )
@@ -21,7 +25,13 @@ import (
 const usage = `bank — personal message archive
 
 Usage:
-  bank import whatsapp <export.zip|.txt>...   import WhatsApp chat exports
+  bank auth gmail [--port n]                  authorize Gmail (loopback OAuth)
+  bank sync [--full]                          pull new mail from Gmail
+  bank import whatsapp <export.zip|.txt>...   WhatsApp "Export chat" files
+  bank import eml [--source s] <file|dir>...  .eml files (default source: proton)
+  bank import mbox [--source s] <file>...     mbox files (default source: gmail)
+  bank import discord <package.zip|dir>...    Discord GDPR data package
+  bank import linkedin <zip|csv|dir>...       LinkedIn data export
   bank search <query> [flags]                 full-text search (BM25, fuzzy)
   bank show <id> [--json]                     print one message + attachments
   bank stats [--json]                         per-source counts and date ranges
@@ -48,6 +58,10 @@ func main() {
 	ctx := context.Background()
 	var err error
 	switch os.Args[1] {
+	case "auth":
+		err = cmdAuth(ctx, os.Args[2:])
+	case "sync":
+		err = cmdSync(ctx, os.Args[2:])
 	case "import":
 		err = cmdImport(ctx, os.Args[2:])
 	case "search":
@@ -90,10 +104,60 @@ func openStore(ctx context.Context) (*store.Store, error) {
 	return store.Open(ctx, url)
 }
 
-func cmdImport(ctx context.Context, args []string) error {
-	if len(args) < 2 || args[0] != "whatsapp" {
-		return fmt.Errorf("usage: bank import whatsapp <export.zip|.txt>...")
+func cmdAuth(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("auth", flag.ExitOnError)
+	port := fs.Int("port", 0, "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
 	}
+	if fs.NArg() != 1 || fs.Arg(0) != "gmail" {
+		return fmt.Errorf("usage: bank auth gmail [--port n]")
+	}
+	return gmail.Authorize(ctx, dataDir(), *port)
+}
+
+func cmdSync(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("sync", flag.ExitOnError)
+	full := fs.Bool("full", false, "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	blobs, err := blob.New(filepath.Join(dataDir(), "blobs"))
+	if err != nil {
+		return err
+	}
+	res, err := gmail.Sync(ctx, st, blobs, dataDir(), filepath.Join(dataDir(), "archive"), *full)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("gmail (%s): %d new, %d already known, %d attachments", res.Mode, res.Inserted, res.Duplicates, res.Attachments)
+	if res.Failed > 0 {
+		fmt.Printf(", %d failed", res.Failed)
+	}
+	fmt.Println()
+	return nil
+}
+
+func cmdImport(ctx context.Context, args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: bank import <whatsapp|eml|mbox|discord|linkedin> <path>...")
+	}
+	kind := args[0]
+	fs := flag.NewFlagSet("import "+kind, flag.ExitOnError)
+	defaultSource := map[string]string{"eml": "proton", "mbox": "gmail"}[kind]
+	source := fs.String("source", defaultSource, "")
+	if err := parseFlagsAnywhere(fs, args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() == 0 {
+		return fmt.Errorf("usage: bank import %s <path>...", kind)
+	}
+
 	st, err := openStore(ctx)
 	if err != nil {
 		return err
@@ -105,18 +169,57 @@ func cmdImport(ctx context.Context, args []string) error {
 	}
 	archiveDir := filepath.Join(dataDir(), "archive")
 
-	for _, path := range args[1:] {
-		res, err := whatsapp.Import(ctx, st, blobs, archiveDir, path)
-		if err != nil {
-			return fmt.Errorf("%s: %w", path, err)
+	for _, path := range fs.Args() {
+		switch kind {
+		case "whatsapp":
+			res, err := whatsapp.Import(ctx, st, blobs, archiveDir, path)
+			if err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			fmt.Printf("%s: %d new, %d already known, %d attachments", res.Thread, res.Inserted, res.Duplicates, res.Attachments)
+			if res.MissingMedia > 0 {
+				fmt.Printf(", %d media files referenced but not in export", res.MissingMedia)
+			}
+			fmt.Println()
+		case "eml":
+			res, err := eml.ImportEmlPath(ctx, st, blobs, archiveDir, *source, path)
+			if err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			printEmlResult(*source, path, res)
+		case "mbox":
+			res, err := eml.ImportMbox(ctx, st, blobs, archiveDir, *source, path)
+			if err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			printEmlResult(*source, path, res)
+		case "discord":
+			res, err := discord.Import(ctx, st, archiveDir, path)
+			if err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			fmt.Printf("discord: %d channels, %d new, %d already known, %d empty rows skipped\n",
+				res.Channels, res.Inserted, res.Duplicates, res.Skipped)
+		case "linkedin":
+			res, err := linkedin.Import(ctx, st, archiveDir, path)
+			if err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			fmt.Printf("linkedin: %d new, %d already known, %d empty rows skipped\n",
+				res.Inserted, res.Duplicates, res.Skipped)
+		default:
+			return fmt.Errorf("unknown import source %q (whatsapp, eml, mbox, discord, linkedin)", kind)
 		}
-		fmt.Printf("%s: %d new, %d already known, %d attachments", res.Thread, res.Inserted, res.Duplicates, res.Attachments)
-		if res.MissingMedia > 0 {
-			fmt.Printf(", %d media files referenced but not in export", res.MissingMedia)
-		}
-		fmt.Println()
 	}
 	return nil
+}
+
+func printEmlResult(source, path string, res eml.Result) {
+	fmt.Printf("%s (%s): %d new, %d already known, %d attachments", source, filepath.Base(path), res.Inserted, res.Duplicates, res.Attachments)
+	if res.Failed > 0 {
+		fmt.Printf(", %d failed to parse", res.Failed)
+	}
+	fmt.Println()
 }
 
 func cmdSearch(ctx context.Context, args []string) error {
