@@ -11,6 +11,7 @@ One place for every message I've ever sent or received, searchable in millisecon
 | Hosting | VPS, LUKS-encrypted data volume, restic encrypted backups | Accepts that a running box is readable by the provider; protects disks at rest and backups |
 | Sync model | Pull-based: `bank sync` via cron; manual sources land in an inbox dir swept by `bank import` | Stateless, debuggable, no daemon |
 | Interface | CLI, `--json` on every read command | Humans get text, agents get JSON; MCP wrapper can come later |
+| Remote access | `bank serve` in the same binary, CLI switches to HTTP when `BANK_URL` is set, bearer tokens hashed in `$BANK_DATA_DIR/tokens`, no TLS | A laptop CLI against a remote `DATABASE_URL` writes blobs and archives locally while rows go to the VPS — split-brain. One binary means no second artifact to build or deploy; Tailscale is the transport security, so the server only needs authentication |
 | Scope | Full history, all attachments | Attachments are content-addressed (sha256) so duplicates are free |
 
 ## Source acquisition
@@ -57,7 +58,12 @@ bank search "query" [--source s] [--from alice] [--since 2024-01-01] [--until d]
                     [--fuzzy 0..2] [--limit n] [--json]
 bank show <id> [--json]                 # full message + attachment refs
 bank stats [--json]
+bank fetch <sha256> [-o path]           # write an attachment to a file
+bank serve [--listen addr]              # HTTP API for remote CLIs (default 127.0.0.1:8480)
+bank token new|list|revoke <name>       # bearer tokens for bank serve
 ```
+
+With `BANK_URL` (and `BANK_TOKEN`) set, `search`, `show`, `stats`, `import` and `fetch` talk to a remote `bank serve` instead of Postgres — same flags, same output. `auth`, `sync`, `serve` and `token` are always local.
 
 Migrations are embedded in the binary and run automatically on startup — idempotent, no separate step.
 
@@ -68,5 +74,6 @@ Migrations are embedded in the binary and run automatically on startup — idemp
 3. ~~Proton / Takeout~~ — shared EML/MIME parser, `bank import eml` (proton-mail-export output) and `bank import mbox`.
 4. ~~Discord + LinkedIn~~ — GDPR/data-export package importers (csv and json package generations).
 5. ~~Generic JSON~~ — `bank import json` (array or NDJSON, stdin-friendly): the escape hatch for agents and one-off sources.
-6. Deploy — see DEPLOY.md (LUKS volume, compose override, headless Gmail auth, restic, cron). Pending: actually provisioning the VPS.
-7. Nice-to-haves as needed: `bank import inbox` sweep, `bank mcp`, embeddings column for semantic search (pgvector lives happily next to pg_search).
+6. ~~Client/server~~ — `bank serve` (stdlib HTTP, token auth), remote CLI via `BANK_URL`, `bank fetch` for attachment bytes.
+7. Deploy — see DEPLOY.md (LUKS volume, compose override, headless Gmail auth, restic, cron). Pending: actually provisioning the VPS.
+8. Nice-to-haves as needed: `bank import inbox` sweep, `bank mcp`, embeddings column for semantic search (pgvector lives happily next to pg_search).
