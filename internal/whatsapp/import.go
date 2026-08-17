@@ -26,15 +26,21 @@ type Result struct {
 	MissingMedia int    `json:"missing_media"`
 }
 
-var chatFileName = regexp.MustCompile(`(?i)^WhatsApp Chat (?:with |- )?(.+?)\.(?:txt|zip)$`)
+var (
+	chatFileName   = regexp.MustCompile(`(?i)^WhatsApp Chat (?:with |- )?(.+?)\.(?:txt|zip)$`)
+	downloadSuffix = regexp.MustCompile(`\s\(\d+\)$`)
+)
 
 // ThreadName derives the conversation name from an export's filename.
+// Browser re-download suffixes (" (1)") are stripped: the thread name feeds
+// the message digest, so it must be stable across downloads.
 func ThreadName(path string) string {
 	base := filepath.Base(path)
+	name := strings.TrimSuffix(base, filepath.Ext(base))
 	if m := chatFileName.FindStringSubmatch(base); m != nil {
-		return m[1]
+		name = m[1]
 	}
-	return strings.TrimSuffix(base, filepath.Ext(base))
+	return downloadSuffix.ReplaceAllString(name, "")
 }
 
 // Import ingests one "Export chat" file (.zip with media, or bare .txt whose
@@ -118,11 +124,12 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 		return res, err
 	}
 
+	seen := map[string]int{}
 	for _, pm := range msgs {
-		sum := sha256.Sum256([]byte(res.Thread + "\x00" + pm.SentAt.UTC().Format("2006-01-02T15:04:05") + "\x00" + pm.Sender + "\x00" + pm.Body + "\x00" + pm.AttachmentName))
+		externalID := messageDigest(res.Thread, pm, seen)
 		id, err := st.InsertMessage(ctx, store.Message{
 			Source:     "whatsapp",
-			ExternalID: hex.EncodeToString(sum[:]),
+			ExternalID: externalID,
 			ThreadID:   res.Thread,
 			Sender:     pm.Sender,
 			Body:       pm.Body,
@@ -134,6 +141,14 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 		}
 		if id == 0 {
 			res.Duplicates++
+			// Heal attachments: an earlier import of the same chat without
+			// media (bare .txt, or "export without media") inserted the
+			// message but couldn't store the file.
+			if pm.AttachmentName != "" {
+				if err := healAttachment(ctx, st, blobs, openMedia, externalID, pm.AttachmentName, &res); err != nil {
+					return res, err
+				}
+			}
 			continue
 		}
 		res.Inserted++
@@ -141,27 +156,61 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 		if pm.AttachmentName == "" {
 			continue
 		}
-		media := openMedia(pm.AttachmentName)
-		if media == nil {
-			res.MissingMedia++
-			continue
-		}
-		sumHex, size, err := blobs.Put(media)
-		media.Close()
-		if err != nil {
+		if err := storeAttachment(ctx, st, blobs, openMedia, id, pm.AttachmentName, &res); err != nil {
 			return res, err
 		}
-		err = st.InsertAttachment(ctx, store.Attachment{
-			MessageID: id,
-			Filename:  pm.AttachmentName,
-			MimeType:  mime.TypeByExtension(filepath.Ext(pm.AttachmentName)),
-			SizeBytes: size,
-			SHA256:    sumHex,
-		})
-		if err != nil {
-			return res, err
-		}
-		res.Attachments++
 	}
 	return res, nil
+}
+
+// messageDigest derives a stable external_id. Wall-clock time is hashed as
+// written in the export (never converted through a zone) so the same file
+// imported on machines in different timezones dedups; identical messages in
+// the same minute get an occurrence counter so none are dropped.
+func messageDigest(thread string, pm ParsedMessage, seen map[string]int) string {
+	base := thread + "\x00" + pm.SentAt.Format("2006-01-02T15:04:05") + "\x00" + pm.Sender + "\x00" + pm.Body + "\x00" + pm.AttachmentName
+	n := seen[base]
+	seen[base] = n + 1
+	if n > 0 {
+		base += fmt.Sprintf("\x00%d", n)
+	}
+	sum := sha256.Sum256([]byte(base))
+	return hex.EncodeToString(sum[:])
+}
+
+func storeAttachment(ctx context.Context, st *store.Store, blobs *blob.Store, openMedia func(string) io.ReadCloser, messageID int64, name string, res *Result) error {
+	media := openMedia(name)
+	if media == nil {
+		res.MissingMedia++
+		return nil
+	}
+	sumHex, size, err := blobs.Put(media)
+	media.Close()
+	if err != nil {
+		return err
+	}
+	err = st.InsertAttachment(ctx, store.Attachment{
+		MessageID: messageID,
+		Filename:  name,
+		MimeType:  mime.TypeByExtension(filepath.Ext(name)),
+		SizeBytes: size,
+		SHA256:    sumHex,
+	})
+	if err != nil {
+		return err
+	}
+	res.Attachments++
+	return nil
+}
+
+func healAttachment(ctx context.Context, st *store.Store, blobs *blob.Store, openMedia func(string) io.ReadCloser, externalID, name string, res *Result) error {
+	id, err := st.FindMessageID(ctx, "whatsapp", externalID)
+	if err != nil || id == 0 {
+		return err
+	}
+	has, err := st.MessageHasAttachments(ctx, id)
+	if err != nil || has {
+		return err
+	}
+	return storeAttachment(ctx, st, blobs, openMedia, id, name, res)
 }

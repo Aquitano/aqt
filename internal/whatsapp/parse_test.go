@@ -65,10 +65,39 @@ func TestParseIOSMonthFirst12h(t *testing.T) {
 	}
 }
 
+func TestMessageDigestStability(t *testing.T) {
+	pm := ParsedMessage{Sender: "Alice", Body: "ok", SentAt: time.Date(2024, 5, 13, 21, 41, 0, 0, time.Local)}
+
+	// Identical messages in the same minute must get distinct ids...
+	seen := map[string]int{}
+	first := messageDigest("Alice", pm, seen)
+	second := messageDigest("Alice", pm, seen)
+	if first == second {
+		t.Error("identical messages collided — second would be dropped")
+	}
+	// ...and re-running the import must reproduce the same ids in order.
+	seen2 := map[string]int{}
+	if messageDigest("Alice", pm, seen2) != first || messageDigest("Alice", pm, seen2) != second {
+		t.Error("digest not stable across re-imports")
+	}
+	// Timezone of the importing machine must not matter: the digest uses wall
+	// time as written in the export.
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Skip("tzdata unavailable")
+	}
+	pmBerlin := pm
+	pmBerlin.SentAt = time.Date(2024, 5, 13, 21, 41, 0, 0, berlin)
+	if messageDigest("Alice", pmBerlin, map[string]int{}) != first {
+		t.Error("digest differs across import-machine timezones")
+	}
+}
+
 func TestThreadName(t *testing.T) {
 	for in, want := range map[string]string{
 		"WhatsApp Chat with Alice Example.txt": "Alice Example",
 		"WhatsApp Chat - Bob.zip":              "Bob",
+		"WhatsApp Chat with Alice (1).zip":     "Alice",
 		"random-export.txt":                    "random-export",
 	} {
 		if got := ThreadName(in); got != want {

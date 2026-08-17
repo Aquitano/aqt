@@ -110,7 +110,7 @@ func walkPart(contentType, transferEncoding, disposition string, r io.Reader, ou
 	switch {
 	case isAttachment:
 		if filename == "" {
-			filename = "unnamed"
+			filename = nameForPart(mediaType)
 		}
 		out.Attachments = append(out.Attachments, Attachment{Filename: filename, MimeType: mediaType, Data: data})
 	case mediaType == "text/plain":
@@ -119,7 +119,20 @@ func walkPart(contentType, transferEncoding, disposition string, r io.Reader, ou
 		*htmlBody = append(*htmlBody, decodeCharset(data, params["charset"]))
 	case mediaType == "message/rfc822":
 		out.Attachments = append(out.Attachments, Attachment{Filename: "forwarded-message.eml", MimeType: mediaType, Data: data})
+	default:
+		// Inline images without filenames, text/calendar invites, etc: an
+		// archival tool must not drop bytes on the floor.
+		if len(data) > 0 {
+			out.Attachments = append(out.Attachments, Attachment{Filename: nameForPart(mediaType), MimeType: mediaType, Data: data})
+		}
 	}
+}
+
+func nameForPart(mediaType string) string {
+	if exts, _ := mime.ExtensionsByType(mediaType); len(exts) > 0 {
+		return "unnamed" + exts[0]
+	}
+	return "unnamed"
 }
 
 func partFilename(disposition string, typeParams map[string]string) string {

@@ -16,7 +16,7 @@ type Store struct {
 }
 
 func New(root string) (*Store, error) {
-	if err := os.MkdirAll(root, 0o755); err != nil {
+	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, err
 	}
 	return &Store{root: root}, nil
@@ -44,7 +44,7 @@ func (s *Store) Put(r io.Reader) (string, int64, error) {
 	if _, err := os.Stat(dest); err == nil {
 		return sum, size, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
 		return "", 0, err
 	}
 	if err := os.Rename(tmp.Name(), dest); err != nil {

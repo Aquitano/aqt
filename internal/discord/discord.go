@@ -51,6 +51,7 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 		if abs, err := filepath.Abs(inputPath); err == nil {
 			rawRef = abs
 		}
+		fmt.Fprintf(os.Stderr, "bank: directory input is referenced, not archived — keep %s (or import the original zip)\n", rawRef)
 	} else {
 		zr, err := zip.OpenReader(inputPath)
 		if err != nil {

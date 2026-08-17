@@ -20,11 +20,15 @@ func SplitMbox(r io.Reader, fn func(raw []byte) error) error {
 		cur.Reset()
 		return fn(raw)
 	}
+	// A "From " line is only a message separator at the start of the file or
+	// after a blank line; unquoted "From " body text (mboxo producers like
+	// Thunderbird) must not split the message.
+	prevBlank := true
 	for {
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
 			switch {
-			case bytes.HasPrefix(line, []byte("From ")):
+			case prevBlank && bytes.HasPrefix(line, []byte("From ")):
 				if err := flush(); err != nil {
 					return err
 				}
@@ -33,6 +37,7 @@ func SplitMbox(r io.Reader, fn func(raw []byte) error) error {
 			default:
 				cur.Write(line)
 			}
+			prevBlank = len(bytes.TrimRight(line, "\r\n")) == 0
 		}
 		if err == io.EOF {
 			return flush()

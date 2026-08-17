@@ -65,6 +65,12 @@ func Sync(ctx context.Context, st *store.Store, blobs *blob.Store, dataDir, arch
 	if err := fetchAll(ctx, c, st, blobs, archiveDir, ids, &res); err != nil {
 		return res, err
 	}
+	// Advancing the checkpoint past a failed message would lose it forever:
+	// it will never reappear in a later history delta. Keep the old state so
+	// the next run retries (dedup makes the re-walk cheap).
+	if res.Failed > 0 {
+		return res, fmt.Errorf("%d messages failed; sync state not advanced, next run will retry them", res.Failed)
+	}
 	if newHistoryID != "" {
 		if err := saveState(ctx, st, newHistoryID); err != nil {
 			return res, err
@@ -91,6 +97,9 @@ func backfill(ctx context.Context, c *client, st *store.Store, blobs *blob.Store
 	fmt.Fprintf(os.Stderr, "bank: gmail backfill for %s: %d messages\n", prof.EmailAddress, len(ids))
 	if err := fetchAll(ctx, c, st, blobs, archiveDir, ids, &res); err != nil {
 		return res, err
+	}
+	if res.Failed > 0 {
+		return res, fmt.Errorf("%d messages failed; sync state not advanced, next run will retry them", res.Failed)
 	}
 	return res, saveState(ctx, st, prof.HistoryID)
 }

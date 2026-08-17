@@ -7,6 +7,7 @@ import (
 	"embed"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -24,6 +25,7 @@ type Message struct {
 	ID         int64     `json:"id"`
 	Source     string    `json:"source"`
 	ExternalID string    `json:"external_id,omitempty"`
+	MessageID  string    `json:"message_id,omitempty"` // RFC 822 Message-ID for mail sources
 	ThreadID   string    `json:"thread_id,omitempty"`
 	Sender     string    `json:"sender"`
 	Recipients []string  `json:"recipients,omitempty"`
@@ -107,21 +109,66 @@ func (s *Store) migrate(ctx context.Context) error {
 // InsertMessage is idempotent via the (source, external_id) unique constraint.
 // Returns (0, nil) when the message was already present.
 func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
+	if m.Source == "" || m.ExternalID == "" {
+		return 0, fmt.Errorf("message needs source (%q) and external_id (%q)", m.Source, m.ExternalID)
+	}
 	if m.Recipients == nil {
 		m.Recipients = []string{}
 	}
+	m.Sender = cleanText(m.Sender)
+	m.Subject = cleanText(m.Subject)
+	m.Body = cleanText(m.Body)
+	m.ThreadID = cleanText(m.ThreadID)
+	for i, r := range m.Recipients {
+		m.Recipients[i] = cleanText(r)
+	}
 	var id int64
 	err := s.pool.QueryRow(ctx, `
-		insert into messages (source, external_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		on conflict (source, external_id) do nothing
 		returning id`,
-		m.Source, m.ExternalID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef,
+		m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef,
 	).Scan(&id)
 	if err == pgx.ErrNoRows {
 		return 0, nil
 	}
 	return id, err
+}
+
+// cleanText makes a string safe for a Postgres text column: valid UTF-8
+// (mislabeled legacy charsets are common in old email) and no NUL bytes.
+func cleanText(s string) string {
+	s = strings.ToValidUTF8(s, "�")
+	return strings.ReplaceAll(s, "\x00", "")
+}
+
+// FindMessageID returns the row id for (source, external_id), or 0 if absent.
+func (s *Store) FindMessageID(ctx context.Context, source, externalID string) (int64, error) {
+	var id int64
+	err := s.pool.QueryRow(ctx,
+		`select id from messages where source = $1 and external_id = $2`, source, externalID).Scan(&id)
+	if err == pgx.ErrNoRows {
+		return 0, nil
+	}
+	return id, err
+}
+
+func (s *Store) MessageHasAttachments(ctx context.Context, messageID int64) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx,
+		`select exists (select 1 from attachments where message_id = $1)`, messageID).Scan(&exists)
+	return exists, err
+}
+
+// HasEmailMessageID reports whether a mail with this RFC 822 Message-ID is
+// already archived for the source, regardless of which id scheme keyed it.
+func (s *Store) HasEmailMessageID(ctx context.Context, source, messageID string) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx,
+		`select exists (select 1 from messages where source = $1 and message_id = $2 and message_id <> '')`,
+		source, messageID).Scan(&exists)
+	return exists, err
 }
 
 func (s *Store) InsertAttachment(ctx context.Context, a Attachment) error {

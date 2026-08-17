@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -88,6 +89,7 @@ func Authorize(ctx context.Context, dataDir string, port int) error {
 		q := r.URL.Query()
 		if q.Get("state") != state {
 			http.Error(w, "state mismatch", http.StatusBadRequest)
+			ch <- outcome{err: fmt.Errorf("oauth state mismatch (stale or forged callback) — run bank auth gmail again")}
 			return
 		}
 		if e := q.Get("error"); e != "" {
@@ -104,6 +106,8 @@ func Authorize(ctx context.Context, dataDir string, port int) error {
 	var o outcome
 	select {
 	case o = <-ch:
+	case <-time.After(10 * time.Minute):
+		return fmt.Errorf("timed out waiting for the OAuth redirect")
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -121,15 +125,34 @@ func Authorize(ctx context.Context, dataDir string, port int) error {
 	return nil
 }
 
+// saveToken writes atomically: a crash mid-write must not destroy the only
+// copy of the refresh token.
 func saveToken(dataDir string, tok *oauth2.Token) error {
 	raw, err := json.Marshal(tok)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(tokenPath(dataDir)), 0o755); err != nil {
+	dir := filepath.Dir(tokenPath(dataDir))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(tokenPath(dataDir), raw, 0o600)
+	tmp, err := os.CreateTemp(dir, ".token-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(raw); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), tokenPath(dataDir))
 }
 
 // persistingSource re-saves the token whenever Google rotates it.

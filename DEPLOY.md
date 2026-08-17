@@ -36,14 +36,14 @@ services:
       - /data/pgdata:/var/lib/postgresql
 ```
 
-Environment (e.g. `/etc/profile.d/bank.sh` or a systemd EnvironmentFile):
+Environment — the DSN contains the DB password, so keep the file private (`chmod 600`); prefer a systemd EnvironmentFile or `/etc/bank.env` over `/etc/profile.d` (which is world-readable by convention):
 
 ```sh
 export DATABASE_URL="postgres://bank:<strong-password>@localhost:5433/bank?sslmode=disable"
 export BANK_DATA_DIR=/data/aqt-bank
 ```
 
-Set `POSTGRES_PASSWORD` in `/opt/aqt-bank/.env` to the same password. Then `docker compose up -d`.
+Set `POSTGRES_PASSWORD` in `/opt/aqt-bank/.env` to the same password — and verify it actually took effect (`docker compose config | grep POSTGRES_PASSWORD`); the compose file falls back to the weak default `bank` if the variable is missing. Then `docker compose up -d`.
 
 ## 3. Gmail authorization on a headless box
 
@@ -72,8 +72,14 @@ Back up a `pg_dump` plus the data dir — not the live `pgdata` directory:
 ```sh
 restic -r s3:s3.example.com/aqt-bank-backup init   # once; store the restic password offline
 
-# /usr/local/bin/bank-backup:
-docker exec aqt-bank-db-1 pg_dump -U bank -Fc bank > /data/backup/bank.dump
+# /usr/local/bin/bank-backup — dump to a temp file and move into place only on
+# success, so a failed pg_dump (e.g. DB down after an unattended reboot, since
+# the LUKS unlock is manual) can never truncate the last good dump; set -e
+# makes any failure skip the restic forget/prune, so old good snapshots survive.
+#!/bin/sh
+set -eu
+docker exec aqt-bank-db-1 pg_dump -U bank -Fc bank > /data/backup/bank.dump.tmp
+mv /data/backup/bank.dump.tmp /data/backup/bank.dump
 restic -r s3:... backup /data/backup/bank.dump /data/aqt-bank
 restic -r s3:... forget --keep-daily 14 --keep-weekly 8 --keep-monthly 24 --prune
 ```

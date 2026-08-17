@@ -57,6 +57,7 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSour
 	if err != nil {
 		return res, err
 	}
+	seen := map[string]int{}
 	for i, e := range entries {
 		if e.Source == "" {
 			e.Source = defaultSource
@@ -72,13 +73,12 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSour
 			fmt.Fprintf(os.Stderr, "bank: json entry %d: %v\n", i, err)
 			continue
 		}
-		if sentAt.IsZero() {
-			sentAt = now
-		}
 		externalID := e.ExternalID
 		if externalID == "" {
-			sum := sha256.Sum256([]byte(e.Source + "\x00" + e.Thread + "\x00" + sentAt.UTC().Format(time.RFC3339Nano) + "\x00" + e.Sender + "\x00" + e.Subject + "\x00" + e.Body))
-			externalID = hex.EncodeToString(sum[:])
+			externalID = derivedID(e, sentAt, seen)
+		}
+		if sentAt.IsZero() {
+			sentAt = now
 		}
 		id, err := st.InsertMessage(ctx, store.Message{
 			Source:     e.Source,
@@ -129,6 +129,25 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSour
 		}
 	}
 	return res, nil
+}
+
+// derivedID hashes only fields the caller controls — never the import time,
+// which would make every re-import a duplicate. Entries without sent_at that
+// are otherwise identical get an occurrence counter within the batch, so a
+// file listing the same note twice keeps both while re-imports stay no-ops.
+func derivedID(e entry, sentAt time.Time, seen map[string]int) string {
+	timeKey := ""
+	if !sentAt.IsZero() {
+		timeKey = sentAt.UTC().Format(time.RFC3339Nano)
+	}
+	base := e.Source + "\x00" + e.Thread + "\x00" + timeKey + "\x00" + e.Sender + "\x00" + e.Subject + "\x00" + e.Body
+	n := seen[base]
+	seen[base] = n + 1
+	if n > 0 {
+		base += fmt.Sprintf("\x00%d", n)
+	}
+	sum := sha256.Sum256([]byte(base))
+	return hex.EncodeToString(sum[:])
 }
 
 func validate(e entry) error {

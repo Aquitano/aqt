@@ -78,9 +78,49 @@ func TestParseHTMLOnly(t *testing.T) {
 	}
 }
 
+func TestSplitMboxUnquotedFromLine(t *testing.T) {
+	// mboxo producers (Thunderbird) do not quote body lines starting with
+	// "From "; only a "From " line after a blank line is a separator.
+	mbox := "From 1@xxx Mon May 13 21:08:00 2024\n" +
+		"From: a@example.com\nSubject: first\n\nline one\nFrom now on, this is body text\nline three\n\n" +
+		"From 2@xxx Mon May 13 21:09:00 2024\n" +
+		"From: b@example.com\nSubject: second\n\nbody two\n"
+	var msgs []string
+	if err := SplitMbox(strings.NewReader(mbox), func(raw []byte) error {
+		msgs = append(msgs, string(raw))
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("got %d messages, want 2: %q", len(msgs), msgs)
+	}
+	if !strings.Contains(msgs[0], "From now on, this is body text\nline three") {
+		t.Errorf("body with unquoted From line was truncated: %q", msgs[0])
+	}
+}
+
+func TestInlineImageWithoutFilenameKept(t *testing.T) {
+	mail := "From: a@example.com\r\nSubject: newsletter\r\nMIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/related; boundary=B\r\n\r\n" +
+		"--B\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>see image</p>\r\n" +
+		"--B\r\nContent-Type: image/png\r\nContent-ID: <img1>\r\nContent-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n" +
+		"--B--\r\n"
+	m, err := Parse([]byte(mail))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Attachments) != 1 || m.Attachments[0].MimeType != "image/png" {
+		t.Fatalf("inline image dropped: %+v", m.Attachments)
+	}
+	if !strings.HasPrefix(m.Attachments[0].Filename, "unnamed") {
+		t.Errorf("filename = %q", m.Attachments[0].Filename)
+	}
+}
+
 func TestSplitMbox(t *testing.T) {
 	mbox := "From 1234@xxx Mon May 13 21:08:00 2024\n" +
-		"From: a@example.com\nSubject: first\n\nbody one\n>From quoted line\n" +
+		"From: a@example.com\nSubject: first\n\nbody one\n>From quoted line\n\n" +
 		"From 5678@xxx Mon May 13 21:09:00 2024\n" +
 		"From: b@example.com\nSubject: second\n\nbody two\n"
 	var msgs []string

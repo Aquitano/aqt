@@ -39,6 +39,18 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 	if err != nil {
 		return false, 0, err
 	}
+	// Message-ID dedups across id schemes: a mail synced via the Gmail API
+	// (external_id = API id) and the same mail from a Takeout mbox
+	// (external_id = Message-ID) must not both be inserted.
+	if m.MessageID != "" {
+		exists, err := st.HasEmailMessageID(ctx, o.Source, m.MessageID)
+		if err != nil {
+			return false, 0, err
+		}
+		if exists {
+			return false, 0, nil
+		}
+	}
 	externalID := o.ExternalID
 	if externalID == "" {
 		externalID = m.MessageID
@@ -58,6 +70,7 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 	id, err := st.InsertMessage(ctx, store.Message{
 		Source:     o.Source,
 		ExternalID: externalID,
+		MessageID:  m.MessageID,
 		ThreadID:   o.ThreadID,
 		Sender:     m.From,
 		Recipients: append(m.To, m.Cc...),
