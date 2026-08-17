@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,11 +19,13 @@ import (
 	"github.com/aquitano/aqt-bank/internal/aichat"
 	"github.com/aquitano/aqt-bank/internal/archive"
 	"github.com/aquitano/aqt-bank/internal/blob"
+	"github.com/aquitano/aqt-bank/internal/client"
 	"github.com/aquitano/aqt-bank/internal/discord"
 	"github.com/aquitano/aqt-bank/internal/eml"
 	"github.com/aquitano/aqt-bank/internal/generic"
 	"github.com/aquitano/aqt-bank/internal/gmail"
 	"github.com/aquitano/aqt-bank/internal/linkedin"
+	"github.com/aquitano/aqt-bank/internal/server"
 	"github.com/aquitano/aqt-bank/internal/store"
 	"github.com/aquitano/aqt-bank/internal/whatsapp"
 )
@@ -45,6 +48,11 @@ Usage:
   bank search <query> [flags]                 full-text search (BM25, fuzzy)
   bank show <id> [--json]                     print one message + attachments
   bank stats [--json]                         per-source counts and date ranges
+  bank fetch <sha256> [-o path]               write an attachment to a file
+  bank serve [--listen addr]                  HTTP API (default 127.0.0.1:8480)
+  bank token new <name>                       mint an API token (printed once)
+  bank token list                             token names
+  bank token revoke <name>                    drop a token
 
 Search flags:
   --source s     filter by source (whatsapp, gmail, ...)
@@ -58,6 +66,8 @@ Search flags:
 Environment:
   DATABASE_URL   default postgres://bank:bank@localhost:5433/bank
   BANK_DATA_DIR  default ~/.local/share/aqt-bank (blobs/, archive/, inbox/)
+  BANK_URL       talk to a remote 'bank serve' instead of Postgres
+  BANK_TOKEN     bearer token for BANK_URL (see 'bank token new')
 `
 
 func main() {
@@ -80,6 +90,12 @@ func main() {
 		err = cmdShow(ctx, os.Args[2:])
 	case "stats":
 		err = cmdStats(ctx, os.Args[2:])
+	case "fetch":
+		err = cmdFetch(ctx, os.Args[2:])
+	case "serve":
+		err = cmdServe(ctx, os.Args[2:])
+	case "token":
+		err = cmdToken(os.Args[2:])
 	case "help", "--help", "-h":
 		fmt.Print(usage)
 	default:
@@ -167,6 +183,9 @@ func cmdImport(ctx context.Context, args []string) error {
 	if fs.NArg() == 0 {
 		return fmt.Errorf("usage: bank import %s <path>...", kind)
 	}
+	if c := client.FromEnv(); c != nil {
+		return importRemote(ctx, c, kind, *source, fs.Args())
+	}
 
 	st, err := openStore(ctx)
 	if err != nil {
@@ -186,11 +205,7 @@ func cmdImport(ctx context.Context, args []string) error {
 			if err != nil {
 				return fmt.Errorf("%s: %w", path, err)
 			}
-			fmt.Printf("%s: %d new, %d already known, %d attachments", res.Thread, res.Inserted, res.Duplicates, res.Attachments)
-			if res.MissingMedia > 0 {
-				fmt.Printf(", %d media files referenced but not in export", res.MissingMedia)
-			}
-			fmt.Println()
+			printWhatsAppResult(res)
 		case "eml":
 			res, err := eml.ImportEmlPath(ctx, st, blobs, archiveDir, *source, path)
 			if err != nil {
@@ -208,15 +223,13 @@ func cmdImport(ctx context.Context, args []string) error {
 			if err != nil {
 				return fmt.Errorf("%s: %w", path, err)
 			}
-			fmt.Printf("discord: %d channels, %d new, %d already known, %d empty rows skipped\n",
-				res.Channels, res.Inserted, res.Duplicates, res.Skipped)
+			printDiscordResult(res)
 		case "linkedin":
 			res, err := linkedin.Import(ctx, st, archiveDir, path)
 			if err != nil {
 				return fmt.Errorf("%s: %w", path, err)
 			}
-			fmt.Printf("linkedin: %d new, %d already known, %d empty rows skipped\n",
-				res.Inserted, res.Duplicates, res.Skipped)
+			printLinkedInResult(res)
 		case "chatgpt", "claude", "claude-code":
 			var res aichat.Result
 			switch kind {
@@ -230,8 +243,7 @@ func cmdImport(ctx context.Context, args []string) error {
 			if err != nil {
 				return fmt.Errorf("%s: %w", path, err)
 			}
-			fmt.Printf("%s: %d conversations, %d new, %d already known, %d empty skipped\n",
-				kind, res.Conversations, res.Inserted, res.Duplicates, res.Skipped)
+			printAIChatResult(kind, res)
 		case "json":
 			var input []byte
 			var rawRef string
@@ -256,11 +268,7 @@ func cmdImport(ctx context.Context, args []string) error {
 			if err != nil {
 				return fmt.Errorf("%s: %w", path, err)
 			}
-			fmt.Printf("json: %d new, %d already known, %d attachments", res.Inserted, res.Duplicates, res.Attachments)
-			if res.Failed > 0 {
-				fmt.Printf(", %d entries rejected", res.Failed)
-			}
-			fmt.Println()
+			printGenericResult(res)
 		default:
 			return fmt.Errorf("unknown import source %q (whatsapp, eml, mbox, discord, linkedin, chatgpt, claude, claude-code, json)", kind)
 		}
@@ -274,6 +282,135 @@ func printEmlResult(source, path string, res eml.Result) {
 		fmt.Printf(", %d failed to parse", res.Failed)
 	}
 	fmt.Println()
+}
+
+func printWhatsAppResult(res whatsapp.Result) {
+	fmt.Printf("%s: %d new, %d already known, %d attachments", res.Thread, res.Inserted, res.Duplicates, res.Attachments)
+	if res.MissingMedia > 0 {
+		fmt.Printf(", %d media files referenced but not in export", res.MissingMedia)
+	}
+	fmt.Println()
+}
+
+func printDiscordResult(res discord.Result) {
+	fmt.Printf("discord: %d channels, %d new, %d already known, %d empty rows skipped\n",
+		res.Channels, res.Inserted, res.Duplicates, res.Skipped)
+}
+
+func printLinkedInResult(res linkedin.Result) {
+	fmt.Printf("linkedin: %d new, %d already known, %d empty rows skipped\n",
+		res.Inserted, res.Duplicates, res.Skipped)
+}
+
+func printAIChatResult(kind string, res aichat.Result) {
+	fmt.Printf("%s: %d conversations, %d new, %d already known, %d empty skipped\n",
+		kind, res.Conversations, res.Inserted, res.Duplicates, res.Skipped)
+}
+
+func printGenericResult(res generic.Result) {
+	fmt.Printf("json: %d new, %d already known, %d attachments", res.Inserted, res.Duplicates, res.Attachments)
+	if res.Failed > 0 {
+		fmt.Printf(", %d entries rejected", res.Failed)
+	}
+	fmt.Println()
+}
+
+// importRemote uploads to a `bank serve`. The server only ever sees single
+// files, so directory inputs are expanded here.
+func importRemote(ctx context.Context, c *client.Client, kind, source string, paths []string) error {
+	for _, path := range paths {
+		if kind == "json" {
+			input, err := readInput(path)
+			if err != nil {
+				return err
+			}
+			res, err := c.ImportJSON(ctx, source, input)
+			if err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			printGenericResult(res)
+			continue
+		}
+		files, err := remoteImportFiles(kind, path)
+		if err != nil {
+			return err
+		}
+		for _, f := range files {
+			if err := importRemoteFile(ctx, c, kind, source, f); err != nil {
+				return fmt.Errorf("%s: %w", f, err)
+			}
+		}
+	}
+	return nil
+}
+
+func remoteImportFiles(kind, path string) ([]string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return []string{path}, nil
+	}
+	ext := map[string]string{"eml": ".eml", "claude-code": ".jsonl"}[kind]
+	if ext == "" {
+		return nil, fmt.Errorf("%s: remote import of %s takes a file, not a directory", path, kind)
+	}
+	var out []string
+	err = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.EqualFold(filepath.Ext(p), ext) {
+			return err
+		}
+		out = append(out, p)
+		return nil
+	})
+	return out, err
+}
+
+func importRemoteFile(ctx context.Context, c *client.Client, kind, source, path string) error {
+	switch kind {
+	case "whatsapp":
+		res, err := client.ImportFile[whatsapp.Result](ctx, c, kind, source, path)
+		if err != nil {
+			return err
+		}
+		printWhatsAppResult(res)
+	case "eml", "mbox":
+		res, err := client.ImportFile[eml.Result](ctx, c, kind, source, path)
+		if err != nil {
+			return err
+		}
+		printEmlResult(source, path, res)
+	case "discord":
+		res, err := client.ImportFile[discord.Result](ctx, c, kind, source, path)
+		if err != nil {
+			return err
+		}
+		printDiscordResult(res)
+	case "linkedin":
+		res, err := client.ImportFile[linkedin.Result](ctx, c, kind, source, path)
+		if err != nil {
+			return err
+		}
+		printLinkedInResult(res)
+	case "chatgpt", "claude", "claude-code":
+		res, err := client.ImportFile[aichat.Result](ctx, c, kind, source, path)
+		if err != nil {
+			return err
+		}
+		printAIChatResult(kind, res)
+	default:
+		return fmt.Errorf("unknown import source %q (whatsapp, eml, mbox, discord, linkedin, chatgpt, claude, claude-code, json)", kind)
+	}
+	return nil
+}
+
+// readInput reads a file, or stdin when path is "-".
+func readInput(path string) ([]byte, error) {
+	if path == "-" {
+		return io.ReadAll(os.Stdin)
+	}
+	return os.ReadFile(path)
 }
 
 func cmdSearch(ctx context.Context, args []string) error {
@@ -303,12 +440,7 @@ func cmdSearch(ctx context.Context, args []string) error {
 		return err
 	}
 
-	st, err := openStore(ctx)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-	msgs, err := st.Search(ctx, query, o)
+	msgs, err := searchMessages(ctx, query, o)
 	if err != nil {
 		return err
 	}
@@ -344,36 +476,74 @@ func cmdShow(ctx context.Context, args []string) error {
 		return fmt.Errorf("invalid id %q", fs.Arg(0))
 	}
 
-	st, err := openStore(ctx)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-	m, atts, err := st.GetMessage(ctx, id)
+	remote := client.FromEnv() != nil
+	d, err := getMessage(ctx, id)
 	if err != nil {
 		return err
 	}
 	if *asJSON {
-		return printJSON(struct {
-			store.Message
-			Attachments []store.Attachment `json:"attachments,omitempty"`
-		}{m, atts})
+		return printJSON(d)
 	}
 
+	m := d.Message
 	fmt.Printf("id:      %d\nsource:  %s\nthread:  %s\nfrom:    %s\ndate:    %s\n",
 		m.ID, m.Source, m.ThreadID, m.Sender, m.SentAt.Format(time.RFC1123))
 	if m.Subject != "" {
 		fmt.Printf("subject: %s\n", m.Subject)
 	}
 	fmt.Printf("\n%s\n", m.Body)
-	if len(atts) > 0 {
-		blobs, _ := blob.New(filepath.Join(dataDir(), "blobs"))
+	if len(d.Attachments) > 0 {
 		fmt.Println()
-		for _, a := range atts {
-			fmt.Printf("attachment: %s (%d bytes)  %s\n", a.Filename, a.SizeBytes, blobs.Path(a.SHA256))
+		var blobs *blob.Store
+		if !remote {
+			blobs, _ = blob.New(filepath.Join(dataDir(), "blobs"))
+		}
+		for _, a := range d.Attachments {
+			where := fmt.Sprintf("bank fetch %s", a.SHA256)
+			if blobs != nil {
+				where = blobs.Path(a.SHA256)
+			}
+			fmt.Printf("attachment: %s (%d bytes)  %s\n", a.Filename, a.SizeBytes, where)
 		}
 	}
 	return nil
+}
+
+func searchMessages(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error) {
+	if c := client.FromEnv(); c != nil {
+		return c.Search(ctx, query, o)
+	}
+	st, err := openStore(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer st.Close()
+	return st.Search(ctx, query, o)
+}
+
+func getMessage(ctx context.Context, id int64) (store.MessageDetail, error) {
+	if c := client.FromEnv(); c != nil {
+		return c.Message(ctx, id)
+	}
+	st, err := openStore(ctx)
+	if err != nil {
+		return store.MessageDetail{}, err
+	}
+	defer st.Close()
+	m, atts, err := st.GetMessage(ctx, id)
+	return store.MessageDetail{Message: m, Attachments: atts}, err
+}
+
+func getStats(ctx context.Context) ([]store.SourceStats, error) {
+	if c := client.FromEnv(); c != nil {
+		return c.Stats(ctx)
+	}
+	st, err := openStore(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer st.Close()
+	return st.Stats(ctx)
 }
 
 func cmdStats(ctx context.Context, args []string) error {
@@ -382,12 +552,7 @@ func cmdStats(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	st, err := openStore(ctx)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-	stats, err := st.Stats(ctx)
+	stats, err := getStats(ctx)
 	if err != nil {
 		return err
 	}
@@ -405,6 +570,108 @@ func cmdStats(ctx context.Context, args []string) error {
 		total += s.Messages
 	}
 	fmt.Printf("%-12s %8d messages\n", "total", total)
+	return nil
+}
+
+func cmdFetch(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("fetch", flag.ExitOnError)
+	out := fs.String("o", "", "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: bank fetch <sha256> [-o path]")
+	}
+	sum := fs.Arg(0)
+	dest := *out
+	if dest == "" {
+		dest = sum
+	}
+
+	var src io.ReadCloser
+	var err error
+	if c := client.FromEnv(); c != nil {
+		src, err = c.Blob(ctx, sum)
+	} else {
+		var blobs *blob.Store
+		if blobs, err = blob.New(filepath.Join(dataDir(), "blobs")); err == nil {
+			src, err = os.Open(blobs.Path(sum))
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("%s: %w", sum, err)
+	}
+	defer src.Close()
+
+	f, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	n, err := io.Copy(f, src)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s (%d bytes)\n", dest, n)
+	return nil
+}
+
+func cmdServe(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	listen := fs.String("listen", "127.0.0.1:8480", "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	blobs, err := blob.New(filepath.Join(dataDir(), "blobs"))
+	if err != nil {
+		return err
+	}
+	if names, err := server.ListTokens(dataDir()); err == nil && len(names) == 0 {
+		fmt.Fprintln(os.Stderr, "bank: no tokens yet — every /v1 request will 401 until 'bank token new <name>'")
+	}
+	srv := server.New(st, blobs, dataDir(), filepath.Join(dataDir(), "archive"))
+	fmt.Printf("bank serve: listening on %s\n", *listen)
+	return srv.ListenAndServe(*listen)
+}
+
+func cmdToken(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: bank token <new|list|revoke> [name]")
+	}
+	switch args[0] {
+	case "new":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: bank token new <name>")
+		}
+		token, err := server.NewToken(dataDir(), args[1])
+		if err != nil {
+			return err
+		}
+		// Only the digest is stored, so this is the one chance to copy it.
+		fmt.Println(token)
+	case "list":
+		names, err := server.ListTokens(dataDir())
+		if err != nil {
+			return err
+		}
+		for _, n := range names {
+			fmt.Println(n)
+		}
+	case "revoke":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: bank token revoke <name>")
+		}
+		return server.RevokeToken(dataDir(), args[1])
+	default:
+		return fmt.Errorf("usage: bank token <new|list|revoke> [name]")
+	}
 	return nil
 }
 

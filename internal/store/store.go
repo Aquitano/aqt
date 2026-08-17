@@ -45,6 +45,13 @@ type Attachment struct {
 	SHA256    string `json:"sha256"`
 }
 
+// MessageDetail is one message plus its attachments — the shape `bank show
+// --json` prints and GET /v1/messages/{id} returns, shared so both emit one format.
+type MessageDetail struct {
+	Message
+	Attachments []Attachment `json:"attachments,omitempty"`
+}
+
 func Open(ctx context.Context, databaseURL string) (*Store, error) {
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {

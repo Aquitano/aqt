@@ -27,7 +27,19 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank stats
 ```
 
-Deployment (VPS, LUKS, restic, cron): [DEPLOY.md](DEPLOY.md).
+## Remote use
+
+When Postgres lives on a VPS, run the same binary there as a server (`bank serve --listen 100.x.y.z:8480`, no TLS — bind it to Tailscale) and set two env vars on the laptop. `search`, `show`, `stats`, `import` and `fetch` then go over HTTP, so rows, blobs and raw archives always land on the same box.
+
+```sh
+export BANK_URL=http://vps.tailnet.ts.net:8480
+export BANK_TOKEN=$(ssh vps bank token new laptop)   # printed once, stored hashed
+
+./bank import whatsapp "WhatsApp Chat with Alice.zip"   # uploaded to the VPS
+./bank fetch 9f86d081... -o photo.jpg                   # attachment bytes back
+```
+
+Deployment (VPS, LUKS, `bank serve` unit, restic, cron): [DEPLOY.md](DEPLOY.md).
 
 Config via env (see `.env.example`): `DATABASE_URL`, `BANK_DATA_DIR` (blobs, raw archives, inbox; default `~/.local/share/aqt-bank`).
 

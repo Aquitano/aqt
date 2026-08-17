@@ -56,16 +56,71 @@ The OAuth flow needs a browser reaching `127.0.0.1`. Either:
 
 Install the official `proton-mail-export` CLI on the VPS. Its EML output directory feeds `bank import eml` (idempotent, so re-exporting is fine).
 
-## 5. Cron
+## 5. Remote CLI (`bank serve`)
+
+Running the CLI on the laptop against a remote `DATABASE_URL` splits the archive in half: rows land in the VPS Postgres, blobs and raw archives land on the laptop. Instead, run the same binary in server mode on the VPS and point the laptop at it with `BANK_URL`.
+
+There is no TLS in `bank serve` — bind it to the box's Tailscale address and let the tailnet do transport security.
+
+```ini
+# /etc/systemd/system/bank-serve.service
+[Unit]
+Description=bank HTTP API
+After=docker.service tailscaled.service
+Wants=docker.service
+
+[Service]
+EnvironmentFile=/etc/default/bank
+ExecStart=/usr/local/bin/bank serve --listen 100.x.y.z:8480
+Restart=on-failure
+RestartSec=5s
+User=bank
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/default/bank` holds `DATABASE_URL` and `BANK_DATA_DIR` (same values as section 2). Then `systemctl enable --now bank-serve`.
+
+Firewall: nothing on the public interface, everything on the tailnet.
+
+```sh
+ufw default deny incoming
+ufw allow in on tailscale0
+ufw allow 41641/udp        # tailscale itself
+ufw enable
+```
+
+Tokens live in `$BANK_DATA_DIR/tokens` as `name:sha256`, are checked on every request, and revocation is immediate:
+
+```sh
+bank token new laptop      # prints the token once — copy it now
+bank token list
+bank token revoke laptop
+```
+
+On the laptop:
+
+```sh
+export BANK_URL=http://vps.tailnet.ts.net:8480
+export BANK_TOKEN=bank_...
+bank import whatsapp "WhatsApp Chat with Alice.zip"   # uploads, VPS stores rows + blobs
+bank search "that invoice"
+bank fetch <sha256> -o invoice.pdf
+```
+
+`auth`, `sync`, `serve` and `token` stay local-only and ignore `BANK_URL`.
+
+## 6. Cron
 
 ```cron
 17 * * * *  . /etc/profile.d/bank.sh && bank sync >> /var/log/bank.log 2>&1
 0 5 * * 0   . /etc/profile.d/bank.sh && proton-mail-export --dir /data/proton-export ... && bank import eml /data/proton-export >> /var/log/bank.log 2>&1
 ```
 
-Manual sources (WhatsApp zips, Discord package, LinkedIn export): scp into the inbox dir and run the matching `bank import ...` — or just run it locally on the laptop with `DATABASE_URL` pointed at the VPS (Tailscale/SSH tunnel), which also keeps blobs on the VPS only if run there; prefer running imports on the VPS so `BANK_DATA_DIR` stays in one place.
+Manual sources (WhatsApp zips, Discord package, LinkedIn export): scp into the inbox dir and run the matching `bank import ...` on the VPS, or run the import from the laptop with `BANK_URL` set (section 5) so rows and blobs still land together.
 
-## 6. Backups (restic, encrypted)
+## 7. Backups (restic, encrypted)
 
 Back up a `pg_dump` plus the data dir — not the live `pgdata` directory:
 
