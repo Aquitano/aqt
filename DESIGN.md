@@ -59,9 +59,10 @@ Migrations are embedded in the binary and run automatically on startup — idemp
 
 ## Milestones
 
-1. **Foundation (this repo state)** — schema, migrations, blob store, WhatsApp importer, BM25 search, show/stats. Verifiable offline end-to-end.
-2. Gmail: OAuth device flow, full backfill from `messages.list`, incremental `history.list`, MIME → body extraction, attachments.
-3. Proton: `proton-mail-export` wrapper + shared EML/mbox parser (reused for Gmail Takeout too).
-4. Discord GDPR package importer (messages/*.csv + index.json), LinkedIn export importer (messages.csv).
-5. Deploy: VPS provisioning notes (LUKS volume, docker compose, restic), cron for `bank sync`.
-6. Nice-to-haves as needed: `bank mcp`, embeddings column for semantic search (pgvector lives happily next to pg_search).
+1. ~~Foundation~~ — schema, migrations, blob store, WhatsApp importer, BM25 search, show/stats.
+2. ~~Gmail~~ — loopback OAuth (PKCE), full backfill, incremental `history.list`, raw RFC 822 archived per message.
+3. ~~Proton / Takeout~~ — shared EML/MIME parser, `bank import eml` (proton-mail-export output) and `bank import mbox`.
+4. ~~Discord + LinkedIn~~ — GDPR/data-export package importers (csv and json package generations).
+5. ~~Generic JSON~~ — `bank import json` (array or NDJSON, stdin-friendly): the escape hatch for agents and one-off sources.
+6. Deploy — see DEPLOY.md (LUKS volume, compose override, headless Gmail auth, restic, cron). Pending: actually provisioning the VPS.
+7. Nice-to-haves as needed: `bank import inbox` sweep, `bank mcp`, embeddings column for semantic search (pgvector lives happily next to pg_search).
