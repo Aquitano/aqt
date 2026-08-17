@@ -39,6 +39,8 @@ export BANK_TOKEN=$(ssh vps bank token new laptop)   # printed once, stored hash
 ./bank fetch 9f86d081... -o photo.jpg                   # attachment bytes back
 ```
 
+Agents on a client machine get the CLI handed to them by a Claude Code skill: [skill/README.md](skill/README.md).
+
 Deployment (VPS, LUKS, `bank serve` unit, restic, cron): [DEPLOY.md](DEPLOY.md).
 
 Config via env (see `.env.example`): `DATABASE_URL`, `BANK_DATA_DIR` (blobs, raw archives, inbox; default `~/.local/share/aqt-bank`).
