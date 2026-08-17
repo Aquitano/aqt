@@ -4,18 +4,22 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/aquitano/aqt-bank/internal/archive"
 	"github.com/aquitano/aqt-bank/internal/blob"
 	"github.com/aquitano/aqt-bank/internal/discord"
 	"github.com/aquitano/aqt-bank/internal/eml"
+	"github.com/aquitano/aqt-bank/internal/generic"
 	"github.com/aquitano/aqt-bank/internal/gmail"
 	"github.com/aquitano/aqt-bank/internal/linkedin"
 	"github.com/aquitano/aqt-bank/internal/store"
@@ -32,6 +36,8 @@ Usage:
   bank import mbox [--source s] <file>...     mbox files (default source: gmail)
   bank import discord <package.zip|dir>...    Discord GDPR data package
   bank import linkedin <zip|csv|dir>...       LinkedIn data export
+  bank import json [--source s] <file|->      arbitrary JSON/NDJSON messages
+                                              (the escape hatch for agents; - reads stdin)
   bank search <query> [flags]                 full-text search (BM25, fuzzy)
   bank show <id> [--json]                     print one message + attachments
   bank stats [--json]                         per-source counts and date ranges
@@ -145,7 +151,7 @@ func cmdSync(ctx context.Context, args []string) error {
 
 func cmdImport(ctx context.Context, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: bank import <whatsapp|eml|mbox|discord|linkedin> <path>...")
+		return fmt.Errorf("usage: bank import <whatsapp|eml|mbox|discord|linkedin|json> <path>...")
 	}
 	kind := args[0]
 	fs := flag.NewFlagSet("import "+kind, flag.ExitOnError)
@@ -207,8 +213,37 @@ func cmdImport(ctx context.Context, args []string) error {
 			}
 			fmt.Printf("linkedin: %d new, %d already known, %d empty rows skipped\n",
 				res.Inserted, res.Duplicates, res.Skipped)
+		case "json":
+			var input []byte
+			var rawRef string
+			if path == "-" {
+				if input, err = io.ReadAll(os.Stdin); err != nil {
+					return err
+				}
+				sum := sha256.Sum256(input)
+				name := fmt.Sprintf("stdin-%x.json", sum[:6])
+				if rawRef, err = archive.Write(archiveDir, "json", name, input); err != nil {
+					return err
+				}
+			} else {
+				if input, err = os.ReadFile(path); err != nil {
+					return err
+				}
+				if rawRef, err = archive.Copy(archiveDir, "json", path); err != nil {
+					return err
+				}
+			}
+			res, err := generic.Import(ctx, st, blobs, *source, rawRef, input, time.Now())
+			if err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			fmt.Printf("json: %d new, %d already known, %d attachments", res.Inserted, res.Duplicates, res.Attachments)
+			if res.Failed > 0 {
+				fmt.Printf(", %d entries rejected", res.Failed)
+			}
+			fmt.Println()
 		default:
-			return fmt.Errorf("unknown import source %q (whatsapp, eml, mbox, discord, linkedin)", kind)
+			return fmt.Errorf("unknown import source %q (whatsapp, eml, mbox, discord, linkedin, json)", kind)
 		}
 	}
 	return nil
