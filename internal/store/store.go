@@ -300,6 +300,9 @@ type SearchOpts struct {
 	Source string
 	From   string
 	To     string
+	// Person is a contact name: the filter resolves through that contact's
+	// aliases, so one query covers every source the person appears in.
+	Person string
 	Since  time.Time
 	Until  time.Time
 	Fuzzy  int
@@ -356,6 +359,16 @@ func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Messa
 	}
 	if o.To != "" {
 		sql += " and exists (select 1 from unnest(m.recipients) r where r ilike " + next("%"+o.To+"%") + ")"
+	}
+	if o.Person != "" {
+		c, err := s.GetContact(ctx, o.Person)
+		if err != nil {
+			if err == ErrNotFound {
+				return nil, &ErrNoContact{Name: o.Person}
+			}
+			return nil, err
+		}
+		sql += " and" + aliasMatch(next(c.ID))
 	}
 	if !o.Since.IsZero() {
 		sql += " and m.sent_at >= " + next(o.Since)

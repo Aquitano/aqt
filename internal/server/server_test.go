@@ -24,6 +24,9 @@ type fakeReader struct {
 	msgs       []store.Message
 	opts       store.SearchOpts
 	thread     store.Thread
+	contacts   []store.Contact
+	contactErr error
+	searchErr  error
 	messageErr error
 	threadErr  error
 	statsErr   error
@@ -31,7 +34,7 @@ type fakeReader struct {
 
 func (f *fakeReader) Search(_ context.Context, _ string, o store.SearchOpts) ([]store.Message, error) {
 	f.opts = o
-	return f.msgs, nil
+	return f.msgs, f.searchErr
 }
 
 func (f *fakeReader) GetMessage(context.Context, int64) (store.Message, []store.Attachment, error) {
@@ -47,6 +50,37 @@ func (f *fakeReader) GetThread(_ context.Context, _, _ string, _ int) (store.Thr
 
 func (f *fakeReader) Stats(context.Context) ([]store.SourceStats, error) {
 	return []store.SourceStats{}, f.statsErr
+}
+
+func (f *fakeReader) ListContacts(context.Context) ([]store.Contact, error) {
+	return f.contacts, f.contactErr
+}
+
+func (f *fakeReader) GetContact(_ context.Context, name string) (store.Contact, error) {
+	for _, c := range f.contacts {
+		if c.Name == name {
+			return c, nil
+		}
+	}
+	if f.contactErr != nil {
+		return store.Contact{}, f.contactErr
+	}
+	return store.Contact{}, store.ErrNotFound
+}
+
+func (f *fakeReader) ContactSourceCounts(context.Context, int64) ([]store.ContactSourceCount, error) {
+	return []store.ContactSourceCount{}, f.contactErr
+}
+
+func (f *fakeReader) ContactMessages(_ context.Context, name string, _ store.ContactMessagesOpts) ([]store.Message, error) {
+	if _, err := f.GetContact(context.Background(), name); err != nil {
+		return nil, err
+	}
+	return f.msgs, f.contactErr
+}
+
+func (f *fakeReader) SuggestIdentities(context.Context, int) ([]store.IdentitySuggestion, error) {
+	return []store.IdentitySuggestion{}, f.contactErr
 }
 
 func testServer(t *testing.T) (*Server, string) {

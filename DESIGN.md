@@ -38,6 +38,7 @@ Everything normalizes to one `messages` table; source-specific richness stays in
   - `unique (source, external_id)` makes every importer idempotent — re-importing a dump is always safe.
   - Sources without stable IDs (WhatsApp) derive `external_id = sha256(thread|sent_at|sender|body)`.
 - `attachments(id, message_id, filename, mime_type, size_bytes, sha256)` — bytes live in the blob store, not the DB.
+- `contacts(id, name, note)` + `contact_aliases(contact_id, source, value, value_norm)` — one person, many source-specific identities. Aliases are attached by hand and match everywhere unless scoped to a source; nothing merges automatically, so a wrong attachment is undone by detaching it and the identity each source recorded is never rewritten.
 - `message_id_collapsed(…, collapsed_into, collapsed_at)` — rows the Message-ID uniqueness migration deleted, kept so an unattended collapse stays reviewable and the raw files it orphaned stay reachable.
 - BM25 index over `subject, body, sender, recipients` via `pg_search`; fuzzy matching with `paradedb.match(..., distance => n)`; match snippets from `paradedb.snippet`, with a locally cut window as the fallback (the engine produces no highlight for fuzzy matches).
 
@@ -55,8 +56,12 @@ inbox/<source>/         drop zone for manual exports; `bank import inbox` sweeps
 bank import whatsapp <file.zip|.txt>…   # per-source explicit import
 bank import inbox                       # sweep the inbox drop zone
 bank sync                               # pull deltas from API sources (Gmail)
-bank search "query" [--source s] [--from alice] [--to bob] [--since 2024-01-01] [--until d]
-                    [--fuzzy 0..2] [--limit 1..500] [--json]
+bank search "query" [--source s] [--from alice] [--to bob] [--person alice]
+                    [--since 2024-01-01] [--until d] [--fuzzy 0..2] [--limit 1..500] [--json]
+bank contact add|rm|list|show <name>    # one person across their many identities
+bank contact alias add|rm <name> <email|handle|source:name>...
+bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--json]
+bank contact suggest [--limit n]        # identities in the archive no contact claims yet
 bank thread <id> [--source s] [--limit n] [--json]   # one whole conversation, oldest first
 bank show <id> [--json]                 # full message + attachment refs
 bank stats [--json]                     # counts, date ranges, last import, last sync
@@ -66,7 +71,7 @@ bank serve [--listen addr]              # HTTP API for remote CLIs (default 127.
 bank token new|list|revoke <name>       # bearer tokens for bank serve
 ```
 
-With `BANK_URL` (and `BANK_TOKEN`) set, `search`, `thread`, `show`, `stats`, `import` and `fetch` talk to a remote `bank serve` instead of Postgres — same flags, same output. `auth`, `sync`, `serve`, `token`, `verify` and `import inbox` are always local: they need the archive, the blob store or the token file on the same box.
+With `BANK_URL` (and `BANK_TOKEN`) set, `search`, `thread`, `show`, `stats`, `contact`, `import` and `fetch` talk to a remote `bank serve` instead of Postgres — same flags, same output. `auth`, `sync`, `serve`, `token`, `verify` and `import inbox` are always local: they need the archive, the blob store or the token file on the same box.
 
 Migrations are embedded in the binary and run automatically on startup — idempotent, no separate step.
 
@@ -80,4 +85,5 @@ Migrations are embedded in the binary and run automatically on startup — idemp
 6. ~~Client/server~~ — `bank serve` (stdlib HTTP, token auth), remote CLI via `BANK_URL`, `bank fetch` for attachment bytes.
 7. Deploy — see DEPLOY.md (LUKS volume, compose override, headless Gmail auth, restic, cron). Pending: actually provisioning the VPS.
 8. ~~Integrity and retrieval~~ — `bank import inbox` sweep, `bank thread`, `bank verify --heal`, recipient search, match snippets, source freshness in stats.
-9. Open, both needing a design decision first: identity resolution across sources (one person, many handles) and pgvector hybrid semantic search (`bank mcp` if an MCP wrapper ever beats the CLI).
+9. ~~Identity~~ — `bank contact`: a canonical person with manually attached aliases, `--person` search, and an advisory `contact suggest`. Deliberately no automatic merging: mis-attributing someone's messages is worse than typing an alias, and every attachment is reversible because messages are never rewritten.
+10. Open, needing a design decision first: pgvector hybrid semantic search (and `bank mcp`, if an MCP wrapper ever beats the CLI).

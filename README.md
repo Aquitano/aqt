@@ -23,8 +23,13 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 
 ./bank import inbox                             # sweep $BANK_DATA_DIR/inbox/<kind>/
 
+./bank contact add alice                        # one person, many identities
+./bank contact alias add alice alice@example.com "whatsapp:Alice" discord:alice_x
+./bank contact messages alice                   # everything she sent or received
+
 ./bank search "that invoice" --from alice --since 2024-01-01
 ./bank search "the deck" --to bob               # by recipient
+./bank search "that invoice" --person alice     # every identity she uses
 ./bank search "typo-tolerannt query" --json     # agents consume this
 ./bank show 42
 ./bank thread "Alice" --source whatsapp         # the whole conversation

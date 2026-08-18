@@ -95,6 +95,7 @@ func (c *Client) Search(ctx context.Context, query string, o store.SearchOpts) (
 	set("source", o.Source)
 	set("from", o.From)
 	set("to", o.To)
+	set("person", o.Person)
 	if !o.Since.IsZero() {
 		q.Set("since", o.Since.Format("2006-01-02"))
 	}
@@ -125,6 +126,90 @@ func (c *Client) Thread(ctx context.Context, source, threadID string, limit int)
 		q.Set("limit", strconv.Itoa(limit))
 	}
 	return getJSON[store.Thread](ctx, c, "/v1/threads/"+url.PathEscape(threadID), q)
+}
+
+func (c *Client) ListContacts(ctx context.Context) ([]store.Contact, error) {
+	return getJSON[[]store.Contact](ctx, c, "/v1/contacts", nil)
+}
+
+// ContactDetail mirrors the server's contact payload: the contact plus where
+// its messages actually are.
+type ContactDetail struct {
+	store.Contact
+	Sources []store.ContactSourceCount `json:"sources"`
+}
+
+func (c *Client) Contact(ctx context.Context, name string) (ContactDetail, error) {
+	return getJSON[ContactDetail](ctx, c, "/v1/contacts/"+url.PathEscape(name), nil)
+}
+
+func (c *Client) ContactMessages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error) {
+	q := url.Values{}
+	if o.Source != "" {
+		q.Set("source", o.Source)
+	}
+	if !o.Since.IsZero() {
+		q.Set("since", o.Since.Format("2006-01-02"))
+	}
+	if !o.Until.IsZero() {
+		q.Set("until", o.Until.Format("2006-01-02"))
+	}
+	if o.Limit > 0 {
+		q.Set("limit", strconv.Itoa(o.Limit))
+	}
+	return getJSON[[]store.Message](ctx, c, "/v1/contacts/"+url.PathEscape(name)+"/messages", q)
+}
+
+func (c *Client) SuggestIdentities(ctx context.Context, limit int) ([]store.IdentitySuggestion, error) {
+	q := url.Values{}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	return getJSON[[]store.IdentitySuggestion](ctx, c, "/v1/contacts/suggest", q)
+}
+
+func (c *Client) CreateContact(ctx context.Context, name, note string) (store.Contact, error) {
+	return postJSON[store.Contact](ctx, c, "/v1/contacts", nil,
+		map[string]string{"name": name, "note": note})
+}
+
+func (c *Client) DeleteContact(ctx context.Context, name string) error {
+	resp, err := c.request(ctx, http.MethodDelete, "/v1/contacts/"+url.PathEscape(name), nil, nil)
+	if err != nil {
+		return err
+	}
+	return resp.Body.Close()
+}
+
+func (c *Client) AddAlias(ctx context.Context, name, source, value string) (store.ContactAlias, error) {
+	return postJSON[store.ContactAlias](ctx, c, "/v1/contacts/"+url.PathEscape(name)+"/aliases", nil,
+		map[string]string{"source": source, "value": value})
+}
+
+func (c *Client) RemoveAlias(ctx context.Context, name, source, value string) error {
+	q := url.Values{"value": {value}}
+	if source != "" {
+		q.Set("source", source)
+	}
+	resp, err := c.request(ctx, http.MethodDelete, "/v1/contacts/"+url.PathEscape(name)+"/aliases", q, nil)
+	if err != nil {
+		return err
+	}
+	return resp.Body.Close()
+}
+
+func postJSON[T any](ctx context.Context, c *Client, path string, q url.Values, payload any) (T, error) {
+	var out T
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return out, err
+	}
+	resp, err := c.request(ctx, http.MethodPost, path, q, bytes.NewReader(body))
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	return out, json.NewDecoder(resp.Body).Decode(&out)
 }
 
 // Blob streams an attachment; the caller closes the returned reader.

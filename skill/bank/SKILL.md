@@ -31,6 +31,8 @@ On the VPS itself there is no `BANK_URL`; `DATABASE_URL` points at Postgres and 
 ```sh
 bank search "query" [--source s] [--from name] [--to name] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--fuzzy 0-2] [--limit n] [--json]
 bank thread <id> [--source s] [--limit n] [--json]   # every message in one conversation
+bank contact list|show <name> [--json]               # who the owner has named, and their identities
+bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--json]
 bank show <id> [--json]          # full body, recipients, raw_ref, attachment list
 bank stats [--json]              # sources, counts, date ranges, freshness
 bank fetch <sha256> -o <path>    # write attachment bytes to a file
@@ -42,10 +44,12 @@ Semantics that matter:
 - Ranking is BM25 over subject, body, sender and recipients, with typo tolerance (`--fuzzy 1` by default, max 2). Query words are matched independently — more words means more recall, not less.
 - Each result carries a `snippet`: a bounded plain-text window of the body around the match, with no markup, so it is safe to print or quote directly. It is the cheapest way to see why something ranked.
 - `--from` is a case-insensitive substring of the sender field, so `--from alice` matches `Alice Example` and `alice@example.com`. `--to` is the same against recipients.
+- `--person <contact>` is the better filter when you know who you mean: a contact ties one person's email addresses, WhatsApp display name and Discord handle together, so it catches them across sources where `--from alice` only catches one spelling. Run `bank contact list` to see which exist; an unknown name is an error, not an empty result.
 - `--until` is exclusive; both dates are plain `YYYY-MM-DD`.
 - `--limit` defaults to 20 and must be between 1 and 500; `--fuzzy` between 0 and 2. Out-of-range values are a usage error, not an empty result. Start generous (50-100), then narrow with `--source`/`--from`/dates rather than re-running blind.
 - `search` returns bodies already, so only `bank show <id>` when you need recipients, `external_id`, `raw_ref` or attachments.
 - `bank thread` takes the `thread_id` from a search hit and returns the whole conversation oldest-first — the way to turn one match into context. A thread id used by two sources is a usage error until you add `--source`; very long threads come back with `"truncated": true`, so raise `--limit` (max 2000) if that matters.
+- `bank contact show <name>` lists a person's attached identities and how many messages each source contributes — the quickest way to tell whether `--person` will actually reach the conversation you want, or whether an identity is still unattached.
 - `bank stats --json` includes `last_ingest` per source, and `last_sync` for sync-backed ones. Use it to say "the archive has nothing after X" instead of assuming a gap means nothing happened.
 
 Worked examples:
@@ -67,6 +71,11 @@ bank thread "release plan chat" --source whatsapp --json
 # "what did I send to bob about the deck"
 bank search "deck" --to bob --json
 
+# "what has Alice ever said about the lease" — across mail, WhatsApp and Discord
+bank contact list                                  # -> the names that exist
+bank search "lease" --person alice --limit 50 --json
+bank contact messages alice --since 2024-01-01 --json
+
 # grab the screenshot attached to a message
 bank show 4 --json          # -> attachments[].sha256
 bank fetch 407b467e378d279e4d2ed7d8418f12d6937e00f4d8b7d0310c12470883b0431d -o /tmp/screenshot.jpg
@@ -82,6 +91,8 @@ bank stats --json
 ## Writing
 
 This is the owner's archive; writes are for things worth keeping, not for scratch state.
+
+Contacts are the owner's own map of who is who, and attaching the wrong identity silently attributes a stranger's messages to someone. Do not run `bank contact add`, `bank contact alias add/rm` or `bank contact rm` on your own initiative — read them freely, and if an identity looks unattached, say so and let the owner decide. `bank contact suggest` is safe: it only lists identities no contact claims yet.
 
 ```sh
 echo '{"body":"note text","thread":"decisions","sender":"claude","sent_at":"2026-08-17T12:00:00Z"}' \

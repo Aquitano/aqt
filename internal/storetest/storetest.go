@@ -11,16 +11,63 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/aquitano/aqt-bank/internal/store"
 )
 
-var counter atomic.Int64
+var (
+	counter atomic.Int64
+	sweep   sync.Once
+)
+
+// schemaPrefix marks a schema as this package's to drop. The creation time is
+// in the name because a schema has no catalog timestamp, and a test process
+// that dies — a panic, a deliberately triggered data race — never runs its
+// cleanup. Without a sweep those schemas accumulate in the developer's own
+// database forever.
+const schemaPrefix = "banktest_"
+
+// staleAfter is comfortably longer than any test run, so a sweep can never
+// remove a schema another run is still using.
+const staleAfter = time.Hour
+
+func dropStaleSchemas(t *testing.T, conn *pgx.Conn) {
+	ctx := context.Background()
+	rows, err := conn.Query(ctx,
+		`select nspname from pg_namespace where nspname like $1`, schemaPrefix+"%")
+	if err != nil {
+		return
+	}
+	var stale []string
+	cutoff := time.Now().Add(-staleAfter).Unix()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			continue
+		}
+		parts := strings.Split(strings.TrimPrefix(name, schemaPrefix), "_")
+		created, err := strconv.ParseInt(parts[0], 10, 64)
+		// An unparseable name is from an older layout, and is stale by
+		// definition: nothing running now would have made it.
+		if err != nil || created < cutoff {
+			stale = append(stale, name)
+		}
+	}
+	rows.Close()
+	for _, name := range stale {
+		if _, err := conn.Exec(ctx, "drop schema "+name+" cascade"); err != nil {
+			t.Logf("sweep %s: %v", name, err)
+		}
+	}
+}
 
 // DSN is the development database, matching the CLI's own default.
 func DSN() string {
@@ -55,7 +102,8 @@ func NewSchema(t *testing.T) string {
 	if err != nil {
 		t.Skipf("no database at %s: %v", redacted(DSN()), err)
 	}
-	schema := fmt.Sprintf("banktest_%d_%d", os.Getpid(), counter.Add(1))
+	sweep.Do(func() { dropStaleSchemas(t, admin) })
+	schema := fmt.Sprintf("%s%d_%d_%d", schemaPrefix, time.Now().Unix(), os.Getpid(), counter.Add(1))
 	if _, err := admin.Exec(ctx, "create schema "+schema); err != nil {
 		admin.Close(ctx)
 		t.Fatalf("create schema: %v", err)

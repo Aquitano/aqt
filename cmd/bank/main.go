@@ -51,6 +51,7 @@ Usage:
   bank import inbox [--json]                  sweep $BANK_DATA_DIR/inbox/<kind>/
   bank search <query> [flags]                 full-text search (BM25, fuzzy)
   bank thread <id> [--source s] [--limit n]   one whole conversation, oldest first
+  bank contact <add|list|show|alias|...>      one person across their many identities
   bank show <id> [--json]                     print one message + attachments
   bank stats [--json]                         per-source counts, date ranges, freshness
   bank fetch <sha256> [-o path]               write an attachment to a file
@@ -64,6 +65,7 @@ Search flags:
   --source s     filter by source (whatsapp, gmail, ...)
   --from name    filter by sender (substring, case-insensitive)
   --to name      filter by recipient (substring, case-insensitive)
+  --person name  filter by contact, across all their aliases (bank contact)
   --since date   YYYY-MM-DD
   --until date   YYYY-MM-DD (exclusive)
   --fuzzy n      typo tolerance 0-2 (default 1)
@@ -95,6 +97,8 @@ func main() {
 		err = cmdSearch(ctx, os.Args[2:])
 	case "thread":
 		err = cmdThread(ctx, os.Args[2:])
+	case "contact":
+		err = cmdContact(ctx, os.Args[2:])
 	case "show":
 		err = cmdShow(ctx, os.Args[2:])
 	case "stats":
@@ -554,6 +558,7 @@ func cmdSearch(ctx context.Context, args []string) error {
 	fs.StringVar(&o.Source, "source", "", "")
 	fs.StringVar(&o.From, "from", "", "")
 	fs.StringVar(&o.To, "to", "", "")
+	fs.StringVar(&o.Person, "person", "", "")
 	fs.StringVar(&since, "since", "", "")
 	fs.StringVar(&until, "until", "", "")
 	fs.IntVar(&o.Fuzzy, "fuzzy", 1, "")
@@ -974,4 +979,387 @@ func excerpt(s string, n int) string {
 		return s
 	}
 	return string(r[:n-1]) + "…"
+}
+
+// contact commands: one person, many source-specific identities.
+
+// builtinSources are the source names the importers write. Listing them means
+// an alias can be scoped to a source before anything from it exists, and that
+// "whatsapp:Alice" is read as a scope rather than as a name with a colon in it.
+var builtinSources = []string{
+	"whatsapp", "gmail", "proton", "discord", "linkedin", "chatgpt", "claude", "claude-code",
+}
+
+// contactBackend is the contact API, implemented once against Postgres and
+// once against a remote `bank serve`, so every subcommand works either way.
+type contactBackend interface {
+	create(ctx context.Context, name, note string) (store.Contact, error)
+	remove(ctx context.Context, name string) error
+	list(ctx context.Context) ([]store.Contact, error)
+	show(ctx context.Context, name string) (client.ContactDetail, error)
+	addAlias(ctx context.Context, name, source, value string) (store.ContactAlias, error)
+	removeAlias(ctx context.Context, name, source, value string) error
+	messages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error)
+	suggest(ctx context.Context, limit int) ([]store.IdentitySuggestion, error)
+	sources(ctx context.Context) ([]store.SourceStats, error)
+	close()
+}
+
+type localContacts struct{ st *store.Store }
+
+func (l localContacts) create(ctx context.Context, name, note string) (store.Contact, error) {
+	return l.st.CreateContact(ctx, name, note)
+}
+func (l localContacts) remove(ctx context.Context, name string) error {
+	return l.st.DeleteContact(ctx, name)
+}
+func (l localContacts) list(ctx context.Context) ([]store.Contact, error) {
+	return l.st.ListContacts(ctx)
+}
+func (l localContacts) show(ctx context.Context, name string) (client.ContactDetail, error) {
+	c, err := l.st.GetContact(ctx, name)
+	if err != nil {
+		return client.ContactDetail{}, err
+	}
+	counts, err := l.st.ContactSourceCounts(ctx, c.ID)
+	return client.ContactDetail{Contact: c, Sources: counts}, err
+}
+func (l localContacts) addAlias(ctx context.Context, name, source, value string) (store.ContactAlias, error) {
+	return l.st.AddAlias(ctx, name, source, value)
+}
+func (l localContacts) removeAlias(ctx context.Context, name, source, value string) error {
+	return l.st.RemoveAlias(ctx, name, source, value)
+}
+func (l localContacts) messages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error) {
+	return l.st.ContactMessages(ctx, name, o)
+}
+func (l localContacts) suggest(ctx context.Context, limit int) ([]store.IdentitySuggestion, error) {
+	return l.st.SuggestIdentities(ctx, limit)
+}
+func (l localContacts) sources(ctx context.Context) ([]store.SourceStats, error) {
+	return l.st.Stats(ctx)
+}
+func (l localContacts) close() { l.st.Close() }
+
+type remoteContacts struct{ c *client.Client }
+
+func (r remoteContacts) create(ctx context.Context, name, note string) (store.Contact, error) {
+	return r.c.CreateContact(ctx, name, note)
+}
+func (r remoteContacts) remove(ctx context.Context, name string) error {
+	return r.c.DeleteContact(ctx, name)
+}
+func (r remoteContacts) list(ctx context.Context) ([]store.Contact, error) {
+	return r.c.ListContacts(ctx)
+}
+func (r remoteContacts) show(ctx context.Context, name string) (client.ContactDetail, error) {
+	return r.c.Contact(ctx, name)
+}
+func (r remoteContacts) addAlias(ctx context.Context, name, source, value string) (store.ContactAlias, error) {
+	return r.c.AddAlias(ctx, name, source, value)
+}
+func (r remoteContacts) removeAlias(ctx context.Context, name, source, value string) error {
+	return r.c.RemoveAlias(ctx, name, source, value)
+}
+func (r remoteContacts) messages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error) {
+	return r.c.ContactMessages(ctx, name, o)
+}
+func (r remoteContacts) suggest(ctx context.Context, limit int) ([]store.IdentitySuggestion, error) {
+	return r.c.SuggestIdentities(ctx, limit)
+}
+func (r remoteContacts) sources(ctx context.Context) ([]store.SourceStats, error) {
+	return r.c.Stats(ctx)
+}
+func (r remoteContacts) close() {}
+
+func openContacts(ctx context.Context) (contactBackend, error) {
+	if c := client.FromEnv(); c != nil {
+		return remoteContacts{c: c}, nil
+	}
+	st, err := openStore(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return localContacts{st: st}, nil
+}
+
+const contactUsage = `usage: bank contact <add|rm|list|show|alias|messages|suggest> ...
+
+  bank contact add <name> [--note text]
+  bank contact rm <name>
+  bank contact list [--json]
+  bank contact show <name> [--json]
+  bank contact alias add <name> <alias>...
+  bank contact alias rm <name> <alias>...
+  bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--json]
+  bank contact suggest [--limit n] [--json]
+
+An alias is an identity that means this person: an email address, a WhatsApp
+display name, a Discord handle. It matches everywhere by default; write it as
+"<source>:<value>" to bind it to one source.`
+
+func cmdContact(ctx context.Context, args []string) error {
+	if len(args) == 0 {
+		return errors.New(contactUsage)
+	}
+	b, err := openContacts(ctx)
+	if err != nil {
+		return err
+	}
+	defer b.close()
+
+	switch args[0] {
+	case "add":
+		return contactAdd(ctx, b, args[1:])
+	case "rm", "remove", "delete":
+		return contactRemove(ctx, b, args[1:])
+	case "list", "ls":
+		return contactList(ctx, b, args[1:])
+	case "show":
+		return contactShow(ctx, b, args[1:])
+	case "alias":
+		return contactAlias(ctx, b, args[1:])
+	case "messages":
+		return contactMessages(ctx, b, args[1:])
+	case "suggest":
+		return contactSuggest(ctx, b, args[1:])
+	}
+	return fmt.Errorf("unknown contact command %q\n\n%s", args[0], contactUsage)
+}
+
+func contactAdd(ctx context.Context, b contactBackend, args []string) error {
+	fs := flag.NewFlagSet("contact add", flag.ExitOnError)
+	note := fs.String("note", "", "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: bank contact add <name> [--note text]")
+	}
+	c, err := b.create(ctx, fs.Arg(0), *note)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("contact %s\nattach identities with: bank contact alias add %s <email|handle>\n", c.Name, c.Name)
+	return nil
+}
+
+func contactRemove(ctx context.Context, b contactBackend, args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: bank contact rm <name>")
+	}
+	if err := b.remove(ctx, args[0]); err != nil {
+		return contactErr(args[0], err)
+	}
+	// Worth saying plainly: this is a lens, not the data.
+	fmt.Printf("contact %s removed; its messages are untouched\n", args[0])
+	return nil
+}
+
+func contactList(ctx context.Context, b contactBackend, args []string) error {
+	fs := flag.NewFlagSet("contact list", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	contacts, err := b.list(ctx)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(contacts)
+	}
+	if len(contacts) == 0 {
+		fmt.Println("no contacts yet — 'bank contact suggest' shows who is in the archive")
+		return nil
+	}
+	for _, c := range contacts {
+		fmt.Printf("%-20s %s\n", c.Name, strings.Join(aliasStrings(c.Aliases), ", "))
+		if c.Note != "" {
+			fmt.Printf("%-20s %s\n", "", c.Note)
+		}
+	}
+	return nil
+}
+
+func aliasStrings(aliases []store.ContactAlias) []string {
+	out := make([]string, len(aliases))
+	for i, a := range aliases {
+		out[i] = a.Normalized
+		if a.Source != "" {
+			out[i] = a.Source + ":" + a.Normalized
+		}
+	}
+	return out
+}
+
+func contactShow(ctx context.Context, b contactBackend, args []string) error {
+	fs := flag.NewFlagSet("contact show", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: bank contact show <name> [--json]")
+	}
+	d, err := b.show(ctx, fs.Arg(0))
+	if err != nil {
+		return contactErr(fs.Arg(0), err)
+	}
+	if *asJSON {
+		return printJSON(d)
+	}
+	fmt.Printf("contact: %s\n", d.Name)
+	if d.Note != "" {
+		fmt.Printf("note:    %s\n", d.Note)
+	}
+	fmt.Println("aliases:")
+	for _, a := range d.Aliases {
+		fmt.Printf("  %-28s %s\n", a.Normalized, scopeLabel(a.Source))
+	}
+	if len(d.Aliases) == 0 {
+		fmt.Println("  (none yet — nothing will match until one is attached)")
+	}
+	var total int64
+	fmt.Println("messages:")
+	for _, s := range d.Sources {
+		fmt.Printf("  %-12s %8d\n", s.Source, s.Messages)
+		total += s.Messages
+	}
+	fmt.Printf("  %-12s %8d\n", "total", total)
+	return nil
+}
+
+func scopeLabel(source string) string {
+	if source == "" {
+		return "(all sources)"
+	}
+	return "(" + source + " only)"
+}
+
+func contactAlias(ctx context.Context, b contactBackend, args []string) error {
+	if len(args) < 3 {
+		return errors.New("usage: bank contact alias <add|rm> <name> <alias>...")
+	}
+	action, name, aliases := args[0], args[1], args[2:]
+	known, err := knownSources(ctx, b)
+	if err != nil {
+		return err
+	}
+	for _, raw := range aliases {
+		source, value := store.ContactAliasScope(raw, func(s string) bool { return known[s] })
+		switch action {
+		case "add":
+			a, err := b.addAlias(ctx, name, source, value)
+			if err != nil {
+				return contactErr(name, err)
+			}
+			fmt.Printf("%s: %s %s\n", name, a.Normalized, scopeLabel(a.Source))
+		case "rm", "remove":
+			if err := b.removeAlias(ctx, name, source, value); err != nil {
+				return contactErr(name, err)
+			}
+			fmt.Printf("%s: detached %s %s\n", name, value, scopeLabel(source))
+		default:
+			return fmt.Errorf("unknown alias command %q (add, rm)", action)
+		}
+	}
+	return nil
+}
+
+// knownSources is what makes "whatsapp:Alice" a scope rather than a value: the
+// sources already in the archive, plus the ones importers can still create.
+func knownSources(ctx context.Context, b contactBackend) (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, s := range builtinSources {
+		out[s] = true
+	}
+	stats, err := b.sources(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range stats {
+		out[s.Source] = true
+	}
+	return out, nil
+}
+
+func contactMessages(ctx context.Context, b contactBackend, args []string) error {
+	fs := flag.NewFlagSet("contact messages", flag.ExitOnError)
+	var o store.ContactMessagesOpts
+	var since, until string
+	var asJSON bool
+	fs.StringVar(&o.Source, "source", "", "")
+	fs.StringVar(&since, "since", "", "")
+	fs.StringVar(&until, "until", "", "")
+	fs.IntVar(&o.Limit, "limit", 50, "")
+	fs.BoolVar(&asJSON, "json", false, "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: bank contact messages <name> [flags]")
+	}
+	var err error
+	if o.Since, err = parseDate(since); err != nil {
+		return err
+	}
+	if o.Until, err = parseDate(until); err != nil {
+		return err
+	}
+	msgs, err := b.messages(ctx, fs.Arg(0), o)
+	if err != nil {
+		return contactErr(fs.Arg(0), err)
+	}
+	if asJSON {
+		return printJSON(msgs)
+	}
+	if len(msgs) == 0 {
+		fmt.Println("no messages — check 'bank contact show' that an alias actually matches")
+		return nil
+	}
+	for _, m := range msgs {
+		title := m.Subject
+		if title == "" {
+			title = excerpt(m.Body, 100)
+		}
+		fmt.Printf("%6d  %s  %-8s  %-22s  %s\n",
+			m.ID, m.SentAt.Format("2006-01-02"), m.Source, excerpt(m.Sender, 22), title)
+	}
+	return nil
+}
+
+func contactSuggest(ctx context.Context, b contactBackend, args []string) error {
+	fs := flag.NewFlagSet("contact suggest", flag.ExitOnError)
+	limit := fs.Int("limit", 20, "")
+	asJSON := fs.Bool("json", false, "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	out, err := b.suggest(ctx, *limit)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(out)
+	}
+	if len(out) == 0 {
+		fmt.Println("every identity in the archive is already attached to a contact")
+		return nil
+	}
+	fmt.Println("identities no contact claims yet, most talkative first:")
+	for _, s := range out {
+		fmt.Printf("%8d  %-40s %s\n", s.Messages, excerpt(s.Identity, 40), strings.Join(s.Sources, ", "))
+	}
+	fmt.Println("\nattach one with: bank contact alias add <name> <identity>")
+	return nil
+}
+
+// contactErr turns the store's not-found sentinel into a message that names
+// what was actually missing.
+func contactErr(name string, err error) error {
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("no contact %q — see 'bank contact list'", name)
+	}
+	return err
 }

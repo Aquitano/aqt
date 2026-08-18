@@ -31,6 +31,11 @@ type reader interface {
 	GetMessage(ctx context.Context, id int64) (store.Message, []store.Attachment, error)
 	GetThread(ctx context.Context, source, threadID string, limit int) (store.Thread, error)
 	Stats(ctx context.Context) ([]store.SourceStats, error)
+	ListContacts(ctx context.Context) ([]store.Contact, error)
+	GetContact(ctx context.Context, name string) (store.Contact, error)
+	ContactSourceCounts(ctx context.Context, contactID int64) ([]store.ContactSourceCount, error)
+	ContactMessages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error)
+	SuggestIdentities(ctx context.Context, limit int) ([]store.IdentitySuggestion, error)
 }
 
 type Server struct {
@@ -60,6 +65,14 @@ func (s *Server) Handler() http.Handler {
 	v1.HandleFunc("GET /v1/threads/{id}", s.handleThread)
 	v1.HandleFunc("GET /v1/blobs/{sha256}", s.handleBlob)
 	v1.HandleFunc("GET /v1/stats", s.handleStats)
+	v1.HandleFunc("GET /v1/contacts", s.handleContactList)
+	v1.HandleFunc("POST /v1/contacts", s.handleContactCreate)
+	v1.HandleFunc("GET /v1/contacts/suggest", s.handleContactSuggest)
+	v1.HandleFunc("GET /v1/contacts/{name}", s.handleContactShow)
+	v1.HandleFunc("DELETE /v1/contacts/{name}", s.handleContactDelete)
+	v1.HandleFunc("GET /v1/contacts/{name}/messages", s.handleContactMessages)
+	v1.HandleFunc("POST /v1/contacts/{name}/aliases", s.handleAliasAdd)
+	v1.HandleFunc("DELETE /v1/contacts/{name}/aliases", s.handleAliasRemove)
 	v1.HandleFunc("POST /v1/import/{kind}", s.handleImport)
 
 	mux := http.NewServeMux()
@@ -98,7 +111,8 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "missing q")
 		return
 	}
-	o := store.SearchOpts{Source: q.Get("source"), From: q.Get("from"), To: q.Get("to"), Fuzzy: 1, Limit: 20}
+	o := store.SearchOpts{Source: q.Get("source"), From: q.Get("from"), To: q.Get("to"),
+		Person: q.Get("person"), Fuzzy: 1, Limit: 20}
 	var err error
 	if o.Since, err = parseDate(q.Get("since")); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -123,6 +137,11 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msgs, err := s.read.Search(r.Context(), query, o)
+	var noContact *store.ErrNoContact
+	if errors.As(err, &noContact) {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
