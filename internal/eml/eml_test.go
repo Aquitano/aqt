@@ -140,3 +140,203 @@ func TestSplitMbox(t *testing.T) {
 		t.Errorf("second message = %q", msgs[1])
 	}
 }
+
+func TestBlankPlainAlternativeFallsBackToHTML(t *testing.T) {
+	build := func(plain string) []byte {
+		return []byte("From: a@example.com\r\nSubject: hi\r\nMIME-Version: 1.0\r\n" +
+			"Content-Type: multipart/alternative; boundary=B\r\n\r\n" +
+			"--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + plain + "\r\n" +
+			"--B\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>the real body</p>\r\n" +
+			"--B--\r\n")
+	}
+	for name, plain := range map[string]string{"empty": "", "whitespace": "   \r\n\t"} {
+		t.Run(name, func(t *testing.T) {
+			m, err := Parse(build(plain))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if m.Body != "the real body" {
+				t.Errorf("Body = %q, want the HTML alternative", m.Body)
+			}
+		})
+	}
+	t.Run("nonempty plain still wins", func(t *testing.T) {
+		m, err := Parse(build("plain wins"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.Body != "plain wins" {
+			t.Errorf("Body = %q, want the plain alternative", m.Body)
+		}
+	})
+}
+
+func TestNamedInlineTextIsBody(t *testing.T) {
+	cases := []struct {
+		name       string
+		mail       string
+		wantBody   string
+		wantAttach int
+	}{
+		{
+			name: "inline disposition with a name",
+			mail: "From: a@example.com\r\nSubject: hi\r\n" +
+				"Content-Type: text/plain; charset=utf-8; name=\"message.txt\"\r\n" +
+				"Content-Disposition: inline; filename=\"message.txt\"\r\n\r\nthe body",
+			wantBody: "the body",
+		},
+		{
+			name: "alternative part with a name",
+			mail: "From: a@example.com\r\nSubject: hi\r\nMIME-Version: 1.0\r\n" +
+				"Content-Type: multipart/alternative; boundary=B\r\n\r\n" +
+				"--B\r\nContent-Type: text/plain; charset=utf-8; name=\"body.txt\"\r\n\r\nthe body\r\n" +
+				"--B--\r\n",
+			wantBody: "the body",
+		},
+		{
+			name: "sole named part with no disposition",
+			mail: "From: a@example.com\r\nSubject: hi\r\n" +
+				"Content-Type: text/plain; charset=utf-8; name=\"note.txt\"\r\n\r\nthe body",
+			wantBody:   "the body",
+			wantAttach: 1, // ambiguous: kept as an attachment too, nothing is lost
+		},
+		{
+			name: "explicit attachment stays an attachment",
+			mail: "From: a@example.com\r\nSubject: hi\r\nMIME-Version: 1.0\r\n" +
+				"Content-Type: multipart/mixed; boundary=B\r\n\r\n" +
+				"--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nthe body\r\n" +
+				"--B\r\nContent-Type: text/plain; charset=utf-8; name=\"notes.txt\"\r\n" +
+				"Content-Disposition: attachment; filename=\"notes.txt\"\r\n\r\nattached notes\r\n" +
+				"--B--\r\n",
+			wantBody:   "the body",
+			wantAttach: 1,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m, err := Parse([]byte(tc.mail))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if m.Body != tc.wantBody {
+				t.Errorf("Body = %q, want %q", m.Body, tc.wantBody)
+			}
+			if len(m.Attachments) != tc.wantAttach {
+				t.Errorf("attachments = %d, want %d: %+v", len(m.Attachments), tc.wantAttach, m.Attachments)
+			}
+			if strings.Contains(m.Body, "attached notes") {
+				t.Error("an explicit attachment was merged into the body")
+			}
+		})
+	}
+}
+
+func TestMalformedContentType(t *testing.T) {
+	t.Run("boundary recoverable", func(t *testing.T) {
+		// An unquoted boundary containing a space is what Go's strict parser
+		// rejects; the parts are still perfectly readable.
+		mail := "From: a@example.com\r\nSubject: hi\r\nMIME-Version: 1.0\r\n" +
+			"Content-Type: multipart/mixed; boundary=B; charset=\r\n\r\n" +
+			"--B\r\nContent-Type: text/plain\r\n\r\nreadable text\r\n" +
+			"--B\r\nContent-Type: application/pdf; name=\"x.pdf\"\r\n\r\nPDFBYTES\r\n" +
+			"--B--\r\n"
+		m, err := Parse([]byte(mail))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.Body != "readable text" {
+			t.Errorf("Body = %q", m.Body)
+		}
+		if len(m.Attachments) != 1 || m.Attachments[0].Filename != "x.pdf" {
+			t.Errorf("attachments = %+v", m.Attachments)
+		}
+		if len(m.Warnings) == 0 {
+			t.Error("a salvaged Content-Type should be reported")
+		}
+	})
+
+	t.Run("boundary unrecoverable", func(t *testing.T) {
+		mail := "From: a@example.com\r\nSubject: hi\r\nMIME-Version: 1.0\r\n" +
+			"Content-Type: multipart/mixed;;;\r\n\r\n" +
+			"--WHATEVER\r\nContent-Type: text/plain\r\n\r\nsome text\r\n" +
+			"--WHATEVER--\r\n"
+		m, err := Parse([]byte(mail))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(m.Body, "--WHATEVER") || strings.Contains(m.Body, "Content-Type:") {
+			t.Errorf("raw multipart syntax was indexed as the body: %q", m.Body)
+		}
+		if len(m.Attachments) != 1 {
+			t.Fatalf("unreadable bytes were dropped instead of kept: %+v", m.Attachments)
+		}
+		if !strings.Contains(string(m.Attachments[0].Data), "some text") {
+			t.Errorf("kept bytes = %q", m.Attachments[0].Data)
+		}
+		if len(m.Warnings) == 0 {
+			t.Error("an unreadable structure should be reported")
+		}
+	})
+
+	t.Run("nested malformed part", func(t *testing.T) {
+		mail := "From: a@example.com\r\nSubject: hi\r\nMIME-Version: 1.0\r\n" +
+			"Content-Type: multipart/mixed; boundary=OUTER\r\n\r\n" +
+			"--OUTER\r\nContent-Type: text/plain\r\n\r\nouter text\r\n" +
+			"--OUTER\r\nContent-Type: multipart/alternative\r\n\r\n" +
+			"--INNER\r\nContent-Type: text/plain\r\n\r\ninner text\r\n--INNER--\r\n" +
+			"--OUTER--\r\n"
+		m, err := Parse([]byte(mail))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.Body != "outer text" {
+			t.Errorf("Body = %q, want only the readable part", m.Body)
+		}
+		if len(m.Warnings) == 0 {
+			t.Error("a boundary-less nested multipart should be reported")
+		}
+	})
+}
+
+func TestSplitMboxSeparatorAfterNonblankLine(t *testing.T) {
+	// Gmail Takeout writes the numeric zone before the year; Thunderbird
+	// writes a bare "-" as the address. Neither message here ends on a blank
+	// line, which is exactly what the old previous-line heuristic missed.
+	mbox := "From 1@xxx Mon May 13 21:08:00 +0000 2024\n" +
+		"From: a@example.com\nSubject: first\n\nbody one\n" +
+		"From - Mon May 13 21:09:00 2024\n" +
+		"From: b@example.com\nSubject: second\n\nbody two\n"
+	var msgs []string
+	if err := SplitMbox(strings.NewReader(mbox), func(raw []byte) error {
+		msgs = append(msgs, string(raw))
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("got %d messages, want 2: %q", len(msgs), msgs)
+	}
+	if !strings.Contains(msgs[0], "Subject: first") || !strings.Contains(msgs[1], "Subject: second") {
+		t.Errorf("messages split wrongly: %q", msgs)
+	}
+}
+
+func TestSplitMboxBodyLineAfterBlankLineIsNotASeparator(t *testing.T) {
+	// The shape of the envelope, not the blank line before it, is what makes a
+	// separator — otherwise ordinary prose splits a message in half.
+	mbox := "From 1@xxx Mon May 13 21:08:00 2024\n" +
+		"From: a@example.com\nSubject: only\n\nline one\n\nFrom then on we agreed\nline three\n"
+	var msgs []string
+	if err := SplitMbox(strings.NewReader(mbox), func(raw []byte) error {
+		msgs = append(msgs, string(raw))
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("got %d messages, want 1: %q", len(msgs), msgs)
+	}
+	if !strings.Contains(msgs[0], "From then on we agreed\nline three") {
+		t.Errorf("body was truncated: %q", msgs[0])
+	}
+}

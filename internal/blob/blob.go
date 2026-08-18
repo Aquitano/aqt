@@ -23,7 +23,19 @@ func New(root string) (*Store, error) {
 }
 
 // Put streams r into the store and returns its sha256 hex digest and size.
+// Content already present is left alone: identical bytes are stored once.
 func (s *Store) Put(r io.Reader) (string, int64, error) {
+	return s.put(r, false)
+}
+
+// Replace is Put for repairs: it rewrites the file even when something already
+// sits at that digest's path. Only `bank verify --heal` needs it, because
+// corrupted bytes are exactly the case Put's "already there" shortcut skips.
+func (s *Store) Replace(r io.Reader) (string, int64, error) {
+	return s.put(r, true)
+}
+
+func (s *Store) put(r io.Reader, overwrite bool) (string, int64, error) {
 	tmp, err := os.CreateTemp(s.root, "put-*")
 	if err != nil {
 		return "", 0, err
@@ -41,7 +53,7 @@ func (s *Store) Put(r io.Reader) (string, int64, error) {
 
 	sum := hex.EncodeToString(h.Sum(nil))
 	dest := s.Path(sum)
-	if _, err := os.Stat(dest); err == nil {
+	if _, err := os.Stat(dest); err == nil && !overwrite {
 		return sum, size, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {

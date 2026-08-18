@@ -43,6 +43,20 @@ func ThreadName(path string) string {
 	return downloadSuffix.ReplaceAllString(name, "")
 }
 
+// safeMediaName accepts only a single path component that cannot escape the
+// export directory. Zip imports are already confined — entries are looked up
+// by base name in the archive's own table — so this guards the bare .txt case,
+// where the name reaches the host filesystem.
+func safeMediaName(name string) bool {
+	if name == "" || name == "." || name == ".." || filepath.IsAbs(name) {
+		return false
+	}
+	if strings.ContainsAny(name, `/\`) || strings.HasPrefix(name, "~") {
+		return false
+	}
+	return filepath.Base(name) == name
+}
+
 // Import ingests one "Export chat" file (.zip with media, or bare .txt whose
 // media files sit alongside it). Re-importing the same export is a no-op.
 func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, path string) (Result, error) {
@@ -101,6 +115,14 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 		chat = f
 		dir := filepath.Dir(path)
 		openMedia = func(name string) io.ReadCloser {
+			// Attachment names come out of the chat transcript, which anyone
+			// in the conversation can write: "../../.ssh/id_rsa (file
+			// attached)" is a legal line. Only a plain filename sitting next
+			// to the export may be opened.
+			if !safeMediaName(name) {
+				fmt.Fprintf(os.Stderr, "bank: ignoring unsafe attachment name %q in %s\n", name, path)
+				return nil
+			}
 			r, err := os.Open(filepath.Join(dir, name))
 			if err != nil {
 				return nil

@@ -21,10 +21,15 @@ go build -o bank ./cmd/bank
 ./bank import claude-code ~/.claude/projects    # Claude Code transcripts
 echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source notes -
 
+./bank import inbox                             # sweep $BANK_DATA_DIR/inbox/<kind>/
+
 ./bank search "that invoice" --from alice --since 2024-01-01
-./bank search "typo-tolerannt query" --json   # agents consume this
+./bank search "the deck" --to bob               # by recipient
+./bank search "typo-tolerannt query" --json     # agents consume this
 ./bank show 42
+./bank thread "Alice" --source whatsapp         # the whole conversation
 ./bank stats
+./bank verify --heal                            # check the archive, repair what the raw inputs allow
 ```
 
 ## Remote use
@@ -33,7 +38,8 @@ When Postgres lives on a VPS, run the same binary there as a server (`bank serve
 
 ```sh
 export BANK_URL=http://vps.tailnet.ts.net:8480
-export BANK_TOKEN=$(ssh vps bank token new laptop)   # printed once, stored hashed
+# BANK_DATA_DIR must match the server's, or the digest lands in the wrong file
+export BANK_TOKEN=$(ssh vps 'BANK_DATA_DIR=/data/aqt-bank bank token new laptop')
 
 ./bank import whatsapp "WhatsApp Chat with Alice.zip"   # uploaded to the VPS
 ./bank fetch 9f86d081... -o photo.jpg                   # attachment bytes back

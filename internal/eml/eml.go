@@ -35,6 +35,11 @@ type Message struct {
 	Date        time.Time
 	Body        string
 	Attachments []Attachment
+	// Warnings names structure the parser could not read as written — a
+	// malformed Content-Type, a multipart part with no usable boundary.
+	// Importers surface these so damaged mail is visible instead of quietly
+	// arriving with a body full of MIME syntax.
+	Warnings []string
 }
 
 var wordDecoder = &mime.WordDecoder{CharsetReader: charsetReader}
@@ -59,48 +64,65 @@ func Parse(raw []byte) (*Message, error) {
 		out.Date = d
 	}
 
-	var plain, htmlBody []string
-	walkPart(h.Get("Content-Type"), h.Get("Content-Transfer-Encoding"), h.Get("Content-Disposition"),
-		msg.Body, out, &plain, &htmlBody, 0)
-
-	if len(plain) > 0 {
-		out.Body = strings.TrimSpace(strings.Join(plain, "\n\n"))
-	} else if len(htmlBody) > 0 {
-		out.Body = StripHTML(strings.Join(htmlBody, "\n\n"))
-	}
+	p := &parser{out: out}
+	p.walk(h.Get("Content-Type"), h.Get("Content-Transfer-Encoding"), h.Get("Content-Disposition"), msg.Body, 0, false)
+	out.Body = p.body()
 	return out, nil
 }
 
-func walkPart(contentType, transferEncoding, disposition string, r io.Reader, out *Message, plain, htmlBody *[]string, depth int) {
+// parser collects body candidates while walking the MIME tree.
+type parser struct {
+	out   *Message
+	plain []string
+	html  []string
+	// named holds text parts carrying only a name= parameter and no
+	// disposition. A name alone does not make a part an attachment (mailers
+	// put one on the sole body part), so these are kept as attachments but
+	// stay available as a last-resort body.
+	named []namedText
+}
+
+type namedText struct {
+	text   string
+	isHTML bool
+}
+
+func (p *parser) walk(contentType, transferEncoding, disposition string, r io.Reader, depth int, inAlternative bool) {
 	if depth > 10 {
 		return
 	}
 	if contentType == "" {
 		contentType = "text/plain; charset=us-ascii"
 	}
-	mediaType, params, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		mediaType, params = "text/plain", map[string]string{}
+	mediaType, params, wellFormed := parseContentType(contentType)
+	if !wellFormed {
+		p.warn(fmt.Sprintf("malformed Content-Type %q, read as %s", clip(contentType, 120), mediaType))
 	}
 
 	if strings.HasPrefix(mediaType, "multipart/") {
 		boundary := params["boundary"]
 		if boundary == "" {
+			p.keepUnreadable(r, transferEncoding)
 			return
 		}
 		mr := multipart.NewReader(r, boundary)
+		alternative := mediaType == "multipart/alternative"
 		for {
-			p, err := mr.NextPart()
+			part, err := mr.NextPart()
 			if err != nil {
 				return
 			}
-			walkPart(p.Header.Get("Content-Type"), p.Header.Get("Content-Transfer-Encoding"),
-				p.Header.Get("Content-Disposition"), p, out, plain, htmlBody, depth+1)
+			p.walk(part.Header.Get("Content-Type"), part.Header.Get("Content-Transfer-Encoding"),
+				part.Header.Get("Content-Disposition"), part, depth+1, alternative)
 		}
 	}
 
-	filename := partFilename(disposition, params)
-	isAttachment := filename != "" || strings.HasPrefix(strings.ToLower(disposition), "attachment")
+	disp, dispParams := parseDisposition(disposition)
+	filename := decodeHeader(dispParams["filename"])
+	if filename == "" {
+		filename = decodeHeader(params["name"])
+	}
+	isText := mediaType == "text/plain" || mediaType == "text/html"
 
 	data, err := io.ReadAll(decodeTransfer(r, transferEncoding))
 	if err != nil && len(data) == 0 {
@@ -108,24 +130,157 @@ func walkPart(contentType, transferEncoding, disposition string, r io.Reader, ou
 	}
 
 	switch {
-	case isAttachment:
+	case disp == "attachment":
 		if filename == "" {
 			filename = nameForPart(mediaType)
 		}
-		out.Attachments = append(out.Attachments, Attachment{Filename: filename, MimeType: mediaType, Data: data})
-	case mediaType == "text/plain":
-		*plain = append(*plain, decodeCharset(data, params["charset"]))
-	case mediaType == "text/html":
-		*htmlBody = append(*htmlBody, decodeCharset(data, params["charset"]))
+		p.attach(filename, mediaType, data)
+	case isText && (disp == "inline" || filename == "" || inAlternative):
+		p.addText(mediaType, decodeCharset(data, params["charset"]))
+	case isText:
+		p.named = append(p.named, namedText{text: decodeCharset(data, params["charset"]), isHTML: mediaType == "text/html"})
+		p.attach(filename, mediaType, data)
+	case filename != "":
+		p.attach(filename, mediaType, data)
 	case mediaType == "message/rfc822":
-		out.Attachments = append(out.Attachments, Attachment{Filename: "forwarded-message.eml", MimeType: mediaType, Data: data})
+		p.attach("forwarded-message.eml", mediaType, data)
 	default:
 		// Inline images without filenames, text/calendar invites, etc: an
 		// archival tool must not drop bytes on the floor.
 		if len(data) > 0 {
-			out.Attachments = append(out.Attachments, Attachment{Filename: nameForPart(mediaType), MimeType: mediaType, Data: data})
+			p.attach(nameForPart(mediaType), mediaType, data)
 		}
 	}
+}
+
+func (p *parser) addText(mediaType, text string) {
+	if mediaType == "text/html" {
+		p.html = append(p.html, text)
+		return
+	}
+	p.plain = append(p.plain, text)
+}
+
+func (p *parser) attach(filename, mediaType string, data []byte) {
+	p.out.Attachments = append(p.out.Attachments, Attachment{Filename: filename, MimeType: mediaType, Data: data})
+}
+
+func (p *parser) warn(msg string) { p.out.Warnings = append(p.out.Warnings, msg) }
+
+// keepUnreadable archives a multipart part whose boundary could not be
+// recovered. The bytes stay reachable through the attachment, and raw MIME
+// syntax never becomes the searchable body.
+func (p *parser) keepUnreadable(r io.Reader, transferEncoding string) {
+	data, _ := io.ReadAll(decodeTransfer(r, transferEncoding))
+	if len(data) == 0 {
+		return
+	}
+	p.warn("multipart part has no usable boundary: raw bytes kept as an attachment")
+	p.attach("unparsed-part.mime", "application/octet-stream", data)
+}
+
+// body picks the searchable text. Non-blank plain text wins, then HTML, then a
+// named text part — a whitespace-only plain alternative must not suppress a
+// real HTML one.
+func (p *parser) body() string {
+	if s := joinText(p.plain); s != "" {
+		return s
+	}
+	if s := joinText(p.html); s != "" {
+		return StripHTML(s)
+	}
+	for _, n := range p.named {
+		if strings.TrimSpace(n.text) == "" {
+			continue
+		}
+		if n.isHTML {
+			return StripHTML(n.text)
+		}
+		return strings.TrimSpace(n.text)
+	}
+	return ""
+}
+
+func joinText(parts []string) string {
+	kept := make([]string, 0, len(parts))
+	for _, s := range parts {
+		if strings.TrimSpace(s) != "" {
+			kept = append(kept, s)
+		}
+	}
+	return strings.TrimSpace(strings.Join(kept, "\n\n"))
+}
+
+var (
+	mediaTypeRe = regexp.MustCompile(`^[a-z]+/[a-z0-9][a-z0-9.+_-]*`)
+	paramRe     = regexp.MustCompile(`(?i)([a-z0-9*_-]+)\s*=\s*(?:"([^"]*)"|([^;]*))`)
+)
+
+// parseContentType is mime.ParseMediaType with a salvage path: real mail
+// carries headers Go rejects — unquoted parameters with spaces, duplicate
+// charsets, a truncated boundary. Falling straight back to text/plain would
+// index a multipart body's own boundaries and part headers as the message
+// text, so recover the media type and parameters leniently instead. The bool
+// reports whether the header was well formed.
+func parseContentType(v string) (string, map[string]string, bool) {
+	if mediaType, params, err := mime.ParseMediaType(v); err == nil {
+		return mediaType, params, true
+	}
+	head, _, _ := strings.Cut(v, ";")
+	mediaType := mediaTypeRe.FindString(strings.ToLower(strings.TrimSpace(head)))
+	params := lenientParams(v)
+	if mediaType == "" {
+		// Nothing usable in the type itself: only the word "multipart"
+		// distinguishes MIME syntax from prose.
+		if strings.Contains(strings.ToLower(v), "multipart") {
+			return "multipart/mixed", params, false
+		}
+		return "text/plain", params, false
+	}
+	return mediaType, params, false
+}
+
+func parseDisposition(v string) (string, map[string]string) {
+	if strings.TrimSpace(v) == "" {
+		return "", map[string]string{}
+	}
+	if disp, params, err := mime.ParseMediaType(v); err == nil {
+		return strings.ToLower(disp), params
+	}
+	head, _, _ := strings.Cut(v, ";")
+	return strings.ToLower(strings.TrimSpace(head)), lenientParams(v)
+}
+
+// lenientParams pulls key=value pairs out of a header value the strict parser
+// rejected. The first occurrence of a key wins.
+func lenientParams(v string) map[string]string {
+	out := map[string]string{}
+	_, rest, ok := strings.Cut(v, ";")
+	if !ok {
+		return out
+	}
+	for _, m := range paramRe.FindAllStringSubmatch(rest, -1) {
+		key := strings.ToLower(m[1])
+		value := m[2]
+		if value == "" {
+			value = strings.TrimSpace(m[3])
+		}
+		if value == "" {
+			continue
+		}
+		if _, seen := out[key]; !seen {
+			out[key] = value
+		}
+	}
+	return out
+}
+
+func clip(s string, n int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 func nameForPart(mediaType string) string {
@@ -133,15 +288,6 @@ func nameForPart(mediaType string) string {
 		return "unnamed" + exts[0]
 	}
 	return "unnamed"
-}
-
-func partFilename(disposition string, typeParams map[string]string) string {
-	if disposition != "" {
-		if _, p, err := mime.ParseMediaType(disposition); err == nil && p["filename"] != "" {
-			return decodeHeader(p["filename"])
-		}
-	}
-	return decodeHeader(typeParams["name"])
 }
 
 func decodeTransfer(r io.Reader, encoding string) io.Reader {

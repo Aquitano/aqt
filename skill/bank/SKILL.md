@@ -29,20 +29,24 @@ On the VPS itself there is no `BANK_URL`; `DATABASE_URL` points at Postgres and 
 ## Reading
 
 ```sh
-bank search "query" [--source s] [--from name] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--fuzzy 0-2] [--limit n] [--json]
+bank search "query" [--source s] [--from name] [--to name] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--fuzzy 0-2] [--limit n] [--json]
+bank thread <id> [--source s] [--limit n] [--json]   # every message in one conversation
 bank show <id> [--json]          # full body, recipients, raw_ref, attachment list
-bank stats [--json]              # sources, message counts, date ranges
+bank stats [--json]              # sources, counts, date ranges, freshness
 bank fetch <sha256> -o <path>    # write attachment bytes to a file
 ```
 
 Semantics that matter:
 
-- Always pass `--json` when you are consuming the output; the plain text form truncates bodies to one line. `search --json` prints `null`, not `[]`, when nothing matched.
-- Ranking is BM25 over subject, body and sender, with typo tolerance (`--fuzzy 1` by default, max 2). Query words are matched independently — more words means more recall, not less.
-- `--from` is a case-insensitive substring of the sender field, so `--from alice` matches `Alice Example` and `alice@example.com`.
+- Always pass `--json` when you are consuming the output; the plain text form truncates bodies to one line. Empty results are `[]`, never `null`.
+- Ranking is BM25 over subject, body, sender and recipients, with typo tolerance (`--fuzzy 1` by default, max 2). Query words are matched independently — more words means more recall, not less.
+- Each result carries a `snippet`: a bounded plain-text window of the body around the match, with no markup, so it is safe to print or quote directly. It is the cheapest way to see why something ranked.
+- `--from` is a case-insensitive substring of the sender field, so `--from alice` matches `Alice Example` and `alice@example.com`. `--to` is the same against recipients.
 - `--until` is exclusive; both dates are plain `YYYY-MM-DD`.
-- `--limit` defaults to 20. Start generous (50-100), then narrow with `--source`/`--from`/dates rather than re-running blind.
+- `--limit` defaults to 20 and must be between 1 and 500; `--fuzzy` between 0 and 2. Out-of-range values are a usage error, not an empty result. Start generous (50-100), then narrow with `--source`/`--from`/dates rather than re-running blind.
 - `search` returns bodies already, so only `bank show <id>` when you need recipients, `external_id`, `raw_ref` or attachments.
+- `bank thread` takes the `thread_id` from a search hit and returns the whole conversation oldest-first — the way to turn one match into context. A thread id used by two sources is a usage error until you add `--source`; very long threads come back with `"truncated": true`, so raise `--limit` (max 2000) if that matters.
+- `bank stats --json` includes `last_ingest` per source, and `last_sync` for sync-backed ones. Use it to say "the archive has nothing after X" instead of assuming a gap means nothing happened.
 
 Worked examples:
 
@@ -55,6 +59,13 @@ bank search "pgvector" --source chatgpt --limit 50 --json
 
 # typo in the name, or in the archived text: widen the distance
 bank search "hetzner invoise" --fuzzy 2 --limit 5
+
+# one hit is rarely the answer — pull the surrounding conversation
+bank search "release plan" --json     # -> thread_id, source
+bank thread "release plan chat" --source whatsapp --json
+
+# "what did I send to bob about the deck"
+bank search "deck" --to bob --json
 
 # grab the screenshot attached to a message
 bank show 4 --json          # -> attachments[].sha256
@@ -92,4 +103,4 @@ Rules:
 
 - `bank fetch` writes a file to disk; pick an explicit `-o` under a temp dir, and remember the bytes are personal data.
 - Message bodies are private correspondence. Read what the task needs, quote the minimum, and do not paste whole threads into summaries or commit messages.
-- `sync`, `auth`, `serve` and `token` are server-side commands. Do not run them from a client machine.
+- `sync`, `auth`, `serve`, `token`, `verify` and `import inbox` are server-side commands: they need the archive, the blob store or the token file on the server itself. Do not run them from a client machine — they will not fail loudly, they will act on the wrong box.

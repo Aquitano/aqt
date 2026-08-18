@@ -25,7 +25,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aquitano/aqt-bank/internal/archive"
 	"github.com/aquitano/aqt-bank/internal/blob"
+	"github.com/aquitano/aqt-bank/internal/fail"
 	"github.com/aquitano/aqt-bank/internal/store"
 )
 
@@ -33,7 +35,12 @@ type Result struct {
 	Inserted    int `json:"inserted"`
 	Duplicates  int `json:"duplicates"`
 	Attachments int `json:"attachments"`
-	Failed      int `json:"failed"`
+	// Healed counts attachment rows added to a message that was already
+	// archived without them, e.g. after a blob write failed mid-import.
+	Healed int `json:"healed"`
+	// Rejected counts entries the input got wrong. Database and blob-store
+	// failures abort the import instead of landing here.
+	Rejected int `json:"rejected"`
 }
 
 type entry struct {
@@ -56,6 +63,11 @@ type entry struct {
 // over HTTP — server-side path reads are an arbitrary-file-read primitive.
 func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSource, rawRef string, input []byte, now time.Time, allowAttachmentPaths bool) (Result, error) {
 	var res Result
+	if defaultSource != "" {
+		if err := archive.ValidSource(defaultSource); err != nil {
+			return res, err
+		}
+	}
 	entries, err := parseEntries(input)
 	if err != nil {
 		return res, err
@@ -66,18 +78,18 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSour
 			e.Source = defaultSource
 		}
 		if err := validate(e); err != nil {
-			res.Failed++
+			res.Rejected++
 			fmt.Fprintf(os.Stderr, "bank: json entry %d: %v\n", i, err)
 			continue
 		}
 		if len(e.Attachments) > 0 && !allowAttachmentPaths {
-			res.Failed++
+			res.Rejected++
 			fmt.Fprintf(os.Stderr, "bank: json entry %d: attachments[].path is only supported for local imports, not over BANK_URL\n", i)
 			continue
 		}
 		sentAt, err := parseSentAt(e.SentAt)
 		if err != nil {
-			res.Failed++
+			res.Rejected++
 			fmt.Fprintf(os.Stderr, "bank: json entry %d: %v\n", i, err)
 			continue
 		}
@@ -100,28 +112,53 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSour
 			RawRef:     rawRef,
 		})
 		if err != nil {
-			return res, err
+			return res, fail.Opf("insert message: %w", err)
 		}
-		if id == 0 {
+		fresh := id != 0
+		if fresh {
+			res.Inserted++
+		} else {
 			res.Duplicates++
-			continue
+			if len(e.Attachments) == 0 {
+				continue
+			}
+			// The message row survived an earlier import whose blobs did not.
+			// Re-importing must fill the gap, not stop at deduplication.
+			if id, err = st.FindMessageID(ctx, e.Source, externalID); err != nil {
+				return res, fail.Opf("look up message: %w", err)
+			}
+			if id == 0 {
+				continue
+			}
 		}
-		res.Inserted++
+		have := map[string]int{}
+		if !fresh {
+			if have, err = st.AttachmentKeys(ctx, id); err != nil {
+				return res, fail.Opf("read attachments of message %d: %w", id, err)
+			}
+		}
 		for _, a := range e.Attachments {
 			f, err := os.Open(a.Path)
 			if err != nil {
-				res.Failed++
+				res.Rejected++
 				fmt.Fprintf(os.Stderr, "bank: json entry %d attachment: %v\n", i, err)
 				continue
 			}
+			// The blob store is content-addressed and idempotent, so storing
+			// first is what makes the digest available to compare against
+			// what the message already has.
 			sum, size, err := blobs.Put(f)
 			f.Close()
 			if err != nil {
-				return res, err
+				return res, fail.Opf("store attachment %q: %w", a.Path, err)
 			}
 			name := a.Filename
 			if name == "" {
 				name = filepath.Base(a.Path)
+			}
+			if key := store.AttachmentKey(sum, name); have[key] > 0 {
+				have[key]--
+				continue
 			}
 			err = st.InsertAttachment(ctx, store.Attachment{
 				MessageID: id,
@@ -131,9 +168,12 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSour
 				SHA256:    sum,
 			})
 			if err != nil {
-				return res, err
+				return res, fail.Opf("insert attachment %q: %w", name, err)
 			}
 			res.Attachments++
+			if !fresh {
+				res.Healed++
+			}
 		}
 	}
 	return res, nil
@@ -162,6 +202,9 @@ func validate(e entry) error {
 	if e.Source == "" {
 		return fmt.Errorf(`missing "source" (or pass --source)`)
 	}
+	if err := archive.ValidSource(e.Source); err != nil {
+		return err
+	}
 	if e.Body == "" && e.Subject == "" {
 		return fmt.Errorf(`missing "body"`)
 	}
@@ -189,6 +232,12 @@ func parseEntries(input []byte) ([]entry, error) {
 			}
 			out = append(out, e)
 		}
+		if _, err := dec.Token(); err != nil { // the closing bracket
+			return nil, err
+		}
+		if err := expectEOF(dec); err != nil {
+			return nil, err
+		}
 		return out, nil
 	}
 	// Not an array: restart and decode a stream of objects.
@@ -203,6 +252,20 @@ func parseEntries(input []byte) ([]entry, error) {
 		}
 		out = append(out, e)
 	}
+}
+
+// expectEOF rejects anything following the value just decoded. An array with a
+// second value or stray bytes after it is a concatenated or truncated file;
+// importing its first half and reporting success would hide the rest.
+func expectEOF(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err == io.EOF {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("unexpected %v after the top-level JSON array", tok)
 }
 
 // parseSentAt accepts RFC 3339, "2006-01-02 15:04:05", "2006-01-02" (all as

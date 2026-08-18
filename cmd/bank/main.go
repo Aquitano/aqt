@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -24,9 +25,11 @@ import (
 	"github.com/aquitano/aqt-bank/internal/eml"
 	"github.com/aquitano/aqt-bank/internal/generic"
 	"github.com/aquitano/aqt-bank/internal/gmail"
+	"github.com/aquitano/aqt-bank/internal/inbox"
 	"github.com/aquitano/aqt-bank/internal/linkedin"
 	"github.com/aquitano/aqt-bank/internal/server"
 	"github.com/aquitano/aqt-bank/internal/store"
+	"github.com/aquitano/aqt-bank/internal/verify"
 	"github.com/aquitano/aqt-bank/internal/whatsapp"
 )
 
@@ -45,10 +48,13 @@ Usage:
   bank import claude-code <file.jsonl|dir>    Claude Code session transcripts
   bank import json [--source s] <file|->      arbitrary JSON/NDJSON messages
                                               (the escape hatch for agents; - reads stdin)
+  bank import inbox [--json]                  sweep $BANK_DATA_DIR/inbox/<kind>/
   bank search <query> [flags]                 full-text search (BM25, fuzzy)
+  bank thread <id> [--source s] [--limit n]   one whole conversation, oldest first
   bank show <id> [--json]                     print one message + attachments
-  bank stats [--json]                         per-source counts and date ranges
+  bank stats [--json]                         per-source counts, date ranges, freshness
   bank fetch <sha256> [-o path]               write an attachment to a file
+  bank verify [--heal] [--source s] [--json]  check archive integrity, optionally repair
   bank serve [--listen addr]                  HTTP API (default 127.0.0.1:8480)
   bank token new <name>                       mint an API token (printed once)
   bank token list                             token names
@@ -56,11 +62,12 @@ Usage:
 
 Search flags:
   --source s     filter by source (whatsapp, gmail, ...)
-  --from name    filter by sender (substring)
+  --from name    filter by sender (substring, case-insensitive)
+  --to name      filter by recipient (substring, case-insensitive)
   --since date   YYYY-MM-DD
   --until date   YYYY-MM-DD (exclusive)
   --fuzzy n      typo tolerance 0-2 (default 1)
-  --limit n      max results (default 20)
+  --limit n      max results, 1-500 (default 20)
   --json         JSON output
 
 Environment:
@@ -86,12 +93,16 @@ func main() {
 		err = cmdImport(ctx, os.Args[2:])
 	case "search":
 		err = cmdSearch(ctx, os.Args[2:])
+	case "thread":
+		err = cmdThread(ctx, os.Args[2:])
 	case "show":
 		err = cmdShow(ctx, os.Args[2:])
 	case "stats":
 		err = cmdStats(ctx, os.Args[2:])
 	case "fetch":
 		err = cmdFetch(ctx, os.Args[2:])
+	case "verify":
+		err = cmdVerify(ctx, os.Args[2:])
 	case "serve":
 		err = cmdServe(ctx, os.Args[2:])
 	case "token":
@@ -130,6 +141,27 @@ func openStore(ctx context.Context) (*store.Store, error) {
 	return store.Open(ctx, url)
 }
 
+// local is everything an importer needs when the CLI talks to Postgres
+// directly rather than to a `bank serve`.
+type local struct {
+	st         *store.Store
+	blobs      *blob.Store
+	archiveDir string
+}
+
+func openLocal(ctx context.Context) (*local, func(), error) {
+	st, err := openStore(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	blobs, err := blob.New(filepath.Join(dataDir(), "blobs"))
+	if err != nil {
+		st.Close()
+		return nil, nil, err
+	}
+	return &local{st: st, blobs: blobs, archiveDir: filepath.Join(dataDir(), "archive")}, st.Close, nil
+}
+
 func cmdAuth(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("auth", flag.ExitOnError)
 	port := fs.Int("port", 0, "")
@@ -148,140 +180,227 @@ func cmdSync(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	st, err := openStore(ctx)
+	d, closeStore, err := openLocal(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
-	blobs, err := blob.New(filepath.Join(dataDir(), "blobs"))
-	if err != nil {
-		return err
-	}
-	res, err := gmail.Sync(ctx, st, blobs, dataDir(), filepath.Join(dataDir(), "archive"), *full)
-	if err != nil {
-		return err
+	defer closeStore()
+	res, err := gmail.Sync(ctx, d.st, d.blobs, dataDir(), d.archiveDir, *full)
+	printSyncResult(res)
+	return err
+}
+
+func printSyncResult(res gmail.SyncResult) {
+	if res.Mode == "" {
+		return
 	}
 	fmt.Printf("gmail (%s): %d new, %d already known, %d attachments", res.Mode, res.Inserted, res.Duplicates, res.Attachments)
 	if res.Failed > 0 {
-		fmt.Printf(", %d failed", res.Failed)
+		fmt.Printf(", %d failed (will retry)", res.Failed)
+	}
+	if res.Quarantined > 0 {
+		fmt.Printf(", %d permanently skipped", res.Quarantined)
 	}
 	fmt.Println()
-	return nil
+	if len(res.QuarantinedIDs) > 0 {
+		fmt.Printf("permanently skipped ids: %s\n", strings.Join(res.QuarantinedIDs, " "))
+	}
 }
 
 func cmdImport(ctx context.Context, args []string) error {
-	if len(args) < 2 {
-		return fmt.Errorf("usage: bank import <whatsapp|eml|mbox|discord|linkedin|chatgpt|claude|claude-code|json> <path>...")
+	if len(args) < 1 {
+		return fmt.Errorf("usage: bank import <inbox|whatsapp|eml|mbox|discord|linkedin|chatgpt|claude|claude-code|json> <path>...")
 	}
 	kind := args[0]
+	if kind == "inbox" {
+		return cmdImportInbox(ctx, args[1:])
+	}
 	fs := flag.NewFlagSet("import "+kind, flag.ExitOnError)
-	defaultSource := map[string]string{"eml": "proton", "mbox": "gmail"}[kind]
-	source := fs.String("source", defaultSource, "")
+	source := fs.String("source", defaultSource(kind), "")
 	if err := parseFlagsAnywhere(fs, args[1:]); err != nil {
 		return err
 	}
 	if fs.NArg() == 0 {
 		return fmt.Errorf("usage: bank import %s <path>...", kind)
 	}
+	if *source != "" {
+		if err := archive.ValidSource(*source); err != nil {
+			return err
+		}
+	}
 	if c := client.FromEnv(); c != nil {
 		return importRemote(ctx, c, kind, *source, fs.Args())
 	}
 
-	st, err := openStore(ctx)
+	d, closeStore, err := openLocal(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
-	blobs, err := blob.New(filepath.Join(dataDir(), "blobs"))
-	if err != nil {
-		return err
-	}
-	archiveDir := filepath.Join(dataDir(), "archive")
-
+	defer closeStore()
 	for _, path := range fs.Args() {
-		switch kind {
-		case "whatsapp":
-			res, err := whatsapp.Import(ctx, st, blobs, archiveDir, path)
-			if err != nil {
-				return fmt.Errorf("%s: %w", path, err)
-			}
-			printWhatsAppResult(res)
-		case "eml":
-			res, err := eml.ImportEmlPath(ctx, st, blobs, archiveDir, *source, path)
-			if err != nil {
-				return fmt.Errorf("%s: %w", path, err)
-			}
-			printEmlResult(*source, path, res)
-		case "mbox":
-			res, err := eml.ImportMbox(ctx, st, blobs, archiveDir, *source, path)
-			if err != nil {
-				return fmt.Errorf("%s: %w", path, err)
-			}
-			printEmlResult(*source, path, res)
-		case "discord":
-			res, err := discord.Import(ctx, st, archiveDir, path)
-			if err != nil {
-				return fmt.Errorf("%s: %w", path, err)
-			}
-			printDiscordResult(res)
-		case "linkedin":
-			res, err := linkedin.Import(ctx, st, archiveDir, path)
-			if err != nil {
-				return fmt.Errorf("%s: %w", path, err)
-			}
-			printLinkedInResult(res)
-		case "chatgpt", "claude", "claude-code":
-			var res aichat.Result
-			switch kind {
-			case "chatgpt":
-				res, err = aichat.ImportChatGPT(ctx, st, archiveDir, path)
-			case "claude":
-				res, err = aichat.ImportClaude(ctx, st, archiveDir, path)
-			case "claude-code":
-				res, err = aichat.ImportClaudeCode(ctx, st, archiveDir, path)
-			}
-			if err != nil {
-				return fmt.Errorf("%s: %w", path, err)
-			}
-			printAIChatResult(kind, res)
-		case "json":
-			var input []byte
-			var rawRef string
-			if path == "-" {
-				if input, err = io.ReadAll(os.Stdin); err != nil {
-					return err
-				}
-				sum := sha256.Sum256(input)
-				name := fmt.Sprintf("stdin-%x.json", sum[:6])
-				if rawRef, err = archive.Write(archiveDir, "json", name, input); err != nil {
-					return err
-				}
-			} else {
-				if input, err = os.ReadFile(path); err != nil {
-					return err
-				}
-				if rawRef, err = archive.Copy(archiveDir, "json", path); err != nil {
-					return err
-				}
-			}
-			res, err := generic.Import(ctx, st, blobs, *source, rawRef, input, time.Now(), true)
-			if err != nil {
-				return fmt.Errorf("%s: %w", path, err)
-			}
-			printGenericResult(res)
-		default:
-			return fmt.Errorf("unknown import source %q (whatsapp, eml, mbox, discord, linkedin, chatgpt, claude, claude-code, json)", kind)
+		res, err := importLocal(ctx, d, kind, *source, path)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
 		}
+		printImportResult(kind, *source, path, res)
 	}
 	return nil
 }
 
+func defaultSource(kind string) string {
+	return map[string]string{"eml": "proton", "mbox": "gmail"}[kind]
+}
+
+// inboxSource is defaultSource for an unattended sweep, where refusing an
+// entry for want of a --source would just leave the file sitting there: a JSON
+// drop that names no source of its own lands under "json".
+func inboxSource(kind string) string {
+	if kind == "json" {
+		return "json"
+	}
+	return defaultSource(kind)
+}
+
+// importLocal runs one importer against a local store. It is the single place
+// that knows which importer owns which kind, shared by `bank import <kind>`
+// and by the inbox sweep.
+func importLocal(ctx context.Context, d *local, kind, source, path string) (any, error) {
+	switch kind {
+	case "whatsapp":
+		return whatsapp.Import(ctx, d.st, d.blobs, d.archiveDir, path)
+	case "eml":
+		return eml.ImportEmlPath(ctx, d.st, d.blobs, d.archiveDir, source, path)
+	case "mbox":
+		return eml.ImportMbox(ctx, d.st, d.blobs, d.archiveDir, source, path)
+	case "discord":
+		return discord.Import(ctx, d.st, d.archiveDir, path)
+	case "linkedin":
+		return linkedin.Import(ctx, d.st, d.archiveDir, path)
+	case "chatgpt":
+		return aichat.ImportChatGPT(ctx, d.st, d.archiveDir, path)
+	case "claude":
+		return aichat.ImportClaude(ctx, d.st, d.archiveDir, path)
+	case "claude-code":
+		return aichat.ImportClaudeCode(ctx, d.st, d.archiveDir, path)
+	case "json":
+		input, err := readInput(path)
+		if err != nil {
+			return nil, err
+		}
+		rawRef, err := archiveJSON(d.archiveDir, path, input)
+		if err != nil {
+			return nil, err
+		}
+		return generic.Import(ctx, d.st, d.blobs, source, rawRef, input, time.Now(), true)
+	}
+	return nil, fmt.Errorf("unknown import source %q (%s)", kind, strings.Join(inbox.Kinds, ", "))
+}
+
+func archiveJSON(archiveDir, path string, input []byte) (string, error) {
+	if path == "-" {
+		sum := sha256.Sum256(input)
+		return archive.Write(archiveDir, "json", fmt.Sprintf("stdin-%x.json", sum[:6]), input)
+	}
+	return archive.Copy(archiveDir, "json", path)
+}
+
+func cmdImportInbox(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("import inbox", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	if client.FromEnv() != nil {
+		return fmt.Errorf("import inbox reads the server's own drop zone; run it there, not through BANK_URL")
+	}
+	d, closeStore, err := openLocal(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+
+	inboxDir := filepath.Join(dataDir(), "inbox")
+	res, sweepErr := inbox.Sweep(ctx, inboxDir, func(ctx context.Context, kind, path string) (inbox.Outcome, error) {
+		out, err := importLocal(ctx, d, kind, inboxSource(kind), path)
+		if err != nil {
+			return inbox.Outcome{}, err
+		}
+		return importOutcome(out), nil
+	})
+	if *asJSON {
+		if err := printJSON(res); err != nil {
+			return err
+		}
+		return sweepErr
+	}
+	if len(res.Files) == 0 {
+		fmt.Printf("inbox is empty (%s/<%s>/)\n", inboxDir, strings.Join(inbox.Kinds, "|"))
+		return sweepErr
+	}
+	for _, f := range res.Files {
+		fmt.Printf("%-10s %-9s %s", f.Kind, f.Disposition, filepath.Base(f.Path))
+		if f.Detail != "" {
+			fmt.Printf("  (%s)", f.Detail)
+		}
+		fmt.Println()
+	}
+	fmt.Printf("%d imported, %d already known, %d rejected, %d failed\n",
+		res.Imported, res.Duplicates, res.Rejected, res.Failed)
+	return sweepErr
+}
+
+// importOutcome reduces an importer's result to the counts the sweep uses to
+// pick a disposition.
+func importOutcome(res any) inbox.Outcome {
+	switch r := res.(type) {
+	case eml.Result:
+		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Rejected: r.Rejected, Result: r}
+	case whatsapp.Result:
+		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Result: r}
+	case discord.Result:
+		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Rejected: len(r.FailedChannels), Result: r}
+	case linkedin.Result:
+		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Result: r}
+	case aichat.Result:
+		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Rejected: len(r.FailedSessions), Result: r}
+	case generic.Result:
+		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Rejected: r.Rejected, Result: r}
+	}
+	return inbox.Outcome{Result: res}
+}
+
+func printImportResult(kind, source, path string, res any) {
+	switch r := res.(type) {
+	case eml.Result:
+		printEmlResult(source, path, r)
+	case whatsapp.Result:
+		printWhatsAppResult(r)
+	case discord.Result:
+		printDiscordResult(r)
+	case linkedin.Result:
+		printLinkedInResult(r)
+	case aichat.Result:
+		printAIChatResult(kind, r)
+	case generic.Result:
+		printGenericResult(r)
+	}
+}
+
 func printEmlResult(source, path string, res eml.Result) {
 	fmt.Printf("%s (%s): %d new, %d already known, %d attachments", source, filepath.Base(path), res.Inserted, res.Duplicates, res.Attachments)
-	if res.Failed > 0 {
-		fmt.Printf(", %d failed to parse", res.Failed)
+	if res.Healed > 0 {
+		fmt.Printf(" (%d recovered)", res.Healed)
+	}
+	if res.Rejected > 0 {
+		fmt.Printf(", %d rejected as malformed", res.Rejected)
+	}
+	if res.Damaged > 0 {
+		fmt.Printf(", %d with damaged MIME structure", res.Damaged)
 	}
 	fmt.Println()
+	for _, w := range res.Warnings {
+		fmt.Fprintf(os.Stderr, "bank: %s\n", w)
+	}
 }
 
 func printWhatsAppResult(res whatsapp.Result) {
@@ -293,8 +412,12 @@ func printWhatsAppResult(res whatsapp.Result) {
 }
 
 func printDiscordResult(res discord.Result) {
-	fmt.Printf("discord: %d channels, %d new, %d already known, %d empty rows skipped\n",
+	fmt.Printf("discord: %d channels, %d new, %d already known, %d empty rows skipped",
 		res.Channels, res.Inserted, res.Duplicates, res.Skipped)
+	if len(res.FailedChannels) > 0 {
+		fmt.Printf(", %d channels unreadable (%s)", len(res.FailedChannels), strings.Join(res.FailedChannels, ", "))
+	}
+	fmt.Println()
 }
 
 func printLinkedInResult(res linkedin.Result) {
@@ -303,14 +426,24 @@ func printLinkedInResult(res linkedin.Result) {
 }
 
 func printAIChatResult(kind string, res aichat.Result) {
-	fmt.Printf("%s: %d conversations, %d new, %d already known, %d empty skipped\n",
+	fmt.Printf("%s: %d conversations, %d new, %d already known, %d empty skipped",
 		kind, res.Conversations, res.Inserted, res.Duplicates, res.Skipped)
+	if len(res.FailedSessions) > 0 {
+		fmt.Printf(", %d sessions unreadable", len(res.FailedSessions))
+	}
+	fmt.Println()
+	for _, p := range res.FailedSessions {
+		fmt.Fprintf(os.Stderr, "bank: unreadable session: %s\n", p)
+	}
 }
 
 func printGenericResult(res generic.Result) {
 	fmt.Printf("json: %d new, %d already known, %d attachments", res.Inserted, res.Duplicates, res.Attachments)
-	if res.Failed > 0 {
-		fmt.Printf(", %d entries rejected", res.Failed)
+	if res.Healed > 0 {
+		fmt.Printf(" (%d recovered)", res.Healed)
+	}
+	if res.Rejected > 0 {
+		fmt.Printf(", %d entries rejected", res.Rejected)
 	}
 	fmt.Println()
 }
@@ -400,7 +533,7 @@ func importRemoteFile(ctx context.Context, c *client.Client, kind, source, path 
 		}
 		printAIChatResult(kind, res)
 	default:
-		return fmt.Errorf("unknown import source %q (whatsapp, eml, mbox, discord, linkedin, chatgpt, claude, claude-code, json)", kind)
+		return fmt.Errorf("unknown import source %q (%s)", kind, strings.Join(inbox.Kinds, ", "))
 	}
 	return nil
 }
@@ -420,6 +553,7 @@ func cmdSearch(ctx context.Context, args []string) error {
 	var asJSON bool
 	fs.StringVar(&o.Source, "source", "", "")
 	fs.StringVar(&o.From, "from", "", "")
+	fs.StringVar(&o.To, "to", "", "")
 	fs.StringVar(&since, "since", "", "")
 	fs.StringVar(&until, "until", "", "")
 	fs.IntVar(&o.Fuzzy, "fuzzy", 1, "")
@@ -437,6 +571,12 @@ func cmdSearch(ctx context.Context, args []string) error {
 		return err
 	}
 	if o.Until, err = parseDate(until); err != nil {
+		return err
+	}
+	// Checked before the query so local and remote modes reject the same
+	// values with the same message, instead of one returning nothing and the
+	// other a database error.
+	if err := o.Validate(); err != nil {
 		return err
 	}
 
@@ -458,6 +598,59 @@ func cmdSearch(ctx context.Context, args []string) error {
 		}
 		fmt.Printf("%6d  %s  %-8s  %-22s  %s\n",
 			m.ID, m.SentAt.Format("2006-01-02"), m.Source, excerpt(m.Sender, 22), title)
+		if m.Snippet != "" && m.Snippet != title {
+			fmt.Printf("        %s\n", excerpt(m.Snippet, 160))
+		}
+	}
+	return nil
+}
+
+func cmdThread(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("thread", flag.ExitOnError)
+	source := fs.String("source", "", "")
+	limit := fs.Int("limit", 0, "")
+	asJSON := fs.Bool("json", false, "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() == 0 {
+		return fmt.Errorf("usage: bank thread <id> [--source s] [--limit n] [--json]")
+	}
+	threadID := strings.Join(fs.Args(), " ")
+
+	var thread store.Thread
+	var err error
+	if c := client.FromEnv(); c != nil {
+		thread, err = c.Thread(ctx, *source, threadID, *limit)
+	} else {
+		var st *store.Store
+		if st, err = openStore(ctx); err == nil {
+			defer st.Close()
+			thread, err = st.GetThread(ctx, *source, threadID, *limit)
+		}
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("no thread %q", threadID)
+	}
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(thread)
+	}
+	fmt.Printf("thread:  %s\nsource:  %s\nmessages: %d\n\n", thread.ThreadID, thread.Source, len(thread.Messages))
+	for _, m := range thread.Messages {
+		fmt.Printf("[%d] %s  %s\n", m.ID, m.SentAt.Format("2006-01-02 15:04"), m.Sender)
+		if m.Subject != "" {
+			fmt.Printf("    %s\n", m.Subject)
+		}
+		for _, line := range strings.Split(strings.TrimSpace(m.Body), "\n") {
+			fmt.Printf("    %s\n", line)
+		}
+		fmt.Println()
+	}
+	if thread.Truncated {
+		fmt.Printf("… truncated at %d messages; raise --limit (max %d)\n", len(thread.Messages), store.MaxThreadMessages)
 	}
 	return nil
 }
@@ -478,6 +671,9 @@ func cmdShow(ctx context.Context, args []string) error {
 
 	remote := client.FromEnv() != nil
 	d, err := getMessage(ctx, id)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("no message %d", id)
+	}
 	if err != nil {
 		return err
 	}
@@ -488,6 +684,9 @@ func cmdShow(ctx context.Context, args []string) error {
 	m := d.Message
 	fmt.Printf("id:      %d\nsource:  %s\nthread:  %s\nfrom:    %s\ndate:    %s\n",
 		m.ID, m.Source, m.ThreadID, m.Sender, m.SentAt.Format(time.RFC1123))
+	if len(m.Recipients) > 0 {
+		fmt.Printf("to:      %s\n", strings.Join(m.Recipients, ", "))
+	}
 	if m.Subject != "" {
 		fmt.Printf("subject: %s\n", m.Subject)
 	}
@@ -565,8 +764,13 @@ func cmdStats(ctx context.Context, args []string) error {
 	}
 	var total int64
 	for _, s := range stats {
-		fmt.Printf("%-12s %8d messages  %s — %s\n",
-			s.Source, s.Messages, s.Earliest.Format("2006-01-02"), s.Latest.Format("2006-01-02"))
+		fmt.Printf("%-12s %8d messages  %s — %s  last import %s",
+			s.Source, s.Messages, s.Earliest.Format("2006-01-02"), s.Latest.Format("2006-01-02"),
+			s.LastIngest.Format("2006-01-02"))
+		if s.LastSync != nil {
+			fmt.Printf("  synced %s", s.LastSync.Format("2006-01-02 15:04"))
+		}
+		fmt.Println()
 		total += s.Messages
 	}
 	fmt.Printf("%-12s %8d messages\n", "total", total)
@@ -618,25 +822,68 @@ func cmdFetch(ctx context.Context, args []string) error {
 	return nil
 }
 
+func cmdVerify(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("verify", flag.ExitOnError)
+	heal := fs.Bool("heal", false, "")
+	source := fs.String("source", "", "")
+	asJSON := fs.Bool("json", false, "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	if client.FromEnv() != nil {
+		return fmt.Errorf("verify reads the archive and blob store directly; run it on the server, not through BANK_URL")
+	}
+	d, closeStore, err := openLocal(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+
+	rep, err := verify.Run(ctx, d.st, d.blobs, d.archiveDir, verify.Options{Source: *source, Heal: *heal})
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(rep)
+	}
+	for _, f := range rep.Findings {
+		state := "damaged"
+		if f.Repaired {
+			state = "repaired"
+		}
+		fmt.Printf("%-9s message %d %-20s %s\n", state, f.MessageID, f.Kind, f.Detail)
+	}
+	if rep.Damaged == 0 {
+		fmt.Printf("%d messages, %d attachments checked: no damage found\n",
+			rep.MessagesChecked, rep.AttachmentsChecked)
+		return nil
+	}
+	fmt.Printf("%d messages, %d attachments checked: %s (%d repaired, %d unrecoverable)\n",
+		rep.MessagesChecked, rep.AttachmentsChecked, plural(rep.Damaged, "problem"), rep.Repaired, rep.Unrecoverable)
+	if len(rep.Findings) < rep.Damaged {
+		fmt.Printf("(showing the first %d findings)\n", len(rep.Findings))
+	}
+	if !*heal {
+		fmt.Println("run 'bank verify --heal' to rebuild what the archived raw inputs still contain")
+	}
+	return nil
+}
+
 func cmdServe(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	listen := fs.String("listen", "127.0.0.1:8480", "")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	st, err := openStore(ctx)
+	d, closeStore, err := openLocal(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
-	blobs, err := blob.New(filepath.Join(dataDir(), "blobs"))
-	if err != nil {
-		return err
-	}
+	defer closeStore()
 	if names, err := server.ListTokens(dataDir()); err == nil && len(names) == 0 {
 		fmt.Fprintln(os.Stderr, "bank: no tokens yet — every /v1 request will 401 until 'bank token new <name>'")
 	}
-	srv := server.New(st, blobs, dataDir(), filepath.Join(dataDir(), "archive"))
+	srv := server.New(d.st, d.blobs, dataDir(), d.archiveDir)
 	fmt.Printf("bank serve: listening on %s\n", *listen)
 	return srv.ListenAndServe(*listen)
 }
@@ -655,12 +902,16 @@ func cmdToken(args []string) error {
 			return err
 		}
 		// Only the digest is stored, so this is the one chance to copy it.
+		// The directory is printed because a token written into the wrong
+		// BANK_DATA_DIR is the usual reason a server keeps answering 401.
+		fmt.Fprintf(os.Stderr, "token stored in %s\n", server.TokensPath(dataDir()))
 		fmt.Println(token)
 	case "list":
 		names, err := server.ListTokens(dataDir())
 		if err != nil {
 			return err
 		}
+		fmt.Fprintf(os.Stderr, "tokens in %s\n", server.TokensPath(dataDir()))
 		for _, n := range names {
 			fmt.Println(n)
 		}
@@ -707,6 +958,13 @@ func printJSON(v any) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return fmt.Sprintf("1 %s", word)
+	}
+	return fmt.Sprintf("%d %ss", n, word)
 }
 
 func excerpt(s string, n int) string {

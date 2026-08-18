@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt-bank/internal/archive"
+	"github.com/aquitano/aqt-bank/internal/fail"
 	"github.com/aquitano/aqt-bank/internal/store"
 )
 
@@ -27,6 +28,11 @@ type Result struct {
 	Inserted   int `json:"inserted"`
 	Duplicates int `json:"duplicates"`
 	Skipped    int `json:"skipped"`
+	// FailedChannels names the channels whose message file could not be read
+	// or parsed. The import continues without them, so partial success has to
+	// be visible in the result rather than only in a stderr line that a JSON
+	// consumer never sees.
+	FailedChannels []string `json:"failed_channels,omitempty"`
 }
 
 type message struct {
@@ -95,7 +101,8 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 		}
 		msgs, err := readChannel(fsys, path.Join("messages", d.Name()), channel)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "bank: skipping discord channel %s: %v\n", d.Name(), err)
+			res.FailedChannels = append(res.FailedChannels, channel)
+			fmt.Fprintf(os.Stderr, "bank: skipping discord channel %s (%s): %v\n", channel, d.Name(), err)
 			continue
 		}
 		res.Channels++
@@ -114,7 +121,7 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 				RawRef:     rawRef,
 			})
 			if err != nil {
-				return res, err
+				return res, fail.Opf("insert message: %w", err)
 			}
 			if id == 0 {
 				res.Duplicates++

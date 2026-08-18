@@ -38,7 +38,7 @@ Everything normalizes to one `messages` table; source-specific richness stays in
   - `unique (source, external_id)` makes every importer idempotent — re-importing a dump is always safe.
   - Sources without stable IDs (WhatsApp) derive `external_id = sha256(thread|sent_at|sender|body)`.
 - `attachments(id, message_id, filename, mime_type, size_bytes, sha256)` — bytes live in the blob store, not the DB.
-- BM25 index over `subject, body, sender` via `pg_search`; fuzzy matching with `paradedb.match(..., distance => n)`.
+- BM25 index over `subject, body, sender, recipients` via `pg_search`; fuzzy matching with `paradedb.match(..., distance => n)`; match snippets from `paradedb.snippet`, with a locally cut window as the fallback (the engine produces no highlight for fuzzy matches).
 
 ## Filesystem layout (`$BANK_DATA_DIR`, default `~/.local/share/aqt-bank`)
 
@@ -52,18 +52,20 @@ inbox/<source>/         drop zone for manual exports; `bank import inbox` sweeps
 
 ```
 bank import whatsapp <file.zip|.txt>…   # per-source explicit import
-bank import inbox                       # sweep the inbox drop zone (later milestone)
-bank sync                               # pull deltas from API sources (Gmail, Proton) (later milestone)
-bank search "query" [--source s] [--from alice] [--since 2024-01-01] [--until d]
-                    [--fuzzy 0..2] [--limit n] [--json]
+bank import inbox                       # sweep the inbox drop zone
+bank sync                               # pull deltas from API sources (Gmail)
+bank search "query" [--source s] [--from alice] [--to bob] [--since 2024-01-01] [--until d]
+                    [--fuzzy 0..2] [--limit 1..500] [--json]
+bank thread <id> [--source s] [--limit n] [--json]   # one whole conversation, oldest first
 bank show <id> [--json]                 # full message + attachment refs
-bank stats [--json]
+bank stats [--json]                     # counts, date ranges, last import, last sync
 bank fetch <sha256> [-o path]           # write an attachment to a file
+bank verify [--heal] [--source s]       # archive integrity; --heal rebuilds from archived raw inputs
 bank serve [--listen addr]              # HTTP API for remote CLIs (default 127.0.0.1:8480)
 bank token new|list|revoke <name>       # bearer tokens for bank serve
 ```
 
-With `BANK_URL` (and `BANK_TOKEN`) set, `search`, `show`, `stats`, `import` and `fetch` talk to a remote `bank serve` instead of Postgres — same flags, same output. `auth`, `sync`, `serve` and `token` are always local.
+With `BANK_URL` (and `BANK_TOKEN`) set, `search`, `thread`, `show`, `stats`, `import` and `fetch` talk to a remote `bank serve` instead of Postgres — same flags, same output. `auth`, `sync`, `serve`, `token`, `verify` and `import inbox` are always local: they need the archive, the blob store or the token file on the same box.
 
 Migrations are embedded in the binary and run automatically on startup — idempotent, no separate step.
 
@@ -76,4 +78,5 @@ Migrations are embedded in the binary and run automatically on startup — idemp
 5. ~~Generic JSON~~ — `bank import json` (array or NDJSON, stdin-friendly): the escape hatch for agents and one-off sources.
 6. ~~Client/server~~ — `bank serve` (stdlib HTTP, token auth), remote CLI via `BANK_URL`, `bank fetch` for attachment bytes.
 7. Deploy — see DEPLOY.md (LUKS volume, compose override, headless Gmail auth, restic, cron). Pending: actually provisioning the VPS.
-8. Nice-to-haves as needed: `bank import inbox` sweep, `bank mcp`, embeddings column for semantic search (pgvector lives happily next to pg_search).
+8. ~~Integrity and retrieval~~ — `bank import inbox` sweep, `bank thread`, `bank verify --heal`, recipient search, match snippets, source freshness in stats.
+9. Open, both needing a design decision first: identity resolution across sources (one person, many handles) and pgvector hybrid semantic search (`bank mcp` if an MCP wrapper ever beats the CLI).

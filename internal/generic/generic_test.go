@@ -61,3 +61,46 @@ func TestParseSentAt(t *testing.T) {
 		t.Error("garbage sent_at should error")
 	}
 }
+
+func TestParseEntriesRejectsTrailingData(t *testing.T) {
+	bad := map[string]string{
+		"second value":  `[{"body":"one"}] {"body":"two"}`,
+		"garbage":       `[{"body":"one"}] nonsense`,
+		"second array":  `[{"body":"one"}][{"body":"two"}]`,
+		"stray bracket": `[{"body":"one"}]]`,
+	}
+	for name, input := range bad {
+		t.Run(name, func(t *testing.T) {
+			if entries, err := parseEntries([]byte(input)); err == nil {
+				t.Fatalf("accepted %q as %d entries", input, len(entries))
+			}
+		})
+	}
+
+	good := map[string]int{
+		`[{"body":"one"}]`:                       1,
+		"[{\"body\":\"one\"}]\n\n  \t\n":         1,
+		`{"body":"one"}`:                         1,
+		"{\"body\":\"one\"}\n{\"body\":\"two\"}": 2,
+		`[]`:                                     0,
+	}
+	for input, want := range good {
+		entries, err := parseEntries([]byte(input))
+		if err != nil {
+			t.Errorf("%q: %v", input, err)
+			continue
+		}
+		if len(entries) != want {
+			t.Errorf("%q: got %d entries, want %d", input, len(entries), want)
+		}
+	}
+}
+
+func TestValidateRejectsUnsafeSource(t *testing.T) {
+	if err := validate(entry{Source: "../escape", Body: "x"}); err == nil {
+		t.Error("a traversal source was accepted")
+	}
+	if err := validate(entry{Source: "agent-notes", Body: "x"}); err != nil {
+		t.Errorf("ordinary source rejected: %v", err)
+	}
+}

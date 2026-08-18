@@ -13,7 +13,14 @@ import (
 	"time"
 )
 
-const apiBase = "https://gmail.googleapis.com/gmail/v1/users/me"
+// apiBase is a var so tests can point the client at an httptest server; the
+// sync logic is where the interesting failure modes live and it is not worth
+// mocking at a coarser grain.
+var apiBase = "https://gmail.googleapis.com/gmail/v1/users/me"
+
+// retryBase is the unit of the exponential backoff between retries; tests
+// shrink it so a deliberately failing endpoint does not cost 14 seconds.
+var retryBase = time.Second
 
 type client struct {
 	http *http.Client
@@ -35,7 +42,7 @@ func (c *client) getJSON(ctx context.Context, path string, out any) error {
 	for attempt := 0; attempt < 4; attempt++ {
 		if attempt > 0 {
 			select {
-			case <-time.After(time.Duration(1<<attempt) * time.Second):
+			case <-time.After(time.Duration(1<<attempt) * retryBase):
 			case <-ctx.Done():
 				return ctx.Err()
 			}

@@ -114,3 +114,20 @@ func TestThreadName(t *testing.T) {
 		}
 	}
 }
+
+func TestSafeMediaName(t *testing.T) {
+	unsafe := []string{
+		"", ".", "..", "/etc/passwd", "../../.ssh/id_rsa", "sub/IMG-1.jpg",
+		`..\windows\win.ini`, "~/secrets.txt",
+	}
+	for _, name := range unsafe {
+		if safeMediaName(name) {
+			t.Errorf("%q accepted", name)
+		}
+	}
+	for _, name := range []string{"IMG-20240513-WA0001.jpg", "00000042-PHOTO-2024-05-13-21-08-00.jpg", "a b.pdf"} {
+		if !safeMediaName(name) {
+			t.Errorf("%q rejected", name)
+		}
+	}
+}

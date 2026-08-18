@@ -94,6 +94,7 @@ func (c *Client) Search(ctx context.Context, query string, o store.SearchOpts) (
 	}
 	set("source", o.Source)
 	set("from", o.From)
+	set("to", o.To)
 	if !o.Since.IsZero() {
 		q.Set("since", o.Since.Format("2006-01-02"))
 	}
@@ -111,6 +112,19 @@ func (c *Client) Message(ctx context.Context, id int64) (store.MessageDetail, er
 
 func (c *Client) Stats(ctx context.Context) ([]store.SourceStats, error) {
 	return getJSON[[]store.SourceStats](ctx, c, "/v1/stats", nil)
+}
+
+// Thread fetches one conversation. An empty source lets the server resolve it,
+// which fails when the thread id is used by more than one source.
+func (c *Client) Thread(ctx context.Context, source, threadID string, limit int) (store.Thread, error) {
+	q := url.Values{}
+	if source != "" {
+		q.Set("source", source)
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	return getJSON[store.Thread](ctx, c, "/v1/threads/"+url.PathEscape(threadID), q)
 }
 
 // Blob streams an attachment; the caller closes the returned reader.

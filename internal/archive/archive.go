@@ -10,8 +10,28 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+// sourceName is deliberately narrow. A source is both a directory under the
+// archive root and a search filter, and on the HTTP import route it arrives
+// straight from a query string — anything with a separator, a leading dot or a
+// traversal segment could redirect archived bytes out of the archive.
+var sourceName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// ValidSource reports whether source is safe to use as an archive directory.
+// Callers that accept a source from outside (the import API, the --source
+// flag) should check it before doing any work.
+func ValidSource(source string) error {
+	if source == "" {
+		return fmt.Errorf("source must not be empty")
+	}
+	if !sourceName.MatchString(source) || strings.Contains(source, "..") {
+		return fmt.Errorf("invalid source %q: use letters, digits, '.', '_' or '-', starting with a letter or digit", source)
+	}
+	return nil
+}
 
 // Copy stores path under <archiveDir>/<source>/ with a content-hash prefix so
 // distinct files with the same name never collide, and returns the reference
@@ -40,6 +60,9 @@ func Write(archiveDir, source, name string, data []byte) (string, error) {
 }
 
 func write(archiveDir, source, name string, r io.Reader) (string, error) {
+	if err := ValidSource(source); err != nil {
+		return "", err
+	}
 	// name can contain externally supplied ids; it must stay a single path
 	// component.
 	if name == "" || name != filepath.Base(name) || strings.HasPrefix(name, "..") {

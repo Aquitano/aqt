@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt-bank/internal/archive"
+	"github.com/aquitano/aqt-bank/internal/fail"
 	"github.com/aquitano/aqt-bank/internal/store"
 )
 
@@ -24,6 +25,10 @@ type Result struct {
 	Inserted      int `json:"inserted"`
 	Duplicates    int `json:"duplicates"`
 	Skipped       int `json:"skipped"`
+	// FailedSessions lists transcript files that could not be read or parsed.
+	// A directory import continues past them, so the paths belong in the
+	// result and not only in a stderr line.
+	FailedSessions []string `json:"failed_sessions,omitempty"`
 }
 
 type message struct {
@@ -60,7 +65,7 @@ func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef str
 			RawRef:     rawRef,
 		})
 		if err != nil {
-			return err
+			return fail.Opf("insert message: %w", err)
 		}
 		if id == 0 {
 			r.Duplicates++

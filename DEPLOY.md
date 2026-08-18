@@ -99,6 +99,17 @@ bank token list
 bank token revoke laptop
 ```
 
+**`bank token` has to run with the server's own `BANK_DATA_DIR`.** A non-interactive `ssh vps bank token new laptop` gets neither `/etc/profile.d` nor the unit's `EnvironmentFile`, so it writes the digest into the calling user's `~/.local/share/aqt-bank` while `bank serve` keeps reading `/data/aqt-bank/tokens` — and every request 401s with a token that looks perfectly valid. Pass the directory explicitly, or source the same file the unit uses:
+
+```sh
+# on the laptop, either:
+export BANK_TOKEN=$(ssh vps 'BANK_DATA_DIR=/data/aqt-bank bank token new laptop')
+# or, keeping one source of truth:
+export BANK_TOKEN=$(ssh vps '. /etc/default/bank && bank token new laptop')
+```
+
+`bank token new` and `bank token list` print the resolved token file to stderr (`tokens stored in /data/aqt-bank/tokens`), which is what to check first when a token is rejected — the digests themselves are never shown. Command substitution captures stdout only, so the token still assigns cleanly.
+
 On the laptop:
 
 ```sh
@@ -118,7 +129,13 @@ bank fetch <sha256> -o invoice.pdf
 0 5 * * 0   . /etc/profile.d/bank.sh && proton-mail-export --dir /data/proton-export ... && bank import eml /data/proton-export >> /var/log/bank.log 2>&1
 ```
 
-Manual sources (WhatsApp zips, Discord package, LinkedIn export): scp into the inbox dir and run the matching `bank import ...` on the VPS, or run the import from the laptop with `BANK_URL` set (section 5) so rows and blobs still land together.
+Manual sources (WhatsApp zips, Discord package, LinkedIn export): scp into `$BANK_DATA_DIR/inbox/<kind>/` and let `bank import inbox` sweep them, or run the import from the laptop with `BANK_URL` set (section 5) so rows and blobs still land together.
+
+```cron
+*/15 * * * * . /etc/default/bank && bank import inbox >> /var/log/bank.log 2>&1
+```
+
+Swept files move to `inbox/.done/<kind>/`; ones no importer could read move to `inbox/.rejected/<kind>/`. A file left in place means the import failed operationally (database down, disk full) and the next sweep retries it.
 
 ## 7. Backups (restic, encrypted)
 
@@ -143,4 +160,9 @@ restic -r s3:... forget --keep-daily 14 --keep-weekly 8 --keep-monthly 24 --prun
 30 4 * * *  /usr/local/bin/bank-backup >> /var/log/bank-backup.log 2>&1
 ```
 
-Restore drill: `restic restore latest`, `pg_restore -d bank bank.dump`, point `BANK_DATA_DIR` at the restored dir. Do this once before trusting the setup.
+Restore drill: `restic restore latest`, `pg_restore -d bank bank.dump`, point `BANK_DATA_DIR` at the restored dir, then `bank verify` — it walks every message, hashes every attachment blob and reports anything the database claims but the disk no longer has. Do this once before trusting the setup.
+
+```sh
+bank verify              # read-only report
+bank verify --heal       # rebuild what the archived raw inputs still contain
+```

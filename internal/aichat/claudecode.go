@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/aquitano/aqt-bank/internal/archive"
+	"github.com/aquitano/aqt-bank/internal/fail"
 	"github.com/aquitano/aqt-bank/internal/store"
 )
 
@@ -42,11 +44,22 @@ func ImportClaudeCode(ctx context.Context, st *store.Store, archiveDir, path str
 	if !info.IsDir() {
 		return res, importSession(ctx, st, archiveDir, path, &res)
 	}
+	// One unreadable or structurally broken transcript must not cost every
+	// later session in the tree. Operational failures — the database, the
+	// archive, a cancelled context — still abort, because continuing past
+	// those would just produce a longer list of the same failure.
 	err = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.EqualFold(filepath.Ext(p), ".jsonl") {
 			return err
 		}
-		return importSession(ctx, st, archiveDir, p, &res)
+		if err := importSession(ctx, st, archiveDir, p, &res); err != nil {
+			if fail.IsOp(err) {
+				return err
+			}
+			res.FailedSessions = append(res.FailedSessions, p)
+			fmt.Fprintf(os.Stderr, "bank: skipping claude-code session %s: %v\n", p, err)
+		}
+		return nil
 	})
 	return res, err
 }
@@ -66,7 +79,7 @@ func importSession(ctx context.Context, st *store.Store, archiveDir, path string
 	}
 	rawRef, err := archive.Copy(archiveDir, "claude-code", path)
 	if err != nil {
-		return err
+		return fail.Opf("archive %s: %w", path, err)
 	}
 	res.Conversations++
 	return res.ingest(ctx, st, "claude-code", rawRef, msgs)

@@ -3,8 +3,11 @@ package gmail
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"sort"
+	"sync"
 	"sync/atomic"
 
 	"golang.org/x/sync/errgroup"
@@ -12,6 +15,7 @@ import (
 	"github.com/aquitano/aqt-bank/internal/archive"
 	"github.com/aquitano/aqt-bank/internal/blob"
 	"github.com/aquitano/aqt-bank/internal/eml"
+	"github.com/aquitano/aqt-bank/internal/fail"
 	"github.com/aquitano/aqt-bank/internal/store"
 )
 
@@ -20,11 +24,24 @@ type SyncResult struct {
 	Inserted    int64  `json:"inserted"`
 	Duplicates  int64  `json:"duplicates"`
 	Attachments int64  `json:"attachments"`
-	Failed      int64  `json:"failed"`
+	// Failed counts messages that could not be fetched or stored for a reason
+	// that may pass: an API 5xx, a rate limit, a transient network error. Any
+	// of these holds the sync checkpoint back so the next run retries.
+	Failed int64 `json:"failed"`
+	// Quarantined counts messages Gmail will never serve again — deleted
+	// between listing and fetch, or permanently malformed. They are recorded
+	// in the sync state so they stop pinning the checkpoint.
+	Quarantined    int64    `json:"quarantined"`
+	QuarantinedIDs []string `json:"quarantined_ids,omitempty"`
 }
 
 type syncState struct {
 	HistoryID string `json:"history_id"`
+	// Quarantined maps a message id to why it can never be fetched. Without
+	// it a single 404 pins the checkpoint forever: the id is gone from the
+	// mailbox, so every later run repeats the same backfill or history delta
+	// and fails on the same message again.
+	Quarantined map[string]string `json:"quarantined,omitempty"`
 }
 
 const fetchWorkers = 8 // messages.get costs 5 quota units at 250 units/s/user
@@ -37,20 +54,22 @@ func Sync(ctx context.Context, st *store.Store, blobs *blob.Store, dataDir, arch
 	if err != nil {
 		return SyncResult{}, err
 	}
+	return runSync(ctx, c, st, blobs, archiveDir, full)
+}
 
-	var state syncState
-	if !full {
-		rawState, err := st.GetSyncState(ctx, "gmail")
-		if err != nil {
-			return SyncResult{}, err
-		}
-		if rawState != nil {
-			json.Unmarshal(rawState, &state)
-		}
+// runSync is Sync with the API client already built, which is the seam the
+// tests use to drive both modes against a stub Gmail.
+func runSync(ctx context.Context, c *client, st *store.Store, blobs *blob.Store, archiveDir string, full bool) (SyncResult, error) {
+	state, err := loadState(ctx, st)
+	if err != nil {
+		return SyncResult{}, err
+	}
+	if full {
+		state.HistoryID = ""
 	}
 
 	if state.HistoryID == "" {
-		return backfill(ctx, c, st, blobs, archiveDir)
+		return backfill(ctx, c, st, blobs, archiveDir, state)
 	}
 
 	ids, newHistoryID, ok, err := c.listHistory(ctx, state.HistoryID)
@@ -59,27 +78,17 @@ func Sync(ctx context.Context, st *store.Store, blobs *blob.Store, dataDir, arch
 	}
 	if !ok {
 		fmt.Fprintln(os.Stderr, "bank: gmail history expired, falling back to a full mailbox walk (dedup makes this safe)")
-		return backfill(ctx, c, st, blobs, archiveDir)
+		state.HistoryID = ""
+		return backfill(ctx, c, st, blobs, archiveDir, state)
 	}
 	res := SyncResult{Mode: "incremental"}
-	if err := fetchAll(ctx, c, st, blobs, archiveDir, ids, &res); err != nil {
+	if err := fetchAll(ctx, c, st, blobs, archiveDir, ids, state, &res); err != nil {
 		return res, err
 	}
-	// Advancing the checkpoint past a failed message would lose it forever:
-	// it will never reappear in a later history delta. Keep the old state so
-	// the next run retries (dedup makes the re-walk cheap).
-	if res.Failed > 0 {
-		return res, fmt.Errorf("%d messages failed; sync state not advanced, next run will retry them", res.Failed)
-	}
-	if newHistoryID != "" {
-		if err := saveState(ctx, st, newHistoryID); err != nil {
-			return res, err
-		}
-	}
-	return res, nil
+	return res, finish(ctx, st, state, newHistoryID, &res)
 }
 
-func backfill(ctx context.Context, c *client, st *store.Store, blobs *blob.Store, archiveDir string) (SyncResult, error) {
+func backfill(ctx context.Context, c *client, st *store.Store, blobs *blob.Store, archiveDir string, state *syncState) (SyncResult, error) {
 	res := SyncResult{Mode: "backfill"}
 	// Snapshot the history id before listing: anything that arrives during the
 	// walk is covered by the next incremental run.
@@ -95,20 +104,40 @@ func backfill(ctx context.Context, c *client, st *store.Store, blobs *blob.Store
 		return res, err
 	}
 	fmt.Fprintf(os.Stderr, "bank: gmail backfill for %s: %d messages\n", prof.EmailAddress, len(ids))
-	if err := fetchAll(ctx, c, st, blobs, archiveDir, ids, &res); err != nil {
+	if err := fetchAll(ctx, c, st, blobs, archiveDir, ids, state, &res); err != nil {
 		return res, err
 	}
-	if res.Failed > 0 {
-		return res, fmt.Errorf("%d messages failed; sync state not advanced, next run will retry them", res.Failed)
-	}
-	return res, saveState(ctx, st, prof.HistoryID)
+	return res, finish(ctx, st, state, prof.HistoryID, &res)
 }
 
-func fetchAll(ctx context.Context, c *client, st *store.Store, blobs *blob.Store, archiveDir string, ids []string, res *SyncResult) error {
+// finish records the run. Advancing the checkpoint past a message that may yet
+// succeed would lose it forever — it never reappears in a later history delta
+// — so a retryable failure holds the old history id. Quarantined ids are
+// persisted either way: they are the reason the checkpoint may move at all,
+// and remembering them keeps the next run from re-fetching known-dead mail.
+func finish(ctx context.Context, st *store.Store, state *syncState, newHistoryID string, res *SyncResult) error {
+	if res.Failed > 0 {
+		if err := saveState(ctx, st, state); err != nil {
+			return err
+		}
+		return fmt.Errorf("%d messages failed; sync state not advanced, next run will retry them", res.Failed)
+	}
+	if newHistoryID != "" {
+		state.HistoryID = newHistoryID
+	}
+	return saveState(ctx, st, state)
+}
+
+func fetchAll(ctx context.Context, c *client, st *store.Store, blobs *blob.Store, archiveDir string, ids []string, state *syncState, res *SyncResult) error {
 	var inserted, duplicates, attachments, failed, done atomic.Int64
+	quarantined := &quarantine{state: state}
+
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(fetchWorkers)
 	for _, id := range ids {
+		if _, dead := state.Quarantined[id]; dead {
+			continue
+		}
 		g.Go(func() error {
 			defer func() {
 				if n := done.Add(1); n%500 == 0 {
@@ -117,7 +146,7 @@ func fetchAll(ctx context.Context, c *client, st *store.Store, blobs *blob.Store
 			}()
 			exists, err := st.HasMessage(ctx, "gmail", id)
 			if err != nil {
-				return err
+				return fail.Opf("gmail %s: %w", id, err)
 			}
 			if exists {
 				duplicates.Add(1)
@@ -125,32 +154,42 @@ func fetchAll(ctx context.Context, c *client, st *store.Store, blobs *blob.Store
 			}
 			msg, err := c.getRaw(ctx, id)
 			if err != nil {
+				if errors.Is(err, errNotFound) {
+					quarantined.add(id, "gone from the mailbox (404)")
+					return nil
+				}
 				failed.Add(1)
 				fmt.Fprintf(os.Stderr, "bank: gmail message %s: %v\n", id, err)
 				return nil
 			}
 			rawRef, err := archive.Write(archiveDir, "gmail", msg.ID+".eml", msg.Raw)
 			if err != nil {
-				return err
+				return fail.Opf("archive gmail %s: %w", id, err)
 			}
-			ok, atts, err := eml.Ingest(ctx, st, blobs, msg.Raw, eml.IngestOpts{
+			out, err := eml.Ingest(ctx, st, blobs, msg.Raw, eml.IngestOpts{
 				Source:     "gmail",
 				ExternalID: msg.ID,
 				ThreadID:   msg.ThreadID,
 				SentAt:     msg.InternalDate,
 				RawRef:     rawRef,
 			})
-			if err != nil {
-				failed.Add(1)
-				fmt.Fprintf(os.Stderr, "bank: gmail message %s: %v\n", id, err)
+			switch {
+			case err == nil:
+			case fail.IsOp(err):
+				return err
+			default:
+				// The raw bytes are archived; re-fetching will produce the
+				// same unparseable message, so retrying forever helps nobody.
+				quarantined.add(id, "unparseable: "+err.Error())
+				fmt.Fprintf(os.Stderr, "bank: gmail message %s quarantined: %v\n", id, err)
 				return nil
 			}
-			if ok {
+			if out.Inserted {
 				inserted.Add(1)
-				attachments.Add(int64(atts))
 			} else {
 				duplicates.Add(1)
 			}
+			attachments.Add(int64(out.Attachments))
 			return nil
 		})
 	}
@@ -159,11 +198,48 @@ func fetchAll(ctx context.Context, c *client, st *store.Store, blobs *blob.Store
 	res.Duplicates += duplicates.Load()
 	res.Attachments += attachments.Load()
 	res.Failed += failed.Load()
+	res.Quarantined += int64(len(quarantined.added))
+	res.QuarantinedIDs = append(res.QuarantinedIDs, quarantined.added...)
+	sort.Strings(res.QuarantinedIDs)
 	return err
 }
 
-func saveState(ctx context.Context, st *store.Store, historyID string) error {
-	raw, err := json.Marshal(syncState{HistoryID: historyID})
+// quarantine records permanently unavailable message ids into the sync state.
+type quarantine struct {
+	mu    sync.Mutex
+	state *syncState
+	added []string
+}
+
+func (q *quarantine) add(id, reason string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.state.Quarantined == nil {
+		q.state.Quarantined = map[string]string{}
+	}
+	if _, seen := q.state.Quarantined[id]; seen {
+		return
+	}
+	q.state.Quarantined[id] = reason
+	q.added = append(q.added, id)
+}
+
+func loadState(ctx context.Context, st *store.Store) (*syncState, error) {
+	state := &syncState{}
+	raw, err := st.GetSyncState(ctx, "gmail")
+	if err != nil {
+		return nil, err
+	}
+	if raw != nil {
+		if err := json.Unmarshal(raw, state); err != nil {
+			return nil, fmt.Errorf("gmail sync state: %w", err)
+		}
+	}
+	return state, nil
+}
+
+func saveState(ctx context.Context, st *store.Store, state *syncState) error {
+	raw, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}

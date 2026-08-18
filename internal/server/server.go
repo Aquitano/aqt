@@ -9,6 +9,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt-bank/internal/blob"
+	"github.com/aquitano/aqt-bank/internal/fail"
 	"github.com/aquitano/aqt-bank/internal/store"
 )
 
@@ -27,6 +29,7 @@ import (
 type reader interface {
 	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
 	GetMessage(ctx context.Context, id int64) (store.Message, []store.Attachment, error)
+	GetThread(ctx context.Context, source, threadID string, limit int) (store.Thread, error)
 	Stats(ctx context.Context) ([]store.SourceStats, error)
 }
 
@@ -39,7 +42,12 @@ type Server struct {
 }
 
 func New(db *store.Store, blobs *blob.Store, dataDir, archiveDir string) *Server {
-	return &Server{db: db, read: db, blobs: blobs, archiveDir: archiveDir, dataDir: dataDir}
+	s := &Server{db: db, read: db, blobs: blobs, archiveDir: archiveDir, dataDir: dataDir}
+	// Uploads staged by a process that died are nobody's to clean up later.
+	if err := pruneUploads(dataDir, uploadMaxAge); err != nil {
+		fmt.Fprintf(os.Stderr, "bank: pruning abandoned uploads: %v\n", err)
+	}
+	return s
 }
 
 // Sized for Gmail Takeout mboxes, which routinely exceed 1 GiB.
@@ -49,6 +57,7 @@ func (s *Server) Handler() http.Handler {
 	v1 := http.NewServeMux()
 	v1.HandleFunc("GET /v1/search", s.handleSearch)
 	v1.HandleFunc("GET /v1/messages/{id}", s.handleMessage)
+	v1.HandleFunc("GET /v1/threads/{id}", s.handleThread)
 	v1.HandleFunc("GET /v1/blobs/{sha256}", s.handleBlob)
 	v1.HandleFunc("GET /v1/stats", s.handleStats)
 	v1.HandleFunc("POST /v1/import/{kind}", s.handleImport)
@@ -89,7 +98,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "missing q")
 		return
 	}
-	o := store.SearchOpts{Source: q.Get("source"), From: q.Get("from"), Fuzzy: 1, Limit: 20}
+	o := store.SearchOpts{Source: q.Get("source"), From: q.Get("from"), To: q.Get("to"), Fuzzy: 1, Limit: 20}
 	var err error
 	if o.Since, err = parseDate(q.Get("since")); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -107,6 +116,12 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid limit")
 		return
 	}
+	// Validated here as well as in the store so a bad request is a 400 with a
+	// usage message, not a 500 carrying a database error.
+	if err := o.Validate(); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	msgs, err := s.read.Search(r.Context(), query, o)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -122,11 +137,38 @@ func (s *Server) handleMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m, atts, err := s.read.GetMessage(r.Context(), id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeErr(w, http.StatusNotFound, fmt.Sprintf("no message %d", id))
+		return
+	}
 	if err != nil {
-		writeErr(w, http.StatusNotFound, fmt.Sprintf("message %d: %v", id, err))
+		// A message store that cannot answer is not a missing message: a 404
+		// here would teach every client to treat an outage as an empty archive.
+		writeErr(w, http.StatusInternalServerError, fmt.Sprintf("message %d: %v", id, err))
 		return
 	}
 	writeJSON(w, http.StatusOK, store.MessageDetail{Message: m, Attachments: atts})
+}
+
+func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit, err := parseInt(q.Get("limit"), 0)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid limit")
+		return
+	}
+	thread, err := s.read.GetThread(r.Context(), q.Get("source"), r.PathValue("id"), limit)
+	var ambiguous *store.AmbiguousThreadError
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, thread)
+	case errors.Is(err, store.ErrNotFound):
+		writeErr(w, http.StatusNotFound, fmt.Sprintf("no thread %q", r.PathValue("id")))
+	case errors.As(err, &ambiguous):
+		writeErr(w, http.StatusBadRequest, err.Error())
+	default:
+		writeErr(w, http.StatusInternalServerError, err.Error())
+	}
 }
 
 var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -190,4 +232,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeErr(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// writeCause splits "the client sent something we cannot use" from "this
+// server is broken". Collapsing both into 400 tells a caller to fix its input
+// when the real answer is that the database or the disk failed.
+func writeCause(w http.ResponseWriter, err error) {
+	if fail.IsOp(err) {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeErr(w, http.StatusBadRequest, err.Error())
 }
