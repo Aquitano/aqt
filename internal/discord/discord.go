@@ -66,7 +66,7 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 		defer zr.Close()
 		fsys = &zr.Reader
 		if rawRef, err = archive.Copy(archiveDir, "discord", inputPath); err != nil {
-			return res, err
+			return res, fail.Opf("archive %s: %w", inputPath, err)
 		}
 	}
 	// Some packages nest everything under a "package/" root.

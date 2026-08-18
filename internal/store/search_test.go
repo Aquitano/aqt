@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestSearchOptsValidate(t *testing.T) {
@@ -74,6 +75,29 @@ func TestSnippet(t *testing.T) {
 	t.Run("empty body yields no snippet", func(t *testing.T) {
 		if got := Snippet("", "   ", "anything"); got != "" {
 			t.Errorf("got %q, want empty", got)
+		}
+	})
+
+	t.Run("multi-byte text is cut on rune boundaries", func(t *testing.T) {
+		for name, filler := range map[string]string{
+			"japanese": "日本語の本文です",
+			"emoji":    "🙂🎉🚀",
+		} {
+			t.Run(name, func(t *testing.T) {
+				// No spaces anywhere, so nothing but the cut itself decides
+				// where the window starts and ends.
+				body := strings.Repeat(filler, 60) + "(hetzner)" + strings.Repeat(filler, 60)
+				got := Snippet("", body, "hetzner")
+				if !utf8.ValidString(got) {
+					t.Errorf("snippet is not valid UTF-8: %q", got)
+				}
+				if !strings.Contains(got, "hetzner") {
+					t.Errorf("snippet lost the match: %q", got)
+				}
+				if n := len([]rune(got)); n > snippetChars+4 {
+					t.Errorf("snippet is %d chars, want at most %d", n, snippetChars)
+				}
+			})
 		}
 	})
 

@@ -91,7 +91,10 @@ func loadConversations(archiveDir, source, path string) ([]byte, string, error) 
 			return nil, "", fmt.Errorf("%s: no conversations.json — not an export directory?", path)
 		}
 		rawRef, err := archive.Copy(archiveDir, source, p)
-		return raw, rawRef, err
+		if err != nil {
+			return nil, "", fail.Opf("archive %s: %w", p, err)
+		}
+		return raw, rawRef, nil
 	case strings.EqualFold(filepath.Ext(path), ".zip"):
 		zr, err := zip.OpenReader(path)
 		if err != nil {
@@ -103,14 +106,20 @@ func loadConversations(archiveDir, source, path string) ([]byte, string, error) 
 			return nil, "", fmt.Errorf("%s: no conversations.json in zip — not a data export?", path)
 		}
 		rawRef, err := archive.Copy(archiveDir, source, path)
-		return raw, rawRef, err
+		if err != nil {
+			return nil, "", fail.Opf("archive %s: %w", path, err)
+		}
+		return raw, rawRef, nil
 	default:
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return nil, "", err
 		}
 		rawRef, err := archive.Copy(archiveDir, source, path)
-		return raw, rawRef, err
+		if err != nil {
+			return nil, "", fail.Opf("archive %s: %w", path, err)
+		}
+		return raw, rawRef, nil
 	}
 }
 

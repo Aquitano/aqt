@@ -2,8 +2,10 @@ package eml
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aquitano/aqt-bank/internal/blob"
@@ -147,5 +149,69 @@ func TestIngestHealsOnlyMissingAttachments(t *testing.T) {
 	}
 	if n := countAttachments(t, st, id); n != 2 {
 		t.Errorf("%d attachment rows, want 2 with no duplicates", n)
+	}
+}
+
+// captureStderr collects what fn writes to os.Stderr.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = old }()
+	fn()
+	w.Close()
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
+func TestImportMboxReportsAFileThatDidNotSplit(t *testing.T) {
+	ctx := context.Background()
+	blobs, _ := blobStore(t)
+	// The second separator is in a dialect the splitter does not know (a
+	// two-digit year), so both messages arrive as one and the import would
+	// otherwise report a clean "1 new".
+	merged := "From a@example.com Mon May 13 21:08:00 2024\n" +
+		"From: a@example.com\nSubject: first\n\nbody one\n" +
+		"From b@example.com Mon May 13 21:09:00 24\n" +
+		"From: b@example.com\nSubject: second\n\nbody two\n"
+	clean := "From a@example.com Mon May 13 21:08:00 2024\n" +
+		"From: a@example.com\nSubject: only\n\nbody one\n"
+
+	for name, tc := range map[string]struct {
+		mbox        string
+		wantWarning bool
+	}{
+		"merged file is reported": {merged, true},
+		"a single message is not": {clean, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			st := storetest.New(t)
+			dir := t.TempDir()
+			path := filepath.Join(dir, "All mail.mbox")
+			if err := os.WriteFile(path, []byte(tc.mbox), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var res Result
+			var err error
+			stderr := captureStderr(t, func() {
+				res, err = ImportMbox(ctx, st, blobs, filepath.Join(dir, "archive"), "gmail", path)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Inserted != 1 {
+				t.Fatalf("res = %+v, want the one message the splitter found", res)
+			}
+			if got := strings.Contains(stderr, "ONE message"); got != tc.wantWarning {
+				t.Errorf("warned = %v, want %v; stderr = %q", got, tc.wantWarning, stderr)
+			}
+		})
 	}
 }

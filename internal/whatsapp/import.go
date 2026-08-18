@@ -15,6 +15,7 @@ import (
 
 	"github.com/aquitano/aqt-bank/internal/archive"
 	"github.com/aquitano/aqt-bank/internal/blob"
+	"github.com/aquitano/aqt-bank/internal/fail"
 	"github.com/aquitano/aqt-bank/internal/store"
 )
 
@@ -143,7 +144,7 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 
 	rawRef, err := archive.Copy(archiveDir, "whatsapp", path)
 	if err != nil {
-		return res, err
+		return res, fail.Opf("archive %s: %w", path, err)
 	}
 
 	seen := map[string]int{}
@@ -159,7 +160,7 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 			RawRef:     rawRef,
 		})
 		if err != nil {
-			return res, err
+			return res, fail.Opf("insert message: %w", err)
 		}
 		if id == 0 {
 			res.Duplicates++
@@ -218,7 +219,7 @@ func storeAttachment(ctx context.Context, st *store.Store, blobs *blob.Store, op
 	sumHex, size, err := blobs.Put(media)
 	media.Close()
 	if err != nil {
-		return err
+		return fail.Opf("store attachment %q: %w", name, err)
 	}
 	err = st.InsertAttachment(ctx, store.Attachment{
 		MessageID: messageID,
@@ -228,7 +229,7 @@ func storeAttachment(ctx context.Context, st *store.Store, blobs *blob.Store, op
 		SHA256:    sumHex,
 	})
 	if err != nil {
-		return err
+		return fail.Opf("insert attachment %q: %w", name, err)
 	}
 	res.Attachments++
 	return nil
@@ -236,12 +237,18 @@ func storeAttachment(ctx context.Context, st *store.Store, blobs *blob.Store, op
 
 func healAttachment(ctx context.Context, st *store.Store, blobs *blob.Store, openMedia func(string) io.ReadCloser, externalID, name string, res *Result) error {
 	id, err := st.FindMessageID(ctx, "whatsapp", externalID)
-	if err != nil || id == 0 {
-		return err
+	if err != nil {
+		return fail.Opf("look up message: %w", err)
+	}
+	if id == 0 {
+		return nil
 	}
 	has, err := st.MessageHasAttachments(ctx, id)
-	if err != nil || has {
-		return err
+	if err != nil {
+		return fail.Opf("read attachments of message %d: %w", id, err)
+	}
+	if has {
+		return nil
 	}
 	return storeAttachment(ctx, st, blobs, openMedia, id, name, res)
 }

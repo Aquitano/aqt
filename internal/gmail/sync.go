@@ -83,6 +83,7 @@ func runSync(ctx context.Context, c *client, st *store.Store, blobs *blob.Store,
 	}
 	res := SyncResult{Mode: "incremental"}
 	if err := fetchAll(ctx, c, st, blobs, archiveDir, ids, state, &res); err != nil {
+		saveQuarantine(ctx, st, state, &res)
 		return res, err
 	}
 	return res, finish(ctx, st, state, newHistoryID, &res)
@@ -105,6 +106,7 @@ func backfill(ctx context.Context, c *client, st *store.Store, blobs *blob.Store
 	}
 	fmt.Fprintf(os.Stderr, "bank: gmail backfill for %s: %d messages\n", prof.EmailAddress, len(ids))
 	if err := fetchAll(ctx, c, st, blobs, archiveDir, ids, state, &res); err != nil {
+		saveQuarantine(ctx, st, state, &res)
 		return res, err
 	}
 	return res, finish(ctx, st, state, prof.HistoryID, &res)
@@ -128,14 +130,33 @@ func finish(ctx context.Context, st *store.Store, state *syncState, newHistoryID
 	return saveState(ctx, st, state)
 }
 
+// saveQuarantine keeps what an aborted run learned about permanently dead
+// ids. An error out of fetchAll skips finish entirely, and forgetting the
+// quarantine means re-fetching the same gone messages on every later run. The
+// checkpoint is left exactly where it was, so nothing is skipped.
+func saveQuarantine(ctx context.Context, st *store.Store, state *syncState, res *SyncResult) {
+	if res.Quarantined == 0 {
+		return
+	}
+	if err := saveState(ctx, st, state); err != nil {
+		fmt.Fprintf(os.Stderr, "bank: gmail: quarantine not persisted: %v\n", err)
+	}
+}
+
 func fetchAll(ctx context.Context, c *client, st *store.Store, blobs *blob.Store, archiveDir string, ids []string, state *syncState, res *SyncResult) error {
 	var inserted, duplicates, attachments, failed, done atomic.Int64
 	quarantined := &quarantine{state: state}
+	// The dispatch loop keeps running while workers are already quarantining
+	// their 404s, so it must not read the map those writes go into.
+	dead := make(map[string]struct{}, len(state.Quarantined))
+	for id := range state.Quarantined {
+		dead[id] = struct{}{}
+	}
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(fetchWorkers)
 	for _, id := range ids {
-		if _, dead := state.Quarantined[id]; dead {
+		if _, gone := dead[id]; gone {
 			continue
 		}
 		g.Go(func() error {

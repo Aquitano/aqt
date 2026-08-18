@@ -183,7 +183,8 @@ func TestNamedInlineTextIsBody(t *testing.T) {
 			mail: "From: a@example.com\r\nSubject: hi\r\n" +
 				"Content-Type: text/plain; charset=utf-8; name=\"message.txt\"\r\n" +
 				"Content-Disposition: inline; filename=\"message.txt\"\r\n\r\nthe body",
-			wantBody: "the body",
+			wantBody:   "the body",
+			wantAttach: 1, // named: kept as a file too, nothing is lost
 		},
 		{
 			name: "alternative part with a name",
@@ -199,6 +200,30 @@ func TestNamedInlineTextIsBody(t *testing.T) {
 				"Content-Type: text/plain; charset=utf-8; name=\"note.txt\"\r\n\r\nthe body",
 			wantBody:   "the body",
 			wantAttach: 1, // ambiguous: kept as an attachment too, nothing is lost
+		},
+		{
+			// body() prefers the plain part, so without an attachment row the
+			// HTML bytes would survive only in the raw .eml.
+			name: "inline named html alongside a plain body",
+			mail: "From: a@example.com\r\nSubject: hi\r\nMIME-Version: 1.0\r\n" +
+				"Content-Type: multipart/mixed; boundary=B\r\n\r\n" +
+				"--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nthe body\r\n" +
+				"--B\r\nContent-Type: text/html; charset=utf-8; name=\"report.html\"\r\n" +
+				"Content-Disposition: inline; filename=\"report.html\"\r\n\r\n<p>the report</p>\r\n" +
+				"--B--\r\n",
+			wantBody:   "the body",
+			wantAttach: 1,
+		},
+		{
+			name: "inline named text alongside a plain body",
+			mail: "From: a@example.com\r\nSubject: hi\r\nMIME-Version: 1.0\r\n" +
+				"Content-Type: multipart/mixed; boundary=B\r\n\r\n" +
+				"--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nthe body\r\n" +
+				"--B\r\nContent-Type: text/plain; charset=utf-8; name=\"log.txt\"\r\n" +
+				"Content-Disposition: inline; filename=\"log.txt\"\r\n\r\nthe log\r\n" +
+				"--B--\r\n",
+			wantBody:   "the body\n\nthe log", // inline text stays part of the body as well
+			wantAttach: 1,
 		},
 		{
 			name: "explicit attachment stays an attachment",
@@ -338,5 +363,36 @@ func TestSplitMboxBodyLineAfterBlankLineIsNotASeparator(t *testing.T) {
 	}
 	if !strings.Contains(msgs[0], "From then on we agreed\nline three") {
 		t.Errorf("body was truncated: %q", msgs[0])
+	}
+}
+
+func TestSplitMboxDialects(t *testing.T) {
+	// The separator as the common producers write it. A dialect the splitter
+	// does not recognise merges every message in the file into the first.
+	cases := map[string][2]string{
+		"mutt":          {"From alice@example.com Mon May 13 21:08:00 2024", "From bob@example.com Mon May 13 21:09:00 2024"},
+		"thunderbird":   {"From - Mon May 13 21:08:00 2024", "From - Mon May 13 21:09:00 2024"},
+		"gmail takeout": {"From 1234567890123 Mon May 13 21:08:00 +0000 2024", "From 1234567890124 Mon May 13 21:09:00 +0000 2024"},
+		"procmail":      {"From alice@example.com Mon May 13 21:08:00 MET 2024", "From bob@example.com Mon May 13 21:09:00 GMT 2024"},
+		"mailer-daemon": {"From MAILER-DAEMON Fri Jul  8 12:08:34 2011", "From MAILER-DAEMON Fri Jul  8 12:09:00 2011"},
+	}
+	for name, env := range cases {
+		t.Run(name, func(t *testing.T) {
+			mbox := env[0] + "\nFrom: a@example.com\nSubject: first\n\nbody one\n" +
+				env[1] + "\nFrom: b@example.com\nSubject: second\n\nbody two\n"
+			var msgs []string
+			if err := SplitMbox(strings.NewReader(mbox), func(raw []byte) error {
+				msgs = append(msgs, string(raw))
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if len(msgs) != 2 {
+				t.Fatalf("got %d messages, want 2: %q", len(msgs), msgs)
+			}
+			if !strings.Contains(msgs[0], "Subject: first") || !strings.Contains(msgs[1], "Subject: second") {
+				t.Errorf("messages split wrongly: %q", msgs)
+			}
+		})
 	}
 }

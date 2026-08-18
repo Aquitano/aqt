@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,12 +28,27 @@ type stubGmail struct {
 	ids       []string // returned by the full listing
 	history   []string // returned by the history delta
 	status    map[string]int
+	mu        sync.Mutex // the sync fetches with several workers at once
 	fetched   map[string]int
+	// held names a message whose response waits until a 404 has been served,
+	// which is how a test orders two concurrent workers.
+	held    string
+	gone404 chan struct{}
+	once    sync.Once
+}
+
+func (g *stubGmail) fetchCount(id string) int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.fetched[id]
 }
 
 func (g *stubGmail) start(t *testing.T) {
 	t.Helper()
 	g.fetched = map[string]int{}
+	if g.held != "" {
+		g.gone404 = make(chan struct{})
+	}
 	oldBackoff := retryBase
 	retryBase = time.Millisecond
 	t.Cleanup(func() { retryBase = oldBackoff })
@@ -66,13 +83,21 @@ func (g *stubGmail) serve(w http.ResponseWriter, r *http.Request) {
 		write(map[string]any{"history": added, "historyId": g.historyID})
 	case strings.HasPrefix(r.URL.Path, "/messages/"):
 		id := strings.TrimPrefix(r.URL.Path, "/messages/")
+		g.mu.Lock()
 		g.fetched[id]++
+		g.mu.Unlock()
 		switch g.status[id] {
 		case http.StatusNotFound:
+			if g.gone404 != nil {
+				g.once.Do(func() { close(g.gone404) })
+			}
 			w.WriteHeader(http.StatusNotFound)
 		case http.StatusInternalServerError:
 			w.WriteHeader(http.StatusInternalServerError)
 		default:
+			if id == g.held {
+				<-g.gone404
+			}
 			raw := fmt.Sprintf("From: a@example.com\r\nSubject: mail %s\r\n"+
 				"Message-ID: <%s@example.com>\r\nDate: Mon, 13 May 2024 21:08:00 +0200\r\n\r\nbody\r\n", id, id)
 			write(map[string]string{
@@ -140,7 +165,7 @@ func TestBackfillAdvancesPastAPermanently404Message(t *testing.T) {
 	// The next run must not spend a request on it again.
 	g.historyID = "101"
 	g.history = []string{"gone"}
-	before := g.fetched["gone"]
+	before := g.fetchCount("gone")
 	res, err = runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, false)
 	if err != nil {
 		t.Fatal(err)
@@ -148,7 +173,7 @@ func TestBackfillAdvancesPastAPermanently404Message(t *testing.T) {
 	if res.Mode != "incremental" {
 		t.Fatalf("mode = %q", res.Mode)
 	}
-	if g.fetched["gone"] != before {
+	if g.fetchCount("gone") != before {
 		t.Errorf("a quarantined message was fetched again")
 	}
 	if loadedState(t, st).HistoryID != "101" {
@@ -190,19 +215,79 @@ func TestRetryableFailureHoldsTheCheckpoint(t *testing.T) {
 
 func TestQuarantineSurvivesAFailedRun(t *testing.T) {
 	ctx := context.Background()
+
+	// A 5xx leaves the run to report failures itself; an operational failure
+	// aborts it outright. Both must still remember what they learned about
+	// messages Gmail will never serve again.
+	t.Run("retryable failure", func(t *testing.T) {
+		st, blobs, archiveDir := syncFixture(t)
+		g := &stubGmail{t: t, historyID: "100", ids: []string{"gone", "flaky"},
+			status: map[string]int{"gone": http.StatusNotFound, "flaky": http.StatusInternalServerError}}
+		g.start(t)
+
+		if _, err := runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, false); err == nil {
+			t.Fatal("the retryable failure should surface")
+		}
+		state := loadedState(t, st)
+		if state.HistoryID != "" {
+			t.Error("checkpoint advanced despite a retryable failure")
+		}
+		if _, ok := state.Quarantined["gone"]; !ok {
+			t.Fatal("a dead message learned during a failed run was forgotten, so it will be re-fetched forever")
+		}
+	})
+
+	t.Run("operational failure", func(t *testing.T) {
+		st, blobs, _ := syncFixture(t)
+		// An archive root under a regular file: every archive write fails with
+		// ENOTDIR, which is an operational failure and aborts the run.
+		file := filepath.Join(t.TempDir(), "not-a-dir")
+		if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		g := &stubGmail{t: t, historyID: "100", ids: []string{"gone", "good"},
+			status: map[string]int{"gone": http.StatusNotFound}, held: "good"}
+		g.start(t)
+
+		if _, err := runSync(ctx, &client{http: http.DefaultClient}, st, blobs, filepath.Join(file, "archive"), false); err == nil {
+			t.Fatal("a broken archive should abort the run")
+		}
+		state := loadedState(t, st)
+		if state.HistoryID != "" {
+			t.Error("checkpoint advanced despite an aborted run")
+		}
+		if _, ok := state.Quarantined["gone"]; !ok {
+			t.Fatal("a dead message learned before the run aborted was forgotten, so it will be re-fetched forever")
+		}
+	})
+}
+
+// A backfill dispatches ids on one goroutine while the workers it already
+// started are quarantining their 404s. Enough of both here that -race sees the
+// overlap; without it a real 4000-message backfill dies with "concurrent map
+// read and map write".
+func TestBackfillDispatchAndQuarantineDoNotRace(t *testing.T) {
+	ctx := context.Background()
 	st, blobs, archiveDir := syncFixture(t)
-	g := &stubGmail{t: t, historyID: "100", ids: []string{"gone", "flaky"},
-		status: map[string]int{"gone": http.StatusNotFound, "flaky": http.StatusInternalServerError}}
+	g := &stubGmail{t: t, historyID: "100", status: map[string]int{}}
+	const total = 600
+	for i := range total {
+		id := fmt.Sprintf("m%04d", i)
+		g.ids = append(g.ids, id)
+		if i%2 == 0 {
+			g.status[id] = http.StatusNotFound
+		}
+	}
 	g.start(t)
 
-	if _, err := runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, false); err == nil {
-		t.Fatal("the retryable failure should surface")
+	res, err := runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, false)
+	if err != nil {
+		t.Fatal(err)
 	}
-	state := loadedState(t, st)
-	if state.HistoryID != "" {
-		t.Error("checkpoint advanced despite a retryable failure")
+	if res.Inserted != total/2 || res.Quarantined != total/2 {
+		t.Fatalf("res = %+v, want %d inserted and %d quarantined", res, total/2, total/2)
 	}
-	if _, ok := state.Quarantined["gone"]; !ok {
-		t.Fatal("a dead message learned during a failed run was forgotten, so it will be re-fetched forever")
+	if n := len(loadedState(t, st).Quarantined); n != total/2 {
+		t.Errorf("%d ids in the persisted quarantine, want %d", n, total/2)
 	}
 }

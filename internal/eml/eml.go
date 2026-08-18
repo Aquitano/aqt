@@ -137,6 +137,14 @@ func (p *parser) walk(contentType, transferEncoding, disposition string, r io.Re
 		p.attach(filename, mediaType, data)
 	case isText && (disp == "inline" || filename == "" || inAlternative):
 		p.addText(mediaType, decodeCharset(data, params["charset"]))
+		// A named part is also a file in its own right, and body() may well
+		// prefer another part — an inline text/html "report.html" next to a
+		// plain body would otherwise be stored nowhere. Inside a
+		// multipart/alternative the part is the same body in another format,
+		// so attaching it there would only add noise.
+		if filename != "" && !inAlternative {
+			p.attach(filename, mediaType, data)
+		}
 	case isText:
 		p.named = append(p.named, namedText{text: decodeCharset(data, params["charset"]), isHTML: mediaType == "text/html"})
 		p.attach(filename, mediaType, data)

@@ -101,7 +101,7 @@ func TestSearchMatchesAndFiltersRecipients(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(msgs) != 1 || msgs[0].ExternalID != "" && msgs[0].Sender != "alice@example.com" {
+		if len(msgs) != 1 || msgs[0].Sender != "alice@example.com" {
 			t.Fatalf("got %d results: %+v", len(msgs), msgs)
 		}
 	})

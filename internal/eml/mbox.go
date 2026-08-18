@@ -10,14 +10,37 @@ import (
 // mboxEnvelope matches the "From " line that separates messages in every mbox
 // variant in the wild: the literal word From, one whitespace-free address
 // token (Thunderbird writes a bare "-"), then an asctime date, optionally with
-// the numeric zone Gmail Takeout inserts before the year.
+// a zone before the year — numeric as Gmail Takeout writes it, alphabetic
+// ("MET", "GMT", "PDT") as procmail, pine and mail.local do.
 //
 // Recognising the envelope by shape rather than by "the previous line was
 // blank" is what lets a message whose body ends without a trailing newline be
 // followed by another message, while ordinary unquoted body text starting with
 // "From " (mboxo producers do not quote it) stays part of the body.
+//
+// The trade-off that leaves: an unescaped body line with the full envelope
+// shape — a pasted git format-patch header is the realistic case — splits one
+// message into two, which misattributes text but loses no bytes. Demanding a
+// blank line before the separator would trade that for merging a message into
+// its successor, which loses whole messages.
 var mboxEnvelope = regexp.MustCompile(
-	`^From \S+ +[A-Za-z]{3} +[A-Za-z]{3} +\d{1,2} +\d{1,2}:\d{2}(:\d{2})?( +[+-]\d{4})? +\d{4}`)
+	`^From \S+ +[A-Za-z]{3} +[A-Za-z]{3} +\d{1,2} +\d{1,2}:\d{2}(:\d{2})?( +([+-]\d{4}|[A-Za-z]{2,5}))? +\d{4}`)
+
+// mboxEnvelopeLoose recognises an envelope by its head alone, stopping before
+// the zone and year that dialects disagree about. Too weak to split on, but
+// strong enough to notice a dialect mboxEnvelope does not know — the case
+// where a whole file collapses into a single message.
+var mboxEnvelopeLoose = regexp.MustCompile(`(?m)^From \S+ +[A-Za-z]{3} +[A-Za-z]{3} +\d{1,2} +\d{1,2}:\d{2}`)
+
+// looksUnsplit reports whether raw, the only message a file produced, still
+// carries an envelope line below its own. Reporting a merged file as "1 new"
+// is the worst outcome the splitter has, so importers say so out loud.
+func looksUnsplit(raw []byte) bool {
+	if i := bytes.IndexByte(raw, '\n'); i >= 0 {
+		raw = raw[i+1:]
+	}
+	return mboxEnvelopeLoose.Match(raw)
+}
 
 // SplitMbox streams messages out of an mbox file (mboxrd quoting, as written
 // by Gmail Takeout), calling fn with each raw RFC 822 message.

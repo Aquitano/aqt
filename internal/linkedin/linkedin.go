@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt-bank/internal/archive"
+	"github.com/aquitano/aqt-bank/internal/fail"
 	"github.com/aquitano/aqt-bank/internal/store"
 )
 
@@ -71,7 +72,7 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 			RawRef:     rawRef,
 		})
 		if err != nil {
-			return res, err
+			return res, fail.Opf("insert message: %w", err)
 		}
 		if id == 0 {
 			res.Duplicates++
@@ -98,7 +99,7 @@ func openMessagesCSV(archiveDir, inputPath string) (io.Reader, string, func(), e
 		rawRef, err := archive.Copy(archiveDir, "linkedin", p)
 		if err != nil {
 			f.Close()
-			return nil, "", noop, err
+			return nil, "", noop, fail.Opf("archive %s: %w", p, err)
 		}
 		return f, rawRef, func() { f.Close() }, nil
 	case strings.EqualFold(filepath.Ext(inputPath), ".zip"):
@@ -117,7 +118,7 @@ func openMessagesCSV(archiveDir, inputPath string) (io.Reader, string, func(), e
 				if err != nil {
 					rc.Close()
 					zr.Close()
-					return nil, "", noop, err
+					return nil, "", noop, fail.Opf("archive %s: %w", inputPath, err)
 				}
 				return rc, rawRef, func() { rc.Close(); zr.Close() }, nil
 			}
@@ -132,7 +133,7 @@ func openMessagesCSV(archiveDir, inputPath string) (io.Reader, string, func(), e
 		rawRef, err := archive.Copy(archiveDir, "linkedin", inputPath)
 		if err != nil {
 			f.Close()
-			return nil, "", noop, err
+			return nil, "", noop, fail.Opf("archive %s: %w", inputPath, err)
 		}
 		return f, rawRef, func() { f.Close() }, nil
 	}

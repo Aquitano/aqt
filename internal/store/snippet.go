@@ -4,6 +4,7 @@ import (
 	"html"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // snippetChars bounds the window pg_search cuts around a match. Wide enough to
@@ -28,23 +29,28 @@ func Snippet(fromEngine, body, query string) string {
 	return localSnippet(body, query)
 }
 
+// localSnippet cuts the window on rune boundaries. Byte offsets would split a
+// multi-byte rune — Japanese and emoji bodies are the everyday case — leaving
+// invalid UTF-8 that reaches a terminal raw and JSON as U+FFFD.
 func localSnippet(body, query string) string {
 	body = collapse(body)
 	if body == "" {
 		return ""
 	}
 	start := 0
-	if i := firstTermIndex(body, query); i > snippetChars/2 {
-		start = i - snippetChars/2
-		// Do not cut mid-word when a space is close by.
-		if j := strings.IndexByte(body[start:], ' '); j >= 0 && j < 20 {
-			start += j + 1
+	if i := firstTermIndex(body, query); i > 0 {
+		if s := backRunes(body, i, snippetChars/2); s > 0 {
+			start = s
+			// Do not cut mid-word when a space is close by.
+			if j := strings.IndexByte(body[start:], ' '); j >= 0 && j < 20 {
+				start += j + 1
+			}
 		}
 	}
 	out := body[start:]
-	if len(out) > snippetChars {
-		out = out[:snippetChars]
-		if j := strings.LastIndexByte(out, ' '); j > snippetChars/2 {
+	if cut, truncated := headRunes(out, snippetChars); truncated {
+		out = cut
+		if j := strings.LastIndexByte(out, ' '); j > len(out)/2 {
 			out = out[:j]
 		}
 		out += "…"
@@ -53,6 +59,34 @@ func localSnippet(body, query string) string {
 		out = "…" + out
 	}
 	return out
+}
+
+// backRunes returns the byte offset n runes before the byte offset i.
+func backRunes(s string, i, n int) int {
+	for range n {
+		if i <= 0 {
+			return 0
+		}
+		_, size := utf8.DecodeLastRuneInString(s[:i])
+		i -= size
+	}
+	return i
+}
+
+// headRunes returns the first n runes of s, and whether anything was cut.
+func headRunes(s string, n int) (string, bool) {
+	i := 0
+	for range n {
+		if i >= len(s) {
+			return s, false
+		}
+		_, size := utf8.DecodeRuneInString(s[i:])
+		i += size
+	}
+	if i >= len(s) {
+		return s, false
+	}
+	return s[:i], true
 }
 
 // firstTermIndex finds the earliest case-insensitive occurrence of any query

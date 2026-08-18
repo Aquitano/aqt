@@ -246,7 +246,15 @@ func ImportMbox(ctx context.Context, st *store.Store, blobs *blob.Store, archive
 		return res, err
 	}
 	defer f.Close()
+	var only []byte
+	messages := 0
 	err = SplitMbox(f, func(raw []byte) error {
+		messages++
+		if messages == 1 {
+			only = raw
+		} else {
+			only = nil
+		}
 		out, err := Ingest(ctx, st, blobs, raw, IngestOpts{Source: source, RawRef: rel})
 		if err != nil {
 			if fail.IsOp(err) {
@@ -259,5 +267,10 @@ func ImportMbox(ctx context.Context, st *store.Store, blobs *blob.Store, archive
 		res.record(out)
 		return nil
 	})
+	if err == nil && messages == 1 && looksUnsplit(only) {
+		fmt.Fprintf(os.Stderr, "bank: %s: read as ONE message, but its body still contains mbox separator lines — "+
+			"the file is likely in a dialect the splitter does not know and its messages were merged. "+
+			"Do not delete the export; report the separator line.\n", path)
+	}
 	return res, err
 }
