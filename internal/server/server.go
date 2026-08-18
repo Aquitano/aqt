@@ -73,6 +73,12 @@ func (s *Server) Handler() http.Handler {
 	v1.HandleFunc("GET /v1/contacts/{name}/messages", s.handleContactMessages)
 	v1.HandleFunc("POST /v1/contacts/{name}/aliases", s.handleAliasAdd)
 	v1.HandleFunc("DELETE /v1/contacts/{name}/aliases", s.handleAliasRemove)
+	v1.HandleFunc("GET /v1/attachments", s.handleAttachmentList)
+	v1.HandleFunc("GET /v1/attachments/stats", s.handleAttachmentStats)
+	v1.HandleFunc("POST /v1/attachments/refresh", s.handleAttachmentRefresh)
+	v1.HandleFunc("GET /v1/attachments/{sha256}/text", s.handleAttachmentTextGet)
+	v1.HandleFunc("PUT /v1/attachments/{sha256}/text", s.handleAttachmentTextPut)
+	v1.HandleFunc("DELETE /v1/attachments/{sha256}/text", s.handleAttachmentTextDelete)
 	v1.HandleFunc("POST /v1/import/{kind}", s.handleImport)
 
 	mux := http.NewServeMux()

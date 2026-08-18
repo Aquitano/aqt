@@ -25,6 +25,8 @@ type Client struct {
 	base  string
 	token string
 	hc    *http.Client
+	// tempDir stages blob downloads for extraction; see SetTempDir.
+	tempDir string
 }
 
 func New(baseURL, token string) *Client {

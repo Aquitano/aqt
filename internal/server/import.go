@@ -17,6 +17,7 @@ import (
 	"github.com/aquitano/aqt-bank/internal/archive"
 	"github.com/aquitano/aqt-bank/internal/discord"
 	"github.com/aquitano/aqt-bank/internal/eml"
+	"github.com/aquitano/aqt-bank/internal/extract"
 	"github.com/aquitano/aqt-bank/internal/fail"
 	"github.com/aquitano/aqt-bank/internal/generic"
 	"github.com/aquitano/aqt-bank/internal/linkedin"
@@ -66,7 +67,33 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		writeCause(w, err)
 		return
 	}
+	s.extractAfterImport(r.Context())
 	writeJSON(w, http.StatusOK, res)
+}
+
+// extractAfterImport reads text out of newly stored attachments so an upload
+// is searchable inside its documents straight away. Newest first and bounded:
+// the batch has to reach what this upload stored even when a large backlog is
+// waiting, and it must not turn one upload into a whole-archive pass.
+//
+// Only the cheap pure-Go extractors ever run here. OCR needs tesseract and
+// poppler, which are deliberately not in this image — the process listening on
+// a port holds one static binary and no shell — so scanned documents are
+// recorded as needing OCR and read later by `bank extract --ocr`, which can
+// run anywhere, including a laptop against this server.
+//
+// Never fatal: the message and its blobs are already archived, and text is
+// derived data that any later pass can rebuild.
+func (s *Server) extractAfterImport(ctx context.Context) {
+	if os.Getenv("BANK_EXTRACT") == "off" {
+		return
+	}
+	o := extract.DefaultOptions()
+	o.TempDir = uploadStagingDir(s.dataDir)
+	sel := extract.Selection{Limit: extract.PostImportLimit, NewestFirst: true}
+	if _, err := extract.Run(ctx, extract.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil); err != nil {
+		fmt.Fprintf(os.Stderr, "bank: reading attachment text: %v\n", err)
+	}
 }
 
 func (s *Server) importJSON(ctx context.Context, source string, body []byte) (generic.Result, error) {

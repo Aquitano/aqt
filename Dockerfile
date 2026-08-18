@@ -17,9 +17,29 @@ COPY . .
 # work; -trimpath keeps build paths out of it.
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/bank ./cmd/bank
 
+# The image the OCR worker runs from (the `ocr` compose profile). It carries
+# tesseract and poppler — a C++ image stack and a libc — which is exactly why
+# they are not in the image that listens on a port.
+FROM debian:12-slim AS ocr
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Extra languages are apt packages: tesseract-ocr-deu, -fra, and so on. Add
+# them here and pass `bank extract --ocr --lang deu+eng`.
+
+COPY --from=build /out/bank /usr/local/bin/bank
+USER 65532:65532
+ENV BANK_DATA_DIR=/data
+ENTRYPOINT ["/usr/local/bin/bank"]
+CMD ["extract", "--ocr"]
+
 # distroless/static carries the CA bundle Gmail's API needs and nothing else.
 # The tz database is compiled into the binary instead (see cmd/bank/main.go).
-FROM gcr.io/distroless/static-debian12:nonroot
+#
+# This stage is last, so a plain `docker build .` produces the server image.
+FROM gcr.io/distroless/static-debian12:nonroot AS server
 
 COPY --from=build /out/bank /usr/local/bin/bank
 

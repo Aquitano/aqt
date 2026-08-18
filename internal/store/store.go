@@ -44,6 +44,15 @@ type Message struct {
 	// Snippet is a bounded window of the body around the match, plain text so
 	// it is safe to print anywhere. Empty when nothing matched in the body.
 	Snippet string `json:"snippet,omitempty"`
+	// AttachmentSnippet is the same window cut from the text extracted out of
+	// the message's attachments, so a hit inside a PDF says which words
+	// matched instead of looking like a body match with no visible reason.
+	//
+	// Unlike Snippet there is no local fallback: the extracted text is not
+	// selected — it can be megabytes per row — so a fuzzy-only attachment
+	// match leaves this empty rather than showing an unrelated head of the
+	// document.
+	AttachmentSnippet string `json:"attachment_snippet,omitempty"`
 }
 
 type Attachment struct {
@@ -53,6 +62,11 @@ type Attachment struct {
 	MimeType  string `json:"mime_type,omitempty"`
 	SizeBytes int64  `json:"size_bytes"`
 	SHA256    string `json:"sha256"`
+	// TextStatus is the extraction outcome for this content (StatusPending
+	// when nothing has run), and TextChars how much text it yielded. Shown by
+	// `bank show` so it is obvious whether a document is searchable inside.
+	TextStatus string `json:"text_status,omitempty"`
+	TextChars  int    `json:"text_chars,omitempty"`
 }
 
 // MessageDetail is one message plus its attachments — the shape `bank show
@@ -352,15 +366,17 @@ func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Messa
 	}
 	sql := `
 		select m.id, m.source, m.thread_id, m.sender, m.subject, m.body, m.sent_at,
-		       paradedb.score(m.id), coalesce(paradedb.snippet(m.body, '', '', %d), '')
+		       paradedb.score(m.id), coalesce(paradedb.snippet(m.body, '', '', %d), ''),
+		       coalesce(paradedb.snippet(m.attachment_text, '', '', %d), '')
 		from messages m
 		where m.id @@@ paradedb.boolean(should => array[
 			paradedb.match('subject', $1, distance => $2),
 			paradedb.match('body', $1, distance => $2),
 			paradedb.match('sender', $1, distance => $2),
-			paradedb.match('recipients', $1, distance => $2)
+			paradedb.match('recipients', $1, distance => $2),
+			paradedb.match('attachment_text', $1, distance => $2)
 		])`
-	sql = fmt.Sprintf(sql, snippetChars)
+	sql = fmt.Sprintf(sql, snippetChars, snippetChars)
 	args := []any{query, o.Fuzzy}
 	next := func(v any) string {
 		args = append(args, v)
@@ -409,10 +425,12 @@ func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Messa
 	out := []Message{}
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.Source, &m.ThreadID, &m.Sender, &m.Subject, &m.Body, &m.SentAt, &m.Score, &m.Snippet); err != nil {
+		if err := rows.Scan(&m.ID, &m.Source, &m.ThreadID, &m.Sender, &m.Subject, &m.Body,
+			&m.SentAt, &m.Score, &m.Snippet, &m.AttachmentSnippet); err != nil {
 			return nil, err
 		}
 		m.Snippet = Snippet(m.Snippet, m.Body, query)
+		m.AttachmentSnippet = Snippet(m.AttachmentSnippet, "", query)
 		out = append(out, m)
 	}
 	return out, rows.Err()
@@ -436,8 +454,11 @@ func (s *Store) GetMessage(ctx context.Context, id int64) (Message, []Attachment
 
 func (s *Store) messageAttachments(ctx context.Context, id int64) ([]Attachment, error) {
 	rows, err := s.pool.Query(ctx, `
-		select id, message_id, filename, mime_type, size_bytes, sha256
-		from attachments where message_id = $1 order by id`, id)
+		select a.id, a.message_id, a.filename, a.mime_type, a.size_bytes, a.sha256,
+		       coalesce(t.status, '`+StatusPending+`'), coalesce(length(t.text), 0)
+		from attachments a
+		left join blob_text t on t.sha256 = a.sha256
+		where a.message_id = $1 order by a.id`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -445,7 +466,8 @@ func (s *Store) messageAttachments(ctx context.Context, id int64) ([]Attachment,
 	var atts []Attachment
 	for rows.Next() {
 		var a Attachment
-		if err := rows.Scan(&a.ID, &a.MessageID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.SHA256); err != nil {
+		if err := rows.Scan(&a.ID, &a.MessageID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.SHA256,
+			&a.TextStatus, &a.TextChars); err != nil {
 			return nil, err
 		}
 		atts = append(atts, a)

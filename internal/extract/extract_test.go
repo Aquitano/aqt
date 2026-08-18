@@ -1,0 +1,289 @@
+package extract
+
+import (
+	"archive/zip"
+	"context"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+func write(t *testing.T, name string, content []byte) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestClassify(t *testing.T) {
+	cases := []struct {
+		filename, mime string
+		want           kind
+	}{
+		{"notes.txt", "text/plain", kindText},
+		{"page.html", "text/html", kindHTML},
+		{"report.docx", "", kindZipXML},
+		{"invoice.pdf", "", kindPDF},
+		{"scan.JPG", "", kindImage},
+		{"movie.mkv", "video/x-matroska", kindNone},
+		// The extension wins: mail clients label attachments
+		// application/octet-stream constantly.
+		{"contract.pdf", "application/octet-stream", kindPDF},
+		// With no usable extension the declared type is all there is.
+		{"attachment", "application/pdf", kindPDF},
+		{"", "image/png", kindImage},
+		// A malformed Content-Type still has a recognisable prefix.
+		{"noext", "text/plain; charset=", kindText},
+	}
+	for _, c := range cases {
+		if got := classify(c.filename, c.mime); got != c.want {
+			t.Errorf("classify(%q, %q) = %v, want %v", c.filename, c.mime, got, c.want)
+		}
+	}
+}
+
+func TestNormalize(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"  hello   world \n\n next ", "hello world next"},
+		{"tabs\tand\rreturns", "tabs and returns"},
+		{"nul\x00byte", "nulbyte"},
+		{"\xff\xfe invalid utf8", "invalid utf8"},
+	}
+	for _, c := range cases {
+		if got := normalize(c.in, 1000); got != c.want {
+			t.Errorf("normalize(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestNormalizeTruncatesOnRuneBoundary(t *testing.T) {
+	got := normalize(strings.Repeat("é", 100), 11)
+	if len(got) > 11 {
+		t.Fatalf("got %d bytes, want at most 11", len(got))
+	}
+	if strings.ContainsRune(got, '�') || !isValidUTF8(got) {
+		t.Fatalf("truncation split a rune: %q", got)
+	}
+}
+
+func isValidUTF8(s string) bool {
+	for _, r := range s {
+		if r == '�' {
+			return false
+		}
+	}
+	return true
+}
+
+func TestFilePlainText(t *testing.T) {
+	path := write(t, "notes.txt", []byte("the invoice   total is\n\n  4200 EUR"))
+	res := File(context.Background(), path, "notes.txt", "text/plain", Options{})
+	if res.Status != StatusOK {
+		t.Fatalf("status = %v (%v)", res.Status, res.Err)
+	}
+	if res.Text != "the invoice total is 4200 EUR" {
+		t.Fatalf("text = %q", res.Text)
+	}
+}
+
+func TestFileHTMLStripsMarkup(t *testing.T) {
+	path := write(t, "page.html", []byte("<html><style>p{color:red}</style><p>Hello <b>Alice</b></p></html>"))
+	res := File(context.Background(), path, "page.html", "text/html", Options{})
+	if res.Status != StatusOK {
+		t.Fatalf("status = %v (%v)", res.Status, res.Err)
+	}
+	if strings.Contains(res.Text, "<") || strings.Contains(res.Text, "color:red") {
+		t.Fatalf("markup survived: %q", res.Text)
+	}
+	if !strings.Contains(res.Text, "Hello") || !strings.Contains(res.Text, "Alice") {
+		t.Fatalf("text lost: %q", res.Text)
+	}
+}
+
+// docx builds the smallest thing that is genuinely a Word document as far as
+// the extractor is concerned: a zip with word/document.xml in it.
+func docx(t *testing.T, name string, parts map[string]string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	zw := zip.NewWriter(f)
+	for name, content := range parts {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestFileOOXML(t *testing.T) {
+	path := docx(t, "report.docx", map[string]string{
+		"word/document.xml": `<?xml version="1.0"?><w:document xmlns:w="x"><w:body>` +
+			`<w:p><w:r><w:t>Quarterly</w:t></w:r><w:r><w:t>revenue</w:t></w:r></w:p></w:body></w:document>`,
+		// Styles must not reach the index: their vocabulary would match
+		// everything.
+		"word/styles.xml": `<?xml version="1.0"?><styles><name val="Heading1"/></styles>`,
+	})
+	res := File(context.Background(), path, "report.docx", "", Options{})
+	if res.Status != StatusOK {
+		t.Fatalf("status = %v (%v)", res.Status, res.Err)
+	}
+	if !strings.Contains(res.Text, "Quarterly") || !strings.Contains(res.Text, "revenue") {
+		t.Fatalf("text = %q", res.Text)
+	}
+	if strings.Contains(res.Text, "Heading1") {
+		t.Fatalf("styles reached the index: %q", res.Text)
+	}
+}
+
+func TestFileUnsupportedAndTooBig(t *testing.T) {
+	path := write(t, "clip.mkv", []byte("binary"))
+	if res := File(context.Background(), path, "clip.mkv", "video/x-matroska", Options{}); res.Status != StatusUnsupported {
+		t.Fatalf("status = %v, want unsupported", res.Status)
+	}
+	big := write(t, "big.txt", []byte("plenty of text here"))
+	if res := File(context.Background(), big, "big.txt", "text/plain", Options{MaxBytes: 4}); res.Status != StatusTooBig {
+		t.Fatalf("status = %v, want too_big", res.Status)
+	}
+}
+
+func TestFileEmptyIsNotAFailure(t *testing.T) {
+	path := write(t, "blank.txt", nil)
+	if res := File(context.Background(), path, "blank.txt", "text/plain", Options{}); res.Status != StatusEmpty {
+		t.Fatalf("status = %v, want empty", res.Status)
+	}
+}
+
+// An image with OCR off is the queue for a later pass, not a failure: getting
+// this wrong would either hide the work or make it look broken.
+func TestImageNeedsOCRWhenDisabled(t *testing.T) {
+	path := write(t, "scan.png", []byte("\x89PNG not really"))
+	res := File(context.Background(), path, "scan.png", "image/png", Options{})
+	if res.Status != StatusNeedsOCR {
+		t.Fatalf("status = %v, want needs_ocr", res.Status)
+	}
+	if res.Text != "" {
+		t.Fatalf("text = %q, want empty", res.Text)
+	}
+}
+
+func TestCorruptPDFDoesNotPanic(t *testing.T) {
+	path := write(t, "broken.pdf", []byte("%PDF-1.4 and then nonsense"))
+	res := File(context.Background(), path, "broken.pdf", "application/pdf", Options{})
+	if res.Status != StatusFailed {
+		t.Fatalf("status = %v, want failed", res.Status)
+	}
+}
+
+// fakeBin writes a script standing in for an external tool, so the OCR path is
+// tested without installing tesseract.
+func fakeBin(t *testing.T, name, body string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script stand-ins are POSIX only")
+	}
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestOCRImage(t *testing.T) {
+	tess := fakeBin(t, "tesseract", `echo "SCANNED  invoice 4200"`)
+	path := write(t, "scan.png", []byte("pretend pixels"))
+	res := File(context.Background(), path, "scan.png", "image/png", Options{OCR: true, Tesseract: tess})
+	if res.Status != StatusOK {
+		t.Fatalf("status = %v (%v)", res.Status, res.Err)
+	}
+	if res.Text != "SCANNED invoice 4200" {
+		t.Fatalf("text = %q", res.Text)
+	}
+	if res.Extractor != "ocr" {
+		t.Fatalf("extractor = %q", res.Extractor)
+	}
+}
+
+func TestOCRFailureIsRecordedNotPanicked(t *testing.T) {
+	tess := fakeBin(t, "tesseract", `echo "boom" >&2; exit 1`)
+	path := write(t, "scan.png", []byte("pretend pixels"))
+	res := File(context.Background(), path, "scan.png", "image/png", Options{OCR: true, Tesseract: tess})
+	if res.Status != StatusFailed {
+		t.Fatalf("status = %v, want failed", res.Status)
+	}
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "boom") {
+		t.Fatalf("err = %v, want the tool's own message", res.Err)
+	}
+}
+
+func TestOCRAvailableReportsMissingTools(t *testing.T) {
+	err := OCRAvailable(Options{Tesseract: "definitely-not-installed-xyz"})
+	if err == nil || !strings.Contains(err.Error(), "tesseract") {
+		t.Fatalf("err = %v, want a message naming tesseract", err)
+	}
+}
+
+func TestValidStatus(t *testing.T) {
+	// "pending" is not one of the stored statuses but is a valid thing to ask
+	// for, and the message has to say so or a correct choice looks wrong.
+	for _, ok := range []string{"needs_ocr", "pending", "manual"} {
+		if err := ValidStatus(ok); err != nil {
+			t.Errorf("ValidStatus(%q) = %v", ok, err)
+		}
+	}
+	err := ValidStatus("needsocr")
+	if err == nil {
+		t.Fatal("a typo should not silently select nothing")
+	}
+	if !strings.Contains(err.Error(), "pending") {
+		t.Errorf("error should list every accepted status: %v", err)
+	}
+}
+
+// A status is checked twice over, for two different questions: which content
+// to select, and what may be written to a row.
+func TestValidStoredStatusRejectsPending(t *testing.T) {
+	for _, ok := range []string{"ok", "needs_ocr", "manual", "failed"} {
+		if err := ValidStoredStatus(ok); err != nil {
+			t.Errorf("ValidStoredStatus(%q) = %v", ok, err)
+		}
+	}
+	// Pending is the absence of a row. Stored, it would strand the content
+	// where no default pass ever selects it again.
+	for _, bad := range []string{"pending", "", "OK", "done"} {
+		if err := ValidStoredStatus(bad); err == nil {
+			t.Errorf("ValidStoredStatus(%q) accepted", bad)
+		}
+	}
+}
+
+// Manual text is someone's own transcription: an automatic pass over it would
+// replace work nothing can rebuild.
+func TestValidRunStatusRejectsManual(t *testing.T) {
+	err := ValidRunStatus("manual")
+	if err == nil {
+		t.Fatal("a run over manual text would overwrite it")
+	}
+	if !strings.Contains(err.Error(), "--set") {
+		t.Errorf("error should say how to replace a transcription: %v", err)
+	}
+	for _, ok := range []string{"pending", "failed", "needs_ocr"} {
+		if err := ValidRunStatus(ok); err != nil {
+			t.Errorf("ValidRunStatus(%q) = %v", ok, err)
+		}
+	}
+}

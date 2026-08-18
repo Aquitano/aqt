@@ -23,11 +23,16 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 
 ./bank import inbox                             # sweep $BANK_DATA_DIR/inbox/<kind>/
 
+./bank extract                                  # read text out of attachments
+./bank extract --ocr                            # scanned documents (needs tesseract)
+./bank attachment stats                         # how much is searchable inside
+
 ./bank contact add alice                        # one person, many identities
 ./bank contact alias add alice alice@example.com "whatsapp:Alice" discord:alice_x
 ./bank contact messages alice                   # everything she sent or received
 
 ./bank search "that invoice" --from alice --since 2024-01-01
+./bank search "retainer"                        # matches text inside PDFs and Office files
 ./bank search "the deck" --to bob               # by recipient
 ./bank search "that invoice" --person alice     # every identity she uses
 ./bank search "typo-tolerannt query" --json     # agents consume this
@@ -40,7 +45,7 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 
 ## Remote use
 
-When Postgres lives on a VPS, run the server there in a container (`docker compose --profile server up -d`, published on a Tailscale address — there is no TLS) and set two env vars on the laptop. `search`, `show`, `stats`, `import` and `fetch` then go over HTTP, so rows, blobs and raw archives always land on the same box.
+When Postgres lives on a VPS, run the server there in a container (`COMPOSE_PROFILES=server docker compose up -d`, published on a Tailscale address — there is no TLS) and set two env vars on the laptop. `search`, `show`, `stats`, `import` and `fetch` then go over HTTP, so rows, blobs and raw archives always land on the same box.
 
 ```sh
 export BANK_URL=http://vps.tailnet.ts.net:8480
@@ -55,6 +60,10 @@ Agents on a client machine get the CLI handed to them by a Claude Code skill: [s
 
 Deployment (VPS, LUKS, containerized server, restic, cron): [DEPLOY.md](DEPLOY.md).
 
-Config via env (see `.env.example`): `DATABASE_URL`, `BANK_DATA_DIR` (blobs, raw archives, inbox; default `~/.local/share/aqt-bank`).
+Attachments are searchable inside. Importing reads text out of PDFs, Office and OpenDocument files, HTML and plain text, keyed on the blob digest so a document attached to forty messages is read once.
+
+Scanned pages and images hold no text layer, so they are recorded as `needs_ocr` rather than guessed at. `bank extract --ocr` reads them wherever tesseract is installed: on the deployed box that is a worker draining the queue on a timer, turned on by adding `ocr` to `COMPOSE_PROFILES`. `bank attachment text <sha256> --set` takes a transcription from anywhere else, including a model running on the client, and marks it `manual` so no later pass overwrites it. `BANK_EXTRACT=off` or `bank import --no-extract` leaves attachment text alone entirely.
+
+Config via env (see `.env.example`): `DATABASE_URL`, `BANK_DATA_DIR` (blobs, raw archives, inbox; default `~/.local/share/aqt-bank`), `BANK_EXTRACT`.
 
 Schema migrations are embedded and run automatically on startup.

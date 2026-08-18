@@ -1,10 +1,9 @@
 # ParadeDB = Postgres + pg_search (BM25 full-text search extension), plus the
 # archive server itself. Nothing here is published on a public interface.
 #
-# Local development needs only the database — `docker compose up -d` starts it
-# and the CLI talks to DATABASE_URL directly. The VPS runs both:
-#
-#   docker compose --profile server up -d
+# Which of these run is COMPOSE_PROFILES in .env. Unset — local development —
+# starts only the database, and the CLI talks to DATABASE_URL directly. The
+# VPS sets `server`, and `server,ocr` to also run the OCR worker.
 #
 # Settings come from .env; see .env.example and DEPLOY.md.
 services:
@@ -67,6 +66,45 @@ services:
       - no-new-privileges:true
     # No healthcheck: the image has no shell or HTTP client to run one with,
     # which is the point of it. /healthz is there for an external prober.
+
+  # The OCR worker. It drains blob_text's needs_ocr queue on a timer and
+  # writes the text back — nothing calls it and it calls nothing, so the
+  # server needs no docker socket, no sidecar API and no knowledge that it
+  # exists. It cannot be on the import path: a forty-page scan is minutes, and
+  # an upload must not wait for it.
+  #
+  # Off unless COMPOSE_PROFILES names "ocr" (see .env.example). It is also
+  # usable as a one-off, which overrides the command below:
+  #
+  #   docker compose run --rm bank-ocr extract --ocr
+  #
+  # Built from the image that carries tesseract and poppler, so the process
+  # listening on a port keeps nothing but the static binary.
+  bank-ocr:
+    profiles: ["ocr"]
+    build:
+      context: .
+      target: ocr
+    image: aqt-bank-ocr:local
+    restart: unless-stopped
+    command: ["extract", "--ocr", "--watch", "--interval", "${BANK_OCR_INTERVAL:-30m}"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://bank:${POSTGRES_PASSWORD:-bank}@db:5432/bank?sslmode=disable
+      BANK_DATA_DIR: /data
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ${BANK_DATA_DIR:-./.bankdata}:/data
+    user: "${BANK_UID:-65532}:${BANK_GID:-65532}"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   pgdata:

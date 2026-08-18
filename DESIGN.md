@@ -9,7 +9,7 @@ One place for every message I've ever sent or received, searchable in millisecon
 | Runtime | Go, single `bank` binary | Static binary on the VPS, easy cron, no runtime to babysit |
 | Store | Postgres + ParadeDB `pg_search` | One system of record; BM25 ranking + fuzzy/typo tolerance in-database, no sync pipeline to a second search engine |
 | Hosting | VPS, LUKS-encrypted data volume, restic encrypted backups, everything in containers | Accepts that a running box is readable by the provider; protects disks at rest and backups. The server runs non-root on a read-only rootfs from a distroless image with no shell, so a bug in the process that serves the archive over a network port reaches as little as possible |
-| Sync model | Pull-based: `bank sync` via cron; manual sources land in an inbox dir swept by `bank import` | Stateless, debuggable, no daemon |
+| Sync model | Pull-based: `bank sync` via cron; manual sources land in an inbox dir swept by `bank import` | Stateless, debuggable, no daemon. One exception, added deliberately: the optional OCR worker, because minutes-per-document work cannot sit on the import path and a timer is the only thing that makes it automatic |
 | Interface | CLI, `--json` on every read command | Humans get text, agents get JSON; MCP wrapper can come later |
 | Remote access | `bank serve` in the same binary, CLI switches to HTTP when `BANK_URL` is set, bearer tokens hashed in `$BANK_DATA_DIR/tokens`, no TLS | A laptop CLI against a remote `DATABASE_URL` writes blobs and archives locally while rows go to the VPS — split-brain. One binary means no second artifact to build or deploy; Tailscale is the transport security, so the server only needs authentication |
 | Scope | Full history, all attachments | Attachments are content-addressed (sha256) so duplicates are free |
@@ -38,9 +38,10 @@ Everything normalizes to one `messages` table; source-specific richness stays in
   - `unique (source, external_id)` makes every importer idempotent — re-importing a dump is always safe.
   - Sources without stable IDs (WhatsApp) derive `external_id = sha256(thread|sent_at|sender|body)`.
 - `attachments(id, message_id, filename, mime_type, size_bytes, sha256)` — bytes live in the blob store, not the DB.
+- `blob_text(sha256, text, extractor, status)` + a denormalized `messages.attachment_text` — text read out of attachments, keyed on content so a document attached to forty messages is extracted once. The column is what the BM25 index sees; `store.RefreshAttachmentText` recomputes it wholesale in one idempotent statement, so there is no trigger and no bookkeeping to drift. One index means one score and working snippets; two indexes would mean inventing a fusion rule.
 - `contacts(id, name, note)` + `contact_aliases(contact_id, source, value, value_norm)` — one person, many source-specific identities. Aliases are attached by hand and match everywhere unless scoped to a source; nothing merges automatically, so a wrong attachment is undone by detaching it and the identity each source recorded is never rewritten.
 - `message_id_collapsed(…, collapsed_into, collapsed_at)` — rows the Message-ID uniqueness migration deleted, kept so an unattended collapse stays reviewable and the raw files it orphaned stay reachable.
-- BM25 index over `subject, body, sender, recipients` via `pg_search`; results are ordered by score, then `sent_at`, then `id` — the id is what makes it a total order, so a page means the same thing twice. Paging is `--offset`, capped at 10000: every offset re-ranks the whole match set, and past that narrowing the query beats paging through it. Fuzzy matching with `paradedb.match(..., distance => n)`; match snippets from `paradedb.snippet`, with a locally cut window as the fallback (the engine produces no highlight for fuzzy matches).
+- BM25 index over `subject, body, sender, recipients, attachment_text` via `pg_search`; results are ordered by score, then `sent_at`, then `id` — the id is what makes it a total order, so a page means the same thing twice. Paging is `--offset`, capped at 10000: every offset re-ranks the whole match set, and past that narrowing the query beats paging through it. Fuzzy matching with `paradedb.match(..., distance => n)`; match snippets from `paradedb.snippet`, with a locally cut window as the fallback (the engine produces no highlight for fuzzy matches).
 
 ## Filesystem layout (`$BANK_DATA_DIR`, default `~/.local/share/aqt-bank`)
 
@@ -87,4 +88,26 @@ Migrations are embedded in the binary and run automatically on startup — idemp
 7. Deploy — see DEPLOY.md (LUKS volume, containerized server and CLI, headless Gmail auth, restic, cron). Pending: actually provisioning the VPS.
 8. ~~Integrity and retrieval~~ — `bank import inbox` sweep, `bank thread`, `bank verify --heal`, recipient search, match snippets, source freshness in stats.
 9. ~~Identity~~ — `bank contact`: a canonical person with manually attached aliases, `--person` search, and an advisory `contact suggest`. Deliberately no automatic merging: mis-attributing someone's messages is worse than typing an alias, and every attachment is reversible because messages are never rewritten.
-10. Open, needing a design decision first: pgvector hybrid semantic search (and `bank mcp`, if an MCP wrapper ever beats the CLI).
+10. ~~Attachment text~~ — `bank extract`, `bank attachment`: PDFs, Office and OpenDocument files, HTML and text become searchable inside. See below.
+11. Open, needing a design decision first: `bank mcp`, if an MCP wrapper ever beats the CLI. pgvector hybrid semantic search was considered and dropped (#30): remote embedding contradicts the threat model, local embedding needs cgo or a sidecar, and the lifecycle would be permanent upkeep in a system whose point is having no second search engine to sync.
+
+## Attachment text
+
+Extraction is a pass of its own, not a step inside an importer. The text is derived data — rebuildable from the blobs forever — and keying it on the sha256 means content, not attachment rows, is the unit of work.
+
+| Content | Extractor | Where it runs |
+|---|---|---|
+| PDF with a text layer | pure Go (`ledongthuc/pdf`) | anywhere, including the server image |
+| docx/xlsx/pptx, odt/ods/odp | stdlib zip + XML | same |
+| HTML, plain text, csv, json, ical, … | stdlib, sharing the mail parser's `StripHTML` | same |
+| images, PDFs with no text layer | tesseract + poppler, as subprocesses | only the `ocr` image, or a laptop |
+
+Two decisions are worth the words:
+
+**OCR is never on the import path and never in the server image.** tesseract means a C++ image stack and a libc in whatever links it, and the process serving the archive over a network port holds one static binary and no shell. It is also minutes per document against milliseconds for everything else, so a forty-page scan would block an upload for the length of the scan. A scanned page is therefore recorded as `needs_ocr` — an honest status, not a failure — and read afterwards.
+
+`status = needs_ocr` is not a report, it is a queue. The optional `bank extract --ocr --watch` worker drains it on a timer, which is what makes OCR automatic without touching the import path; one setting (`COMPOSE_PROFILES=server,ocr`) turns it on. The worker reads its work from the database rather than being handed it, and that direction is the point: the server needs no docker socket — which would be root on the host and would undo the container hardening entirely — no sidecar API, and no knowledge that a worker exists. Extraction is idempotent per blob, so a worker overlapping with an import's own pass costs a repeated read at worst. The same command runs as a one-off, or from a laptop against `BANK_URL` with better tools than tesseract.
+
+**`needs_ocr` is a number, and the number is the argument.** Invoices, statements, tickets and contracts generated by software all carry text layers; if the archive is mostly those, OCR buys close to nothing. `bank attachment stats` counts exactly what it would add before anyone spends a week on it.
+
+Text can also be written from outside: `bank attachment text <sha256> --set` (and `PUT /v1/attachments/{sha256}/text`) store a transcription from any model, marked `manual`, which no automatic pass overwrites. The list, the bytes and the write are all in the HTTP API, so the machine that runs the model does not have to be the machine that holds the archive.

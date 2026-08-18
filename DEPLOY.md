@@ -19,7 +19,7 @@ Deliberately not in `/etc/crypttab` with a keyfile — a keyfile on the root dis
 
 ```sh
 cryptsetup open /dev/sdb bankdata && mount /dev/mapper/bankdata /data && \
-    docker compose -f /opt/aqt-bank/docker-compose.yml --profile server up -d
+    docker compose -f /opt/aqt-bank/docker-compose.yml up -d
 ```
 
 ## 2. App + database
@@ -41,6 +41,7 @@ chown -R 65532:65532 /data/aqt-bank
 Write `/opt/aqt-bank/.env` (`chmod 600` — it holds the database password):
 
 ```sh
+COMPOSE_PROFILES=server           # add ",ocr" to also read scanned documents
 POSTGRES_PASSWORD=<strong-password>
 BANK_PG_DIR=/data/pgdata          # Postgres on the encrypted volume
 BANK_DATA_DIR=/data/aqt-bank      # blobs, archives, inbox, tokens
@@ -51,12 +52,12 @@ TZ=Europe/Berlin                  # date filters and WhatsApp timestamps are loc
 Then bring up both services:
 
 ```sh
-docker compose --profile server up -d --build
+docker compose up -d --build
 docker compose ps
 curl -s http://100.x.y.z:8480/healthz     # {"ok":true}
 ```
 
-`--profile server` is what starts the archive server; without it `docker compose up` starts only Postgres, which is what local development wants.
+`COMPOSE_PROFILES` decides what that starts. Unset it and `docker compose up` starts only Postgres, which is what local development wants.
 
 What the server container is allowed to do, and why it is worth having it in a container at all:
 
@@ -75,6 +76,50 @@ docker compose run --rm bank stats
 docker compose run --rm bank verify
 docker compose run --rm bank token list
 ```
+
+### Text inside attachments
+
+Importing already reads PDFs with a text layer, Office and OpenDocument files, HTML and plain text, so those are searchable without doing anything. Scanned pages and images are recorded as `needs_ocr`, because the tools that read pixels are deliberately not in the server's image.
+
+Check what OCR would actually buy before turning it on. Documents produced by software carry text layers already, and if that is most of the archive the answer is nothing:
+
+```sh
+docker compose run --rm bank attachment stats
+```
+
+If the `needs_ocr` row is worth it, one setting turns it on. In `.env`:
+
+```sh
+COMPOSE_PROFILES=server,ocr
+#BANK_OCR_INTERVAL=30m
+```
+
+```sh
+docker compose up -d --build
+```
+
+That starts `bank-ocr`, a worker that drains the queue every half hour and stores the text it reads. Nothing else changes: an import records a scanned page as `needs_ocr`, the worker picks it up on its next pass, and the document becomes searchable without anyone running a command.
+
+`bank-ocr` shares the data directory and the database with the server, runs as the same non-root uid on a read-only rootfs, and publishes nothing. It is built from its own image because tesseract and poppler are a C++ image stack and a libc, which the process listening on a port should not carry. DESIGN.md has the rest of the reasoning.
+
+For a one-off pass instead of the worker, leave the profile off and run it directly:
+
+```sh
+docker compose run --rm bank-ocr extract --ocr
+```
+
+Other languages are apt packages in the `ocr` stage of the `Dockerfile` (`tesseract-ocr-deu` and so on), then `--lang deu+eng`.
+
+Transcriptions can also come from elsewhere — a model on the laptop, or a person:
+
+```sh
+export BANK_URL=... BANK_TOKEN=...
+bank attachment list --status needs_ocr --json     # the work queue
+bank fetch <sha256> -o page.png                    # the bytes
+bank attachment text <sha256> --set transcript.txt # store it, marked "manual"
+```
+
+Text stored that way is never overwritten by a later automatic pass. `bank extract --ocr` also works straight from the laptop against `BANK_URL`, which is the option worth knowing if you have better tools there than tesseract: it downloads each pending blob, runs whatever is installed locally, and stores only the text.
 
 ## 3. Gmail authorization on a headless box
 
@@ -150,11 +195,14 @@ Every scheduled job runs the same image as a one-off container, so it sees the s
 
 ```cron
 17 *  * * *  cd /opt/aqt-bank && docker compose run --rm -T bank sync >> /var/log/bank.log 2>&1
+40 3  * * *  cd /opt/aqt-bank && docker compose run --rm -T bank extract >> /var/log/bank.log 2>&1
 */15 * * * *  cd /opt/aqt-bank && docker compose run --rm -T bank import inbox >> /var/log/bank.log 2>&1
 0 5  * * 0  cd /opt/aqt-bank && docker compose run --rm -T bank import eml /data/inbox/proton >> /var/log/bank.log 2>&1
 ```
 
 `-T` matters in cron: without a TTY to allocate, Docker otherwise fails.
+
+The nightly `bank extract` is a backstop, not the main path — imports already read what they can. It catches whatever a bounded post-import batch left behind, and picks up content whose extractor only arrived with a later version. It does not do OCR; that is the `ocr` profile above.
 
 Manual sources (WhatsApp zips, Discord package, LinkedIn export): scp into `/data/aqt-bank/inbox/<kind>/` and let the sweep pick them up, or run the import from the laptop with `BANK_URL` set (section 5) so rows and blobs still land together. Swept files move to `inbox/.done/<kind>/`; ones no importer could read move to `inbox/.rejected/<kind>/`. A file left in place means the import failed operationally (database down, disk full) and the next sweep retries it.
 
