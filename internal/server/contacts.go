@@ -51,6 +51,10 @@ func (s *Server) handleContactMessages(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	o := store.ContactMessagesOpts{Source: q.Get("source")}
 	var err error
+	if o.Offset, err = parseInt(q.Get("offset"), 0); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid offset")
+		return
+	}
 	if o.Since, err = parseDate(q.Get("since")); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return

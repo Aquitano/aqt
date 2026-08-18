@@ -130,6 +130,10 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid limit")
 		return
 	}
+	if o.Offset, err = parseInt(q.Get("offset"), 0); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid offset")
+		return
+	}
 	// Validated here as well as in the store so a bad request is a 400 with a
 	// usage message, not a 500 carrying a database error.
 	if err := o.Validate(); err != nil {

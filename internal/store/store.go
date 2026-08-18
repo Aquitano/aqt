@@ -296,6 +296,12 @@ const MaxSearchLimit = 500
 // MaxFuzzyDistance is pg_search's supported Levenshtein range.
 const MaxFuzzyDistance = 2
 
+// MaxSearchOffset bounds how deep paging may go. Every offset re-ranks the
+// whole match set before discarding the skipped rows, so page 500 costs what
+// page 1 cost plus everything between. Twenty pages of 500 is far past the
+// point where narrowing the query beats paging through it.
+const MaxSearchOffset = 10000
+
 type SearchOpts struct {
 	Source string
 	From   string
@@ -307,6 +313,9 @@ type SearchOpts struct {
 	Until  time.Time
 	Fuzzy  int
 	Limit  int
+	// Offset skips this many ranked results, so a query with more matches
+	// than Limit is reachable past the first page.
+	Offset int
 }
 
 // Validate rejects options that would otherwise return misleading empty
@@ -321,6 +330,12 @@ func (o SearchOpts) Validate() error {
 	}
 	if o.Fuzzy < 0 || o.Fuzzy > MaxFuzzyDistance {
 		return fmt.Errorf("fuzzy must be between 0 and %d", MaxFuzzyDistance)
+	}
+	if o.Offset < 0 {
+		return fmt.Errorf("offset must not be negative")
+	}
+	if o.Offset > MaxSearchOffset {
+		return fmt.Errorf("offset must be at most %d; narrow the query instead of paging deeper", MaxSearchOffset)
 	}
 	if !o.Since.IsZero() && !o.Until.IsZero() && !o.Until.After(o.Since) {
 		return fmt.Errorf("--until must be after --since")
@@ -376,7 +391,15 @@ func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Messa
 	if !o.Until.IsZero() {
 		sql += " and m.sent_at < " + next(o.Until)
 	}
-	sql += " order by paradedb.score(m.id) desc, m.sent_at desc limit " + next(o.Limit)
+	// m.id breaks the remaining ties. Score ties are ordinary — two messages
+	// matching the same words the same way — and two messages can share a
+	// sent_at to the second, so without it the sort is only a partial order:
+	// the same query can return the same rows in a different arrangement, and
+	// paging would then duplicate some and skip others.
+	sql += " order by paradedb.score(m.id) desc, m.sent_at desc, m.id desc limit " + next(o.Limit)
+	if o.Offset > 0 {
+		sql += " offset " + next(o.Offset)
+	}
 
 	rows, err := s.pool.Query(ctx, sql, args...)
 	if err != nil {

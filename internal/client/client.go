@@ -104,6 +104,9 @@ func (c *Client) Search(ctx context.Context, query string, o store.SearchOpts) (
 	}
 	q.Set("fuzzy", strconv.Itoa(o.Fuzzy))
 	q.Set("limit", strconv.Itoa(o.Limit))
+	if o.Offset > 0 {
+		q.Set("offset", strconv.Itoa(o.Offset))
+	}
 	return getJSON[[]store.Message](ctx, c, "/v1/search", q)
 }
 
@@ -156,6 +159,9 @@ func (c *Client) ContactMessages(ctx context.Context, name string, o store.Conta
 	}
 	if o.Limit > 0 {
 		q.Set("limit", strconv.Itoa(o.Limit))
+	}
+	if o.Offset > 0 {
+		q.Set("offset", strconv.Itoa(o.Offset))
 	}
 	return getJSON[[]store.Message](ctx, c, "/v1/contacts/"+url.PathEscape(name)+"/messages", q)
 }

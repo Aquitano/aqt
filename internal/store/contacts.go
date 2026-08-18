@@ -274,6 +274,10 @@ type ContactMessagesOpts struct {
 	Since  time.Time
 	Until  time.Time
 	Limit  int
+	// Offset pages past the first Limit messages. A correspondence of years
+	// does not fit in one page, and this is the query most likely to exceed
+	// it.
+	Offset int
 }
 
 // ContactMessages returns one person's messages across every source, newest
@@ -290,6 +294,12 @@ func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessa
 	}
 	if o.Limit > MaxSearchLimit {
 		return nil, fmt.Errorf("limit must be at most %d", MaxSearchLimit)
+	}
+	if o.Offset < 0 {
+		return nil, fmt.Errorf("offset must not be negative")
+	}
+	if o.Offset > MaxSearchOffset {
+		return nil, fmt.Errorf("offset must be at most %d; narrow with --source or --since instead", MaxSearchOffset)
 	}
 	sql := `select m.id, m.source, m.external_id, m.message_id, m.thread_id, m.sender,
 	               m.recipients, m.subject, m.body, m.sent_at, m.raw_ref
@@ -309,6 +319,9 @@ func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessa
 		sql += " and m.sent_at < " + next(o.Until)
 	}
 	sql += " order by m.sent_at desc, m.id desc limit " + next(o.Limit)
+	if o.Offset > 0 {
+		sql += " offset " + next(o.Offset)
+	}
 
 	rows, err := s.pool.Query(ctx, sql, args...)
 	if err != nil {

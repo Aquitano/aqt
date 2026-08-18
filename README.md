@@ -31,6 +31,7 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank search "the deck" --to bob               # by recipient
 ./bank search "that invoice" --person alice     # every identity she uses
 ./bank search "typo-tolerannt query" --json     # agents consume this
+./bank search "invoice" --limit 50 --offset 50  # the next page
 ./bank show 42
 ./bank thread "Alice" --source whatsapp         # the whole conversation
 ./bank stats

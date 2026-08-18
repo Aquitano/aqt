@@ -40,7 +40,7 @@ Everything normalizes to one `messages` table; source-specific richness stays in
 - `attachments(id, message_id, filename, mime_type, size_bytes, sha256)` — bytes live in the blob store, not the DB.
 - `contacts(id, name, note)` + `contact_aliases(contact_id, source, value, value_norm)` — one person, many source-specific identities. Aliases are attached by hand and match everywhere unless scoped to a source; nothing merges automatically, so a wrong attachment is undone by detaching it and the identity each source recorded is never rewritten.
 - `message_id_collapsed(…, collapsed_into, collapsed_at)` — rows the Message-ID uniqueness migration deleted, kept so an unattended collapse stays reviewable and the raw files it orphaned stay reachable.
-- BM25 index over `subject, body, sender, recipients` via `pg_search`; fuzzy matching with `paradedb.match(..., distance => n)`; match snippets from `paradedb.snippet`, with a locally cut window as the fallback (the engine produces no highlight for fuzzy matches).
+- BM25 index over `subject, body, sender, recipients` via `pg_search`; results are ordered by score, then `sent_at`, then `id` — the id is what makes it a total order, so a page means the same thing twice. Paging is `--offset`, capped at 10000: every offset re-ranks the whole match set, and past that narrowing the query beats paging through it. Fuzzy matching with `paradedb.match(..., distance => n)`; match snippets from `paradedb.snippet`, with a locally cut window as the fallback (the engine produces no highlight for fuzzy matches).
 
 ## Filesystem layout (`$BANK_DATA_DIR`, default `~/.local/share/aqt-bank`)
 
@@ -57,10 +57,11 @@ bank import whatsapp <file.zip|.txt>…   # per-source explicit import
 bank import inbox                       # sweep the inbox drop zone
 bank sync                               # pull deltas from API sources (Gmail)
 bank search "query" [--source s] [--from alice] [--to bob] [--person alice]
-                    [--since 2024-01-01] [--until d] [--fuzzy 0..2] [--limit 1..500] [--json]
+                    [--since 2024-01-01] [--until d] [--fuzzy 0..2] [--limit 1..500]
+                    [--offset 0..10000] [--json]
 bank contact add|rm|list|show <name>    # one person across their many identities
 bank contact alias add|rm <name> <email|handle|source:name>...
-bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--json]
+bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--offset n] [--json]
 bank contact suggest [--limit n]        # identities in the archive no contact claims yet
 bank thread <id> [--source s] [--limit n] [--json]   # one whole conversation, oldest first
 bank show <id> [--json]                 # full message + attachment refs

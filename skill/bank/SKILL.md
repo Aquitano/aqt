@@ -29,10 +29,10 @@ On the VPS itself there is no `BANK_URL`; `DATABASE_URL` points at Postgres and 
 ## Reading
 
 ```sh
-bank search "query" [--source s] [--from name] [--to name] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--fuzzy 0-2] [--limit n] [--json]
+bank search "query" [--source s] [--from name] [--to name] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--fuzzy 0-2] [--limit n] [--offset n] [--json]
 bank thread <id> [--source s] [--limit n] [--json]   # every message in one conversation
 bank contact list|show <name> [--json]               # who the owner has named, and their identities
-bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--json]
+bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--offset n] [--json]
 bank show <id> [--json]          # full body, recipients, raw_ref, attachment list
 bank stats [--json]              # sources, counts, date ranges, freshness
 bank fetch <sha256> -o <path>    # write attachment bytes to a file
@@ -47,6 +47,7 @@ Semantics that matter:
 - `--person <contact>` is the better filter when you know who you mean: a contact ties one person's email addresses, WhatsApp display name and Discord handle together, so it catches them across sources where `--from alice` only catches one spelling. Run `bank contact list` to see which exist; an unknown name is an error, not an empty result.
 - `--until` is exclusive; both dates are plain `YYYY-MM-DD`.
 - `--limit` defaults to 20 and must be between 1 and 500; `--fuzzy` between 0 and 2. Out-of-range values are a usage error, not an empty result. Start generous (50-100), then narrow with `--source`/`--from`/dates rather than re-running blind.
+- `--offset` reaches past the first page: `--limit 100 --offset 100` is the second hundred. A page shorter than `--limit` means you have reached the end, so page until that happens rather than guessing a total. The results are ordered by score, then date, then id, so a page means the same thing on a second run. `--offset` is capped at 10000 — needing more than that means the query is too broad, so narrow it instead. `bank contact messages` takes the same flag, and is the one most likely to need it.
 - `search` returns bodies already, so only `bank show <id>` when you need recipients, `external_id`, `raw_ref` or attachments.
 - `bank thread` takes the `thread_id` from a search hit and returns the whole conversation oldest-first — the way to turn one match into context. A thread id used by two sources is a usage error until you add `--source`; very long threads come back with `"truncated": true`, so raise `--limit` (max 2000) if that matters.
 - `bank contact show <name>` lists a person's attached identities and how many messages each source contributes — the quickest way to tell whether `--person` will actually reach the conversation you want, or whether an identity is still unattached.

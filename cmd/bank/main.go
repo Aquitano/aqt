@@ -74,6 +74,7 @@ Search flags:
   --until date   YYYY-MM-DD (exclusive)
   --fuzzy n      typo tolerance 0-2 (default 1)
   --limit n      max results, 1-500 (default 20)
+  --offset n     skip this many ranked results, for the next page (max 10000)
   --json         JSON output
 
 Environment:
@@ -568,6 +569,7 @@ func cmdSearch(ctx context.Context, args []string) error {
 	fs.StringVar(&until, "until", "", "")
 	fs.IntVar(&o.Fuzzy, "fuzzy", 1, "")
 	fs.IntVar(&o.Limit, "limit", 20, "")
+	fs.IntVar(&o.Offset, "offset", 0, "")
 	fs.BoolVar(&asJSON, "json", false, "")
 	if err := parseFlagsAnywhere(fs, args); err != nil {
 		return err
@@ -612,7 +614,23 @@ func cmdSearch(ctx context.Context, args []string) error {
 			fmt.Printf("        %s\n", excerpt(m.Snippet, 160))
 		}
 	}
+	printMorePages(len(msgs), o.Limit, o.Offset)
 	return nil
+}
+
+// printMorePages says how to reach the next page. A full page is the signal
+// that there may be more — the same rule a --json caller uses, since a short
+// page means the end.
+func printMorePages(got, limit, offset int) {
+	if got < limit {
+		return
+	}
+	next := offset + limit
+	if next > store.MaxSearchOffset {
+		fmt.Printf("\n… possibly more, but past the --offset %d cap; narrow the query instead\n", store.MaxSearchOffset)
+		return
+	}
+	fmt.Printf("\n… possibly more: repeat with --offset %d\n", next)
 }
 
 func cmdThread(ctx context.Context, args []string) error {
@@ -1298,6 +1316,7 @@ func contactMessages(ctx context.Context, b contactBackend, args []string) error
 	fs.StringVar(&since, "since", "", "")
 	fs.StringVar(&until, "until", "", "")
 	fs.IntVar(&o.Limit, "limit", 50, "")
+	fs.IntVar(&o.Offset, "offset", 0, "")
 	fs.BoolVar(&asJSON, "json", false, "")
 	if err := parseFlagsAnywhere(fs, args); err != nil {
 		return err
@@ -1331,6 +1350,7 @@ func contactMessages(ctx context.Context, b contactBackend, args []string) error
 		fmt.Printf("%6d  %s  %-8s  %-22s  %s\n",
 			m.ID, m.SentAt.Format("2006-01-02"), m.Source, excerpt(m.Sender, 22), title)
 	}
+	printMorePages(len(msgs), o.Limit, o.Offset)
 	return nil
 }
 
