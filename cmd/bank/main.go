@@ -16,6 +16,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	// Embedded so a container without tzdata still resolves the local zone.
+	// Dates typed as YYYY-MM-DD and WhatsApp export timestamps are read in
+	// local time, so an image that silently fell back to UTC would shift them.
+	_ "time/tzdata"
 
 	"github.com/aquitano/aqt-bank/internal/aichat"
 	"github.com/aquitano/aqt-bank/internal/archive"
@@ -36,7 +40,7 @@ import (
 const usage = `bank — personal message archive
 
 Usage:
-  bank auth gmail [--port n]                  authorize Gmail (loopback OAuth)
+  bank auth gmail [--port n] [--bind addr]    authorize Gmail (loopback OAuth)
   bank sync [--full]                          pull new mail from Gmail
   bank import whatsapp <export.zip|.txt>...   WhatsApp "Export chat" files
   bank import eml [--source s] <file|dir>...  .eml files (default source: proton)
@@ -169,13 +173,14 @@ func openLocal(ctx context.Context) (*local, func(), error) {
 func cmdAuth(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("auth", flag.ExitOnError)
 	port := fs.Int("port", 0, "")
+	bind := fs.String("bind", "127.0.0.1", "")
 	if err := parseFlagsAnywhere(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 || fs.Arg(0) != "gmail" {
-		return fmt.Errorf("usage: bank auth gmail [--port n]")
+		return fmt.Errorf("usage: bank auth gmail [--port n] [--bind addr]")
 	}
-	return gmail.Authorize(ctx, dataDir(), *port)
+	return gmail.Authorize(ctx, dataDir(), *bind, *port)
 }
 
 func cmdSync(ctx context.Context, args []string) error {

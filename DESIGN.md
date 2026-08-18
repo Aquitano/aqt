@@ -8,7 +8,7 @@ One place for every message I've ever sent or received, searchable in millisecon
 |---|---|---|
 | Runtime | Go, single `bank` binary | Static binary on the VPS, easy cron, no runtime to babysit |
 | Store | Postgres + ParadeDB `pg_search` | One system of record; BM25 ranking + fuzzy/typo tolerance in-database, no sync pipeline to a second search engine |
-| Hosting | VPS, LUKS-encrypted data volume, restic encrypted backups | Accepts that a running box is readable by the provider; protects disks at rest and backups |
+| Hosting | VPS, LUKS-encrypted data volume, restic encrypted backups, everything in containers | Accepts that a running box is readable by the provider; protects disks at rest and backups. The server runs non-root on a read-only rootfs from a distroless image with no shell, so a bug in the process that serves the archive over a network port reaches as little as possible |
 | Sync model | Pull-based: `bank sync` via cron; manual sources land in an inbox dir swept by `bank import` | Stateless, debuggable, no daemon |
 | Interface | CLI, `--json` on every read command | Humans get text, agents get JSON; MCP wrapper can come later |
 | Remote access | `bank serve` in the same binary, CLI switches to HTTP when `BANK_URL` is set, bearer tokens hashed in `$BANK_DATA_DIR/tokens`, no TLS | A laptop CLI against a remote `DATABASE_URL` writes blobs and archives locally while rows go to the VPS — split-brain. One binary means no second artifact to build or deploy; Tailscale is the transport security, so the server only needs authentication |
@@ -83,7 +83,7 @@ Migrations are embedded in the binary and run automatically on startup — idemp
 4. ~~Discord + LinkedIn~~ — GDPR/data-export package importers (csv and json package generations).
 5. ~~Generic JSON~~ — `bank import json` (array or NDJSON, stdin-friendly): the escape hatch for agents and one-off sources.
 6. ~~Client/server~~ — `bank serve` (stdlib HTTP, token auth), remote CLI via `BANK_URL`, `bank fetch` for attachment bytes.
-7. Deploy — see DEPLOY.md (LUKS volume, compose override, headless Gmail auth, restic, cron). Pending: actually provisioning the VPS.
+7. Deploy — see DEPLOY.md (LUKS volume, containerized server and CLI, headless Gmail auth, restic, cron). Pending: actually provisioning the VPS.
 8. ~~Integrity and retrieval~~ — `bank import inbox` sweep, `bank thread`, `bank verify --heal`, recipient search, match snippets, source freshness in stats.
 9. ~~Identity~~ — `bank contact`: a canonical person with manually attached aliases, `--person` search, and an advisory `contact suggest`. Deliberately no automatic merging: mis-attributing someone's messages is worse than typing an alias, and every attachment is reversible because messages are never rewritten.
 10. Open, needing a design decision first: pgvector hybrid semantic search (and `bank mcp`, if an MCP wrapper ever beats the CLI).

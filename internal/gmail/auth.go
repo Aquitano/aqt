@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -59,17 +60,31 @@ func loadOAuthConfig(dataDir string) (*oauth2.Config, error) {
 // Authorize runs the loopback OAuth flow and saves the refresh token.
 // port 0 picks a random port; pass a fixed one when tunnelling via
 // `ssh -L port:127.0.0.1:port` to authorize a headless box from a laptop.
-func Authorize(ctx context.Context, dataDir string, port int) error {
+//
+// bind is the address the callback listener accepts on, and defaults to
+// loopback. Inside a container loopback is the container's own, which no
+// published port can reach, so that one case passes 0.0.0.0 — while the
+// redirect URL stays 127.0.0.1, both because Google only registers loopback
+// redirects for a Desktop client and because the browser resolves it on the
+// machine holding the tunnel.
+func Authorize(ctx context.Context, dataDir, bind string, port int) error {
 	cfg, err := loadOAuthConfig(dataDir)
 	if err != nil {
 		return err
 	}
-	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if bind == "" {
+		bind = "127.0.0.1"
+	}
+	ln, err := net.Listen("tcp", net.JoinHostPort(bind, strconv.Itoa(port)))
 	if err != nil {
 		return err
 	}
 	defer ln.Close()
-	cfg.RedirectURL = fmt.Sprintf("http://%s/", ln.Addr().String())
+	_, boundPort, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		return err
+	}
+	cfg.RedirectURL = "http://127.0.0.1:" + boundPort + "/"
 
 	stateBytes := make([]byte, 16)
 	rand.Read(stateBytes)
@@ -78,7 +93,8 @@ func Authorize(ctx context.Context, dataDir string, port int) error {
 
 	url := cfg.AuthCodeURL(state, oauth2.AccessTypeOffline,
 		oauth2.S256ChallengeOption(verifier), oauth2.SetAuthURLParam("prompt", "consent"))
-	fmt.Printf("Open this URL in a browser on the machine running this command:\n\n  %s\n\nWaiting for Google to redirect back...\n", url)
+	fmt.Printf("Open this URL in a browser that can reach %s:\n\n  %s\n\nWaiting for Google to redirect back...\n",
+		cfg.RedirectURL, url)
 
 	type outcome struct {
 		code string

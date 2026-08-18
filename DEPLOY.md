@@ -1,6 +1,8 @@
 # Deploying to the VPS
 
-Target: one VPS, Postgres data and the message archive on a LUKS-encrypted volume, encrypted offsite backups with restic, cron-driven sync. Trust model: protects disks at rest and backups; a running box is readable by the provider.
+Target: one VPS running everything in containers, Postgres data and the message archive on a LUKS-encrypted volume, encrypted offsite backups with restic, cron-driven sync.
+
+Trust model, unchanged by any of this: encryption protects disks at rest and backups, and a running box is readable by whoever runs the hardware. What the container buys is narrower and worth being precise about — the process serving a lifetime of private correspondence over a network port runs as a non-root user, with a read-only root filesystem, no capabilities, and an image that contains one static binary and no shell. It reduces what a bug in that process can reach. It does not make the box trustworthy.
 
 ## 1. Encrypted data volume
 
@@ -16,41 +18,82 @@ mkdir -p /data && mount /dev/mapper/bankdata /data
 Deliberately not in `/etc/crypttab` with a keyfile — a keyfile on the root disk would defeat the point. After a reboot, unlock manually:
 
 ```sh
-cryptsetup open /dev/sdb bankdata && mount /dev/mapper/bankdata /data && docker compose -f /opt/aqt-bank/docker-compose.yml up -d
+cryptsetup open /dev/sdb bankdata && mount /dev/mapper/bankdata /data && \
+    docker compose -f /opt/aqt-bank/docker-compose.yml --profile server up -d
 ```
 
 ## 2. App + database
 
+Everything runs in containers. The host needs Docker and the repo, and nothing else — no Go toolchain, no `bank` binary, no service account able to read the archive.
+
 ```sh
 apt install docker.io docker-compose-v2
 git clone <repo> /opt/aqt-bank && cd /opt/aqt-bank
-go build -o /usr/local/bin/bank ./cmd/bank
 ```
 
-Put Postgres on the encrypted volume with a compose override (`docker-compose.override.yml`):
-
-```yaml
-services:
-  db:
-    volumes:
-      - /data/pgdata:/var/lib/postgresql
-```
-
-Environment — the DSN contains the DB password, so keep the file private (`chmod 600`); prefer a systemd EnvironmentFile or `/etc/bank.env` over `/etc/profile.d` (which is world-readable by convention):
+The data directory holds blobs, raw archives, the inbox and the token file, and must be owned by the uid the container runs as (65532, the image's `nonroot` user):
 
 ```sh
-export DATABASE_URL="postgres://bank:<strong-password>@localhost:5433/bank?sslmode=disable"
-export BANK_DATA_DIR=/data/aqt-bank
+mkdir -p /data/aqt-bank /data/pgdata
+chown -R 65532:65532 /data/aqt-bank
 ```
 
-Set `POSTGRES_PASSWORD` in `/opt/aqt-bank/.env` to the same password — and verify it actually took effect (`docker compose config | grep POSTGRES_PASSWORD`); the compose file falls back to the weak default `bank` if the variable is missing. Then `docker compose up -d`.
+Write `/opt/aqt-bank/.env` (`chmod 600` — it holds the database password):
+
+```sh
+POSTGRES_PASSWORD=<strong-password>
+BANK_PG_DIR=/data/pgdata          # Postgres on the encrypted volume
+BANK_DATA_DIR=/data/aqt-bank      # blobs, archives, inbox, tokens
+BANK_LISTEN=100.x.y.z:8480        # the box's tailscale address — never 0.0.0.0
+TZ=Europe/Berlin                  # date filters and WhatsApp timestamps are local time
+```
+
+Then bring up both services:
+
+```sh
+docker compose --profile server up -d --build
+docker compose ps
+curl -s http://100.x.y.z:8480/healthz     # {"ok":true}
+```
+
+`--profile server` is what starts the archive server; without it `docker compose up` starts only Postgres, which is what local development wants.
+
+What the server container is allowed to do, and why it is worth having it in a container at all:
+
+- The image is `distroless/static`: one static binary, the CA bundle, and nothing else. No shell, no package manager, no libc, so there is nothing to pivot to.
+- It runs as uid 65532, never root.
+- Its root filesystem is read-only. The process only ever writes under `/data`, which is the one volume mounted read-write.
+- Every Linux capability is dropped and `no-new-privileges` is set, so nothing in the container can gain any.
+- It reaches Postgres over the compose network. The `127.0.0.1:5433` publish is for `psql` and `pg_dump` on the box itself; nothing else can reach the database.
+- The port is published on the tailnet address only. `bank serve` has no TLS by design, so publishing on `0.0.0.0` would put the archive on the public internet — the default in `docker-compose.yml` is loopback so a mistyped `.env` fails closed.
+
+Run CLI commands with the same image, so they see the same data directory and the same database:
+
+```sh
+cd /opt/aqt-bank
+docker compose run --rm bank stats
+docker compose run --rm bank verify
+docker compose run --rm bank token list
+```
 
 ## 3. Gmail authorization on a headless box
 
-The OAuth flow needs a browser reaching `127.0.0.1`. Either:
+Put the OAuth client JSON at `/data/aqt-bank/gmail/client_secret.json` first (`chown 65532:65532` it). The flow needs a browser to reach the callback listener, and the container's own loopback is not reachable from anywhere, so bind it to the container's interfaces and publish that on the host's loopback:
 
-- run `bank auth gmail` on the laptop with the same `BANK_DATA_DIR` layout and copy `$BANK_DATA_DIR/gmail/` to the VPS, or
-- on the VPS: `bank auth gmail --port 8085`, and from the laptop `ssh -L 8085:127.0.0.1:8085 vps`, then open the printed URL in the laptop browser.
+```sh
+# on the VPS
+docker compose run --rm --service-ports -p 127.0.0.1:8085:8085 bank \
+    auth gmail --port 8085 --bind 0.0.0.0
+```
+
+```sh
+# on the laptop, then open the printed URL
+ssh -L 8085:127.0.0.1:8085 vps
+```
+
+The redirect URL stays `http://127.0.0.1:8085/` — that is what Google registers for a Desktop client, and the laptop's browser resolves it to its own end of the tunnel. `--bind` defaults to loopback, so running `bank auth gmail` directly on a machine with a browser is unchanged.
+
+Alternatively run `bank auth gmail` on the laptop and copy the resulting `gmail/` directory into `/data/aqt-bank/`; only `token.json` and `client_secret.json` matter.
 
 ## 4. ProtonMail
 
@@ -58,29 +101,9 @@ Install the official `proton-mail-export` CLI on the VPS. Its EML output directo
 
 ## 5. Remote CLI (`bank serve`)
 
-Running the CLI on the laptop against a remote `DATABASE_URL` splits the archive in half: rows land in the VPS Postgres, blobs and raw archives land on the laptop. Instead, run the same binary in server mode on the VPS and point the laptop at it with `BANK_URL`.
+Running the CLI on the laptop against a remote `DATABASE_URL` splits the archive in half: rows land in the VPS Postgres, blobs and raw archives land on the laptop. Instead, point the laptop at the server container with `BANK_URL`.
 
-There is no TLS in `bank serve` — bind it to the box's Tailscale address and let the tailnet do transport security.
-
-```ini
-# /etc/systemd/system/bank-serve.service
-[Unit]
-Description=bank HTTP API
-After=docker.service tailscaled.service
-Wants=docker.service
-
-[Service]
-EnvironmentFile=/etc/default/bank
-ExecStart=/usr/local/bin/bank serve --listen 100.x.y.z:8480
-Restart=on-failure
-RestartSec=5s
-User=bank
-
-[Install]
-WantedBy=multi-user.target
-```
-
-`/etc/default/bank` holds `DATABASE_URL` and `BANK_DATA_DIR` (same values as section 2). Then `systemctl enable --now bank-serve`.
+There is no TLS in `bank serve` — it is published on the box's Tailscale address and the tailnet does transport security. That is what `BANK_LISTEN` in section 2 sets.
 
 Firewall: nothing on the public interface, everything on the tailnet.
 
@@ -94,21 +117,19 @@ ufw enable
 Tokens live in `$BANK_DATA_DIR/tokens` as `name:sha256`, are checked on every request, and revocation is immediate:
 
 ```sh
-bank token new laptop      # prints the token once — copy it now
-bank token list
-bank token revoke laptop
+docker compose run --rm bank token new laptop      # prints the token once — copy it now
+docker compose run --rm bank token list
+docker compose run --rm bank token revoke laptop
 ```
 
-**`bank token` has to run with the server's own `BANK_DATA_DIR`.** A non-interactive `ssh vps bank token new laptop` gets neither `/etc/profile.d` nor the unit's `EnvironmentFile`, so it writes the digest into the calling user's `~/.local/share/aqt-bank` while `bank serve` keeps reading `/data/aqt-bank/tokens` — and every request 401s with a token that looks perfectly valid. Pass the directory explicitly, or source the same file the unit uses:
+**`bank token` has to run against the server's own data directory.** Running it any other way — a stray binary on the host, an `ssh vps bank token new` that never reads `.env` — writes the digest somewhere the server never looks, and every request then 401s with a token that looks perfectly valid. Going through `docker compose run` is what guarantees the same volume; the container has `BANK_DATA_DIR=/data` baked in.
 
 ```sh
-# on the laptop, either:
-export BANK_TOKEN=$(ssh vps 'BANK_DATA_DIR=/data/aqt-bank bank token new laptop')
-# or, keeping one source of truth:
-export BANK_TOKEN=$(ssh vps '. /etc/default/bank && bank token new laptop')
+# on the laptop
+export BANK_TOKEN=$(ssh vps 'cd /opt/aqt-bank && docker compose run --rm -T bank token new laptop')
 ```
 
-`bank token new` and `bank token list` print the resolved token file to stderr (`tokens stored in /data/aqt-bank/tokens`), which is what to check first when a token is rejected — the digests themselves are never shown. Command substitution captures stdout only, so the token still assigns cleanly.
+`bank token new` and `bank token list` print the resolved token file to stderr (`token stored in /data/tokens`), which is what to check first when a token is rejected — the digests themselves are never shown. Command substitution captures stdout only, so the token still assigns cleanly; `-T` keeps Docker from allocating a TTY that would corrupt it.
 
 On the laptop:
 
@@ -117,25 +138,31 @@ export BANK_URL=http://vps.tailnet.ts.net:8480
 export BANK_TOKEN=bank_...
 bank import whatsapp "WhatsApp Chat with Alice.zip"   # uploads, VPS stores rows + blobs
 bank search "that invoice"
+bank contact list
 bank fetch <sha256> -o invoice.pdf
 ```
 
-`auth`, `sync`, `serve` and `token` stay local-only and ignore `BANK_URL`.
+`auth`, `sync`, `serve`, `token`, `verify` and `import inbox` stay server-side and ignore `BANK_URL`.
 
 ## 6. Cron
 
-```cron
-17 * * * *  . /etc/profile.d/bank.sh && bank sync >> /var/log/bank.log 2>&1
-0 5 * * 0   . /etc/profile.d/bank.sh && proton-mail-export --dir /data/proton-export ... && bank import eml /data/proton-export >> /var/log/bank.log 2>&1
-```
-
-Manual sources (WhatsApp zips, Discord package, LinkedIn export): scp into `$BANK_DATA_DIR/inbox/<kind>/` and let `bank import inbox` sweep them, or run the import from the laptop with `BANK_URL` set (section 5) so rows and blobs still land together.
+Every scheduled job runs the same image as a one-off container, so it sees the same volume, the same database and the same timezone as the server.
 
 ```cron
-*/15 * * * * . /etc/default/bank && bank import inbox >> /var/log/bank.log 2>&1
+17 *  * * *  cd /opt/aqt-bank && docker compose run --rm -T bank sync >> /var/log/bank.log 2>&1
+*/15 * * * *  cd /opt/aqt-bank && docker compose run --rm -T bank import inbox >> /var/log/bank.log 2>&1
+0 5  * * 0  cd /opt/aqt-bank && docker compose run --rm -T bank import eml /data/inbox/proton >> /var/log/bank.log 2>&1
 ```
 
-Swept files move to `inbox/.done/<kind>/`; ones no importer could read move to `inbox/.rejected/<kind>/`. A file left in place means the import failed operationally (database down, disk full) and the next sweep retries it.
+`-T` matters in cron: without a TTY to allocate, Docker otherwise fails.
+
+Manual sources (WhatsApp zips, Discord package, LinkedIn export): scp into `/data/aqt-bank/inbox/<kind>/` and let the sweep pick them up, or run the import from the laptop with `BANK_URL` set (section 5) so rows and blobs still land together. Swept files move to `inbox/.done/<kind>/`; ones no importer could read move to `inbox/.rejected/<kind>/`. A file left in place means the import failed operationally (database down, disk full) and the next sweep retries it.
+
+Files dropped by hand need to be readable by uid 65532:
+
+```sh
+chown -R 65532:65532 /data/aqt-bank/inbox
+```
 
 ## 7. Backups (restic, encrypted)
 
@@ -150,7 +177,7 @@ restic -r s3:s3.example.com/aqt-bank-backup init   # once; store the restic pass
 # makes any failure skip the restic forget/prune, so old good snapshots survive.
 #!/bin/sh
 set -eu
-docker exec aqt-bank-db-1 pg_dump -U bank -Fc bank > /data/backup/bank.dump.tmp
+docker compose -f /opt/aqt-bank/docker-compose.yml exec -T db pg_dump -U bank -Fc bank > /data/backup/bank.dump.tmp
 mv /data/backup/bank.dump.tmp /data/backup/bank.dump
 restic -r s3:... backup /data/backup/bank.dump /data/aqt-bank
 restic -r s3:... forget --keep-daily 14 --keep-weekly 8 --keep-monthly 24 --prune
@@ -160,9 +187,9 @@ restic -r s3:... forget --keep-daily 14 --keep-weekly 8 --keep-monthly 24 --prun
 30 4 * * *  /usr/local/bin/bank-backup >> /var/log/bank-backup.log 2>&1
 ```
 
-Restore drill: `restic restore latest`, `pg_restore -d bank bank.dump`, point `BANK_DATA_DIR` at the restored dir, then `bank verify` — it walks every message, hashes every attachment blob and reports anything the database claims but the disk no longer has. Do this once before trusting the setup.
+Restore drill: `restic restore latest`, `pg_restore -d bank bank.dump`, point `BANK_DATA_DIR` at the restored dir, then `docker compose run --rm bank verify` — it walks every message, hashes every attachment blob and reports anything the database claims but the disk no longer has. Do this once before trusting the setup.
 
 ```sh
-bank verify              # read-only report
-bank verify --heal       # rebuild what the archived raw inputs still contain
+docker compose run --rm bank verify           # read-only report
+docker compose run --rm bank verify --heal    # rebuild what the archived raw inputs still contain
 ```

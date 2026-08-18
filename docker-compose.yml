@@ -1,5 +1,12 @@
-# ParadeDB = Postgres + pg_search (BM25 full-text search extension).
-# On the VPS, put the volume on the LUKS-encrypted mount.
+# ParadeDB = Postgres + pg_search (BM25 full-text search extension), plus the
+# archive server itself. Nothing here is published on a public interface.
+#
+# Local development needs only the database — `docker compose up -d` starts it
+# and the CLI talks to DATABASE_URL directly. The VPS runs both:
+#
+#   docker compose --profile server up -d
+#
+# Settings come from .env; see .env.example and DEPLOY.md.
 services:
   db:
     image: paradedb/paradedb:latest
@@ -9,10 +16,57 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bank}
       POSTGRES_DB: bank
     ports:
+      # Loopback only. The server reaches Postgres over the compose network,
+      # so this is here for psql and pg_dump on the box itself.
       - "127.0.0.1:5433:5432"
     volumes:
+      # A bare name is a named volume; an absolute path (BANK_PG_DIR=/data/pgdata
+      # on the VPS) is a bind mount onto the encrypted volume.
       # Postgres 18+ images want the mount at /var/lib/postgresql (not .../data)
-      - pgdata:/var/lib/postgresql
+      - ${BANK_PG_DIR:-pgdata}:/var/lib/postgresql
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bank -d bank"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  bank:
+    profiles: ["server"]
+    build: .
+    image: aqt-bank:local
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://bank:${POSTGRES_PASSWORD:-bank}@db:5432/bank?sslmode=disable
+      BANK_DATA_DIR: /data
+      # Dates and WhatsApp export timestamps are read in local time; without
+      # this the container would read them as UTC and shift them.
+      TZ: ${TZ:-UTC}
+    volumes:
+      # Blobs, raw archives, the inbox and the token file. On the VPS this is
+      # the LUKS-encrypted mount.
+      - ${BANK_DATA_DIR:-./.bankdata}:/data
+    ports:
+      # Publish on the tailnet address, never 0.0.0.0: bank serve has no TLS
+      # and the tailnet is the transport security. Default is loopback so a
+      # mistyped .env cannot expose the archive.
+      - "${BANK_LISTEN:-127.0.0.1:8480}:8480"
+    user: "${BANK_UID:-65532}:${BANK_GID:-65532}"
+    # The process only ever writes under /data, so the image itself can be
+    # immutable.
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # No healthcheck: the image has no shell or HTTP client to run one with,
+    # which is the point of it. /healthz is there for an external prober.
 
 volumes:
   pgdata:
