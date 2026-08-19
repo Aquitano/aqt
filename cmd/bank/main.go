@@ -497,8 +497,11 @@ func printLinkedInResult(res linkedin.Result) {
 }
 
 func printAIChatResult(kind string, res aichat.Result) {
-	fmt.Printf("%s: %d conversations, %d new, %d already known, %d empty skipped",
+	fmt.Printf("%s: %d conversations, %d new, %d already known, %d skipped",
 		kind, res.Conversations, res.Inserted, res.Duplicates, res.Skipped)
+	if res.EmptyConversations > 0 {
+		fmt.Printf(", %d conversations without importable messages", res.EmptyConversations)
+	}
 	if len(res.FailedSessions) > 0 {
 		fmt.Printf(", %d sessions unreadable", len(res.FailedSessions))
 	}

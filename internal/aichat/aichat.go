@@ -32,6 +32,10 @@ type Result struct {
 	Inserted      int `json:"inserted"`
 	Duplicates    int `json:"duplicates"`
 	Skipped       int `json:"skipped"`
+	// EmptyConversations counts conversations that yielded no importable
+	// message and were dropped whole. Without it the loss is invisible: such a
+	// conversation never reaches any other counter.
+	EmptyConversations int `json:"empty_conversations"`
 	// FailedSessions lists transcript files that could not be read or parsed.
 	// A directory import continues past them, so the paths belong in the
 	// result and not only in a stderr line.
@@ -48,10 +52,6 @@ type message struct {
 
 func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef string, msgs []message) error {
 	for _, m := range msgs {
-		if strings.TrimSpace(m.Body) == "" {
-			r.Skipped++
-			continue
-		}
 		if m.ExternalID == "" {
 			// One malformed export record (a mapping node without an id, a
 			// transcript line without a uuid) must not abort the whole import.

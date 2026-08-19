@@ -39,6 +39,7 @@ func ImportClaude(ctx context.Context, st *store.Store, archiveDir, path string)
 	for _, c := range convs {
 		msgs := parseClaudeConversation(c)
 		if len(msgs) == 0 {
+			res.EmptyConversations++
 			continue
 		}
 		res.Conversations++
@@ -56,15 +57,18 @@ func parseClaudeConversation(c claudeConversation) []message {
 	}
 	var out []message
 	for _, m := range c.ChatMessages {
-		body := m.Text
+		body := strings.TrimSpace(m.Text)
 		if body == "" {
 			var parts []string
 			for _, block := range m.Content {
-				if block.Type == "text" && block.Text != "" {
+				if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
 					parts = append(parts, block.Text)
 				}
 			}
-			body = strings.Join(parts, "\n")
+			body = strings.TrimSpace(strings.Join(parts, "\n"))
+		}
+		if body == "" {
+			continue // attachment-only or non-text blocks carry nothing to store
 		}
 		sender := m.Sender
 		if sender == "human" {

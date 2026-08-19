@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/aquitano/aqt-bank/internal/store"
@@ -49,6 +50,7 @@ func ImportChatGPT(ctx context.Context, st *store.Store, archiveDir, path string
 	for _, c := range convs {
 		msgs := parseChatGPTConversation(c)
 		if len(msgs) == 0 {
+			res.EmptyConversations++
 			continue
 		}
 		res.Conversations++
@@ -73,13 +75,15 @@ func parseChatGPTConversation(c cgptConversation) []message {
 		if m == nil || (m.Author.Role != "user" && m.Author.Role != "assistant") {
 			continue
 		}
-		body := m.Content.Text // content_type "code" and friends
+		var body string
+		if strings.TrimSpace(m.Content.Text) != "" {
+			body = m.Content.Text // content_type "code" and friends: indentation is content
+		}
 		if body == "" {
 			var parts []string
 			for _, p := range m.Content.Parts {
-				var s string
-				if json.Unmarshal(p, &s) == nil && s != "" {
-					parts = append(parts, s) // non-string parts (images, audio) are skipped
+				if s := partText(p); s != "" {
+					parts = append(parts, s)
 				}
 			}
 			if len(parts) == 0 {
@@ -101,6 +105,25 @@ func parseChatGPTConversation(c cgptConversation) []message {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].SentAt.Before(out[j].SentAt) })
 	return out
+}
+
+// partText returns the text a content part contributes. Most parts are plain
+// strings; a voice conversation instead carries objects, of which only
+// "audio_transcription" holds the spoken words. Asset pointers (images, the
+// .wav blobs behind a transcription) carry no text and are skipped.
+func partText(p json.RawMessage) string {
+	var s string
+	if json.Unmarshal(p, &s) == nil {
+		return strings.TrimSpace(s)
+	}
+	var obj struct {
+		ContentType string `json:"content_type"`
+		Text        string `json:"text"`
+	}
+	if json.Unmarshal(p, &obj) == nil && obj.ContentType == "audio_transcription" {
+		return strings.TrimSpace(obj.Text)
+	}
+	return ""
 }
 
 func joinParts(parts []string) string {

@@ -75,6 +75,7 @@ func importSession(ctx context.Context, st *store.Store, archiveDir, path string
 		return err
 	}
 	if len(msgs) == 0 {
+		res.EmptyConversations++
 		return nil
 	}
 	rawRef, err := archive.Copy(archiveDir, "claude-code", path)

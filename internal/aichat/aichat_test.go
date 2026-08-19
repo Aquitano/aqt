@@ -48,6 +48,34 @@ func TestParseChatGPTConversation(t *testing.T) {
 	}
 }
 
+func TestParseChatGPTVoiceConversation(t *testing.T) {
+	raw := `{
+	  "title": "Vocabulary drills",
+	  "mapping": {
+	    "n1": {"message": {"id": "msg-1", "author": {"role": "user"}, "create_time": 1715629680.0,
+	           "content": {"content_type": "multimodal_text", "parts": [
+	             {"content_type": "audio_transcription", "direction": "in", "text": "how do I learn vocabulary?"},
+	             {"content_type": "audio_transcription", "direction": "in", "text": "   "},
+	             {"content_type": "image_asset_pointer", "asset_pointer": "file-y", "text": "not a transcript"},
+	             {"content_type": "audio_asset_pointer", "asset_pointer": "file-service://wav-1"}]}}},
+	    "n2": {"message": {"id": "msg-2", "author": {"role": "assistant"}, "create_time": 1715629690.0,
+	           "content": {"content_type": "multimodal_text", "parts": [
+	             {"content_type": "audio_asset_pointer", "asset_pointer": "file-service://wav-2"}]}}}
+	  }
+	}`
+	var c cgptConversation
+	if err := unmarshal(raw, &c); err != nil {
+		t.Fatal(err)
+	}
+	msgs := parseChatGPTConversation(c)
+	if len(msgs) != 1 {
+		t.Fatalf("got %d messages, want the transcribed one only: %+v", len(msgs), msgs)
+	}
+	if msgs[0].Body != "how do I learn vocabulary?" {
+		t.Errorf("body = %q (only the transcription part carries text)", msgs[0].Body)
+	}
+}
+
 func TestParseClaudeConversation(t *testing.T) {
 	raw := `{
 	  "uuid": "c-1", "name": "Bank schema design",
@@ -71,6 +99,27 @@ func TestParseClaudeConversation(t *testing.T) {
 	}
 	if msgs[0].SentAt.Year() != 2024 || msgs[1].Thread != "Bank schema design" {
 		t.Errorf("msgs = %+v", msgs)
+	}
+}
+
+// A conversation whose messages carry no text must parse to nothing, so
+// ImportClaude counts it as empty instead of ingesting bodies it will skip.
+func TestParseClaudeConversationWithoutText(t *testing.T) {
+	raw := `{
+	  "uuid": "c-2", "name": "Screenshots only",
+	  "chat_messages": [
+	    {"uuid": "m-1", "sender": "human", "created_at": "2024-05-13T21:08:00Z",
+	     "text": "  ", "content": [{"type": "image", "text": ""}]},
+	    {"uuid": "m-2", "sender": "assistant", "created_at": "2024-05-13T21:08:30Z",
+	     "text": "", "content": []}
+	  ]
+	}`
+	var c claudeConversation
+	if err := unmarshal(raw, &c); err != nil {
+		t.Fatal(err)
+	}
+	if msgs := parseClaudeConversation(c); len(msgs) != 0 {
+		t.Errorf("got %d messages, want none: %+v", len(msgs), msgs)
 	}
 }
 
