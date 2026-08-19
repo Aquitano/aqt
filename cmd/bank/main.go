@@ -842,10 +842,28 @@ func cmdThread(ctx context.Context, args []string) error {
 	if *asJSON {
 		return printJSON(thread)
 	}
-	fmt.Printf("thread:  %s\nsource:  %s\nmessages: %d\n\n", thread.ThreadID, thread.Source, len(thread.Messages))
+	// One subject shared by every message is the conversation's title, not
+	// per-message data: the AI chat sources put it on all of them, and a
+	// thread id alone says nothing to a reader. A mail thread, whose subjects
+	// vary or are absent, keeps them under each message.
+	var title string
+	if len(thread.Messages) > 0 {
+		title = thread.Messages[0].Subject
+		for _, m := range thread.Messages[1:] {
+			if m.Subject != title {
+				title = ""
+				break
+			}
+		}
+	}
+	fmt.Printf("thread:  %s\n", thread.ThreadID)
+	if title != "" {
+		fmt.Printf("title:   %s\n", title)
+	}
+	fmt.Printf("source:  %s\nmessages: %d\n\n", thread.Source, len(thread.Messages))
 	for _, m := range thread.Messages {
 		fmt.Printf("[%d] %s  %s\n", m.ID, m.SentAt.Format("2006-01-02 15:04"), m.Sender)
-		if m.Subject != "" {
+		if m.Subject != "" && m.Subject != title {
 			fmt.Printf("    %s\n", m.Subject)
 		}
 		for _, line := range strings.Split(strings.TrimSpace(m.Body), "\n") {

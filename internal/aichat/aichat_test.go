@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -312,6 +313,32 @@ func TestMergeShardsOrdersByNumber(t *testing.T) {
 	}
 	if titles := conversationTitles(t, raw); strings.Join(titles, ",") != "nine,ten" {
 		t.Errorf("titles = %v", titles)
+	}
+}
+
+func TestMissingShards(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		nums []int
+		want []int
+	}{
+		{"contiguous", []int{0, 1, 2}, nil},
+		{"a hole", []int{0, 1, 3, 4}, []int{2}},
+		{"several holes", []int{0, 3, 5, 9}, []int{1, 2, 4, 6, 7, 8}},
+		// An export that numbers from 1 is complete, not missing a zeroth.
+		{"starting late", []int{7, 8}, nil},
+		{"one shard", []int{4}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shards := make([]shard, len(tc.nums))
+			for i, n := range tc.nums {
+				shards[i] = shard{num: n, name: fmt.Sprintf("conversations-%03d.json", n)}
+			}
+			got := missingShards(shards)
+			if fmt.Sprint(got) != fmt.Sprint(tc.want) {
+				t.Errorf("missingShards(%v) = %v, want %v", tc.nums, got, tc.want)
+			}
+		})
 	}
 }
 

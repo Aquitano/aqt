@@ -36,10 +36,9 @@ type Result struct {
 }
 
 type message struct {
-	ID      string
-	SentAt  time.Time
-	Body    string
-	Channel string
+	ID     string
+	SentAt time.Time
+	Body   string
 }
 
 // Import reads a data package zip or an unpacked package directory.
@@ -91,18 +90,21 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 		if !d.IsDir() {
 			continue
 		}
+		// The id is the thread: every server has a #general, and a renamed
+		// channel is still the same channel. The name is display data.
 		channelID := strings.TrimPrefix(d.Name(), "c")
-		channel := channelNames[channelID]
-		if channel == "" {
-			channel = channelName(fsys, path.Join("messages", d.Name()))
+		name := channelNames[channelID]
+		if name == "" {
+			name = channelName(fsys, path.Join("messages", d.Name()))
 		}
-		if channel == "" {
-			channel = channelID
+		label := name // a name says more to a reader than an id
+		if label == "" {
+			label = channelID
 		}
-		msgs, err := readChannel(fsys, path.Join("messages", d.Name()), channel)
+		msgs, err := readChannel(fsys, path.Join("messages", d.Name()))
 		if err != nil {
-			res.FailedChannels = append(res.FailedChannels, channel)
-			fmt.Fprintf(os.Stderr, "bank: skipping discord channel %s (%s): %v\n", channel, d.Name(), err)
+			res.FailedChannels = append(res.FailedChannels, label)
+			fmt.Fprintf(os.Stderr, "bank: skipping discord channel %s (%s): %v\n", label, d.Name(), err)
 			continue
 		}
 		res.Channels++
@@ -111,10 +113,14 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 				res.Skipped++
 				continue
 			}
-			id, err := st.InsertMessage(ctx, store.Message{
+			// Rethreading, not a plain insert: an archive filled before threads
+			// were keyed on channel ids still holds these messages under the
+			// channel name, and only a re-import can move them.
+			id, err := st.InsertMessageRethreading(ctx, store.Message{
 				Source:     "discord",
 				ExternalID: m.ID,
-				ThreadID:   m.Channel,
+				ThreadID:   channelID,
+				Subject:    name,
 				Sender:     sender,
 				Body:       m.Body,
 				SentAt:     m.SentAt,
@@ -179,18 +185,18 @@ func readUsername(fsys fs.FS) string {
 
 // readChannel handles both package generations: messages.csv (older) and
 // messages.json (newer).
-func readChannel(fsys fs.FS, dir, channel string) ([]message, error) {
+func readChannel(fsys fs.FS, dir string) ([]message, error) {
 	if f, err := fsys.Open(path.Join(dir, "messages.csv")); err == nil {
 		defer f.Close()
-		return parseCSV(f, channel)
+		return parseCSV(f)
 	}
 	if raw, err := fs.ReadFile(fsys, path.Join(dir, "messages.json")); err == nil {
-		return parseJSON(raw, channel)
+		return parseJSON(raw)
 	}
 	return nil, fmt.Errorf("no messages.csv or messages.json")
 }
 
-func parseCSV(r io.Reader, channel string) ([]message, error) {
+func parseCSV(r io.Reader) ([]message, error) {
 	cr := csv.NewReader(r)
 	cr.LazyQuotes = true
 	cr.FieldsPerRecord = -1
@@ -219,11 +225,11 @@ func parseCSV(r io.Reader, channel string) ([]message, error) {
 			return nil, err
 		}
 		out = append(out, buildMessage(get(rec, "id"), get(rec, "timestamp"),
-			get(rec, "contents"), get(rec, "attachments"), channel))
+			get(rec, "contents"), get(rec, "attachments")))
 	}
 }
 
-func parseJSON(raw []byte, channel string) ([]message, error) {
+func parseJSON(raw []byte) ([]message, error) {
 	var rows []struct {
 		ID          json.Number `json:"ID"`
 		Timestamp   string      `json:"Timestamp"`
@@ -235,12 +241,12 @@ func parseJSON(raw []byte, channel string) ([]message, error) {
 	}
 	out := make([]message, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, buildMessage(r.ID.String(), r.Timestamp, r.Contents, r.Attachments, channel))
+		out = append(out, buildMessage(r.ID.String(), r.Timestamp, r.Contents, r.Attachments))
 	}
 	return out, nil
 }
 
-func buildMessage(id, timestamp, contents, attachments, channel string) message {
+func buildMessage(id, timestamp, contents, attachments string) message {
 	body := strings.TrimSpace(contents)
 	if a := strings.TrimSpace(attachments); a != "" {
 		if body != "" {
@@ -248,7 +254,7 @@ func buildMessage(id, timestamp, contents, attachments, channel string) message 
 		}
 		body += "[attachment] " + a
 	}
-	return message{ID: id, SentAt: parseTime(timestamp), Body: body, Channel: channel}
+	return message{ID: id, SentAt: parseTime(timestamp), Body: body}
 }
 
 var timeLayouts = []string{

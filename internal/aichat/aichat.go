@@ -131,6 +131,14 @@ func shardNumber(name string) (int, bool) {
 // name, so an export that stops zero-padding still merges in export order.
 func mergeShards(shards []shard) ([]byte, error) {
 	sort.Slice(shards, func(i, j int) bool { return shards[i].num < shards[j].num })
+	if missing := missingShards(shards); len(missing) > 0 {
+		names := make([]string, len(missing))
+		for i, n := range missing {
+			names[i] = strconv.Itoa(n)
+		}
+		fmt.Fprintf(os.Stderr, "bank: conversation shard(s) %s are missing — importing the %d that are present\n",
+			strings.Join(names, ", "), len(shards))
+	}
 	all := []json.RawMessage{}
 	for _, s := range shards {
 		raw, err := s.read()
@@ -144,6 +152,20 @@ func mergeShards(shards []shard) ([]byte, error) {
 		all = append(all, convs...)
 	}
 	return json.Marshal(all)
+}
+
+// missingShards lists the shard numbers absent from an otherwise contiguous
+// run, given shards already sorted by number. Numbering starts wherever the
+// first shard does — only holes after it mean a file was lost, which would
+// otherwise import as a silently short archive.
+func missingShards(shards []shard) []int {
+	var missing []int
+	for i := 1; i < len(shards); i++ {
+		for n := shards[i-1].num + 1; n < shards[i].num; n++ {
+			missing = append(missing, n)
+		}
+	}
+	return missing
 }
 
 // archiveName names merged shard content the way archive.Copy names a file:

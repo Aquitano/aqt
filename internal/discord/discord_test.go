@@ -10,7 +10,7 @@ func TestParseCSV(t *testing.T) {
 805970292,2021-05-06 12:34:56.789000+00:00,"hey, want to play?",
 805970293,2021-05-06 12:35:10,,https://cdn.discordapp.com/attachments/1/2/img.png
 `
-	msgs, err := parseCSV(strings.NewReader(csvData), "Direct Message with alice")
+	msgs, err := parseCSV(strings.NewReader(csvData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestParseCSV(t *testing.T) {
 
 func TestParseJSON(t *testing.T) {
 	jsonData := `[{"ID": 805970292, "Timestamp": "2024-01-02T10:20:30.400000+00:00", "Contents": "newer package", "Attachments": ""}]`
-	msgs, err := parseJSON([]byte(jsonData), "general")
+	msgs, err := parseJSON([]byte(jsonData))
 	if err != nil {
 		t.Fatal(err)
 	}
