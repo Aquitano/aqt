@@ -1,8 +1,11 @@
 // Package aichat imports AI conversation history: ChatGPT data exports,
 // Claude.ai data exports, and local Claude Code session transcripts. All three
 // normalize to the common schema — sender is the role ("user"/"assistant"),
-// thread is the conversation title — and message UUIDs from the exports keep
-// re-imports idempotent.
+// thread is the export's stable conversation id and subject its human title —
+// and message UUIDs from the exports keep re-imports idempotent.
+//
+// Titles are not unique (a ChatGPT export holds dozens of "New chat"), so
+// keying threads on them merged unrelated conversations into one.
 package aichat
 
 import (
@@ -45,9 +48,13 @@ type Result struct {
 type message struct {
 	ExternalID string
 	Thread     string
-	Sender     string
-	Body       string
-	SentAt     time.Time
+	// Subject is the conversation's human title, carried on every message so
+	// search ranking and result output can show it. Empty when the export has
+	// no title.
+	Subject string
+	Sender  string
+	Body    string
+	SentAt  time.Time
 }
 
 func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef string, msgs []message) error {
@@ -56,16 +63,24 @@ func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef str
 			// One malformed export record (a mapping node without an id, a
 			// transcript line without a uuid) must not abort the whole import.
 			r.Skipped++
-			fmt.Fprintf(os.Stderr, "bank: %s: skipping record without an id in %q\n", source, m.Thread)
+			named := m.Subject // the title says more to a human than the conversation id
+			if named == "" {
+				named = m.Thread
+			}
+			fmt.Fprintf(os.Stderr, "bank: %s: skipping record without an id in %q\n", source, named)
 			continue
 		}
 		if m.SentAt.IsZero() {
 			m.SentAt = time.Unix(0, 0) // unknown date: obvious epoch sentinel
 		}
-		id, err := st.InsertMessage(ctx, store.Message{
+		// Rethreading, not a plain insert: an archive filled before threads were
+		// keyed on conversation ids still holds these messages under their old
+		// title-keyed thread, and only a re-import can move them.
+		id, err := st.InsertMessageRethreading(ctx, store.Message{
 			Source:     source,
 			ExternalID: m.ExternalID,
 			ThreadID:   m.Thread,
+			Subject:    m.Subject,
 			Sender:     m.Sender,
 			Body:       m.Body,
 			SentAt:     m.SentAt,

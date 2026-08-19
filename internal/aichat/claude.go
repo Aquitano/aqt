@@ -51,9 +51,11 @@ func ImportClaude(ctx context.Context, st *store.Store, archiveDir, path string)
 }
 
 func parseClaudeConversation(c claudeConversation) []message {
-	thread := c.Name
+	// The uuid is the stable identity; the name is display data and repeats
+	// across unrelated conversations.
+	thread := c.UUID
 	if thread == "" {
-		thread = c.UUID
+		thread = c.Name
 	}
 	var out []message
 	for _, m := range c.ChatMessages {
@@ -77,6 +79,7 @@ func parseClaudeConversation(c claudeConversation) []message {
 		out = append(out, message{
 			ExternalID: m.UUID,
 			Thread:     thread,
+			Subject:    c.Name,
 			Sender:     sender,
 			Body:       body,
 			SentAt:     parseTimestamp(m.CreatedAt),

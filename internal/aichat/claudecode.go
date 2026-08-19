@@ -86,11 +86,14 @@ func importSession(ctx context.Context, st *store.Store, archiveDir, path string
 	return res.ingest(ctx, st, "claude-code", rawRef, msgs)
 }
 
-func parseClaudeCodeSession(r io.Reader, fallbackThread string) ([]message, error) {
+// parseClaudeCodeSession reads one transcript. session is the session id the
+// file is named after: it is the thread, because two sessions can carry the
+// same summary and are still two conversations. The summary is the subject.
+func parseClaudeCodeSession(r io.Reader, session string) ([]message, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 32*1024*1024)
 
-	thread := fallbackThread
+	var subject string
 	var out []message
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -101,8 +104,8 @@ func parseClaudeCodeSession(r io.Reader, fallbackThread string) ([]message, erro
 		if err := json.Unmarshal(line, &l); err != nil {
 			continue // tolerate unknown/corrupt lines rather than losing the session
 		}
-		if l.Type == "summary" && l.Summary != "" && thread == fallbackThread {
-			thread = l.Summary
+		if l.Type == "summary" && l.Summary != "" && subject == "" {
+			subject = l.Summary
 			continue
 		}
 		if (l.Type != "user" && l.Type != "assistant") || l.IsMeta || l.Message == nil {
@@ -114,7 +117,7 @@ func parseClaudeCodeSession(r io.Reader, fallbackThread string) ([]message, erro
 		}
 		out = append(out, message{
 			ExternalID: l.UUID,
-			Thread:     thread,
+			Thread:     session,
 			Sender:     l.Message.Role,
 			Body:       body,
 			SentAt:     parseTimestamp(l.Timestamp),
@@ -125,7 +128,7 @@ func parseClaudeCodeSession(r io.Reader, fallbackThread string) ([]message, erro
 	}
 	// The summary line often appears after messages were already collected.
 	for i := range out {
-		out[i].Thread = thread
+		out[i].Subject = subject
 	}
 	return out, nil
 }

@@ -62,12 +62,15 @@ func ImportChatGPT(ctx context.Context, st *store.Store, archiveDir, path string
 }
 
 func parseChatGPTConversation(c cgptConversation) []message {
-	thread := c.Title
-	if thread == "" {
-		thread = c.ConversationID
-	}
+	// conversation_id is the stable identity; the title is display data and
+	// repeats across unrelated chats ("New chat"). Falling back to the title is
+	// a last resort for an export that carries neither id.
+	thread := c.ConversationID
 	if thread == "" {
 		thread = c.ID
+	}
+	if thread == "" {
+		thread = c.Title
 	}
 	var out []message
 	for _, node := range c.Mapping {
@@ -98,6 +101,7 @@ func parseChatGPTConversation(c cgptConversation) []message {
 		out = append(out, message{
 			ExternalID: m.ID,
 			Thread:     thread,
+			Subject:    c.Title,
 			Sender:     m.Author.Role,
 			Body:       body,
 			SentAt:     sentAt,

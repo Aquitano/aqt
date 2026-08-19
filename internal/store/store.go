@@ -157,11 +157,79 @@ func (s *Store) migrate(ctx context.Context) error {
 
 // InsertMessage is idempotent via the (source, external_id) unique constraint.
 // Returns (0, nil) when the message was already present.
+//
+// The bare "on conflict do nothing" also swallows the partial unique index on
+// (source, message_id), which is how mail imports dedup two copies of the same
+// mail that arrived under different provider ids.
 func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
+	m, err := m.clean()
+	if err != nil {
+		return 0, err
+	}
+	var id int64
+	err = s.pool.QueryRow(ctx, `
+		insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		on conflict do nothing
+		returning id`,
+		m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef,
+	).Scan(&id)
+	if err == pgx.ErrNoRows {
+		return 0, nil
+	}
+	return id, err
+}
+
+// InsertMessageRethreading is InsertMessage for sources whose thread id and
+// subject are derived, and so can change when the derivation is fixed: an
+// already-stored message is re-keyed onto the incoming thread_id and subject
+// instead of being left under the old ones. Everything else about the stored
+// row is kept — a re-import is not an authority on a body that may since have
+// been repaired.
+//
+// Like InsertMessage it returns (0, nil) for a message that was already
+// present, re-keyed or not, so importers keep counting it as a duplicate
+// rather than as new.
+//
+// Only (source, external_id) is treated as the conflict: a caller that also
+// sets MessageID would hit the second unique index as a raw error rather than
+// the silent skip InsertMessage gives it.
+func (s *Store) InsertMessageRethreading(ctx context.Context, m Message) (int64, error) {
+	m, err := m.clean()
+	if err != nil {
+		return 0, err
+	}
+	var id int64
+	var inserted bool
+	// The where clause keeps an unchanged re-import from rewriting every row,
+	// at the cost of returning nothing for it — which is a duplicate either
+	// way. xmax tells a fresh insert from a re-keyed conflict.
+	err = s.pool.QueryRow(ctx, `
+		insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		on conflict (source, external_id) do update
+			set thread_id = excluded.thread_id, subject = excluded.subject
+			where messages.thread_id is distinct from excluded.thread_id
+			   or messages.subject is distinct from excluded.subject
+		returning id, xmax = 0`,
+		m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef,
+	).Scan(&id, &inserted)
+	if err == pgx.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil || !inserted {
+		return 0, err
+	}
+	return id, nil
+}
+
+// clean normalizes every text field to what the columns accept and rejects a
+// message that could not be identified.
+func (m Message) clean() (Message, error) {
 	m.ExternalID = cleanText(m.ExternalID)
 	m.MessageID = cleanText(m.MessageID)
 	if m.Source == "" || m.ExternalID == "" {
-		return 0, fmt.Errorf("message needs source (%q) and external_id (%q)", m.Source, m.ExternalID)
+		return m, fmt.Errorf("message needs source (%q) and external_id (%q)", m.Source, m.ExternalID)
 	}
 	if m.Recipients == nil {
 		m.Recipients = []string{}
@@ -173,18 +241,7 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
 	for i, r := range m.Recipients {
 		m.Recipients[i] = cleanText(r)
 	}
-	var id int64
-	err := s.pool.QueryRow(ctx, `
-		insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		on conflict do nothing
-		returning id`,
-		m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef,
-	).Scan(&id)
-	if err == pgx.ErrNoRows {
-		return 0, nil
-	}
-	return id, err
+	return m, nil
 }
 
 // cleanText makes a string safe for a Postgres text column: valid UTF-8

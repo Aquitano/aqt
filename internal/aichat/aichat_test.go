@@ -34,7 +34,7 @@ func TestParseChatGPTConversation(t *testing.T) {
 	if len(msgs) != 3 {
 		t.Fatalf("got %d messages, want 3 (system skipped): %+v", len(msgs), msgs)
 	}
-	if msgs[0].ExternalID != "msg-2" || msgs[0].Sender != "user" || msgs[0].Thread != "Postgres advice" {
+	if msgs[0].ExternalID != "msg-2" || msgs[0].Sender != "user" || msgs[0].Thread != "conv-1" || msgs[0].Subject != "Postgres advice" {
 		t.Errorf("first = %+v", msgs[0])
 	}
 	if !strings.Contains(msgs[1].Body, "shared_buffers") || !strings.Contains(msgs[1].Body, "work_mem") {
@@ -97,7 +97,7 @@ func TestParseClaudeConversation(t *testing.T) {
 	if msgs[0].Sender != "user" || msgs[0].Body != "one datastore or two?" {
 		t.Errorf("human message = %+v", msgs[0])
 	}
-	if msgs[0].SentAt.Year() != 2024 || msgs[1].Thread != "Bank schema design" {
+	if msgs[0].SentAt.Year() != 2024 || msgs[1].Thread != "c-1" || msgs[1].Subject != "Bank schema design" {
 		t.Errorf("msgs = %+v", msgs)
 	}
 }
@@ -139,11 +139,67 @@ func TestParseClaudeCodeSession(t *testing.T) {
 	if len(msgs) != 2 {
 		t.Fatalf("got %d messages, want 2 (meta + tool_result-only skipped): %+v", len(msgs), msgs)
 	}
-	if msgs[0].Thread != "Fixing the mbox splitter" {
-		t.Errorf("thread = %q", msgs[0].Thread)
+	// The summary is the subject; the session the file is named after is the
+	// thread, so two sessions summarised the same way stay apart.
+	if msgs[0].Thread != "session-file" || msgs[0].Subject != "Fixing the mbox splitter" {
+		t.Errorf("first = %+v", msgs[0])
 	}
 	if msgs[1].Body != "Looking at the splitter now." {
 		t.Errorf("assistant body = %q (tool_use must be dropped)", msgs[1].Body)
+	}
+}
+
+// Titles repeat — a ChatGPT export holds dozens of "New chat" — so two
+// conversations sharing one must still be two threads.
+func TestSameTitleConversationsStayApart(t *testing.T) {
+	chatgpt := func(id string) []message {
+		var c cgptConversation
+		if err := unmarshal(`{"title": "New chat", "conversation_id": "`+id+`", "mapping": {
+		  "n1": {"message": {"id": "`+id+`-m", "author": {"role": "user"}, "create_time": 1715629680.0,
+		         "content": {"content_type": "text", "parts": ["hi"]}}}}}`, &c); err != nil {
+			t.Fatal(err)
+		}
+		return parseChatGPTConversation(c)
+	}
+	claude := func(uuid string) []message {
+		var c claudeConversation
+		if err := unmarshal(`{"uuid": "`+uuid+`", "name": "New chat", "chat_messages": [
+		  {"uuid": "`+uuid+`-m", "sender": "human", "created_at": "2024-05-13T21:08:00Z", "text": "hi"}]}`, &c); err != nil {
+			t.Fatal(err)
+		}
+		return parseClaudeConversation(c)
+	}
+	claudeCode := func(session string) []message {
+		line := `{"type":"summary","summary":"New chat"}` + "\n" +
+			`{"type":"user","uuid":"` + session + `-m","timestamp":"2026-08-17T10:00:00.000Z",` +
+			`"message":{"role":"user","content":"hi"}}`
+		msgs, err := parseClaudeCodeSession(strings.NewReader(line), session)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return msgs
+	}
+	for _, tc := range []struct {
+		source string
+		parse  func(string) []message
+		ids    [2]string
+	}{
+		{"chatgpt", chatgpt, [2]string{"conv-1", "conv-2"}},
+		{"claude", claude, [2]string{"c-1", "c-2"}},
+		{"claude-code", claudeCode, [2]string{"s-1", "s-2"}},
+	} {
+		t.Run(tc.source, func(t *testing.T) {
+			first, second := tc.parse(tc.ids[0]), tc.parse(tc.ids[1])
+			if len(first) != 1 || len(second) != 1 {
+				t.Fatalf("got %d and %d messages, want one each", len(first), len(second))
+			}
+			if first[0].Thread != tc.ids[0] || second[0].Thread != tc.ids[1] {
+				t.Errorf("threads = %q and %q, want the conversation ids", first[0].Thread, second[0].Thread)
+			}
+			if first[0].Subject != "New chat" || second[0].Subject != "New chat" {
+				t.Errorf("subjects = %q and %q, want the shared title", first[0].Subject, second[0].Subject)
+			}
+		})
 	}
 }
 
