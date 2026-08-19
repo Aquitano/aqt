@@ -451,7 +451,7 @@ func printImportResult(kind, source, path string, res any) {
 	case linkedin.Result:
 		printLinkedInResult(r)
 	case aichat.Result:
-		printAIChatResult(kind, r)
+		printAIChatResult(kind, path, r)
 	case generic.Result:
 		printGenericResult(r)
 	}
@@ -496,9 +496,14 @@ func printLinkedInResult(res linkedin.Result) {
 		res.Inserted, res.Duplicates, res.Skipped)
 }
 
-func printAIChatResult(kind string, res aichat.Result) {
-	fmt.Printf("%s: %d conversations, %d new, %d already known, %d skipped",
-		kind, res.Conversations, res.Inserted, res.Duplicates, res.Skipped)
+// printAIChatResult names the file it is reporting on, so a sharded export does
+// not print a wall of indistinguishable lines, and reconciles the conversations
+// found in the input against the ones that made it in — a gap between the two
+// is the only visible sign of silently dropped conversations.
+func printAIChatResult(kind, path string, res aichat.Result) {
+	found := res.Conversations + res.EmptyConversations
+	fmt.Printf("%s (%s): %d conversations found, %d imported, %d new, %d already known, %d skipped",
+		kind, filepath.Base(path), found, res.Conversations, res.Inserted, res.Duplicates, res.Skipped)
 	if res.EmptyConversations > 0 {
 		fmt.Printf(", %d conversations without importable messages", res.EmptyConversations)
 	}
@@ -605,7 +610,7 @@ func importRemoteFile(ctx context.Context, c *client.Client, kind, source, path 
 		if err != nil {
 			return err
 		}
-		printAIChatResult(kind, res)
+		printAIChatResult(kind, path, res)
 	default:
 		return fmt.Errorf("unknown import source %q (%s)", kind, strings.Join(inbox.Kinds, ", "))
 	}
