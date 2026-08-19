@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -30,6 +31,7 @@ import (
 	"github.com/aquitano/aqt-bank/internal/discord"
 	"github.com/aquitano/aqt-bank/internal/eml"
 	"github.com/aquitano/aqt-bank/internal/extract"
+	"github.com/aquitano/aqt-bank/internal/fail"
 	"github.com/aquitano/aqt-bank/internal/generic"
 	"github.com/aquitano/aqt-bank/internal/gmail"
 	"github.com/aquitano/aqt-bank/internal/inbox"
@@ -57,6 +59,7 @@ Usage:
                                               (the escape hatch for agents; - reads stdin)
   bank import inbox [--json]                  sweep $BANK_DATA_DIR/inbox/<kind>/
   bank import ... [--no-extract]              skip reading text out of attachments
+  bank reimport <source>                      replay archived inputs through the current importer
   bank extract [--ocr] [--status s]           read text out of attachments
   bank attachment list [--status s]           attachment content and its text status
   bank attachment stats [--json]              how much of the archive is searchable inside
@@ -118,6 +121,8 @@ func main() {
 		err = cmdSync(ctx, os.Args[2:])
 	case "import":
 		err = cmdImport(ctx, os.Args[2:])
+	case "reimport":
+		err = cmdReimport(ctx, os.Args[2:])
 	case "search":
 		err = cmdSearch(ctx, os.Args[2:])
 	case "thread":
@@ -418,6 +423,105 @@ func cmdImportInbox(ctx context.Context, args []string) error {
 	fmt.Printf("%d imported, %d already known, %d rejected, %d failed\n",
 		res.Imported, res.Duplicates, res.Rejected, res.Failed)
 	return sweepErr
+}
+
+// reimportKinds are the sources bank reimport can replay: their kind and
+// source coincide, their importer reads back the same file shape it archived,
+// and the original filename is recoverable from the archived name. Mail is
+// absent deliberately — gmail archives one .eml per synced message, and
+// eml/mbox archives live under a --source (proton, gmail, ...) that does not
+// determine the kind.
+var reimportKinds = []string{"chatgpt", "claude", "claude-code", "discord", "whatsapp", "linkedin"}
+
+// cmdReimport replays every archived raw input of one source through the
+// current importer. Imports are idempotent, so the only visible effect is
+// whatever today's importer does better than the one that first read the file
+// — messages it used to drop, threads it used to key wrong.
+func cmdReimport(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("reimport", flag.ExitOnError)
+	noExtract := fs.Bool("no-extract", false, "")
+	asJSON := fs.Bool("json", false, "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: bank reimport <%s> [--no-extract] [--json]", strings.Join(reimportKinds, "|"))
+	}
+	kind := fs.Arg(0)
+	if !slices.Contains(reimportKinds, kind) {
+		return fmt.Errorf("cannot replay %q; reimport covers %s", kind, strings.Join(reimportKinds, ", "))
+	}
+	if client.FromEnv() != nil {
+		return fmt.Errorf("reimport replays the server's own archive; run it there, not through BANK_URL")
+	}
+	d, closeStore, err := openLocal(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+
+	entries, err := archive.List(d.archiveDir, kind)
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		fmt.Printf("nothing archived under %s\n", filepath.Join(d.archiveDir, kind))
+		return nil
+	}
+	staging, err := os.MkdirTemp(stagingDir(), "reimport-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+
+	type replayed struct {
+		Ref    string `json:"ref"`
+		Result any    `json:"result,omitempty"`
+		Error  string `json:"error,omitempty"`
+	}
+	var out []replayed
+	var failed int
+	for i, e := range entries {
+		// One directory per input: original names repeat across exports
+		// (every merged ChatGPT export stages as conversations.json).
+		sub := filepath.Join(staging, strconv.Itoa(i))
+		if err := os.Mkdir(sub, 0o700); err != nil {
+			return err
+		}
+		p, err := archive.Stage(d.archiveDir, e, sub)
+		if err != nil {
+			return fmt.Errorf("stage %s: %w", e.Ref, err)
+		}
+		res, err := importLocal(ctx, d, kind, "", p)
+		if err != nil {
+			// A file today's importer cannot parse must not cost the rest of
+			// the replay; anything operational (database, archive) still
+			// aborts, as one failure would just repeat for every input.
+			if fail.IsOp(err) {
+				return fmt.Errorf("%s: %w", e.Ref, err)
+			}
+			failed++
+			out = append(out, replayed{Ref: e.Ref, Error: err.Error()})
+			fmt.Fprintf(os.Stderr, "bank: skipping %s: %v\n", e.Ref, err)
+			continue
+		}
+		out = append(out, replayed{Ref: e.Ref, Result: res})
+		if !*asJSON {
+			printImportResult(kind, "", e.Ref, res)
+		}
+	}
+	if *asJSON {
+		if err := printJSON(out); err != nil {
+			return err
+		}
+	}
+	if err := extractAfterImport(ctx, extract.Local{Store: d.st, Blobs: d.blobs}, *noExtract); err != nil {
+		return err
+	}
+	if failed > 0 {
+		return fmt.Errorf("%d of %d archived inputs failed to replay", failed, len(entries))
+	}
+	return nil
 }
 
 // importOutcome reduces an importer's result to the counts the sweep uses to

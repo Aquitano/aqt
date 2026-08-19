@@ -41,6 +41,7 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank thread "Alice" --source whatsapp         # the whole conversation
 ./bank stats
 ./bank verify --heal                            # check the archive, repair what the raw inputs allow
+./bank reimport chatgpt                         # replay archived exports through today's importer
 ```
 
 ## Remote use
