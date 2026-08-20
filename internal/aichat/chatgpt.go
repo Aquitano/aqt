@@ -3,6 +3,7 @@ package aichat
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -96,7 +97,11 @@ func parseChatGPTConversation(c cgptConversation) []message {
 		}
 		var sentAt time.Time
 		if m.CreateTime != nil {
-			sentAt = time.Unix(int64(*m.CreateTime), 0)
+			// create_time carries fractional seconds, and a user/assistant pair
+			// routinely lands within the same second — truncating would leave
+			// their order to chance.
+			sec, frac := math.Modf(*m.CreateTime)
+			sentAt = time.Unix(int64(sec), int64(frac*1e9))
 		}
 		out = append(out, message{
 			ExternalID: m.ID,
@@ -107,7 +112,14 @@ func parseChatGPTConversation(c cgptConversation) []message {
 			SentAt:     sentAt,
 		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].SentAt.Before(out[j].SentAt) })
+	// Mapping is a map, so ties must break on something deterministic or the
+	// order of same-instant messages changes on every import.
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].SentAt.Equal(out[j].SentAt) {
+			return out[i].SentAt.Before(out[j].SentAt)
+		}
+		return out[i].ExternalID < out[j].ExternalID
+	})
 	return out
 }
 

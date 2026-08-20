@@ -44,8 +44,35 @@ func TestParseChatGPTConversation(t *testing.T) {
 	if msgs[2].Body != "and an image above" {
 		t.Errorf("multimodal non-string part not skipped: %q", msgs[2].Body)
 	}
-	if msgs[0].SentAt.Unix() != 1715629680 {
-		t.Errorf("sent_at = %v", msgs[0].SentAt)
+	if msgs[0].SentAt.Unix() != 1715629680 || msgs[0].SentAt.Nanosecond() == 0 {
+		t.Errorf("sent_at = %v, want the fractional second kept", msgs[0].SentAt)
+	}
+}
+
+// A user question and its answer routinely share a whole second; the fraction
+// must order them, and an exact tie must not depend on map iteration order.
+func TestParseChatGPTConversationSubSecondOrder(t *testing.T) {
+	raw := `{
+	  "title": "Quick one",
+	  "conversation_id": "conv-1",
+	  "mapping": {
+	    "n1": {"message": {"id": "msg-b", "author": {"role": "assistant"}, "create_time": 1715629680.75,
+	           "content": {"content_type": "text", "parts": ["answer"]}}},
+	    "n2": {"message": {"id": "msg-a", "author": {"role": "user"}, "create_time": 1715629680.25,
+	           "content": {"content_type": "text", "parts": ["question"]}}},
+	    "n3": {"message": {"id": "msg-c", "author": {"role": "user"}, "create_time": 1715629680.75,
+	           "content": {"content_type": "text", "parts": ["follow-up at the same instant"]}}}
+	  }
+	}`
+	var c cgptConversation
+	if err := unmarshal(raw, &c); err != nil {
+		t.Fatal(err)
+	}
+	for range 20 { // map iteration order varies per run
+		msgs := parseChatGPTConversation(c)
+		if got := msgs[0].ExternalID + "," + msgs[1].ExternalID + "," + msgs[2].ExternalID; got != "msg-a,msg-b,msg-c" {
+			t.Fatalf("order = %s, want msg-a,msg-b,msg-c", got)
+		}
 	}
 }
 

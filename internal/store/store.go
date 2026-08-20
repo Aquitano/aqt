@@ -180,9 +180,9 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
 	return id, err
 }
 
-// InsertMessageRethreading is InsertMessage for sources whose thread id and
-// subject are derived, and so can change when the derivation is fixed: an
-// already-stored message is re-keyed onto the incoming thread_id and subject
+// InsertMessageRethreading is InsertMessage for sources whose thread id,
+// subject, and sent_at are derived, and so can change when the derivation is
+// fixed: an already-stored message is re-keyed onto the incoming values
 // instead of being left under the old ones. Everything else about the stored
 // row is kept — a re-import is not an authority on a body that may since have
 // been repaired.
@@ -208,9 +208,10 @@ func (s *Store) InsertMessageRethreading(ctx context.Context, m Message) (int64,
 		insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref)
 		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		on conflict (source, external_id) do update
-			set thread_id = excluded.thread_id, subject = excluded.subject
+			set thread_id = excluded.thread_id, subject = excluded.subject, sent_at = excluded.sent_at
 			where messages.thread_id is distinct from excluded.thread_id
 			   or messages.subject is distinct from excluded.subject
+			   or messages.sent_at is distinct from excluded.sent_at
 		returning id, xmax = 0`,
 		m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef,
 	).Scan(&id, &inserted)
