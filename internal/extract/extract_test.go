@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func write(t *testing.T, name string, content []byte) string {
@@ -296,6 +297,34 @@ func TestOCRFailureIsRecordedNotPanicked(t *testing.T) {
 	}
 	if res.Err == nil || !strings.Contains(res.Err.Error(), "boom") {
 		t.Fatalf("err = %v, want the tool's own message", res.Err)
+	}
+}
+
+// A scan whose every page fails OCR must fail, not store as an empty document
+// — empty is a terminal status the queue never retries.
+func TestOCRPDFAllPagesFailedIsAnError(t *testing.T) {
+	ppm := fakeBin(t, "pdftoppm", `for a in "$@"; do prefix="$a"; done; touch "$prefix-1.png" "$prefix-2.png"`)
+	tess := fakeBin(t, "tesseract", `echo "unreadable page" >&2; exit 1`)
+	_, err := ocrPDF(context.Background(), write(t, "scan.pdf", []byte("%PDF")),
+		Options{PDFToPPM: ppm, Tesseract: tess, MaxChars: 1 << 20})
+	if err == nil || !strings.Contains(err.Error(), "unreadable page") {
+		t.Fatalf("err = %v, want the page failure surfaced", err)
+	}
+}
+
+// A timeout mid-document must fail the document even though earlier pages
+// read fine: partial text stored as ok would freeze a twenty-page scan at
+// page two forever.
+func TestOCRPDFTimeoutIsAnError(t *testing.T) {
+	ppm := fakeBin(t, "pdftoppm", `for a in "$@"; do prefix="$a"; done; touch "$prefix-1.png" "$prefix-2.png"`)
+	// The first call answers instantly; the second outlives the deadline.
+	tess := fakeBin(t, "tesseract", `m="$(dirname "$0")/ran"; if [ -e "$m" ]; then sleep 5 >/dev/null 2>&1; fi; touch "$m"; echo "page text"`)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_, err := ocrPDF(ctx, write(t, "scan.pdf", []byte("%PDF")),
+		Options{PDFToPPM: ppm, Tesseract: tess, MaxChars: 1 << 20})
+	if err == nil {
+		t.Fatal("a timeout mid-scan must fail the document, not store what it got")
 	}
 }
 

@@ -61,17 +61,31 @@ func ocrPDF(ctx context.Context, path string, o Options) (string, error) {
 	}
 
 	var sb strings.Builder
+	var lastErr error
+	read := 0
 	for _, p := range pages {
 		text, err := tesseract(ctx, p, o)
 		if err != nil {
+			if ctx.Err() != nil {
+				// A timeout mid-document is not "that was all the text":
+				// storing the partial result as ok would end retries forever.
+				return "", err
+			}
 			// One unreadable page should not lose the other thirty.
+			lastErr = err
 			continue
 		}
+		read++
 		sb.WriteString(text)
 		sb.WriteByte('\n')
 		if sb.Len() > o.MaxChars {
 			break
 		}
+	}
+	if read == 0 {
+		// Every page failed; "empty document" would be a lie and, as a
+		// terminal status, would never be retried.
+		return "", lastErr
 	}
 	return sb.String(), nil
 }
