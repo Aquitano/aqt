@@ -2,7 +2,10 @@ package extract
 
 import (
 	"archive/zip"
+	"bytes"
+	"compress/zlib"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -186,6 +189,72 @@ func TestCorruptPDFDoesNotPanic(t *testing.T) {
 	res := File(context.Background(), path, "broken.pdf", "application/pdf", Options{})
 	if res.Status != StatusFailed {
 		t.Fatalf("status = %v, want failed", res.Status)
+	}
+}
+
+// onePagePDF builds a minimal valid PDF whose single page carries content as
+// its FlateDecode content stream.
+func onePagePDF(t *testing.T, content []byte) []byte {
+	t.Helper()
+	var z bytes.Buffer
+	zw := zlib.NewWriter(&z)
+	if _, err := zw.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	var offsets []int
+	obj := func(body string) {
+		offsets = append(offsets, buf.Len())
+		fmt.Fprintf(&buf, "%d 0 obj\n%s\nendobj\n", len(offsets), body)
+	}
+	buf.WriteString("%PDF-1.4\n")
+	obj("<< /Type /Catalog /Pages 2 0 R >>")
+	obj("<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+	obj("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>")
+	offsets = append(offsets, buf.Len())
+	fmt.Fprintf(&buf, "4 0 obj\n<< /Length %d /Filter /FlateDecode >>\nstream\n", z.Len())
+	buf.Write(z.Bytes())
+	buf.WriteString("\nendstream\nendobj\n")
+	xref := buf.Len()
+	fmt.Fprintf(&buf, "xref\n0 %d\n0000000000 65535 f \n", len(offsets)+1)
+	for _, off := range offsets {
+		fmt.Fprintf(&buf, "%010d 00000 n \n", off)
+	}
+	fmt.Fprintf(&buf, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(offsets)+1, xref)
+	return buf.Bytes()
+}
+
+// A tiny compressed stream can inflate to gigabytes; the parser materializes
+// whatever it inflates to, so the bomb must be refused before the parser.
+func TestPDFDecompressionBombIsBounded(t *testing.T) {
+	bomb := bytes.Repeat([]byte("q Q "), (pdfPageContentLimit+(4<<20))/4)
+	path := write(t, "bomb.pdf", onePagePDF(t, bomb))
+	res := File(context.Background(), path, "bomb.pdf", "application/pdf", Options{})
+	if res.Status != StatusFailed {
+		t.Fatalf("status = %v, want failed", res.Status)
+	}
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "inflates past") {
+		t.Fatalf("err = %v, want the bomb named", res.Err)
+	}
+	// The same document under the limit parses normally.
+	small := write(t, "small.pdf", onePagePDF(t, []byte("q Q")))
+	if res := File(context.Background(), small, "small.pdf", "application/pdf", Options{}); res.Status != StatusNeedsOCR {
+		t.Fatalf("status = %v, want needs_ocr for a textless page", res.Status)
+	}
+}
+
+// Options.Timeout used to never reach the text-layer path at all; the page
+// loop must notice a dead context.
+func TestPDFTextHonorsContext(t *testing.T) {
+	path := write(t, "small.pdf", onePagePDF(t, []byte("q Q")))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := pdfText(ctx, path, DefaultOptions()); err != context.Canceled {
+		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
 
