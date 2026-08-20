@@ -44,6 +44,12 @@ func (s *Store) put(r io.Reader, overwrite bool) (string, int64, error) {
 
 	h := sha256.New()
 	size, err := io.Copy(io.MultiWriter(tmp, h), r)
+	// fsync before the rename: presence at the digest's path is treated as
+	// proof of completeness, so a host crash must not be able to leave a
+	// permanently trusted empty file there.
+	if err == nil {
+		err = tmp.Sync()
+	}
 	if closeErr := tmp.Close(); err == nil {
 		err = closeErr
 	}

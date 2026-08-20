@@ -83,6 +83,11 @@ func write(archiveDir, source, name string, r io.Reader) (string, error) {
 	}
 	defer os.Remove(tmp.Name())
 	_, err = io.Copy(tmp, r)
+	// fsync before the rename: a file at dest is trusted as complete, so a
+	// host crash must not be able to leave a truncated one there.
+	if err == nil {
+		err = tmp.Sync()
+	}
 	if closeErr := tmp.Close(); err == nil {
 		err = closeErr
 	}
