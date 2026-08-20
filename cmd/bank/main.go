@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	// Embedded so a container without tzdata still resolves the local zone.
@@ -1698,8 +1699,6 @@ func watchExtract(ctx context.Context, a extract.Archive, sel extract.Selection,
 		}
 	}
 
-	pruneStaging(o.TempDir, stagingMaxAge)
-
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -1754,11 +1753,17 @@ func openAttachments(ctx context.Context) (attachmentBackend, func(), error) {
 // stagingDir is where downloads and rasterized pages go: the data directory,
 // which is the one writable mount in the deployed container and is sized for
 // archive-scale files, unlike a small /tmp tmpfs.
+var pruneStagingOnce sync.Once
+
 func stagingDir() string {
 	dir := filepath.Join(dataDir(), "tmp")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return ""
 	}
+	// Every command that stages here also sweeps the debris of commands that
+	// were killed before their own cleanup — an interrupted reimport leaves a
+	// full copy of a source's archive behind.
+	pruneStagingOnce.Do(func() { pruneStaging(dir, stagingMaxAge) })
 	return dir
 }
 
@@ -1768,10 +1773,9 @@ func stagingDir() string {
 // worker, is using entries far younger than this.
 const stagingMaxAge = 24 * time.Hour
 
-// pruneStaging removes rasterized pages and downloaded blobs left behind when
-// a run was killed before its own cleanup could run. Best effort at worker
-// start, which is the one moment where a restart makes the leak visible; a
-// failure here is not worth a worker that refuses to start.
+// pruneStaging removes rasterized pages, downloaded blobs and reimport
+// staging left behind when a run was killed before its own cleanup could run.
+// Best effort: a failure here is not worth a command that refuses to start.
 func pruneStaging(dir string, maxAge time.Duration) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -1779,7 +1783,14 @@ func pruneStaging(dir string, maxAge time.Duration) {
 	}
 	cutoff := time.Now().Add(-maxAge)
 	for _, e := range entries {
-		if !strings.HasPrefix(e.Name(), "ocr-") && !strings.HasPrefix(e.Name(), "blob-") {
+		known := false
+		for _, prefix := range []string{"ocr-", "blob-", "reimport-"} {
+			if strings.HasPrefix(e.Name(), prefix) {
+				known = true
+				break
+			}
+		}
+		if !known {
 			continue
 		}
 		info, err := e.Info()
