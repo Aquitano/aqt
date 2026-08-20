@@ -2,13 +2,17 @@
 // throwaway schema. Search, migrations and dedup all live in SQL, so a fake
 // store would only prove the fake works.
 //
-// Tests skip when no database is reachable, so `go test ./...` still passes on
-// a machine that has not started the compose stack.
+// Tests skip only when nothing is listening at all — the machine that has not
+// started the compose stack. A database that answers and refuses (wrong
+// password, missing database) fails the test instead: skipping there would
+// silently disable every DB-backed test while `go test ./...` stays green.
 package storetest
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -100,7 +104,11 @@ func NewSchema(t *testing.T) string {
 	ctx := context.Background()
 	admin, err := pgx.Connect(ctx, DSN())
 	if err != nil {
-		t.Skipf("no database at %s: %v", redacted(DSN()), err)
+		if unreachable(err) {
+			t.Skipf("no database at %s: %v", redacted(DSN()), err)
+		}
+		t.Fatalf("database at %s answered but refused the connection — fix DATABASE_URL rather than skipping every DB-backed test: %v",
+			redacted(DSN()), err)
 	}
 	sweep.Do(func() { dropStaleSchemas(t, admin) })
 	schema := fmt.Sprintf("%s%d_%d_%d", schemaPrefix, time.Now().Unix(), os.Getpid(), counter.Add(1))
@@ -176,6 +184,14 @@ func open(t *testing.T, dsn string) *store.Store {
 	}
 	t.Cleanup(st.Close)
 	return st
+}
+
+// unreachable reports whether a connect failure means nothing is listening —
+// connection refused, unknown host. That is the one condition worth a skip.
+func unreachable(err error) bool {
+	var op *net.OpError
+	var dns *net.DNSError
+	return errors.As(err, &op) || errors.As(err, &dns)
 }
 
 func redacted(dsn string) string {
