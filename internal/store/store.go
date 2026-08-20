@@ -257,10 +257,6 @@ func cleanText(s string) string {
 	return strings.ReplaceAll(s, "\x00", "")
 }
 
-// CleanID normalizes an identifier exactly as insertion does, so callers can
-// deduplicate on the value that will actually be stored.
-func CleanID(s string) string { return cleanText(s) }
-
 // FindMessageID returns the row id for (source, external_id), or 0 if absent.
 func (s *Store) FindMessageID(ctx context.Context, source, externalID string) (int64, error) {
 	var id int64

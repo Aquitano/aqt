@@ -28,12 +28,10 @@ func pdfResult(ctx context.Context, path string, o Options) Result {
 		}
 	}
 	if !o.OCR {
-		// Unreadable and no OCR to fall back on. An encrypted or truncated
-		// PDF is a real failure, not a document that happens to be pixels.
-		if err != nil {
-			return Result{Status: StatusFailed, Extractor: "pdf", Err: err}
-		}
-		return Result{Status: StatusNeedsOCR, Extractor: "pdf"}
+		// Unreadable (err is non-nil here) and no OCR to fall back on. An
+		// encrypted or truncated PDF is a real failure, not a document that
+		// happens to be pixels.
+		return Result{Status: StatusFailed, Extractor: "pdf", Err: err}
 	}
 	return run("ocr-pdf", o, func() (string, error) { return ocrPDF(ctx, path, o) })
 }

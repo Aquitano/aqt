@@ -111,9 +111,6 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 			_, ok := byName[name]
 			return ok
 		}
-		if res.Thread == "" || strings.EqualFold(res.Thread, "_chat") {
-			res.Thread = ThreadName(strings.TrimSuffix(path, ext))
-		}
 	case ".txt":
 		f, err := os.Open(path)
 		if err != nil {

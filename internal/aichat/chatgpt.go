@@ -93,7 +93,7 @@ func parseChatGPTConversation(c cgptConversation) []message {
 			if len(parts) == 0 {
 				continue
 			}
-			body = joinParts(parts)
+			body = strings.Join(parts, "\n")
 		}
 		var sentAt time.Time
 		if m.CreateTime != nil {
@@ -140,15 +140,4 @@ func partText(p json.RawMessage) string {
 		return strings.TrimSpace(obj.Text)
 	}
 	return ""
-}
-
-func joinParts(parts []string) string {
-	if len(parts) == 1 {
-		return parts[0]
-	}
-	out := parts[0]
-	for _, p := range parts[1:] {
-		out += "\n" + p
-	}
-	return out
 }

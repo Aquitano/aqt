@@ -4,6 +4,7 @@
 package archive
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -56,7 +57,7 @@ func Copy(archiveDir, source, path string) (string, error) {
 // Write stores in-memory content (e.g. one fetched Gmail message) under
 // <archiveDir>/<source>/<name> and returns the relative reference.
 func Write(archiveDir, source, name string, data []byte) (string, error) {
-	return write(archiveDir, source, name, strings.NewReader(string(data)))
+	return write(archiveDir, source, name, bytes.NewReader(data))
 }
 
 func write(archiveDir, source, name string, r io.Reader) (string, error) {

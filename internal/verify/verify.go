@@ -58,18 +58,14 @@ type Options struct {
 	// Heal rewrites what the archived raw input can deterministically rebuild.
 	// Without it the pass is strictly read-only.
 	Heal bool
-	// MaxFindings bounds the report so a badly damaged archive still returns
-	// something printable. Zero means DefaultMaxFindings.
-	MaxFindings int
 }
 
-const DefaultMaxFindings = 500
+// maxFindings bounds the report so a badly damaged archive still returns
+// something printable. The counters keep counting past it.
+const maxFindings = 500
 
 // Run walks the archive and reports what it cannot account for.
 func Run(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir string, o Options) (Report, error) {
-	if o.MaxFindings <= 0 {
-		o.MaxFindings = DefaultMaxFindings
-	}
 	rep := Report{Findings: []Finding{}}
 	v := &verifier{st: st, blobs: blobs, archiveDir: archiveDir, opts: o, rep: &rep}
 	err := st.EachArchivedMessage(ctx, o.Source, func(m store.ArchivedMessage) error {
@@ -335,7 +331,7 @@ func (v *verifier) add(f Finding, repaired bool) {
 	} else {
 		v.rep.Unrecoverable++
 	}
-	if len(v.rep.Findings) < v.opts.MaxFindings {
+	if len(v.rep.Findings) < maxFindings {
 		v.rep.Findings = append(v.rep.Findings, f)
 	}
 }
