@@ -35,3 +35,18 @@ are you open to a new role?",INBOX
 		t.Errorf("second should be empty content: %+v", msgs[1])
 	}
 }
+
+// A UTF-8 BOM stuck to the CONVERSATION ID header empties the id of every
+// row, which merges distinct conversations that share a (blank) title.
+func TestParseCSVWithBOM(t *testing.T) {
+	csvData := "\ufeff" + `CONVERSATION ID,CONVERSATION TITLE,FROM,TO,DATE,SUBJECT,CONTENT,FOLDER
+2-abc123,,Jane,Thomas,2023-05-13 21:08:45 UTC,,hello,INBOX
+`
+	msgs, err := parseCSV(strings.NewReader(csvData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 || msgs[0].ConversationID != "2-abc123" {
+		t.Fatalf("msgs = %+v, want the conversation id read through the BOM", msgs)
+	}
+}

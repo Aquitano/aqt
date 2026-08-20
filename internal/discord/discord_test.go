@@ -28,6 +28,22 @@ func TestParseCSV(t *testing.T) {
 	}
 }
 
+// Discord CSVs start with a UTF-8 BOM. Stuck to the ID header it silently
+// empties every id, so a whole package imports zero messages and is still
+// filed to .done as imported.
+func TestParseCSVWithBOM(t *testing.T) {
+	csvData := "\ufeff" + `ID,Timestamp,Contents,Attachments
+805970292,2021-05-06 12:34:56.789000+00:00,"hey",
+`
+	msgs, err := parseCSV(strings.NewReader(csvData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 || msgs[0].ID != "805970292" {
+		t.Fatalf("msgs = %+v, want the id read through the BOM", msgs)
+	}
+}
+
 func TestParseJSON(t *testing.T) {
 	jsonData := `[{"ID": 805970292, "Timestamp": "2024-01-02T10:20:30.400000+00:00", "Contents": "newer package", "Attachments": ""}]`
 	msgs, err := parseJSON([]byte(jsonData))

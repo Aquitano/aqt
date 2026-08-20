@@ -204,6 +204,9 @@ func parseCSV(r io.Reader) ([]message, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A UTF-8 BOM sticks to the first header cell and is not whitespace: left
+	// alone it renames the ID column and silently empties every id.
+	header[0] = strings.TrimPrefix(header[0], "\ufeff")
 	col := map[string]int{}
 	for i, h := range header {
 		col[strings.ToLower(strings.TrimSpace(h))] = i
