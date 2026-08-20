@@ -16,7 +16,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/htmlindex"
 )
 
@@ -333,7 +335,18 @@ func charsetReader(charset string, input io.Reader) (io.Reader, error) {
 	return enc.NewDecoder().Reader(input), nil
 }
 
+// decodeHeader resolves RFC 2047 encoded words. A header carrying raw 8-bit
+// bytes instead of encoded words — routine in old mail — is reinterpreted as
+// Windows-1252 first, and it has to happen first: encoded words are pure
+// ASCII, so the reinterpretation cannot touch them, while after word decoding
+// the string mixes decoded UTF-8 with the raw bytes and no reinterpretation
+// is safe. Left alone, those bytes would be stored as unrecoverable U+FFFD.
 func decodeHeader(s string) string {
+	if !utf8.ValidString(s) {
+		if fixed, err := charmap.Windows1252.NewDecoder().String(s); err == nil {
+			s = fixed
+		}
+	}
 	if decoded, err := wordDecoder.DecodeHeader(s); err == nil {
 		return decoded
 	}

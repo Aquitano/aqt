@@ -78,6 +78,33 @@ func TestParseHTMLOnly(t *testing.T) {
 	}
 }
 
+// Old mail writes headers as raw 8-bit bytes instead of encoded words. Those
+// bytes must be reinterpreted (Windows-1252) before storage turns them into
+// unrecoverable U+FFFD — the body of the same message already decodes fine.
+func TestRawEightBitHeaderIsDecoded(t *testing.T) {
+	raw := []byte("From: J\xfcrgen <j@example.com>\r\n" +
+		"Subject: Gru\xdf aus M\xfcnchen, caf\xe9\r\n" +
+		"Date: Mon, 13 May 2024 21:08:00 +0200\r\n\r\nbody\r\n")
+	m, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Subject != "Gruß aus München, café" {
+		t.Errorf("Subject = %q", m.Subject)
+	}
+	if !strings.Contains(m.From, "Jürgen") {
+		t.Errorf("From = %q", m.From)
+	}
+	// Encoded words must keep decoding exactly as before.
+	enc, err := Parse([]byte("Subject: =?ISO-8859-1?Q?Gru=DF?=\r\n\r\nbody\r\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enc.Subject != "Gruß" {
+		t.Errorf("encoded-word Subject = %q", enc.Subject)
+	}
+}
+
 func TestSplitMboxUnquotedFromLine(t *testing.T) {
 	// mboxo producers (Thunderbird) do not quote body lines starting with
 	// "From "; only a "From " line after a blank line is a separator.
