@@ -6,11 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/aquitano/aqt-bank/internal/fail"
 )
 
-// drop writes a file into inbox/<kind>/ and returns its path.
+// drop writes a file into inbox/<kind>/ and returns its path. The mtime is
+// backdated past the settle window, the way a real drop looks by the time a
+// sweep runs.
 func drop(t *testing.T, root, kind, name string) string {
 	t.Helper()
 	dir := filepath.Join(root, kind)
@@ -19,6 +22,10 @@ func drop(t *testing.T, root, kind, name string) string {
 	}
 	p := filepath.Join(dir, name)
 	if err := os.WriteFile(p, []byte("payload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	settled := time.Now().Add(-2 * settleWindow)
+	if err := os.Chtimes(p, settled, settled); err != nil {
 		t.Fatal(err)
 	}
 	return p
@@ -126,6 +133,30 @@ func TestSweepIsRetrySafe(t *testing.T) {
 	res, err := Sweep(context.Background(), root, route)
 	if err != nil || len(res.Files) != 0 {
 		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+}
+
+// A file whose mtime is fresh may still be copying in; sweeping it would
+// import a truncation and archive it as the permanent raw copy.
+func TestSweepLeavesFreshFilesToSettle(t *testing.T) {
+	root := t.TempDir()
+	fresh := drop(t, root, "mbox", "arriving.mbox")
+	now := time.Now()
+	if err := os.Chtimes(fresh, now, now); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Sweep(context.Background(), root, func(context.Context, string, string) (Outcome, error) {
+		t.Fatal("a still-settling file was routed")
+		return Outcome{}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Settling != 1 || len(res.Files) != 1 || res.Files[0].Disposition != Settling {
+		t.Fatalf("res = %+v", res)
+	}
+	if !exists(fresh) {
+		t.Error("a still-settling file was moved")
 	}
 }
 

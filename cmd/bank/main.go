@@ -422,6 +422,9 @@ func cmdImportInbox(ctx context.Context, args []string) error {
 	}
 	fmt.Printf("%d imported, %d already known, %d rejected, %d failed\n",
 		res.Imported, res.Duplicates, res.Rejected, res.Failed)
+	if res.Settling > 0 {
+		fmt.Printf("%d entr(ies) modified moments ago were left for the next sweep\n", res.Settling)
+	}
 	return sweepErr
 }
 

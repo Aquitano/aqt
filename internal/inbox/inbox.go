@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/aquitano/aqt-bank/internal/fail"
 )
@@ -52,7 +53,16 @@ const (
 	// Failed: the database, archive or blob store failed. The file stays
 	// exactly where it is, because nothing about it was wrong.
 	Failed Disposition = "failed"
+	// Settling: the entry was modified moments ago and may still be copying
+	// in. Importing half a file would either reject a complete export or,
+	// worse, archive a truncation as a success — so it stays put until a
+	// later sweep finds it unchanged for a while.
+	Settling Disposition = "settling"
 )
+
+// settleWindow is how long an entry must sit unmodified before the sweep
+// trusts that whatever copied it in has finished.
+const settleWindow = time.Minute
 
 type FileResult struct {
 	Path        string      `json:"path"`
@@ -69,6 +79,7 @@ type Result struct {
 	Duplicates int          `json:"duplicates"`
 	Rejected   int          `json:"rejected"`
 	Failed     int          `json:"failed"`
+	Settling   int          `json:"settling,omitempty"`
 }
 
 const (
@@ -98,6 +109,14 @@ func Sweep(ctx context.Context, inboxDir string, route Router) (Result, error) {
 		sort.Strings(names) // a deterministic order makes a re-run comparable
 		for _, name := range names {
 			path := filepath.Join(inboxDir, kind, name)
+			if info, err := os.Stat(path); err == nil && time.Since(info.ModTime()) < settleWindow {
+				res.Files = append(res.Files, FileResult{
+					Path: path, Kind: kind, Disposition: Settling,
+					Detail: "modified moments ago; left for the next sweep",
+				})
+				res.Settling++
+				continue
+			}
 			fr, err := sweepOne(ctx, inboxDir, kind, path, route)
 			res.Files = append(res.Files, fr)
 			switch fr.Disposition {
