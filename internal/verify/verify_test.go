@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"archive/zip"
 	"context"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/aquitano/aqt-bank/internal/eml"
 	"github.com/aquitano/aqt-bank/internal/store"
 	"github.com/aquitano/aqt-bank/internal/storetest"
+	"github.com/aquitano/aqt-bank/internal/whatsapp"
 )
 
 const mailWithAttachments = "From: a@example.com\r\n" +
@@ -172,6 +174,109 @@ func TestMissingAttachmentRowIsFoundAndHealed(t *testing.T) {
 	}
 	if rep := f.run(t, true); rep.Damaged != 0 {
 		t.Errorf("re-healing duplicated rows: %+v", rep.Findings)
+	}
+}
+
+// WhatsApp media lives in the export zip, not in a mail — the digest match
+// against the zip's own files is what makes it healable.
+func TestWhatsAppZipMediaIsHealed(t *testing.T) {
+	ctx := context.Background()
+	st, schema := storetest.NewNamed(t)
+	root := t.TempDir()
+	blobs, err := blob.New(filepath.Join(root, "blobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	zipPath := filepath.Join(root, "WhatsApp Chat with Alice.zip")
+	zf, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(zf)
+	for name, content := range map[string]string{
+		"_chat.txt":               "13/05/2024, 21:08 - Alice: IMG-20240513-WA0001.jpg (file attached)\n",
+		"IMG-20240513-WA0001.jpg": "JPEG BYTES",
+	} {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	zf.Close()
+
+	archiveDir := filepath.Join(root, "archive")
+	res, err := whatsapp.Import(ctx, st, blobs, archiveDir, zipPath)
+	if err != nil || res.Attachments != 1 {
+		t.Fatalf("import = %+v, %v", res, err)
+	}
+	msgID := storetest.QueryInt(t, schema, `select message_id from attachments limit 1`)
+	_, atts, err := st.GetMessage(ctx, msgID)
+	if err != nil || len(atts) != 1 {
+		t.Fatalf("attachments = %v, %v", atts, err)
+	}
+	if err := os.Remove(blobs.Path(atts[0].SHA256)); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := Run(ctx, st, blobs, archiveDir, Options{Heal: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Repaired != 1 || rep.Unrecoverable != 0 {
+		t.Fatalf("heal = %+v", rep)
+	}
+	if _, err := os.Stat(blobs.Path(atts[0].SHA256)); err != nil {
+		t.Fatalf("media not restored from the export zip: %v", err)
+	}
+}
+
+// An mbox carries the exact original mail; a blob lost from a message imported
+// out of one is healable by re-splitting and matching the digest.
+func TestMboxAttachmentIsHealed(t *testing.T) {
+	ctx := context.Background()
+	st, _ := storetest.NewNamed(t)
+	root := t.TempDir()
+	blobs, err := blob.New(filepath.Join(root, "blobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	archiveDir := filepath.Join(root, "archive")
+	mbox := "From a@example.com Mon May 13 21:08:00 2024\n" + mailWithAttachments
+	rawRef, err := archive.Write(archiveDir, "gmail", "takeout.mbox", []byte(mbox))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eml.Ingest(ctx, st, blobs, []byte(mailWithAttachments), eml.IngestOpts{Source: "gmail", RawRef: rawRef}); err != nil {
+		t.Fatal(err)
+	}
+	id, err := st.FindByEmailMessageID(ctx, "gmail", "two@example.com")
+	if err != nil || id == 0 {
+		t.Fatalf("message not found: %d %v", id, err)
+	}
+	_, atts, err := st.GetMessage(ctx, id)
+	if err != nil || len(atts) == 0 {
+		t.Fatalf("attachments = %v, %v", atts, err)
+	}
+	if err := os.Remove(blobs.Path(atts[0].SHA256)); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := Run(ctx, st, blobs, archiveDir, Options{Heal: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Repaired != 1 || rep.Unrecoverable != 0 {
+		t.Fatalf("heal = %+v", rep)
+	}
+	if _, err := os.Stat(blobs.Path(atts[0].SHA256)); err != nil {
+		t.Fatalf("attachment not restored from the mbox: %v", err)
 	}
 }
 

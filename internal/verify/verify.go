@@ -9,6 +9,7 @@
 package verify
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -151,8 +152,8 @@ func (v *verifier) attachment(ctx context.Context, m store.ArchivedMessage, a st
 	return nil
 }
 
-// repairBlob rewrites an attachment's bytes from the archived raw mail when
-// that mail still parses to a part with the same digest — the only case where
+// repairBlob rewrites an attachment's bytes from the archived raw input when
+// that input still carries content with the same digest — the only case where
 // the repair is provably the original content and not a guess.
 func (v *verifier) repairBlob(ctx context.Context, m store.ArchivedMessage, a store.Attachment, rawOK bool, kind, detail string) error {
 	f := Finding{MessageID: m.ID, AttachmentID: a.ID, Kind: kind, Detail: detail}
@@ -160,29 +161,92 @@ func (v *verifier) repairBlob(ctx context.Context, m store.ArchivedMessage, a st
 		v.add(f, false)
 		return nil
 	}
-	mail, err := v.parsedRaw(m)
-	if err != nil || mail == nil {
+	data := v.recoverPart(m, a.SHA256)
+	if data == nil {
 		v.add(f, false)
 		return nil
 	}
-	for _, part := range mail.Attachments {
-		sum := sha256.Sum256(part.Data)
-		if hex.EncodeToString(sum[:]) != a.SHA256 {
-			continue
-		}
-		if _, size, err := v.blobs.Replace(bytes.NewReader(part.Data)); err != nil {
+	if _, size, err := v.blobs.Replace(bytes.NewReader(data)); err != nil {
+		return err
+	} else if size != a.SizeBytes {
+		if err := v.st.SetAttachmentSize(ctx, a.ID, size); err != nil {
 			return err
-		} else if size != a.SizeBytes {
-			if err := v.st.SetAttachmentSize(ctx, a.ID, size); err != nil {
-				return err
-			}
-			f.Detail += fmt.Sprintf("; size corrected to %d", size)
 		}
-		v.add(f, true)
-		return nil
+		f.Detail += fmt.Sprintf("; size corrected to %d", size)
 	}
-	v.add(f, false)
+	v.add(f, true)
 	return nil
+}
+
+// errFoundPart stops an mbox walk once the wanted digest turned up.
+var errFoundPart = fmt.Errorf("found")
+
+// recoverPart returns the bytes inside the archived raw input whose sha256
+// matches digest, or nil. The digest match is the safety: whatever the
+// container — a single mail, a WhatsApp export zip, an mbox — matching
+// content is the original by definition.
+func (v *verifier) recoverPart(m store.ArchivedMessage, digest string) []byte {
+	switch strings.ToLower(filepath.Ext(m.RawRef)) {
+	case ".eml":
+		mail, err := v.parsedRaw(m)
+		if err != nil || mail == nil {
+			return nil
+		}
+		for _, part := range mail.Attachments {
+			if hashBytes(part.Data) == digest {
+				return part.Data
+			}
+		}
+	case ".zip":
+		zr, err := zip.OpenReader(v.rawFile(m.RawRef))
+		if err != nil {
+			return nil
+		}
+		defer zr.Close()
+		for _, zf := range zr.File {
+			if zf.FileInfo().IsDir() {
+				continue
+			}
+			rc, err := zf.Open()
+			if err != nil {
+				continue
+			}
+			data, err := io.ReadAll(rc)
+			rc.Close()
+			if err == nil && hashBytes(data) == digest {
+				return data
+			}
+		}
+	case ".mbox":
+		f, err := os.Open(v.rawFile(m.RawRef))
+		if err != nil {
+			return nil
+		}
+		defer f.Close()
+		var found []byte
+		err = eml.SplitMbox(f, func(raw []byte) error {
+			mail, err := eml.Parse(raw)
+			if err != nil {
+				return nil // one unparseable message must not end the search
+			}
+			for _, part := range mail.Attachments {
+				if hashBytes(part.Data) == digest {
+					found = part.Data
+					return errFoundPart
+				}
+			}
+			return nil
+		})
+		if err == nil || err == errFoundPart {
+			return found
+		}
+	}
+	return nil
+}
+
+func hashBytes(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // missingAttachments compares the archived mail against the attachment rows.
