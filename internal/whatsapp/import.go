@@ -67,6 +67,9 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 	var chat io.Reader
 	// openMedia returns a reader for a media file referenced by the chat, or nil.
 	var openMedia func(name string) io.ReadCloser
+	// hasMedia reports whether the export ships a file by that name; it gates
+	// the localized attachment markers ParseChat may otherwise misread.
+	var hasMedia func(name string) bool
 
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
@@ -104,6 +107,10 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 			}
 			return r
 		}
+		hasMedia = func(name string) bool {
+			_, ok := byName[name]
+			return ok
+		}
 		if res.Thread == "" || strings.EqualFold(res.Thread, "_chat") {
 			res.Thread = ThreadName(strings.TrimSuffix(path, ext))
 		}
@@ -130,11 +137,18 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 			}
 			return r
 		}
+		hasMedia = func(name string) bool {
+			if !safeMediaName(name) {
+				return false
+			}
+			_, err := os.Stat(filepath.Join(dir, name))
+			return err == nil
+		}
 	default:
 		return res, fmt.Errorf("%s: expected a .zip or .txt WhatsApp export", path)
 	}
 
-	msgs, err := ParseChat(chat)
+	msgs, err := ParseChat(chat, hasMedia)
 	if err != nil {
 		return res, err
 	}

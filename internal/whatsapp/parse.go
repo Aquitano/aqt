@@ -28,6 +28,13 @@ var (
 	androidAttachment = regexp.MustCompile(`^(\S[^\n]*?)\s\(file attached\)$`)
 	mediaOmitted      = regexp.MustCompile(`^<?(?:Media omitted|image omitted|video omitted|audio omitted|sticker omitted|GIF omitted|document omitted)>?$`)
 
+	// Localized exports write the same two shapes with the words translated
+	// ("<Anhang: x.jpg>", "x.jpg (Datei angehängt)"). These looser forms are
+	// trusted only when the named file actually exists in the export's own
+	// media set, so they cannot invent an attachment out of message text.
+	iosAttachmentAnyWord     = regexp.MustCompile(`<[^:<>]+:\s*([^>]+)>`)
+	androidAttachmentAnyWord = regexp.MustCompile(`^(\S[^\n]*?)\s\([^()]+\)$`)
+
 	// Direction marks and narrow spaces WhatsApp sprinkles into exports.
 	invisibles = strings.NewReplacer(
 		"\u200e", "", // left-to-right mark
@@ -46,8 +53,10 @@ type rawLine struct {
 }
 
 // ParseChat reads one exported chat. Date order (DD/MM vs MM/DD) is detected
-// by scanning the whole file; ambiguous files default to day-first.
-func ParseChat(r io.Reader) ([]ParsedMessage, error) {
+// by scanning the whole file; ambiguous files default to day-first. hasMedia
+// reports whether a filename exists in the export's media set and unlocks the
+// localized attachment forms; nil recognizes English markers only.
+func ParseChat(r io.Reader, hasMedia func(string) bool) ([]ParsedMessage, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 
@@ -128,27 +137,38 @@ func ParseChat(r io.Reader) ([]ParsedMessage, error) {
 			Sender: strings.TrimSpace(sender),
 			SentAt: time.Date(year, time.Month(month), day, hour, l.min, l.sec, 0, time.Local),
 		}
-		msg.Body, msg.AttachmentName = extractAttachment(strings.TrimSpace(body))
+		msg.Body, msg.AttachmentName = extractAttachment(strings.TrimSpace(body), hasMedia)
 		out = append(out, msg)
 	}
 
 	// Attachment markers on continuation lines (iOS captions) and trailing space cleanup.
 	for i := range out {
 		if out[i].AttachmentName == "" {
-			out[i].Body, out[i].AttachmentName = extractAttachment(out[i].Body)
+			out[i].Body, out[i].AttachmentName = extractAttachment(out[i].Body, hasMedia)
 		}
 		out[i].Body = strings.TrimSpace(out[i].Body)
 	}
 	return out, nil
 }
 
-func extractAttachment(body string) (string, string) {
+func extractAttachment(body string, hasMedia func(string) bool) (string, string) {
 	if m := iosAttachment.FindStringSubmatch(body); m != nil {
 		rest := strings.TrimSpace(strings.Replace(body, m[0], "", 1))
 		return rest, strings.TrimSpace(m[1])
 	}
 	first, rest, _ := strings.Cut(body, "\n")
 	if m := androidAttachment.FindStringSubmatch(strings.TrimSpace(first)); m != nil {
+		return strings.TrimSpace(rest), m[1]
+	}
+	if hasMedia == nil {
+		return body, ""
+	}
+	if m := iosAttachmentAnyWord.FindStringSubmatch(body); m != nil {
+		if name := strings.TrimSpace(m[1]); hasMedia(name) {
+			return strings.TrimSpace(strings.Replace(body, m[0], "", 1)), name
+		}
+	}
+	if m := androidAttachmentAnyWord.FindStringSubmatch(strings.TrimSpace(first)); m != nil && hasMedia(m[1]) {
 		return strings.TrimSpace(rest), m[1]
 	}
 	return body, ""
