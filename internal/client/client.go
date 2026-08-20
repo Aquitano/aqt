@@ -112,7 +112,7 @@ func (c *Client) Search(ctx context.Context, query string, o store.SearchOpts) (
 	return getJSON[[]store.Message](ctx, c, "/v1/search", q)
 }
 
-func (c *Client) Message(ctx context.Context, id int64) (store.MessageDetail, error) {
+func (c *Client) GetMessageDetail(ctx context.Context, id int64) (store.MessageDetail, error) {
 	return getJSON[store.MessageDetail](ctx, c, "/v1/messages/"+strconv.FormatInt(id, 10), nil)
 }
 
@@ -122,7 +122,7 @@ func (c *Client) Stats(ctx context.Context) ([]store.SourceStats, error) {
 
 // Thread fetches one conversation. An empty source lets the server resolve it,
 // which fails when the thread id is used by more than one source.
-func (c *Client) Thread(ctx context.Context, source, threadID string, limit int) (store.Thread, error) {
+func (c *Client) GetThread(ctx context.Context, source, threadID string, limit int) (store.Thread, error) {
 	q := url.Values{}
 	if source != "" {
 		q.Set("source", source)
@@ -137,15 +137,8 @@ func (c *Client) ListContacts(ctx context.Context) ([]store.Contact, error) {
 	return getJSON[[]store.Contact](ctx, c, "/v1/contacts", nil)
 }
 
-// ContactDetail mirrors the server's contact payload: the contact plus where
-// its messages actually are.
-type ContactDetail struct {
-	store.Contact
-	Sources []store.ContactSourceCount `json:"sources"`
-}
-
-func (c *Client) Contact(ctx context.Context, name string) (ContactDetail, error) {
-	return getJSON[ContactDetail](ctx, c, "/v1/contacts/"+url.PathEscape(name), nil)
+func (c *Client) GetContactDetail(ctx context.Context, name string) (store.ContactDetail, error) {
+	return getJSON[store.ContactDetail](ctx, c, "/v1/contacts/"+url.PathEscape(name), nil)
 }
 
 func (c *Client) ContactMessages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error) {

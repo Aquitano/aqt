@@ -490,6 +490,13 @@ func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Messa
 	return out, rows.Err()
 }
 
+// GetMessageDetail is GetMessage in the shape `bank show --json` prints and
+// the HTTP API serves.
+func (s *Store) GetMessageDetail(ctx context.Context, id int64) (MessageDetail, error) {
+	m, atts, err := s.GetMessage(ctx, id)
+	return MessageDetail{Message: m, Attachments: atts}, err
+}
+
 func (s *Store) GetMessage(ctx context.Context, id int64) (Message, []Attachment, error) {
 	var m Message
 	err := s.pool.QueryRow(ctx, `

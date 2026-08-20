@@ -124,6 +124,26 @@ func (s *Store) GetContact(ctx context.Context, name string) (Contact, error) {
 	return c, err
 }
 
+// ContactDetail is a contact plus where its messages actually are — the
+// answer to "did this alias catch anything?". The shape `bank contact show
+// --json` prints and GET /v1/contacts/{name} returns, shared so both emit
+// one format.
+type ContactDetail struct {
+	Contact
+	Sources []ContactSourceCount `json:"sources"`
+}
+
+// GetContactDetail returns one contact with its per-source message counts,
+// or ErrNotFound.
+func (s *Store) GetContactDetail(ctx context.Context, name string) (ContactDetail, error) {
+	c, err := s.GetContact(ctx, name)
+	if err != nil {
+		return ContactDetail{}, err
+	}
+	counts, err := s.ContactSourceCounts(ctx, c.ID)
+	return ContactDetail{Contact: c, Sources: counts}, err
+}
+
 func (s *Store) contactAliases(ctx context.Context, contactID int64) ([]ContactAlias, error) {
 	rows, err := s.pool.Query(ctx,
 		`select source, value, value_norm from contact_aliases

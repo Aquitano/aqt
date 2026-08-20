@@ -769,7 +769,12 @@ func cmdSearch(ctx context.Context, args []string) error {
 		return err
 	}
 
-	msgs, err := searchMessages(ctx, query, o)
+	b, closeBackend, err := openBackend(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeBackend()
+	msgs, err := b.Search(ctx, query, o)
 	if err != nil {
 		return err
 	}
@@ -826,17 +831,12 @@ func cmdThread(ctx context.Context, args []string) error {
 	}
 	threadID := strings.Join(fs.Args(), " ")
 
-	var thread store.Thread
-	var err error
-	if c := client.FromEnv(); c != nil {
-		thread, err = c.Thread(ctx, *source, threadID, *limit)
-	} else {
-		var st *store.Store
-		if st, err = openStore(ctx); err == nil {
-			defer st.Close()
-			thread, err = st.GetThread(ctx, *source, threadID, *limit)
-		}
+	b, closeBackend, err := openBackend(ctx)
+	if err != nil {
+		return err
 	}
+	defer closeBackend()
+	thread, err := b.GetThread(ctx, *source, threadID, *limit)
 	if errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("no thread %q", threadID)
 	}
@@ -896,7 +896,12 @@ func cmdShow(ctx context.Context, args []string) error {
 	}
 
 	remote := client.FromEnv() != nil
-	d, err := getMessage(ctx, id)
+	b, closeBackend, err := openBackend(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeBackend()
+	d, err := b.GetMessageDetail(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("no message %d", id)
 	}
@@ -941,41 +946,33 @@ func cmdShow(ctx context.Context, args []string) error {
 	return nil
 }
 
-func searchMessages(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error) {
-	if c := client.FromEnv(); c != nil {
-		return c.Search(ctx, query, o)
-	}
-	st, err := openStore(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer st.Close()
-	return st.Search(ctx, query, o)
+// backend is the archive as the read commands use it. The local store and a
+// remote `bank serve` answer to the same method names, so no command below
+// has to know which it is talking to.
+type backend interface {
+	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
+	GetMessageDetail(ctx context.Context, id int64) (store.MessageDetail, error)
+	GetThread(ctx context.Context, source, threadID string, limit int) (store.Thread, error)
+	Stats(ctx context.Context) ([]store.SourceStats, error)
+	CreateContact(ctx context.Context, name, note string) (store.Contact, error)
+	DeleteContact(ctx context.Context, name string) error
+	ListContacts(ctx context.Context) ([]store.Contact, error)
+	GetContactDetail(ctx context.Context, name string) (store.ContactDetail, error)
+	AddAlias(ctx context.Context, name, source, value string) (store.ContactAlias, error)
+	RemoveAlias(ctx context.Context, name, source, value string) error
+	ContactMessages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error)
+	SuggestIdentities(ctx context.Context, limit int) ([]store.IdentitySuggestion, error)
 }
 
-func getMessage(ctx context.Context, id int64) (store.MessageDetail, error) {
+func openBackend(ctx context.Context) (backend, func(), error) {
 	if c := client.FromEnv(); c != nil {
-		return c.Message(ctx, id)
+		return c, func() {}, nil
 	}
 	st, err := openStore(ctx)
 	if err != nil {
-		return store.MessageDetail{}, err
+		return nil, nil, err
 	}
-	defer st.Close()
-	m, atts, err := st.GetMessage(ctx, id)
-	return store.MessageDetail{Message: m, Attachments: atts}, err
-}
-
-func getStats(ctx context.Context) ([]store.SourceStats, error) {
-	if c := client.FromEnv(); c != nil {
-		return c.Stats(ctx)
-	}
-	st, err := openStore(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer st.Close()
-	return st.Stats(ctx)
+	return st, st.Close, nil
 }
 
 func cmdStats(ctx context.Context, args []string) error {
@@ -984,7 +981,12 @@ func cmdStats(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	stats, err := getStats(ctx)
+	b, closeBackend, err := openBackend(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeBackend()
+	stats, err := b.Stats(ctx)
 	if err != nil {
 		return err
 	}
@@ -1229,99 +1231,6 @@ var builtinSources = []string{
 	"whatsapp", "gmail", "proton", "discord", "linkedin", "chatgpt", "claude", "claude-code",
 }
 
-// contactBackend is the contact API, implemented once against Postgres and
-// once against a remote `bank serve`, so every subcommand works either way.
-type contactBackend interface {
-	create(ctx context.Context, name, note string) (store.Contact, error)
-	remove(ctx context.Context, name string) error
-	list(ctx context.Context) ([]store.Contact, error)
-	show(ctx context.Context, name string) (client.ContactDetail, error)
-	addAlias(ctx context.Context, name, source, value string) (store.ContactAlias, error)
-	removeAlias(ctx context.Context, name, source, value string) error
-	messages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error)
-	suggest(ctx context.Context, limit int) ([]store.IdentitySuggestion, error)
-	sources(ctx context.Context) ([]store.SourceStats, error)
-	close()
-}
-
-type localContacts struct{ st *store.Store }
-
-func (l localContacts) create(ctx context.Context, name, note string) (store.Contact, error) {
-	return l.st.CreateContact(ctx, name, note)
-}
-func (l localContacts) remove(ctx context.Context, name string) error {
-	return l.st.DeleteContact(ctx, name)
-}
-func (l localContacts) list(ctx context.Context) ([]store.Contact, error) {
-	return l.st.ListContacts(ctx)
-}
-func (l localContacts) show(ctx context.Context, name string) (client.ContactDetail, error) {
-	c, err := l.st.GetContact(ctx, name)
-	if err != nil {
-		return client.ContactDetail{}, err
-	}
-	counts, err := l.st.ContactSourceCounts(ctx, c.ID)
-	return client.ContactDetail{Contact: c, Sources: counts}, err
-}
-func (l localContacts) addAlias(ctx context.Context, name, source, value string) (store.ContactAlias, error) {
-	return l.st.AddAlias(ctx, name, source, value)
-}
-func (l localContacts) removeAlias(ctx context.Context, name, source, value string) error {
-	return l.st.RemoveAlias(ctx, name, source, value)
-}
-func (l localContacts) messages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error) {
-	return l.st.ContactMessages(ctx, name, o)
-}
-func (l localContacts) suggest(ctx context.Context, limit int) ([]store.IdentitySuggestion, error) {
-	return l.st.SuggestIdentities(ctx, limit)
-}
-func (l localContacts) sources(ctx context.Context) ([]store.SourceStats, error) {
-	return l.st.Stats(ctx)
-}
-func (l localContacts) close() { l.st.Close() }
-
-type remoteContacts struct{ c *client.Client }
-
-func (r remoteContacts) create(ctx context.Context, name, note string) (store.Contact, error) {
-	return r.c.CreateContact(ctx, name, note)
-}
-func (r remoteContacts) remove(ctx context.Context, name string) error {
-	return r.c.DeleteContact(ctx, name)
-}
-func (r remoteContacts) list(ctx context.Context) ([]store.Contact, error) {
-	return r.c.ListContacts(ctx)
-}
-func (r remoteContacts) show(ctx context.Context, name string) (client.ContactDetail, error) {
-	return r.c.Contact(ctx, name)
-}
-func (r remoteContacts) addAlias(ctx context.Context, name, source, value string) (store.ContactAlias, error) {
-	return r.c.AddAlias(ctx, name, source, value)
-}
-func (r remoteContacts) removeAlias(ctx context.Context, name, source, value string) error {
-	return r.c.RemoveAlias(ctx, name, source, value)
-}
-func (r remoteContacts) messages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error) {
-	return r.c.ContactMessages(ctx, name, o)
-}
-func (r remoteContacts) suggest(ctx context.Context, limit int) ([]store.IdentitySuggestion, error) {
-	return r.c.SuggestIdentities(ctx, limit)
-}
-func (r remoteContacts) sources(ctx context.Context) ([]store.SourceStats, error) {
-	return r.c.Stats(ctx)
-}
-func (r remoteContacts) close() {}
-
-func openContacts(ctx context.Context) (contactBackend, error) {
-	if c := client.FromEnv(); c != nil {
-		return remoteContacts{c: c}, nil
-	}
-	st, err := openStore(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return localContacts{st: st}, nil
-}
-
 const contactUsage = `usage: bank contact <add|rm|list|show|alias|messages|suggest> ...
 
   bank contact add <name> [--note text]
@@ -1341,11 +1250,11 @@ func cmdContact(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New(contactUsage)
 	}
-	b, err := openContacts(ctx)
+	b, closeBackend, err := openBackend(ctx)
 	if err != nil {
 		return err
 	}
-	defer b.close()
+	defer closeBackend()
 
 	switch args[0] {
 	case "add":
@@ -1366,7 +1275,7 @@ func cmdContact(ctx context.Context, args []string) error {
 	return fmt.Errorf("unknown contact command %q\n\n%s", args[0], contactUsage)
 }
 
-func contactAdd(ctx context.Context, b contactBackend, args []string) error {
+func contactAdd(ctx context.Context, b backend, args []string) error {
 	fs := flag.NewFlagSet("contact add", flag.ExitOnError)
 	note := fs.String("note", "", "")
 	if err := parseFlagsAnywhere(fs, args); err != nil {
@@ -1375,7 +1284,7 @@ func contactAdd(ctx context.Context, b contactBackend, args []string) error {
 	if fs.NArg() != 1 {
 		return errors.New("usage: bank contact add <name> [--note text]")
 	}
-	c, err := b.create(ctx, fs.Arg(0), *note)
+	c, err := b.CreateContact(ctx, fs.Arg(0), *note)
 	if err != nil {
 		return err
 	}
@@ -1383,11 +1292,11 @@ func contactAdd(ctx context.Context, b contactBackend, args []string) error {
 	return nil
 }
 
-func contactRemove(ctx context.Context, b contactBackend, args []string) error {
+func contactRemove(ctx context.Context, b backend, args []string) error {
 	if len(args) != 1 {
 		return errors.New("usage: bank contact rm <name>")
 	}
-	if err := b.remove(ctx, args[0]); err != nil {
+	if err := b.DeleteContact(ctx, args[0]); err != nil {
 		return contactErr(args[0], err)
 	}
 	// Worth saying plainly: this is a lens, not the data.
@@ -1395,13 +1304,13 @@ func contactRemove(ctx context.Context, b contactBackend, args []string) error {
 	return nil
 }
 
-func contactList(ctx context.Context, b contactBackend, args []string) error {
+func contactList(ctx context.Context, b backend, args []string) error {
 	fs := flag.NewFlagSet("contact list", flag.ExitOnError)
 	asJSON := fs.Bool("json", false, "")
 	if err := parseFlagsAnywhere(fs, args); err != nil {
 		return err
 	}
-	contacts, err := b.list(ctx)
+	contacts, err := b.ListContacts(ctx)
 	if err != nil {
 		return err
 	}
@@ -1432,7 +1341,7 @@ func aliasStrings(aliases []store.ContactAlias) []string {
 	return out
 }
 
-func contactShow(ctx context.Context, b contactBackend, args []string) error {
+func contactShow(ctx context.Context, b backend, args []string) error {
 	fs := flag.NewFlagSet("contact show", flag.ExitOnError)
 	asJSON := fs.Bool("json", false, "")
 	if err := parseFlagsAnywhere(fs, args); err != nil {
@@ -1441,7 +1350,7 @@ func contactShow(ctx context.Context, b contactBackend, args []string) error {
 	if fs.NArg() != 1 {
 		return errors.New("usage: bank contact show <name> [--json]")
 	}
-	d, err := b.show(ctx, fs.Arg(0))
+	d, err := b.GetContactDetail(ctx, fs.Arg(0))
 	if err != nil {
 		return contactErr(fs.Arg(0), err)
 	}
@@ -1476,7 +1385,7 @@ func scopeLabel(source string) string {
 	return "(" + source + " only)"
 }
 
-func contactAlias(ctx context.Context, b contactBackend, args []string) error {
+func contactAlias(ctx context.Context, b backend, args []string) error {
 	if len(args) < 3 {
 		return errors.New("usage: bank contact alias <add|rm> <name> <alias>...")
 	}
@@ -1489,13 +1398,13 @@ func contactAlias(ctx context.Context, b contactBackend, args []string) error {
 		source, value := store.ContactAliasScope(raw, func(s string) bool { return known[s] })
 		switch action {
 		case "add":
-			a, err := b.addAlias(ctx, name, source, value)
+			a, err := b.AddAlias(ctx, name, source, value)
 			if err != nil {
 				return contactErr(name, err)
 			}
 			fmt.Printf("%s: %s %s\n", name, a.Normalized, scopeLabel(a.Source))
 		case "rm", "remove":
-			if err := b.removeAlias(ctx, name, source, value); err != nil {
+			if err := b.RemoveAlias(ctx, name, source, value); err != nil {
 				return contactErr(name, err)
 			}
 			fmt.Printf("%s: detached %s %s\n", name, value, scopeLabel(source))
@@ -1508,12 +1417,12 @@ func contactAlias(ctx context.Context, b contactBackend, args []string) error {
 
 // knownSources is what makes "whatsapp:Alice" a scope rather than a value: the
 // sources already in the archive, plus the ones importers can still create.
-func knownSources(ctx context.Context, b contactBackend) (map[string]bool, error) {
+func knownSources(ctx context.Context, b backend) (map[string]bool, error) {
 	out := map[string]bool{}
 	for _, s := range builtinSources {
 		out[s] = true
 	}
-	stats, err := b.sources(ctx)
+	stats, err := b.Stats(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1523,7 +1432,7 @@ func knownSources(ctx context.Context, b contactBackend) (map[string]bool, error
 	return out, nil
 }
 
-func contactMessages(ctx context.Context, b contactBackend, args []string) error {
+func contactMessages(ctx context.Context, b backend, args []string) error {
 	fs := flag.NewFlagSet("contact messages", flag.ExitOnError)
 	var o store.ContactMessagesOpts
 	var since, until string
@@ -1547,7 +1456,7 @@ func contactMessages(ctx context.Context, b contactBackend, args []string) error
 	if o.Until, err = parseDate(until); err != nil {
 		return err
 	}
-	msgs, err := b.messages(ctx, fs.Arg(0), o)
+	msgs, err := b.ContactMessages(ctx, fs.Arg(0), o)
 	if err != nil {
 		return contactErr(fs.Arg(0), err)
 	}
@@ -1570,14 +1479,14 @@ func contactMessages(ctx context.Context, b contactBackend, args []string) error
 	return nil
 }
 
-func contactSuggest(ctx context.Context, b contactBackend, args []string) error {
+func contactSuggest(ctx context.Context, b backend, args []string) error {
 	fs := flag.NewFlagSet("contact suggest", flag.ExitOnError)
 	limit := fs.Int("limit", 20, "")
 	asJSON := fs.Bool("json", false, "")
 	if err := parseFlagsAnywhere(fs, args); err != nil {
 		return err
 	}
-	out, err := b.suggest(ctx, *limit)
+	out, err := b.SuggestIdentities(ctx, *limit)
 	if err != nil {
 		return err
 	}

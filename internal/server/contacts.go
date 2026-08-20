@@ -22,13 +22,6 @@ func (s *Server) handleContactList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, contacts)
 }
 
-// ContactDetail is a contact plus where its messages actually are — the answer
-// to "did this alias catch anything?".
-type ContactDetail struct {
-	store.Contact
-	Sources []store.ContactSourceCount `json:"sources"`
-}
-
 func (s *Server) handleContactShow(w http.ResponseWriter, r *http.Request) {
 	c, err := s.read.GetContact(r.Context(), r.PathValue("name"))
 	if errors.Is(err, store.ErrNotFound) {
@@ -44,7 +37,7 @@ func (s *Server) handleContactShow(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, ContactDetail{Contact: c, Sources: counts})
+	writeJSON(w, http.StatusOK, store.ContactDetail{Contact: c, Sources: counts})
 }
 
 func (s *Server) handleContactMessages(w http.ResponseWriter, r *http.Request) {
