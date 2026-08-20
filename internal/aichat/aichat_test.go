@@ -160,7 +160,7 @@ func TestParseClaudeCodeSession(t *testing.T) {
 		`{"type":"user","uuid":"u-3","timestamp":"2026-08-17T10:00:30.000Z","sessionId":"s1","message":{"role":"user","content":[{"type":"tool_result","content":"file contents"}]}}`,
 		`not json at all`,
 	}, "\n")
-	msgs, err := parseClaudeCodeSession(strings.NewReader(lines), "session-file")
+	msgs, _, err := parseClaudeCodeSession(strings.NewReader(lines), "session-file")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,6 +174,25 @@ func TestParseClaudeCodeSession(t *testing.T) {
 	}
 	if msgs[1].Body != "Looking at the splitter now." {
 		t.Errorf("assistant body = %q (tool_use must be dropped)", msgs[1].Body)
+	}
+}
+
+// Subagent transcripts are machine traffic: the "user" is a generated prompt.
+// Their lines are marked isSidechain and must not import as conversations.
+func TestParseClaudeCodeSessionSkipsSidechains(t *testing.T) {
+	lines := strings.Join([]string{
+		`{"type":"user","uuid":"u-1","timestamp":"2026-08-17T10:00:00.000Z","isSidechain":true,"message":{"role":"user","content":"machine-written prompt"}}`,
+		`{"type":"assistant","uuid":"a-1","timestamp":"2026-08-17T10:00:10.000Z","isSidechain":true,"message":{"role":"assistant","content":"subagent answer"}}`,
+	}, "\n")
+	msgs, sidechain, err := parseClaudeCodeSession(strings.NewReader(lines), "agent-x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 0 {
+		t.Fatalf("subagent traffic imported: %+v", msgs)
+	}
+	if !sidechain {
+		t.Fatal("an all-sidechain transcript must be reported as one, not as empty")
 	}
 }
 
@@ -201,7 +220,7 @@ func TestSameTitleConversationsStayApart(t *testing.T) {
 		line := `{"type":"summary","summary":"New chat"}` + "\n" +
 			`{"type":"user","uuid":"` + session + `-m","timestamp":"2026-08-17T10:00:00.000Z",` +
 			`"message":{"role":"user","content":"hi"}}`
-		msgs, err := parseClaudeCodeSession(strings.NewReader(line), session)
+		msgs, _, err := parseClaudeCodeSession(strings.NewReader(line), session)
 		if err != nil {
 			t.Fatal(err)
 		}

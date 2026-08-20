@@ -48,6 +48,44 @@ func TestImportClaudeCodeContinuesPastABadSession(t *testing.T) {
 	}
 }
 
+// A resumed session's file replays the prior session's messages under the
+// same uuids. The shared prefix must land with the continuation — one whole
+// conversation — not wherever the walk order happened to put it.
+func TestImportClaudeCodeKeepsResumedSessionsWhole(t *testing.T) {
+	ctx := context.Background()
+	st, schema := storetest.NewNamed(t)
+	dir := t.TempDir()
+
+	line := func(uuid, ts, text string) string {
+		return `{"type":"user","uuid":"` + uuid + `","timestamp":"` + ts + `",` +
+			`"message":{"role":"user","content":"` + text + `"}}`
+	}
+	prefix := line("u-1", "2026-08-17T10:00:00.000Z", "first") + "\n" +
+		line("u-2", "2026-08-17T10:01:00.000Z", "second") + "\n"
+	// Lexical walk order visits the resumed file first; only last-message
+	// ordering puts it last, where its rethreading wins the shared prefix.
+	if err := os.WriteFile(filepath.Join(dir, "a-resumed.jsonl"),
+		[]byte(prefix+line("u-3", "2026-08-17T10:05:00.000Z", "continued")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "z-original.jsonl"), []byte(prefix), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := ImportClaudeCode(ctx, st, filepath.Join(dir, "archive"), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Inserted != 3 {
+		t.Fatalf("inserted %d, want 3 distinct messages: %+v", res.Inserted, res)
+	}
+	got := storetest.QueryInt(t, schema,
+		`select count(*) from messages where source = 'claude-code' and thread_id = 'a-resumed'`)
+	if got != 3 {
+		t.Errorf("resumed thread holds %d messages, want the whole conversation (3)", got)
+	}
+}
+
 func TestImportClaudeCodeAbortsOnOperationalFailure(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)

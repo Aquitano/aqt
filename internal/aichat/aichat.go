@@ -43,6 +43,9 @@ type Result struct {
 	// A directory import continues past them, so the paths belong in the
 	// result and not only in a stderr line.
 	FailedSessions []string `json:"failed_sessions,omitempty"`
+	// SubagentSessions counts Claude Code transcripts that were nothing but
+	// subagent sidechain traffic and were deliberately not imported.
+	SubagentSessions int `json:"subagent_sessions,omitempty"`
 }
 
 type message struct {
