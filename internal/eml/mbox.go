@@ -3,6 +3,7 @@ package eml
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"regexp"
 )
@@ -42,6 +43,13 @@ func looksUnsplit(raw []byte) bool {
 	return mboxEnvelopeLoose.Match(raw)
 }
 
+// maxMboxMessage bounds one message's buffer. Real mail tops out around a
+// tenth of this; only a file in a dialect the splitter does not recognise —
+// where no separator ever matches and the whole file becomes "one message" —
+// grows past it, and that must become a diagnostic, not an OOM. A var only so
+// tests need not buffer 128 MB to see the diagnostic.
+var maxMboxMessage = 128 << 20
+
 // SplitMbox streams messages out of an mbox file (mboxrd quoting, as written
 // by Gmail Takeout), calling fn with each raw RFC 822 message.
 func SplitMbox(r io.Reader, fn func(raw []byte) error) error {
@@ -68,6 +76,9 @@ func SplitMbox(r io.Reader, fn func(raw []byte) error) error {
 				cur.Write(line[1:]) // mboxrd: strip one level of > quoting
 			default:
 				cur.Write(line)
+			}
+			if cur.Len() > maxMboxMessage {
+				return fmt.Errorf("a single message grew past %d MB without an mbox separator — not a recognised mbox dialect?", maxMboxMessage>>20)
 			}
 		}
 		if err == io.EOF {

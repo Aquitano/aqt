@@ -141,6 +141,24 @@ func TestSplitMbox(t *testing.T) {
 	}
 }
 
+// A wrong file dropped in inbox/mbox/ never matches a separator, so the whole
+// file becomes "one message". That must surface as a diagnostic while the
+// buffer is still small, not as an OOM after buffering the entire file.
+func TestSplitMboxBoundsARunawayMessage(t *testing.T) {
+	old := maxMboxMessage
+	maxMboxMessage = 1 << 16
+	defer func() { maxMboxMessage = old }()
+
+	junk := strings.NewReader(strings.Repeat("definitely not an mbox line\n", (1<<16)/16))
+	err := SplitMbox(junk, func([]byte) error {
+		t.Fatal("an unsplittable file produced a message")
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "mbox dialect") {
+		t.Fatalf("err = %v, want the dialect diagnostic", err)
+	}
+}
+
 func TestBlankPlainAlternativeFallsBackToHTML(t *testing.T) {
 	build := func(plain string) []byte {
 		return []byte("From: a@example.com\r\nSubject: hi\r\nMIME-Version: 1.0\r\n" +
