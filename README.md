@@ -19,10 +19,18 @@ Agent app (no Dock icon), Developer-ID signed, **not sandboxed**. Direct distrib
 
 ```sh
 cd notch
-xcodegen generate          # produces Notch.xcodeproj from project.yml
-open Notch.xcodeproj        # then run, or:
-xcodebuild -project Notch.xcodeproj -scheme Notch -configuration Debug build
+./run.sh                    # regenerate the Xcode project and build Debug
+./run.sh --run              # build, stop an older Notch instance, and launch
 ```
+
+The app is written to `DerivedData/Build/Products/Debug/Notch.app`. The script selects the
+full Xcode toolchain at `/Applications/Xcode.app/Contents/Developer`, since the system-wide
+developer directory may otherwise point at Command Line Tools. Run `./run.sh --help` for its
+options.
+
+To work in Xcode instead, run `xcodegen generate`, open `Notch.xcodeproj`, and choose the
+Notch scheme. Quit any already-running Notch instance before using Xcode Run; macOS prohibits
+multiple instances of this app.
 
 The sole Swift package dependency is the audited `mediaremote-adapter`, pinned to an exact
 revision in `project.yml`. It is embedded as a runtime bridge and deliberately not linked into
