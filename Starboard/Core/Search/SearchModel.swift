@@ -66,6 +66,8 @@ final class SearchModel {
         hide()
     }
 
+    /// Acts on the selection but keeps the overlay open — the user is still
+    /// mid-hold and may act on further results or commit a different one.
     func perform(_ action: SearchItemAction) {
         guard let selected = selectedItem,
               let app = registry.runningApps.first(where: { $0.bundleIdentifier == selected.bundleID }) else {
@@ -76,10 +78,11 @@ final class SearchModel {
             app.hide()
         case .quit:
             app.terminate()
+            items.removeAll { $0.id == selected.id }
+            if selectedIndex >= items.count { selectedIndex = max(0, items.count - 1) }
         case .close:
             AXWindowActions.closeFrontmostWindow(of: app)
         }
-        hide()
     }
 
     private func hide() {

@@ -99,14 +99,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 return consumed
             case .keyDown:
-                let intents = router.keyDown(keyCode)
-                guard !intents.isEmpty else { return false }
+                let (intents, consume) = router.keyDown(keyCode, modifiers: modifiers.state)
                 Self.dispatch(intents, to: switcher)
-                return true
+                return consume
             case .keyUp:
-                // Swallow the matching keyUp while rcmd is held so apps never see
-                // half a keystroke.
-                return modifiers.state.rightCommandHeld && Keycode.letters[keyCode] != nil
+                return router.shouldConsumeKeyUp(keyCode)
             default:
                 return false
             }

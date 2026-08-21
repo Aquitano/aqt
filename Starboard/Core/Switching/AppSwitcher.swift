@@ -3,9 +3,11 @@ import SwiftUI
 
 /// Executes intents produced by KeyRouter. Main actor only.
 ///
-/// Switch semantics (BATTLEPLAN §1/§3.4): the letter's first match activates;
-/// pressing again cycles through same-letter apps; when a cycle wraps back to
-/// the app that was focused when the hold started, it hides instead (toggle).
+/// Switch semantics (BATTLEPLAN §1/§3.4, mirroring rcmd): a letter press
+/// focuses the letter's best match; pressing it when a matching app is already
+/// frontmost hides it (or cycles when hide-on-repeat is off); Tab cycles
+/// same-letter apps. Cycle order is snapshotted per hold — MRU re-sorting
+/// between presses must not reshuffle the ring mid-cycle.
 @MainActor
 final class AppSwitcher {
     private let registry: AppRegistry
@@ -17,9 +19,9 @@ final class AppSwitcher {
     )
     private var searchPanelShown = false
 
-    /// The app the current rcmd hold started on, per letter — lets wrap-around
-    /// hide the original target rather than re-focusing it.
-    private var holdOrigin: [Character: String] = [:]
+    /// Per-letter cycle rings for the current rcmd hold, in the order they
+    /// existed at the first Tab press. Cleared on release.
+    private var holdCycles: [Character: [String]] = [:]
 
     init(registry: AppRegistry, settings: SettingsStore) {
         self.registry = registry
@@ -31,6 +33,8 @@ final class AppSwitcher {
         switch intent {
         case .switchToLetter(let letter):
             switchTo(letter: letter)
+        case .cycleLetter(let letter):
+            cycle(letter: letter)
         case .assignLetter(let letter):
             assign(letter: letter)
         case .searchQuery(let query):
@@ -58,7 +62,7 @@ final class AppSwitcher {
 
     /// Called when rcmd is released so the next hold starts a fresh cycle.
     func endHold() {
-        holdOrigin.removeAll()
+        holdCycles.removeAll()
     }
 
     private var assigner: LetterAssigner {
@@ -86,28 +90,15 @@ final class AppSwitcher {
 
     private func switchTo(letter: Character) {
         registry.refresh()
-
-        let pairs: [(app: NSRunningApplication, candidate: AppCandidate)] =
-            registry.runningApps.compactMap { app in
-                guard let bundleID = app.bundleIdentifier, let name = app.localizedName else {
-                    return nil
-                }
-                return (app, AppCandidate(bundleID: bundleID, name: name))
-            }
-
+        let pairs = runningPairs()
         let matches = assigner.apps(for: letter, in: pairs.map(\.candidate))
         let frontmostID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
 
-        if let index = matches.firstIndex(where: { $0.bundleID == frontmostID }) {
-            if holdOrigin[letter] == nil { holdOrigin[letter] = frontmostID }
-            let next = matches[(index + 1) % matches.count]
-            if next.bundleID == frontmostID || next.bundleID == holdOrigin[letter] {
-                // Wrapped back to where the hold began: hide instead of refocus.
-                if settings.model.hideOnRepeat {
-                    NSWorkspace.shared.frontmostApplication?.hide()
-                }
+        if let frontmostID, matches.contains(where: { $0.bundleID == frontmostID }) {
+            if settings.model.hideOnRepeat {
+                NSWorkspace.shared.frontmostApplication?.hide()
             } else {
-                activate(pairs: pairs, bundleID: next.bundleID)
+                cycle(letter: letter)
             }
             return
         }
@@ -127,6 +118,34 @@ final class AppSwitcher {
                 }) else { return }
                 self.launch(bundleID: match.bundleID)
             }
+        }
+    }
+
+    /// Tab (or repeat press with hide-on-repeat off): advance the letter's ring.
+    private func cycle(letter: Character) {
+        registry.refresh()
+        let pairs = runningPairs()
+        if holdCycles[letter] == nil {
+            holdCycles[letter] = assigner.apps(for: letter, in: pairs.map(\.candidate)).map(\.bundleID)
+        }
+        // Keep the snapshot's order; drop apps that quit mid-hold.
+        let order = (holdCycles[letter] ?? []).filter { id in
+            pairs.contains { $0.candidate.bundleID == id }
+        }
+        guard !order.isEmpty else { return }
+
+        let frontmostID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let index = frontmostID.flatMap { order.firstIndex(of: $0) }
+        let next = order[((index ?? -1) + 1) % order.count]
+        activate(pairs: pairs, bundleID: next)
+    }
+
+    private func runningPairs() -> [(app: NSRunningApplication, candidate: AppCandidate)] {
+        registry.runningApps.compactMap { app in
+            guard let bundleID = app.bundleIdentifier, let name = app.localizedName else {
+                return nil
+            }
+            return (app, AppCandidate(bundleID: bundleID, name: name))
         }
     }
 

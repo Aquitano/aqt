@@ -161,7 +161,7 @@ Work strictly in order; each phase ends with its acceptance criteria demonstrabl
 - rcmd+letter: focus / toggle-hide / launch-if-installed. Same-letter repeat cycling.
 - Onboarding window: Accessibility permission request with live re-check, then start tap.
 - Menu bar item: enable/disable toggle, settings (stub), quit.
-- **Accept:** with Safari, Slack, Spotify running — rcmd+S focuses Safari, repeat press cycles the three, rcmd+S on focused Safari hides it, rcmd+M launches Mail from cold. Left ⌘ shortcuts unaffected. Keyboard behaves 100 % normally when rcmd not held.
+- **Accept:** with Safari, Slack, Spotify running — rcmd+S focuses the best S match, Tab while holding cycles the three (stable per-hold order), rcmd+S on a focused S app hides it (or cycles when hide-on-repeat is off), rcmd+M launches Mail from cold. Left ⌘ shortcuts unaffected. Keyboard behaves 100 % normally when rcmd not held.
 
 ### Phase 2 — Custom assignments + persistence
 - rcmd+ralt+letter pins the frontmost app to that letter (works mid-hold; shows a confirmation toast HUD).

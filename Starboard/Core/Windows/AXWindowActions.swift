@@ -6,7 +6,7 @@ enum AXWindowActions {
     /// Press the close button of the app's frontmost window.
     static func closeFrontmostWindow(of app: NSRunningApplication) {
         performOffMain(pid: app.processIdentifier) { appElement in
-            guard let window = firstWindow(of: appElement),
+            guard let window = frontWindow(of: appElement),
                   let closeButton: AXUIElement = copy(window, kAXCloseButtonAttribute as CFString) else {
                 return
             }
@@ -27,7 +27,15 @@ enum AXWindowActions {
         }
     }
 
-    private static func firstWindow(of appElement: AXUIElement) -> AXUIElement? {
+    /// The window the user would consider "frontmost": focused, else main,
+    /// else the first listed. The AXWindows array's order is arbitrary.
+    private static func frontWindow(of appElement: AXUIElement) -> AXUIElement? {
+        if let focused: AXUIElement = copy(appElement, kAXFocusedWindowAttribute as CFString) {
+            return focused
+        }
+        if let main: AXUIElement = copy(appElement, kAXMainWindowAttribute as CFString) {
+            return main
+        }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
             appElement, kAXWindowsAttribute as CFString, &value
