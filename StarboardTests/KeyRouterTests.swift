@@ -136,10 +136,25 @@ final class KeyRouterTests: XCTestCase {
         )
     }
 
-    func testReleaseWithNoSearchEmitsNothing() {
+    func testReleaseAfterSingleLetterDismissesPreviewWithoutCommit() {
         var session = HoldSession()
         _ = session.keyDown(0x01, modifiers: rcmdHeld)
+        // The switch already happened on keyDown; release only clears the
+        // 1-char preview overlay.
+        XCTAssertEqual(session.rightCommandUp(), [.cancelSearch])
+    }
+
+    func testBareReleaseEmitsNothing() {
+        var session = HoldSession()
         XCTAssertTrue(session.rightCommandUp().isEmpty)
+    }
+
+    func testArrowsPromoteSingleLetterPreviewToSearch() {
+        var session = HoldSession()
+        _ = session.keyDown(0x01, modifiers: rcmdHeld)
+        XCTAssertEqual(session.keyDown(Keycode.downArrow, modifiers: rcmdHeld), [.moveSelection(1)])
+        // Now a real search: release commits the highlighted result.
+        XCTAssertEqual(session.rightCommandUp(), [.commitSearch])
     }
 
     // MARK: - Phase 4: windows

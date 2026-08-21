@@ -19,6 +19,16 @@ final class LetterAssignerTests: XCTestCase {
         XCTAssertEqual(matches.map(\.name), ["Slack", "Safari"])
     }
 
+    func testDynamicWinnerIsStableByLaunchOrderNotListOrder() {
+        let assigner = LetterAssigner()
+        let vlc = AppCandidate(bundleID: "org.videolan.vlc", name: "VLC", launchedAt: Date(timeIntervalSince1970: 200))
+        let vivaldi = AppCandidate(bundleID: "com.vivaldi.Vivaldi", name: "Vivaldi", launchedAt: Date(timeIntervalSince1970: 100))
+        // Whatever order MRU hands us, the earlier-launched app owns the
+        // letter for as long as both run (BATTLEPLAN §3.4 stability).
+        XCTAssertEqual(assigner.apps(for: "v", in: [vlc, vivaldi]).first?.name, "Vivaldi")
+        XCTAssertEqual(assigner.apps(for: "v", in: [vivaldi, vlc]).first?.name, "Vivaldi")
+    }
+
     func testPinnedElsewhereIsExcludedFromDynamicMatches() {
         var assigner = LetterAssigner()
         assigner.customAssignments["k"] = "com.tinyspeck.slackmacgap"

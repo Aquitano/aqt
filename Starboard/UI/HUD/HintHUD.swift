@@ -24,8 +24,10 @@ final class HintHUD {
 
         let panel = self.panel ?? HudPanel(contentRect: frame)
         self.panel = panel
+        let hosting = NSHostingView(rootView: HintGrid(entries: entries))
+        hosting.sizingOptions = []
+        panel.contentView = hosting
         panel.setFrame(frame, display: true)
-        panel.contentView = NSHostingView(rootView: HintGrid(entries: entries))
 
         panel.alphaValue = 0
         panel.orderFrontRegardless()
@@ -72,6 +74,8 @@ private struct HintGrid: View {
             }
         }
         .padding(Theme.Metrics.grid * 1.5)
+        .frame(width: 620)
+        .frame(maxHeight: .infinity)
         .background(SurfaceBackground())
         .clipShape(RoundedRectangle(cornerRadius: Theme.Metrics.panelRadius))
     }

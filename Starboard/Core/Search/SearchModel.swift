@@ -41,6 +41,8 @@ final class SearchModel {
     private(set) var selectedIndex = 0
     private(set) var isVisible = false
     private(set) var scope: Scope = .apps
+    /// The typed query, displayed in the overlay's search field.
+    private(set) var query = ""
 
     private let registry: AppRegistry
 
@@ -54,8 +56,11 @@ final class SearchModel {
 
     // MARK: - Entry points
 
+    /// Results appear from the very first character — the user must see what
+    /// their input resolves to immediately, not two keys later.
     func setQuery(_ query: String) {
-        guard query.count >= 2 || (scope == .windows && !query.isEmpty) else {
+        self.query = query
+        guard !query.isEmpty else {
             hide()
             return
         }
@@ -68,6 +73,7 @@ final class SearchModel {
     /// (the "next" window, Cmd-Tab style).
     func beginWindowCycle() {
         scope = .windows
+        query = ""
         items = WindowEnumerator.visibleWindows().map(windowItem)
         selectedIndex = items.count > 1 ? 1 : 0
         isVisible = !items.isEmpty
@@ -76,6 +82,7 @@ final class SearchModel {
     /// Double-tap rcmd: windows-only search, empty query lists everything.
     func beginWindowSearch() {
         scope = .windows
+        query = ""
         items = WindowEnumerator.visibleWindows().map(windowItem)
         selectedIndex = 0
         isVisible = true
@@ -213,5 +220,6 @@ final class SearchModel {
         items = []
         selectedIndex = 0
         scope = .apps
+        query = ""
     }
 }

@@ -87,11 +87,20 @@ struct HoldSession {
         return [.beginWindowSearch]
     }
 
-    /// rcmd released: commit a pending overlay selection, reset everything.
+    /// rcmd released: commit a pending overlay selection (or dismiss the
+    /// single-letter preview overlay), reset everything.
     mutating func rightCommandUp() -> [Intent] {
-        let commits = mode == .search || mode == .windowCycle
+        let intents: [Intent]
+        switch mode {
+        case .search, .windowCycle:
+            intents = [.commitSearch]
+        case .letter:
+            intents = [.cancelSearch] // the switch already happened on keyDown
+        case .idle, .cancelled:
+            intents = []
+        }
         self = HoldSession()
-        return commits ? [.commitSearch] : []
+        return intents
     }
 
     mutating func keyDown(_ keyCode: Int64, modifiers: ModifierState) -> [Intent] {
@@ -189,10 +198,19 @@ struct HoldSession {
                 scope = .apps
             }
             return [.searchQuery(query)]
-        case Keycode.upArrow:
-            return mode == .search || mode == .windowCycle ? [.moveSelection(-1)] : []
-        case Keycode.downArrow:
-            return mode == .search || mode == .windowCycle ? [.moveSelection(1)] : []
+        case Keycode.upArrow, Keycode.downArrow:
+            let delta = keyCode == Keycode.upArrow ? -1 : 1
+            switch mode {
+            case .letter:
+                // Arrows promote the single-letter preview into a real search
+                // so release commits the highlighted result.
+                mode = .search
+                return [.moveSelection(delta)]
+            case .search, .windowCycle:
+                return [.moveSelection(delta)]
+            case .idle, .cancelled:
+                return []
+            }
         default:
             return []
         }

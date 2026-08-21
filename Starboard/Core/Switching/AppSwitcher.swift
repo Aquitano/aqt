@@ -16,10 +16,13 @@ final class AppSwitcher {
     let spaces: SpacesController
     let stages: StagesController
 
-    private lazy var searchPanel = SearchPanelController(
-        content: NSHostingView(rootView: SearchOverlayContent(model: searchModel))
-    )
-    private var searchPanelShown = false
+    private lazy var searchPanel: SearchPanelController = {
+        let hosting = NSHostingView(rootView: SearchOverlayContent(model: searchModel))
+        // The controller owns the panel frame; auto-sizing would collapse the
+        // HUD to its intrinsic size.
+        hosting.sizingOptions = []
+        return SearchPanelController(content: hosting)
+    }()
 
     /// Per-letter cycle rings for the current rcmd hold, in the order they
     /// existed at the first Tab press. Cleared on release.
@@ -93,12 +96,16 @@ final class AppSwitcher {
     }
 
     private func syncSearchPanel() {
-        if searchModel.isVisible && !searchPanelShown {
-            searchPanel.show()
-        } else if !searchModel.isVisible && searchPanelShown {
+        if searchModel.isVisible {
+            searchPanel.present(
+                rowCount: searchModel.items.count,
+                // A quick rcmd+letter switch shouldn't flash the overlay;
+                // anything beyond one character means the user is searching.
+                delayed: searchModel.scope == .apps && searchModel.query.count <= 1
+            )
+        } else {
             searchPanel.hide()
         }
-        searchPanelShown = searchModel.isVisible
     }
 
     /// Called when rcmd is released so the next hold starts a fresh cycle.
@@ -220,7 +227,7 @@ final class AppSwitcher {
             guard let bundleID = app.bundleIdentifier, let name = app.localizedName else {
                 return nil
             }
-            return (app, AppCandidate(bundleID: bundleID, name: name))
+            return (app, AppCandidate(bundleID: bundleID, name: name, launchedAt: app.launchDate))
         }
     }
 

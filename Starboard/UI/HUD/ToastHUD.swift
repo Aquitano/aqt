@@ -96,11 +96,13 @@ final class ToastHUD {
         let panel = self.panel ?? makePanel()
         self.panel = panel
 
-        panel.setFrame(placementFrame(width: 320, height: 56), display: true)
-        panel.contentView = NSHostingView(
+        let hosting = NSHostingView(
             rootView: content
                 .environment(\.toastDismiss, { [weak panel] in panel?.orderOut(nil) })
         )
+        hosting.sizingOptions = []
+        panel.contentView = hosting
+        panel.setFrame(placementFrame(width: 360, height: 52), display: true)
 
         panel.alphaValue = 0
         panel.orderFrontRegardless()

@@ -5,17 +5,19 @@ import Foundation
 struct AppCandidate: Equatable {
     let bundleID: String
     let name: String
+    var launchedAt: Date?
 }
 
 /// Maps letters to apps: custom pins win, then dynamic first-letter matches.
-/// TODO(Phase 1): MRU-aware cycle ordering and assignment stability — no
-/// reshuffling while an app stays running (BATTLEPLAN §3.4).
 struct LetterAssigner {
     /// letter → bundleID. Persisted via SettingsStore from Phase 2.
     var customAssignments: [Character: String] = [:]
 
-    /// Apps owning `letter`, in cycle order: the pinned app first, then dynamic
-    /// matches. Apps pinned to some other letter never match dynamically.
+    /// Apps owning `letter`, in cycle order: the pinned app first, then
+    /// dynamic matches ordered by launch time. Launch order is the stability
+    /// rule (BATTLEPLAN §3.4): the same letter must target the same app for as
+    /// long as it stays running, never reshuffling with recent use. Apps
+    /// pinned to some other letter never match dynamically.
     func apps(for letter: Character, in candidates: [AppCandidate]) -> [AppCandidate] {
         let pinnedID = customAssignments[letter]
         let pinned = candidates.filter { $0.bundleID == pinnedID }
@@ -24,6 +26,7 @@ struct LetterAssigner {
                 && !customAssignments.values.contains($0.bundleID)
                 && Self.dynamicLetter(for: $0.name) == letter
         }
+        .sorted { ($0.launchedAt ?? .distantFuture) < ($1.launchedAt ?? .distantFuture) }
         return pinned + dynamic
     }
 
