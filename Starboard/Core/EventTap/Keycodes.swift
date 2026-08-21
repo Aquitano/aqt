@@ -14,6 +14,11 @@ enum Keycode {
 
     static let tab: Int64 = 0x30
     static let escape: Int64 = 0x35
+    static let backspace: Int64 = 0x33
+    static let upArrow: Int64 = 0x7E
+    static let downArrow: Int64 = 0x7D
+    static let leftArrow: Int64 = 0x7B
+    static let rightArrow: Int64 = 0x7C
     static let backtick: Int64 = 0x32
     static let leftBracket: Int64 = 0x21
     static let rightBracket: Int64 = 0x1E

@@ -25,3 +25,20 @@ Setup: Safari, Slack, Spotify running; Mail not running.
 - [ ] Quit + relaunch Starboard: rcmd+K still focuses the pinned app.
 - [ ] Pinned app closed: rcmd+K launches it.
 - [ ] Settings shows assignment table with dynamic/custom badges; clear works.
+
+## Phase 3 — Fuzzy search overlay
+
+- [ ] Hold rcmd, type "xco" (Xcode installed): overlay appears after 2nd char,
+      Xcode is the top hit; release rcmd → Xcode focuses.
+- [ ] First letter still switches instantly (rcmd+s → Safari) without showing
+      the overlay; releasing right away does not commit anything.
+- [ ] Repeating one letter cycles (s,s,s → Safari→Slack→Spotify), query stays "s".
+- [ ] Overlay never takes key focus: with a text caret blinking in a Safari
+      field, hold rcmd + type — caret state is untouched, typing goes to search.
+- [ ] Arrows/Tab move selection; selection wraps at both ends.
+- [ ] Backspace edits the query; deleting to empty closes the overlay.
+- [ ] Escape cancels; remaining keys of that hold pass through untouched.
+- [ ] With a result selected: ⌘W closes its frontmost window, ⌘Q quits it,
+      ⌘H hides it.
+- [ ] Empty query / no matches shows the "No matches" state, release does
+      nothing harmful.

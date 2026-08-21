@@ -92,18 +92,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let wasHeld = modifiers.state.rightCommandHeld
                 let consumed = modifiers.handleFlagsChanged(keyCode: keyCode, flags: event.flags)
                 if wasHeld && !modifiers.state.rightCommandHeld {
+                    Self.dispatch(router.rightCommandUp(), to: switcher)
                     DispatchQueue.main.async {
                         MainActor.assumeIsolated { switcher.endHold() }
                     }
                 }
                 return consumed
             case .keyDown:
-                guard let intent = router.route(keyDownCode: keyCode, modifiers: modifiers.state) else {
-                    return false
-                }
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated { switcher.handle(intent) }
-                }
+                let intents = router.keyDown(keyCode)
+                guard !intents.isEmpty else { return false }
+                Self.dispatch(intents, to: switcher)
                 return true
             case .keyUp:
                 // Swallow the matching keyUp while rcmd is held so apps never see
@@ -115,6 +113,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         try tap.start()
         return tap
+    }
+
+    private static func dispatch(_ intents: [Intent], to switcher: AppSwitcher) {
+        guard !intents.isEmpty else { return }
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                intents.forEach { switcher.handle($0) }
+            }
+        }
     }
 
     // MARK: - Onboarding

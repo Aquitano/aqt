@@ -1,20 +1,15 @@
-/// A resolved user intention, produced by KeyRouter and executed elsewhere.
-/// Grows per phase: search, window cycling, Spaces, and Stages all become cases.
-enum Intent: Equatable {
-    case switchToLetter(Character)
-    case assignLetter(Character)
-}
+/// Thin holder so the event-tap closure has one stable object to talk to.
+/// All routing logic lives in HoldSession, which stays pure and unit-testable.
+final class KeyRouter {
+    private(set) var session = HoldSession()
 
-/// Pure routing: (key event, modifier state) → Intent. nil means Starboard does
-/// not handle the key — it must pass through untouched. Keeping this pure is
-/// what makes the global-hotkey layer unit-testable (BATTLEPLAN §6).
-struct KeyRouter {
-    func route(keyDownCode keyCode: Int64, modifiers: ModifierState) -> Intent? {
-        guard modifiers.rightCommandHeld, let letter = Keycode.letters[keyCode] else {
-            return nil
-        }
-        return modifiers.rightOptionHeld ? .assignLetter(letter) : .switchToLetter(letter)
-        // TODO(Phase 3+): Tab cycling, digits, brackets, backtick, Escape,
-        // fuzzy-search buffering.
+    /// Intents produced by a keyDown while rcmd is held. Empty = pass through.
+    func keyDown(_ keyCode: Int64) -> [Intent] {
+        session.keyDown(keyCode)
+    }
+
+    /// Intents produced by an rcmd release (commits a pending search).
+    func rightCommandUp() -> [Intent] {
+        session.rightCommandUp()
     }
 }

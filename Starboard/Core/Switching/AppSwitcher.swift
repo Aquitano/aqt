@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// Executes intents produced by KeyRouter. Main actor only.
 ///
@@ -9,6 +10,12 @@ import AppKit
 final class AppSwitcher {
     private let registry: AppRegistry
     private let settings: SettingsStore
+    let searchModel: SearchModel
+
+    private lazy var searchPanel = SearchPanelController(
+        content: NSHostingView(rootView: SearchOverlayContent(model: searchModel))
+    )
+    private var searchPanelShown = false
 
     /// The app the current rcmd hold started on, per letter — lets wrap-around
     /// hide the original target rather than re-focusing it.
@@ -17,6 +24,7 @@ final class AppSwitcher {
     init(registry: AppRegistry, settings: SettingsStore) {
         self.registry = registry
         self.settings = settings
+        self.searchModel = SearchModel(registry: registry)
     }
 
     func handle(_ intent: Intent) {
@@ -25,7 +33,27 @@ final class AppSwitcher {
             switchTo(letter: letter)
         case .assignLetter(let letter):
             assign(letter: letter)
+        case .searchQuery(let query):
+            searchModel.setQuery(query)
+        case .moveSelection(let delta):
+            searchModel.moveSelection(delta)
+        case .commitSearch:
+            searchModel.commit()
+        case .cancelSearch:
+            searchModel.cancel()
+        case .itemAction(let action):
+            searchModel.perform(action)
         }
+        syncSearchPanel()
+    }
+
+    private func syncSearchPanel() {
+        if searchModel.isVisible && !searchPanelShown {
+            searchPanel.show()
+        } else if !searchModel.isVisible && searchPanelShown {
+            searchPanel.hide()
+        }
+        searchPanelShown = searchModel.isVisible
     }
 
     /// Called when rcmd is released so the next hold starts a fresh cycle.

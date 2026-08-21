@@ -2,32 +2,80 @@ import XCTest
 @testable import Starboard
 
 final class KeyRouterTests: XCTestCase {
-    private var rcmdHeld: ModifierState {
-        var state = ModifierState()
-        state.rightCommandHeld = true
-        return state
+    // The keyboard-bricking failure mode: emitting intents for keys when rcmd
+    // is not held. HoldSession only ever sees keyDowns while rcmd is down (the
+    // tap callback guards that), so the invariant tested here is "unknown keys
+    // and post-cancel keys produce no intents".
+    func testUnknownKeysProduceNoIntents() {
+        var session = HoldSession()
+        XCTAssertTrue(session.keyDown(Keycode.f5).isEmpty)
+        XCTAssertTrue(session.keyDown(Keycode.escape).isEmpty)
     }
 
-    // The keyboard-bricking failure mode: consuming keys when rcmd is not held.
-    func testNothingIsConsumedWhenRightCommandNotHeld() {
-        let router = KeyRouter()
-        XCTAssertNil(router.route(keyDownCode: 0x01, modifiers: ModifierState()))
-        XCTAssertNil(router.route(keyDownCode: Keycode.tab, modifiers: ModifierState()))
+    func testFirstLetterSwitchesAndStartsSearch() {
+        var session = HoldSession()
+        XCTAssertEqual(
+            session.keyDown(0x01),
+            [.switchToLetter("s"), .searchQuery("s")]
+        )
     }
 
-    func testLetterWithRcmdRoutesToSwitch() {
-        let intent = KeyRouter().route(keyDownCode: 0x01, modifiers: rcmdHeld)
-        XCTAssertEqual(intent, .switchToLetter("s"))
+    func testSameLetterRepeatCyclesWithoutPollutingQuery() {
+        var session = HoldSession()
+        _ = session.keyDown(0x01)
+        XCTAssertEqual(session.keyDown(0x01), [.switchToLetter("s")])
     }
 
-    func testLetterWithRcmdAndRaltRoutesToAssign() {
-        var state = rcmdHeld
-        state.rightOptionHeld = true
-        XCTAssertEqual(KeyRouter().route(keyDownCode: 0x01, modifiers: state), .assignLetter("s"))
+    func testDifferentLetterExtendsQuery() {
+        var session = HoldSession()
+        _ = session.keyDown(0x01) // s
+        XCTAssertEqual(session.keyDown(0x26), [.searchQuery("sj")])
     }
 
-    func testUnhandledKeysPassThroughEvenWithRcmd() {
-        let router = KeyRouter()
-        XCTAssertNil(router.route(keyDownCode: Keycode.f5, modifiers: rcmdHeld))
+    func testBackspaceEditsQueryAndDeactivatesWhenEmpty() {
+        var session = HoldSession()
+        _ = session.keyDown(0x01)
+        _ = session.keyDown(0x26)
+        XCTAssertEqual(session.keyDown(Keycode.backspace), [.searchQuery("s")])
+        XCTAssertEqual(session.keyDown(Keycode.backspace), [.searchQuery("")])
+        XCTAssertFalse(session.searchActive)
+    }
+
+    func testEscapeCancelsAndInertsTheHold() {
+        var session = HoldSession()
+        _ = session.keyDown(0x01)
+        _ = session.keyDown(0x26)
+        XCTAssertEqual(session.keyDown(Keycode.escape), [.cancelSearch])
+        XCTAssertTrue(session.keyDown(0x28).isEmpty) // k — inert until release
+    }
+
+    func testReleaseCommitsActiveSearch() {
+        var session = HoldSession()
+        _ = session.keyDown(0x01)
+        _ = session.keyDown(0x26)
+        XCTAssertEqual(session.rightCommandUp(), [.commitSearch])
+        // Session reset: a fresh hold starts clean.
+        XCTAssertEqual(
+            session.keyDown(0x01),
+            [.switchToLetter("s"), .searchQuery("s")]
+        )
+    }
+
+    func testReleaseWithNoSearchEmitsNothing() {
+        var session = HoldSession()
+        _ = session.keyDown(0x01)
+        XCTAssertTrue(session.rightCommandUp().isEmpty)
+    }
+
+    func testActionKeysWhileSearching() {
+        var session = HoldSession()
+        _ = session.keyDown(0x01)
+        _ = session.keyDown(0x26) // search active with 2-char query
+        XCTAssertEqual(session.keyDown(0x0D), [.itemAction(.close)]) // w
+        XCTAssertEqual(session.keyDown(0x0C), [.itemAction(.quit)]) // q
+        XCTAssertEqual(session.keyDown(0x04), [.itemAction(.hide)]) // h
+        XCTAssertEqual(session.keyDown(Keycode.downArrow), [.moveSelection(1)])
+        XCTAssertEqual(session.keyDown(Keycode.upArrow), [.moveSelection(-1)])
+        XCTAssertEqual(session.keyDown(Keycode.tab), [.moveSelection(1)])
     }
 }
