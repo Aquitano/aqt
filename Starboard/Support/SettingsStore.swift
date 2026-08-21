@@ -1,0 +1,34 @@
+import Foundation
+import Observation
+
+/// Single source of truth for persisted preferences, UserDefaults-backed.
+/// Every new preference goes in Model; never scatter raw defaults keys.
+@Observable
+final class SettingsStore {
+    struct Model: Codable, Equatable {
+        var hideOnRepeat = true
+        var launchIfNotRunning = true
+        var customAssignments: [String: String] = [:] // letter → bundleID
+        // TODO(Phase 5/6): Spaces strategy choice, Stages trigger key, stages.
+    }
+
+    private static let key = "starboard.settings"
+
+    var model: Model {
+        didSet { persist() }
+    }
+
+    init() {
+        if let data = UserDefaults.standard.data(forKey: Self.key),
+           let decoded = try? JSONDecoder().decode(Model.self, from: data) {
+            model = decoded
+        } else {
+            model = Model()
+        }
+    }
+
+    private func persist() {
+        guard let data = try? JSONEncoder().encode(model) else { return }
+        UserDefaults.standard.set(data, forKey: Self.key)
+    }
+}

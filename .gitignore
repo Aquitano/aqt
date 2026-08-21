@@ -1,0 +1,4 @@
+build/
+Starboard.xcodeproj/
+.DS_Store
+xcuserdata/

@@ -1,0 +1,62 @@
+name: Starboard
+options:
+  bundleIdPrefix: com.thomasbreindl
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    # Ad-hoc signing works for local use, but TCC (Accessibility) grants reset on
+    # every rebuild. Swap in your Apple Development identity for a stable grant.
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    ENABLE_HARDENED_RUNTIME: false
+
+targets:
+  Starboard:
+    type: application
+    platform: macOS
+    sources: [Starboard]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.thomasbreindl.starboard
+        GENERATE_INFOPLIST_FILE: false
+    info:
+      path: Starboard/Info.plist
+      properties:
+        CFBundleName: Starboard
+        CFBundleDisplayName: Starboard
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "14.0"
+        # Menu bar app: no Dock icon, no app switcher entry.
+        LSUIElement: true
+        NSHumanReadableCopyright: "© 2026 Thomas Breindl"
+    entitlements:
+      path: Starboard/Starboard.entitlements
+      properties:
+        # Event taps and AX control require running unsandboxed.
+        com.apple.security.app-sandbox: false
+
+  StarboardTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [StarboardTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+    dependencies:
+      - target: Starboard
+
+schemes:
+  Starboard:
+    build:
+      targets:
+        Starboard: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [StarboardTests]
