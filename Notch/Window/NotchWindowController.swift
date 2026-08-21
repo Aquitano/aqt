@@ -13,6 +13,8 @@ final class NotchWindowController {
     private var activeDisplayKey: String?
     private var activeDisplayCandidate: String?
     private var activeDisplayTask: Task<Void, Never>?
+    private var displayInventory: [DisplayDescriptor]
+    private var compactHitRegions: [String: NSRect] = [:]
     private var cancellables = Set<AnyCancellable>()
     private var mouseMonitors: [Any] = []
     private var handlingHostChange = false
@@ -32,7 +34,13 @@ final class NotchWindowController {
 
     init(env: AppEnvironment) {
         self.env = env
-        self.activeDisplayKey = DisplayInventory.displayKey(containing: NSEvent.mouseLocation)
+        var inventory = DisplayInventory.current()
+        if inventory.isEmpty { inventory = [DisplayInventory.fallback()] }
+        self.displayInventory = inventory
+        self.activeDisplayKey = DisplayInventory.displayKey(
+            containing: NSEvent.mouseLocation,
+            in: inventory
+        )
         reconcileHosts()
         observe()
         setupMouseTracking()
@@ -48,15 +56,13 @@ final class NotchWindowController {
     // MARK: - Host inventory
 
     private func reconcileHosts() {
-        var inventory = DisplayInventory.current()
-        if inventory.isEmpty { inventory = [DisplayInventory.fallback()] }
         let selection = DisplaySelectionPolicy.resolve(
-            displays: inventory,
+            displays: displayInventory,
             placement: env.settings.displayPlacement,
             followActiveDisplay: env.settings.followActiveDisplay,
             activeDisplayKey: activeDisplayKey
         )
-        let targets = selection.targets.isEmpty ? [inventory[0]] : selection.targets
+        let targets = selection.targets.isEmpty ? [displayInventory[0]] : selection.targets
         let desiredKeys = Set(targets.map(\.key))
 
         prepareInteractionHostForRemoval(desiredKeys: desiredKeys)
@@ -237,7 +243,7 @@ final class NotchWindowController {
     }
 
     private func chooseInteractionHostAtPointer() {
-        if let key = DisplayInventory.displayKey(containing: NSEvent.mouseLocation),
+        if let key = displayKeyAtPointer(),
            hosts[key] != nil {
             activeDisplayKey = key
             interactionHostKey = key
@@ -266,9 +272,7 @@ final class NotchWindowController {
             .sink { [weak self] enabled in
                 guard let self else { return }
                 if enabled {
-                    self.activeDisplayKey = DisplayInventory.displayKey(
-                        containing: NSEvent.mouseLocation
-                    )
+                    self.activeDisplayKey = self.displayKeyAtPointer()
                 }
                 self.reconcileHosts()
             }
@@ -321,9 +325,11 @@ final class NotchWindowController {
     }
 
     private func topologyChanged() {
-        let inventory = DisplayInventory.current()
-        if activeDisplayKey == nil || !inventory.contains(where: { $0.key == activeDisplayKey }) {
-            activeDisplayKey = DisplayInventory.displayKey(containing: NSEvent.mouseLocation)
+        var inventory = DisplayInventory.current()
+        if inventory.isEmpty { inventory = [DisplayInventory.fallback()] }
+        displayInventory = inventory
+        if activeDisplayKey == nil || !displayInventory.contains(where: { $0.key == activeDisplayKey }) {
+            activeDisplayKey = displayKeyAtPointer()
         }
         reconcileHosts()
     }
@@ -381,7 +387,7 @@ final class NotchWindowController {
         }
 
         if env.settings.displayPlacement == .all {
-            if let key = DisplayInventory.displayKey(containing: NSEvent.mouseLocation),
+            if let key = displayKeyAtPointer(),
                hosts[key] != nil, key != activeDisplayKey {
                 activeDisplayKey = key
                 if env.state.presentation != .expanded { interactionHostKey = key }
@@ -391,7 +397,7 @@ final class NotchWindowController {
         } else {
             considerActiveDisplay()
         }
-        updatePassthrough()
+        applyPassthroughAtPointer()
     }
 
     private func considerActiveDisplay() {
@@ -402,7 +408,7 @@ final class NotchWindowController {
               interactionHost?.panel.interactingWithTray != true,
               interactionHost?.panel.previewing != true,
               env.state.presentation != .expanded,
-              let candidate = DisplayInventory.displayKey(containing: NSEvent.mouseLocation),
+              let candidate = displayKeyAtPointer(),
               candidate != activeDisplayKey else { return }
         guard candidate != activeDisplayCandidate else { return }
         activeDisplayCandidate = candidate
@@ -414,7 +420,7 @@ final class NotchWindowController {
                 if self.activeDisplayCandidate == candidate { self.activeDisplayCandidate = nil }
             }
             guard !Task.isCancelled,
-                  DisplayInventory.displayKey(containing: NSEvent.mouseLocation) == candidate else { return }
+                  self.displayKeyAtPointer() == candidate else { return }
             self.activeDisplayKey = candidate
             self.interactionHostKey = candidate
             self.reconcileHosts()
@@ -497,24 +503,46 @@ final class NotchWindowController {
     // MARK: - Hit testing
 
     private func updatePassthrough() {
-        for host in hosts.values { updatePassthrough(host) }
+        compactHitRegions = hosts.reduce(into: [:]) { result, entry in
+            let (key, host) = entry
+            result[key] = interactiveContentRect(for: host).insetBy(dx: -4, dy: -4)
+        }
+        applyPassthroughAtPointer()
     }
 
-    private func updatePassthrough(_ host: NotchPanelHost) {
+    private func applyPassthroughAtPointer() {
+        let mouseLocation = NSEvent.mouseLocation
+        for host in hosts.values {
+            applyPassthrough(host, mouseLocation: mouseLocation)
+        }
+    }
+
+    private func applyPassthrough(_ host: NotchPanelHost, mouseLocation: NSPoint) {
         guard host.panel.isVisible else { return }
         if isDragSessionActive, dragHostKey == host.displayKey {
-            host.panel.ignoresMouseEvents = false
+            setIgnoresMouseEvents(false, on: host)
             return
         }
         switch host.state.presentation {
         case .expanded:
-            host.panel.ignoresMouseEvents = false
+            setIgnoresMouseEvents(false, on: host)
         case .hidden:
-            host.panel.ignoresMouseEvents = true
+            setIgnoresMouseEvents(true, on: host)
         case .compact:
-            let hit = interactiveContentRect(for: host).insetBy(dx: -4, dy: -4)
-            host.panel.ignoresMouseEvents = !hit.contains(NSEvent.mouseLocation)
+            let hit = compactHitRegions[host.displayKey]
+                ?? interactiveContentRect(for: host).insetBy(dx: -4, dy: -4)
+            setIgnoresMouseEvents(!hit.contains(mouseLocation), on: host)
         }
+    }
+
+    private func setIgnoresMouseEvents(_ ignores: Bool, on host: NotchPanelHost) {
+        if host.panel.ignoresMouseEvents != ignores {
+            host.panel.ignoresMouseEvents = ignores
+        }
+    }
+
+    private func displayKeyAtPointer() -> String? {
+        DisplayInventory.displayKey(containing: NSEvent.mouseLocation, in: displayInventory)
     }
 
     private func hostAtCursor() -> NotchPanelHost? {

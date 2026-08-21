@@ -38,6 +38,20 @@ final class AudioLevelAnalysisTests: XCTestCase {
         }
     }
 
+    func testMeterQuantizationSuppressesInvisibleChanges() {
+        let first = AudioLevels(low: 0.22, mid: 0.57, high: 0.94).quantizedForMeter()
+        let second = AudioLevels(low: 0.27, mid: 0.62, high: 0.99).quantizedForMeter()
+
+        XCTAssertEqual(first, second)
+        XCTAssertEqual(first, AudioLevels(low: 0.2, mid: 0.6, high: 1.0))
+    }
+
+    func testMeterQuantizationClampsMalformedRange() {
+        let levels = AudioLevels(low: -1, mid: 0.5, high: 2).quantizedForMeter()
+
+        XCTAssertEqual(levels, AudioLevels(low: 0, mid: 0.6, high: 1))
+    }
+
     private func analyzeTone(frequency: Double) -> AudioLevels {
         let samples = (0..<4_800).map { index in
             Float(sin(2 * Double.pi * frequency * Double(index) / sampleRate) * 0.5)

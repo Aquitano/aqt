@@ -182,6 +182,7 @@ private final class AudioSampleProcessor: NSObject, SCStreamOutput, SCStreamDele
     private var analyzer = AudioBandAnalyzer()
     private var conversionScratch: [Float] = []
     private var lastPublishNanoseconds: UInt64 = 0
+    private var lastPublishedLevels: AudioLevels?
     private let publishIntervalNanoseconds: UInt64 = 33_333_333
 
     init(
@@ -196,6 +197,7 @@ private final class AudioSampleProcessor: NSObject, SCStreamOutput, SCStreamDele
         queue.async { [weak self] in
             self?.analyzer.reset()
             self?.lastPublishNanoseconds = 0
+            self?.lastPublishedLevels = nil
         }
     }
 
@@ -257,7 +259,10 @@ private final class AudioSampleProcessor: NSObject, SCStreamOutput, SCStreamDele
         let now = DispatchTime.now().uptimeNanoseconds
         guard now &- lastPublishNanoseconds >= publishIntervalNanoseconds else { return }
         lastPublishNanoseconds = now
-        onLevels(levels)
+        let visibleLevels = levels.quantizedForMeter()
+        guard visibleLevels != lastPublishedLevels else { return }
+        lastPublishedLevels = visibleLevels
+        onLevels(visibleLevels)
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {

@@ -9,6 +9,22 @@ struct AudioLevels: Equatable, Sendable {
     static let zero = AudioLevels(low: 0, mid: 0, high: 0)
 
     var values: [Float] { [low, mid, high] }
+
+    /// The compact meter draws six discrete heights (zero through five). Keep
+    /// published state at that same resolution so invisible floating-point
+    /// changes do not trigger main-actor work and SwiftUI renders.
+    func quantizedForMeter(stepCount: Int = 5) -> AudioLevels {
+        guard stepCount > 0 else { return .zero }
+        let steps = Float(stepCount)
+        func quantize(_ value: Float) -> Float {
+            round(min(1, max(0, value)) * steps) / steps
+        }
+        return AudioLevels(
+            low: quantize(low),
+            mid: quantize(mid),
+            high: quantize(high)
+        )
+    }
 }
 
 /// Tiny streaming three-band analyzer. Two one-pole low-pass filters split the

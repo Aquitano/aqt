@@ -25,7 +25,14 @@ enum DisplayInventory {
     }
 
     static func displayKey(containing point: CGPoint) -> String? {
-        current().first(where: { $0.frame.contains(point) })?.key
+        displayKey(containing: point, in: current())
+    }
+
+    static func displayKey(
+        containing point: CGPoint,
+        in inventory: [DisplayDescriptor]
+    ) -> String? {
+        inventory.first(where: { $0.frame.contains(point) })?.key
     }
 
     private static func descriptor(for screen: NSScreen) -> DisplayDescriptor? {

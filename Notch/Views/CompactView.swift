@@ -14,7 +14,6 @@ struct CompactView: View {
     @EnvironmentObject private var media: MediaManager
     @EnvironmentObject private var activities: ActivityManager
     @EnvironmentObject private var settings: Settings
-    @EnvironmentObject private var visualizer: AudioVisualizerManager
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var tray: TrayManager
 
@@ -26,12 +25,6 @@ struct CompactView: View {
         content
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onChange(of: visualizerRequested, initial: true) { _, active in
-                if controlsSharedRendering { visualizer.setActive(active) }
-            }
-            .onDisappear {
-                if controlsSharedRendering { visualizer.setActive(false) }
-            }
     }
 
     /// One-shot attention pop on a new event. Applied to each slot's content (not
@@ -111,7 +104,10 @@ struct CompactView: View {
     @ViewBuilder
     private var mediaTrailing: some View {
         if settings.showAudioVisualizer {
-            LiveAudioVisualizer(levels: visualizer.levels)
+            CompactAudioVisualizer(
+                requested: visualizerRequested,
+                controlsCapture: controlsSharedRendering
+            )
         } else {
             // Keep the flanking slots symmetrical so album art never shifts the
             // physical notch off-centre when the meter is disabled.
@@ -198,6 +194,30 @@ struct CompactView: View {
     private func popScale(_ phase: Int) -> CGFloat {
         guard !reduceMotion else { return 1 }
         return phase == 1 ? 1.06 : 1.0
+    }
+}
+
+/// Keeps high-frequency audio-level observation at the smallest possible leaf.
+/// Capture ownership still follows the primary display, but a 30 fps meter no
+/// longer invalidates and rebuilds the full compact media layout.
+private struct CompactAudioVisualizer: View {
+    @EnvironmentObject private var visualizer: AudioVisualizerManager
+
+    let requested: Bool
+    let controlsCapture: Bool
+
+    var body: some View {
+        LiveAudioVisualizer(levels: visualizer.levels)
+            .onChange(of: requested, initial: true) { _, active in
+                if controlsCapture { visualizer.setActive(active) }
+            }
+            .onChange(of: controlsCapture) { wasControlling, isControlling in
+                if wasControlling { visualizer.setActive(false) }
+                if isControlling { visualizer.setActive(requested) }
+            }
+            .onDisappear {
+                if controlsCapture { visualizer.setActive(false) }
+            }
     }
 }
 
