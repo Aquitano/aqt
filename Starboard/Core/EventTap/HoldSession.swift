@@ -23,6 +23,14 @@ enum Intent: Equatable {
     case adjacentSpace(SpaceDirection)
     /// ralt+digit (direct strategy): move the focused window to that Space.
     case moveWindowToSpace(Int)
+    /// Stages leader key tapped: show the hint HUD.
+    case stagesArmed
+    /// Leader then `=`: snapshot the visible apps into a new Stage.
+    case stageBeginSave
+    /// Leader then letter: restore/activate that Stage.
+    case stageRestore(Character)
+    /// Leader then `-`: close the active Stage's windows.
+    case stageClose
 }
 
 enum SearchItemAction: Equatable {

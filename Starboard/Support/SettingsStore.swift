@@ -3,6 +3,29 @@ import Observation
 
 /// Single source of truth for persisted preferences, UserDefaults-backed.
 /// Every new preference goes in Model; never scatter raw defaults keys.
+enum StagesTrigger: String, Codable {
+    /// Tap Caps Lock to arm; the event is consumed so the lock never toggles.
+    case capsLock
+    /// Bare tap of Right Shift (press+release with no key in between).
+    case rightShift
+    case off
+}
+
+/// A saved workspace: apps plus the files/folders/URLs to open on restore.
+struct Stage: Codable, Equatable, Identifiable {
+    var id = UUID()
+    var name: String
+    /// Single lowercase letter that restores this Stage.
+    var letter: String
+    var apps: [StageApp]
+}
+
+struct StageApp: Codable, Equatable {
+    var bundleID: String
+    /// File paths or URLs opened when the Stage is restored.
+    var openItems: [String] = []
+}
+
 enum SpacesStrategy: String, Codable {
     /// Post Mission Control shortcuts (ctrl+digit / ctrl+arrows). Animated,
     /// robust; ctrl+digit must be enabled in System Settings.
@@ -25,6 +48,8 @@ final class SettingsStore {
         /// ralt+digit moves the focused window to a Space (direct only).
         var spacesMoveWindowEnabled = false
         var showSpaceNumber = false
+        var stagesTrigger = StagesTrigger.capsLock
+        var stages: [Stage] = []
 
         // Every field decodes with decodeIfPresent + default so settings
         // persisted by older (or newer) versions never fail to load — a plain
@@ -48,6 +73,12 @@ final class SettingsStore {
                 try container.decodeIfPresent(Bool.self, forKey: .spacesMoveWindowEnabled) ?? false
             showSpaceNumber =
                 try container.decodeIfPresent(Bool.self, forKey: .showSpaceNumber) ?? false
+            stagesTrigger =
+                (try? container.decodeIfPresent(StagesTrigger.self, forKey: .stagesTrigger))
+                .flatMap { $0 } ?? .capsLock
+            stages =
+                (try? container.decodeIfPresent([Stage].self, forKey: .stages))
+                .flatMap { $0 } ?? []
         }
     }
 

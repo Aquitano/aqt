@@ -23,14 +23,36 @@ final class KeyRouter {
     private var lastReleaseWasBareTap = false
     private var lastReleaseTime: Double = -.infinity
 
+    // Stages leader state: a trigger tap arms a 3-second window in which the
+    // next key is a Stage command (letter/equal/minus); any other key disarms
+    // and passes through.
+    private var stagesArmedUntil: Double = -.infinity
+    private var lastKeyDownTime: Double = -.infinity
+    private var rightShiftDownTime: Double = -.infinity
+
     /// Intents for a keyDown plus whether the event must be consumed. A
     /// cancelled hold produces no intents but still consumes, so keys after
     /// Escape can't leak to the frontmost app as real ⌘-shortcuts.
     func keyDown(
         _ keyCode: Int64,
         modifiers: ModifierState,
-        options: RouterOptions = RouterOptions()
+        options: RouterOptions = RouterOptions(),
+        at time: Double = CACurrentMediaTime()
     ) -> (intents: [Intent], consume: Bool) {
+        lastKeyDownTime = time
+
+        if time < stagesArmedUntil, !modifiers.rightCommandHeld {
+            stagesArmedUntil = -.infinity
+            let command: Intent? = Keycode.letters[keyCode].map { .stageRestore($0) }
+                ?? (keyCode == Keycode.equal ? .stageBeginSave : nil)
+                ?? (keyCode == Keycode.minus ? .stageClose : nil)
+            if let command {
+                consumedKeys.insert(keyCode)
+                return ([command], true)
+            }
+            return ([], false) // unrelated key: disarmed, passes through
+        }
+
         guard modifiers.rightCommandHeld else {
             guard modifiers.rightOptionHeld else { return ([], false) }
             if options.windowJumpEnabled, let letter = Keycode.letters[keyCode] {
@@ -65,5 +87,26 @@ final class KeyRouter {
         lastReleaseWasBareTap = session.isBareHold
         lastReleaseTime = time
         return session.rightCommandUp()
+    }
+
+    // MARK: - Stages leader
+
+    /// Caps Lock trigger: every (consumed) Caps Lock flagsChanged arms.
+    func armStages(at time: Double = CACurrentMediaTime()) -> [Intent] {
+        stagesArmedUntil = time + 3.0
+        return [.stagesArmed]
+    }
+
+    func rightShiftDown(at time: Double = CACurrentMediaTime()) {
+        rightShiftDownTime = time
+    }
+
+    /// Right Shift trigger arms only on a bare tap: a quick press+release with
+    /// no keystroke in between (so shifted typing never arms it).
+    func rightShiftUp(at time: Double = CACurrentMediaTime()) -> [Intent] {
+        guard time - rightShiftDownTime < 0.4, lastKeyDownTime < rightShiftDownTime else {
+            return []
+        }
+        return armStages(at: time)
     }
 }

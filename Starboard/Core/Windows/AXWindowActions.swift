@@ -3,6 +3,23 @@ import AppKit
 /// Minimal AX helpers. All calls run off-main with a 250 ms per-element timeout
 /// so unresponsive apps can't hang the switcher (BATTLEPLAN §7).
 enum AXWindowActions {
+    /// Press the close button of every window of the app (Stages close —
+    /// never terminates the process).
+    static func closeAllWindows(of app: NSRunningApplication) {
+        performOffMain(pid: app.processIdentifier) { appElement in
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(
+                appElement, kAXWindowsAttribute as CFString, &value
+            ) == .success, let windows = value as? [AXUIElement] else { return }
+            for window in windows {
+                guard let closeButton: AXUIElement = copy(window, kAXCloseButtonAttribute as CFString) else {
+                    continue
+                }
+                AXUIElementPerformAction(closeButton, kAXPressAction as CFString)
+            }
+        }
+    }
+
     /// Press the close button of one specific window.
     static func close(_ window: WindowInfo) {
         performOffMain(pid: window.pid) { appElement in

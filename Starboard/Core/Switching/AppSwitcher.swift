@@ -14,6 +14,7 @@ final class AppSwitcher {
     private let settings: SettingsStore
     let searchModel: SearchModel
     let spaces: SpacesController
+    let stages: StagesController
 
     private lazy var searchPanel = SearchPanelController(
         content: NSHostingView(rootView: SearchOverlayContent(model: searchModel))
@@ -29,6 +30,7 @@ final class AppSwitcher {
         self.settings = settings
         self.searchModel = SearchModel(registry: registry)
         self.spaces = SpacesController(settings: settings)
+        self.stages = StagesController(settings: settings)
     }
 
     func handle(_ intent: Intent) {
@@ -63,6 +65,14 @@ final class AppSwitcher {
             spaces.jumpAdjacent(direction)
         case .moveWindowToSpace(let index):
             spaces.moveFocusedWindow(to: index)
+        case .stagesArmed:
+            ToastHUD.shared.show(message: "Stages — letter: restore · =: save · –: close")
+        case .stageBeginSave:
+            stages.beginSave()
+        case .stageRestore(let letter):
+            stages.restore(letter: letter)
+        case .stageClose:
+            stages.closeActive()
         }
         syncSearchPanel()
     }

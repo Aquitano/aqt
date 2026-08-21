@@ -22,6 +22,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: Theme.Metrics.grid * 4) {
                     generalSection
                     spacesSection
+                    stagesSection
                     assignmentsSection
                 }
                 .padding(Theme.Metrics.grid * 3)
@@ -112,6 +113,53 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Stages
+
+    private var stagesSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Metrics.grid * 1.5) {
+            Text("Stages")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Leader key").font(.system(size: 13))
+                    Text("Tap it, then a letter restores a Stage, = saves one, – closes the active one.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { SettingsStore.shared.model.stagesTrigger },
+                    set: { SettingsStore.shared.model.stagesTrigger = $0 }
+                )) {
+                    Text("Caps Lock").tag(StagesTrigger.capsLock)
+                    Text("Right ⇧ tap").tag(StagesTrigger.rightShift)
+                    Text("Off").tag(StagesTrigger.off)
+                }
+                .labelsHidden()
+                .frame(width: 130)
+            }
+            .padding(.vertical, 2)
+
+            if model.stages.isEmpty {
+                Text("No Stages yet — press the leader key, then = to save the current workspace.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, Theme.Metrics.grid)
+            } else {
+                ForEach(model.stages) { stage in
+                    StageRow(stage: stage) {
+                        SettingsStore.shared.model.stages.removeAll { $0.id == stage.id }
+                    }
+                    .padding(.vertical, 4)
+                    Divider().overlay(Theme.Colors.stroke)
+                }
+            }
+        }
+    }
+
     // MARK: - Assignments
 
     private var assignmentsSection: some View {
@@ -192,6 +240,109 @@ struct SettingsView: View {
 }
 
 // MARK: - Row models & views
+
+/// One saved Stage: letter chip, editable open-items, delete.
+struct StageRow: View {
+    let stage: Stage
+    let onDelete: () -> Void
+
+    @State private var showingItems = false
+
+    var body: some View {
+        HStack(spacing: Theme.Metrics.grid * 1.5) {
+            if let letter = stage.letter.first {
+                KeyCap(character: letter)
+            }
+            Text(stage.name)
+                .font(.system(size: 13))
+                .lineLimit(1)
+            HStack(spacing: 4) {
+                ForEach(stage.apps, id: \.bundleID) { app in
+                    if let icon = StageSaveView.icon(for: app.bundleID) {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .frame(width: 16, height: 16)
+                    }
+                }
+            }
+            Spacer()
+            Button("Items…") { showingItems = true }
+                .controlSize(.small)
+                .buttonStyle(.borderless)
+                .popover(isPresented: $showingItems) {
+                    StageItemsEditor(stageID: stage.id)
+                }
+            Button("Delete", action: onDelete)
+                .controlSize(.small)
+                .buttonStyle(.borderless)
+                .foregroundStyle(Theme.Colors.destructive)
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+/// Per-Stage open-items editor: one file path or URL per line, per app.
+struct StageItemsEditor: View {
+    let stageID: UUID
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Metrics.grid * 1.5) {
+            Text("Opened on restore")
+                .font(.system(size: 13, weight: .semibold))
+            Text("One file path or URL per line, per app.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+            if let stage = SettingsStore.shared.model.stages.first(where: { $0.id == stageID }) {
+                ForEach(Array(stage.apps.enumerated()), id: \.element.bundleID) { index, app in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(appName(app.bundleID))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: itemsBinding(appIndex: index))
+                            .font(.system(size: 12).monospaced())
+                            .frame(height: 48)
+                            .scrollContentBackground(.hidden)
+                            .padding(4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.primary.opacity(0.06))
+                            )
+                    }
+                }
+            }
+        }
+        .padding(Theme.Metrics.grid * 2)
+        .frame(width: 320)
+    }
+
+    private func itemsBinding(appIndex: Int) -> Binding<String> {
+        Binding(
+            get: {
+                guard let stage = SettingsStore.shared.model.stages.first(where: { $0.id == stageID }),
+                      stage.apps.indices.contains(appIndex) else { return "" }
+                return stage.apps[appIndex].openItems.joined(separator: "\n")
+            },
+            set: { text in
+                guard let stageIndex = SettingsStore.shared.model.stages.firstIndex(where: { $0.id == stageID }),
+                      SettingsStore.shared.model.stages[stageIndex].apps.indices.contains(appIndex)
+                else { return }
+                SettingsStore.shared.model.stages[stageIndex].apps[appIndex].openItems = text
+                    .split(separator: "\n")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+            }
+        )
+    }
+
+    private func appName(_ bundleID: String) -> String {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID),
+              let bundle = Bundle(url: url),
+              let name = bundle.object(forInfoDictionaryKey: kCFBundleNameKey as String) as? String
+        else { return bundleID }
+        return name
+    }
+}
 
 struct AssignmentRowModel: Identifiable {
     let letter: Character

@@ -4,6 +4,7 @@ struct ModifierState: Equatable {
     var rightCommandHeld = false
     var leftCommandHeld = false
     var rightOptionHeld = false
+    var rightShiftHeld = false
 }
 
 /// Tracks which side-specific modifiers are physically held, fed from
@@ -12,6 +13,7 @@ struct ModifierState: Equatable {
 /// bits in the raw flags identify each side independently (BATTLEPLAN §3.2).
 final class ModifierTracker {
     private enum DeviceBit {
+        static let rightShift: UInt64 = 0x0000_0004 // NX_DEVICERSHIFTKEYMASK
         static let leftCommand: UInt64 = 0x0000_0008 // NX_DEVICELCMDKEYMASK
         static let rightCommand: UInt64 = 0x0000_0010 // NX_DEVICERCMDKEYMASK
         static let rightOption: UInt64 = 0x0000_0040 // NX_DEVICERALTKEYMASK
@@ -28,11 +30,13 @@ final class ModifierTracker {
             state.leftCommandHeld = flags.rawValue & DeviceBit.leftCommand != 0
         case Keycode.rightOption:
             state.rightOptionHeld = flags.rawValue & DeviceBit.rightOption != 0
+        case Keycode.rightShift:
+            state.rightShiftHeld = flags.rawValue & DeviceBit.rightShift != 0
         default:
             break
         }
-        // TODO(Phase 6): consume Caps Lock here when configured as the Stages
-        // trigger so the lock state never toggles (BATTLEPLAN §3.2).
+        // Caps Lock consumption for the Stages trigger happens in the tap
+        // closure before this is called (BATTLEPLAN §3.2).
         return false
     }
 }

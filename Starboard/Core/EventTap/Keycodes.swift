@@ -11,6 +11,7 @@ enum Keycode {
     static let leftOption: Int64 = 0x3A
     static let rightOption: Int64 = 0x3D
     static let capsLock: Int64 = 0x39
+    static let rightShift: Int64 = 0x3C
 
     static let tab: Int64 = 0x30
     static let escape: Int64 = 0x35

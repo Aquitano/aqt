@@ -117,7 +117,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
             switch type {
             case .flagsChanged:
+                // Stages leader: Caps Lock is consumed (so the lock never
+                // toggles) and arms the 3-second command window.
+                if keyCode == Keycode.capsLock {
+                    guard settings.model.stagesTrigger == .capsLock else { return false }
+                    Self.dispatch(router.armStages(), to: switcher)
+                    return true
+                }
                 let wasHeld = modifiers.state.rightCommandHeld
+                let wasShiftHeld = modifiers.state.rightShiftHeld
                 let consumed = modifiers.handleFlagsChanged(keyCode: keyCode, flags: event.flags)
                 if !wasHeld && modifiers.state.rightCommandHeld {
                     Self.dispatch(router.rightCommandDown(), to: switcher)
@@ -125,6 +133,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     Self.dispatch(router.rightCommandUp(), to: switcher)
                     DispatchQueue.main.async {
                         MainActor.assumeIsolated { switcher.endHold() }
+                    }
+                }
+                if settings.model.stagesTrigger == .rightShift {
+                    if !wasShiftHeld && modifiers.state.rightShiftHeld {
+                        router.rightShiftDown()
+                    } else if wasShiftHeld && !modifiers.state.rightShiftHeld {
+                        Self.dispatch(router.rightShiftUp(), to: switcher)
                     }
                 }
                 return consumed

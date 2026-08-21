@@ -217,6 +217,62 @@ final class KeyRouterTests: XCTestCase {
         XCTAssertEqual(session.keyDown(Keycode.rightBracket, modifiers: rcmdHeld), [.adjacentSpace(.right)])
     }
 
+    // MARK: - Phase 6: Stages leader
+
+    func testArmedLeaderMapsStageCommands() {
+        let router = KeyRouter()
+        _ = router.armStages(at: 0)
+        XCTAssertEqual(
+            router.keyDown(0x0D, modifiers: ModifierState(), at: 1).intents,
+            [.stageRestore("w")]
+        )
+        // Window consumed exactly once.
+        XCTAssertTrue(router.keyDown(0x0D, modifiers: ModifierState(), at: 1.1).intents.isEmpty)
+
+        _ = router.armStages(at: 2)
+        let save = router.keyDown(Keycode.equal, modifiers: ModifierState(), at: 2.5)
+        XCTAssertEqual(save.intents, [.stageBeginSave])
+        XCTAssertTrue(save.consume)
+
+        _ = router.armStages(at: 4)
+        XCTAssertEqual(
+            router.keyDown(Keycode.minus, modifiers: ModifierState(), at: 4.5).intents,
+            [.stageClose]
+        )
+    }
+
+    func testLeaderWindowExpiresAfterThreeSeconds() {
+        let router = KeyRouter()
+        _ = router.armStages(at: 0)
+        let result = router.keyDown(0x0D, modifiers: ModifierState(), at: 3.5)
+        XCTAssertTrue(result.intents.isEmpty)
+        XCTAssertFalse(result.consume)
+    }
+
+    func testUnrelatedKeyDisarmsAndPassesThrough() {
+        let router = KeyRouter()
+        _ = router.armStages(at: 0)
+        let space = router.keyDown(0x31, modifiers: ModifierState(), at: 1) // space bar
+        XCTAssertTrue(space.intents.isEmpty)
+        XCTAssertFalse(space.consume)
+        XCTAssertTrue(router.keyDown(0x0D, modifiers: ModifierState(), at: 1.5).intents.isEmpty)
+    }
+
+    func testBareRightShiftTapArmsButTypingDoesNot() {
+        let router = KeyRouter()
+        router.rightShiftDown(at: 0)
+        XCTAssertEqual(router.rightShiftUp(at: 0.2), [.stagesArmed])
+
+        let router2 = KeyRouter()
+        router2.rightShiftDown(at: 0)
+        _ = router2.keyDown(0x01, modifiers: ModifierState(), at: 0.1) // typed "S"
+        XCTAssertTrue(router2.rightShiftUp(at: 0.2).isEmpty)
+
+        let router3 = KeyRouter()
+        router3.rightShiftDown(at: 0)
+        XCTAssertTrue(router3.rightShiftUp(at: 0.8).isEmpty) // held too long
+    }
+
     func testRaltDigitMovesWindowOnlyWhenEnabled() {
         let router = KeyRouter()
         let raltOnly = ModifierState(rightOptionHeld: true)

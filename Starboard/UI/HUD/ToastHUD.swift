@@ -80,6 +80,17 @@ final class ToastHUD {
     private var dismissTask: Task<Void, Never>?
 
     func show(appName: String, letter: Character, icon: NSImage?) {
+        present(
+            ToastContent(appName: appName, letter: letter, icon: icon)
+        )
+    }
+
+    /// Plain-message variant (Stages confirmations, hints).
+    func show(message: String) {
+        present(MessageToastContent(message: message))
+    }
+
+    private func present(_ content: some View) {
         dismissTask?.cancel()
 
         let panel = self.panel ?? makePanel()
@@ -87,7 +98,7 @@ final class ToastHUD {
 
         panel.setFrame(placementFrame(width: 320, height: 56), display: true)
         panel.contentView = NSHostingView(
-            rootView: ToastContent(appName: appName, letter: letter, icon: icon)
+            rootView: content
                 .environment(\.toastDismiss, { [weak panel] in panel?.orderOut(nil) })
         )
 
@@ -135,6 +146,26 @@ private extension EnvironmentValues {
     var toastDismiss: () -> Void {
         get { self[ToastDismissKey.self] }
         set { self[ToastDismissKey.self] = newValue }
+    }
+}
+
+private struct MessageToastContent: View {
+    let message: String
+    @Environment(\.toastDismiss) private var dismiss
+    @State private var visible = false
+
+    var body: some View {
+        Text(message)
+            .font(.system(size: 13))
+            .lineLimit(1)
+            .padding(.horizontal, Theme.Metrics.grid * 2.5)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(SurfaceBackground())
+            .scaleEffect(visible ? 1 : 0.98)
+            .opacity(visible ? 1 : 0)
+            .animation(Theme.Motion.overlayIn, value: visible)
+            .onAppear { visible = true }
+            .onTapGesture { dismiss() }
     }
 }
 
