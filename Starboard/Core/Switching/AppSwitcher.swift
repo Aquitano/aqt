@@ -25,6 +25,9 @@ final class AppSwitcher {
     /// existed at the first Tab press. Cleared on release.
     private var holdCycles: [Character: [String]] = [:]
 
+    /// Pending key-hint countdown for the current bare rcmd hold.
+    private var hintTask: Task<Void, Never>?
+
     init(registry: AppRegistry, settings: SettingsStore) {
         self.registry = registry
         self.settings = settings
@@ -34,6 +37,7 @@ final class AppSwitcher {
     }
 
     func handle(_ intent: Intent) {
+        cancelHint()
         switch intent {
         case .switchToLetter(let letter):
             switchTo(letter: letter)
@@ -100,6 +104,40 @@ final class AppSwitcher {
     /// Called when rcmd is released so the next hold starts a fresh cycle.
     func endHold() {
         holdCycles.removeAll()
+        cancelHint()
+        if settings.model.mouseFollowsFocus {
+            MouseFollower.warpToFocusedWindow()
+        }
+    }
+
+    // MARK: - Key hints
+
+    /// rcmd pressed: after 400 ms with no keypress, show the letter grid.
+    func holdBegan() {
+        guard settings.model.showKeyHints else { return }
+        hintTask?.cancel()
+        hintTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            self?.showHints()
+        }
+    }
+
+    private func cancelHint() {
+        hintTask?.cancel()
+        hintTask = nil
+        HintHUD.shared.hide()
+    }
+
+    private func showHints() {
+        registry.refresh()
+        let candidates = runningPairs().map(\.candidate)
+        let entries: [HintEntry] = "abcdefghijklmnopqrstuvwxyz".compactMap { letter in
+            assigner.apps(for: letter, in: candidates).first.map {
+                HintEntry(letter: letter, bundleID: $0.bundleID)
+            }
+        }
+        HintHUD.shared.show(entries: entries)
     }
 
     private var assigner: LetterAssigner {

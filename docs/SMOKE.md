@@ -1,44 +1,61 @@
-# Starboard — Manual Smoke Tests
+# Starboard manual smoke checklist
 
-The event tap cannot be CI-tested. Run this checklist after every phase.
-Setup: Safari, Slack, Spotify running; Mail not running.
+Run after meaningful changes; each line maps to a phase acceptance criterion in
+BATTLEPLAN.md. Prereq: Accessibility granted; Safari, Slack, Spotify running.
 
-## Phase 1 — Core loop
+## Safety invariants (always first)
 
-- [ ] First launch without Accessibility permission shows the onboarding window;
-      granting the permission live (no relaunch) closes it and switching works.
-- [ ] rcmd+S focuses Safari (frontmost s-app).
-- [ ] Repeated rcmd+S cycles Safari → Slack → Spotify → back to the hold's
-      starting app, which then hides instead of re-focusing.
-- [ ] rcmd+S while Safari is the only running s-app hides it; again brings it back.
-- [ ] rcmd+M launches Mail from cold (not running).
-- [ ] Left ⌘ shortcuts unaffected: ⌘C/⌘V copy-paste, ⌘Tab app switcher,
-      ⌘Space Spotlight all behave normally.
-- [ ] With rcmd NOT held, typing in a text field is 100% normal — no dropped or
-      swallowed keys, including keyUps (type "the quick brown fox" quickly).
-- [ ] Menu bar: Disable Starboard stops all interception; Enable restores it.
-- [ ] Quit Starboard: keyboard fully normal.
+- [ ] With Starboard running, normal typing in any app is completely unaffected.
+- [ ] Left ⌘ shortcuts (⌘C, ⌘Tab, ⌘Space) all work as stock.
+- [ ] Hold rcmd, press Escape, then press Q — the frontmost app must NOT quit.
+- [ ] Menu bar → Disable Starboard: everything passes through, including rcmd.
 
-## Phase 2 — Custom assignments
+## Phase 1 — core switching
 
-- [ ] rcmd+ralt+K pins frontmost app to K; toast confirms.
-- [ ] Quit + relaunch Starboard: rcmd+K still focuses the pinned app.
-- [ ] Pinned app closed: rcmd+K launches it.
-- [ ] Settings shows assignment table with dynamic/custom badges; clear works.
+- [ ] rcmd+S focuses the best S app; rcmd+M launches Mail from cold.
+- [ ] rcmd+S while an S app is focused hides it (toggle off in settings → cycles instead).
+- [ ] rcmd held + Tab after S cycles Safari/Slack/Spotify in a stable order, wrapping past the third.
 
-## Phase 3 — Fuzzy search overlay
+## Phase 2 — assignments
 
-- [ ] Hold rcmd, type "xco" (Xcode installed): overlay appears after 2nd char,
-      Xcode is the top hit; release rcmd → Xcode focuses.
-- [ ] First letter still switches instantly (rcmd+s → Safari) without showing
-      the overlay; releasing right away does not commit anything.
-- [ ] Repeating one letter cycles (s,s,s → Safari→Slack→Spotify), query stays "s".
-- [ ] Overlay never takes key focus: with a text caret blinking in a Safari
-      field, hold rcmd + type — caret state is untouched, typing goes to search.
-- [ ] Arrows/Tab move selection; selection wraps at both ends.
-- [ ] Backspace edits the query; deleting to empty closes the overlay.
-- [ ] Escape cancels; remaining keys of that hold pass through untouched.
-- [ ] With a result selected: ⌘W closes its frontmost window, ⌘Q quits it,
-      ⌘H hides it.
-- [ ] Empty query / no matches shows the "No matches" state, release does
-      nothing harmful.
+- [ ] rcmd+ralt+K pins the frontmost app to K; toast confirms.
+- [ ] Quit and relaunch Starboard; rcmd+K still works, even launching the pinned app from cold.
+- [ ] Settings shows the pin with a CUSTOM badge; Clear removes it.
+
+## Phase 3 — search
+
+- [ ] Hold rcmd, type "xco": overlay appears at 2 chars, Xcode on top; release focuses it.
+- [ ] Queries containing w/q/h are typeable ("wha…"); left ⌘+W/Q/H act on the selection instead.
+- [ ] The caret in a Safari text field keeps blinking while the overlay is up (never steals focus).
+- [ ] Escape cancels; releasing afterwards focuses nothing.
+
+## Phase 4 — windows
+
+- [ ] rcmd+Tab (no letter first) shows visible windows, second selected; minimized windows absent.
+- [ ] Selecting a background window raises exactly that window.
+- [ ] Typing while cycling switches to fuzzy window search.
+- [ ] Double-tap-and-hold rcmd lists windows only.
+- [ ] rcmd+` cycles the frontmost app's windows.
+- [ ] Without Screen Recording, windows show as "App Window"; with it, real titles.
+- [ ] Window jump: enable in settings, ralt+S steps Safari's windows.
+
+## Phase 5 — Spaces
+
+- [ ] Compatible engine + ctrl+digit shortcuts enabled: rcmd+3 lands on Space 3.
+- [ ] rcmd+[ and rcmd+] jump to adjacent Spaces.
+- [ ] Instant engine: same jumps with no swipe animation; menu bar shows the Space number when enabled.
+- [ ] ralt+2 (Instant + toggle on) moves the focused window to Space 2.
+
+## Phase 6 — Stages
+
+- [ ] Caps Lock tap, then `=`: save sheet lists visible apps; Caps Lock LED/state never toggles.
+- [ ] Save "Writing" on W with Notes + Safari and a URL item; switch away; Caps Lock, W restores both, opens the URL, hides everything else.
+- [ ] Repeat Caps Lock, W: re-hides intruders without reopening items.
+- [ ] Caps Lock, `-`: closes only the Stage's windows; apps stay running.
+
+## Phase 7 — polish
+
+- [ ] Hold rcmd bare for ~0.5 s: hint grid appears, disappears on keypress/release.
+- [ ] Mouse-follows toggle warps the pointer after a switch.
+- [ ] Settings export produces JSON; import restores assignments and Stages.
+- [ ] Dark and light system appearance both look intentional in settings.

@@ -1,5 +1,6 @@
 import SwiftUI
 import ServiceManagement
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     /// The store is @Observable; reading and mutating through it keeps this
@@ -60,8 +61,21 @@ struct SettingsView: View {
                 initial: model.windowJumpEnabled
             ) { SettingsStore.shared.model.windowJumpEnabled.toggle() }
 
+            ToggleRow(
+                title: "Key hints",
+                detail: "Hold rcmd for a moment to see which letter focuses which app.",
+                initial: model.showKeyHints
+            ) { SettingsStore.shared.model.showKeyHints.toggle() }
+
+            ToggleRow(
+                title: "Mouse follows focused app",
+                detail: "Warps the pointer to the focused window's center after a switch.",
+                initial: model.mouseFollowsFocus
+            ) { SettingsStore.shared.model.mouseFollowsFocus.toggle() }
+
             LaunchAtLoginRow()
             ScreenRecordingRow()
+            ExportImportRow()
         }
     }
 
@@ -424,6 +438,52 @@ struct ToggleRow: View {
                 .onChange(of: isOn) { _, _ in onToggle() }
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// Settings backup as pretty-printed JSON.
+struct ExportImportRow: View {
+    @State private var status: String?
+
+    var body: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Backup").font(.system(size: 13))
+                Text(status ?? "Export or import all settings, assignments, and Stages as JSON.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Export…", action: exportSettings).controlSize(.small)
+            Button("Import…", action: importSettings).controlSize(.small)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func exportSettings() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "starboard-settings.json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try SettingsStore.shared.exportJSON().write(to: url)
+            status = "Exported to \(url.lastPathComponent)."
+        } catch {
+            status = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func importSettings() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try SettingsStore.shared.importJSON(Data(contentsOf: url))
+            status = "Imported \(url.lastPathComponent)."
+        } catch {
+            status = "Import failed: \(error.localizedDescription)"
+        }
     }
 }
 

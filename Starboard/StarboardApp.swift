@@ -129,6 +129,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let consumed = modifiers.handleFlagsChanged(keyCode: keyCode, flags: event.flags)
                 if !wasHeld && modifiers.state.rightCommandHeld {
                     Self.dispatch(router.rightCommandDown(), to: switcher)
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated { switcher.holdBegan() }
+                    }
                 } else if wasHeld && !modifiers.state.rightCommandHeld {
                     Self.dispatch(router.rightCommandUp(), to: switcher)
                     DispatchQueue.main.async {

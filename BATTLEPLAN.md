@@ -1,5 +1,16 @@
 # Starboard — Battle Plan
 
+> **Status (2026-08-21): Phases 1–7 implemented.** All phases below are built
+> and unit-tested; `docs/SMOKE.md` holds the manual checklist. Two deliberate
+> deviations from the original spec:
+> - **Stages trigger is a leader key** (tap Caps Lock — consumed so the lock
+>   never toggles — or a bare Right Shift tap, then letter/`=`/`-` within 3 s)
+>   instead of a held chord: Caps Lock's down/up semantics are ambiguous at the
+>   event-tap level, and the leader survives every remap.
+> - **The rcmd+Tab window cycler reuses the vertical search overlay** (rcmd's
+>   own window-list presentation) rather than a horizontal card strip — one
+>   polished component instead of two half-polished ones.
+
 A native macOS app switcher driven by the **Right Command** key, replicating the full feature set of rcmd (lowtechguys.com/rcmd) with Raycast-inspired visuals and Apple-grade polish. Personal use, no licensing/paywall — but built to product quality.
 
 This document is the implementation spec. The repo already contains a compiling scaffold (menu bar app, event-tap stub, module folders); your job is to fill it in phase by phase. Do not skip the acceptance criteria at the end of each phase.

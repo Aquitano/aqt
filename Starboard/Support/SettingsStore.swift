@@ -50,6 +50,10 @@ final class SettingsStore {
         var showSpaceNumber = false
         var stagesTrigger = StagesTrigger.capsLock
         var stages: [Stage] = []
+        /// Bare 400 ms rcmd hold shows the letter→app hint grid.
+        var showKeyHints = true
+        /// Warp the pointer to the focused window's center after a switch.
+        var mouseFollowsFocus = false
 
         // Every field decodes with decodeIfPresent + default so settings
         // persisted by older (or newer) versions never fail to load — a plain
@@ -79,6 +83,10 @@ final class SettingsStore {
             stages =
                 (try? container.decodeIfPresent([Stage].self, forKey: .stages))
                 .flatMap { $0 } ?? []
+            showKeyHints =
+                try container.decodeIfPresent(Bool.self, forKey: .showKeyHints) ?? true
+            mouseFollowsFocus =
+                try container.decodeIfPresent(Bool.self, forKey: .mouseFollowsFocus) ?? false
         }
     }
 
@@ -109,5 +117,17 @@ final class SettingsStore {
     private func persist() {
         guard let data = try? JSONEncoder().encode(model) else { return }
         defaults.set(data, forKey: Self.key)
+    }
+
+    // MARK: - Export / import
+
+    func exportJSON() throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(model)
+    }
+
+    func importJSON(_ data: Data) throws {
+        model = try JSONDecoder().decode(Model.self, from: data)
     }
 }
