@@ -98,14 +98,27 @@ struct SearchResultRow: View {
 
     var body: some View {
         HStack(spacing: Theme.Metrics.grid * 1.5) {
-            if let icon = iconImage {
-                Image(nsImage: icon)
-                    .resizable()
-                    .frame(width: 28, height: 28)
+            Group {
+                if let icon = iconImage {
+                    Image(nsImage: icon).resizable()
+                } else {
+                    Image(systemName: "macwindow")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.secondary)
+                }
             }
-            Text(item.name)
-                .font(.system(size: 13))
-                .lineLimit(1)
+            .frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.title)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+                if let subtitle = item.subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
             Spacer()
             if let letter = item.letter {
                 KeyCap(character: letter)
@@ -129,7 +142,8 @@ struct SearchResultRow: View {
     }
 
     private var iconImage: NSImage? {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: item.bundleID) else {
+        guard let bundleID = item.iconBundleID,
+              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
             return nil
         }
         return NSWorkspace.shared.icon(forFile: url.path)

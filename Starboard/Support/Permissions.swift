@@ -13,6 +13,14 @@ enum Permissions {
         AXIsProcessTrusted()
     }
 
-    // TODO(Phase 4): Screen Recording preflight/request for window titles
-    // (CGPreflightScreenCaptureAccess / CGRequestScreenCaptureAccess).
+    /// Screen Recording gates reading other apps' window titles; everything
+    /// else works without it (windows show as "App Window") (BATTLEPLAN §3.5).
+    static var hasScreenRecording: Bool {
+        CGPreflightScreenCaptureAccess()
+    }
+
+    @discardableResult
+    static func requestScreenRecording() -> Bool {
+        CGRequestScreenCaptureAccess()
+    }
 }

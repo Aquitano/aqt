@@ -47,8 +47,27 @@ final class AppSwitcher {
             searchModel.cancel()
         case .itemAction(let action):
             searchModel.perform(action)
+        case .beginWindowCycle:
+            searchModel.beginWindowCycle()
+        case .beginWindowSearch:
+            searchModel.beginWindowSearch()
+        case .cycleAppWindows:
+            WindowFocuser.cycleFrontmostAppWindows()
+        case .jumpAppWindows(let letter):
+            jumpWindows(letter: letter)
         }
         syncSearchPanel()
+    }
+
+    /// ralt+letter: step through the windows of the letter's app.
+    private func jumpWindows(letter: Character) {
+        registry.refresh()
+        let pairs = runningPairs()
+        guard let target = assigner.apps(for: letter, in: pairs.map(\.candidate)).first,
+              let app = pairs.first(where: { $0.candidate.bundleID == target.bundleID })?.app else {
+            return
+        }
+        WindowFocuser.cycleWindows(of: app)
     }
 
     private func syncSearchPanel() {

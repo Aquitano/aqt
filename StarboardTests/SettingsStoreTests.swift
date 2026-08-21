@@ -28,4 +28,18 @@ final class SettingsStoreTests: XCTestCase {
         let store = SettingsStore(defaults: defaults)
         XCTAssertEqual(store.model.customAssignments["s"], "com.apple.Safari")
     }
+
+    func testMissingFieldsDecodeToDefaults() throws {
+        let suite = "test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        // A model persisted before newer fields existed still loads, keeping
+        // the user's data and defaulting the rest (no silent settings wipe).
+        let oldJSON = #"{"customAssignments":{"s":"com.apple.Safari"}}"#
+        defaults.set(Data(oldJSON.utf8), forKey: "starboard.settings")
+
+        let store = SettingsStore(defaults: defaults)
+        XCTAssertEqual(store.model.customAssignments["s"], "com.apple.Safari")
+        XCTAssertTrue(store.model.hideOnRepeat)
+        XCTAssertFalse(store.model.windowJumpEnabled)
+    }
 }

@@ -52,7 +52,14 @@ struct SettingsView: View {
                 initial: model.launchIfNotRunning
             ) { SettingsStore.shared.model.launchIfNotRunning.toggle() }
 
+            ToggleRow(
+                title: "Window jump with Right ⌥",
+                detail: "ralt+letter steps through that app's windows. Consumes Right Option — leave off if you type special characters with it.",
+                initial: model.windowJumpEnabled
+            ) { SettingsStore.shared.model.windowJumpEnabled.toggle() }
+
             LaunchAtLoginRow()
+            ScreenRecordingRow()
         }
     }
 
@@ -215,6 +222,35 @@ struct ToggleRow: View {
                 .toggleStyle(.switch)
                 .labelsHidden()
                 .onChange(of: isOn) { _, _ in onToggle() }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+/// Screen Recording is optional: without it window search shows "App Window"
+/// instead of real titles. Starboard never captures the screen.
+struct ScreenRecordingRow: View {
+    @State private var granted = Permissions.hasScreenRecording
+
+    var body: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Window titles").font(.system(size: 13))
+                Text(
+                    granted
+                        ? "Screen Recording granted — window search shows real titles."
+                        : "Needs the Screen Recording permission. Starboard never records your screen."
+                )
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if !granted {
+                Button("Grant…") {
+                    granted = Permissions.requestScreenRecording()
+                }
+                .controlSize(.small)
+            }
         }
         .padding(.vertical, 2)
     }

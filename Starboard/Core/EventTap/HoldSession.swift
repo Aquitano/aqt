@@ -9,6 +9,14 @@ enum Intent: Equatable {
     case commitSearch
     case cancelSearch
     case itemAction(SearchItemAction)
+    /// rcmd+Tab with no letter buffered: open the window ring, select next.
+    case beginWindowCycle
+    /// Double-tap-and-hold rcmd: fuzzy search over open windows only.
+    case beginWindowSearch
+    /// rcmd+`: next window of the frontmost app.
+    case cycleAppWindows
+    /// ralt+letter (window jump enabled): step through the letter app's windows.
+    case jumpAppWindows(Character)
 }
 
 enum SearchItemAction: Equatable {
@@ -17,42 +25,63 @@ enum SearchItemAction: Equatable {
     case hide // ⌘H
 }
 
-/// State machine for one rcmd hold: letter switching, Tab cycling, and
-/// fuzzy-search buffering. Pure value type — the event tap callback feeds it
-/// keyDowns and dispatches the returned intents (BATTLEPLAN §6). It is only
-/// ever fed keys while rcmd is held; KeyRouter enforces that.
+/// State machine for one rcmd hold. Pure value type — the event tap callback
+/// feeds it keyDowns and dispatches the returned intents (BATTLEPLAN §6). It is
+/// only ever fed keys while rcmd is held; KeyRouter enforces that.
 ///
-/// Rules (mirroring the original rcmd):
-/// - First press of a letter switches (hide-toggle if already focused) AND
-///   starts buffering a query.
-/// - Re-pressing that same letter repeats the switch/hide; Tab cycles
-///   same-letter apps. Neither pollutes the query.
-/// - Pressing a different letter extends the query; the overlay appears at 2+
-///   chars and release commits the selection.
-/// - Left-⌘ + W/Q/H act on the overlay selection (bare letters always extend
-///   the query, so "whatsapp" stays typeable). Backspace edits, Escape cancels,
-///   arrows/Tab move. After Escape the hold is inert — but its keys are still
-///   consumed so nothing leaks to apps as real ⌘-shortcuts.
+/// Modes:
+/// - idle → first letter switches (hide-toggle if focused) and buffers a query;
+///   Tab opens the window ring; backtick cycles the frontmost app's windows.
+/// - letter → same letter repeats the switch, Tab cycles same-letter apps,
+///   another letter engages the search overlay.
+/// - search → letters extend the query (left-⌘ W/Q/H act on the selection so
+///   "whatsapp" stays typeable), Tab/arrows move, backspace edits, Escape
+///   cancels, release commits.
+/// - windowCycle → Tab steps the ring, typing pivots to window search, release
+///   commits.
+/// - cancelled → inert, but KeyRouter keeps consuming keys until release so
+///   nothing leaks to apps as real ⌘-shortcuts.
 struct HoldSession {
+    private enum Mode: Equatable {
+        case idle
+        case letter(Character)
+        case search
+        case windowCycle
+        case cancelled
+    }
+
+    enum SearchScope: Equatable { case apps, windows }
+
+    private var mode: Mode = .idle
     private(set) var query = ""
-    private(set) var searchActive = false
-    /// Escape was pressed: ignore keys, but keep consuming them, until release.
-    private(set) var cancelled = false
+    private(set) var scope: SearchScope = .apps
 
-    private var lastKey: Character?
-    /// Set once the query grew past the single-letter stage — only then does
-    /// releasing rcmd commit the overlay selection.
-    private var overlayEngaged = false
+    var cancelled: Bool { mode == .cancelled }
+    var searchActive: Bool {
+        if case .letter = mode { return true }
+        return mode == .search
+    }
+    /// No keys were pressed during this hold — a "bare" tap, half of a
+    /// double-tap gesture.
+    var isBareHold: Bool { mode == .idle }
 
-    /// rcmd released: commit a pending search selection, reset everything.
+    /// Double-tap detected by KeyRouter: enter windows-only search.
+    mutating func beginWindowSearch() -> [Intent] {
+        mode = .search
+        scope = .windows
+        query = ""
+        return [.beginWindowSearch]
+    }
+
+    /// rcmd released: commit a pending overlay selection, reset everything.
     mutating func rightCommandUp() -> [Intent] {
-        let intents: [Intent] = overlayEngaged && !cancelled ? [.commitSearch] : []
+        let commits = mode == .search || mode == .windowCycle
         self = HoldSession()
-        return intents
+        return commits ? [.commitSearch] : []
     }
 
     mutating func keyDown(_ keyCode: Int64, modifiers: ModifierState) -> [Intent] {
-        guard !cancelled else { return [] }
+        guard mode != .cancelled else { return [] }
 
         guard let letter = Keycode.letters[keyCode] else {
             return controlKeyDown(keyCode)
@@ -62,53 +91,77 @@ struct HoldSession {
             return [.assignLetter(letter)]
         }
 
-        if overlayEngaged && modifiers.leftCommandHeld {
-            switch letter {
-            case "w": return [.itemAction(.close)]
-            case "q": return [.itemAction(.quit)]
-            case "h": return [.itemAction(.hide)]
-            default: break
-            }
-        }
-
-        // Repeating the buffered letter re-triggers switch/hide instead of
-        // extending the query.
-        if lastKey == letter && query.count == 1 {
-            return [.switchToLetter(letter)]
-        }
-
-        lastKey = letter
-        query.append(letter)
-        if query.count == 1 {
-            searchActive = true
+        switch mode {
+        case .idle:
+            mode = .letter(letter)
+            query = String(letter)
             return [.switchToLetter(letter), .searchQuery(query)]
+        case .letter(let buffered) where buffered == letter:
+            return [.switchToLetter(letter)]
+        case .letter:
+            mode = .search
+            query.append(letter)
+            return [.searchQuery(query)]
+        case .search:
+            if modifiers.leftCommandHeld {
+                switch letter {
+                case "w": return [.itemAction(.close)]
+                case "q": return [.itemAction(.quit)]
+                case "h": return [.itemAction(.hide)]
+                default: break
+                }
+            }
+            query.append(letter)
+            return [.searchQuery(query)]
+        case .windowCycle:
+            // Typing pivots the ring into fuzzy window search.
+            mode = .search
+            query = String(letter)
+            return [.searchQuery(query)]
+        case .cancelled:
+            return []
         }
-        overlayEngaged = true
-        return [.searchQuery(query)]
     }
 
     private mutating func controlKeyDown(_ keyCode: Int64) -> [Intent] {
         switch keyCode {
         case Keycode.escape:
-            guard searchActive else { return [] }
-            cancelled = true
+            guard mode != .idle else { return [] }
+            mode = .cancelled
             return [.cancelSearch]
         case Keycode.tab:
-            if overlayEngaged { return [.moveSelection(1)] }
-            if let lastKey, query.count == 1 { return [.cycleLetter(lastKey)] }
-            return []
+            switch mode {
+            case .idle:
+                mode = .windowCycle
+                scope = .windows
+                return [.beginWindowCycle]
+            case .letter(let buffered):
+                return [.cycleLetter(buffered)]
+            case .search, .windowCycle:
+                return [.moveSelection(1)]
+            case .cancelled:
+                return []
+            }
+        case Keycode.backtick:
+            switch mode {
+            case .idle, .letter:
+                return [.cycleAppWindows]
+            default:
+                return []
+            }
         case Keycode.backspace:
             guard searchActive, query.popLast() != nil else { return [] }
-            if query.isEmpty {
-                searchActive = false
-                overlayEngaged = false
-                lastKey = nil
+            if let remaining = query.first, query.count == 1 {
+                mode = .letter(remaining)
+            } else if query.isEmpty {
+                mode = .idle
+                scope = .apps
             }
             return [.searchQuery(query)]
         case Keycode.upArrow:
-            return searchActive ? [.moveSelection(-1)] : []
+            return mode == .search || mode == .windowCycle ? [.moveSelection(-1)] : []
         case Keycode.downArrow:
-            return searchActive ? [.moveSelection(1)] : []
+            return mode == .search || mode == .windowCycle ? [.moveSelection(1)] : []
         default:
             return []
         }

@@ -50,6 +50,17 @@ final class AppRegistry {
         }
     }
 
+    /// Synchronous view of the installed-apps index; empty until the first
+    /// scan finishes. Pair with ensureInstalledScan().
+    var cachedInstalledApps: [AppCandidate] {
+        installedIndex ?? []
+    }
+
+    /// Kick off the background scan if it hasn't run yet.
+    func ensureInstalledScan() {
+        installedApps { _ in }
+    }
+
     /// Installed-but-maybe-not-running apps, built lazily off-main and cached.
     /// Lets dynamic letters launch closed apps (BATTLEPLAN §3.4).
     func installedApps(completion: @escaping @MainActor ([AppCandidate]) -> Void) {

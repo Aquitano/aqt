@@ -141,4 +141,59 @@ final class KeyRouterTests: XCTestCase {
         _ = session.keyDown(0x01, modifiers: rcmdHeld)
         XCTAssertTrue(session.rightCommandUp().isEmpty)
     }
+
+    // MARK: - Phase 4: windows
+
+    func testTabOnEmptyHoldOpensWindowCycleThenSteps() {
+        var session = HoldSession()
+        XCTAssertEqual(session.keyDown(Keycode.tab, modifiers: rcmdHeld), [.beginWindowCycle])
+        XCTAssertEqual(session.keyDown(Keycode.tab, modifiers: rcmdHeld), [.moveSelection(1)])
+        XCTAssertEqual(session.rightCommandUp(), [.commitSearch])
+    }
+
+    func testTypingDuringWindowCyclePivotsToWindowSearch() {
+        var session = HoldSession()
+        _ = session.keyDown(Keycode.tab, modifiers: rcmdHeld)
+        XCTAssertEqual(session.keyDown(0x01, modifiers: rcmdHeld), [.searchQuery("s")])
+        XCTAssertEqual(session.scope, .windows)
+    }
+
+    func testBacktickCyclesFrontmostAppWindows() {
+        var session = HoldSession()
+        XCTAssertEqual(session.keyDown(Keycode.backtick, modifiers: rcmdHeld), [.cycleAppWindows])
+    }
+
+    func testDoubleTapOpensWindowSearch() {
+        let router = KeyRouter()
+        _ = router.rightCommandDown(at: 0)
+        _ = router.rightCommandUp(at: 0.1) // bare tap
+        XCTAssertEqual(router.rightCommandDown(at: 0.2), [.beginWindowSearch])
+    }
+
+    func testSlowSecondTapIsNotADoubleTap() {
+        let router = KeyRouter()
+        _ = router.rightCommandDown(at: 0)
+        _ = router.rightCommandUp(at: 0.1)
+        XCTAssertTrue(router.rightCommandDown(at: 0.6).isEmpty)
+    }
+
+    func testTapWithKeysIsNotHalfADoubleTap() {
+        let router = KeyRouter()
+        _ = router.rightCommandDown(at: 0)
+        _ = router.keyDown(0x01, modifiers: rcmdHeld) // switched an app
+        _ = router.rightCommandUp(at: 0.1)
+        XCTAssertTrue(router.rightCommandDown(at: 0.2).isEmpty)
+    }
+
+    func testWindowJumpRoutesOnlyWhenEnabled() {
+        let router = KeyRouter()
+        let raltOnly = ModifierState(rightOptionHeld: true)
+        let off = router.keyDown(0x28, modifiers: raltOnly)
+        XCTAssertTrue(off.intents.isEmpty)
+        XCTAssertFalse(off.consume)
+        let on = router.keyDown(0x28, modifiers: raltOnly, windowJumpEnabled: true)
+        XCTAssertEqual(on.intents, [.jumpAppWindows("k")])
+        XCTAssertTrue(on.consume)
+        XCTAssertTrue(router.shouldConsumeKeyUp(0x28))
+    }
 }

@@ -1,21 +1,46 @@
 import AppKit
 import Observation
 
-/// Drives the fuzzy search overlay: holds the current results, selection, and
-/// visibility; owns the overlay panel. Main actor.
+/// Drives the fuzzy search overlay and the rcmd+Tab window ring: holds the
+/// current results, selection, scope, and visibility. Main actor.
 @MainActor
 @Observable
 final class SearchModel {
+    enum Scope: Equatable { case apps, windows }
+
     struct Item: Identifiable, Equatable {
-        let bundleID: String
-        let name: String
+        enum Kind: Equatable {
+            case runningApp(bundleID: String)
+            case installedApp(bundleID: String)
+            case window(WindowInfo)
+        }
+
+        let kind: Kind
+        let title: String
+        /// Secondary label: "Launch" for installed apps, app name for windows.
+        let subtitle: String?
         let letter: Character?
-        var id: String { bundleID }
+
+        var id: String {
+            switch kind {
+            case .runningApp(let bundleID): return "app.\(bundleID)"
+            case .installedApp(let bundleID): return "installed.\(bundleID)"
+            case .window(let window): return "window.\(window.id)"
+            }
+        }
+
+        var iconBundleID: String? {
+            switch kind {
+            case .runningApp(let bundleID), .installedApp(let bundleID): return bundleID
+            case .window(let window): return window.bundleID
+            }
+        }
     }
 
     private(set) var items: [Item] = []
     private(set) var selectedIndex = 0
     private(set) var isVisible = false
+    private(set) var scope: Scope = .apps
 
     private let registry: AppRegistry
 
@@ -27,23 +52,31 @@ final class SearchModel {
         items.indices.contains(selectedIndex) ? items[selectedIndex] : nil
     }
 
+    // MARK: - Entry points
+
     func setQuery(_ query: String) {
-        guard query.count >= 2 else {
+        guard query.count >= 2 || (scope == .windows && !query.isEmpty) else {
             hide()
             return
         }
+        items = scope == .windows ? windowMatches(query) : appMatches(query)
+        selectedIndex = 0
+        isVisible = true
+    }
 
-        let candidates: [(Item, String)] = registry.runningApps.compactMap { app in
-            guard let id = app.bundleIdentifier, let name = app.localizedName else { return nil }
-            return (Item(bundleID: id, name: name, letter: LetterAssigner.dynamicLetter(for: name)), name)
-        }
+    /// rcmd+Tab: show every visible window, selection starting on the second
+    /// (the "next" window, Cmd-Tab style).
+    func beginWindowCycle() {
+        scope = .windows
+        items = WindowEnumerator.visibleWindows().map(windowItem)
+        selectedIndex = items.count > 1 ? 1 : 0
+        isVisible = !items.isEmpty
+    }
 
-        items = candidates.compactMap { item, name in
-            FuzzyMatcher.score(query: query, target: name).map { (item, $0) }
-        }
-        .sorted { $0.1 > $1.1 }
-        .map(\.0)
-
+    /// Double-tap rcmd: windows-only search, empty query lists everything.
+    func beginWindowSearch() {
+        scope = .windows
+        items = WindowEnumerator.visibleWindows().map(windowItem)
         selectedIndex = 0
         isVisible = true
     }
@@ -57,11 +90,19 @@ final class SearchModel {
         hide()
     }
 
-    /// Focus the selected app and dismiss.
+    /// Focus (or launch) the selection and dismiss.
     func commit() {
-        if let selected = selectedItem,
-           let app = registry.runningApps.first(where: { $0.bundleIdentifier == selected.bundleID }) {
-            app.activate()
+        switch selectedItem?.kind {
+        case .runningApp(let bundleID):
+            runningApp(bundleID)?.activate()
+        case .installedApp(let bundleID):
+            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+                NSWorkspace.shared.openApplication(at: url, configuration: .init())
+            }
+        case .window(let window):
+            WindowFocuser.focus(window)
+        case nil:
+            break
         }
         hide()
     }
@@ -69,25 +110,108 @@ final class SearchModel {
     /// Acts on the selection but keeps the overlay open — the user is still
     /// mid-hold and may act on further results or commit a different one.
     func perform(_ action: SearchItemAction) {
-        guard let selected = selectedItem,
-              let app = registry.runningApps.first(where: { $0.bundleIdentifier == selected.bundleID }) else {
-            return
+        guard let selected = selectedItem else { return }
+
+        switch (action, selected.kind) {
+        case (.close, .window(let window)):
+            AXWindowActions.close(window)
+            removeSelected()
+        case (.close, _):
+            appForSelection().map(AXWindowActions.closeFrontmostWindow)
+        case (.hide, _):
+            appForSelection()?.hide()
+        case (.quit, _):
+            appForSelection()?.terminate()
+            removeSelected()
         }
-        switch action {
-        case .hide:
-            app.hide()
-        case .quit:
-            app.terminate()
-            items.removeAll { $0.id == selected.id }
-            if selectedIndex >= items.count { selectedIndex = max(0, items.count - 1) }
-        case .close:
-            AXWindowActions.closeFrontmostWindow(of: app)
+    }
+
+    // MARK: - Matching
+
+    private func appMatches(_ query: String) -> [Item] {
+        registry.ensureInstalledScan()
+
+        let running: [(Item, String)] = registry.runningApps.compactMap { app in
+            guard let id = app.bundleIdentifier, let name = app.localizedName else { return nil }
+            return (
+                Item(
+                    kind: .runningApp(bundleID: id),
+                    title: name,
+                    subtitle: nil,
+                    letter: LetterAssigner.dynamicLetter(for: name)
+                ),
+                name
+            )
         }
+        let runningIDs = Set(registry.runningApps.compactMap(\.bundleIdentifier))
+        let installed: [(Item, String)] = registry.cachedInstalledApps
+            .filter { !runningIDs.contains($0.bundleID) }
+            .map { candidate in
+                (
+                    Item(
+                        kind: .installedApp(bundleID: candidate.bundleID),
+                        title: candidate.name,
+                        subtitle: "Launch",
+                        letter: nil
+                    ),
+                    candidate.name
+                )
+            }
+
+        return rank(query, candidates: running + installed)
+    }
+
+    private func windowMatches(_ query: String) -> [Item] {
+        let candidates = WindowEnumerator.visibleWindows().map { window in
+            (windowItem(window), "\(window.displayTitle) \(window.appName)")
+        }
+        return rank(query, candidates: candidates)
+    }
+
+    private func rank(_ query: String, candidates: [(Item, String)]) -> [Item] {
+        candidates.compactMap { item, target in
+            FuzzyMatcher.score(query: query, target: target).map { (item, $0) }
+        }
+        .sorted { $0.1 > $1.1 }
+        .map(\.0)
+    }
+
+    private func windowItem(_ window: WindowInfo) -> Item {
+        Item(
+            kind: .window(window),
+            title: window.displayTitle,
+            subtitle: window.appName,
+            letter: nil
+        )
+    }
+
+    // MARK: - Helpers
+
+    private func appForSelection() -> NSRunningApplication? {
+        switch selectedItem?.kind {
+        case .runningApp(let bundleID):
+            return runningApp(bundleID)
+        case .window(let window):
+            return NSRunningApplication(processIdentifier: window.pid)
+        default:
+            return nil
+        }
+    }
+
+    private func runningApp(_ bundleID: String) -> NSRunningApplication? {
+        registry.runningApps.first { $0.bundleIdentifier == bundleID }
+    }
+
+    private func removeSelected() {
+        guard let selected = selectedItem else { return }
+        items.removeAll { $0.id == selected.id }
+        if selectedIndex >= items.count { selectedIndex = max(0, items.count - 1) }
     }
 
     private func hide() {
         isVisible = false
         items = []
         selectedIndex = 0
+        scope = .apps
     }
 }

@@ -85,13 +85,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func makeTap() throws -> EventTap {
-        let tap = EventTap { [modifiers = ModifierTracker(), router = KeyRouter(), switcher] type, event in
+        // The tap source lives on the main run loop, so the callback runs on
+        // the main thread — reading SettingsStore here is safe.
+        let tap = EventTap { [modifiers = ModifierTracker(), router = KeyRouter(), switcher, settings] type, event in
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
             switch type {
             case .flagsChanged:
                 let wasHeld = modifiers.state.rightCommandHeld
                 let consumed = modifiers.handleFlagsChanged(keyCode: keyCode, flags: event.flags)
-                if wasHeld && !modifiers.state.rightCommandHeld {
+                if !wasHeld && modifiers.state.rightCommandHeld {
+                    Self.dispatch(router.rightCommandDown(), to: switcher)
+                } else if wasHeld && !modifiers.state.rightCommandHeld {
                     Self.dispatch(router.rightCommandUp(), to: switcher)
                     DispatchQueue.main.async {
                         MainActor.assumeIsolated { switcher.endHold() }
@@ -99,7 +103,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 return consumed
             case .keyDown:
-                let (intents, consume) = router.keyDown(keyCode, modifiers: modifiers.state)
+                let (intents, consume) = router.keyDown(
+                    keyCode,
+                    modifiers: modifiers.state,
+                    windowJumpEnabled: settings.model.windowJumpEnabled
+                )
                 Self.dispatch(intents, to: switcher)
                 return consume
             case .keyUp:
