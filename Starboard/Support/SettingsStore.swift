@@ -12,14 +12,19 @@ final class SettingsStore {
         // TODO(Phase 5/6): Spaces strategy choice, Stages trigger key, stages.
     }
 
+    static let shared = SettingsStore()
+
     private static let key = "starboard.settings"
+
+    private let defaults: UserDefaults
 
     var model: Model {
         didSet { persist() }
     }
 
-    init() {
-        if let data = UserDefaults.standard.data(forKey: Self.key),
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        if let data = defaults.data(forKey: Self.key),
            let decoded = try? JSONDecoder().decode(Model.self, from: data) {
             model = decoded
         } else {
@@ -27,8 +32,12 @@ final class SettingsStore {
         }
     }
 
+    func assignment(for letter: Character) -> String? {
+        model.customAssignments[letter.lowercased()]
+    }
+
     private func persist() {
         guard let data = try? JSONEncoder().encode(model) else { return }
-        UserDefaults.standard.set(data, forKey: Self.key)
+        defaults.set(data, forKey: Self.key)
     }
 }

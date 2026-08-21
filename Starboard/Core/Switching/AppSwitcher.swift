@@ -23,8 +23,8 @@ final class AppSwitcher {
         switch intent {
         case .switchToLetter(let letter):
             switchTo(letter: letter)
-        case .assignLetter:
-            break // Phase 2: pin frontmost app + toast HUD.
+        case .assignLetter(let letter):
+            assign(letter: letter)
         }
     }
 
@@ -40,6 +40,19 @@ final class AppSwitcher {
                     key.lowercased().first.map { ($0, value) }
                 }
             )
+        )
+    }
+
+    /// rcmd+ralt+letter: pin the frontmost app to `letter`, persisted by bundle
+    /// ID so it stays assigned (and launchable) across relaunches.
+    private func assign(letter: Character) {
+        guard let frontmost = NSWorkspace.shared.frontmostApplication,
+              let bundleID = frontmost.bundleIdentifier else { return }
+        settings.model.customAssignments["\(letter)"] = bundleID
+        ToastHUD.shared.show(
+            appName: frontmost.localizedName ?? "app",
+            letter: letter,
+            icon: frontmost.icon
         )
     }
 
@@ -77,7 +90,16 @@ final class AppSwitcher {
         }
 
         guard settings.model.launchIfNotRunning else { return }
-        launchInstalledApp(matching: letter)
+        if let pinnedID = assigner.customAssignments[letter] {
+            launch(bundleID: pinnedID)
+        } else {
+            registry.installedApps { installed in
+                guard let match = installed.first(where: {
+                    LetterAssigner.dynamicLetter(for: $0.name) == letter
+                }) else { return }
+                self.launch(bundleID: match.bundleID)
+            }
+        }
     }
 
     private func activate(pairs: [(app: NSRunningApplication, candidate: AppCandidate)], bundleID: String) {
@@ -85,16 +107,10 @@ final class AppSwitcher {
         app.activate()
     }
 
-    /// No running app owns `letter` — find an installed one and launch it.
-    private func launchInstalledApp(matching letter: Character) {
-        registry.installedApps { installed in
-            guard let match = installed.first(where: {
-                LetterAssigner.dynamicLetter(for: $0.name) == letter
-            }) else { return }
-            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: match.bundleID) else {
-                return
-            }
-            NSWorkspace.shared.openApplication(at: url, configuration: .init())
+    private func launch(bundleID: String) {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+            return
         }
+        NSWorkspace.shared.openApplication(at: url, configuration: .init())
     }
 }

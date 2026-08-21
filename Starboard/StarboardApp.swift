@@ -35,7 +35,7 @@ struct StarboardApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let state = AppState.shared
-    private let settings = SettingsStore()
+    private let settings = SettingsStore.shared
     private lazy var registry = AppRegistry()
     private lazy var switcher = AppSwitcher(registry: registry, settings: settings)
     private var eventTap: EventTap?
