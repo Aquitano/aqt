@@ -19,6 +19,7 @@ enum Keycode {
     static let rightBracket: Int64 = 0x1E
     static let equal: Int64 = 0x18
     static let minus: Int64 = 0x1B
+    static let f5: Int64 = 0x60
 
     static let letters: [Int64: Character] = [
         0x00: "a", 0x0B: "b", 0x08: "c", 0x02: "d", 0x0E: "e", 0x03: "f",

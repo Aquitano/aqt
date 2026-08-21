@@ -1,11 +1,25 @@
 import SwiftUI
 
+/// Shared UI-facing state. AppDelegate writes it; menu bar and onboarding read it.
+final class AppState: ObservableObject {
+    static let shared = AppState()
+
+    @Published var accessibilityGranted = Permissions.hasAccessibility
+    /// Kill switch: false means the tap is disabled and keys pass through.
+    @Published var starboardEnabled = true
+}
+
 @main
 struct StarboardApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @ObservedObject private var state = AppState.shared
 
     var body: some Scene {
-        MenuBarExtra("Starboard", systemImage: "command.circle.fill") {
+        MenuBarExtra("Starboard", systemImage: state.starboardEnabled
+            ? "command.circle.fill" : "command.circle") {
+            Button(state.starboardEnabled ? "Disable Starboard" : "Enable Starboard") {
+                appDelegate.setEnabled(!state.starboardEnabled)
+            }
             SettingsLink { Text("Settings…") }
             Divider()
             Button("Quit Starboard") { NSApp.terminate(nil) }
@@ -18,32 +32,78 @@ struct StarboardApp: App {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let modifiers = ModifierTracker()
-    private let router = KeyRouter()
-    private let switcher = AppSwitcher(registry: AppRegistry())
+    private let state = AppState.shared
+    private let settings = SettingsStore()
+    private lazy var registry = AppRegistry()
+    private lazy var switcher = AppSwitcher(registry: registry, settings: settings)
     private var eventTap: EventTap?
+    private var watchdog: Timer?
+    private var onboardingWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        guard Permissions.requestAccessibility() else {
-            // TODO(Phase 1): onboarding window with live permission re-check that
-            // starts the tap once granted, instead of requiring a relaunch.
-            return
+        if Permissions.hasAccessibility {
+            startTapIfWanted()
+        } else {
+            showOnboarding()
         }
-        startTap()
+
+        // Watchdog: the tap can be silently disabled by the OS (timeout / user
+        // input) — re-enable it (BATTLEPLAN §7).
+        watchdog = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.state.starboardEnabled,
+                      let tap = self.eventTap, !tap.isEnabled else { return }
+                NSLog("Starboard: tap was disabled by the system, re-enabling")
+                tap.enable()
+            }
+        }
     }
 
-    private func startTap() {
-        let tap = EventTap { [modifiers, router, switcher] type, event in
+    func setEnabled(_ enabled: Bool) {
+        state.starboardEnabled = enabled
+        syncTap()
+    }
+
+    private func syncTap() {
+        guard let tap = eventTap else { return }
+        state.starboardEnabled ? tap.enable() : tap.disable()
+    }
+
+    // MARK: - Tap lifecycle
+
+    private func startTapIfWanted() {
+        state.accessibilityGranted = true
+        do {
+            let tap = try makeTap()
+            eventTap = tap
+            if state.starboardEnabled { tap.enable() }
+        } catch {
+            NSLog("Starboard: failed to create event tap: \(error)")
+        }
+    }
+
+    private func makeTap() throws -> EventTap {
+        let tap = EventTap { [modifiers = ModifierTracker(), router = KeyRouter(), switcher] type, event in
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
             switch type {
             case .flagsChanged:
-                return modifiers.handleFlagsChanged(keyCode: keyCode, flags: event.flags)
+                let wasHeld = modifiers.state.rightCommandHeld
+                let consumed = modifiers.handleFlagsChanged(keyCode: keyCode, flags: event.flags)
+                if wasHeld && !modifiers.state.rightCommandHeld {
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated { switcher.endHold() }
+                    }
+                }
+                return consumed
             case .keyDown:
                 guard let intent = router.route(keyDownCode: keyCode, modifiers: modifiers.state) else {
                     return false
                 }
-                DispatchQueue.main.async { switcher.handle(intent) }
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { switcher.handle(intent) }
+                }
                 return true
             case .keyUp:
                 // Swallow the matching keyUp while rcmd is held so apps never see
@@ -53,12 +113,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return false
             }
         }
+        try tap.start()
+        return tap
+    }
 
-        do {
-            try tap.start()
-            eventTap = tap
-        } catch {
-            NSLog("Starboard: failed to create event tap: \(error)")
-        }
+    // MARK: - Onboarding
+
+    private func showOnboarding() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 300),
+            styleMask: [.titled, .fullSizeContentView],
+            backing: .buffered, defer: false
+        )
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
+        window.contentView = NSHostingView(
+            rootView: OnboardingView(onGranted: { [weak self] in
+                self?.accessibilityGranted()
+            })
+        )
+        window.center()
+        onboardingWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func accessibilityGranted() {
+        onboardingWindow?.close()
+        onboardingWindow = nil
+        startTapIfWanted()
     }
 }

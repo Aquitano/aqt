@@ -58,8 +58,18 @@ final class EventTap {
         // (BATTLEPLAN §7).
     }
 
+    var isEnabled: Bool {
+        guard let tap else { return false }
+        return CGEvent.tapIsEnabled(tap: tap)
+    }
+
     func enable() {
         guard let tap else { return }
         CGEvent.tapEnable(tap: tap, enable: true)
+    }
+
+    func disable() {
+        guard let tap else { return }
+        CGEvent.tapEnable(tap: tap, enable: false)
     }
 }

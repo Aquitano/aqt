@@ -8,9 +8,9 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    # Ad-hoc signing works for local use, but TCC (Accessibility) grants reset on
-    # every rebuild. Swap in your Apple Development identity for a stable grant.
-    CODE_SIGN_IDENTITY: "-"
+    # Ad-hoc signing ("-") invalidates TCC (Accessibility) grants on every
+    # rebuild because the CDHash changes. A real identity keeps grants sticky.
+    CODE_SIGN_IDENTITY: "Apple Development"
     CODE_SIGN_STYLE: Manual
     ENABLE_HARDENED_RUNTIME: false
 
