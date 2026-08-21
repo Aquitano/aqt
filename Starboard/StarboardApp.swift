@@ -7,6 +7,8 @@ final class AppState: ObservableObject {
     @Published var accessibilityGranted = Permissions.hasAccessibility
     /// Kill switch: false means the tap is disabled and keys pass through.
     @Published var starboardEnabled = true
+    /// Active Space number for the menu bar (direct strategy + setting only).
+    @Published var spaceNumber: Int?
 }
 
 @main
@@ -15,8 +17,7 @@ struct StarboardApp: App {
     @ObservedObject private var state = AppState.shared
 
     var body: some Scene {
-        MenuBarExtra("Starboard", systemImage: state.starboardEnabled
-            ? "command.circle.fill" : "command.circle") {
+        MenuBarExtra {
             Button(state.starboardEnabled ? "Disable Starboard" : "Enable Starboard") {
                 appDelegate.setEnabled(!state.starboardEnabled)
             }
@@ -24,6 +25,13 @@ struct StarboardApp: App {
             Divider()
             Button("Quit Starboard") { NSApp.terminate(nil) }
                 .keyboardShortcut("q")
+        } label: {
+            if let number = state.spaceNumber {
+                Image(systemName: "\(number).circle\(state.starboardEnabled ? ".fill" : "")")
+            } else {
+                Image(systemName: state.starboardEnabled
+                    ? "command.circle.fill" : "command.circle")
+            }
         }
 
         Settings {
@@ -49,6 +57,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showOnboarding()
         }
 
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshSpaceNumber() }
+        }
+        refreshSpaceNumber()
+
         // Watchdog: the tap can be silently disabled by the OS (timeout / user
         // input) — re-enable it (BATTLEPLAN §7).
         watchdog = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
@@ -64,6 +80,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func setEnabled(_ enabled: Bool) {
         state.starboardEnabled = enabled
         syncTap()
+    }
+
+    private func refreshSpaceNumber() {
+        state.spaceNumber = settings.model.showSpaceNumber
+            ? switcher.spaces.currentSpaceNumber : nil
     }
 
     private func syncTap() {
@@ -88,6 +109,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The tap source lives on the main run loop, so the callback runs on
         // the main thread — reading SettingsStore here is safe.
         let tap = EventTap { [modifiers = ModifierTracker(), router = KeyRouter(), switcher, settings] type, event in
+            // Events Starboard posted itself (Space shortcuts) must pass
+            // through untouched or they'd be re-routed while rcmd is held.
+            if event.getIntegerValueField(.eventSourceUserData) == SyntheticSpaceSwitcher.syntheticTag {
+                return false
+            }
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
             switch type {
             case .flagsChanged:
@@ -106,7 +132,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let (intents, consume) = router.keyDown(
                     keyCode,
                     modifiers: modifiers.state,
-                    windowJumpEnabled: settings.model.windowJumpEnabled
+                    options: RouterOptions(
+                        windowJumpEnabled: settings.model.windowJumpEnabled,
+                        spacesMoveWindowEnabled: settings.model.spacesMoveWindowEnabled
+                            && switcher.spaces.canMoveWindows
+                    )
                 )
                 Self.dispatch(intents, to: switcher)
                 return consume

@@ -21,6 +21,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Metrics.grid * 4) {
                     generalSection
+                    spacesSection
                     assignmentsSection
                 }
                 .padding(Theme.Metrics.grid * 3)
@@ -60,6 +61,54 @@ struct SettingsView: View {
 
             LaunchAtLoginRow()
             ScreenRecordingRow()
+        }
+    }
+
+    // MARK: - Spaces
+
+    private var spacesSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Metrics.grid * 1.5) {
+            Text("Spaces")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Switching engine").font(.system(size: 13))
+                    Text(
+                        model.spacesStrategy == .synthetic
+                            ? "Posts Mission Control shortcuts. Enable ctrl+1…9 under System Settings → Keyboard → Shortcuts → Mission Control."
+                            : "Instant, animation-free switching via private APIs. Falls back to Compatible if unavailable on this macOS."
+                    )
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { SettingsStore.shared.model.spacesStrategy },
+                    set: { SettingsStore.shared.model.spacesStrategy = $0 }
+                )) {
+                    Text("Compatible").tag(SpacesStrategy.synthetic)
+                    Text("Instant").tag(SpacesStrategy.direct)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 190)
+            }
+            .padding(.vertical, 2)
+
+            ToggleRow(
+                title: "Move windows with Right ⌥",
+                detail: "ralt+1…9 sends the focused window to that Space. Needs the Instant engine.",
+                initial: model.spacesMoveWindowEnabled
+            ) { SettingsStore.shared.model.spacesMoveWindowEnabled.toggle() }
+
+            ToggleRow(
+                title: "Space number in menu bar",
+                detail: "Shows the active Space. Needs the Instant engine.",
+                initial: model.showSpaceNumber
+            ) { SettingsStore.shared.model.showSpaceNumber.toggle() }
         }
     }
 

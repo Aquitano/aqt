@@ -13,6 +13,7 @@ final class AppSwitcher {
     private let registry: AppRegistry
     private let settings: SettingsStore
     let searchModel: SearchModel
+    let spaces: SpacesController
 
     private lazy var searchPanel = SearchPanelController(
         content: NSHostingView(rootView: SearchOverlayContent(model: searchModel))
@@ -27,6 +28,7 @@ final class AppSwitcher {
         self.registry = registry
         self.settings = settings
         self.searchModel = SearchModel(registry: registry)
+        self.spaces = SpacesController(settings: settings)
     }
 
     func handle(_ intent: Intent) {
@@ -55,6 +57,12 @@ final class AppSwitcher {
             WindowFocuser.cycleFrontmostAppWindows()
         case .jumpAppWindows(let letter):
             jumpWindows(letter: letter)
+        case .jumpToSpace(let index):
+            spaces.jump(to: index)
+        case .adjacentSpace(let direction):
+            spaces.jumpAdjacent(direction)
+        case .moveWindowToSpace(let index):
+            spaces.moveFocusedWindow(to: index)
         }
         syncSearchPanel()
     }

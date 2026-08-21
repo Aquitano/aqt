@@ -39,4 +39,8 @@ enum Keycode {
         0x12: 1, 0x13: 2, 0x14: 3, 0x15: 4, 0x17: 5,
         0x16: 6, 0x1A: 7, 0x1C: 8, 0x19: 9,
     ]
+
+    /// Space number → digit keycode, for posting synthetic ctrl+digit.
+    static let digitKeycodes: [Int: Int64] =
+        Dictionary(uniqueKeysWithValues: digits.map { ($0.value, $0.key) })
 }

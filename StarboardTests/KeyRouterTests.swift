@@ -191,9 +191,41 @@ final class KeyRouterTests: XCTestCase {
         let off = router.keyDown(0x28, modifiers: raltOnly)
         XCTAssertTrue(off.intents.isEmpty)
         XCTAssertFalse(off.consume)
-        let on = router.keyDown(0x28, modifiers: raltOnly, windowJumpEnabled: true)
+        let on = router.keyDown(
+            0x28, modifiers: raltOnly,
+            options: RouterOptions(windowJumpEnabled: true)
+        )
         XCTAssertEqual(on.intents, [.jumpAppWindows("k")])
         XCTAssertTrue(on.consume)
         XCTAssertTrue(router.shouldConsumeKeyUp(0x28))
+    }
+
+    // MARK: - Phase 5: Spaces
+
+    func testDigitsJumpToSpacesOutsideEngagedSearch() {
+        var session = HoldSession()
+        XCTAssertEqual(session.keyDown(0x14, modifiers: rcmdHeld), [.jumpToSpace(3)])
+        _ = session.keyDown(0x01, modifiers: rcmdHeld) // letter stage
+        XCTAssertEqual(session.keyDown(0x12, modifiers: rcmdHeld), [.jumpToSpace(1)])
+        _ = session.keyDown(0x26, modifiers: rcmdHeld) // overlay engaged
+        XCTAssertTrue(session.keyDown(0x12, modifiers: rcmdHeld).isEmpty)
+    }
+
+    func testBracketsJumpAdjacentSpaces() {
+        var session = HoldSession()
+        XCTAssertEqual(session.keyDown(Keycode.leftBracket, modifiers: rcmdHeld), [.adjacentSpace(.left)])
+        XCTAssertEqual(session.keyDown(Keycode.rightBracket, modifiers: rcmdHeld), [.adjacentSpace(.right)])
+    }
+
+    func testRaltDigitMovesWindowOnlyWhenEnabled() {
+        let router = KeyRouter()
+        let raltOnly = ModifierState(rightOptionHeld: true)
+        XCTAssertTrue(router.keyDown(0x13, modifiers: raltOnly).intents.isEmpty)
+        let on = router.keyDown(
+            0x13, modifiers: raltOnly,
+            options: RouterOptions(spacesMoveWindowEnabled: true)
+        )
+        XCTAssertEqual(on.intents, [.moveWindowToSpace(2)])
+        XCTAssertTrue(on.consume)
     }
 }

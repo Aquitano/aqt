@@ -8,6 +8,14 @@ import QuartzCore
 ///   released in between — apps must never see half a keystroke.
 /// - A double rcmd tap-and-hold (two bare presses within 300 ms) opens
 ///   windows-only search.
+/// The opt-in features that extend routing beyond the rcmd hold.
+struct RouterOptions {
+    /// ralt+letter steps through that app's windows.
+    var windowJumpEnabled = false
+    /// ralt+digit moves the focused window to a Space (direct strategy only).
+    var spacesMoveWindowEnabled = false
+}
+
 final class KeyRouter {
     private(set) var session = HoldSession()
     private var consumedKeys = Set<Int64>()
@@ -21,13 +29,17 @@ final class KeyRouter {
     func keyDown(
         _ keyCode: Int64,
         modifiers: ModifierState,
-        windowJumpEnabled: Bool = false
+        options: RouterOptions = RouterOptions()
     ) -> (intents: [Intent], consume: Bool) {
         guard modifiers.rightCommandHeld else {
-            if windowJumpEnabled, modifiers.rightOptionHeld,
-               let letter = Keycode.letters[keyCode] {
+            guard modifiers.rightOptionHeld else { return ([], false) }
+            if options.windowJumpEnabled, let letter = Keycode.letters[keyCode] {
                 consumedKeys.insert(keyCode)
                 return ([.jumpAppWindows(letter)], true)
+            }
+            if options.spacesMoveWindowEnabled, let digit = Keycode.digits[keyCode] {
+                consumedKeys.insert(keyCode)
+                return ([.moveWindowToSpace(digit)], true)
             }
             return ([], false)
         }

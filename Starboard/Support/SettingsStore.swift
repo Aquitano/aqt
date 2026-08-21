@@ -3,6 +3,15 @@ import Observation
 
 /// Single source of truth for persisted preferences, UserDefaults-backed.
 /// Every new preference goes in Model; never scatter raw defaults keys.
+enum SpacesStrategy: String, Codable {
+    /// Post Mission Control shortcuts (ctrl+digit / ctrl+arrows). Animated,
+    /// robust; ctrl+digit must be enabled in System Settings.
+    case synthetic
+    /// Private SkyLight APIs: instant, enables move-window and the menu bar
+    /// Space number. Auto-falls back to synthetic when unavailable.
+    case direct
+}
+
 @Observable
 final class SettingsStore {
     struct Model: Codable, Equatable {
@@ -12,6 +21,10 @@ final class SettingsStore {
         /// ralt+letter window jump. Off by default: right Option types special
         /// characters on many layouts, so consuming it must be a choice.
         var windowJumpEnabled = false
+        var spacesStrategy = SpacesStrategy.synthetic
+        /// ralt+digit moves the focused window to a Space (direct only).
+        var spacesMoveWindowEnabled = false
+        var showSpaceNumber = false
 
         // Every field decodes with decodeIfPresent + default so settings
         // persisted by older (or newer) versions never fail to load — a plain
@@ -28,6 +41,13 @@ final class SettingsStore {
                 try container.decodeIfPresent([String: String].self, forKey: .customAssignments) ?? [:]
             windowJumpEnabled =
                 try container.decodeIfPresent(Bool.self, forKey: .windowJumpEnabled) ?? false
+            spacesStrategy =
+                (try? container.decodeIfPresent(SpacesStrategy.self, forKey: .spacesStrategy))
+                .flatMap { $0 } ?? .synthetic
+            spacesMoveWindowEnabled =
+                try container.decodeIfPresent(Bool.self, forKey: .spacesMoveWindowEnabled) ?? false
+            showSpaceNumber =
+                try container.decodeIfPresent(Bool.self, forKey: .showSpaceNumber) ?? false
         }
     }
 

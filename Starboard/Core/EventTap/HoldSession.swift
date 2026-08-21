@@ -17,6 +17,12 @@ enum Intent: Equatable {
     case cycleAppWindows
     /// ralt+letter (window jump enabled): step through the letter app's windows.
     case jumpAppWindows(Character)
+    /// rcmd+digit: jump to that Space.
+    case jumpToSpace(Int)
+    /// rcmd+[ or ]: jump to the adjacent Space.
+    case adjacentSpace(SpaceDirection)
+    /// ralt+digit (direct strategy): move the focused window to that Space.
+    case moveWindowToSpace(Int)
 }
 
 enum SearchItemAction: Equatable {
@@ -124,6 +130,23 @@ struct HoldSession {
     }
 
     private mutating func controlKeyDown(_ keyCode: Int64) -> [Intent] {
+        // Space navigation wins over search for digits/brackets except while
+        // the overlay is engaged (where they'd be surprising jumps).
+        if let digit = Keycode.digits[keyCode] {
+            switch mode {
+            case .idle, .letter, .windowCycle: return [.jumpToSpace(digit)]
+            case .search, .cancelled: return []
+            }
+        }
+        let allowsSpaceNav = mode == .idle || searchActive && query.count <= 1
+        switch keyCode {
+        case Keycode.leftBracket where allowsSpaceNav:
+            return [.adjacentSpace(.left)]
+        case Keycode.rightBracket where allowsSpaceNav:
+            return [.adjacentSpace(.right)]
+        default:
+            break
+        }
         switch keyCode {
         case Keycode.escape:
             guard mode != .idle else { return [] }
