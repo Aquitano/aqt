@@ -3,6 +3,8 @@ package aichat
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/aquitano/aqt-bank/internal/store"
@@ -28,6 +30,27 @@ type claudeConversation struct {
 
 func ImportClaude(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
 	var res Result
+	// The export is several zips; anything that is not conversations
+	// (projects, memories, design chats) is handled by claudeextras.go. An
+	// input holding both — a folder the owner unpacked everything into —
+	// imports both.
+	var extrasFound bool
+	if info, err := os.Stat(path); err == nil && (info.IsDir() || strings.EqualFold(filepath.Ext(path), ".zip")) {
+		extras, closeExtras, err := loadClaudeExtras(path, info.IsDir())
+		if err != nil {
+			return res, err
+		}
+		if len(extras) > 0 {
+			defer closeExtras()
+			extrasFound = true
+			if err := importClaudeExtraInput(ctx, st, &res, archiveDir, path, extras, info.IsDir()); err != nil {
+				return res, err
+			}
+		}
+		if extrasFound && !hasClaudeConversations(path, info.IsDir()) {
+			return res, nil
+		}
+	}
 	raw, rawRef, err := loadConversations(archiveDir, "claude", path)
 	if err != nil {
 		return res, err
