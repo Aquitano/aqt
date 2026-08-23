@@ -10,6 +10,7 @@ package aichat
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -17,6 +18,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"mime"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,6 +29,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt-bank/internal/archive"
+	"github.com/aquitano/aqt-bank/internal/blob"
 	"github.com/aquitano/aqt-bank/internal/fail"
 	"github.com/aquitano/aqt-bank/internal/store"
 )
@@ -39,6 +43,11 @@ type Result struct {
 	// message and were dropped whole. Without it the loss is invisible: such a
 	// conversation never reaches any other counter.
 	EmptyConversations int `json:"empty_conversations"`
+	Attachments        int `json:"attachments,omitempty"`
+	// MissingMedia counts asset references whose file the export does not
+	// contain — ChatGPT drops expired assets from the download, so a nonzero
+	// count is normal for an old account, not an import failure.
+	MissingMedia int `json:"missing_media,omitempty"`
 	// FailedSessions lists transcript files that could not be read or parsed.
 	// A directory import continues past them, so the paths belong in the
 	// result and not only in a stderr line.
@@ -58,9 +67,30 @@ type message struct {
 	Sender  string
 	Body    string
 	SentAt  time.Time
+	// Attachments are asset references parsed out of the message; resolving
+	// them to bytes needs a media source, which only some inputs carry.
+	Attachments []assetRef
 }
 
-func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef string, msgs []message) error {
+// assetRef names one exported asset: the id keys the file on disk, name and
+// mime come from the export's metadata when it has them.
+type assetRef struct {
+	ID   string
+	Name string
+	Mime string
+}
+
+// media resolves asset ids to their exported bytes. nil media (bare
+// conversations.json, claude, claude-code) imports messages text-only, same
+// as before attachments existed.
+type media struct {
+	blobs *blob.Store
+	open  func(id string) io.ReadCloser
+	// names maps "<id>.dat" to the file's original upload name.
+	names map[string]string
+}
+
+func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef string, msgs []message, md *media) error {
 	for _, m := range msgs {
 		if m.ExternalID == "" {
 			// One malformed export record (a mapping node without an id, a
@@ -94,10 +124,98 @@ func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef str
 		}
 		if id == 0 {
 			r.Duplicates++
-		} else {
-			r.Inserted++
+			// Heal attachments: an earlier import from a media-less input
+			// (bare conversations.json) inserted the message but could not
+			// store the files.
+			if md != nil && len(m.Attachments) > 0 {
+				if err := r.healAssets(ctx, st, md, source, m); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		r.Inserted++
+		if md != nil {
+			for _, a := range m.Attachments {
+				if err := r.storeAsset(ctx, st, md, id, a); err != nil {
+					return err
+				}
+			}
 		}
 	}
+	return nil
+}
+
+func (r *Result) healAssets(ctx context.Context, st *store.Store, md *media, source string, m message) error {
+	id, err := st.FindMessageID(ctx, source, m.ExternalID)
+	if err != nil {
+		return fail.Opf("look up message: %w", err)
+	}
+	if id == 0 {
+		return nil
+	}
+	has, err := st.MessageHasAttachments(ctx, id)
+	if err != nil {
+		return fail.Opf("read attachments of message %d: %w", id, err)
+	}
+	if has {
+		return nil
+	}
+	for _, a := range m.Attachments {
+		if err := r.storeAsset(ctx, st, md, id, a); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Result) storeAsset(ctx context.Context, st *store.Store, md *media, messageID int64, a assetRef) error {
+	rc := md.open(a.ID)
+	if rc == nil {
+		r.MissingMedia++
+		return nil
+	}
+	defer rc.Close()
+
+	name := md.names[a.ID+".dat"]
+	if name == "" {
+		name = a.Name
+	}
+	if name == "" {
+		name = a.ID
+	}
+	mimeType := a.Mime
+	if mimeType == "" {
+		mimeType = mime.TypeByExtension(filepath.Ext(name))
+	}
+
+	// Many exported assets carry no usable extension ("image.png" aside, ids
+	// and bare UUIDs are common), so sniff the bytes when nothing named them.
+	head := make([]byte, 512)
+	n, err := io.ReadFull(rc, head)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return fail.Opf("read asset %q: %w", a.ID, err)
+	}
+	head = head[:n]
+	if mimeType == "" {
+		mimeType = http.DetectContentType(head)
+	}
+
+	sumHex, size, err := md.blobs.Put(io.MultiReader(bytes.NewReader(head), rc))
+	if err != nil {
+		return fail.Opf("store asset %q: %w", a.ID, err)
+	}
+	err = st.InsertAttachment(ctx, store.Attachment{
+		MessageID: messageID,
+		Filename:  name,
+		MimeType:  mimeType,
+		SizeBytes: size,
+		SHA256:    sumHex,
+	})
+	if err != nil {
+		return fail.Opf("insert attachment %q: %w", name, err)
+	}
+	r.Attachments++
 	return nil
 }
 

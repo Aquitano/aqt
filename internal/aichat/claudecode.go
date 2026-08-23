@@ -142,7 +142,7 @@ func importSession(ctx context.Context, st *store.Store, archiveDir, path string
 		return fail.Opf("archive %s: %w", path, err)
 	}
 	res.Conversations++
-	return res.ingest(ctx, st, "claude-code", rawRef, msgs)
+	return res.ingest(ctx, st, "claude-code", rawRef, msgs, nil)
 }
 
 // parseClaudeCodeSession reads one transcript. session is the session id the

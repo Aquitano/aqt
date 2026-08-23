@@ -43,7 +43,7 @@ func ImportClaude(ctx context.Context, st *store.Store, archiveDir, path string)
 			continue
 		}
 		res.Conversations++
-		if err := res.ingest(ctx, st, "claude", rawRef, msgs); err != nil {
+		if err := res.ingest(ctx, st, "claude", rawRef, msgs, nil); err != nil {
 			return res, err
 		}
 	}

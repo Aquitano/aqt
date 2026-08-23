@@ -31,7 +31,7 @@ func TestParseChatGPTConversation(t *testing.T) {
 	if err := unmarshal(raw, &c); err != nil {
 		t.Fatal(err)
 	}
-	msgs := parseChatGPTConversation(c)
+	msgs := parseChatGPTConversation(c, false)
 	if len(msgs) != 3 {
 		t.Fatalf("got %d messages, want 3 (system skipped): %+v", len(msgs), msgs)
 	}
@@ -69,7 +69,7 @@ func TestParseChatGPTConversationSubSecondOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 20 { // map iteration order varies per run
-		msgs := parseChatGPTConversation(c)
+		msgs := parseChatGPTConversation(c, false)
 		if got := msgs[0].ExternalID + "," + msgs[1].ExternalID + "," + msgs[2].ExternalID; got != "msg-a,msg-b,msg-c" {
 			t.Fatalf("order = %s, want msg-a,msg-b,msg-c", got)
 		}
@@ -95,12 +95,85 @@ func TestParseChatGPTVoiceConversation(t *testing.T) {
 	if err := unmarshal(raw, &c); err != nil {
 		t.Fatal(err)
 	}
-	msgs := parseChatGPTConversation(c)
+	msgs := parseChatGPTConversation(c, false)
 	if len(msgs) != 1 {
 		t.Fatalf("got %d messages, want the transcribed one only: %+v", len(msgs), msgs)
 	}
 	if msgs[0].Body != "how do I learn vocabulary?" {
 		t.Errorf("body = %q (only the transcription part carries text)", msgs[0].Body)
+	}
+}
+
+func TestParseChatGPTAssets(t *testing.T) {
+	raw := `{
+	  "title": "Screenshots",
+	  "conversation_id": "conv-2",
+	  "mapping": {
+	    "n1": {"message": {"id": "msg-1", "author": {"role": "user"}, "create_time": 1715629680.0,
+	           "content": {"content_type": "multimodal_text", "parts": [
+	             {"content_type": "image_asset_pointer", "asset_pointer": "file-service://file-Abc123", "size_bytes": 10},
+	             "what is this?"]},
+	           "metadata": {"attachments": [{"id": "file-Abc123", "name": "screen.png", "mime_type": "image/png"},
+	                                        {"id": "file-Doc9", "name": "file-Doc9", "mimeType": "application/pdf"}]}}},
+	    "n2": {"message": {"id": "msg-2", "author": {"role": "assistant"}, "create_time": 1715629690.0,
+	           "content": {"content_type": "multimodal_text", "parts": [
+	             {"content_type": "audio_asset_pointer", "metadata": null,
+	              "audio_asset_pointer": {"asset_pointer": "sediment://file_00ff01", "content_type": "audio_asset_pointer"}}]}}},
+	    "n3": {"message": {"id": "msg-3", "author": {"role": "user"}, "create_time": 1715629700.0,
+	           "content": {"content_type": "multimodal_text", "parts": [
+	             {"asset_pointer": "file-service://../../etc/passwd"}]}}}
+	  }
+	}`
+	var c cgptConversation
+	if err := unmarshal(raw, &c); err != nil {
+		t.Fatal(err)
+	}
+	msgs := parseChatGPTConversation(c, true)
+	// n3's only pointer is a traversal attempt, so with its reference refused
+	// the message holds nothing and is dropped even with assets on.
+	if len(msgs) != 2 {
+		t.Fatalf("got %d messages, want 2 (asset-only kept, traversal-only dropped): %+v", len(msgs), msgs)
+	}
+	if len(msgs[0].Attachments) != 2 {
+		t.Fatalf("first message attachments = %+v, want image (deduped with its pointer) + upload", msgs[0].Attachments)
+	}
+	img := msgs[0].Attachments[0]
+	if img.ID != "file-Abc123" || img.Name != "screen.png" || img.Mime != "image/png" {
+		t.Errorf("image ref = %+v", img)
+	}
+	doc := msgs[0].Attachments[1]
+	if doc.ID != "file-Doc9" || doc.Name != "" || doc.Mime != "application/pdf" {
+		t.Errorf("upload ref = %+v (id-as-name must be dropped, mimeType spelling read)", doc)
+	}
+	if len(msgs[1].Attachments) != 1 || msgs[1].Attachments[0].ID != "file_00ff01" {
+		t.Errorf("nested audio pointer = %+v", msgs[1].Attachments)
+	}
+	if msgs[1].Body != "" {
+		t.Errorf("audio-only body = %q", msgs[1].Body)
+	}
+
+	// The same conversation without assets keeps only the message with text.
+	msgs = parseChatGPTConversation(c, false)
+	if len(msgs) != 1 || msgs[0].ExternalID != "msg-1" {
+		t.Fatalf("without assets = %+v, want the text-bearing message only", msgs)
+	}
+}
+
+func TestAssetID(t *testing.T) {
+	cases := map[string]string{
+		"file-service://file-Abc123":     "file-Abc123",
+		"sediment://file_00ff01":         "file_00ff01",
+		"file-service://../etc/passwd":   "",
+		"file-service://file-a/../../b":  "",
+		"file-Abc123":                    "",
+		"sediment://":                    "",
+		"file-service://file_0f.dat":     "",
+		"https://example.com/file-Abc12": "",
+	}
+	for in, want := range cases {
+		if got := assetID(in); got != want {
+			t.Errorf("assetID(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
@@ -206,7 +279,7 @@ func TestSameTitleConversationsStayApart(t *testing.T) {
 		         "content": {"content_type": "text", "parts": ["hi"]}}}}}`, &c); err != nil {
 			t.Fatal(err)
 		}
-		return parseChatGPTConversation(c)
+		return parseChatGPTConversation(c, false)
 	}
 	claude := func(uuid string) []message {
 		var c claudeConversation

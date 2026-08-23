@@ -124,7 +124,7 @@ func (s *Server) importFile(ctx context.Context, kind, source, path string) (any
 	case "linkedin":
 		return linkedin.Import(ctx, s.db, s.archiveDir, path)
 	case "chatgpt":
-		return aichat.ImportChatGPT(ctx, s.db, s.archiveDir, path)
+		return aichat.ImportChatGPT(ctx, s.db, s.blobs, s.archiveDir, path)
 	case "claude":
 		return aichat.ImportClaude(ctx, s.db, s.archiveDir, path)
 	case "claude-code":

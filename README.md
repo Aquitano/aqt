@@ -16,7 +16,10 @@ go build -o bank ./cmd/bank
 ./bank import mbox takeout/All\ mail.mbox     # Gmail Takeout
 ./bank import discord package.zip             # GDPR data package
 ./bank import linkedin Complete_LinkedInDataExport.zip
-./bank import chatgpt chatgpt-export.zip        # ChatGPT data export
+./bank import chatgpt chatgpt-export.zip        # ChatGPT data export (zip or unpacked
+                                                #  dir; uploaded/generated files come
+                                                #  along as attachments, and re-importing
+                                                #  heals an earlier text-only pass)
 ./bank import claude claude-export.zip          # Claude.ai data export
 ./bank import claude-code ~/.claude/projects    # Claude Code transcripts
 echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source notes -

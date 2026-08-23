@@ -350,7 +350,7 @@ func importLocal(ctx context.Context, d *local, kind, source, path string) (any,
 	case "linkedin":
 		return linkedin.Import(ctx, d.st, d.archiveDir, path)
 	case "chatgpt":
-		return aichat.ImportChatGPT(ctx, d.st, d.archiveDir, path)
+		return aichat.ImportChatGPT(ctx, d.st, d.blobs, d.archiveDir, path)
 	case "claude":
 		return aichat.ImportClaude(ctx, d.st, d.archiveDir, path)
 	case "claude-code":
@@ -614,6 +614,9 @@ func printAIChatResult(kind, path string, res aichat.Result) {
 		kind, filepath.Base(path), found, res.Conversations, res.Inserted, res.Duplicates, res.Skipped)
 	if res.EmptyConversations > 0 {
 		fmt.Printf(", %d conversations without importable messages", res.EmptyConversations)
+	}
+	if res.Attachments > 0 || res.MissingMedia > 0 {
+		fmt.Printf(", %d attachments (%d missing from export)", res.Attachments, res.MissingMedia)
 	}
 	if len(res.FailedSessions) > 0 {
 		fmt.Printf(", %d sessions unreadable", len(res.FailedSessions))

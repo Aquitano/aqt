@@ -60,7 +60,7 @@ func TestReimportRekeysFromArchive(t *testing.T) {
 		t.Fatalf("staged as %q, want the original name back", staged)
 	}
 
-	res, err := ImportChatGPT(ctx, st, archiveDir, staged)
+	res, err := ImportChatGPT(ctx, st, nil, archiveDir, staged)
 	if err != nil {
 		t.Fatal(err)
 	}
