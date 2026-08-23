@@ -23,11 +23,11 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/bank ./cmd/bank
 FROM debian:12-slim AS ocr
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tesseract-ocr poppler-utils \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-deu poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Extra languages are apt packages: tesseract-ocr-deu, -fra, and so on. Add
-# them here and pass `bank extract --ocr --lang deu+eng`.
+# Further languages are apt packages (tesseract-ocr-fra and so on). Add them
+# here and set BANK_OCR_LANG accordingly.
 
 COPY --from=build /out/bank /usr/local/bin/bank
 USER 65532:65532
