@@ -255,9 +255,9 @@ docker compose exec -T db psql -U bank -d bank -c \
   "truncate messages, attachments, blob_text, contacts, contact_aliases,
    message_id_collapsed, sync_state restart identity;"
 
-# blobs and raw import archives (host side; BANK_DATA_DIR from .env).
-# tokens/, gmail/ and inbox/ deliberately survive.
-rm -rf /data/aqt-bank/blobs /data/aqt-bank/archive
+# blobs, raw import archives and upload staging (host side; BANK_DATA_DIR
+# from .env). tokens/, gmail/ and inbox/ deliberately survive.
+rm -rf /data/aqt-bank/blobs /data/aqt-bank/archive /data/aqt-bank/tmp
 
 docker compose up -d                           # bank serve comes back empty
 docker compose run --rm bank stats             # every source should be gone
