@@ -241,3 +241,29 @@ Restore drill: `restic restore latest`, `pg_restore -d bank bank.dump`, point `B
 docker compose run --rm bank verify           # read-only report
 docker compose run --rm bank verify --heal    # rebuild what the archived raw inputs still contain
 ```
+
+## 8. Full reset (wipe the archive, keep the deployment)
+
+For starting the archive over — bad test data, a re-import from scratch — without
+touching what is annoying to rebuild: API tokens, the Gmail OAuth material, and
+the stack itself. Everything below runs on the VPS in `/opt/aqt-bank`.
+
+```sh
+docker compose stop bank                       # no writes while wiping; db stays up
+
+docker compose exec -T db psql -U bank -d bank -c \
+  "truncate messages, attachments, blob_text, contacts, contact_aliases,
+   message_id_collapsed, sync_state restart identity;"
+
+# blobs and raw import archives (host side; BANK_DATA_DIR from .env).
+# tokens/, gmail/ and inbox/ deliberately survive.
+rm -rf /data/aqt-bank/blobs /data/aqt-bank/archive
+
+docker compose up -d                           # bank serve comes back empty
+docker compose run --rm bank stats             # every source should be gone
+```
+
+`schema_migrations` stays, so no migration re-runs; `restart identity` resets
+the message ids so the fresh archive starts at 1. If a backup cron from §7 is
+live, take one last snapshot first — the wipe is exactly the kind of action the
+backups exist for.
