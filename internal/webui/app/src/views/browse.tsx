@@ -62,7 +62,7 @@ function GroupRow({
             {g.n}
           </Badge>
         )}
-        <span className="ml-auto shrink-0 text-xs text-muted-foreground/70">
+        <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground/70">
           {fmtDate(g.last_at)}
         </span>
       </div>

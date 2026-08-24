@@ -112,17 +112,22 @@ function buildRuns(messages: BankMessage[]): Run[] {
 
 function DaySeparator({ day }: { day: string }) {
   return (
-    <div className="my-3 flex items-center gap-3 text-xs text-muted-foreground/70">
-      <div className="h-px flex-1 bg-border" />
+    <div className="mt-6 mb-3 flex items-center gap-3 text-[11px] font-medium tracking-wide text-muted-foreground/60 first:mt-0">
+      <div className="h-px flex-1 bg-border/60" />
       {day}
-      <div className="h-px flex-1 bg-border" />
+      <div className="h-px flex-1 bg-border/60" />
     </div>
   )
 }
 
+// Timestamps appear exactly once per run — merged into the sender header for
+// group-chat runs, as a small footer on the last bubble otherwise. Every
+// bubble still reveals its precise time on hover via the native tooltip.
 function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; solo: boolean }) {
   const bubbles = run.messages.map((m, i) => {
     const lastOfRun = i === run.messages.length - 1
+    const showHeader = i === 0 && !run.me && !solo
+    const showFooter = lastOfRun && (run.me || solo)
     return (
       <Message key={m.id} align={run.me ? "end" : "start"} data-mid={m.id}>
         {!run.me && (
@@ -130,11 +135,21 @@ function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; s
             <SenderAvatar name={run.sender} />
           </MessageAvatar>
         )}
-        <MessageContent>
-          {i === 0 && !run.me && !solo && <MessageHeader>{run.sender}</MessageHeader>}
+        <MessageContent className="gap-1">
+          {showHeader && (
+            <MessageHeader className="gap-1.5 text-[11px]">
+              {run.sender}
+              <span className="font-normal text-muted-foreground/50">{fmtTime(m.sent_at)}</span>
+            </MessageHeader>
+          )}
           <Bubble
-            variant={run.me ? "tinted" : "muted"}
-            className={cn(m.id === flashId && "rounded-xl ring-2 ring-amber-400/70")}
+            variant="muted"
+            title={`${fmtDay(m.sent_at)}, ${fmtTime(m.sent_at)}`}
+            className={cn(
+              run.me &&
+                "*:data-[slot=bubble-content]:bg-(--bubble-me)! *:data-[slot=bubble-content]:text-(--bubble-me-foreground)!",
+              m.id === flashId && "rounded-xl ring-2 ring-amber-400/70",
+            )}
           >
             <BubbleContent>
               {m.subject ? <div className="mb-1 font-semibold">{m.subject}</div> : null}
@@ -142,19 +157,20 @@ function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; s
               <Attachments m={m} />
             </BubbleContent>
           </Bubble>
-          <MessageFooter
-            className={cn(
-              "text-[11px] text-muted-foreground/60",
-              !lastOfRun && "opacity-0 transition-opacity group-hover/message:opacity-100",
-            )}
-          >
-            {fmtTime(m.sent_at)}
-          </MessageFooter>
+          {showFooter && (
+            <MessageFooter className="text-[10px] text-muted-foreground/50">
+              {fmtTime(m.sent_at)}
+            </MessageFooter>
+          )}
         </MessageContent>
       </Message>
     )
   })
-  return run.messages.length > 1 ? <MessageGroup>{bubbles}</MessageGroup> : bubbles[0]
+  return run.messages.length > 1 ? (
+    <MessageGroup className="gap-0.5">{bubbles}</MessageGroup>
+  ) : (
+    bubbles[0]
+  )
 }
 
 export function Conversation({
@@ -192,13 +208,15 @@ export function Conversation({
       <MessageScrollerProvider>
         <MessageScroller className="min-h-0 flex-1">
           <MessageScrollerViewport ref={viewportRef}>
-            <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-1.5 px-6 py-4">
+            <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-0 px-6 py-5">
               {runs.map((run, i) => {
                 const sep = i === 0 || runs[i - 1].day !== run.day
                 return (
                   <div key={run.messages[0].id} className="contents">
                     {sep && <DaySeparator day={run.day} />}
-                    <RunBlock run={run} flashId={flashId} solo={solo} />
+                    <div className={cn(!sep && i > 0 && "mt-3.5")}>
+                      <RunBlock run={run} flashId={flashId} solo={solo} />
+                    </div>
                   </div>
                 )
               })}

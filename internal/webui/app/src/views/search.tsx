@@ -53,7 +53,7 @@ export function HitRow({
       <div className="flex items-baseline gap-2">
         <SourceBadge source={m.source} />
         <span className="truncate text-sm font-semibold">{m.sender || "—"}</span>
-        <span className="ml-auto shrink-0 text-xs text-muted-foreground/70">
+        <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground/70">
           {fmtDate(m.sent_at)}
         </span>
       </div>
