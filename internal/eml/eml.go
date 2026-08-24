@@ -191,13 +191,19 @@ func (p *parser) keepUnreadable(r io.Reader, transferEncoding string) {
 
 // body picks the searchable text. Non-blank plain text wins, then HTML, then a
 // named text part — a whitespace-only plain alternative must not suppress a
-// real HTML one.
+// real HTML one. A plain part that leads with leaked CSS (some bulk senders
+// generate the plain alternative by dumping the HTML including its <style>
+// content) loses to a usable HTML part.
 func (p *parser) body() string {
-	if s := joinText(p.plain); s != "" {
-		return s
+	plain := joinText(p.plain)
+	if plain != "" && !leadsWithCSS(plain) {
+		return plain
 	}
 	if s := joinText(p.html); s != "" {
 		return StripHTML(s)
+	}
+	if plain != "" {
+		return plain
 	}
 	for _, n := range p.named {
 		if strings.TrimSpace(n.text) == "" {
@@ -209,6 +215,15 @@ func (p *parser) body() string {
 		return strings.TrimSpace(n.text)
 	}
 	return ""
+}
+
+// cssJunkRe spots a stylesheet rule near the start of a text: a brace block
+// carrying !important or an mso- property, which no human-written mail opens
+// with.
+var cssJunkRe = regexp.MustCompile(`(?s)^.{0,400}?\{[^{}]{0,300}(!important|mso-[a-z])`)
+
+func leadsWithCSS(s string) bool {
+	return cssJunkRe.MatchString(s)
 }
 
 func joinText(parts []string) string {

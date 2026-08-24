@@ -441,3 +441,50 @@ func TestSplitMboxDialects(t *testing.T) {
 		})
 	}
 }
+
+// Some bulk senders generate the text/plain alternative by dumping the HTML
+// including its <style> content. Such a part must lose to the HTML part; a
+// message with only the junk part still keeps it rather than going empty.
+func TestCSSJunkPlainPartLosesToHTML(t *testing.T) {
+	junk := "96 body, table, td, div, p, span, a, strong, h1, h2 { font-family: Arial, sans-serif !important; mso-hyphenate: none; }\nDeine Fahrt hat Dir gefallen?"
+	mail := "From: a@example.com\r\nSubject: hi\r\n" +
+		"Content-Type: multipart/alternative; boundary=B\r\n\r\n" +
+		"--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + junk + "\r\n" +
+		"--B\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" +
+		"<html><body><p>Deine Fahrt hat Dir gefallen?</p></body></html>\r\n--B--\r\n"
+	m, err := Parse([]byte(mail))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "Deine Fahrt hat Dir gefallen?"; m.Body != want {
+		t.Errorf("Body = %q, want %q (css junk plain must lose to html)", m.Body, want)
+	}
+
+	plainOnly := "From: a@example.com\r\nSubject: hi\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + junk
+	m, err = Parse([]byte(plainOnly))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Body == "" {
+		t.Error("junk plain part with no alternative must still be kept")
+	}
+}
+
+func TestLeadsWithCSS(t *testing.T) {
+	for _, s := range []string{
+		"body, td { font-family: Arial !important; }",
+		"96  h1, h2 {\nmso-hyphenate: none; }",
+	} {
+		if !leadsWithCSS(s) {
+			t.Errorf("leadsWithCSS(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{
+		"Hi! The meeting {tentatively} moved to Friday. This is important!",
+		"Normal newsletter text with a link https://example.com and nothing else.",
+	} {
+		if leadsWithCSS(s) {
+			t.Errorf("leadsWithCSS(%q) = true, want false", s)
+		}
+	}
+}
