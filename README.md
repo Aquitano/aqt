@@ -64,6 +64,8 @@ export BANK_TOKEN=$(ssh vps 'cd /opt/aqt-bank && docker compose run --rm -T bank
 ./bank fetch 9f86d081... -o photo.jpg                   # attachment bytes back
 ```
 
+`bank ui` opens a local archive browser (search, thread-grouped browse, contacts, stats) at `127.0.0.1:8481`. It needs `BANK_URL`/`BANK_TOKEN` and attaches the token server-side, so it never reaches the browser. The page is a Vite + React + shadcn/ui app in `internal/webui/app`; its built `dist/` is committed and embedded, so `go build` needs no JS toolchain — after changing the app, rebuild with `bun run build` there.
+
 Agents on a client machine get the CLI handed to them by a Claude Code skill: [skill/README.md](skill/README.md).
 
 Deployment (VPS, LUKS, containerized server, restic, cron): [DEPLOY.md](DEPLOY.md).
