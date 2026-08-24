@@ -90,6 +90,9 @@ function Attachments({ m }: { m: BankMessage }) {
   )
 }
 
+// WhatsApp media placeholders written by wa-extract ("[photo] caption")
+const MEDIA_TAG = /^\[(photo|video|voice message|GIF|sticker|document|location|contact card[^\]]*)\]\s*/
+
 // AI transcripts are markdown and render as such; everything else is plain
 // text with clickable, shortened URLs. Memoized: archive messages never change.
 const Body = memo(function Body({ m }: { m: BankMessage }) {
@@ -99,9 +102,17 @@ const Body = memo(function Body({ m }: { m: BankMessage }) {
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.body ?? ""}</ReactMarkdown>
       </div>
     )
+  const body = m.body ?? ""
+  const tag = body.match(MEDIA_TAG)
   return (
     <span className="whitespace-pre-wrap">
-      <Linkified text={m.body ?? ""} />
+      {tag && (
+        <span className="mr-1 inline-flex items-center gap-1 text-xs italic opacity-60">
+          <Paperclip className="size-3" />
+          {tag[1]}
+        </span>
+      )}
+      <Linkified text={tag ? body.slice(tag[0].length) : body} />
     </span>
   )
 })
