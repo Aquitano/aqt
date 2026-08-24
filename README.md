@@ -43,6 +43,10 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank show 42
 ./bank thread "Alice" --source whatsapp         # the whole conversation
 ./bank stats
+./bank query --schema                           # tables and columns, before the first query
+./bank query "select source, count(*) from messages group by 1"
+                                                # read-only ad-hoc SQL: READ ONLY tx,
+                                                # 15s timeout, row cap — analytics only
 ./bank verify --heal                            # check the archive, repair what the raw inputs allow
 ./bank reimport chatgpt                         # replay archived exports through today's importer
 ```

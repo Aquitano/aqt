@@ -161,6 +161,12 @@ func (c *Client) ContactMessages(ctx context.Context, name string, o store.Conta
 	return getJSON[[]store.Message](ctx, c, "/v1/contacts/"+url.PathEscape(name)+"/messages", q)
 }
 
+// Query runs one read-only ad-hoc SQL statement on the server (POST /v1/query).
+func (c *Client) Query(ctx context.Context, query string, limit int) (store.QueryResult, error) {
+	return postJSON[store.QueryResult](ctx, c, "/v1/query", nil,
+		map[string]any{"sql": query, "limit": limit})
+}
+
 func (c *Client) SuggestIdentities(ctx context.Context, limit int) ([]store.IdentitySuggestion, error) {
 	q := url.Values{}
 	if limit > 0 {

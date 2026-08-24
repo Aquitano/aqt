@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"text/tabwriter"
 	"time"
 	// Embedded so a container without tzdata still resolves the local zone.
 	// Dates typed as YYYY-MM-DD and WhatsApp export timestamps are read in
@@ -70,6 +71,10 @@ Usage:
   bank contact <add|list|show|alias|...>      one person across their many identities
   bank show <id> [--json]                     print one message + attachments
   bank stats [--json]                         per-source counts, date ranges, freshness
+  bank query <sql|-> [--limit n] [--json]     read-only ad-hoc SQL (analytics escape
+                                              hatch; READ ONLY tx, 15s timeout,
+                                              row cap 100, --limit up to 10000)
+  bank query --schema                         list tables and columns
   bank fetch <sha256> [-o path]               write an attachment to a file
   bank verify [--heal] [--source s] [--json]  check archive integrity, optionally repair
   bank serve [--listen addr]                  HTTP API (default 127.0.0.1:8480)
@@ -134,6 +139,8 @@ func main() {
 		err = cmdShow(ctx, os.Args[2:])
 	case "stats":
 		err = cmdStats(ctx, os.Args[2:])
+	case "query":
+		err = cmdQuery(ctx, os.Args[2:])
 	case "fetch":
 		err = cmdFetch(ctx, os.Args[2:])
 	case "extract":
@@ -965,6 +972,7 @@ type backend interface {
 	RemoveAlias(ctx context.Context, name, source, value string) error
 	ContactMessages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error)
 	SuggestIdentities(ctx context.Context, limit int) ([]store.IdentitySuggestion, error)
+	Query(ctx context.Context, query string, limit int) (store.QueryResult, error)
 }
 
 func openBackend(ctx context.Context) (backend, func(), error) {
@@ -1024,6 +1032,94 @@ func cmdStats(ctx context.Context, args []string) error {
 		}
 	}
 	return nil
+}
+
+// schemaSQL is what --schema runs: the public base tables and their columns,
+// which is exactly the map an agent needs before writing its first query.
+const schemaSQL = `select c.table_name, c.column_name, c.data_type
+from information_schema.columns c
+join information_schema.tables t
+  on t.table_schema = c.table_schema and t.table_name = c.table_name
+where c.table_schema = 'public' and t.table_type = 'BASE TABLE'
+order by c.table_name, c.ordinal_position`
+
+func cmdQuery(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("query", flag.ExitOnError)
+	limit := fs.Int("limit", 0, "")
+	asJSON := fs.Bool("json", false, "")
+	schema := fs.Bool("schema", false, "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	var query string
+	switch {
+	case *schema:
+		if fs.NArg() != 0 {
+			return fmt.Errorf("--schema takes no query argument")
+		}
+		query = schemaSQL
+	case fs.NArg() != 1:
+		return fmt.Errorf("usage: bank query <sql|-> [--limit n] [--json], or bank query --schema")
+	case fs.Arg(0) == "-":
+		b, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return err
+		}
+		query = string(b)
+	default:
+		query = fs.Arg(0)
+	}
+	b, closeBackend, err := openBackend(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeBackend()
+	res, err := b.Query(ctx, query, *limit)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(res)
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(w, strings.Join(res.Columns, "\t"))
+	for _, row := range res.Rows {
+		cells := make([]string, len(row))
+		for i, v := range row {
+			cells[i] = queryCell(v)
+		}
+		fmt.Fprintln(w, strings.Join(cells, "\t"))
+	}
+	w.Flush()
+	if res.Truncated {
+		fmt.Fprintf(os.Stderr, "(truncated at %d rows; raise --limit or aggregate)\n", len(res.Rows))
+	}
+	return nil
+}
+
+// queryCell renders one value for the text table: single line, bounded width,
+// so a body column cannot wreck the terminal. --json is the faithful form.
+func queryCell(v any) string {
+	var s string
+	switch x := v.(type) {
+	case nil:
+		return "∅"
+	case string:
+		s = x
+	case time.Time:
+		return x.Format("2006-01-02 15:04:05")
+	default:
+		if b, err := json.Marshal(x); err == nil {
+			s = string(b)
+		} else {
+			s = fmt.Sprint(x)
+		}
+	}
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > 120 {
+		s = s[:117] + "..."
+	}
+	return s
 }
 
 func cmdFetch(ctx context.Context, args []string) error {

@@ -36,6 +36,7 @@ type reader interface {
 	ContactSourceCounts(ctx context.Context, contactID int64) ([]store.ContactSourceCount, error)
 	ContactMessages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error)
 	SuggestIdentities(ctx context.Context, limit int) ([]store.IdentitySuggestion, error)
+	Query(ctx context.Context, query string, limit int) (store.QueryResult, error)
 }
 
 type Server struct {
@@ -65,6 +66,7 @@ func (s *Server) Handler() http.Handler {
 	v1.HandleFunc("GET /v1/threads/{id}", s.handleThread)
 	v1.HandleFunc("GET /v1/blobs/{sha256}", s.handleBlob)
 	v1.HandleFunc("GET /v1/stats", s.handleStats)
+	v1.HandleFunc("POST /v1/query", s.handleQuery)
 	v1.HandleFunc("GET /v1/contacts", s.handleContactList)
 	v1.HandleFunc("POST /v1/contacts", s.handleContactCreate)
 	v1.HandleFunc("GET /v1/contacts/suggest", s.handleContactSuggest)
@@ -224,6 +226,35 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	io.Copy(w, f)
+}
+
+// handleQuery runs one read-only ad-hoc SQL statement. Safety lives in the
+// store (READ ONLY transaction, statement timeout, row cap); this handler
+// only separates "your SQL is wrong" (400) from "the archive is broken" (500).
+func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SQL   string `json:"sql"`
+		Limit int    `json:"limit"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.SQL) == "" {
+		writeErr(w, http.StatusBadRequest, "missing sql")
+		return
+	}
+	res, err := s.read.Query(r.Context(), req.SQL, req.Limit)
+	var bad *store.BadQueryError
+	if errors.As(err, &bad) {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {

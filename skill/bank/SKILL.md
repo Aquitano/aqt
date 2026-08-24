@@ -37,6 +37,8 @@ bank show <id> [--json]          # full body, recipients, raw_ref, attachment li
 bank stats [--json]              # sources, counts, date ranges, freshness
 bank fetch <sha256> -o <path>    # write attachment bytes to a file
 bank attachment stats [--json]   # how much of the archive is searchable inside its attachments
+bank query <sql|-> [--limit n] [--json]   # read-only ad-hoc SQL — the analytics escape hatch
+bank query --schema              # list tables and columns before writing the first query
 ```
 
 Semantics that matter:
@@ -86,6 +88,41 @@ bank fetch 407b467e378d279e4d2ed7d8418f12d6937e00f4d8b7d0310c12470883b0431d -o /
 
 # what is even in here, and how far back
 bank stats --json
+```
+
+## Ad-hoc SQL (`bank query`)
+
+For questions search cannot answer — counts, trends, group-bys, joins — `bank query`
+runs one SQL statement against the archive and returns `{columns, rows, truncated}`.
+It is safe by construction: the statement runs in a READ ONLY transaction (any write
+or DDL fails), under a 15s statement timeout, capped at 100 rows (`--limit` up to
+10000), and a second `;`-chained statement is rejected. It works both locally and
+over `BANK_URL`.
+
+- Start with `bank query --schema` to see the tables and columns; do not guess names.
+- Aggregate on the server; do not `select body from messages` to summarize client-side —
+  that is what `bank search` and `bank show` are for, and bodies are private
+  correspondence (the same quote-the-minimum rule applies to query results).
+- `truncated: true` means the row cap cut the result — aggregate harder or raise
+  `--limit`, don't silently treat the page as complete.
+- A SQL error comes back verbatim (400); fix the query rather than retrying it unchanged.
+- Pass the statement as one shell-quoted argument, or `-` to read it from stdin
+  (the sane way for anything multi-line).
+
+```sh
+# messages per source per year
+bank query "select source, extract(year from sent_at)::int as y, count(*)
+            from messages group by 1, 2 order by 1, 2" --json
+
+# who sent the most mail since 2025
+bank query "select sender, count(*) n from messages
+            where source = 'gmail' and sent_at >= '2025-01-01'
+            group by 1 order by n desc limit 20"
+
+# recurring-payment candidates: same sender, similar subject, several months
+bank query "select sender, count(*) n, min(sent_at)::date first, max(sent_at)::date last
+            from messages where subject ilike '%receipt%' or subject ilike '%rechnung%'
+            group by 1 having count(*) >= 3 order by n desc"
 ```
 
 ## Sources

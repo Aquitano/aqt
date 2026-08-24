@@ -30,6 +30,10 @@ type fakeReader struct {
 	messageErr error
 	threadErr  error
 	statsErr   error
+	queryRes   store.QueryResult
+	queryErr   error
+	querySQL   string
+	queryLimit int
 }
 
 func (f *fakeReader) Search(_ context.Context, _ string, o store.SearchOpts) ([]store.Message, error) {
@@ -83,6 +87,11 @@ func (f *fakeReader) SuggestIdentities(context.Context, int) ([]store.IdentitySu
 	return []store.IdentitySuggestion{}, f.contactErr
 }
 
+func (f *fakeReader) Query(_ context.Context, sql string, limit int) (store.QueryResult, error) {
+	f.querySQL, f.queryLimit = sql, limit
+	return f.queryRes, f.queryErr
+}
+
 func testServer(t *testing.T) (*Server, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -100,6 +109,64 @@ func testServer(t *testing.T) (*Server, string) {
 		dataDir:    dir,
 		archiveDir: filepath.Join(dir, "archive"),
 	}, token
+}
+
+func TestQueryHandler(t *testing.T) {
+	s, token := testServer(t)
+	fake := s.read.(*fakeReader)
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+
+	post := func(body string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/query", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	resp := post(`{"limit": 5}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("missing sql: status %d, want 400", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	fake.queryRes = store.QueryResult{Columns: []string{"n"}, Rows: [][]any{{int64(3)}}}
+	resp = post(`{"sql": "select count(*) as n from messages", "limit": 5}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("valid query: status %d, want 200", resp.StatusCode)
+	}
+	var res store.QueryResult
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if len(res.Columns) != 1 || res.Columns[0] != "n" || len(res.Rows) != 1 {
+		t.Fatalf("unexpected payload %+v", res)
+	}
+	if fake.queryLimit != 5 || !strings.Contains(fake.querySQL, "count(*)") {
+		t.Fatalf("query not passed through: sql=%q limit=%d", fake.querySQL, fake.queryLimit)
+	}
+
+	fake.queryErr = &store.BadQueryError{Err: fmt.Errorf(`relation "nope" does not exist`)}
+	resp = post(`{"sql": "select * from nope"}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad SQL: status %d, want 400", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	fake.queryErr = fmt.Errorf("connection lost")
+	resp = post(`{"sql": "select 1"}`)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("store failure: status %d, want 500", resp.StatusCode)
+	}
+	resp.Body.Close()
 }
 
 func TestSearchRequiresToken(t *testing.T) {
