@@ -11,8 +11,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -41,6 +45,7 @@ import (
 	"github.com/aquitano/aqt-bank/internal/server"
 	"github.com/aquitano/aqt-bank/internal/store"
 	"github.com/aquitano/aqt-bank/internal/verify"
+	"github.com/aquitano/aqt-bank/internal/webui"
 	"github.com/aquitano/aqt-bank/internal/whatsapp"
 )
 
@@ -78,6 +83,8 @@ Usage:
   bank fetch <sha256> [-o path]               write an attachment to a file
   bank verify [--heal] [--source s] [--json]  check archive integrity, optionally repair
   bank serve [--listen addr]                  HTTP API (default 127.0.0.1:8480)
+  bank ui [--listen addr] [--no-open]         local archive browser (default
+                                              127.0.0.1:8481; needs BANK_URL)
   bank token new <name>                       mint an API token (printed once)
   bank token list                             token names
   bank token revoke <name>                    drop a token
@@ -151,6 +158,8 @@ func main() {
 		err = cmdVerify(ctx, os.Args[2:])
 	case "serve":
 		err = cmdServe(ctx, os.Args[2:])
+	case "ui":
+		err = cmdUI(os.Args[2:])
 	case "token":
 		err = cmdToken(os.Args[2:])
 	case "help", "--help", "-h":
@@ -1231,6 +1240,44 @@ func cmdServe(ctx context.Context, args []string) error {
 	srv := server.New(d.st, d.blobs, dataDir(), d.archiveDir)
 	fmt.Printf("bank serve: listening on %s\n", *listen)
 	return srv.ListenAndServe(*listen)
+}
+
+// cmdUI starts the local archive browser: the embedded page plus a proxy that
+// signs /v1 requests with BANK_TOKEN, so the token stays out of the browser.
+func cmdUI(args []string) error {
+	fs := flag.NewFlagSet("ui", flag.ExitOnError)
+	listen := fs.String("listen", "127.0.0.1:8481", "")
+	noOpen := fs.Bool("no-open", false, "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	base := os.Getenv("BANK_URL")
+	if base == "" {
+		return fmt.Errorf("ui needs BANK_URL (and BANK_TOKEN) pointing at a 'bank serve'; on the server box, set BANK_URL=http://127.0.0.1:8480")
+	}
+	apiBase, err := url.Parse(base)
+	if err != nil {
+		return fmt.Errorf("invalid BANK_URL: %v", err)
+	}
+	addr := "http://" + *listen
+	fmt.Printf("bank ui: %s -> %s\n", addr, base)
+	if !*noOpen {
+		openBrowser(addr)
+	}
+	srv := &http.Server{Addr: *listen, Handler: webui.Handler(apiBase, os.Getenv("BANK_TOKEN")),
+		ReadHeaderTimeout: 15 * time.Second}
+	return srv.ListenAndServe()
+}
+
+func openBrowser(u string) {
+	cmds := map[string][]string{"darwin": {"open"}, "windows": {"cmd", "/c", "start"}}
+	c, ok := cmds[runtime.GOOS]
+	if !ok {
+		c = []string{"xdg-open"}
+	}
+	if err := exec.Command(c[0], append(c[1:], u)...).Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "bank: open %s in your browser (%v)\n", u, err)
+	}
 }
 
 func cmdToken(args []string) error {
