@@ -183,7 +183,6 @@ export function Conversation({
   const senders = new Set(runs.filter((r) => !r.me).map((r) => r.sender))
   const solo = senders.size <= 1
 
-  let day = ""
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-baseline gap-2.5 border-b px-6 py-3">
@@ -194,9 +193,8 @@ export function Conversation({
         <MessageScroller className="min-h-0 flex-1">
           <MessageScrollerViewport ref={viewportRef}>
             <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-1.5 px-6 py-4">
-              {runs.map((run) => {
-                const sep = run.day !== day
-                day = run.day
+              {runs.map((run, i) => {
+                const sep = i === 0 || runs[i - 1].day !== run.day
                 return (
                   <div key={run.messages[0].id} className="contents">
                     {sep && <DaySeparator day={run.day} />}
