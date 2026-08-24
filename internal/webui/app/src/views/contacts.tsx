@@ -49,6 +49,10 @@ export function ContactsView({
             <button
               key={c.name}
               onClick={() => onSelect({ kind: "contact", name: c.name })}
+              data-row
+              data-selected={
+                (selection?.kind === "contact" && selection.name === c.name) || undefined
+              }
               className={cn(
                 "flex w-full items-baseline gap-2.5 rounded-lg border border-transparent px-2.5 py-2 text-left hover:bg-accent/50",
                 selection?.kind === "contact" && selection.name === c.name &&

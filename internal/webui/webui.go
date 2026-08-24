@@ -6,6 +6,8 @@
 // this is a viewer for one person's desk, not a deployment target.
 package webui
 
+//go:generate bun --cwd app run build
+
 import (
 	"embed"
 	"io/fs"

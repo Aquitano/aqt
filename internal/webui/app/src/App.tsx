@@ -25,15 +25,31 @@ function Shell() {
   const stats = statsQ.data ?? []
   const total = stats.reduce((a, s) => a + s.messages, 0)
 
-  // "/" focuses search from anywhere outside an input.
+  // Global keys: "/" focuses search, arrows (or j/k) walk the list pane.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "/" || e.metaKey || e.ctrlKey) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
       const t = e.target as HTMLElement
-      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return
+      const inField = t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable
+      if (e.key === "/" && !inField) {
+        e.preventDefault()
+        setView("search")
+        requestAnimationFrame(() => searchRef.current?.focus())
+        return
+      }
+      const down = e.key === "ArrowDown" || (e.key === "j" && !inField)
+      const up = e.key === "ArrowUp" || (e.key === "k" && !inField)
+      if (!down && !up) return
+      // arrows from the search input jump into the results; otherwise skip fields
+      if (inField && !(t as HTMLInputElement).matches("input[type=text],input:not([type])")) return
+      const rows = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-row]"))
+      if (!rows.length) return
+      const cur = rows.findIndex((r) => r.dataset.selected !== undefined)
+      const next = rows[Math.min(rows.length - 1, Math.max(0, cur + (down ? 1 : -1)))]
+      if (!next) return
       e.preventDefault()
-      setView("search")
-      requestAnimationFrame(() => searchRef.current?.focus())
+      next.click()
+      next.scrollIntoView({ block: "nearest" })
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)

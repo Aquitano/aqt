@@ -35,9 +35,46 @@ export function SourceBadge({ source }: { source: string }) {
 }
 
 // WhatsApp exports record the owner as bare "Thomas"; mail sources use the
-// full name or address.
-const ME = /thomas breindl|breindlthomas|^thomas$/i
+// full name or address; AI chat transcripts record the owner as "user"/"human".
+const ME = /thomas breindl|breindlthomas|^thomas$|^(user|human|me)$/i
 export const isMe = (sender?: string | null) => ME.test((sender ?? "").trim())
+
+// Sources whose message bodies are markdown worth rendering as such
+const AI_SOURCES = new Set(["chatgpt", "claude", "claude-code", "codex", "opencode"])
+export const isMarkdownSource = (source: string) => AI_SOURCES.has(source)
+
+const URL_RE = /https?:\/\/[^\s<>"'()[\]]+/g
+
+function shortUrl(url: string) {
+  const bare = url.replace(/^https?:\/\/(www\.)?/, "")
+  return bare.length > 60 ? bare.slice(0, 57) + "…" : bare
+}
+
+// Plain text with URLs turned into links, displayed shortened so tracking
+// URLs stop dominating the layout.
+export function Linkified({ text }: { text: string }) {
+  const parts = text.split(URL_RE)
+  const urls = text.match(URL_RE) ?? []
+  return (
+    <>
+      {parts.map((part, i) => (
+        <span key={i}>
+          {part}
+          {urls[i] && (
+            <a
+              href={urls[i]}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="break-all text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+            >
+              {shortUrl(urls[i])}
+            </a>
+          )}
+        </span>
+      ))}
+    </>
+  )
+}
 
 export const fmtDay = (d: string) =>
   new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })

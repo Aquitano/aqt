@@ -45,6 +45,8 @@ export function HitRow({
   return (
     <button
       onClick={onClick}
+      data-row
+      data-selected={selected || undefined}
       className={cn(
         "block w-full rounded-lg border border-transparent px-2.5 py-2 text-left hover:bg-accent/50",
         selected && "border-border bg-accent",

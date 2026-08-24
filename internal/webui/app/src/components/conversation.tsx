@@ -1,7 +1,9 @@
-import { useEffect, useRef, type ReactNode } from "react"
+import { memo, useEffect, useRef, type ReactNode } from "react"
 import { Download, Paperclip } from "lucide-react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import type { Message as BankMessage } from "@/lib/api"
-import { fmtDay, fmtTime, isMe, sourceHue } from "@/lib/format"
+import { fmtDay, fmtTime, isMarkdownSource, isMe, Linkified, sourceHue } from "@/lib/format"
 import {
   Attachment,
   AttachmentContent,
@@ -88,6 +90,22 @@ function Attachments({ m }: { m: BankMessage }) {
   )
 }
 
+// AI transcripts are markdown and render as such; everything else is plain
+// text with clickable, shortened URLs. Memoized: archive messages never change.
+const Body = memo(function Body({ m }: { m: BankMessage }) {
+  if (isMarkdownSource(m.source))
+    return (
+      <div className="prose prose-sm prose-invert max-w-none prose-pre:overflow-x-auto prose-pre:whitespace-pre-wrap prose-p:my-1.5 prose-headings:my-2 prose-a:break-all">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.body ?? ""}</ReactMarkdown>
+      </div>
+    )
+  return (
+    <span className="whitespace-pre-wrap">
+      <Linkified text={m.body ?? ""} />
+    </span>
+  )
+})
+
 // Consecutive messages from the same sender on the same day render as one
 // MessageGroup: header once, avatar once, timestamps on hover (always on the
 // last bubble of the group).
@@ -153,7 +171,7 @@ function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; s
           >
             <BubbleContent>
               {m.subject ? <div className="mb-1 font-semibold">{m.subject}</div> : null}
-              <span className="whitespace-pre-wrap">{m.body}</span>
+              <Body m={m} />
               <Attachments m={m} />
             </BubbleContent>
           </Bubble>
@@ -170,6 +188,43 @@ function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; s
     <MessageGroup className="gap-0.5">{bubbles}</MessageGroup>
   ) : (
     bubbles[0]
+  )
+}
+
+// A lone message (typically an email) is a document, not a chat: read
+// top-down, full width, sender line instead of an avatar bubble.
+function DocumentView({
+  title,
+  meta,
+  m,
+}: {
+  title: ReactNode
+  meta: string
+  m: BankMessage
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-baseline gap-2.5 border-b px-6 py-3">
+        <span className="truncate text-base font-semibold">{title}</span>
+        <span className="ml-auto shrink-0 text-xs text-muted-foreground">{meta}</span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <article className="mx-auto max-w-3xl px-6 py-6">
+          {m.subject && <h1 className="mb-1 text-lg font-semibold">{m.subject}</h1>}
+          <div className="mb-5 flex flex-wrap items-baseline gap-x-2 border-b pb-3 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground/80">{m.sender || "—"}</span>
+            {m.recipients?.length ? <span>→ {m.recipients.join(", ")}</span> : null}
+            <span className="ml-auto">{fmtDay(m.sent_at)}, {fmtTime(m.sent_at)}</span>
+          </div>
+          <div className="text-sm leading-relaxed">
+            <Body m={m} />
+          </div>
+          <div className="mt-4">
+            <Attachments m={m} />
+          </div>
+        </article>
+      </div>
+    </div>
   )
 }
 
@@ -193,6 +248,9 @@ export function Conversation({
     const target = viewportRef.current?.querySelector(`[data-mid="${flashId}"]`)
     target?.scrollIntoView({ block: "center" })
   }, [messages, flashId])
+
+  if (messages.length === 1)
+    return <DocumentView title={title} meta={meta} m={messages[0]} />
 
   const runs = buildRuns(messages)
   // 1:1 chats need no per-run sender headers; the title already says who
