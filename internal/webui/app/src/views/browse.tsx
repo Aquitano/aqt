@@ -18,10 +18,20 @@ import { cn } from "@/lib/utils"
 
 export const ALL_SOURCES = "__all__"
 
+// Raw WhatsApp JIDs make useless titles; unnamed group chats are titled by
+// their participants instead, the way messengers do it.
+const JID = /@(g\.us|s\.whatsapp\.net)$/
+
+function groupTitle(g: ThreadGroup) {
+  if (g.subject) return g.subject
+  if (JID.test(g.gid) && g.members) return g.members
+  return g.gid.startsWith("msg:") ? g.sender || "—" : g.gid
+}
+
 function groupSelection(g: ThreadGroup): Selection {
   return g.gid.startsWith("msg:")
     ? { kind: "message", id: g.last_id }
-    : { kind: "thread", source: g.source, threadId: g.gid, title: g.subject || g.gid }
+    : { kind: "thread", source: g.source, threadId: g.gid, title: groupTitle(g) }
 }
 
 function GroupRow({
@@ -34,7 +44,7 @@ function GroupRow({
   onClick: () => void
 }) {
   const threaded = !g.gid.startsWith("msg:")
-  const title = g.subject || (threaded ? g.gid : g.sender || "—")
+  const title = groupTitle(g)
   return (
     <button
       onClick={onClick}

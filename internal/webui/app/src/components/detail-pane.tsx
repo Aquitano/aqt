@@ -1,8 +1,15 @@
 import { useQuery } from "@tanstack/react-query"
-import { Inbox } from "lucide-react"
+import { Inbox, ShieldAlert } from "lucide-react"
 import { getContactMessages, getMessage, getThread } from "@/lib/api"
 import { SourceBadge } from "@/lib/format"
-import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
+import { Spinner } from "@/components/ui/spinner"
 import { Conversation } from "@/components/conversation"
 
 // What the right-hand pane is showing. A thread selection carries the id of
@@ -12,25 +19,6 @@ export type Selection =
   | { kind: "message"; id: number }
   | { kind: "contact"; name: string }
   | null
-
-function Empty({ text }: { text: string }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground/60">
-      <Inbox className="size-8" strokeWidth={1.25} />
-      <span className="text-sm">{text}</span>
-    </div>
-  )
-}
-
-function Loading() {
-  return (
-    <div className="mx-auto max-w-3xl space-y-4 px-6 py-8">
-      {[...Array(5)].map((_, i) => (
-        <Skeleton key={i} className={i % 2 ? "ml-auto h-14 w-2/3 rounded-2xl" : "h-14 w-2/3 rounded-2xl"} />
-      ))}
-    </div>
-  )
-}
 
 export function DetailPane({ selection }: { selection: Selection }) {
   const q = useQuery({
@@ -80,9 +68,36 @@ export function DetailPane({ selection }: { selection: Selection }) {
     },
   })
 
-  if (!selection) return <Empty text="Select a message or thread" />
-  if (q.isLoading) return <Loading />
-  if (q.isError) return <Empty text={(q.error as Error).message} />
+  if (!selection)
+    return (
+      <Empty className="h-full">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <Inbox />
+          </EmptyMedia>
+          <EmptyTitle>Nothing selected</EmptyTitle>
+          <EmptyDescription>Pick a message or thread from the list</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  if (q.isLoading)
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner className="size-5 text-muted-foreground" />
+      </div>
+    )
+  if (q.isError)
+    return (
+      <Empty className="h-full">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <ShieldAlert />
+          </EmptyMedia>
+          <EmptyTitle>Could not load</EmptyTitle>
+          <EmptyDescription>{(q.error as Error).message}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
   if (!q.data) return null
   return (
     <Conversation

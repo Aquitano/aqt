@@ -51,6 +51,8 @@ export interface ThreadGroup {
   sender: string
   subject: string
   preview: string
+  // distinct non-me senders, for titling unnamed group chats by participants
+  members: string | null
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -124,8 +126,12 @@ export async function browseThreads(opts: {
            max(sent_at) as last_at,
            (array_agg(id order by sent_at desc))[1] as last_id,
            (array_agg(coalesce(sender, '') order by sent_at desc))[1] as sender,
-           (array_agg(coalesce(nullif(subject, ''), '') order by sent_at desc))[1] as subject,
-           (array_agg(left(coalesce(body, ''), 240) order by sent_at desc))[1] as preview
+           coalesce((array_agg(nullif(subject, '') order by sent_at desc)
+                     filter (where nullif(subject, '') is not null))[1], '') as subject,
+           (array_agg(left(coalesce(body, ''), 240) order by sent_at desc))[1] as preview,
+           left(string_agg(distinct case
+             when sender is not null and sender !~* '^thomas( breindl)?$' then sender
+           end, ', '), 200) as members
     from messages ${where}
     group by source, gid
     order by last_at ${order}

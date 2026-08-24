@@ -46,6 +46,9 @@ for (const r of rows) {
     const entry = {
         body: r.text,
         thread: r.chat_name || r.chat_jid,
+        // group chats carry the group name as subject so viewers can title
+        // the thread even where thread ids are raw JIDs
+        subject: r.session_type === 1 ? r.chat_name ?? undefined : undefined,
         sender,
         sent_at: new Date((r.ts + APPLE_EPOCH) * 1000).toISOString(),
         external_id: r.stanza ?? undefined,

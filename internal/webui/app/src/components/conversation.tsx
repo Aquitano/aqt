@@ -1,51 +1,160 @@
 import { useEffect, useRef, type ReactNode } from "react"
-import { Paperclip } from "lucide-react"
-import type { Message } from "@/lib/api"
-import { fmtDay, fmtTime, isMe } from "@/lib/format"
+import { Download, Paperclip } from "lucide-react"
+import type { Message as BankMessage } from "@/lib/api"
+import { fmtDay, fmtTime, isMe, sourceHue } from "@/lib/format"
+import {
+  Attachment,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+} from "@/components/ui/attachment"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Bubble, BubbleContent } from "@/components/ui/bubble"
+import {
+  Message,
+  MessageAvatar,
+  MessageContent,
+  MessageFooter,
+  MessageGroup,
+  MessageHeader,
+} from "@/components/ui/message"
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller"
 import { cn } from "@/lib/utils"
 
-function AttachmentChips({ m }: { m: Message }) {
+function initials(name: string) {
+  const words = name.replace(/<.*/, "").trim().split(/\s+/)
+  return (
+    words
+      .slice(0, 2)
+      .map((w) => w[0]?.toUpperCase() ?? "")
+      .join("") || "?"
+  )
+}
+
+function SenderAvatar({ name }: { name: string }) {
+  const h = sourceHue(name.toLowerCase())
+  return (
+    <Avatar className="size-7">
+      <AvatarFallback
+        className="text-[10px] font-semibold"
+        style={{ background: `hsl(${h} 35% 25%)`, color: `hsl(${h} 65% 80%)` }}
+      >
+        {initials(name)}
+      </AvatarFallback>
+    </Avatar>
+  )
+}
+
+function fmtBytes(n?: number) {
+  if (!n) return undefined
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+function Attachments({ m }: { m: BankMessage }) {
   if (!m.attachments?.length) return null
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
+    <div className="flex flex-col gap-1.5">
       {m.attachments.map((a) => (
         <a
           key={a.sha256 + a.filename}
           href={`/v1/blobs/${a.sha256}`}
           download={a.filename}
-          className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs text-primary hover:bg-primary/20"
+          className="group/att block"
         >
-          <Paperclip className="size-3" />
-          {a.filename}
+          <Attachment size="sm" className="hover:bg-accent">
+            <AttachmentMedia>
+              <Paperclip className="size-3.5" />
+            </AttachmentMedia>
+            <AttachmentContent>
+              <AttachmentTitle>{a.filename}</AttachmentTitle>
+              {fmtBytes(a.size_bytes) && (
+                <AttachmentDescription>{fmtBytes(a.size_bytes)}</AttachmentDescription>
+              )}
+            </AttachmentContent>
+            <Download className="mr-1 size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover/att:opacity-100" />
+          </Attachment>
         </a>
       ))}
     </div>
   )
 }
 
-function Bubble({ m, flash }: { m: Message; flash: boolean }) {
-  const me = isMe(m.sender)
+// Consecutive messages from the same sender on the same day render as one
+// MessageGroup: header once, avatar once, timestamps on hover (always on the
+// last bubble of the group).
+interface Run {
+  day: string
+  sender: string
+  me: boolean
+  messages: BankMessage[]
+}
+
+function buildRuns(messages: BankMessage[]): Run[] {
+  const runs: Run[] = []
+  for (const m of messages) {
+    const day = fmtDay(m.sent_at)
+    const sender = m.sender || "—"
+    const last = runs[runs.length - 1]
+    if (last && last.day === day && last.sender === sender) last.messages.push(m)
+    else runs.push({ day, sender, me: isMe(sender), messages: [m] })
+  }
+  return runs
+}
+
+function DaySeparator({ day }: { day: string }) {
   return (
-    <div className={cn("group flex max-w-[82%] flex-col", me ? "ml-auto items-end" : "items-start")} data-mid={m.id}>
-      <div className="mb-0.5 flex items-baseline gap-2 px-1 text-xs text-muted-foreground">
-        <span className="font-medium">{m.sender || "—"}</span>
-        <span className="text-muted-foreground/60">{fmtTime(m.sent_at)}</span>
-      </div>
-      <div
-        className={cn(
-          "rounded-2xl border px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words shadow-xs",
-          me
-            ? "rounded-br-md border-primary/20 bg-primary/10"
-            : "rounded-bl-md border-border bg-card",
-          flash && "ring-2 ring-amber-400/70",
-        )}
-      >
-        {m.subject ? <div className="mb-1 font-semibold">{m.subject}</div> : null}
-        {m.body}
-        <AttachmentChips m={m} />
-      </div>
+    <div className="my-3 flex items-center gap-3 text-xs text-muted-foreground/70">
+      <div className="h-px flex-1 bg-border" />
+      {day}
+      <div className="h-px flex-1 bg-border" />
     </div>
   )
+}
+
+function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; solo: boolean }) {
+  const bubbles = run.messages.map((m, i) => {
+    const lastOfRun = i === run.messages.length - 1
+    return (
+      <Message key={m.id} align={run.me ? "end" : "start"} data-mid={m.id}>
+        {!run.me && (
+          <MessageAvatar className={cn(!lastOfRun && "invisible")}>
+            <SenderAvatar name={run.sender} />
+          </MessageAvatar>
+        )}
+        <MessageContent>
+          {i === 0 && !run.me && !solo && <MessageHeader>{run.sender}</MessageHeader>}
+          <Bubble
+            variant={run.me ? "tinted" : "muted"}
+            className={cn(m.id === flashId && "rounded-xl ring-2 ring-amber-400/70")}
+          >
+            <BubbleContent>
+              {m.subject ? <div className="mb-1 font-semibold">{m.subject}</div> : null}
+              <span className="whitespace-pre-wrap">{m.body}</span>
+              <Attachments m={m} />
+            </BubbleContent>
+          </Bubble>
+          <MessageFooter
+            className={cn(
+              "text-[11px] text-muted-foreground/60",
+              !lastOfRun && "opacity-0 transition-opacity group-hover/message:opacity-100",
+            )}
+          >
+            {fmtTime(m.sent_at)}
+          </MessageFooter>
+        </MessageContent>
+      </Message>
+    )
+  })
+  return run.messages.length > 1 ? <MessageGroup>{bubbles}</MessageGroup> : bubbles[0]
 }
 
 export function Conversation({
@@ -56,45 +165,50 @@ export function Conversation({
 }: {
   title: ReactNode
   meta: string
-  messages: Message[]
+  messages: BankMessage[]
   flashId?: number | null
 }) {
-  const ref = useRef<HTMLDivElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
 
+  // The scroller starts pinned to the bottom; a flashed search hit overrides
+  // that and centers the hit instead.
   useEffect(() => {
-    const pane = ref.current?.parentElement
-    if (!pane) return
-    const target = flashId ? pane.querySelector(`[data-mid="${flashId}"]`) : null
-    if (target) target.scrollIntoView({ block: "center" })
-    else pane.scrollTop = pane.scrollHeight
+    if (!flashId) return
+    const target = viewportRef.current?.querySelector(`[data-mid="${flashId}"]`)
+    target?.scrollIntoView({ block: "center" })
   }, [messages, flashId])
+
+  const runs = buildRuns(messages)
+  // 1:1 chats need no per-run sender headers; the title already says who
+  const senders = new Set(runs.filter((r) => !r.me).map((r) => r.sender))
+  const solo = senders.size <= 1
 
   let day = ""
   return (
-    <div ref={ref} className="mx-auto max-w-3xl px-6 pb-12">
-      <div className="sticky top-0 z-10 mb-4 flex items-baseline gap-2.5 border-b bg-background/95 py-3 backdrop-blur supports-backdrop-filter:bg-background/80">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-baseline gap-2.5 border-b px-6 py-3">
         <span className="truncate text-base font-semibold">{title}</span>
         <span className="ml-auto shrink-0 text-xs text-muted-foreground">{meta}</span>
       </div>
-      <div className="flex flex-col gap-3">
-        {messages.map((m) => {
-          const d = fmtDay(m.sent_at)
-          const sep = d !== day
-          day = d
-          return (
-            <div key={m.id} className="contents">
-              {sep && (
-                <div className="my-2 flex items-center gap-3 text-xs text-muted-foreground/70">
-                  <div className="h-px flex-1 bg-border" />
-                  {d}
-                  <div className="h-px flex-1 bg-border" />
-                </div>
-              )}
-              <Bubble m={m} flash={m.id === flashId} />
-            </div>
-          )
-        })}
-      </div>
+      <MessageScrollerProvider>
+        <MessageScroller className="min-h-0 flex-1">
+          <MessageScrollerViewport ref={viewportRef}>
+            <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-1.5 px-6 py-4">
+              {runs.map((run) => {
+                const sep = run.day !== day
+                day = run.day
+                return (
+                  <div key={run.messages[0].id} className="contents">
+                    {sep && <DaySeparator day={run.day} />}
+                    <RunBlock run={run} flashId={flashId} solo={solo} />
+                  </div>
+                )
+              })}
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <MessageScrollerButton />
+        </MessageScroller>
+      </MessageScrollerProvider>
     </div>
   )
 }

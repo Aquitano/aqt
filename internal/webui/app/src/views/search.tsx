@@ -5,6 +5,7 @@ import { search, SEARCH_PAGE, type Message, type SourceStat } from "@/lib/api"
 import { fmtDate, Highlight, SourceBadge } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Kbd } from "@/components/ui/kbd"
 import {
   Select,
   SelectContent,
@@ -144,10 +145,11 @@ export function SearchView({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
-            placeholder="Search the archive…  ( / )"
-            className="pl-8"
+            placeholder="Search the archive…"
+            className="pr-8 pl-8"
             autoFocus
           />
+          <Kbd className="absolute top-1/2 right-2.5 -translate-y-1/2">/</Kbd>
         </div>
         <div className="flex gap-2">
           <Select
