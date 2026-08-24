@@ -102,6 +102,30 @@ export function getContactMessages(name: string) {
   return api<Message[]>(`/v1/contacts/${encodeURIComponent(name)}/messages?limit=500`)
 }
 
+export interface ContactSuggestion {
+  identity: string
+  messages: number
+  sources: string[]
+  samples: string[]
+}
+
+export function suggestContacts(limit = 40) {
+  return api<ContactSuggestion[]>(`/v1/contacts/suggest?limit=${limit}`)
+}
+
+export async function createContactWithAlias(name: string, alias: string) {
+  await api("/v1/contacts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  })
+  await api(`/v1/contacts/${encodeURIComponent(name)}/aliases`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source: "", value: alias }),
+  })
+}
+
 function query(sql: string, limit: number) {
   return api<{ columns: string[]; rows: unknown[][] }>("/v1/query", {
     method: "POST",
