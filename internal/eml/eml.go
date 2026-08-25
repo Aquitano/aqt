@@ -193,14 +193,16 @@ func (p *parser) keepUnreadable(r io.Reader, transferEncoding string) {
 // named text part — a whitespace-only plain alternative must not suppress a
 // real HTML one. A plain part that leads with leaked CSS (some bulk senders
 // generate the plain alternative by dumping the HTML including its <style>
-// content) loses to a usable HTML part.
+// content) loses to a usable HTML part, and so does one that is only a stub
+// (see plainIsStub).
 func (p *parser) body() string {
 	plain := joinText(p.plain)
-	if plain != "" && !leadsWithCSS(plain) {
+	html := joinText(p.html)
+	if plain != "" && !leadsWithCSS(plain) && !plainIsStub(plain, html) {
 		return plain
 	}
-	if s := joinText(p.html); s != "" {
-		return StripHTML(s)
+	if html != "" {
+		return StripHTML(html)
 	}
 	if plain != "" {
 		return plain
@@ -215,6 +217,28 @@ func (p *parser) body() string {
 		return strings.TrimSpace(n.text)
 	}
 	return ""
+}
+
+// stubMaxChars and stubRatio decide when a plain alternative is a stub rather
+// than the message. Senders that build the plain part from a template ("this
+// mail needs an HTML viewer", a subject line, a legal footer) leave something
+// short that carries none of what was written, while the HTML part carries all
+// of it. Both bounds have to hold: a short plain part beside a comparably short
+// HTML one is a short message, not a stub, and a long plain part is the message
+// however much markup the HTML alternative repeats it with.
+const (
+	stubMaxChars = 500
+	stubRatio    = 3
+)
+
+// plainIsStub reports whether the HTML alternative is substantially richer than
+// a short plain one. Measured against the stripped HTML, because the ratio has
+// to compare text with text — tags alone would make every styled mail a stub.
+func plainIsStub(plain, html string) bool {
+	if html == "" || len(plain) >= stubMaxChars {
+		return false
+	}
+	return len(StripHTML(html)) > stubRatio*len(plain)
 }
 
 // cssJunkRe spots a stylesheet rule near the start of a text: a brace block

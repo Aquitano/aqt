@@ -216,6 +216,39 @@ func TestBlankPlainAlternativeFallsBackToHTML(t *testing.T) {
 	})
 }
 
+// Some senders fill the text/plain alternative with a template — a "view this
+// in HTML" line and a legal footer — and put what they actually wrote only in
+// the HTML part. Preferring plain there archives the footer and loses the mail.
+func TestStubPlainAlternativeLosesToHTML(t *testing.T) {
+	const stub = "Diese Nachricht ist im HTML-Format. Bitte oeffnen Sie sie in einem Mail-Programm, " +
+		"das HTML anzeigen kann.\r\n\r\n--\r\nMusterbank AG, Sitz Muenchen, HRB 12345. " +
+		"Diese E-Mail enthaelt vertrauliche Informationen."
+	const content = "<p>Sehr geehrter Herr Breindl,</p>" +
+		"<p>Ihr Dauerauftrag ueber 450,00 EUR an Hausverwaltung Meier wurde zum 01.09.2026 " +
+		"eingerichtet. Die erste Ausfuehrung erfolgt am 01.09.2026, danach monatlich zum " +
+		"Ersten. Die Abbuchung erfolgt von Ihrem Girokonto DE00 0000 0000 0000 0000 00.</p>" +
+		"<p>Sie koennen den Auftrag jederzeit im Online-Banking aendern oder loeschen. " +
+		"Bei Rueckfragen erreichen Sie uns unter der bekannten Servicenummer.</p>" +
+		"<p>Bitte beachten Sie, dass eine Aenderung spaetestens zwei Bankarbeitstage vor " +
+		"der naechsten Ausfuehrung bei uns eingehen muss. Faellt der Ausfuehrungstag auf " +
+		"ein Wochenende oder einen Feiertag, wird der Auftrag am naechsten Bankarbeitstag " +
+		"ausgefuehrt. Eine gesonderte Benachrichtigung erhalten Sie in diesem Fall nicht.</p>" +
+		"<p>Mit freundlichen Gruessen<br>Ihre Musterbank</p>"
+
+	mail := "From: bank@example.com\r\nSubject: Dauerauftrag\r\nMIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/alternative; boundary=B\r\n\r\n" +
+		"--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + stub + "\r\n" +
+		"--B\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" + content + "\r\n" +
+		"--B--\r\n"
+	m, err := Parse([]byte(mail))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(m.Body, "Dauerauftrag ueber 450,00 EUR") {
+		t.Errorf("Body = %q, want the HTML part the sender actually wrote", m.Body)
+	}
+}
+
 func TestNamedInlineTextIsBody(t *testing.T) {
 	cases := []struct {
 		name       string
