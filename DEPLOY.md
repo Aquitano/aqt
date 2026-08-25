@@ -121,6 +121,18 @@ bank attachment text <sha256> --set transcript.txt # store it, marked "manual"
 
 Text stored that way is never overwritten by a later automatic pass. `bank extract --ocr` also works straight from the laptop against `BANK_URL`, which is the option worth knowing if you have better tools there than tesseract: it downloads each pending blob, runs whatever is installed locally, and stores only the text.
 
+### Healing mail bodies
+
+Some senders write the message only in the HTML part and fill the plain alternative with a "open this in an HTML viewer" template. The parser used to store that template as the body; it now prefers the HTML. Mail imported before that keeps the stub, and the text is still in the archived raw:
+
+```sh
+docker compose run --rm bank reimport mbox --heal-bodies          # report only
+docker compose run --rm bank reimport mbox --heal-bodies --apply  # write the longer bodies
+docker compose run --rm bank reimport mbox --heal-bodies --source proton
+```
+
+It re-parses every archived `.mbox` and `.eml` of the source (default `gmail`), matches each message to its row by Message-ID, and replaces the body only where the re-parse is strictly longer — never shorter, never equal, nothing but the body column. **Dry run is the default**; read the report before passing `--apply`. Run it after a parser change that affects `body()`, not on a schedule: a healed body stays healed, and a second pass finds nothing.
+
 ## 3. Gmail authorization on a headless box
 
 Put the OAuth client JSON at `/data/aqt-bank/gmail/client_secret.json` first (`chown 65532:65532` it). The flow needs a browser to reach the callback listener, and the container's own loopback is not reachable from anywhere, so bind it to the container's interfaces and publish that on the host's loopback:

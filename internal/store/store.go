@@ -217,7 +217,8 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
 // fixed: an already-stored message is re-keyed onto the incoming values
 // instead of being left under the old ones. Everything else about the stored
 // row is kept — a re-import is not an authority on a body that may since have
-// been repaired.
+// been repaired. SetLongerMessageBody is the one deliberate exception, and it
+// only ever adds text.
 //
 // Like InsertMessage it returns (0, nil) for a message that was already
 // present, re-keyed or not, so importers keep counting it as a duplicate
@@ -287,6 +288,51 @@ func cleanText(s string) string {
 	}
 	s = strings.ToValidUTF8(s, "�")
 	return strings.ReplaceAll(s, "\x00", "")
+}
+
+// bodyTrimChars is the whitespace the body-length comparison ignores. Spelled
+// out rather than left to btrim's default (spaces only) so the SQL guard and
+// TrimmedBodyLen measure the same string.
+const bodyTrimChars = " \t\n\r\f\v"
+
+// TrimmedBodyLen is the Go side of the comparison SetLongerMessageBody makes in
+// SQL: both count bytes after stripping the same whitespace, so a caller that
+// decides from it agrees with the write it then asks for.
+func TrimmedBodyLen(s string) int { return len(strings.Trim(s, bodyTrimChars)) }
+
+// MessageBody reads one message's body without its attachments, for callers
+// that only need to compare it.
+func (s *Store) MessageBody(ctx context.Context, id int64) (string, error) {
+	var body string
+	err := s.pool.QueryRow(ctx, `select body from messages where id = $1`, id).Scan(&body)
+	if err == pgx.ErrNoRows {
+		return "", ErrNotFound
+	}
+	return body, err
+}
+
+// SetLongerMessageBody replaces a message's body with one re-parsed from its
+// archived raw input, and reports whether it did. It is the single exception to
+// the rule that a re-import never rewrites a body (see
+// InsertMessageRethreading): the parser has since learned to read mail whose
+// stored body is a stub, and that text is only recoverable from the raw.
+//
+// The length comparison is the whole safety of it, and it lives in the
+// statement rather than in the caller: only strictly more text than the row
+// already holds is written, so the worst a wrong caller can do is nothing.
+//
+// The BM25 index is an ordinary Postgres index over these columns, so the
+// updated body is searchable when the statement commits — nothing to refresh,
+// the same reason RefreshAttachmentText needs no reindex step.
+func (s *Store) SetLongerMessageBody(ctx context.Context, id int64, body string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		update messages set body = $2
+		where id = $1 and octet_length(btrim($2, $3)) > octet_length(btrim(body, $3))`,
+		id, cleanText(body), bodyTrimChars)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // FindMessageID returns the row id for (source, external_id), or 0 if absent.

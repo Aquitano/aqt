@@ -68,6 +68,8 @@ Usage:
   bank import inbox [--json]                  sweep $BANK_DATA_DIR/inbox/<kind>/
   bank import ... [--no-extract]              skip reading text out of attachments
   bank reimport <source>                      replay archived inputs through the current importer
+  bank reimport mbox --heal-bodies [--apply]  re-read archived mail and replace stub bodies
+                                              today's parser reads better (dry run by default)
   bank extract [--ocr] [--status s]           read text out of attachments
   bank attachment list [--status s]           attachment content and its text status
   bank attachment stats [--json]              how much of the archive is searchable inside
@@ -454,8 +456,14 @@ func cmdImportInbox(ctx context.Context, args []string) error {
 // and the original filename is recoverable from the archived name. Mail is
 // absent deliberately — gmail archives one .eml per synced message, and
 // eml/mbox archives live under a --source (proton, gmail, ...) that does not
-// determine the kind.
+// determine the kind. `reimport mbox --heal-bodies` is the one pass that does
+// re-read mail, and it repairs one column instead of replaying an import.
 var reimportKinds = []string{"chatgpt", "claude", "claude-code", "discord", "whatsapp", "linkedin"}
+
+// healBodiesKind is the pseudo-kind that reaches the mail healer. It is a kind
+// rather than a command of its own because it is the same operation from the
+// operator's side: read what was archived, apply what the code learned since.
+const healBodiesKind = "mbox"
 
 // cmdReimport replays every archived raw input of one source through the
 // current importer. Imports are idempotent, so the only visible effect is
@@ -465,6 +473,9 @@ func cmdReimport(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("reimport", flag.ExitOnError)
 	noExtract := fs.Bool("no-extract", false, "")
 	asJSON := fs.Bool("json", false, "")
+	healBodies := fs.Bool("heal-bodies", false, "")
+	apply := fs.Bool("apply", false, "")
+	source := fs.String("source", "", "")
 	if err := parseFlagsAnywhere(fs, args); err != nil {
 		return err
 	}
@@ -472,11 +483,20 @@ func cmdReimport(ctx context.Context, args []string) error {
 		return fmt.Errorf("usage: bank reimport <%s> [--no-extract] [--json]", strings.Join(reimportKinds, "|"))
 	}
 	kind := fs.Arg(0)
-	if !slices.Contains(reimportKinds, kind) {
-		return fmt.Errorf("cannot replay %q; reimport covers %s", kind, strings.Join(reimportKinds, ", "))
-	}
 	if client.FromEnv() != nil {
 		return fmt.Errorf("reimport replays the server's own archive; run it there, not through BANK_URL")
+	}
+	if kind == healBodiesKind {
+		if !*healBodies {
+			return fmt.Errorf("mail is not replayed wholesale; `bank reimport mbox --heal-bodies` re-reads it to replace stub bodies today's parser reads better")
+		}
+		return healMailBodies(ctx, *source, *apply, *asJSON)
+	}
+	if *healBodies || *apply || *source != "" {
+		return fmt.Errorf("--heal-bodies, --apply and --source belong to `bank reimport %s`", healBodiesKind)
+	}
+	if !slices.Contains(reimportKinds, kind) {
+		return fmt.Errorf("cannot replay %q; reimport covers %s", kind, strings.Join(reimportKinds, ", "))
 	}
 	d, closeStore, err := openLocal(ctx)
 	if err != nil {
@@ -546,6 +566,66 @@ func cmdReimport(ctx context.Context, args []string) error {
 		return fmt.Errorf("%d of %d archived inputs failed to replay", failed, len(entries))
 	}
 	return nil
+}
+
+// healMailBodies re-reads one mail source's archived raws and replaces bodies
+// the current parser reads better than the one that first imported them. It
+// reports without writing unless apply is set: the write is the one exception
+// to "a re-import never overwrites a body", so it should be read before it is
+// taken.
+func healMailBodies(ctx context.Context, source string, apply, asJSON bool) error {
+	if source == "" {
+		source = defaultSource(healBodiesKind)
+	}
+	if err := archive.ValidSource(source); err != nil {
+		return err
+	}
+	d, closeStore, err := openLocal(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+
+	verb := "would heal"
+	if apply {
+		verb = "healed"
+	}
+	heals := []eml.BodyHeal{}
+	res, err := eml.HealBodies(ctx, d.st, d.archiveDir, source, apply, func(h eml.BodyHeal) {
+		if asJSON {
+			heals = append(heals, h)
+			return
+		}
+		fmt.Printf("%s: id=%d ref=%s subject=%q stored=%d reparsed=%d\n",
+			verb, h.ID, h.Ref, h.Subject, h.Stored, h.Reparsed)
+	})
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return printJSON(struct {
+			eml.HealResult
+			Heals []eml.BodyHeal `json:"heals"`
+		}{res, heals})
+	}
+	printHealResult(source, res)
+	return nil
+}
+
+func printHealResult(source string, res eml.HealResult) {
+	outcome := "to heal"
+	if res.Applied {
+		outcome = "healed"
+	}
+	fmt.Printf("%s: %s, %s read, %d still archived, %d %s",
+		source, plural(res.Files, "raw file"), plural(res.Messages, "message"), res.Matched, res.Healed, outcome)
+	if res.Rejected > 0 {
+		fmt.Printf(", %d unreadable", res.Rejected)
+	}
+	fmt.Println()
+	if !res.Applied && res.Healed > 0 {
+		fmt.Println("dry run — pass --apply to write these bodies")
+	}
 }
 
 // importOutcome reduces an importer's result to the counts the sweep uses to

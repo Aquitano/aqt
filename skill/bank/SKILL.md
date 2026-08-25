@@ -168,4 +168,5 @@ Rules:
 
 - `bank fetch` writes a file to disk; pick an explicit `-o` under a temp dir, and remember the bytes are personal data.
 - Message bodies are private correspondence. Read what the task needs, quote the minimum, and do not paste whole threads into summaries or commit messages.
-- `sync`, `auth`, `serve`, `token`, `verify` and `import inbox` are server-side commands: they need the archive, the blob store or the token file on the server itself. Do not run them from a client machine — they will not fail loudly, they will act on the wrong box.
+- `sync`, `auth`, `serve`, `token`, `verify`, `reimport` and `import inbox` are server-side commands: they need the archive, the blob store or the token file on the server itself. Do not run them from a client machine — they will not fail loudly, they will act on the wrong box. (`reimport` is the exception that does say so: it refuses to run with `BANK_URL` set.)
+- `bank reimport mbox --heal-bodies` re-reads archived mail and replaces bodies the parser now reads better — the fix for old mail stored as an "open this in an HTML viewer" stub. It reports without writing unless `--apply` is passed, and only ever replaces a body with a strictly longer one. Suggest it when a mail's stored body is visibly a template rather than the message; run it on the server.

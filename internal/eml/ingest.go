@@ -82,11 +82,7 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 
 	externalID := o.ExternalID
 	if externalID == "" {
-		externalID = m.MessageID
-	}
-	if externalID == "" {
-		sum := sha256.Sum256(raw)
-		externalID = hex.EncodeToString(sum[:])
+		externalID = defaultExternalID(m, raw)
 	}
 	sentAt := o.SentAt
 	if sentAt.IsZero() {
@@ -131,6 +127,18 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 		return res, nil
 	}
 	return res, syncAttachments(ctx, st, blobs, id, m.Attachments, res.Inserted, &res)
+}
+
+// defaultExternalID is what a message is keyed by when the caller names no id
+// of its own: the Message-ID, or the raw bytes' digest for mail that carries
+// none. Shared with the body healer, which has to find a row again under the
+// same identity the import gave it.
+func defaultExternalID(m *Message, raw []byte) string {
+	if m.MessageID != "" {
+		return m.MessageID
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }
 
 // syncAttachments stores the attachments a message does not already have,

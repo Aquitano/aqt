@@ -52,6 +52,8 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
                                                 # 15s timeout, row cap — analytics only
 ./bank verify --heal                            # check the archive, repair what the raw inputs allow
 ./bank reimport chatgpt                         # replay archived exports through today's importer
+./bank reimport mbox --heal-bodies              # dry run: mail whose archived raw parses longer
+./bank reimport mbox --heal-bodies --apply      # write those bodies
 ```
 
 ## Remote use

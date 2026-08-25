@@ -321,3 +321,49 @@ func asAmbiguous(err error, target **store.AmbiguousThreadError) bool {
 	}
 	return ok
 }
+
+// The body healer is the only write allowed past "a re-import never overwrites
+// a body", so the rule that keeps it safe — strictly more text wins, nothing
+// else moves — is what this pins down.
+func TestSetLongerMessageBodyOnlyGrows(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+
+	const stub = "Diese Nachricht ist im HTML-Format."
+	const full = "Ihr Dauerauftrag ueber 450,00 EUR an Hausverwaltung Meier wurde eingerichtet."
+
+	id, err := st.InsertMessage(ctx, msg("gmail", "stub@example.com", store.Message{
+		MessageID: "stub@example.com", Sender: "bank@example.com", Subject: "Dauerauftrag", Body: stub,
+	}))
+	if err != nil || id == 0 {
+		t.Fatalf("seed: %d %v", id, err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"longer wins", full, true},
+		{"equal is left alone", full, false},
+		{"shorter never shrinks the row", stub, false},
+		{"whitespace is not text", full + "\n\n\t  ", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			healed, err := st.SetLongerMessageBody(ctx, id, tc.body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if healed != tc.want {
+				t.Errorf("healed = %v, want %v", healed, tc.want)
+			}
+			body, err := st.MessageBody(ctx, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if body != full {
+				t.Errorf("body = %q, want %q", body, full)
+			}
+		})
+	}
+}
