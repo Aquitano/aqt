@@ -267,6 +267,81 @@ func TestSuggestRanksUnattachedIdentities(t *testing.T) {
 	}
 }
 
+// The AI chat sources record a role where every other source records a person.
+func TestSuggestSkipsLLMRoles(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	seed := []store.Message{
+		{Source: "chatgpt", ExternalID: "c1", Sender: "user", Body: "how do I do this"},
+		{Source: "chatgpt", ExternalID: "c2", Sender: "assistant", Body: "like this"},
+		{Source: "claude", ExternalID: "a1", Sender: "assistant", Body: "or like this"},
+		// The same word from a real source is a person's display name.
+		{Source: "whatsapp", ExternalID: "w9", ThreadID: "user", Sender: "user", Body: "hi"},
+	}
+	for _, m := range seed {
+		m.SentAt = time.Date(2024, 5, 13, 21, 8, 0, 0, time.UTC)
+		if _, err := st.InsertMessage(ctx, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := st.SuggestIdentities(ctx, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := map[string]int64{}
+	for _, s := range got {
+		counts[s.Identity] = s.Messages
+	}
+	if _, ok := counts["assistant"]; ok {
+		t.Error("assistant is an LLM role, not a person to attach")
+	}
+	if counts["user"] != 1 {
+		t.Errorf("user = %d messages, want only the WhatsApp one: %+v", counts["user"], got)
+	}
+}
+
+func TestImportContactsAppliesABatch(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	seedPeople(t, st)
+	if _, err := st.CreateContact(ctx, "carol", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddAlias(ctx, "carol", "", "bjoern_aq"); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := st.ImportContacts(ctx, []store.ContactImport{
+		{Name: "bjoern", Note: "the one with the servers", Aliases: []store.ImportedAlias{
+			{Value: "bjoern@example.com"},
+			{Source: "whatsapp", Value: "Björn"},
+			// Carol already owns this one: reported, and the rest still lands.
+			{Value: "bjoern_aq"},
+		}},
+		{Name: "carol", Aliases: []store.ImportedAlias{{Source: "whatsapp", Value: "Carol"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 2 {
+		t.Fatalf("results = %+v", res)
+	}
+	if !res[0].Created || res[0].Aliases != 2 || len(res[0].Errors) != 1 {
+		t.Fatalf("bjoern = %+v, want created with 2 aliases and the conflict reported", res[0])
+	}
+	if res[1].Created || res[1].Aliases != 1 || len(res[1].Errors) != 0 {
+		t.Fatalf("carol = %+v, want an existing contact extended by one alias", res[1])
+	}
+
+	msgs, err := st.ContactMessages(ctx, "bjoern", store.ContactMessagesOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("got %d messages, want the mail and WhatsApp ones: %+v", len(msgs), ids(msgs))
+	}
+}
+
 func TestContactAliasScope(t *testing.T) {
 	known := func(s string) bool { return s == "whatsapp" || s == "discord" }
 	cases := map[string][2]string{

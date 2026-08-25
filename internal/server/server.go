@@ -29,6 +29,7 @@ import (
 type reader interface {
 	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
 	GetMessage(ctx context.Context, id int64) (store.Message, []store.Attachment, error)
+	GetMessageByRef(ctx context.Context, ref string) (store.Message, []store.Attachment, error)
 	GetThread(ctx context.Context, source, threadID string, limit int) (store.Thread, error)
 	Stats(ctx context.Context) ([]store.SourceStats, error)
 	ListContacts(ctx context.Context) ([]store.Contact, error)
@@ -66,9 +67,11 @@ func (s *Server) Handler() http.Handler {
 	v1.HandleFunc("GET /v1/threads/{id}", s.handleThread)
 	v1.HandleFunc("GET /v1/blobs/{sha256}", s.handleBlob)
 	v1.HandleFunc("GET /v1/stats", s.handleStats)
+	v1.HandleFunc("PUT /v1/sources/{source}/coverage", s.handleCoverage)
 	v1.HandleFunc("POST /v1/query", s.handleQuery)
 	v1.HandleFunc("GET /v1/contacts", s.handleContactList)
 	v1.HandleFunc("POST /v1/contacts", s.handleContactCreate)
+	v1.HandleFunc("POST /v1/contacts/import", s.handleContactImport)
 	v1.HandleFunc("GET /v1/contacts/suggest", s.handleContactSuggest)
 	v1.HandleFunc("GET /v1/contacts/{name}", s.handleContactShow)
 	v1.HandleFunc("DELETE /v1/contacts/{name}", s.handleContactDelete)
@@ -161,21 +164,32 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, msgs)
 }
 
+// handleMessage addresses a message by row id or by its stable ref. A ref is
+// tried first: it is 12 hex characters, so an all-digit one would otherwise
+// parse as a row id no archive this size will ever have.
 func (s *Server) handleMessage(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid id")
-		return
+	arg := r.PathValue("id")
+	var m store.Message
+	var atts []store.Attachment
+	var err error
+	if store.ValidRef(arg) == nil {
+		m, atts, err = s.read.GetMessageByRef(r.Context(), arg)
+	} else {
+		id, parseErr := strconv.ParseInt(arg, 10, 64)
+		if parseErr != nil {
+			writeErr(w, http.StatusBadRequest, "invalid id")
+			return
+		}
+		m, atts, err = s.read.GetMessage(r.Context(), id)
 	}
-	m, atts, err := s.read.GetMessage(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
-		writeErr(w, http.StatusNotFound, fmt.Sprintf("no message %d", id))
+		writeErr(w, http.StatusNotFound, fmt.Sprintf("no message %s", arg))
 		return
 	}
 	if err != nil {
 		// A message store that cannot answer is not a missing message: a 404
 		// here would teach every client to treat an outage as an empty archive.
-		writeErr(w, http.StatusInternalServerError, fmt.Sprintf("message %d: %v", id, err))
+		writeErr(w, http.StatusInternalServerError, fmt.Sprintf("message %s: %v", arg, err))
 		return
 	}
 	writeJSON(w, http.StatusOK, store.MessageDetail{Message: m, Attachments: atts})
@@ -264,6 +278,23 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, stats)
+}
+
+// handleCoverage records what a source is known to hold. An empty text clears
+// the note, which is why this is a PUT rather than two routes.
+func (s *Server) handleCoverage(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.db.SetCoverage(r.Context(), r.PathValue("source"), body.Text); err != nil {
+		writeCause(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"source": r.PathValue("source"), "coverage": body.Text})
 }
 
 func parseDate(s string) (time.Time, error) {

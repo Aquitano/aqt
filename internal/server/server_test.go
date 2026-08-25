@@ -48,6 +48,13 @@ func (f *fakeReader) GetMessage(context.Context, int64) (store.Message, []store.
 	return store.Message{ID: 7}, nil, nil
 }
 
+func (f *fakeReader) GetMessageByRef(_ context.Context, ref string) (store.Message, []store.Attachment, error) {
+	if f.messageErr != nil {
+		return store.Message{}, nil, f.messageErr
+	}
+	return store.Message{ID: 7, Ref: ref}, nil, nil
+}
+
 func (f *fakeReader) GetThread(_ context.Context, _, _ string, _ int) (store.Thread, error) {
 	return f.thread, f.threadErr
 }
@@ -316,6 +323,26 @@ func TestMessageStatusDistinguishesMissingFromBroken(t *testing.T) {
 			t.Fatalf("status %d, want 400 (%s)", status, body)
 		}
 	})
+	// A ref is what citations carry, and an all-digit one must not be read as
+	// a row id.
+	for _, ref := range []string{"c5e63bfc3750", "123456789012"} {
+		t.Run("ref "+ref, func(t *testing.T) {
+			s, token := testServer(t)
+			srv := httptest.NewServer(s.Handler())
+			defer srv.Close()
+			status, body := authedGet(t, srv, token, "/v1/messages/"+ref)
+			if status != http.StatusOK {
+				t.Fatalf("status %d, want 200 (%s)", status, body)
+			}
+			var d store.MessageDetail
+			if err := json.Unmarshal([]byte(body), &d); err != nil {
+				t.Fatal(err)
+			}
+			if d.Ref != ref {
+				t.Fatalf("ref = %q, want %q — looked up as a row id", d.Ref, ref)
+			}
+		})
+	}
 }
 
 func TestThreadStatusCodes(t *testing.T) {

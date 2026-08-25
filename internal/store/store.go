@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -29,7 +30,13 @@ type Store struct {
 }
 
 type Message struct {
-	ID         int64     `json:"id"`
+	ID int64 `json:"id"`
+	// Ref is the stable citation id: 12 hex characters derived from the source
+	// and the message's own identifier. ID is a row serial and changes when the
+	// archive is rebuilt from its raw inputs, so a note citing "bank:<id>"
+	// silently comes to mean another message; Ref does not move. Computed in
+	// SQL (see refSQL), never stored.
+	Ref        string    `json:"ref,omitempty"`
 	Source     string    `json:"source"`
 	ExternalID string    `json:"external_id,omitempty"`
 	MessageID  string    `json:"message_id,omitempty"` // RFC 822 Message-ID for mail sources
@@ -79,6 +86,31 @@ type MessageDetail struct {
 // ErrNotFound is returned when a lookup found no row, so callers can tell an
 // absent message from a broken database.
 var ErrNotFound = errors.New("not found")
+
+// RefChars is how much of the digest a ref keeps. Twelve hex characters are
+// short enough to paste into a citation and, at archive scale, far past the
+// point where a collision is plausible.
+const RefChars = 12
+
+// refSQL is the ref expression for a messages row under the given alias. The
+// digest covers the source and the message's own identifier — the RFC 822
+// Message-ID where the source has one, that source's external id otherwise —
+// which is exactly the pair dedup already treats as the message's identity.
+// Nothing about insertion order enters it, so the same message re-imported
+// into a rebuilt archive keeps the same ref.
+func refSQL(alias string) string {
+	return `substr(encode(sha256(convert_to(` + alias + `.source,'UTF8') || '\x00'::bytea` +
+		` || convert_to(coalesce(nullif(` + alias + `.message_id,''), ` + alias + `.external_id),'UTF8')),'hex'),1,` +
+		strconv.Itoa(RefChars) + `)`
+}
+
+// ValidRef rejects anything that is not a ref before it reaches a query.
+func ValidRef(s string) error {
+	if len(s) != RefChars || strings.TrimLeft(s, "0123456789abcdef") != "" {
+		return fmt.Errorf("not a message ref: %q", s)
+	}
+	return nil
+}
 
 func Open(ctx context.Context, databaseURL string) (*Store, error) {
 	pool, err := pgxpool.New(ctx, databaseURL)
@@ -356,6 +388,27 @@ func (s *Store) SetSyncState(ctx context.Context, source string, state []byte) e
 	return err
 }
 
+// SetCoverage records what a source is known to hold and what it is known to
+// be missing — "Gmail from 2011, WhatsApp only the chats exported in 2025-08".
+// It shares sync_state's blob because it is the same kind of fact (where this
+// source stands), and it deliberately leaves updated_at alone: coverage is
+// written by hand and must not read as a sync having happened. An empty text
+// clears the note.
+func (s *Store) SetCoverage(ctx context.Context, source, text string) error {
+	source = strings.TrimSpace(cleanText(source))
+	if source == "" {
+		return fmt.Errorf("coverage needs a source")
+	}
+	_, err := s.pool.Exec(ctx, `
+		insert into sync_state (source, state)
+		values ($1, case when $2::text = '' then '{}'::jsonb else jsonb_build_object('coverage', $2::text) end)
+		on conflict (source) do update
+		set state = case when $2::text = '' then sync_state.state - 'coverage'
+		                 else jsonb_set(sync_state.state, '{coverage}', to_jsonb($2::text), true) end`,
+		source, cleanText(text))
+	return err
+}
+
 // MaxSearchLimit caps how many rows one search may return. Large enough for
 // "give me everything about X", small enough that a typo can't ask Postgres
 // for the whole archive.
@@ -419,7 +472,7 @@ func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Messa
 		return nil, err
 	}
 	sql := `
-		select m.id, m.source, m.thread_id, m.sender, m.subject, m.body, m.sent_at,
+		select m.id, ` + refSQL("m") + `, m.source, m.thread_id, m.sender, m.subject, m.body, m.sent_at,
 		       paradedb.score(m.id), coalesce(paradedb.snippet(m.body, '', '', %d), ''),
 		       coalesce(paradedb.snippet(m.attachment_text, '', '', %d), '')
 		from messages m
@@ -479,7 +532,7 @@ func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Messa
 	out := []Message{}
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.Source, &m.ThreadID, &m.Sender, &m.Subject, &m.Body,
+		if err := rows.Scan(&m.ID, &m.Ref, &m.Source, &m.ThreadID, &m.Sender, &m.Subject, &m.Body,
 			&m.SentAt, &m.Score, &m.Snippet, &m.AttachmentSnippet); err != nil {
 			return nil, err
 		}
@@ -497,19 +550,55 @@ func (s *Store) GetMessageDetail(ctx context.Context, id int64) (MessageDetail, 
 	return MessageDetail{Message: m, Attachments: atts}, err
 }
 
+// GetMessageDetailByRef is GetMessageDetail addressed by the stable ref, the
+// form a citation carries.
+func (s *Store) GetMessageDetailByRef(ctx context.Context, ref string) (MessageDetail, error) {
+	m, atts, err := s.GetMessageByRef(ctx, ref)
+	return MessageDetail{Message: m, Attachments: atts}, err
+}
+
+// messageColumns is the full row every single-message read returns, with the
+// ref computed alongside it.
+var messageColumns = `m.id, ` + refSQL("m") + `, m.source, m.external_id, m.message_id, m.thread_id,
+	m.sender, m.recipients, m.subject, m.body, m.sent_at, m.raw_ref`
+
+func (m *Message) scanFull(row pgx.Row) error {
+	return row.Scan(&m.ID, &m.Ref, &m.Source, &m.ExternalID, &m.MessageID, &m.ThreadID,
+		&m.Sender, &m.Recipients, &m.Subject, &m.Body, &m.SentAt, &m.RawRef)
+}
+
 func (s *Store) GetMessage(ctx context.Context, id int64) (Message, []Attachment, error) {
 	var m Message
-	err := s.pool.QueryRow(ctx, `
-		select id, source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref
-		from messages where id = $1`, id,
-	).Scan(&m.ID, &m.Source, &m.ExternalID, &m.MessageID, &m.ThreadID, &m.Sender, &m.Recipients, &m.Subject, &m.Body, &m.SentAt, &m.RawRef)
+	err := m.scanFull(s.pool.QueryRow(ctx,
+		`select `+messageColumns+` from messages m where m.id = $1`, id))
 	if err == pgx.ErrNoRows {
 		return m, nil, ErrNotFound
 	}
 	if err != nil {
 		return m, nil, err
 	}
-	atts, err := s.messageAttachments(ctx, id)
+	atts, err := s.messageAttachments(ctx, m.ID)
+	return m, atts, err
+}
+
+// GetMessageByRef resolves a citation. There is no index on the ref: the
+// expression is derived, the archive is one person's mail, and a sequential
+// scan answers in a fraction of a second — cheaper than a stored column that
+// could disagree with the formula.
+func (s *Store) GetMessageByRef(ctx context.Context, ref string) (Message, []Attachment, error) {
+	var m Message
+	if err := ValidRef(ref); err != nil {
+		return m, nil, err
+	}
+	err := m.scanFull(s.pool.QueryRow(ctx,
+		`select `+messageColumns+` from messages m where `+refSQL("m")+` = $1 order by m.id limit 1`, ref))
+	if err == pgx.ErrNoRows {
+		return m, nil, ErrNotFound
+	}
+	if err != nil {
+		return m, nil, err
+	}
+	atts, err := s.messageAttachments(ctx, m.ID)
 	return m, atts, err
 }
 
@@ -612,17 +701,16 @@ func (s *Store) GetThread(ctx context.Context, source, threadID string, limit in
 
 	// One extra row answers "is this truncated?" without a second count query.
 	rows, err := s.pool.Query(ctx, fmt.Sprintf(`
-		select id, source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref
-		from messages where thread_id = $1 and source = $2
-		order by sent_at, id limit %d`, limit+1), threadID, source)
+		select `+messageColumns+`
+		from messages m where m.thread_id = $1 and m.source = $2
+		order by m.sent_at, m.id limit %d`, limit+1), threadID, source)
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.Source, &m.ExternalID, &m.MessageID, &m.ThreadID, &m.Sender,
-			&m.Recipients, &m.Subject, &m.Body, &m.SentAt, &m.RawRef); err != nil {
+		if err := m.scanFull(rows); err != nil {
 			return out, err
 		}
 		out.Messages = append(out.Messages, m)
@@ -653,12 +741,31 @@ type SourceStats struct {
 	// because omitempty does nothing for a zero time.Time, and an agent
 	// reading "0001-01-01" as a sync date would be worse than reading nothing.
 	LastSync *time.Time `json:"last_sync"`
+	// Coverage is the owner's note on what this source actually holds, set
+	// with `bank coverage`. Absence of a message only means something once you
+	// know the source was ever complete for that period.
+	Coverage string `json:"coverage,omitempty"`
+	// Stale reports that nothing has landed here in StaleAfter, which for a
+	// source that should be growing means the drop-off went unnoticed.
+	Stale bool `json:"stale"`
 }
 
+// StaleAfter is how long a source may go without a new message before stats
+// flags it. Long enough that a quiet month is not an alarm, short enough that a
+// sync which stopped working is noticed within the quarter.
+const StaleAfter = 30 * 24 * time.Hour
+
 func (s *Store) Stats(ctx context.Context) ([]SourceStats, error) {
+	// A row that only carries a coverage note is not a sync checkpoint, so it
+	// must not report a last_sync: `bank coverage` writes into the same blob.
+	// The type check keeps a state blob that is not an object (nothing writes
+	// one today) from failing the whole of `bank stats` on the `-` operator.
 	rows, err := s.pool.Query(ctx, `
 		select m.source, count(*), min(m.sent_at), max(m.sent_at), max(m.ingested_at),
-		       coalesce(max(ss.updated_at), 'epoch'::timestamptz)
+		       coalesce(max(ss.updated_at) filter (
+		           where jsonb_typeof(ss.state) <> 'object' or ss.state - 'coverage' <> '{}'::jsonb),
+		           'epoch'::timestamptz),
+		       coalesce(max(ss.state ->> 'coverage'), '')
 		from messages m
 		left join sync_state ss on ss.source = m.source
 		group by m.source order by m.source`)
@@ -667,15 +774,18 @@ func (s *Store) Stats(ctx context.Context) ([]SourceStats, error) {
 	}
 	defer rows.Close()
 	out := []SourceStats{}
+	now := time.Now()
 	for rows.Next() {
 		var st SourceStats
 		var lastSync time.Time
-		if err := rows.Scan(&st.Source, &st.Messages, &st.Earliest, &st.Latest, &st.LastIngest, &lastSync); err != nil {
+		if err := rows.Scan(&st.Source, &st.Messages, &st.Earliest, &st.Latest, &st.LastIngest,
+			&lastSync, &st.Coverage); err != nil {
 			return nil, err
 		}
 		if lastSync.Unix() != 0 {
 			st.LastSync = &lastSync
 		}
+		st.Stale = now.Sub(st.LastIngest) > StaleAfter
 		out = append(out, st)
 	}
 	return out, rows.Err()

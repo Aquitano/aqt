@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -16,8 +17,8 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"runtime"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -74,8 +75,9 @@ Usage:
   bank search <query> [flags]                 full-text search (BM25, fuzzy)
   bank thread <id> [--source s] [--limit n]   one whole conversation, oldest first
   bank contact <add|list|show|alias|...>      one person across their many identities
-  bank show <id> [--json]                     print one message + attachments
+  bank show <id|ref> [--json]                 print one message + attachments
   bank stats [--json]                         per-source counts, date ranges, freshness
+  bank coverage <source> <text>               note what a source holds (empty text clears)
   bank query <sql|-> [--limit n] [--json]     read-only ad-hoc SQL (analytics escape
                                               hatch; READ ONLY tx, 15s timeout,
                                               row cap 100, --limit up to 10000)
@@ -146,6 +148,8 @@ func main() {
 		err = cmdShow(ctx, os.Args[2:])
 	case "stats":
 		err = cmdStats(ctx, os.Args[2:])
+	case "coverage":
+		err = cmdCoverage(ctx, os.Args[2:])
 	case "query":
 		err = cmdQuery(ctx, os.Args[2:])
 	case "fetch":
@@ -907,12 +911,9 @@ func cmdShow(ctx context.Context, args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: bank show <id> [--json]")
+		return fmt.Errorf("usage: bank show <id|ref> [--json]")
 	}
-	id, err := strconv.ParseInt(fs.Arg(0), 10, 64)
-	if err != nil {
-		return fmt.Errorf("invalid id %q", fs.Arg(0))
-	}
+	arg := fs.Arg(0)
 
 	remote := client.FromEnv() != nil
 	b, closeBackend, err := openBackend(ctx)
@@ -920,9 +921,20 @@ func cmdShow(ctx context.Context, args []string) error {
 		return err
 	}
 	defer closeBackend()
-	d, err := b.GetMessageDetail(ctx, id)
+	// A ref is 12 hex characters and is tried first: one made only of digits
+	// would otherwise parse as a row id, and no archive reaches 12-digit ids.
+	var d store.MessageDetail
+	if store.ValidRef(arg) == nil {
+		d, err = b.GetMessageDetailByRef(ctx, arg)
+	} else {
+		id, parseErr := strconv.ParseInt(arg, 10, 64)
+		if parseErr != nil {
+			return fmt.Errorf("invalid id or ref %q (a ref is %d hex characters)", arg, store.RefChars)
+		}
+		d, err = b.GetMessageDetail(ctx, id)
+	}
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("no message %d", id)
+		return fmt.Errorf("no message %s", arg)
 	}
 	if err != nil {
 		return err
@@ -932,8 +944,8 @@ func cmdShow(ctx context.Context, args []string) error {
 	}
 
 	m := d.Message
-	fmt.Printf("id:      %d\nsource:  %s\nthread:  %s\nfrom:    %s\ndate:    %s\n",
-		m.ID, m.Source, m.ThreadID, m.Sender, m.SentAt.Format(time.RFC1123))
+	fmt.Printf("id:      %d\nref:     %s\nsource:  %s\nthread:  %s\nfrom:    %s\ndate:    %s\n",
+		m.ID, m.Ref, m.Source, m.ThreadID, m.Sender, m.SentAt.Format(time.RFC1123))
 	if len(m.Recipients) > 0 {
 		fmt.Printf("to:      %s\n", strings.Join(m.Recipients, ", "))
 	}
@@ -971,9 +983,12 @@ func cmdShow(ctx context.Context, args []string) error {
 type backend interface {
 	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
 	GetMessageDetail(ctx context.Context, id int64) (store.MessageDetail, error)
+	GetMessageDetailByRef(ctx context.Context, ref string) (store.MessageDetail, error)
 	GetThread(ctx context.Context, source, threadID string, limit int) (store.Thread, error)
 	Stats(ctx context.Context) ([]store.SourceStats, error)
+	SetCoverage(ctx context.Context, source, text string) error
 	CreateContact(ctx context.Context, name, note string) (store.Contact, error)
+	ImportContacts(ctx context.Context, in []store.ContactImport) ([]store.ContactImportResult, error)
 	DeleteContact(ctx context.Context, name string) error
 	ListContacts(ctx context.Context) ([]store.Contact, error)
 	GetContactDetail(ctx context.Context, name string) (store.ContactDetail, error)
@@ -1025,10 +1040,20 @@ func cmdStats(ctx context.Context, args []string) error {
 		if s.LastSync != nil {
 			fmt.Printf("  synced %s", s.LastSync.Format("2006-01-02 15:04"))
 		}
+		if s.Stale {
+			fmt.Print("  (stale)")
+		}
 		fmt.Println()
+		if s.Coverage != "" {
+			fmt.Printf("%-12s %s\n", "", s.Coverage)
+		}
 		total += s.Messages
 	}
 	fmt.Printf("%-12s %8d messages\n", "total", total)
+	if anyStale(stats) {
+		fmt.Printf("\n(stale) means nothing new in %d days — a gap there may be a broken import, not a quiet month\n",
+			int(store.StaleAfter.Hours()/24))
+	}
 
 	// Coverage belongs in "how much of my archive can I actually search", but
 	// not in --json: that payload is a list of sources and agents already
@@ -1040,6 +1065,41 @@ func cmdStats(ctx context.Context, args []string) error {
 			printExtractionStats(ext)
 		}
 	}
+	return nil
+}
+
+func anyStale(stats []store.SourceStats) bool {
+	return slices.ContainsFunc(stats, func(s store.SourceStats) bool { return s.Stale })
+}
+
+// cmdCoverage maintains the per-source note on what the archive actually holds
+// — the context that turns "search found nothing" into either "it did not
+// happen" or "that period was never imported".
+func cmdCoverage(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("coverage", flag.ExitOnError)
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() < 1 {
+		return fmt.Errorf("usage: bank coverage <source> <text>   (empty text clears the note)")
+	}
+	source, text := fs.Arg(0), strings.Join(fs.Args()[1:], " ")
+	if err := archive.ValidSource(source); err != nil {
+		return err
+	}
+	b, closeBackend, err := openBackend(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeBackend()
+	if err := b.SetCoverage(ctx, source, text); err != nil {
+		return err
+	}
+	if text == "" {
+		fmt.Printf("%s: coverage note cleared\n", source)
+		return nil
+	}
+	fmt.Printf("%s: %s\n", source, text)
 	return nil
 }
 
@@ -1377,7 +1437,7 @@ var builtinSources = []string{
 	"whatsapp", "gmail", "proton", "discord", "linkedin", "chatgpt", "claude", "claude-code",
 }
 
-const contactUsage = `usage: bank contact <add|rm|list|show|alias|messages|suggest> ...
+const contactUsage = `usage: bank contact <add|rm|list|show|alias|messages|suggest|import> ...
 
   bank contact add <name> [--note text]
   bank contact rm <name>
@@ -1387,10 +1447,14 @@ const contactUsage = `usage: bank contact <add|rm|list|show|alias|messages|sugge
   bank contact alias rm <name> <alias>...
   bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--json]
   bank contact suggest [--limit n] [--json]
+  bank contact import <file|-> [--json]
 
 An alias is an identity that means this person: an email address, a WhatsApp
 display name, a Discord handle. It matches everywhere by default; write it as
-"<source>:<value>" to bind it to one source.`
+"<source>:<value>" to bind it to one source.
+
+import takes a JSON array or NDJSON of
+{"name": "...", "note": "...", "aliases": ["whatsapp:...", "a@example.com"]}.`
 
 func cmdContact(ctx context.Context, args []string) error {
 	if len(args) == 0 {
@@ -1417,6 +1481,8 @@ func cmdContact(ctx context.Context, args []string) error {
 		return contactMessages(ctx, b, args[1:])
 	case "suggest":
 		return contactSuggest(ctx, b, args[1:])
+	case "import":
+		return contactImport(ctx, b, args[1:])
 	}
 	return fmt.Errorf("unknown contact command %q\n\n%s", args[0], contactUsage)
 }
@@ -1649,6 +1715,108 @@ func contactSuggest(ctx context.Context, b backend, args []string) error {
 	}
 	fmt.Println("\nattach one with: bank contact alias add <name> <identity>")
 	return nil
+}
+
+// contactEntry is the import file's shape. Aliases are written the way the
+// alias command takes them ("whatsapp:Alice", "alice@example.com") and are
+// resolved against the known sources here, so the file needs no scope field.
+type contactEntry struct {
+	Name    string   `json:"name"`
+	Note    string   `json:"note"`
+	Aliases []string `json:"aliases"`
+}
+
+// contactImport applies a whole contact book at once — the practical way to
+// turn an address-book export into contacts, one identity per line, instead of
+// a shell loop over `contact add` and `contact alias add`. Conflicts are
+// reported and skipped: the file is the owner's, and one alias another contact
+// already claims must not cost the rest of it.
+func contactImport(ctx context.Context, b backend, args []string) error {
+	fs := flag.NewFlagSet("contact import", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: bank contact import <file|-> [--json]")
+	}
+	input, err := readInput(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	entries, err := decodeJSONEntries[contactEntry](input)
+	if err != nil {
+		return fmt.Errorf("%s: %w", fs.Arg(0), err)
+	}
+	if len(entries) == 0 {
+		return fmt.Errorf("%s holds no contacts", fs.Arg(0))
+	}
+	known, err := knownSources(ctx, b)
+	if err != nil {
+		return err
+	}
+	in := make([]store.ContactImport, 0, len(entries))
+	for _, e := range entries {
+		c := store.ContactImport{Name: e.Name, Note: e.Note}
+		for _, raw := range e.Aliases {
+			source, value := store.ContactAliasScope(raw, func(s string) bool { return known[s] })
+			c.Aliases = append(c.Aliases, store.ImportedAlias{Source: source, Value: value})
+		}
+		in = append(in, c)
+	}
+
+	res, err := b.ImportContacts(ctx, in)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(res)
+	}
+	var created, aliases, failed int
+	for _, r := range res {
+		state := "existing"
+		if r.Created {
+			state = "created"
+			created++
+		}
+		aliases += r.Aliases
+		fmt.Printf("%-20s %-8s %d aliases\n", r.Name, state, r.Aliases)
+		for _, e := range r.Errors {
+			failed++
+			fmt.Fprintf(os.Stderr, "bank: %s: %s\n", r.Name, e)
+		}
+	}
+	fmt.Printf("%d contacts (%d created), %d aliases attached", len(res), created, aliases)
+	if failed > 0 {
+		fmt.Printf(", %d skipped", failed)
+	}
+	fmt.Println()
+	return nil
+}
+
+// decodeJSONEntries reads a JSON array or a stream of newline-delimited
+// objects, the same two shapes `bank import json` accepts.
+func decodeJSONEntries[T any](input []byte) ([]T, error) {
+	dec := json.NewDecoder(bytes.NewReader(input))
+	tok, err := dec.Token()
+	if err == io.EOF {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if d, ok := tok.(json.Delim); !ok || d != '[' {
+		dec = json.NewDecoder(bytes.NewReader(input)) // not an array: a stream of objects
+	}
+	var out []T
+	for dec.More() {
+		var v T
+		if err := dec.Decode(&v); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, nil
 }
 
 // contactErr turns the store's not-found sentinel into a message that names

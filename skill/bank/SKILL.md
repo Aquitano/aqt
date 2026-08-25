@@ -33,8 +33,8 @@ bank search "query" [--source s] [--from name] [--to name] [--since YYYY-MM-DD] 
 bank thread <id> [--source s] [--limit n] [--json]   # every message in one conversation
 bank contact list|show <name> [--json]               # who the owner has named, and their identities
 bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--offset n] [--json]
-bank show <id> [--json]          # full body, recipients, raw_ref, attachment list
-bank stats [--json]              # sources, counts, date ranges, freshness
+bank show <id|ref> [--json]      # full body, recipients, raw_ref, attachment list
+bank stats [--json]              # sources, counts, date ranges, freshness, coverage notes
 bank fetch <sha256> -o <path>    # write attachment bytes to a file
 bank attachment stats [--json]   # how much of the archive is searchable inside its attachments
 bank query <sql|-> [--limit n] [--json]   # read-only ad-hoc SQL — the analytics escape hatch
@@ -44,6 +44,7 @@ bank query --schema              # list tables and columns before writing the fi
 Semantics that matter:
 
 - Always pass `--json` when you are consuming the output; the plain text form truncates bodies to one line. Empty results are `[]`, never `null`.
+- **Cite by `ref`, never by `id`.** Every result carries `ref`, 12 hex characters derived from the message itself. `id` is a row number: rebuild the archive from its raw inputs and the same `id` points at a different message, so a note citing `bank:47` silently rots. Write `bank:<ref>` (e.g. `bank:c5e63bfc3750`). `bank show` takes either form, so an old numeric citation still resolves — replace it with the ref when you touch it.
 - Ranking is BM25 over subject, body, sender, recipients and text extracted from attachments, with typo tolerance (`--fuzzy 1` by default, max 2). Query words are matched independently — more words means more recall, not less.
 - Each result carries a `snippet`: a bounded plain-text window of the body around the match, with no markup, so it is safe to print or quote directly. It is the cheapest way to see why something ranked.
 - A result may also carry `attachment_snippet`, meaning the match is inside an attached document rather than the message body — quote it as coming from the attachment, not from what the sender wrote. It is only set for exact-token matches; a fuzzy hit inside a document leaves it empty.
@@ -57,6 +58,7 @@ Semantics that matter:
 - `bank thread` takes the `thread_id` from a search hit and returns the whole conversation oldest-first — the way to turn one match into context. A thread id used by two sources is a usage error until you add `--source`; very long threads come back with `"truncated": true`, so raise `--limit` (max 2000) if that matters.
 - `bank contact show <name>` lists a person's attached identities and how many messages each source contributes — the quickest way to tell whether `--person` will actually reach the conversation you want, or whether an identity is still unattached.
 - `bank stats --json` includes `last_ingest` per source, and `last_sync` for sync-backed ones. Use it to say "the archive has nothing after X" instead of assuming a gap means nothing happened.
+- **Read `coverage` before concluding anything from absence.** It is the owner's note on what a source actually holds ("only the chats exported in 2025-08"), and it is the difference between "it never happened" and "that period was never imported". `stale: true` means nothing new has landed in that source for 30 days — a gap there may be a broken import rather than a quiet month. Both come back in `bank stats --json`.
 
 Worked examples:
 
@@ -99,6 +101,7 @@ or DDL fails), under a 15s statement timeout, capped at 100 rows (`--limit` up t
 10000), and a second `;`-chained statement is rejected. It works both locally and
 over `BANK_URL`.
 
+- **The row cap is silent in the text form.** 100 rows is the default and the text table gives no visible sign it was hit (the warning goes to stderr). Always `--json` and check `truncated`, or pass an explicit `--limit`; treating a capped page as the whole answer is how a count comes out wrong.
 - Start with `bank query --schema` to see the tables and columns; do not guess names.
 - Aggregate on the server; do not `select body from messages` to summarize client-side —
   that is what `bank search` and `bank show` are for, and bodies are private
@@ -133,7 +136,17 @@ bank query "select sender, count(*) n, min(sent_at)::date first, max(sent_at)::d
 
 This is the owner's archive; writes are for things worth keeping, not for scratch state.
 
-Contacts are the owner's own map of who is who, and attaching the wrong identity silently attributes a stranger's messages to someone. Do not run `bank contact add`, `bank contact alias add/rm` or `bank contact rm` on your own initiative — read them freely, and if an identity looks unattached, say so and let the owner decide. `bank contact suggest` is safe: it only lists identities no contact claims yet.
+Contacts are the owner's own map of who is who, and attaching the wrong identity silently attributes a stranger's messages to someone. Do not run `bank contact add`, `bank contact alias add/rm`, `bank contact import` or `bank contact rm` on your own initiative — read them freely, and if an identity looks unattached, say so and let the owner decide. `bank contact suggest` is safe: it only lists identities no contact claims yet (LLM roles from the AI chat sources are filtered out of it).
+
+For a batch — an address-book export, or the identities a `contact suggest` pass turned up — you may **draft** an import file and hand it over; the owner runs the import. Same rule as above: drafting is a proposal, applying it is theirs.
+
+```sh
+bank contact import <file|-> [--json]
+```
+
+A JSON array or NDJSON of `{"name": "Björn", "note": "the one with the servers", "aliases": ["bjoern@example.com", "whatsapp:Björn", "discord:bjoern_aq"]}`. Aliases take the same `<source>:<value>` scoping as `contact alias add`, a bare value matching everywhere. Existing contacts are extended rather than replaced, and an alias another contact already claims is reported and skipped without stopping the rest of the file.
+
+`bank coverage <source> <text>` maintains the per-source coverage notes (an empty text clears one). Same rule again: propose the wording, let the owner run it.
 
 ```sh
 echo '{"body":"note text","thread":"decisions","sender":"claude","sent_at":"2026-08-17T12:00:00Z"}' \

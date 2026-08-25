@@ -194,6 +194,59 @@ func TestStatsReportFreshness(t *testing.T) {
 	}
 }
 
+func TestCoverageNotesAndStaleness(t *testing.T) {
+	ctx := context.Background()
+	st, schema := storetest.NewNamed(t)
+	if _, err := st.InsertMessage(ctx, msg("whatsapp", "w1", store.Message{Body: "hi"})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.InsertMessage(ctx, msg("gmail", "g1", store.Message{Body: "hi"})); err != nil {
+		t.Fatal(err)
+	}
+	// ingested_at defaults to now, so staleness needs a row that was written
+	// long enough ago to count.
+	storetest.Exec(t, schema,
+		`update messages set ingested_at = now() - interval '90 days' where source = 'whatsapp'`)
+
+	if err := st.SetCoverage(ctx, "whatsapp", "only the chats exported in 2025-08; nothing before"); err != nil {
+		t.Fatal(err)
+	}
+	by := func() map[string]store.SourceStats {
+		t.Helper()
+		stats, err := st.Stats(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]store.SourceStats{}
+		for _, s := range stats {
+			out[s.Source] = s
+		}
+		return out
+	}
+
+	stats := by()
+	if !strings.HasPrefix(stats["whatsapp"].Coverage, "only the chats") {
+		t.Errorf("coverage = %q", stats["whatsapp"].Coverage)
+	}
+	if !stats["whatsapp"].Stale {
+		t.Error("a source with nothing new in 90 days should be flagged stale")
+	}
+	if stats["gmail"].Stale || stats["gmail"].Coverage != "" {
+		t.Errorf("gmail = %+v, want fresh and unannotated", stats["gmail"])
+	}
+	// A coverage note is written by hand and must not read as a sync.
+	if stats["whatsapp"].LastSync != nil {
+		t.Error("a coverage note claimed to be a sync checkpoint")
+	}
+
+	if err := st.SetCoverage(ctx, "whatsapp", ""); err != nil {
+		t.Fatal(err)
+	}
+	if c := by()["whatsapp"].Coverage; c != "" {
+		t.Errorf("coverage = %q after clearing", c)
+	}
+}
+
 func TestThreads(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)

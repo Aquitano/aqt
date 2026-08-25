@@ -102,6 +102,30 @@ func (s *Server) handleContactCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, c)
 }
 
+// maxContactImport bounds one import. A contact book is names and handles;
+// anything past this is not one.
+const maxContactImport = 8 << 20
+
+// handleContactImport applies a batch the owner assembled. Individual
+// conflicts are reported per contact rather than failing the request: half a
+// contact book applied and the reason for the rest is more useful than an
+// all-or-nothing 409.
+func (s *Server) handleContactImport(w http.ResponseWriter, r *http.Request) {
+	var in []store.ContactImport
+	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, maxContactImport))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid JSON body: "+strings.TrimSpace(err.Error()))
+		return
+	}
+	res, err := s.db.ImportContacts(r.Context(), in)
+	if err != nil {
+		writeCause(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 func (s *Server) handleContactDelete(w http.ResponseWriter, r *http.Request) {
 	err := s.db.DeleteContact(r.Context(), r.PathValue("name"))
 	if errors.Is(err, store.ErrNotFound) {

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -95,6 +96,67 @@ func (s *Store) CreateContact(ctx context.Context, name, note string) (Contact, 
 		return Contact{}, fmt.Errorf("contact %q already exists", name)
 	}
 	return c, err
+}
+
+// ContactImport is one contact in a bulk import: the owner's name for a person
+// and every identity that means them. Aliases arrive already split into scope
+// and value — reading "whatsapp:Alice" as a scope needs the list of known
+// sources, which is the CLI's job.
+type ContactImport struct {
+	Name    string          `json:"name"`
+	Note    string          `json:"note,omitempty"`
+	Aliases []ImportedAlias `json:"aliases,omitempty"`
+}
+
+// ImportedAlias is one identity to attach; an empty Source matches everywhere.
+type ImportedAlias struct {
+	Source string `json:"source,omitempty"`
+	Value  string `json:"value"`
+}
+
+// ContactImportResult is what happened to one entry. Errors are per-alias and
+// per-contact, never fatal: one identity another contact already claims must
+// not stop the rest of a file the owner assembled by hand.
+type ContactImportResult struct {
+	Name string `json:"name"`
+	// Created is false for a contact that already existed and only gained
+	// aliases.
+	Created bool     `json:"created"`
+	Aliases int      `json:"aliases"`
+	Errors  []string `json:"errors,omitempty"`
+}
+
+// ImportContacts applies a batch of contacts and their aliases, reporting each
+// one separately. Existing contacts are kept and only extended, so re-applying
+// a file the owner has edited adds what is new instead of failing whole.
+func (s *Store) ImportContacts(ctx context.Context, in []ContactImport) ([]ContactImportResult, error) {
+	out := make([]ContactImportResult, 0, len(in))
+	for _, c := range in {
+		res := ContactImportResult{Name: strings.TrimSpace(c.Name)}
+		_, err := s.GetContact(ctx, res.Name)
+		switch {
+		case errors.Is(err, ErrNotFound):
+			if _, err := s.CreateContact(ctx, res.Name, c.Note); err != nil {
+				res.Errors = append(res.Errors, err.Error())
+				out = append(out, res)
+				continue
+			}
+			res.Created = true
+		case err != nil:
+			res.Errors = append(res.Errors, err.Error())
+			out = append(out, res)
+			continue
+		}
+		for _, a := range c.Aliases {
+			if _, err := s.AddAlias(ctx, res.Name, a.Source, a.Value); err != nil {
+				res.Errors = append(res.Errors, fmt.Sprintf("%s: %v", a.Value, err))
+				continue
+			}
+			res.Aliases++
+		}
+		out = append(out, res)
+	}
+	return out, nil
 }
 
 func (s *Store) DeleteContact(ctx context.Context, name string) error {
@@ -321,9 +383,7 @@ func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessa
 	if o.Offset > MaxSearchOffset {
 		return nil, fmt.Errorf("offset must be at most %d; narrow with --source or --since instead", MaxSearchOffset)
 	}
-	sql := `select m.id, m.source, m.external_id, m.message_id, m.thread_id, m.sender,
-	               m.recipients, m.subject, m.body, m.sent_at, m.raw_ref
-	        from messages m where` + aliasMatch("$1")
+	sql := `select ` + messageColumns + ` from messages m where` + aliasMatch("$1")
 	args := []any{c.ID}
 	next := func(v any) string {
 		args = append(args, v)
@@ -351,14 +411,22 @@ func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessa
 	out := []Message{}
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.Source, &m.ExternalID, &m.MessageID, &m.ThreadID, &m.Sender,
-			&m.Recipients, &m.Subject, &m.Body, &m.SentAt, &m.RawRef); err != nil {
+		if err := m.scanFull(rows); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
 	}
 	return out, rows.Err()
 }
+
+// The AI chat exports record who spoke as a role, not as a person: every
+// ChatGPT and Claude conversation has an "assistant" and a "user". Left in,
+// they are the two loudest suggestions in the archive and neither is someone to
+// attach a contact to.
+var (
+	llmRoleSources = []string{"chatgpt", "claude"}
+	llmRoles       = []string{"assistant", "user"}
+)
 
 // SuggestIdentities ranks the identities no contact claims yet by how much
 // mail they account for, so attaching the people who actually matter does not
@@ -381,12 +449,13 @@ func (s *Store) SuggestIdentities(ctx context.Context, limit int) ([]IdentitySug
 		select identity, count(*), array_agg(distinct source), (array_agg(distinct sample))[1:3]
 		from seen
 		where identity <> ''
+		  and not (source = any ($2::text[]) and identity = any ($3::text[]))
 		  and not exists (
 			select 1 from contact_aliases a
 			where a.value_norm = seen.identity and (a.source = '' or a.source = seen.source))
 		group by identity
 		order by count(*) desc, identity
-		limit $1`, limit)
+		limit $1`, limit, llmRoleSources, llmRoles)
 	if err != nil {
 		return nil, err
 	}

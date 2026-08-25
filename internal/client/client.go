@@ -116,8 +116,31 @@ func (c *Client) GetMessageDetail(ctx context.Context, id int64) (store.MessageD
 	return getJSON[store.MessageDetail](ctx, c, "/v1/messages/"+strconv.FormatInt(id, 10), nil)
 }
 
+// GetMessageDetailByRef fetches a message by its stable ref; the same endpoint
+// takes either form.
+func (c *Client) GetMessageDetailByRef(ctx context.Context, ref string) (store.MessageDetail, error) {
+	if err := store.ValidRef(ref); err != nil {
+		return store.MessageDetail{}, err
+	}
+	return getJSON[store.MessageDetail](ctx, c, "/v1/messages/"+ref, nil)
+}
+
 func (c *Client) Stats(ctx context.Context) ([]store.SourceStats, error) {
 	return getJSON[[]store.SourceStats](ctx, c, "/v1/stats", nil)
+}
+
+// SetCoverage records what a source is known to hold; an empty text clears it.
+func (c *Client) SetCoverage(ctx context.Context, source, text string) error {
+	body, err := json.Marshal(map[string]string{"text": text})
+	if err != nil {
+		return err
+	}
+	resp, err := c.request(ctx, http.MethodPut,
+		"/v1/sources/"+url.PathEscape(source)+"/coverage", nil, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	return resp.Body.Close()
 }
 
 // Thread fetches one conversation. An empty source lets the server resolve it,
@@ -178,6 +201,10 @@ func (c *Client) SuggestIdentities(ctx context.Context, limit int) ([]store.Iden
 func (c *Client) CreateContact(ctx context.Context, name, note string) (store.Contact, error) {
 	return postJSON[store.Contact](ctx, c, "/v1/contacts", nil,
 		map[string]string{"name": name, "note": note})
+}
+
+func (c *Client) ImportContacts(ctx context.Context, in []store.ContactImport) ([]store.ContactImportResult, error) {
+	return postJSON[[]store.ContactImportResult](ctx, c, "/v1/contacts/import", nil, in)
 }
 
 func (c *Client) DeleteContact(ctx context.Context, name string) error {

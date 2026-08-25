@@ -37,6 +37,7 @@ Everything normalizes to one `messages` table; source-specific richness stays in
 - `messages(id, source, external_id, thread_id, sender, recipients[], subject, body, sent_at, raw_ref, ingested_at)`
   - `unique (source, external_id)` makes every importer idempotent — re-importing a dump is always safe.
   - Sources without stable IDs (WhatsApp) derive `external_id = sha256(thread|sent_at|sender|body)`.
+  - Citations use a derived `ref`, not `id`: `substr(sha256(source || '\x00' || coalesce(nullif(message_id,''), external_id)), 1, 12)`, computed in the select list of every read and accepted by `bank show`. `id` is a row serial, so rebuilding the archive repoints every `bank:<id>` a note ever recorded; the ref depends only on the pair that already defines a message's identity, and survives. Deliberately not stored and not indexed — a stored copy could disagree with the formula, and a sequential scan answers a ref lookup in a fraction of a second at this scale.
   - `thread_id` is the source's own conversation id wherever there is one — ChatGPT `conversation_id`, Claude.ai `uuid`, a Claude Code session id, a Discord channel id — and the human title lives in `subject`. Titles repeat ("New chat", a #general on every server) and get renamed, so keying threads on them merged unrelated conversations and split renamed ones.
 - `attachments(id, message_id, filename, mime_type, size_bytes, sha256)` — bytes live in the blob store, not the DB.
 - `blob_text(sha256, text, extractor, status)` + a denormalized `messages.attachment_text` — text read out of attachments, keyed on content so a document attached to forty messages is extracted once. The column is what the BM25 index sees; `store.RefreshAttachmentText` recomputes it wholesale in one idempotent statement, so there is no trigger and no bookkeeping to drift. One index means one score and working snippets; two indexes would mean inventing a fusion rule.
@@ -65,9 +66,11 @@ bank contact add|rm|list|show <name>    # one person across their many identitie
 bank contact alias add|rm <name> <email|handle|source:name>...
 bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--offset n] [--json]
 bank contact suggest [--limit n]        # identities in the archive no contact claims yet
+bank contact import <file|-> [--json]   # a whole contact book at once (JSON array or NDJSON)
 bank thread <id> [--source s] [--limit n] [--json]   # one whole conversation, oldest first
-bank show <id> [--json]                 # full message + attachment refs
-bank stats [--json]                     # counts, date ranges, last import, last sync
+bank show <id|ref> [--json]             # full message + attachment refs
+bank stats [--json]                     # counts, date ranges, last import, last sync, coverage
+bank coverage <source> <text>           # note what a source holds (empty text clears)
 bank fetch <sha256> [-o path]           # write an attachment to a file
 bank verify [--heal] [--source s]       # archive integrity; --heal rebuilds from archived raw inputs
 bank serve [--listen addr]              # HTTP API for remote CLIs (default 127.0.0.1:8480)

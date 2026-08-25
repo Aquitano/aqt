@@ -33,6 +33,7 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank contact add alice                        # one person, many identities
 ./bank contact alias add alice alice@example.com "whatsapp:Alice" discord:alice_x
 ./bank contact messages alice                   # everything she sent or received
+./bank contact import contacts.json             # a whole contact book at once
 
 ./bank search "that invoice" --from alice --since 2024-01-01
 ./bank search "retainer"                        # matches text inside PDFs and Office files
@@ -41,8 +42,10 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank search "typo-tolerannt query" --json     # agents consume this
 ./bank search "invoice" --limit 50 --offset 50  # the next page
 ./bank show 42
+./bank show c5e63bfc3750                        # the stable ref a citation carries
 ./bank thread "Alice" --source whatsapp         # the whole conversation
-./bank stats
+./bank stats                                    # counts, freshness, coverage notes
+./bank coverage whatsapp "only the chats exported in 2025-08"
 ./bank query --schema                           # tables and columns, before the first query
 ./bank query "select source, count(*) from messages group by 1"
                                                 # read-only ad-hoc SQL: READ ONLY tx,
