@@ -51,7 +51,10 @@ func dropStaleSchemas(t *testing.T, conn *pgx.Conn) {
 		return
 	}
 	var stale []string
-	cutoff := time.Now().Add(-staleAfter).Unix()
+	// Read after the query, so every schema the query returned was created
+	// before it: a sibling test process can never look like the future.
+	now := time.Now().Unix()
+	cutoff := now - int64(staleAfter.Seconds())
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
@@ -60,8 +63,10 @@ func dropStaleSchemas(t *testing.T, conn *pgx.Conn) {
 		parts := strings.Split(strings.TrimPrefix(name, schemaPrefix), "_")
 		created, err := strconv.ParseInt(parts[0], 10, 64)
 		// An unparseable name is from an older layout, and is stale by
-		// definition: nothing running now would have made it.
-		if err != nil || created < cutoff {
+		// definition: nothing running now would have made it. A timestamp in
+		// the future is the same kind of debris — a clock skew or a hand-made
+		// schema — and without this it would outlive every sweep.
+		if err != nil || created < cutoff || created > now {
 			stale = append(stale, name)
 		}
 	}
