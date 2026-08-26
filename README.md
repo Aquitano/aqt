@@ -22,6 +22,10 @@ go build -o bank ./cmd/bank
                                                 #  heals an earlier text-only pass)
 ./bank import claude claude-export.zip          # Claude.ai data export
 ./bank import claude-code ~/.claude/projects    # Claude Code transcripts
+./bank import codex ~/.codex/sessions           # Codex CLI rollouts
+./bank import opencode ~/.local/share/opencode  # OpenCode session database
+./bank import antigravity ~/.gemini/antigravity-cli/brain  # Antigravity transcripts
+./bank import ai                                # all four from their default locations
 echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source notes -
 
 ./bank import inbox                             # sweep $BANK_DATA_DIR/inbox/<kind>/

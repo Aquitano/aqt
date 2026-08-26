@@ -25,8 +25,13 @@ One place for every message I've ever sent or received, searchable in millisecon
 | WhatsApp | per-chat "Export chat" zips from the phone, dropped into inbox | manual |
 | ChatGPT | official data export zip (conversations.json or numbered shards, message tree incl. regenerated branches) | manual, on demand |
 | Claude.ai | official data export zip (conversations.json) | manual, on demand |
-| Claude Code | local session .jsonl transcripts (user/assistant text only, tool noise dropped) | `bank import claude-code ~/.claude/projects` |
+| Claude Code | local session .jsonl transcripts (user/assistant text only, tool noise dropped) | `bank import ai` (or claude-code + a path) |
+| Codex CLI | local rollout .jsonl files (subagent/guardian threads and injected context dropped) | `bank import ai` (or codex + a path) |
+| OpenCode | local opencode.db, snapshotted while live, OAuth-token tables stripped from the snapshot | `bank import ai` (or opencode + a path) |
+| Antigravity | per-conversation transcript.jsonl under the brain dir (tool steps dropped) | `bank import ai` (or antigravity + a path) |
 | anything else | `bank import json` — JSON array or NDJSON on stdin/file | agents, scripts |
+
+The harness sources differ from exports in two ways. Their raw input is one file that grows in place, so the archive keeps a single superseding copy per session file (`archive.Replace`) instead of accumulating a new hash-named copy per sync — for OpenCode that raw is deliberately the sanitized snapshot, and its archive name carries a per-host discriminator so several machines can sync into one server. And `bank import ai` syncs rather than imports: a session file whose exact bytes are already archived was fully ingested by an earlier run (archiving happens after ingest) and is skipped unparsed; `bank import <kind> <path>` and `bank reimport` always do the full pass. Claude Code archives made before the superseding scheme keep their hash-prefixed names; they stay valid for reimport and simply stop multiplying.
 
 Deliberately inside ToS everywhere. If WhatsApp manual export gets old, the escape hatches are (a) one-shot Android backup decrypt (`wa-crypt-tools`) for deep backfill, (b) a whatsmeow linked-device bridge for live capture — both documented here so the schema already fits them.
 

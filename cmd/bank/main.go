@@ -63,6 +63,11 @@ Usage:
   bank import chatgpt <export.zip|json|dir>   ChatGPT data export
   bank import claude <export.zip|json|dir>    Claude.ai data export
   bank import claude-code <file.jsonl|dir>    Claude Code session transcripts
+  bank import codex <file.jsonl|dir>          Codex CLI session rollouts
+  bank import opencode <opencode.db|dir>      OpenCode session database
+  bank import antigravity <transcript|dir>    Antigravity conversation transcripts
+  bank import ai                              all of the above from their default
+                                              locations (~/.claude, ~/.codex, ...)
   bank import json [--source s] <file|->      arbitrary JSON/NDJSON messages
                                               (the escape hatch for agents; - reads stdin)
   bank import inbox [--json]                  sweep $BANK_DATA_DIR/inbox/<kind>/
@@ -271,11 +276,14 @@ func printSyncResult(res gmail.SyncResult) {
 
 func cmdImport(ctx context.Context, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: bank import <inbox|whatsapp|eml|mbox|discord|linkedin|chatgpt|claude|claude-code|json> <path>...")
+		return fmt.Errorf("usage: bank import <inbox|ai|whatsapp|eml|mbox|discord|linkedin|chatgpt|claude|claude-code|codex|opencode|antigravity|json> <path>...")
 	}
 	kind := args[0]
 	if kind == "inbox" {
 		return cmdImportInbox(ctx, args[1:])
+	}
+	if kind == "ai" {
+		return cmdImportAI(ctx, args[1:])
 	}
 	fs := flag.NewFlagSet("import "+kind, flag.ExitOnError)
 	source := fs.String("source", defaultSource(kind), "")
@@ -308,6 +316,86 @@ func cmdImport(ctx context.Context, args []string) error {
 		printImportResult(kind, *source, path, res)
 	}
 	return extractAfterImport(ctx, extract.Local{Store: d.st, Blobs: d.blobs}, *noExtract)
+}
+
+// cmdImportAI sweeps every known AI coding harness's default session
+// locations — the registry in internal/aichat — so a cron line needs no
+// per-tool paths. Missing roots are reported rather than skipped silently:
+// "0 sessions" and "looked in the wrong place" must stay distinguishable.
+func cmdImportAI(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("import ai", flag.ExitOnError)
+	noExtract := fs.Bool("no-extract", false, "")
+	if err := parseFlagsAnywhere(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("usage: bank import ai  (one path imports via bank import <codex|claude-code|opencode|antigravity>)")
+	}
+	if c := client.FromEnv(); c != nil {
+		return importAIRemote(ctx, c)
+	}
+	d, closeStore, err := openLocal(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+	runs, err := aichat.ImportAll(ctx, d.st, d.archiveDir)
+	for _, r := range runs {
+		printHarnessRun(r)
+	}
+	if err != nil {
+		return err
+	}
+	return extractAfterImport(ctx, extract.Local{Store: d.st, Blobs: d.blobs}, *noExtract)
+}
+
+func printHarnessRun(r aichat.HarnessRun) {
+	switch {
+	case r.Missing:
+		fmt.Printf("%s: nothing at %s\n", r.Kind, r.Root)
+	case r.Error != "":
+		fmt.Printf("%s (%s): %s\n", r.Kind, r.Root, r.Error)
+	default:
+		printAIChatResult(r.Kind, r.Root, *r.Result)
+	}
+}
+
+// importAIRemote is the same sweep against a `bank serve`: sessions are
+// discovered locally and uploaded one file at a time. One broken harness or
+// one refused file must not cost the harnesses after it — failures are
+// reported, the sweep continues, and a nonzero count fails the run at the
+// end, mirroring how the local ImportAll treats per-root errors.
+func importAIRemote(ctx context.Context, c *client.Client) error {
+	staging, err := os.MkdirTemp(stagingDir(), "ai-import-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+	var failed int
+	for _, h := range aichat.Harnesses() {
+		for _, root := range h.Roots() {
+			if _, err := os.Stat(root); err != nil {
+				fmt.Printf("%s: nothing at %s\n", h.Kind, root)
+				continue
+			}
+			files, err := h.Files(root, staging)
+			if err != nil {
+				failed++
+				fmt.Fprintf(os.Stderr, "bank: %s: %v\n", root, err)
+				continue
+			}
+			for _, f := range files {
+				if err := importRemoteFile(ctx, c, h.Kind, "", f); err != nil {
+					failed++
+					fmt.Fprintf(os.Stderr, "bank: %s: %v\n", f, err)
+				}
+			}
+		}
+	}
+	if failed > 0 {
+		return fmt.Errorf("%d upload(s) failed", failed)
+	}
+	return nil
 }
 
 // extractAfterImport reads text out of whatever the import just stored, so a
@@ -377,6 +465,12 @@ func importLocal(ctx context.Context, d *local, kind, source, path string) (any,
 		return aichat.ImportClaude(ctx, d.st, d.archiveDir, path)
 	case "claude-code":
 		return aichat.ImportClaudeCode(ctx, d.st, d.archiveDir, path)
+	case "codex":
+		return aichat.ImportCodex(ctx, d.st, d.archiveDir, path)
+	case "opencode":
+		return aichat.ImportOpenCode(ctx, d.st, d.archiveDir, path)
+	case "antigravity":
+		return aichat.ImportAntigravity(ctx, d.st, d.archiveDir, path)
 	case "json":
 		input, err := readInput(path)
 		if err != nil {
@@ -458,7 +552,7 @@ func cmdImportInbox(ctx context.Context, args []string) error {
 // eml/mbox archives live under a --source (proton, gmail, ...) that does not
 // determine the kind. `reimport mbox --heal-bodies` is the one pass that does
 // re-read mail, and it repairs one column instead of replaying an import.
-var reimportKinds = []string{"chatgpt", "claude", "claude-code", "discord", "whatsapp", "linkedin"}
+var reimportKinds = []string{"chatgpt", "claude", "claude-code", "codex", "opencode", "antigravity", "discord", "whatsapp", "linkedin"}
 
 // healBodiesKind is the pseudo-kind that reaches the mail healer. It is a kind
 // rather than a command of its own because it is the same operation from the
@@ -715,6 +809,12 @@ func printAIChatResult(kind, path string, res aichat.Result) {
 	if res.EmptyConversations > 0 {
 		fmt.Printf(", %d conversations without importable messages", res.EmptyConversations)
 	}
+	if res.SubagentSessions > 0 {
+		fmt.Printf(", %d subagent sessions skipped", res.SubagentSessions)
+	}
+	if res.UnchangedSessions > 0 {
+		fmt.Printf(", %d unchanged since last sync", res.UnchangedSessions)
+	}
 	if res.Attachments > 0 || res.MissingMedia > 0 {
 		fmt.Printf(", %d attachments (%d missing from export)", res.Attachments, res.MissingMedia)
 	}
@@ -739,8 +839,15 @@ func printGenericResult(res generic.Result) {
 }
 
 // importRemote uploads to a `bank serve`. The server only ever sees single
-// files, so directory inputs are expanded here.
+// files, so directory inputs are expanded here, and harness inputs that
+// cannot ship as-is (a live SQLite database, a transcript named only by its
+// path) are staged into shippable files first.
 func importRemote(ctx context.Context, c *client.Client, kind, source string, paths []string) error {
+	staging, err := os.MkdirTemp(stagingDir(), "remote-import-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
 	for _, path := range paths {
 		if kind == "json" {
 			input, err := readInput(path)
@@ -754,7 +861,7 @@ func importRemote(ctx context.Context, c *client.Client, kind, source string, pa
 			printGenericResult(res)
 			continue
 		}
-		files, err := remoteImportFiles(kind, path)
+		files, err := remoteImportFiles(kind, path, staging)
 		if err != nil {
 			return err
 		}
@@ -767,21 +874,23 @@ func importRemote(ctx context.Context, c *client.Client, kind, source string, pa
 	return nil
 }
 
-func remoteImportFiles(kind, path string) ([]string, error) {
+func remoteImportFiles(kind, path, staging string) ([]string, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
+	if h, ok := aichat.HarnessByKind(kind); ok {
+		return h.Files(path, staging)
+	}
 	if !info.IsDir() {
 		return []string{path}, nil
 	}
-	ext := map[string]string{"eml": ".eml", "claude-code": ".jsonl"}[kind]
-	if ext == "" {
+	if kind != "eml" {
 		return nil, fmt.Errorf("%s: remote import of %s takes a file, not a directory", path, kind)
 	}
 	var out []string
 	err = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.EqualFold(filepath.Ext(p), ext) {
+		if err != nil || d.IsDir() || !strings.EqualFold(filepath.Ext(p), ".eml") {
 			return err
 		}
 		out = append(out, p)
@@ -816,7 +925,7 @@ func importRemoteFile(ctx context.Context, c *client.Client, kind, source, path 
 			return err
 		}
 		printLinkedInResult(res)
-	case "chatgpt", "claude", "claude-code":
+	case "chatgpt", "claude", "claude-code", "codex", "opencode", "antigravity":
 		res, err := client.ImportFile[aichat.Result](ctx, c, kind, source, path)
 		if err != nil {
 			return err
@@ -1515,6 +1624,7 @@ func excerpt(s string, n int) string {
 // "whatsapp:Alice" is read as a scope rather than as a name with a colon in it.
 var builtinSources = []string{
 	"whatsapp", "gmail", "proton", "discord", "linkedin", "chatgpt", "claude", "claude-code",
+	"codex", "opencode", "antigravity",
 }
 
 const contactUsage = `usage: bank contact <add|rm|list|show|alias|messages|suggest|import> ...
@@ -2087,7 +2197,7 @@ func pruneStaging(dir string, maxAge time.Duration) {
 	cutoff := time.Now().Add(-maxAge)
 	for _, e := range entries {
 		known := false
-		for _, prefix := range []string{"ocr-", "blob-", "reimport-"} {
+		for _, prefix := range []string{"ocr-", "blob-", "reimport-", "ai-import-", "remote-import-"} {
 			if strings.HasPrefix(e.Name(), prefix) {
 				known = true
 				break

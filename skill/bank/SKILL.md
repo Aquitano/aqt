@@ -1,6 +1,6 @@
 ---
 name: bank
-description: Search the owner's personal message archive (aqt-bank) through the `bank` CLI. Use whenever a task needs something he wrote, received or was sent — an old email thread (Gmail, Proton), a WhatsApp or Discord conversation, a LinkedIn message, a past ChatGPT/Claude/Claude Code session, a decision or a name or a number that was discussed somewhere — or when you need the bytes of an attachment that was mentioned in one of those. Also covers writing into it: archiving a note, a decision record or arbitrary messages via `bank import json`. Trigger on requests like "what did X say about Y", "find that email/chat about Z", "when did we agree on W", "pull the attachment from that message", "save this note to the archive".
+description: Search the owner's personal message archive (aqt-bank) through the `bank` CLI. Use whenever a task needs something he wrote, received or was sent — an old email thread (Gmail, Proton), a WhatsApp or Discord conversation, a LinkedIn message, a past ChatGPT/Claude/Claude Code/Codex/OpenCode/Antigravity session, a decision or a name or a number that was discussed somewhere — or when you need the bytes of an attachment that was mentioned in one of those. Also covers writing into it: archiving a note, a decision record or arbitrary messages via `bank import json`. Trigger on requests like "what did X say about Y", "find that email/chat about Z", "when did we agree on W", "pull the attachment from that message", "save this note to the archive".
 ---
 
 # bank — the owner's message archive
@@ -130,7 +130,7 @@ bank query "select sender, count(*) n, min(sent_at)::date first, max(sent_at)::d
 
 ## Sources
 
-`whatsapp`, `gmail`, `proton`, `discord`, `linkedin`, `chatgpt`, `claude` (claude.ai exports), `claude-code` (session transcripts), plus any name created by a past `bank import json --source <name>`. Run `bank stats` to see which actually exist here before filtering on one — a `--source` typo silently returns nothing.
+`whatsapp`, `gmail`, `proton`, `discord`, `linkedin`, `chatgpt`, `claude` (claude.ai exports), `claude-code`, `codex`, `opencode`, `antigravity` (AI coding session transcripts), plus any name created by a past `bank import json --source <name>`. Run `bank stats` to see which actually exist here before filtering on one — a `--source` typo silently returns nothing.
 
 ## Writing
 

@@ -2,6 +2,7 @@ package aichat
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -42,13 +43,29 @@ type ccLine struct {
 // ImportClaudeCode ingests one session .jsonl or every .jsonl under a
 // directory (e.g. ~/.claude/projects).
 func ImportClaudeCode(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
+	return importClaudeCode(ctx, st, archiveDir, path, false)
+}
+
+// SyncClaudeCode is ImportClaudeCode for a recurring sweep: a session whose
+// exact bytes are already archived was fully ingested by an earlier run
+// (archiving happens after ingest) and is skipped without being parsed.
+// Sidechain-only and empty transcripts are never archived, so a sync still
+// re-parses (and re-drops) them each run. And the skip has one ordering
+// limit: last-message ordering only sorts the files that changed, so if an
+// already-superseded predecessor is touched later on its own, its replayed
+// prefix can rethread to it — a full ImportClaudeCode restores the order.
+func SyncClaudeCode(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
+	return importClaudeCode(ctx, st, archiveDir, path, true)
+}
+
+func importClaudeCode(ctx context.Context, st *store.Store, archiveDir, path string, onlyChanged bool) (Result, error) {
 	var res Result
 	info, err := os.Stat(path)
 	if err != nil {
 		return res, err
 	}
 	if !info.IsDir() {
-		return res, importSession(ctx, st, archiveDir, path, &res)
+		return res, importSession(ctx, st, archiveDir, path, &res, onlyChanged)
 	}
 	// One unreadable or structurally broken transcript must not cost every
 	// later session in the tree. Operational failures — the database, the
@@ -63,11 +80,21 @@ func ImportClaudeCode(ctx context.Context, st *store.Store, archiveDir, path str
 		if err != nil || d.IsDir() || !strings.EqualFold(filepath.Ext(p), ".jsonl") {
 			return err
 		}
-		last, err := sessionLastTimestamp(p)
-		if err != nil {
+		msgs, skipped, rerr := readClaudeCodeSession(archiveDir, p, onlyChanged)
+		if rerr != nil {
 			res.FailedSessions = append(res.FailedSessions, p)
-			fmt.Fprintf(os.Stderr, "bank: skipping claude-code session %s: %v\n", p, err)
+			fmt.Fprintf(os.Stderr, "bank: skipping claude-code session %s: %v\n", p, rerr)
 			return nil
+		}
+		if skipped {
+			res.UnchangedSessions++
+			return nil
+		}
+		var last time.Time
+		for _, m := range msgs {
+			if m.SentAt.After(last) {
+				last = m.SentAt
+			}
 		}
 		sessions = append(sessions, session{path: p, last: last})
 		return nil
@@ -87,7 +114,7 @@ func ImportClaudeCode(ctx context.Context, st *store.Store, archiveDir, path str
 		return sessions[i].path < sessions[j].path
 	})
 	for _, s := range sessions {
-		if err := importSession(ctx, st, archiveDir, s.path, &res); err != nil {
+		if err := importSession(ctx, st, archiveDir, s.path, &res, false); err != nil {
 			if fail.IsOp(err) {
 				return res, err
 			}
@@ -98,34 +125,41 @@ func ImportClaudeCode(ctx context.Context, st *store.Store, archiveDir, path str
 	return res, nil
 }
 
-// sessionLastTimestamp reads a transcript just far enough to order it among
-// its siblings: the time of the newest message it holds.
-func sessionLastTimestamp(path string) (time.Time, error) {
-	f, err := os.Open(path)
+// readClaudeCodeSession reads and parses one transcript for the ordering
+// pass, reporting skipped=true when onlyChanged is set and the file's exact
+// bytes are already archived — which means an earlier run ingested all of it.
+func readClaudeCodeSession(archiveDir, path string, onlyChanged bool) (msgs []message, skipped bool, err error) {
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		return time.Time{}, err
+		return nil, false, err
 	}
-	defer f.Close()
-	msgs, _, err := parseClaudeCodeSession(f, "")
+	if onlyChanged && archive.Identical(archiveDir, "claude-code", filepath.Base(path), raw) {
+		return nil, true, nil
+	}
+	msgs, _, err = parseClaudeCodeSession(bytes.NewReader(raw), strings.TrimSuffix(filepath.Base(path), ".jsonl"))
 	if err != nil {
-		return time.Time{}, err
+		return nil, false, err
 	}
-	var last time.Time
-	for _, m := range msgs {
-		if m.SentAt.After(last) {
-			last = m.SentAt
-		}
-	}
-	return last, nil
+	return msgs, false, nil
 }
 
-func importSession(ctx context.Context, st *store.Store, archiveDir, path string, res *Result) error {
-	f, err := os.Open(path)
+func importSession(ctx context.Context, st *store.Store, archiveDir, path string, res *Result, onlyChanged bool) error {
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	msgs, sidechain, err := parseClaudeCodeSession(f, strings.TrimSuffix(filepath.Base(path), ".jsonl"))
-	f.Close()
+	name := filepath.Base(path)
+	// Refuse a bad archive name before any row exists that references it —
+	// ingest runs first, and rows pointing at a ref Replace then rejects
+	// would dangle with nothing to heal them.
+	if err := archive.ValidName(name); err != nil {
+		return err
+	}
+	if onlyChanged && archive.Identical(archiveDir, "claude-code", name, raw) {
+		res.UnchangedSessions++
+		return nil
+	}
+	msgs, sidechain, err := parseClaudeCodeSession(bytes.NewReader(raw), strings.TrimSuffix(name, ".jsonl"))
 	if err != nil {
 		return err
 	}
@@ -137,12 +171,17 @@ func importSession(ctx context.Context, st *store.Store, archiveDir, path string
 		}
 		return nil
 	}
-	rawRef, err := archive.Copy(archiveDir, "claude-code", path)
-	if err != nil {
+	// Ingest before archiving, under the archive name Replace will use: only
+	// after every message landed do the bytes become "already archived", so a
+	// run that died mid-ingest re-reads the file instead of skipping it.
+	res.Conversations++
+	if err := res.ingest(ctx, st, "claude-code", filepath.Join("claude-code", name), msgs, nil); err != nil {
+		return err
+	}
+	if _, err := archive.Replace(archiveDir, "claude-code", name, raw); err != nil {
 		return fail.Opf("archive %s: %w", path, err)
 	}
-	res.Conversations++
-	return res.ingest(ctx, st, "claude-code", rawRef, msgs, nil)
+	return nil
 }
 
 // parseClaudeCodeSession reads one transcript. session is the session id the

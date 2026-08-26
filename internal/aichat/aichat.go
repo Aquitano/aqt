@@ -1,8 +1,10 @@
-// Package aichat imports AI conversation history: ChatGPT data exports,
-// Claude.ai data exports, and local Claude Code session transcripts. All three
-// normalize to the common schema — sender is the role ("user"/"assistant"),
-// thread is the export's stable conversation id and subject its human title —
-// and message UUIDs from the exports keep re-imports idempotent.
+// Package aichat imports AI conversation history: ChatGPT and Claude.ai data
+// exports, and the local session stores of AI coding harnesses (Claude Code,
+// Codex, OpenCode, Antigravity — see harness.go for the registry that
+// `bank import ai` sweeps). Every source normalizes to the common schema —
+// sender is the role ("user"/"assistant"), thread is the source's stable
+// conversation id and subject its human title — and stable per-message ids
+// keep re-imports idempotent.
 //
 // Titles are not unique (a ChatGPT export holds dozens of "New chat"), so
 // keying threads on them merged unrelated conversations into one.
@@ -52,9 +54,13 @@ type Result struct {
 	// A directory import continues past them, so the paths belong in the
 	// result and not only in a stderr line.
 	FailedSessions []string `json:"failed_sessions,omitempty"`
-	// SubagentSessions counts Claude Code transcripts that were nothing but
-	// subagent sidechain traffic and were deliberately not imported.
+	// SubagentSessions counts transcripts that were nothing but subagent
+	// sidechain traffic and were deliberately not imported.
 	SubagentSessions int `json:"subagent_sessions,omitempty"`
+	// UnchangedSessions counts session files a Sync* import skipped because
+	// their exact bytes were already archived — and, since archiving happens
+	// after ingest, already imported — by an earlier run.
+	UnchangedSessions int `json:"unchanged_sessions,omitempty"`
 }
 
 type message struct {
