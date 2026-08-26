@@ -60,14 +60,82 @@ func Write(archiveDir, source, name string, data []byte) (string, error) {
 	return write(archiveDir, source, name, bytes.NewReader(data))
 }
 
+// Replace stores content under <archiveDir>/<source>/<name>, superseding what
+// a previous import archived there. It exists for sources whose raw input is
+// one growing file re-read on every sync — an AI harness session log, a live
+// database snapshot — where Copy would archive the same ever-longer prefix
+// over and over; the newest copy contains everything the older ones did, so
+// it alone is the raw input. Identical content is a no-op, and the rename is
+// atomic: a reader never sees a partial file.
+func Replace(archiveDir, source, name string, data []byte) (string, error) {
+	if err := ValidSource(source); err != nil {
+		return "", err
+	}
+	if err := ValidName(name); err != nil {
+		return "", err
+	}
+	rel := filepath.Join(source, name)
+	if Identical(archiveDir, source, name, data) {
+		return rel, nil
+	}
+	dir := filepath.Join(archiveDir, source)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	tmp, err := os.CreateTemp(dir, ".partial-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(tmp.Name())
+	_, err = tmp.Write(data)
+	if err == nil {
+		err = tmp.Sync() // a file at dest is trusted as complete; see write
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmp.Name(), filepath.Join(archiveDir, rel)); err != nil {
+		return "", err
+	}
+	return rel, nil
+}
+
+// Identical reports whether <archiveDir>/<source>/<name> already holds
+// exactly this content. Importers that sync a growing file use it to skip
+// re-reading input whose every byte was archived — and, because they archive
+// only after a completed ingest, already imported — by an earlier run.
+func Identical(archiveDir, source, name string, data []byte) bool {
+	path := filepath.Join(archiveDir, source, name)
+	// Size first: on a sync most files either match exactly or grew, and the
+	// stat spares re-reading the whole archived copy for the grown ones.
+	info, err := os.Stat(path)
+	if err != nil || info.Size() != int64(len(data)) {
+		return false
+	}
+	existing, err := os.ReadFile(path)
+	return err == nil && bytes.Equal(existing, data)
+}
+
+// ValidName reports whether name is safe as an archive filename. Names can
+// contain externally supplied ids and upload basenames; they must stay a
+// single path component. Exported so importers that ingest before archiving
+// can refuse a bad name before any rows exist that reference it.
+func ValidName(name string) error {
+	if name == "" || name != filepath.Base(name) || strings.HasPrefix(name, "..") {
+		return fmt.Errorf("invalid archive name %q", name)
+	}
+	return nil
+}
+
 func write(archiveDir, source, name string, r io.Reader) (string, error) {
 	if err := ValidSource(source); err != nil {
 		return "", err
 	}
-	// name can contain externally supplied ids; it must stay a single path
-	// component.
-	if name == "" || name != filepath.Base(name) || strings.HasPrefix(name, "..") {
-		return "", fmt.Errorf("invalid archive name %q", name)
+	if err := ValidName(name); err != nil {
+		return "", err
 	}
 	dir := filepath.Join(archiveDir, source)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
