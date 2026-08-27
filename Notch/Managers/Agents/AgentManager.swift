@@ -153,6 +153,18 @@ final class AgentManager: ObservableObject {
                 self.notifier.notify(event)
             }
         }
+        // Surface t3 protocol drift in the Settings footer; clearing only
+        // removes a drift report, never an unrelated enable error.
+        if let t3 = providers.compactMap({ $0 as? T3CodeProvider }).first {
+            t3.onDrift = { [weak self] message in
+                guard let self else { return }
+                if let message {
+                    self.integrationError = message
+                } else if self.integrationError?.hasPrefix("T3 Code protocol") == true {
+                    self.integrationError = nil
+                }
+            }
+        }
     }
 
 

@@ -12,10 +12,16 @@ final class T3CodeProvider: AgentProviding {
     let kind: AgentKind = .t3code
     var onSessions: (([AgentSession]) -> Void)?
     var onEvent: ((AgentEvent) -> Void)?
+    /// Protocol-drift report for the Settings footer: a message when decoding
+    /// t3's stream starts failing, nil when a later frame decodes cleanly again.
+    var onDrift: ((String?) -> Void)?
 
     private let settings: Settings
     private var connectionTask: Task<Void, Never>?
     private var published: [String: AgentSession] = [:]
+    private var serverVersion: String?
+    private var warnedVersion: String?
+    private var driftReported = false
 
     private static let keychainAccount = "t3code-access-token"
 
@@ -139,6 +145,7 @@ final class T3CodeProvider: AgentProviding {
         guard let base = URL(string: settings.agentT3BaseURL) else {
             throw T3PairingError.invalidLink
         }
+        await checkServerVersion(base: base)
         let ticket = try await fetchWebSocketTicket(base: base, token: token)
 
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
@@ -163,7 +170,7 @@ final class T3CodeProvider: AgentProviding {
             let data = try await receiveData(from: socket)
             for message in T3Wire.decodeFrames(data) {
                 switch message {
-                case let .chunk(requestId, items):
+                case let .chunk(requestId, items, drift):
                     // Ack releases the server's next chunk (stream backpressure).
                     try await send(T3Wire.ack(requestId), over: socket)
                     var sawSnapshot = false
@@ -173,6 +180,7 @@ final class T3CodeProvider: AgentProviding {
                     }
                     publish(state, emitEvents: live && !sawSnapshot)
                     if sawSnapshot { live = true }
+                    if drift { reportDrift() } else if sawSnapshot { clearDrift() }
                 case .exit, .defect:
                     return
                 case .pong:
@@ -180,6 +188,40 @@ final class T3CodeProvider: AgentProviding {
                 }
             }
         }
+    }
+
+    /// Best-effort version gate: read the unauthenticated environment
+    /// descriptor, log the server version, and warn once per version when it's
+    /// newer than the last one this decoder was verified against. Never blocks
+    /// the connection — drift detection is the actual tripwire.
+    private func checkServerVersion(base: URL) async {
+        var request = URLRequest(url: base.appendingPathComponent(".well-known/t3/environment"))
+        request.timeoutInterval = 5
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let version = object["serverVersion"] as? String else { return }
+        serverVersion = version
+        Log.agents.info("t3: server version \(version)")
+        if T3Wire.isVersion(version, newerThan: T3Wire.verifiedServerVersion), warnedVersion != version {
+            warnedVersion = version
+            Log.agents.notice("t3: server \(version) is newer than verified \(T3Wire.verifiedServerVersion) — protocol may have drifted")
+        }
+    }
+
+    /// One report per drift episode; a later clean snapshot clears it.
+    private func reportDrift() {
+        guard !driftReported else { return }
+        driftReported = true
+        let server = serverVersion ?? "unknown"
+        Log.agents.error("t3: stream payload no longer decodes (server \(server), verified \(T3Wire.verifiedServerVersion))")
+        onDrift?("T3 Code protocol changed (server \(server), verified against \(T3Wire.verifiedServerVersion)) — sessions may be missing until Notch is updated.")
+    }
+
+    private func clearDrift() {
+        guard driftReported else { return }
+        driftReported = false
+        onDrift?(nil)
     }
 
     private func fetchWebSocketTicket(base: URL, token: String) async throws -> String {

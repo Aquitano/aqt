@@ -54,8 +54,17 @@ enum T3Wire {
         case "Chunk":
             guard let requestId = T3RequestID(dict["requestId"]) else { return nil }
             let values = dict["values"] as? [Any] ?? []
-            return .chunk(requestId: requestId,
-                          items: values.compactMap { shellItem(from: $0 as? [String: Any]) })
+            var items: [T3ShellItem] = []
+            var drift = false
+            for value in values {
+                let decoded = shellItem(from: value as? [String: Any])
+                if let item = decoded.item { items.append(item) }
+                if decoded.drift { drift = true }
+            }
+            // A non-empty chunk that decodes to nothing means the schema moved
+            // under us, not that t3 is quiet.
+            if !values.isEmpty && items.isEmpty { drift = true }
+            return .chunk(requestId: requestId, items: items, drift: drift)
         case "Exit":
             return .exit
         case "Pong":
@@ -67,29 +76,59 @@ enum T3Wire {
         }
     }
 
-    private static func shellItem(from dict: [String: Any]?) -> T3ShellItem? {
-        guard let dict, let kind = dict["kind"] as? String else { return nil }
+    /// `drift` marks a value that carried real payload we could no longer read
+    /// — the "t3 changed its schema" signal, as opposed to benign unknowns.
+    private static func shellItem(from dict: [String: Any]?) -> (item: T3ShellItem?, drift: Bool) {
+        guard let dict, let kind = dict["kind"] as? String else { return (nil, false) }
         switch kind {
         case "snapshot":
-            guard let snapshot = dict["snapshot"] as? [String: Any] else { return nil }
+            guard let snapshot = dict["snapshot"] as? [String: Any] else { return (nil, true) }
+            let rawThreads = snapshot["threads"] as? [Any] ?? []
             let projects = (snapshot["projects"] as? [Any] ?? [])
                 .compactMap { T3Project($0 as? [String: Any]) }
-            let threads = (snapshot["threads"] as? [Any] ?? [])
-                .compactMap { T3Thread($0 as? [String: Any]) }
-            return .snapshot(projects: projects, threads: threads)
+            let threads = rawThreads.compactMap { T3Thread($0 as? [String: Any]) }
+            return (.snapshot(projects: projects, threads: threads),
+                    !rawThreads.isEmpty && threads.isEmpty)
         case "project-upserted":
-            return T3Project(dict["project"] as? [String: Any]).map(T3ShellItem.projectUpserted)
+            return (T3Project(dict["project"] as? [String: Any]).map(T3ShellItem.projectUpserted), false)
         case "project-removed":
-            return (dict["projectId"] as? String).map(T3ShellItem.projectRemoved)
+            return ((dict["projectId"] as? String).map(T3ShellItem.projectRemoved), false)
         case "thread-upserted":
-            return T3Thread(dict["thread"] as? [String: Any]).map(T3ShellItem.threadUpserted)
+            let thread = T3Thread(dict["thread"] as? [String: Any])
+            return (thread.map(T3ShellItem.threadUpserted), thread == nil)
         case "thread-removed":
-            return (dict["threadId"] as? String).map(T3ShellItem.threadRemoved)
+            return ((dict["threadId"] as? String).map(T3ShellItem.threadRemoved), false)
         case "synchronized":
-            return .synchronized
+            return (.synchronized, false)
         default:
-            return nil
+            // Unknown kinds may be legitimate additions; only the all-failed
+            // check in the chunk decoder treats them as drift.
+            return (nil, false)
         }
+    }
+
+    // MARK: - Server version gate
+
+    /// The newest t3 server version this wire layer has been verified against.
+    /// A newer server doesn't block anything — it's logged, and named in the
+    /// drift report when decoding actually breaks.
+    static let verifiedServerVersion = "0.0.35"
+
+    /// Numeric-component comparison ("0.0.40" > "0.0.35"); non-numeric parts
+    /// are ignored, missing components read as 0.
+    static func isVersion(_ version: String, newerThan reference: String) -> Bool {
+        let lhs = numericComponents(version)
+        let rhs = numericComponents(reference)
+        for index in 0..<max(lhs.count, rhs.count) {
+            let a = index < lhs.count ? lhs[index] : 0
+            let b = index < rhs.count ? rhs[index] : 0
+            if a != b { return a > b }
+        }
+        return false
+    }
+
+    private static func numericComponents(_ version: String) -> [Int] {
+        version.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
     }
 
     // MARK: - Auth plumbing (pure request-building)
@@ -217,8 +256,9 @@ enum T3RequestID: Equatable {
 }
 
 enum T3ServerMessage: Equatable {
-    /// A batch of stream items; must be acked with its `requestId`.
-    case chunk(requestId: T3RequestID, items: [T3ShellItem])
+    /// A batch of stream items; must be acked with its `requestId`. `drift` is
+    /// true when the chunk carried payload the decoder could no longer read.
+    case chunk(requestId: T3RequestID, items: [T3ShellItem], drift: Bool)
     /// The subscription terminated server-side (shutdown or error) — reconnect.
     case exit
     case pong

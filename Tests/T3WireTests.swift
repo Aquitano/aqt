@@ -45,10 +45,11 @@ final class T3WireTests: XCTestCase {
         ]], requestId: 4)
 
         let messages = T3Wire.decodeFrames(data)
-        guard case let .chunk(requestId, items) = messages.first else {
+        guard case let .chunk(requestId, items, drift) = messages.first else {
             return XCTFail("expected chunk, got \(messages)")
         }
         XCTAssertEqual(requestId, .number(4))
+        XCTAssertFalse(drift)
         guard case let .snapshot(projects, threads) = items.first else {
             return XCTFail("expected snapshot, got \(items)")
         }
@@ -64,10 +65,56 @@ final class T3WireTests: XCTestCase {
         ])
         let frames = T3Wire.decodeFrames(Data("{\"_tag\":\"SomethingNew\"}".utf8))
         XCTAssertTrue(frames.isEmpty)
-        guard case let .chunk(_, items) = T3Wire.decodeFrames(data).first else {
+        guard case let .chunk(_, items, drift) = T3Wire.decodeFrames(data).first else {
             return XCTFail("expected chunk")
         }
         XCTAssertEqual(items, [.threadRemoved("t9")])
+        // A new benign kind next to a decodable item is not drift.
+        XCTAssertFalse(drift)
+    }
+
+    func testDriftFlagsWhenNothingInAChunkDecodes() {
+        let data = chunkData(items: [["kind": "thread-upserted", "thread": ["renamed": true]]])
+        guard case let .chunk(_, items, drift) = T3Wire.decodeFrames(data).first else {
+            return XCTFail("expected chunk")
+        }
+        XCTAssertTrue(items.isEmpty)
+        XCTAssertTrue(drift)
+    }
+
+    func testDriftFlagsWhenSnapshotThreadsNoLongerDecode() {
+        let data = chunkData(items: [[
+            "kind": "snapshot",
+            "snapshot": [
+                "projects": [[String: Any]](),
+                "threads": [["threadIdentifier": "renamed-field"]],
+            ],
+        ]])
+        guard case let .chunk(_, items, drift) = T3Wire.decodeFrames(data).first else {
+            return XCTFail("expected chunk")
+        }
+        XCTAssertEqual(items, [.snapshot(projects: [], threads: [])])
+        XCTAssertTrue(drift)
+    }
+
+    func testEmptySnapshotIsNotDrift() {
+        let data = chunkData(items: [[
+            "kind": "snapshot",
+            "snapshot": ["projects": [[String: Any]](), "threads": [[String: Any]]()],
+        ]])
+        guard case let .chunk(_, _, drift) = T3Wire.decodeFrames(data).first else {
+            return XCTFail("expected chunk")
+        }
+        XCTAssertFalse(drift)
+    }
+
+    func testVersionComparison() {
+        XCTAssertTrue(T3Wire.isVersion("0.0.40", newerThan: "0.0.35"))
+        XCTAssertTrue(T3Wire.isVersion("0.1.0", newerThan: "0.0.35"))
+        XCTAssertTrue(T3Wire.isVersion("1.0", newerThan: "0.9.9"))
+        XCTAssertFalse(T3Wire.isVersion("0.0.35", newerThan: "0.0.35"))
+        XCTAssertFalse(T3Wire.isVersion("0.0.30", newerThan: "0.0.35"))
+        XCTAssertFalse(T3Wire.isVersion("0.0", newerThan: "0.0.35"))
     }
 
     func testAckEchoesRequestIdType() throws {
