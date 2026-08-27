@@ -140,6 +140,8 @@ final class AgentManager: ObservableObject {
                 settings: settings, enabledKey: \.agentOhMyPiEnabled,
                 install: { try installer.installOhMyPi() }, uninstall: { try installer.removeOhMyPi() }
             ),
+            // t3 is a WebSocket client of the local t3 server, not a hook install.
+            T3CodeProvider(settings: settings),
         ]
         for provider in providers {
             let kind = provider.kind
@@ -216,6 +218,19 @@ final class AgentManager: ObservableObject {
             }
         } else {
             provider.disable()
+        }
+    }
+
+    /// Pair with a local t3 server from a `t3 pair` link (the t3 row's opt-in;
+    /// pairing is async, so it can't ride the sync `enable()` path).
+    func pairT3(link: String) async {
+        guard let provider = provider(for: .t3code) as? T3CodeProvider else { return }
+        integrationError = nil
+        do {
+            try await provider.pair(link: link)
+            objectWillChange.send()
+        } catch {
+            integrationError = "Couldn't connect to T3 Code: \(error.localizedDescription)"
         }
     }
 

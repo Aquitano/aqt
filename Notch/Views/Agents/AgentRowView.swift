@@ -100,6 +100,7 @@ struct AgentRowView: View {
         case .codex: return .green
         case .openCode: return .cyan
         case .ohMyPi: return .mint
+        case .t3code: return .purple
         }
     }
 

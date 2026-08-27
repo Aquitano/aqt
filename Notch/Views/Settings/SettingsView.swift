@@ -13,6 +13,8 @@ struct SettingsView: View {
     @EnvironmentObject private var tray: TrayManager
 
     @State private var shortcutToPin = ""
+    @State private var t3PairingLink = ""
+    @State private var t3Pairing = false
     @State private var displays: [DisplayDescriptor] = []
     @State private var customizedDisplayKey = ""
 
@@ -241,7 +243,12 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func agentIntegrationRow(_ kind: AgentKind) -> some View {
-        if agents.isInstalled(kind) {
+        if kind == .t3code {
+            // t3 has no hook install: it's paired with the local t3 server via a
+            // one-time link, so this row is a paste field until connected. Never
+            // gated on isInstalled — `npx t3` leaves nothing on disk to detect.
+            t3IntegrationRow
+        } else if agents.isInstalled(kind) {
             Toggle(isOn: Binding(
                 get: { agents.isEnabled(kind) },
                 set: { agents.setEnabled($0, for: kind) }
@@ -253,6 +260,36 @@ struct SettingsView: View {
                 Text("Not installed").foregroundStyle(.secondary)
             } label: {
                 agentLabel(kind)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var t3IntegrationRow: some View {
+        if agents.isEnabled(.t3code) {
+            Toggle(isOn: Binding(
+                get: { agents.isEnabled(.t3code) },
+                set: { agents.setEnabled($0, for: .t3code) }
+            )) {
+                agentLabel(.t3code)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                agentLabel(.t3code)
+                HStack(spacing: 8) {
+                    TextField("Pairing link from t3 pair", text: $t3PairingLink)
+                        .textFieldStyle(.roundedBorder)
+                    Button(t3Pairing ? "Connecting…" : "Connect") {
+                        let link = t3PairingLink
+                        t3Pairing = true
+                        Task {
+                            await agents.pairT3(link: link)
+                            t3Pairing = false
+                            if agents.isEnabled(.t3code) { t3PairingLink = "" }
+                        }
+                    }
+                    .disabled(t3PairingLink.trimmingCharacters(in: .whitespaces).isEmpty || t3Pairing)
+                }
             }
         }
     }
@@ -277,6 +314,8 @@ struct SettingsView: View {
             return "Live status + needs-you via a small plugin in ~/.config/opencode/plugins."
         case .ohMyPi:
             return "Live status + needs-you via an extension in ~/.omp/agent/extensions."
+        case .t3code:
+            return "Read-only view of the local T3 Code server's sessions. Run t3 pair and paste the link; disabling forgets the pairing."
         }
     }
 

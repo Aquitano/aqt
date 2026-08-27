@@ -29,6 +29,8 @@ final class Settings: ObservableObject {
         static let agentCodexEnabled = "agentCodexEnabled"
         static let agentOpenCodeEnabled = "agentOpenCodeEnabled"
         static let agentOhMyPiEnabled = "agentOhMyPiEnabled"
+        static let agentT3Enabled = "agentT3Enabled"
+        static let agentT3BaseURL = "agentT3BaseURL"
         static let agentNotifyStarted = "agentNotifyStarted"
         static let agentNotifyAttention = "agentNotifyAttention"
         static let agentNotifyFinished = "agentNotifyFinished"
@@ -91,6 +93,10 @@ final class Settings: ObservableObject {
     @Published var agentCodexEnabled: Bool { didSet { defaults.set(agentCodexEnabled, forKey: Key.agentCodexEnabled) } }
     @Published var agentOpenCodeEnabled: Bool { didSet { defaults.set(agentOpenCodeEnabled, forKey: Key.agentOpenCodeEnabled) } }
     @Published var agentOhMyPiEnabled: Bool { didSet { defaults.set(agentOhMyPiEnabled, forKey: Key.agentOhMyPiEnabled) } }
+    @Published var agentT3Enabled: Bool { didSet { defaults.set(agentT3Enabled, forKey: Key.agentT3Enabled) } }
+    /// Base URL of the local t3 server; the paired token lives in the Keychain.
+    @Published var agentT3BaseURL: String { didSet { defaults.set(agentT3BaseURL, forKey: Key.agentT3BaseURL) } }
+    static let defaultT3BaseURL = "http://127.0.0.1:3773"
     @Published var agentNotifyStarted: Bool { didSet { defaults.set(agentNotifyStarted, forKey: Key.agentNotifyStarted) } }
     @Published var agentNotifyAttention: Bool { didSet { defaults.set(agentNotifyAttention, forKey: Key.agentNotifyAttention) } }
     @Published var agentNotifyFinished: Bool { didSet { defaults.set(agentNotifyFinished, forKey: Key.agentNotifyFinished) } }
@@ -161,6 +167,8 @@ final class Settings: ObservableObject {
             Key.agentCodexEnabled: false,
             Key.agentOpenCodeEnabled: false,
             Key.agentOhMyPiEnabled: false,
+            Key.agentT3Enabled: false,
+            Key.agentT3BaseURL: Settings.defaultT3BaseURL,
             Key.agentNotifyStarted: false,
             Key.agentNotifyAttention: true,
             Key.agentNotifyFinished: true,
@@ -210,6 +218,8 @@ final class Settings: ObservableObject {
         self.agentCodexEnabled = defaults.bool(forKey: Key.agentCodexEnabled)
         self.agentOpenCodeEnabled = defaults.bool(forKey: Key.agentOpenCodeEnabled)
         self.agentOhMyPiEnabled = defaults.bool(forKey: Key.agentOhMyPiEnabled)
+        self.agentT3Enabled = defaults.bool(forKey: Key.agentT3Enabled)
+        self.agentT3BaseURL = defaults.string(forKey: Key.agentT3BaseURL) ?? Settings.defaultT3BaseURL
         self.agentNotifyStarted = defaults.bool(forKey: Key.agentNotifyStarted)
         self.agentNotifyAttention = defaults.bool(forKey: Key.agentNotifyAttention)
         self.agentNotifyFinished = defaults.bool(forKey: Key.agentNotifyFinished)

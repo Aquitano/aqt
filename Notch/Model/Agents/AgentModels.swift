@@ -7,6 +7,7 @@ enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case codex
     case openCode
     case ohMyPi
+    case t3code
 
     var id: String { rawValue }
 
@@ -17,6 +18,7 @@ enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .codex: return "codex"
         case .openCode: return "opencode"
         case .ohMyPi: return "omp"
+        case .t3code: return "t3"
         }
     }
 
@@ -26,6 +28,7 @@ enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .codex: return "Codex"
         case .openCode: return "OpenCode"
         case .ohMyPi: return "oh-my-pi"
+        case .t3code: return "T3 Code"
         }
     }
 
@@ -36,6 +39,7 @@ enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .codex: return "chevron.left.forwardslash.chevron.right"
         case .openCode: return "curlybraces"
         case .ohMyPi: return "fossil.shell.fill"
+        case .t3code: return "square.grid.2x2"
         }
     }
 }
