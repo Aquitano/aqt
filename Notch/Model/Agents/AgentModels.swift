@@ -44,6 +44,14 @@ enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Build-level switches for the agent feature. The permission-approval
+/// round-trip (Approve/Deny from the notch) is fully implemented but currently
+/// switched off everywhere — with it off, permission requests are answered
+/// "ask" immediately so the agent falls back to its own terminal prompt.
+enum AgentFeatures {
+    static let permissionApproval = false
+}
+
 /// Lifecycle/activity state of one agent session. The first three are "busy"
 /// states; `idle` is alive-but-waiting; `needsAttention` and `finished` are the
 /// two notify-worthy transitions.

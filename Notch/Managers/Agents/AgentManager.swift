@@ -248,7 +248,15 @@ final class AgentManager: ObservableObject {
             return
         }
         guard let kind = AgentKind(rawValue: envelope.agent) else { return }
-        if envelope.hook == "PermissionRequest", let requestId = envelope.requestId {
+        if envelope.hook == "PermissionRequest", let requestId = envelope.requestId,
+           !AgentFeatures.permissionApproval {
+            // Approval is switched off build-wide: release the blocked hook at
+            // once so the agent falls back to its own terminal prompt, and skip
+            // the card bookkeeping entirely.
+            if kind == .claudeCode {
+                socketServer.respond(requestId: requestId, decision: "ask")
+            }
+        } else if envelope.hook == "PermissionRequest", let requestId = envelope.requestId {
             let request = AgentPermissionWireValidator.validated(
                 envelope.permission, matchingRequestId: requestId
             )
@@ -287,7 +295,8 @@ final class AgentManager: ObservableObject {
     }
 
     func respondToPermission(requestId: String, decision: AgentPermissionDecision) {
-        guard settings.agentPermissionApproval,
+        guard AgentFeatures.permissionApproval,
+              settings.agentPermissionApproval,
               var pending = permissionRequests[requestId],
               let next = AgentPermissionStateMachine.transition(
                 from: pending.state, event: .respond(decision)

@@ -187,11 +187,15 @@ struct SettingsView: View {
                 Toggle("Notify when an agent finishes", isOn: $settings.agentNotifyFinished)
                 Toggle("Notify when an agent starts", isOn: $settings.agentNotifyStarted)
                 Toggle("Auto-expand on needs-you", isOn: $settings.agentAutoExpandOnAttention)
-                Toggle("Approve permission prompts from the notch", isOn: $settings.agentPermissionApproval)
-                if settings.agentPermissionApproval {
-                    Text("Claude waits up to 2 minutes for your decision here before falling back to the terminal prompt.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                // Approve/deny from the notch is switched off build-wide for now
+                // (see AgentFeatures); the round-trip code stays in place.
+                if AgentFeatures.permissionApproval {
+                    Toggle("Approve permission prompts from the notch", isOn: $settings.agentPermissionApproval)
+                    if settings.agentPermissionApproval {
+                        Text("Claude waits up to 2 minutes for your decision here before falling back to the terminal prompt.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Toggle("Claude usage limits", isOn: Binding(
                     get: { settings.agentUsageLimits },
