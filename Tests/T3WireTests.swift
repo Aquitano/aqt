@@ -108,6 +108,37 @@ final class T3WireTests: XCTestCase {
         XCTAssertFalse(drift)
     }
 
+    func testShellSnapshotResponseDecodesBareSnapshotShape() throws {
+        // GET /api/orchestration/shell returns the snapshot struct directly.
+        let data = try JSONSerialization.data(withJSONObject: [
+            "snapshotSequence": 12,
+            "projects": [["id": "p1", "title": "Demo", "workspaceRoot": "/tmp/demo"]],
+            "threads": [thread(id: "t1")],
+            "updatedAt": "2026-08-27T10:00:00.000Z",
+        ])
+        let decoded = T3Wire.shellSnapshotResponse(data)
+        XCTAssertFalse(decoded.drift)
+        guard case let .snapshot(projects, threads) = decoded.item else {
+            return XCTFail("expected snapshot, got \(String(describing: decoded.item))")
+        }
+        XCTAssertEqual(projects.first?.title, "Demo")
+        XCTAssertEqual(threads.first?.id, "t1")
+    }
+
+    func testShellSnapshotResponseFlagsDriftOnForeignOrUndecodableShape() throws {
+        let foreign = T3Wire.shellSnapshotResponse(Data("{\"error\":\"nope\"}".utf8))
+        XCTAssertNil(foreign.item)
+        XCTAssertTrue(foreign.drift)
+
+        let undecodableThreads = try JSONSerialization.data(withJSONObject: [
+            "projects": [[String: Any]](),
+            "threads": [["threadIdentifier": "renamed"]],
+        ])
+        let decoded = T3Wire.shellSnapshotResponse(undecodableThreads)
+        XCTAssertEqual(decoded.item, .snapshot(projects: [], threads: []))
+        XCTAssertTrue(decoded.drift)
+    }
+
     func testVersionComparison() {
         XCTAssertTrue(T3Wire.isVersion("0.0.40", newerThan: "0.0.35"))
         XCTAssertTrue(T3Wire.isVersion("0.1.0", newerThan: "0.0.35"))

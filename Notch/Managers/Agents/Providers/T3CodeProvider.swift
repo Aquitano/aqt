@@ -114,9 +114,13 @@ final class T3CodeProvider: AgentProviding {
 
     private func runLoop() async {
         var backoff: TimeInterval = 3
+        // Consecutive ws connections that closed before delivering any chunk —
+        // the signature of a renamed subscribe method or protocol handshake.
+        var chunklessConnections = 0
         while !Task.isCancelled, isEnabled {
             do {
-                try await runConnection()
+                let sawChunk = try await runConnection()
+                chunklessConnections = sawChunk ? 0 : chunklessConnections + 1
                 backoff = 3 // stream ended cleanly (server restart): retry soon
             } catch is CancellationError {
                 return
@@ -124,9 +128,16 @@ final class T3CodeProvider: AgentProviding {
                 // Token rejected: retrying fast would spam a dead credential.
                 Log.agents.notice("t3: auth failed (\(error.localizedDescription)) — retrying in 5m")
                 backoff = 300
+            } catch T3ConnectionError.framingUndecodable {
+                chunklessConnections = 0
+                await runPollFallback()
             } catch {
                 // Server not running is the normal quiet case.
                 Log.agents.debug("t3: connection ended: \(String(describing: error))")
+            }
+            if chunklessConnections >= 3 {
+                chunklessConnections = 0
+                await runPollFallback()
             }
             if !published.isEmpty {
                 // State is unknowable while disconnected; clear rather than lie.
@@ -138,13 +149,21 @@ final class T3CodeProvider: AgentProviding {
         }
     }
 
-    private func runConnection() async throws {
-        guard let token = KeychainStore.get(account: Self.keychainAccount) else {
-            throw T3PairingError.notPaired
+    private var credentials: (base: URL, token: String) {
+        get throws {
+            guard let token = KeychainStore.get(account: Self.keychainAccount) else {
+                throw T3PairingError.notPaired
+            }
+            guard let base = URL(string: settings.agentT3BaseURL) else {
+                throw T3PairingError.invalidLink
+            }
+            return (base, token)
         }
-        guard let base = URL(string: settings.agentT3BaseURL) else {
-            throw T3PairingError.invalidLink
-        }
+    }
+
+    /// Returns whether the stream delivered at least one chunk before ending.
+    private func runConnection() async throws -> Bool {
+        let (base, token) = try credentials
         await checkServerVersion(base: base)
         let ticket = try await fetchWebSocketTicket(base: base, token: token)
 
@@ -166,11 +185,23 @@ final class T3CodeProvider: AgentProviding {
         // Events are suppressed until the first snapshot has been applied, so a
         // (re)connect never replays started/finished for already-known sessions.
         var live = false
+        var sawChunk = false
+        var undecodedFrames = 0
         while !Task.isCancelled {
             let data = try await receiveData(from: socket)
-            for message in T3Wire.decodeFrames(data) {
+            let messages = T3Wire.decodeFrames(data)
+            // Frames we can't even parse envelopes from mean the RPC framing
+            // itself moved (an effect upgrade) — switch to HTTP polling.
+            if messages.isEmpty {
+                undecodedFrames += 1
+                if undecodedFrames >= 3 { throw T3ConnectionError.framingUndecodable }
+                continue
+            }
+            undecodedFrames = 0
+            for message in messages {
                 switch message {
                 case let .chunk(requestId, items, drift):
+                    sawChunk = true
                     // Ack releases the server's next chunk (stream backpressure).
                     try await send(T3Wire.ack(requestId), over: socket)
                     var sawSnapshot = false
@@ -182,12 +213,63 @@ final class T3CodeProvider: AgentProviding {
                     if sawSnapshot { live = true }
                     if drift { reportDrift() } else if sawSnapshot { clearDrift() }
                 case .exit, .defect:
-                    return
+                    return sawChunk
                 case .pong:
                     break
                 }
             }
         }
+        return sawChunk
+    }
+
+    // MARK: - HTTP polling fallback
+
+    private static let pollInterval: TimeInterval = 10
+    private static let pollWindow: TimeInterval = 300
+
+    /// Degraded mode when the ws stream is unusable but the server is up: poll
+    /// `GET /api/orchestration/shell` (the same snapshot shape, no Effect-RPC
+    /// framing) so tracking and notifications keep working with ~10s latency.
+    /// Runs for one window, then returns so the loop can retry the ws stream.
+    private func runPollFallback() async {
+        Log.agents.notice("t3: ws stream unusable — polling /api/orchestration/shell every \(Int(Self.pollInterval))s")
+        do {
+            try await pollShell()
+            Log.agents.info("t3: poll window over — retrying the ws stream")
+        } catch is CancellationError {
+        } catch {
+            Log.agents.debug("t3: snapshot polling ended: \(String(describing: error))")
+        }
+    }
+
+    private func pollShell() async throws {
+        let (base, token) = try credentials
+        let deadline = Date().addingTimeInterval(Self.pollWindow)
+        // With recent state still published, diffs stay meaningful; from a cold
+        // start the first poll seeds silently, mirroring the ws snapshot rule.
+        var live = !published.isEmpty
+        while !Task.isCancelled, isEnabled, Date() < deadline {
+            let decoded = T3Wire.shellSnapshotResponse(try await fetchShellSnapshot(base: base, token: token))
+            if decoded.drift { reportDrift() }
+            guard let item = decoded.item else { throw T3ConnectionError.framingUndecodable }
+            var state = T3ShellState()
+            state.apply(item)
+            publish(state, emitEvents: live)
+            if !decoded.drift { clearDrift() }
+            live = true
+            try await Task.sleep(for: .seconds(Self.pollInterval))
+        }
+    }
+
+    private func fetchShellSnapshot(base: URL, token: String) async throws -> Data {
+        var request = URLRequest(url: base.appendingPathComponent("api/orchestration/shell"))
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 10
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        if http.statusCode == 401 || http.statusCode == 403 { throw T3PairingError.tokenRejected }
+        guard http.statusCode == 200 else { throw URLError(.badServerResponse) }
+        return data
     }
 
     /// Best-effort version gate: read the unauthenticated environment
@@ -266,6 +348,11 @@ final class T3CodeProvider: AgentProviding {
         published = current
         onSessions?(current.values.sorted { $0.lastActivity > $1.lastActivity })
     }
+}
+
+enum T3ConnectionError: Error {
+    /// The ws stream is reachable but no longer speaks a framing we can read.
+    case framingUndecodable
 }
 
 enum T3PairingError: LocalizedError {

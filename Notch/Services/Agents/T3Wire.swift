@@ -83,12 +83,7 @@ enum T3Wire {
         switch kind {
         case "snapshot":
             guard let snapshot = dict["snapshot"] as? [String: Any] else { return (nil, true) }
-            let rawThreads = snapshot["threads"] as? [Any] ?? []
-            let projects = (snapshot["projects"] as? [Any] ?? [])
-                .compactMap { T3Project($0 as? [String: Any]) }
-            let threads = rawThreads.compactMap { T3Thread($0 as? [String: Any]) }
-            return (.snapshot(projects: projects, threads: threads),
-                    !rawThreads.isEmpty && threads.isEmpty)
+            return snapshotItem(from: snapshot)
         case "project-upserted":
             return (T3Project(dict["project"] as? [String: Any]).map(T3ShellItem.projectUpserted), false)
         case "project-removed":
@@ -105,6 +100,27 @@ enum T3Wire {
             // check in the chunk decoder treats them as drift.
             return (nil, false)
         }
+    }
+
+    /// Shared by the ws stream's snapshot item and the HTTP fallback route —
+    /// `GET /api/orchestration/shell` returns this same shape bare.
+    private static func snapshotItem(from snapshot: [String: Any]) -> (item: T3ShellItem?, drift: Bool) {
+        let rawThreads = snapshot["threads"] as? [Any] ?? []
+        let projects = (snapshot["projects"] as? [Any] ?? [])
+            .compactMap { T3Project($0 as? [String: Any]) }
+        let threads = rawThreads.compactMap { T3Thread($0 as? [String: Any]) }
+        return (.snapshot(projects: projects, threads: threads),
+                !rawThreads.isEmpty && threads.isEmpty)
+    }
+
+    /// Decode the HTTP shell-snapshot response (the polling fallback when the
+    /// ws framing breaks). nil item = the response wasn't a shell snapshot.
+    static func shellSnapshotResponse(_ data: Data) -> (item: T3ShellItem?, drift: Bool) {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["threads"] != nil || object["projects"] != nil else {
+            return (nil, true)
+        }
+        return snapshotItem(from: object)
     }
 
     // MARK: - Server version gate
