@@ -1,11 +1,12 @@
 import Foundation
 
-/// Watches the local T3 Code server (Theo's agent harness) as a read-only
-/// client: pair once with a `t3 pair` link, then hold a WebSocket subscription
-/// to its orchestration shell stream and mirror the live threads as sessions.
-/// Unlike the hook-based providers there is nothing to install — enable/disable
-/// only manage the paired credential. All wire decoding lives in `T3Wire`;
-/// this class owns auth, the socket, and the reconnect loop.
+/// Watches T3 Code servers (Theo's agent harness) as a read-only client. In
+/// t3's model every server is its own "execution environment" — the desktop
+/// app's local backend and a remote box are separate servers with separate
+/// pairings — so this provider aggregates one `T3EnvironmentWatcher` per
+/// paired environment and merges their sessions. Pair each server once with a
+/// `t3 pair` link; there is nothing to install. All wire decoding lives in
+/// `T3Wire`; the watcher owns auth, the socket, and the reconnect loop.
 @MainActor
 final class T3CodeProvider: AgentProviding {
 
@@ -13,58 +14,54 @@ final class T3CodeProvider: AgentProviding {
     var onSessions: (([AgentSession]) -> Void)?
     var onEvent: ((AgentEvent) -> Void)?
     /// Protocol-drift report for the Settings footer: a message when decoding
-    /// t3's stream starts failing, nil when a later frame decodes cleanly again.
+    /// any environment's stream starts failing, nil once all decode cleanly.
     var onDrift: ((String?) -> Void)?
 
     private let settings: Settings
-    private var connectionTask: Task<Void, Never>?
-    private var published: [String: AgentSession] = [:]
-    private var serverVersion: String?
-    private var warnedVersion: String?
-    private var driftReported = false
-
-    private static let keychainAccount = "t3code-access-token"
+    private var watchers: [String: T3EnvironmentWatcher] = [:]
+    private var sessionsByEnvironment: [String: [AgentSession]] = [:]
+    private var driftByEnvironment: [String: String] = [:]
 
     init(settings: Settings) {
         self.settings = settings
     }
 
     var isEnabled: Bool { settings.agentT3Enabled }
-    var isPaired: Bool { KeychainStore.get(account: Self.keychainAccount) != nil }
+    var environments: [T3Environment] { settings.agentT3Environments }
 
     // MARK: - Lifecycle
 
     func start() {
         guard isEnabled else { return }
-        connect()
+        syncWatchers()
     }
 
     func stop() {
-        connectionTask?.cancel()
-        connectionTask = nil
-        published = [:]
+        watchers.values.forEach { $0.stop() }
+        watchers = [:]
+        sessionsByEnvironment = [:]
+        driftByEnvironment = [:]
         onSessions?([])
     }
 
-    /// Enabling requires an existing paired token (`pair(link:)` is the real
+    /// Enabling requires at least one pairing (`pair(link:)` is the real
     /// opt-in and flips the setting itself); this path only covers re-enabling.
     func enable() throws {
-        guard isPaired else { throw T3PairingError.notPaired }
+        guard !environments.isEmpty else { throw T3PairingError.notPaired }
         settings.agentT3Enabled = true
-        connect()
+        syncWatchers()
     }
 
-    /// Disabling forgets the credential — t3 sessions are remote state, so the
-    /// clean "off" is unpaired. Re-enabling asks for a fresh pairing link.
+    /// Pausing keeps the pairings; forgetting a server is `removeEnvironment`.
     func disable() {
         settings.agentT3Enabled = false
-        KeychainStore.delete(account: Self.keychainAccount)
         stop()
     }
 
     func refresh() {
-        guard isEnabled, connectionTask == nil else { return }
-        connect()
+        guard isEnabled else { return }
+        syncWatchers()
+        watchers.values.forEach { $0.refresh() }
     }
 
     /// t3 speaks its own WebSocket, not the hook socket.
@@ -72,18 +69,94 @@ final class T3CodeProvider: AgentProviding {
 
     // MARK: - Pairing
 
-    /// Trade a pairing link (or bare credential) for a read-only bearer token
-    /// and start watching. The token goes to the Keychain, never UserDefaults.
+    /// Trade a pairing link for a read-only bearer token and start watching
+    /// that server. The link must be the full URL (it carries the server
+    /// address); the token goes to the Keychain, never UserDefaults. Pairing a
+    /// server that's already known replaces its token in place.
     func pair(link: String) async throws {
         guard let parsed = T3Wire.pairingLink(link) else { throw T3PairingError.invalidLink }
-        let base = parsed.baseURL
-            ?? URL(string: settings.agentT3BaseURL)
-            ?? URL(string: Settings.defaultT3BaseURL)!
+        guard let base = parsed.baseURL else { throw T3PairingError.missingBaseURL }
+        let descriptor = try await fetchDescriptor(base: base)
         let token = try await exchangeToken(credential: parsed.credential, base: base)
-        try KeychainStore.set(token, account: Self.keychainAccount)
-        settings.agentT3BaseURL = base.absoluteString
+
+        let environment = T3Environment(
+            id: descriptor.id,
+            label: descriptor.label ?? base.host ?? "t3",
+            baseURL: base.absoluteString
+        )
+        try KeychainStore.set(token, account: environment.tokenAccount)
+
+        var list = settings.agentT3Environments
+        if let index = list.firstIndex(where: { $0.id == environment.id }) {
+            // Re-pairing an existing server: its watcher must pick up the new
+            // base URL/token, so drop the old one before syncing.
+            list[index] = environment
+            watchers[environment.id]?.stop()
+            watchers[environment.id] = nil
+        } else {
+            list.append(environment)
+        }
+        settings.agentT3Environments = list
         settings.agentT3Enabled = true
-        connect()
+        syncWatchers()
+    }
+
+    /// Forget one server: stop watching, drop its token, remove the record.
+    func removeEnvironment(id: String) {
+        watchers[id]?.stop()
+        watchers[id] = nil
+        sessionsByEnvironment[id] = nil
+        driftByEnvironment[id] = nil
+        if let environment = environments.first(where: { $0.id == id }) {
+            KeychainStore.delete(account: environment.tokenAccount)
+        }
+        settings.agentT3Environments.removeAll { $0.id == id }
+        if environments.isEmpty { settings.agentT3Enabled = false }
+        publish()
+        publishDrift()
+    }
+
+    // MARK: - Watcher fan-out
+
+    private func syncWatchers() {
+        guard isEnabled else { return }
+        for environment in environments where watchers[environment.id] == nil {
+            let watcher = T3EnvironmentWatcher(environment: environment)
+            watcher.onSessions = { [weak self] sessions in
+                self?.sessionsByEnvironment[environment.id] = sessions
+                self?.publish()
+            }
+            watcher.onEvent = { [weak self] event in self?.onEvent?(event) }
+            watcher.onDrift = { [weak self] message in
+                self?.driftByEnvironment[environment.id] = message
+                self?.publishDrift()
+            }
+            watchers[environment.id] = watcher
+            watcher.start()
+        }
+    }
+
+    private func publish() {
+        onSessions?(sessionsByEnvironment.values.flatMap { $0 }
+            .sorted { $0.lastActivity > $1.lastActivity })
+    }
+
+    private func publishDrift() {
+        onDrift?(driftByEnvironment.values.first)
+    }
+
+    // MARK: - HTTP (pairing-time)
+
+    private func fetchDescriptor(base: URL) async throws -> (id: String, label: String?) {
+        var request = URLRequest(url: base.appendingPathComponent(".well-known/t3/environment"))
+        request.timeoutInterval = 10
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = object["environmentId"] as? String else {
+            throw T3PairingError.notAT3Server
+        }
+        return (id: id, label: object["label"] as? String)
     }
 
     private func exchangeToken(credential: String, base: URL) async throws -> String {
@@ -102,22 +175,70 @@ final class T3CodeProvider: AgentProviding {
         }
         return token
     }
+}
 
-    // MARK: - Connection loop
+/// One paired t3 server's live subscription: ticket auth, the ws stream, the
+/// HTTP polling fallback, reconnect with backoff, and per-server drift/version
+/// state. Emits its own started/finished/needs-you events by diffing what it
+/// publishes; `T3CodeProvider` merely merges across watchers.
+@MainActor
+private final class T3EnvironmentWatcher {
 
-    private func connect() {
+    var onSessions: (([AgentSession]) -> Void)?
+    var onEvent: ((AgentEvent) -> Void)?
+    var onDrift: ((String?) -> Void)?
+
+    private let environment: T3Environment
+    private var connectionTask: Task<Void, Never>?
+    private var published: [String: AgentSession] = [:]
+    private var serverVersion: String?
+    private var warnedVersion: String?
+    private var driftReported = false
+
+    init(environment: T3Environment) {
+        self.environment = environment
+    }
+
+    func start() {
         connectionTask?.cancel()
         connectionTask = Task { [weak self] in
             await self?.runLoop()
         }
     }
 
+    func stop() {
+        connectionTask?.cancel()
+        connectionTask = nil
+        published = [:]
+        onSessions?([])
+    }
+
+    func refresh() {
+        if connectionTask == nil { start() }
+    }
+
+    private var log: String { "t3[\(environment.label)]" }
+
+    private var credentials: (base: URL, token: String) {
+        get throws {
+            guard let token = KeychainStore.get(account: environment.tokenAccount) else {
+                throw T3PairingError.notPaired
+            }
+            guard let base = URL(string: environment.baseURL) else {
+                throw T3PairingError.invalidLink
+            }
+            return (base, token)
+        }
+    }
+
+    // MARK: - Connection loop
+
     private func runLoop() async {
         var backoff: TimeInterval = 3
         // Consecutive ws connections that closed before delivering any chunk —
         // the signature of a renamed subscribe method or protocol handshake.
         var chunklessConnections = 0
-        while !Task.isCancelled, isEnabled {
+        while !Task.isCancelled {
             do {
                 let sawChunk = try await runConnection()
                 chunklessConnections = sawChunk ? 0 : chunklessConnections + 1
@@ -126,14 +247,14 @@ final class T3CodeProvider: AgentProviding {
                 return
             } catch let error as T3PairingError {
                 // Token rejected: retrying fast would spam a dead credential.
-                Log.agents.notice("t3: auth failed (\(error.localizedDescription)) — retrying in 5m")
+                Log.agents.notice("\(self.log): auth failed (\(error.localizedDescription)) — retrying in 5m")
                 backoff = 300
             } catch T3ConnectionError.framingUndecodable {
                 chunklessConnections = 0
                 await runPollFallback()
             } catch {
                 // Server not running is the normal quiet case.
-                Log.agents.debug("t3: connection ended: \(String(describing: error))")
+                Log.agents.debug("\(self.log): connection ended: \(String(describing: error))")
             }
             if chunklessConnections >= 3 {
                 chunklessConnections = 0
@@ -146,18 +267,6 @@ final class T3CodeProvider: AgentProviding {
             }
             try? await Task.sleep(for: .seconds(backoff))
             backoff = min(backoff * 2, 60)
-        }
-    }
-
-    private var credentials: (base: URL, token: String) {
-        get throws {
-            guard let token = KeychainStore.get(account: Self.keychainAccount) else {
-                throw T3PairingError.notPaired
-            }
-            guard let base = URL(string: settings.agentT3BaseURL) else {
-                throw T3PairingError.invalidLink
-            }
-            return (base, token)
         }
     }
 
@@ -232,13 +341,13 @@ final class T3CodeProvider: AgentProviding {
     /// framing) so tracking and notifications keep working with ~10s latency.
     /// Runs for one window, then returns so the loop can retry the ws stream.
     private func runPollFallback() async {
-        Log.agents.notice("t3: ws stream unusable — polling /api/orchestration/shell every \(Int(Self.pollInterval))s")
+        Log.agents.notice("\(self.log): ws stream unusable — polling /api/orchestration/shell every \(Int(Self.pollInterval))s")
         do {
             try await pollShell()
-            Log.agents.info("t3: poll window over — retrying the ws stream")
+            Log.agents.info("\(self.log): poll window over — retrying the ws stream")
         } catch is CancellationError {
         } catch {
-            Log.agents.debug("t3: snapshot polling ended: \(String(describing: error))")
+            Log.agents.debug("\(self.log): snapshot polling ended: \(String(describing: error))")
         }
     }
 
@@ -248,7 +357,7 @@ final class T3CodeProvider: AgentProviding {
         // With recent state still published, diffs stay meaningful; from a cold
         // start the first poll seeds silently, mirroring the ws snapshot rule.
         var live = !published.isEmpty
-        while !Task.isCancelled, isEnabled, Date() < deadline {
+        while !Task.isCancelled, Date() < deadline {
             let decoded = T3Wire.shellSnapshotResponse(try await fetchShellSnapshot(base: base, token: token))
             if decoded.drift { reportDrift() }
             guard let item = decoded.item else { throw T3ConnectionError.framingUndecodable }
@@ -272,6 +381,8 @@ final class T3CodeProvider: AgentProviding {
         return data
     }
 
+    // MARK: - Version gate + drift
+
     /// Best-effort version gate: read the unauthenticated environment
     /// descriptor, log the server version, and warn once per version when it's
     /// newer than the last one this decoder was verified against. Never blocks
@@ -284,10 +395,10 @@ final class T3CodeProvider: AgentProviding {
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let version = object["serverVersion"] as? String else { return }
         serverVersion = version
-        Log.agents.info("t3: server version \(version)")
+        Log.agents.info("\(self.log): server version \(version)")
         if T3Wire.isVersion(version, newerThan: T3Wire.verifiedServerVersion), warnedVersion != version {
             warnedVersion = version
-            Log.agents.notice("t3: server \(version) is newer than verified \(T3Wire.verifiedServerVersion) — protocol may have drifted")
+            Log.agents.notice("\(self.log): server \(version) is newer than verified \(T3Wire.verifiedServerVersion) — protocol may have drifted")
         }
     }
 
@@ -296,8 +407,8 @@ final class T3CodeProvider: AgentProviding {
         guard !driftReported else { return }
         driftReported = true
         let server = serverVersion ?? "unknown"
-        Log.agents.error("t3: stream payload no longer decodes (server \(server), verified \(T3Wire.verifiedServerVersion))")
-        onDrift?("T3 Code protocol changed (server \(server), verified against \(T3Wire.verifiedServerVersion)) — sessions may be missing until Notch is updated.")
+        Log.agents.error("\(self.log): stream payload no longer decodes (server \(server), verified \(T3Wire.verifiedServerVersion))")
+        onDrift?("T3 Code protocol changed on \(environment.label) (server \(server), verified against \(T3Wire.verifiedServerVersion)) — sessions may be missing until Notch is updated.")
     }
 
     private func clearDrift() {
@@ -305,6 +416,8 @@ final class T3CodeProvider: AgentProviding {
         driftReported = false
         onDrift?(nil)
     }
+
+    // MARK: - Plumbing
 
     private func fetchWebSocketTicket(base: URL, token: String) async throws -> String {
         var request = URLRequest(url: base.appendingPathComponent("api/auth/websocket-ticket"))
@@ -338,7 +451,7 @@ final class T3CodeProvider: AgentProviding {
     }
 
     private func publish(_ state: T3ShellState, emitEvents: Bool) {
-        let current = state.sessions(previous: published, now: Date())
+        let current = state.sessions(environment: environment, previous: published, now: Date())
         guard current != published else { return }
         if emitEvents {
             for event in T3Wire.events(previous: published, current: current) {
@@ -358,6 +471,8 @@ enum T3ConnectionError: Error {
 enum T3PairingError: LocalizedError {
     case notPaired
     case invalidLink
+    case missingBaseURL
+    case notAT3Server
     case exchangeFailed(status: Int)
     case tokenRejected
 
@@ -367,6 +482,10 @@ enum T3PairingError: LocalizedError {
             return "Paste a pairing link from `t3 pair` first."
         case .invalidLink:
             return "That doesn't look like a t3 pairing link."
+        case .missingBaseURL:
+            return "Paste the full pairing URL — it carries the server address."
+        case .notAT3Server:
+            return "No t3 server answered at that address."
         case let .exchangeFailed(status):
             return "The t3 server rejected the pairing link (HTTP \(status))."
         case .tokenRejected:

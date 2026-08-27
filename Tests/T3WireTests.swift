@@ -174,18 +174,22 @@ final class T3WireTests: XCTestCase {
         XCTAssertNil(status(thread(id: "i", status: "running", archived: true)))
     }
 
-    func testSessionMappingCarriesProjectBranchAndProviderBadge() {
+    private let environment = T3Environment(id: "env1", label: "ubuntu", baseURL: "https://ubuntu.example")
+
+    func testSessionMappingCarriesProjectBranchAndHostBadge() {
         var state = T3ShellState()
         state.apply(.snapshot(
             projects: [T3Project(["id": "p1", "title": "Demo", "workspaceRoot": "/tmp/demo"])!],
             threads: [T3Thread(thread(id: "t1"))!]
         ))
-        let sessions = state.sessions(previous: [:], now: Date())
-        let session = sessions["t3-t1"]
+        let sessions = state.sessions(environment: environment, previous: [:], now: Date())
+        let session = sessions["t3-env1-t1"]
         XCTAssertEqual(session?.kind, .t3code)
         XCTAssertEqual(session?.project, "Demo")
         XCTAssertEqual(session?.gitBranch, "main")
-        XCTAssertEqual(session?.terminalName, "claude-code")
+        // The badge names the machine; the underlying agent rides in detail.
+        XCTAssertEqual(session?.terminalName, "ubuntu")
+        XCTAssertEqual(session?.detail, "claude-code")
         XCTAssertEqual(session?.lastPrompt, "Fix the tests")
     }
 
@@ -193,11 +197,11 @@ final class T3WireTests: XCTestCase {
         var state = T3ShellState()
         state.apply(.threadUpserted(T3Thread(thread(id: "t1"))!))
         let early = Date(timeIntervalSinceNow: -100)
-        let first = state.sessions(previous: [:], now: early)
+        let first = state.sessions(environment: environment, previous: [:], now: early)
         state.apply(.threadUpserted(T3Thread(thread(id: "t1", status: "ready"))!))
-        let second = state.sessions(previous: first, now: Date())
-        XCTAssertEqual(second["t3-t1"]?.startedAt, early)
-        XCTAssertEqual(second["t3-t1"]?.status, .finished)
+        let second = state.sessions(environment: environment, previous: first, now: Date())
+        XCTAssertEqual(second["t3-env1-t1"]?.startedAt, early)
+        XCTAssertEqual(second["t3-env1-t1"]?.status, .finished)
     }
 
     // MARK: - Event diff
@@ -208,24 +212,24 @@ final class T3WireTests: XCTestCase {
             T3Thread(thread(id: "run"))!,
             T3Thread(thread(id: "gone"))!,
         ]))
-        let before = state.sessions(previous: [:], now: Date())
+        let before = state.sessions(environment: environment, previous: [:], now: Date())
 
         state.apply(.threadUpserted(T3Thread(thread(id: "run", status: "ready"))!))
         state.apply(.threadUpserted(T3Thread(thread(id: "ask", approvals: true))!))
         state.apply(.threadRemoved("gone"))
-        let after = state.sessions(previous: before, now: Date())
+        let after = state.sessions(environment: environment, previous: before, now: Date())
 
         let events = T3Wire.events(previous: before, current: after)
         let kinds = Dictionary(grouping: events, by: { $0.session.id }).mapValues { $0.map(\.kind) }
-        XCTAssertEqual(kinds["t3-run"], [.finished])
-        XCTAssertEqual(kinds["t3-ask"], [.started])
-        XCTAssertEqual(kinds["t3-gone"], [.ended])
+        XCTAssertEqual(kinds["t3-env1-run"], [.finished])
+        XCTAssertEqual(kinds["t3-env1-ask"], [.started])
+        XCTAssertEqual(kinds["t3-env1-gone"], [.ended])
     }
 
     func testNoEventsWhenNothingChanged() {
         var state = T3ShellState()
         state.apply(.threadUpserted(T3Thread(thread(id: "t1"))!))
-        let sessions = state.sessions(previous: [:], now: Date())
+        let sessions = state.sessions(environment: environment, previous: [:], now: Date())
         XCTAssertTrue(T3Wire.events(previous: sessions, current: sessions).isEmpty)
     }
 

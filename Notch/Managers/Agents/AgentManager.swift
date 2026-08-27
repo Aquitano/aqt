@@ -233,7 +233,7 @@ final class AgentManager: ObservableObject {
         }
     }
 
-    /// Pair with a local t3 server from a `t3 pair` link (the t3 row's opt-in;
+    /// Pair with a t3 server from a `t3 pair` link (the t3 row's opt-in;
     /// pairing is async, so it can't ride the sync `enable()` path).
     func pairT3(link: String) async {
         guard let provider = provider(for: .t3code) as? T3CodeProvider else { return }
@@ -244,6 +244,16 @@ final class AgentManager: ObservableObject {
         } catch {
             integrationError = "Couldn't connect to T3 Code: \(error.localizedDescription)"
         }
+    }
+
+    /// Paired t3 servers, for the Settings row.
+    var t3Environments: [T3Environment] {
+        (provider(for: .t3code) as? T3CodeProvider)?.environments ?? []
+    }
+
+    func removeT3Environment(id: String) {
+        objectWillChange.send()
+        (provider(for: .t3code) as? T3CodeProvider)?.removeEnvironment(id: id)
     }
 
     // MARK: - Routing & reconciliation

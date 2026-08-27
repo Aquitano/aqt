@@ -191,14 +191,17 @@ enum T3Wire {
 
     /// One t3 thread as an `AgentSession`, or nil when it shouldn't be listed
     /// (archived, or no live runtime). `previous` preserves `startedAt` across
-    /// updates so uptime doesn't reset on every event.
+    /// updates so uptime doesn't reset on every event. Session ids are prefixed
+    /// with the environment id so two servers' threads can never collide, and
+    /// the row badge names the machine the session runs on.
     static func session(for thread: T3Thread,
                         project: T3Project?,
+                        environment: T3Environment,
                         previous: AgentSession?,
                         now: Date) -> AgentSession? {
         guard let status = status(of: thread) else { return nil }
         var session = AgentSession(
-            id: "t3-\(thread.id)",
+            id: "t3-\(environment.id)-\(thread.id)",
             kind: .t3code,
             project: project?.title ?? agentProjectName(thread.worktreePath),
             cwd: thread.worktreePath ?? project?.workspaceRoot,
@@ -208,7 +211,8 @@ enum T3Wire {
         )
         session.gitBranch = thread.branch
         session.lastPrompt = agentClip(thread.title, max: 80)
-        session.terminalName = thread.providerName
+        session.terminalName = environment.label
+        session.detail = thread.providerName
         return session
     }
 
@@ -249,6 +253,19 @@ enum T3Wire {
         }
         return events
     }
+}
+
+/// One paired t3 server ("execution environment" in t3's model — each server
+/// owns its own projects and threads; the desktop app's local backend and a
+/// remote box are separate environments). `id` is the server's stable
+/// environmentId from its descriptor; the bearer token lives in the Keychain
+/// under `tokenAccount`, never in defaults.
+struct T3Environment: Codable, Equatable, Identifiable {
+    let id: String
+    var label: String
+    var baseURL: String
+
+    var tokenAccount: String { "t3code-access-token.\(id)" }
 }
 
 /// Effect RPC request ids are `string | number` on the wire; acks must echo the
@@ -375,12 +392,15 @@ struct T3ShellState {
     }
 
     /// Map the current shell into sessions keyed by session id.
-    func sessions(previous: [String: AgentSession], now: Date) -> [String: AgentSession] {
+    func sessions(environment: T3Environment,
+                  previous: [String: AgentSession],
+                  now: Date) -> [String: AgentSession] {
         var result: [String: AgentSession] = [:]
         for thread in threads.values {
             let project = thread.projectId.flatMap { projects[$0] }
             guard let session = T3Wire.session(
-                for: thread, project: project, previous: previous["t3-\(thread.id)"], now: now
+                for: thread, project: project, environment: environment,
+                previous: previous["t3-\(environment.id)-\(thread.id)"], now: now
             ) else { continue }
             result[session.id] = session
         }

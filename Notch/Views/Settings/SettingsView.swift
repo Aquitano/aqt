@@ -270,30 +270,49 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var t3IntegrationRow: some View {
-        if agents.isEnabled(.t3code) {
-            Toggle(isOn: Binding(
-                get: { agents.isEnabled(.t3code) },
-                set: { agents.setEnabled($0, for: .t3code) }
-            )) {
+        VStack(alignment: .leading, spacing: 6) {
+            if agents.t3Environments.isEmpty {
                 agentLabel(.t3code)
-            }
-        } else {
-            VStack(alignment: .leading, spacing: 6) {
-                agentLabel(.t3code)
-                HStack(spacing: 8) {
-                    TextField("Pairing link from t3 pair", text: $t3PairingLink)
-                        .textFieldStyle(.roundedBorder)
-                    Button(t3Pairing ? "Connecting…" : "Connect") {
-                        let link = t3PairingLink
-                        t3Pairing = true
-                        Task {
-                            await agents.pairT3(link: link)
-                            t3Pairing = false
-                            if agents.isEnabled(.t3code) { t3PairingLink = "" }
-                        }
-                    }
-                    .disabled(t3PairingLink.trimmingCharacters(in: .whitespaces).isEmpty || t3Pairing)
+            } else {
+                Toggle(isOn: Binding(
+                    get: { agents.isEnabled(.t3code) },
+                    set: { agents.setEnabled($0, for: .t3code) }
+                )) {
+                    agentLabel(.t3code)
                 }
+                ForEach(agents.t3Environments) { environment in
+                    HStack(spacing: 8) {
+                        Text(environment.label)
+                        Text(environment.baseURL)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer()
+                        Button {
+                            agents.removeT3Environment(id: environment.id)
+                        } label: {
+                            PixelIcon(systemName: "minus.circle", size: 13, tint: .secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Forget this server")
+                    }
+                    .padding(.leading, 12)
+                }
+            }
+            HStack(spacing: 8) {
+                TextField("Pairing link from t3 pair", text: $t3PairingLink)
+                    .textFieldStyle(.roundedBorder)
+                Button(t3Pairing ? "Connecting…" : "Connect") {
+                    let link = t3PairingLink
+                    t3Pairing = true
+                    Task {
+                        await agents.pairT3(link: link)
+                        t3Pairing = false
+                        if agents.integrationError == nil { t3PairingLink = "" }
+                    }
+                }
+                .disabled(t3PairingLink.trimmingCharacters(in: .whitespaces).isEmpty || t3Pairing)
             }
         }
     }
@@ -319,7 +338,7 @@ struct SettingsView: View {
         case .ohMyPi:
             return "Live status + needs-you via an extension in ~/.omp/agent/extensions."
         case .t3code:
-            return "Read-only view of the local T3 Code server's sessions. Run t3 pair and paste the link; disabling forgets the pairing."
+            return "Read-only view of t3 server sessions, local or remote. Run t3 pair on each server and paste the link; pair several to watch them all."
         }
     }
 
