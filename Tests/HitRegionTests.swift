@@ -54,7 +54,7 @@ final class HitRegionTests: XCTestCase {
 
     func testCompactTrayCountUsesTotalCountFallback() {
         let content = NotchLayout.compactContent(
-            hasMedia: false, isAgent: false, activityLabel: nil, trayItemCount: 3
+            hasMedia: false, agentCount: nil, activityLabel: nil, trayItemCount: 3
         )
         XCTAssertEqual(content, .activity(label: "3 items"))
         XCTAssertGreaterThan(NotchLayout.compactExtraWidth(content), 0)
@@ -92,9 +92,18 @@ final class HitRegionTests: XCTestCase {
     // MARK: - Structural (font-dependent) properties
 
     func testAgentPillIsWiderThanNotchAndTallerThanNone() {
-        let agent = HitRegion.rect(snapshot(.compact, compact: .agent))
+        let agent = HitRegion.rect(snapshot(.compact, compact: .agent(count: 1)))
         XCTAssertGreaterThan(agent.width, notch.width)
         XCTAssertEqual(agent.height, notch.height + 4, accuracy: 0.001)
+    }
+
+    func testAgentPillGrowsWithSessionCountButNotBeyondGlyphCap() {
+        let one = NotchLayout.compactExtraWidth(.agent(count: 1))
+        let three = NotchLayout.compactExtraWidth(.agent(count: 3))
+        let capped = NotchLayout.compactExtraWidth(.agent(count: 4))
+        let overCap = NotchLayout.compactExtraWidth(.agent(count: 9))
+        XCTAssertGreaterThan(three, one)
+        XCTAssertEqual(capped, overCap, accuracy: 0.001)
     }
 
     func testRectStaysCenteredOnPanelMidX() {

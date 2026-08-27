@@ -567,7 +567,7 @@ final class NotchWindowController {
             trayEmpty: env.tray.items.isEmpty,
             compact: NotchLayout.compactContent(
                 hasMedia: env.settings.showCompactNowPlaying && !env.media.track.isEmpty,
-                isAgent: env.activities.compactActivity?.isAgent ?? false,
+                agentCount: env.activities.compactActivity?.agentCount,
                 activityLabel: env.activities.compactActivity.map {
                     ActivityPresenter.compactLabel(for: $0.kind)
                 },

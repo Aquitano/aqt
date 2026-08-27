@@ -101,6 +101,24 @@ enum ActivityPresenter {
         }
     }
 
+    /// Capitalized aggregate status for the compact agent pill's leading label.
+    /// The strings must stay in sync with the widest-label list measured in
+    /// `NotchLayout.compactAgentSlotWidth`.
+    static func agentCompactStatus(_ status: AgentStatus) -> String {
+        switch status {
+        case .running: return "Running"
+        case .editing: return "Editing"
+        case .tool: return "Working"
+        case .idle: return "Idle"
+        case .needsAttention: return "Needs you"
+        case .finished: return "Done"
+        }
+    }
+
+    /// Working-session blue for the pill's pixel glyphs; attention/finished keep
+    /// the canonical `agentTint` palette.
+    static let agentWorkingTint = Color(red: 0.42, green: 0.58, blue: 1.0)
+
     /// Canonical status → color for the agent feature, so the pill, the card, and
     /// the session rows can't drift apart (they used to keep three copies).
     static func agentTint(_ status: AgentStatus) -> Color {

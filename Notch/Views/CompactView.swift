@@ -16,6 +16,7 @@ struct CompactView: View {
     @EnvironmentObject private var settings: Settings
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var tray: TrayManager
+    @EnvironmentObject private var agents: AgentManager
 
     @Environment(\.notchGeometry) private var notchSize
     @Environment(\.notchControlsSharedRendering) private var controlsSharedRendering
@@ -46,10 +47,17 @@ struct CompactView: View {
                 trailing: mediaTrailing
             )
         } else if let activity = activities.compactActivity {
-            pill(
-                leading: activityIcon(activity),
-                trailing: activityLabel(activity)
-            )
+            if case let .agent(count, _, _, status) = activity.kind {
+                pill(
+                    leading: agentLeading(status: status),
+                    trailing: agentTrailing(count: count)
+                )
+            } else {
+                pill(
+                    leading: activityIcon(activity),
+                    trailing: activityLabel(activity)
+                )
+            }
         } else if !tray.items.isEmpty {
             pill(
                 leading: PixelIcon(systemName: "tray.full", size: 15, tint: .white),
@@ -139,30 +147,60 @@ struct CompactView: View {
         .accessibilityLabel("Album art")
     }
 
-    // MARK: - Activity slots
+    // MARK: - Agent slots
 
-    @ViewBuilder
-    private func activityIcon(_ activity: Activity) -> some View {
-        if case let .agent(_, _, _, status) = activity.kind {
-            // Retro pixel spinner: animates while an agent is actively working.
-            // Ease the tint between states (busy green -> attention orange) so the
-            // status shift reads as a transition, not a hard cut. Only fires on a
-            // tint change, so the per-frame spinner stays a zero-cost render.
-            PixelWorkingIndicator(active: status.isBusy, tint: agentPixelTint(status))
-                .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: agentPixelTint(status))
-        } else {
-            PixelIcon(systemName: ActivityPresenter.symbol(for: activity.kind),
-                      size: 15, tint: .white)
+    /// Per-session pixel glyphs + the aggregate status ("Running"). Falls back
+    /// to one aggregate glyph if the live session list is momentarily out of
+    /// step with the published activity.
+    private func agentLeading(status: AgentStatus) -> some View {
+        HStack(spacing: NotchLayout.agentStatusGap) {
+            PixelSessionStrip(entries: sessionEntries(fallback: status))
+            Text(ActivityPresenter.agentCompactStatus(status))
+                .font(.system(size: NotchLayout.compactLabelFontSize, weight: .medium))
+                .lineLimit(1)
+                .contentTransition(.opacity)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: status)
         }
+    }
+
+    /// Bold count + a quiet monospaced unit, mirroring the reserved width in
+    /// `NotchLayout.compactAgentSlotWidth`.
+    private func agentTrailing(count: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: NotchLayout.agentCountGap) {
+            Text("\(count)")
+                .font(.system(size: NotchLayout.compactLabelFontSize, weight: .bold))
+                .contentTransition(.numericText())
+                .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: count)
+            Text(count == 1 ? "session" : "sessions")
+                .font(.system(size: NotchLayout.agentSessionsFontSize, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.55))
+        }
+        .lineLimit(1)
+    }
+
+    private func sessionEntries(fallback status: AgentStatus) -> [PixelSessionStrip.Entry] {
+        let live = agents.pillSessions.prefix(NotchLayout.agentMaxGlyphs).map {
+            PixelSessionStrip.Entry(id: $0.id, busy: $0.status.isBusy, tint: agentPixelTint($0.status))
+        }
+        return live.isEmpty
+            ? [PixelSessionStrip.Entry(id: "aggregate", busy: status.isBusy, tint: agentPixelTint(status))]
+            : Array(live)
     }
 
     private func agentPixelTint(_ status: AgentStatus) -> Color {
         switch status {
-        // Attention/finished share the canonical palette; busy keeps the retro-green
-        // pixel look that's specific to this indicator.
+        // Attention/finished share the canonical palette; busy sessions render
+        // in the pill's working blue.
         case .needsAttention, .finished: return ActivityPresenter.agentTint(status)
-        default: return Color(red: 0.40, green: 0.92, blue: 0.55) // retro green
+        default: return ActivityPresenter.agentWorkingTint
         }
+    }
+
+    // MARK: - Activity slots
+
+    private func activityIcon(_ activity: Activity) -> some View {
+        PixelIcon(systemName: ActivityPresenter.symbol(for: activity.kind),
+                  size: 15, tint: .white)
     }
 
     @ViewBuilder

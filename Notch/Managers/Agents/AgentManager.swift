@@ -10,6 +10,11 @@ import AppKit
 final class AgentManager: ObservableObject {
 
     @Published private(set) var sessions: [AgentSession] = []
+    /// Sessions the compact pill represents: busy or waiting on the user. Shared
+    /// by `syncPill` and the pill's per-session glyph strip so they can't disagree.
+    var pillSessions: [AgentSession] {
+        sessions.filter { $0.status.isBusy || $0.status == .needsAttention }
+    }
     /// Account-wide Claude usage limits (when enabled), from the statusLine.
     @Published private(set) var usage: AgentUsage?
     /// Last enable/install failure, for the Settings UI. Cleared on the next
@@ -103,7 +108,7 @@ final class AgentManager: ObservableObject {
         sessionsByKind = [:]
         sessions = []
         usage = nil
-        syncPill([])
+        syncPill()
     }
 
     /// The single entry point for both master switches so persisted state and the
@@ -377,14 +382,14 @@ final class AgentManager: ObservableObject {
             .flatMap { sessionsByKind[$0] ?? [] }
             .sorted { $0.lastActivity > $1.lastActivity }
         self.sessions = merged
-        syncPill(merged)
+        syncPill()
     }
 
     /// Mirror the active agents into the pill as one aggregate entry showing the
     /// running count + the most important status (idle ones live in the Agents
     /// tab). Only re-publish when that summary actually changes.
-    private func syncPill(_ sessions: [AgentSession]) {
-        let active = sessions.filter { $0.status.isBusy || $0.status == .needsAttention }
+    private func syncPill() {
+        let active = pillSessions
         guard let representative = active.first(where: { $0.status == .needsAttention })
             ?? active.max(by: { $0.lastActivity < $1.lastActivity }) else {
             if pillSignature != nil { activities.removeAgentSummary(); pillSignature = nil }

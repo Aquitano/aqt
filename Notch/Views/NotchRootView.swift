@@ -130,7 +130,7 @@ struct NotchRootView: View {
     private var compactContent: NotchLayout.CompactContent {
         NotchLayout.compactContent(
             hasMedia: settings.showCompactNowPlaying && !media.track.isEmpty,
-            isAgent: activities.compactActivity?.isAgent ?? false,
+            agentCount: activities.compactActivity?.agentCount,
             activityLabel: activities.compactActivity.map { ActivityPresenter.compactLabel(for: $0.kind) },
             trayItemCount: tray.items.count
         )

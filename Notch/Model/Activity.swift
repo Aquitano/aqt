@@ -50,8 +50,9 @@ struct Activity: Identifiable, Equatable {
         case neutral, accent, warning, success
     }
 
-    var isAgent: Bool {
-        if case .agent = kind { return true }
-        return false
+    /// Active session count when this is the aggregate agent entry, else nil.
+    var agentCount: Int? {
+        if case let .agent(count, _, _, _) = kind { return count }
+        return nil
     }
 }
