@@ -49,8 +49,13 @@ struct OnboardingView: View {
             }
             .padding(.horizontal, Theme.Metrics.grid * 4)
 
-            Button("Open System Settings") { Self.openAccessibilitySettings() }
-                .keyboardShortcut(.defaultAction)
+            Button("Open System Settings") {
+                // The request is what registers Starboard in the Accessibility
+                // list; without it the pane can open with nothing to enable.
+                _ = Permissions.requestAccessibility()
+                Self.openAccessibilitySettings()
+            }
+            .keyboardShortcut(.defaultAction)
 
             HStack(spacing: Theme.Metrics.grid) {
                 ProgressView()

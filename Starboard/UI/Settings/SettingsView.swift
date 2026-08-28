@@ -7,6 +7,17 @@ struct SettingsView: View {
     /// view live and persists on every change.
     private var model: SettingsStore.Model { SettingsStore.shared.model }
 
+    /// Every control edits the store directly — no cached copy to go stale when
+    /// an import replaces the whole model.
+    private func setting<Value>(
+        _ keyPath: WritableKeyPath<SettingsStore.Model, Value>
+    ) -> Binding<Value> {
+        Binding(
+            get: { SettingsStore.shared.model[keyPath: keyPath] },
+            set: { SettingsStore.shared.model[keyPath: keyPath] = $0 }
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -52,10 +63,7 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Picker("", selection: Binding(
-                    get: { SettingsStore.shared.model.repeatPress },
-                    set: { SettingsStore.shared.model.repeatPress = $0 }
-                )) {
+                Picker("", selection: setting(\.repeatPress)) {
                     Text("Cycle windows").tag(RepeatPressAction.cycleWindows)
                     Text("Hide app").tag(RepeatPressAction.hide)
                     Text("Cycle apps").tag(RepeatPressAction.cycleApps)
@@ -68,20 +76,20 @@ struct SettingsView: View {
             ToggleRow(
                 title: "Launch apps that aren't running",
                 detail: "Pressing a letter with no running match launches the installed app.",
-                initial: model.launchIfNotRunning
-            ) { SettingsStore.shared.model.launchIfNotRunning.toggle() }
+                isOn: setting(\.launchIfNotRunning)
+            )
 
             ToggleRow(
                 title: "Window jump with Right ⌥",
                 detail: "ralt+letter steps through that app's windows. Consumes Right Option — leave off if you type special characters with it.",
-                initial: model.windowJumpEnabled
-            ) { SettingsStore.shared.model.windowJumpEnabled.toggle() }
+                isOn: setting(\.windowJumpEnabled)
+            )
 
             ToggleRow(
                 title: "Mouse follows focused app",
                 detail: "Warps the pointer to the focused window's center after a switch.",
-                initial: model.mouseFollowsFocus
-            ) { SettingsStore.shared.model.mouseFollowsFocus.toggle() }
+                isOn: setting(\.mouseFollowsFocus)
+            )
 
             LaunchAtLoginRow()
             ScreenRecordingRow()
@@ -121,10 +129,7 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Picker("", selection: Binding(
-                    get: { SettingsStore.shared.model.spacesStrategy },
-                    set: { SettingsStore.shared.model.spacesStrategy = $0 }
-                )) {
+                Picker("", selection: setting(\.spacesStrategy)) {
                     Text("Compatible").tag(SpacesStrategy.synthetic)
                     Text("Instant").tag(SpacesStrategy.direct)
                 }
@@ -136,17 +141,27 @@ struct SettingsView: View {
 
             ToggleRow(
                 title: "Move windows with Right ⌥",
-                detail: "ralt+1…9 sends the focused window to that Space. Needs the Instant engine.",
-                initial: model.spacesMoveWindowEnabled
-            ) { SettingsStore.shared.model.spacesMoveWindowEnabled.toggle() }
+                detail: "ralt+1…9 sends the focused window to that Space.",
+                isOn: setting(\.spacesMoveWindowEnabled)
+            )
+            .disabled(!usesDirectEngine)
 
             ToggleRow(
                 title: "Space number in menu bar",
-                detail: "Shows the active Space. Needs the Instant engine.",
-                initial: model.showSpaceNumber
-            ) { SettingsStore.shared.model.showSpaceNumber.toggle() }
+                detail: "Shows the active Space.",
+                isOn: setting(\.showSpaceNumber)
+            )
+            .disabled(!usesDirectEngine)
+
+            if !usesDirectEngine {
+                Text("Both need the Instant engine.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
         }
     }
+
+    private var usesDirectEngine: Bool { model.spacesStrategy == .direct }
 
     // MARK: - Stages
 
@@ -165,10 +180,7 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Picker("", selection: Binding(
-                    get: { SettingsStore.shared.model.stagesTrigger },
-                    set: { SettingsStore.shared.model.stagesTrigger = $0 }
-                )) {
+                Picker("", selection: setting(\.stagesTrigger)) {
                     Text("Caps Lock").tag(StagesTrigger.capsLock)
                     Text("Right ⇧ tap").tag(StagesTrigger.rightShift)
                     Text("Off").tag(StagesTrigger.off)
@@ -203,6 +215,10 @@ struct SettingsView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
 
+            Text("Hold Right ⌘ + Right ⌥ and press a letter to pin the frontmost app to it.")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+
             if rows.isEmpty {
                 Text("No running apps yet.")
                     .font(.system(size: 13))
@@ -228,7 +244,7 @@ struct SettingsView: View {
 
         for (key, bundleID) in model.customAssignments.sorted(by: { $0.key < $1.key }) {
             guard let letter = key.lowercased().first else { continue }
-            let name = Self.appName(for: bundleID) ?? "Not installed"
+            let name = AppIcons.name(for: bundleID) ?? "Not installed"
             result.append(AssignmentRowModel(letter: letter, name: name, bundleID: bundleID, custom: true))
             seen.insert(letter)
         }
@@ -250,15 +266,6 @@ struct SettingsView: View {
             if $0.custom != $1.custom { return $0.custom }
             return $0.letter < $1.letter
         }
-    }
-
-    private static func appName(for bundleID: String) -> String? {
-        if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first {
-            return app.localizedName
-        }
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID),
-              let bundle = Bundle(url: url) else { return nil }
-        return bundle.object(forInfoDictionaryKey: kCFBundleNameKey as String) as? String
     }
 
 }
@@ -320,7 +327,7 @@ struct StageItemsEditor: View {
             if let stage = SettingsStore.shared.model.stages.first(where: { $0.id == stageID }) {
                 ForEach(Array(stage.apps.enumerated()), id: \.element.bundleID) { index, app in
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(appName(app.bundleID))
+                        Text(AppIcons.name(for: app.bundleID) ?? app.bundleID)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(.secondary)
                         TextEditor(text: itemsBinding(appIndex: index))
@@ -358,14 +365,6 @@ struct StageItemsEditor: View {
             }
         )
     }
-
-    private func appName(_ bundleID: String) -> String {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID),
-              let bundle = Bundle(url: url),
-              let name = bundle.object(forInfoDictionaryKey: kCFBundleNameKey as String) as? String
-        else { return bundleID }
-        return name
-    }
 }
 
 struct AssignmentRowModel: Identifiable {
@@ -376,12 +375,8 @@ struct AssignmentRowModel: Identifiable {
 
     var id: String { "\(letter)-\(bundleID)" }
 
-    var icon: NSImage? {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
-            return nil
-        }
-        return NSWorkspace.shared.icon(forFile: url.path)
-    }
+    @MainActor
+    var icon: NSImage? { AppIcons.icon(for: bundleID) }
 }
 
 struct AssignmentRow: View {
@@ -422,16 +417,7 @@ struct AssignmentRow: View {
 struct ToggleRow: View {
     let title: String
     let detail: String
-    let onToggle: () -> Void
-
-    @State private var isOn: Bool
-
-    init(title: String, detail: String, initial: Bool = true, onToggle: @escaping () -> Void) {
-        self.title = title
-        self.detail = detail
-        self.onToggle = onToggle
-        _isOn = State(initialValue: initial)
-    }
+    @Binding var isOn: Bool
 
     var body: some View {
         HStack(alignment: .top) {
@@ -445,7 +431,6 @@ struct ToggleRow: View {
             Toggle("", isOn: $isOn)
                 .toggleStyle(.switch)
                 .labelsHidden()
-                .onChange(of: isOn) { _, _ in onToggle() }
         }
         .padding(.vertical, 2)
     }
@@ -501,28 +486,39 @@ struct ExportImportRow: View {
 /// instead of real titles. Starboard never captures the screen.
 struct ScreenRecordingRow: View {
     @State private var granted = Permissions.hasScreenRecording
+    /// The request only returns true for a grant made in an earlier run: a
+    /// fresh grant takes effect on the next launch.
+    @State private var asked = false
 
     var body: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Window titles").font(.system(size: 13))
-                Text(
-                    granted
-                        ? "Screen Recording granted — window search shows real titles."
-                        : "Needs the Screen Recording permission. Starboard never records your screen."
-                )
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             if !granted {
                 Button("Grant…") {
                     granted = Permissions.requestScreenRecording()
+                    asked = !granted
                 }
                 .controlSize(.small)
             }
         }
         .padding(.vertical, 2)
+    }
+
+    private var detail: String {
+        if granted {
+            return "Screen Recording granted — window search shows real titles."
+        }
+        if asked {
+            return "Relaunch Starboard after granting Screen Recording for titles to appear."
+        }
+        return "Needs the Screen Recording permission. Starboard never records your screen."
     }
 }
 
