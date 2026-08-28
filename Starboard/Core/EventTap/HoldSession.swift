@@ -103,11 +103,18 @@ struct HoldSession {
         return intents
     }
 
-    mutating func keyDown(_ keyCode: Int64, modifiers: ModifierState) -> [Intent] {
+    mutating func keyDown(
+        _ keyCode: Int64,
+        modifiers: ModifierState,
+        letter: Character? = nil,
+        digit: Int? = nil,
+        keyWasResolved: Bool = false
+    ) -> [Intent] {
         guard mode != .cancelled else { return [] }
 
-        guard let letter = Keycode.letters[keyCode] else {
-            return controlKeyDown(keyCode)
+        let resolvedLetter = keyWasResolved ? letter : (letter ?? Keycode.letters[keyCode])
+        guard let letter = resolvedLetter else {
+            return controlKeyDown(keyCode, digit: digit, keyWasResolved: keyWasResolved)
         }
 
         if modifiers.rightOptionHeld {
@@ -146,10 +153,15 @@ struct HoldSession {
         }
     }
 
-    private mutating func controlKeyDown(_ keyCode: Int64) -> [Intent] {
+    private mutating func controlKeyDown(
+        _ keyCode: Int64,
+        digit: Int?,
+        keyWasResolved: Bool
+    ) -> [Intent] {
         // Space navigation wins over search for digits/brackets except while
         // the overlay is engaged (where they'd be surprising jumps).
-        if let digit = Keycode.digits[keyCode] {
+        let resolvedDigit = keyWasResolved ? digit : (digit ?? Keycode.digits[keyCode])
+        if let digit = resolvedDigit {
             switch mode {
             case .idle, .letter, .windowCycle: return [.jumpToSpace(digit)]
             case .search, .cancelled: return []

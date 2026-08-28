@@ -3,8 +3,8 @@ import Foundation
 /// Hardware keycodes (ANSI layout). Right-vs-left modifier identity only exists
 /// at the keycode level — CGEventFlags merges both sides (BATTLEPLAN §3.2).
 ///
-/// TODO(Phase 3): letters are ANSI-only; translate via UCKeyTranslate with the
-/// current keyboard layout for international layouts.
+/// Letter and digit tables are fallbacks for environments where macOS cannot
+/// expose a Unicode keyboard layout (and deterministic defaults for tests).
 enum Keycode {
     static let rightCommand: Int64 = 0x36
     static let leftCommand: Int64 = 0x37

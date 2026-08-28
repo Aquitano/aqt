@@ -29,16 +29,20 @@ class HudPanel: NSPanel {
 /// inner stroke, panel radius.
 struct SurfaceBackground: View {
     var cornerRadius: CGFloat = Theme.Metrics.panelRadius
+    @Environment(\.themeContrastBoost) private var contrastBoost
 
     var body: some View {
         VisualEffectSurface()
             .overlay {
                 Rectangle()
-                    .fill(Color.black.opacity(0.25))
+                    .fill(Color.black.opacity(contrastBoost ? 0.4 : 0.25))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .strokeBorder(Theme.Colors.stroke, lineWidth: 1)
+                    .strokeBorder(
+                        Color.primary.opacity(contrastBoost ? 0.28 : 0.10),
+                        lineWidth: contrastBoost ? 1.5 : 1
+                    )
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
@@ -59,14 +63,20 @@ struct SurfaceBackground: View {
 /// Key-cap chip for shortcut letters (BATTLEPLAN §4 type spec).
 struct KeyCap: View {
     let character: Character
+    @Environment(\.themeContrastBoost) private var contrastBoost
 
     var body: some View {
         Text(String(character).uppercased())
             .font(.system(size: 11, weight: .medium).monospaced())
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .background(Capsule().fill(Color.white.opacity(0.1)))
-            .overlay(Capsule().strokeBorder(Theme.Colors.stroke, lineWidth: 1))
+            .background(Capsule().fill(Color.primary.opacity(contrastBoost ? 0.20 : 0.10)))
+            .overlay(
+                Capsule().strokeBorder(
+                    Color.primary.opacity(contrastBoost ? 0.30 : 0.10),
+                    lineWidth: contrastBoost ? 1.5 : 1
+                )
+            )
             .foregroundStyle(.primary)
     }
 }
@@ -99,6 +109,7 @@ final class ToastHUD {
         let hosting = NSHostingView(
             rootView: content
                 .environment(\.toastDismiss, { [weak panel] in panel?.orderOut(nil) })
+                .themeAccessibility()
         )
         hosting.sizingOptions = []
         panel.contentView = hosting
@@ -154,6 +165,7 @@ private extension EnvironmentValues {
 private struct MessageToastContent: View {
     let message: String
     @Environment(\.toastDismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var visible = false
 
     var body: some View {
@@ -163,7 +175,7 @@ private struct MessageToastContent: View {
             .padding(.horizontal, Theme.Metrics.grid * 2.5)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .background(SurfaceBackground())
-            .scaleEffect(visible ? 1 : 0.98)
+            .scaleEffect(reduceMotion || visible ? 1 : 0.98)
             .opacity(visible ? 1 : 0)
             .animation(Theme.Motion.overlayIn, value: visible)
             .onAppear { visible = true }
@@ -176,6 +188,7 @@ private struct ToastContent: View {
     let letter: Character
     let icon: NSImage?
     @Environment(\.toastDismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var visible = false
 
     var body: some View {
@@ -192,7 +205,7 @@ private struct ToastContent: View {
         .padding(.horizontal, Theme.Metrics.grid * 2.5)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(SurfaceBackground())
-        .scaleEffect(visible ? 1 : 0.98)
+        .scaleEffect(reduceMotion || visible ? 1 : 0.98)
         .opacity(visible ? 1 : 0)
         .animation(Theme.Motion.overlayIn, value: visible)
         .onAppear { visible = true }

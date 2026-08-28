@@ -45,9 +45,14 @@ final class SearchModel {
     private(set) var query = ""
 
     private let registry: AppRegistry
+    private let windowProvider: () -> [WindowInfo]
 
-    init(registry: AppRegistry) {
+    init(
+        registry: AppRegistry,
+        windowProvider: @escaping () -> [WindowInfo] = WindowEnumerator.visibleWindows
+    ) {
         self.registry = registry
+        self.windowProvider = windowProvider
     }
 
     var selectedItem: Item? {
@@ -74,7 +79,7 @@ final class SearchModel {
     func beginWindowCycle() {
         scope = .windows
         query = ""
-        items = WindowEnumerator.visibleWindows().map(windowItem)
+        items = windowProvider().map(windowItem)
         selectedIndex = items.count > 1 ? 1 : 0
         isVisible = !items.isEmpty
     }
@@ -83,7 +88,7 @@ final class SearchModel {
     func beginWindowSearch() {
         scope = .windows
         query = ""
-        items = WindowEnumerator.visibleWindows().map(windowItem)
+        items = windowProvider().map(windowItem)
         selectedIndex = 0
         isVisible = true
     }
@@ -101,7 +106,7 @@ final class SearchModel {
     func commit() {
         switch selectedItem?.kind {
         case .runningApp(let bundleID):
-            runningApp(bundleID)?.activate()
+            runningApp(bundleID)?.activateReliably()
         case .installedApp(let bundleID):
             if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
                 NSWorkspace.shared.openApplication(at: url, configuration: .init())
@@ -169,14 +174,16 @@ final class SearchModel {
     }
 
     private func windowMatches(_ query: String) -> [Item] {
-        let candidates = WindowEnumerator.visibleWindows().map { window in
+        let candidates = windowProvider().map { window in
             (windowItem(window), "\(window.displayTitle) \(window.appName)")
         }
         return rank(query, candidates: candidates)
     }
 
     private func rank(_ query: String, candidates: [(Item, String)]) -> [Item] {
-        candidates.compactMap { item, target in
+        let interval = Perf.beginSearchRanking()
+        defer { Perf.endSearchRanking(interval) }
+        return candidates.compactMap { item, target in
             FuzzyMatcher.score(query: query, target: target).map { (item, $0) }
         }
         .sorted { $0.1 > $1.1 }

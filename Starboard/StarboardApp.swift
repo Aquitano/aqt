@@ -23,6 +23,8 @@ struct StarboardApp: App {
             }
             SettingsLink { Text("Settings…") }
             Divider()
+            Button("About Starboard") { appDelegate.showAbout() }
+            Divider()
             Button("Quit Starboard") { NSApp.terminate(nil) }
                 .keyboardShortcut("q")
         } label: {
@@ -49,8 +51,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var eventTap: EventTap?
     private var watchdog: Timer?
     private var onboardingWindow: NSWindow?
+    private var aboutWindow: NSWindow?
+    private var tapFailureObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        tapFailureObserver = NotificationCenter.default.addObserver(
+            forName: EventTap.failedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tapRecoveryFailed() }
+        }
+
         if Permissions.hasAccessibility {
             startTapIfWanted()
         } else {
@@ -61,7 +73,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forName: NSWorkspace.activeSpaceDidChangeNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refreshSpaceNumber() }
+            MainActor.assumeIsolated {
+                WindowEnumerator.invalidateCache()
+                self?.refreshSpaceNumber()
+            }
         }
         refreshSpaceNumber()
 
@@ -72,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self, self.state.starboardEnabled,
                       let tap = self.eventTap, !tap.isEnabled else { return }
                 NSLog("Starboard: tap was disabled by the system, re-enabling")
-                tap.enable()
+                tap.recoverIfNeeded()
             }
         }
     }
@@ -90,6 +105,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func syncTap() {
         guard let tap = eventTap else { return }
         state.starboardEnabled ? tap.enable() : tap.disable()
+    }
+
+    private func tapRecoveryFailed() {
+        state.starboardEnabled = false
+        ToastHUD.shared.show(message: "Starboard disabled — tap kept failing")
     }
 
     // MARK: - Tap lifecycle
@@ -203,5 +223,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onboardingWindow?.close()
         onboardingWindow = nil
         startTapIfWanted()
+    }
+
+    // MARK: - About
+
+    func showAbout() {
+        if let aboutWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            aboutWindow.makeKeyAndOrderFront(nil)
+            return
+        }
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 280),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "About Starboard"
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: AboutView())
+        window.center()
+        aboutWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
     }
 }

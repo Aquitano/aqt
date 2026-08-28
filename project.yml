@@ -2,7 +2,7 @@ name: Starboard
 options:
   bundleIdPrefix: com.thomasbreindl
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "15.0"
   createIntermediateGroups: true
 
 settings:
@@ -23,6 +23,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.thomasbreindl.starboard
         GENERATE_INFOPLIST_FILE: false
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: Starboard/Info.plist
       properties:
@@ -30,7 +31,8 @@ targets:
         CFBundleDisplayName: Starboard
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
-        LSMinimumSystemVersion: "14.0"
+        LSMinimumSystemVersion: "15.0"
+        LSApplicationCategoryType: public.app-category.utilities
         # Menu bar app: no Dock icon, no app switcher entry.
         LSUIElement: true
         NSHumanReadableCopyright: "© 2026 Thomas Breindl"
@@ -50,6 +52,16 @@ targets:
     dependencies:
       - target: Starboard
 
+  StarboardBenchmarks:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [StarboardBenchmarks]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+    dependencies:
+      - target: Starboard
+
 schemes:
   Starboard:
     build:
@@ -60,3 +72,11 @@ schemes:
     test:
       config: Debug
       targets: [StarboardTests]
+  StarboardBenchmarks:
+    build:
+      targets:
+        Starboard: all
+        StarboardBenchmarks: [test]
+    test:
+      config: Release
+      targets: [StarboardBenchmarks]

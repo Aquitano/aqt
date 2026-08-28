@@ -26,6 +26,16 @@ struct StageApp: Codable, Equatable {
     var openItems: [String] = []
 }
 
+/// What pressing an already-focused app's letter does.
+enum RepeatPressAction: String, Codable {
+    /// Step through the app's windows, most recently used first.
+    case cycleWindows
+    /// Hide the app.
+    case hide
+    /// Cycle other apps assigned to the same letter.
+    case cycleApps
+}
+
 enum SpacesStrategy: String, Codable {
     /// Post Mission Control shortcuts (ctrl+digit / ctrl+arrows). Animated,
     /// robust; ctrl+digit must be enabled in System Settings.
@@ -38,7 +48,7 @@ enum SpacesStrategy: String, Codable {
 @Observable
 final class SettingsStore {
     struct Model: Codable, Equatable {
-        var hideOnRepeat = true
+        var repeatPress = RepeatPressAction.cycleWindows
         var launchIfNotRunning = true
         var customAssignments: [String: String] = [:] // letter → bundleID
         /// ralt+letter window jump. Off by default: right Option types special
@@ -62,8 +72,9 @@ final class SettingsStore {
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            hideOnRepeat =
-                try container.decodeIfPresent(Bool.self, forKey: .hideOnRepeat) ?? true
+            repeatPress =
+                (try? container.decodeIfPresent(RepeatPressAction.self, forKey: .repeatPress))
+                .flatMap { $0 } ?? .cycleWindows
             launchIfNotRunning =
                 try container.decodeIfPresent(Bool.self, forKey: .launchIfNotRunning) ?? true
             customAssignments =

@@ -79,7 +79,7 @@ enum WindowFocuser {
 
     private static func activateOnMain(pid: pid_t) {
         DispatchQueue.main.async {
-            NSRunningApplication(processIdentifier: pid)?.activate()
+            NSRunningApplication(processIdentifier: pid)?.activateReliably()
         }
     }
 

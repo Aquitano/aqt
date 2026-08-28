@@ -24,7 +24,7 @@ final class HintHUD {
 
         let panel = self.panel ?? HudPanel(contentRect: frame)
         self.panel = panel
-        let hosting = NSHostingView(rootView: HintGrid(entries: entries))
+        let hosting = NSHostingView(rootView: HintGrid(entries: entries).themeAccessibility())
         hosting.sizingOptions = []
         panel.contentView = hosting
         panel.setFrame(frame, display: true)

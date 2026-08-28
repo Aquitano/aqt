@@ -78,6 +78,8 @@ final class AppRegistry {
     }
 
     private nonisolated static func scanInstalledApps() -> [AppCandidate] {
+        let interval = Perf.beginInstalledAppScan()
+        defer { Perf.endInstalledAppScan(interval) }
         let directories = [
             "/Applications",
             "/Applications/Utilities",

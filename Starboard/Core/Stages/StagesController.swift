@@ -7,6 +7,11 @@ import SwiftUI
 /// leader+`-` closes the active Stage's windows. Main actor.
 @MainActor
 final class StagesController {
+    enum RestoreMode: Equatable {
+        case activate
+        case fullRestore
+    }
+
     private let settings: SettingsStore
     private var saveWindow: NSWindow?
     /// The most recently restored Stage — the target of leader+`-`.
@@ -92,7 +97,8 @@ final class StagesController {
 
         // All apps already running → this is an "activate": just re-hide
         // intruders. Otherwise a full restore that also opens the items.
-        let fullRestore = !stage.apps.allSatisfy { runningApp($0.bundleID) != nil }
+        let runningIDs = Set(stage.apps.compactMap { runningApp($0.bundleID)?.bundleIdentifier })
+        let fullRestore = Self.restoreMode(for: stage, runningBundleIDs: runningIDs) == .fullRestore
 
         for stageApp in stage.apps {
             if let app = runningApp(stageApp.bundleID) {
@@ -113,7 +119,7 @@ final class StagesController {
         }
 
         if let first = stage.apps.first, let app = runningApp(first.bundleID) {
-            app.activate()
+            app.activateReliably()
         }
         activeStageID = stage.id
     }
@@ -137,9 +143,17 @@ final class StagesController {
         NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
     }
 
+    static func restoreMode(for stage: Stage, runningBundleIDs: Set<String>) -> RestoreMode {
+        stage.apps.allSatisfy { runningBundleIDs.contains($0.bundleID) }
+            ? .activate
+            : .fullRestore
+    }
+
     private func openItem(_ item: String) {
         if item.hasPrefix("http://") || item.hasPrefix("https://") {
-            URL(string: item).map { NSWorkspace.shared.open($0) }
+            if let url = URL(string: item) {
+                NSWorkspace.shared.open(url)
+            }
         } else {
             let path = (item as NSString).expandingTildeInPath
             NSWorkspace.shared.open(URL(fileURLWithPath: path))

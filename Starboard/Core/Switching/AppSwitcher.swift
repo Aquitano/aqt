@@ -5,9 +5,10 @@ import SwiftUI
 ///
 /// Switch semantics (BATTLEPLAN §1/§3.4, mirroring rcmd): a letter press
 /// focuses the letter's best match; pressing it when a matching app is already
-/// frontmost hides it (or cycles when hide-on-repeat is off); Tab cycles
-/// same-letter apps. Cycle order is snapshotted per hold — MRU re-sorting
-/// between presses must not reshuffle the ring mid-cycle.
+/// frontmost steps through its windows MRU-first (or hides it / cycles
+/// same-letter apps, per the repeat-press setting); Tab cycles same-letter
+/// apps. Cycle order is snapshotted per hold — MRU re-sorting between presses
+/// must not reshuffle a ring mid-cycle.
 @MainActor
 final class AppSwitcher {
     private let registry: AppRegistry
@@ -27,6 +28,11 @@ final class AppSwitcher {
     /// Per-letter cycle rings for the current rcmd hold, in the order they
     /// existed at the first Tab press. Cleared on release.
     private var holdCycles: [Character: [String]] = [:]
+
+    /// Window ring for repeat presses on the frontmost app, snapshotted in
+    /// MRU order at the first repeat press of the hold. Cleared on release,
+    /// so a fresh press always lands on the app's last-focused window.
+    private var holdWindowRing: (pid: pid_t, windows: [WindowInfo], index: Int)?
 
     /// Pending key-hint countdown for the current bare rcmd hold.
     private var hintTask: Task<Void, Never>?
@@ -108,9 +114,27 @@ final class AppSwitcher {
         }
     }
 
+    /// Repeat press: step through the frontmost app's windows, second-most
+    /// recent first (a plain switch already lands on the most recent).
+    private func cycleFrontmostWindows() {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return }
+        let pid = app.processIdentifier
+        if holdWindowRing?.pid != pid {
+            // CGWindowList is front-to-back, which for a single app's windows
+            // is exactly MRU order.
+            let windows = WindowEnumerator.visibleWindows().filter { $0.pid == pid }
+            holdWindowRing = (pid, windows, 0)
+        }
+        guard var ring = holdWindowRing, ring.windows.count > 1 else { return }
+        ring.index = (ring.index + 1) % ring.windows.count
+        holdWindowRing = ring
+        WindowFocuser.focus(ring.windows[ring.index])
+    }
+
     /// Called when rcmd is released so the next hold starts a fresh cycle.
     func endHold() {
         holdCycles.removeAll()
+        holdWindowRing = nil
         cancelHint()
         if settings.model.mouseFollowsFocus {
             MouseFollower.warpToFocusedWindow()
@@ -177,9 +201,12 @@ final class AppSwitcher {
         let frontmostID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
 
         if let frontmostID, matches.contains(where: { $0.bundleID == frontmostID }) {
-            if settings.model.hideOnRepeat {
+            switch settings.model.repeatPress {
+            case .cycleWindows:
+                cycleFrontmostWindows()
+            case .hide:
                 NSWorkspace.shared.frontmostApplication?.hide()
-            } else {
+            case .cycleApps:
                 cycle(letter: letter)
             }
             return
@@ -233,7 +260,7 @@ final class AppSwitcher {
 
     private func activate(pairs: [(app: NSRunningApplication, candidate: AppCandidate)], bundleID: String) {
         guard let app = pairs.first(where: { $0.candidate.bundleID == bundleID })?.app else { return }
-        app.activate()
+        app.activateReliably()
     }
 
     private func launch(bundleID: String) {

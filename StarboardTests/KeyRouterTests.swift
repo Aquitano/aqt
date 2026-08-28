@@ -215,6 +215,25 @@ final class KeyRouterTests: XCTestCase {
         XCTAssertTrue(router.shouldConsumeKeyUp(0x28))
     }
 
+    func testRouterUsesInjectedKeyboardLayoutForLetters() {
+        let router = KeyRouter(
+            resolveLetter: { $0 == 0x01 ? "o" : nil },
+            resolveDigit: { _ in nil }
+        )
+        let result = router.keyDown(0x01, modifiers: rcmdHeld)
+        XCTAssertEqual(result.intents, [.switchToLetter("o"), .searchQuery("o")])
+    }
+
+    func testUnsupportedLayoutCharacterDoesNotFallBackToANSI() {
+        let router = KeyRouter(
+            resolveLetter: { _ in nil },
+            resolveDigit: { _ in nil }
+        )
+        let result = router.keyDown(0x01, modifiers: rcmdHeld)
+        XCTAssertTrue(result.intents.isEmpty)
+        XCTAssertFalse(result.consume)
+    }
+
     // MARK: - Phase 5: Spaces
 
     func testDigitsJumpToSpacesOutsideEngagedSearch() {
@@ -298,5 +317,19 @@ final class KeyRouterTests: XCTestCase {
         )
         XCTAssertEqual(on.intents, [.moveWindowToSpace(2)])
         XCTAssertTrue(on.consume)
+    }
+
+    func testRouterUsesInjectedKeyboardLayoutForDigits() {
+        let router = KeyRouter(
+            resolveLetter: { _ in nil },
+            resolveDigit: { $0 == 0x13 ? 7 : nil }
+        )
+        let result = router.keyDown(
+            0x13,
+            modifiers: ModifierState(rightOptionHeld: true),
+            options: RouterOptions(spacesMoveWindowEnabled: true)
+        )
+        XCTAssertEqual(result.intents, [.moveWindowToSpace(7)])
+        XCTAssertTrue(result.consume)
     }
 }

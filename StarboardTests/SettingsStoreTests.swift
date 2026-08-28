@@ -11,18 +11,18 @@ final class SettingsStoreTests: XCTestCase {
     func testDefaultsRoundTrip() throws {
         let (store, defaults) = makeStore()
         store.model.customAssignments["k"] = "com.tinyspeck.slackmacgap"
-        store.model.hideOnRepeat = false
+        store.model.repeatPress = .hide
 
         let reloaded = SettingsStore(defaults: defaults)
         XCTAssertEqual(reloaded.model.customAssignments["k"], "com.tinyspeck.slackmacgap")
-        XCTAssertFalse(reloaded.model.hideOnRepeat)
+        XCTAssertEqual(reloaded.model.repeatPress, .hide)
     }
 
     func testUnknownFieldsDecodeGracefully() throws {
         let suite = "test.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         // A model persisted by a newer version with extra fields still loads.
-        let futureJSON = #"{"hideOnRepeat":true,"launchIfNotRunning":false,"customAssignments":{"s":"com.apple.Safari"},"someFutureField":42}"#
+        let futureJSON = #"{"repeatPress":"cycleWindows","launchIfNotRunning":false,"customAssignments":{"s":"com.apple.Safari"},"someFutureField":42}"#
         defaults.set(Data(futureJSON.utf8), forKey: "starboard.settings")
 
         let store = SettingsStore(defaults: defaults)
@@ -39,7 +39,7 @@ final class SettingsStoreTests: XCTestCase {
 
         let store = SettingsStore(defaults: defaults)
         XCTAssertEqual(store.model.customAssignments["s"], "com.apple.Safari")
-        XCTAssertTrue(store.model.hideOnRepeat)
+        XCTAssertEqual(store.model.repeatPress, .cycleWindows)
         XCTAssertFalse(store.model.windowJumpEnabled)
     }
 }

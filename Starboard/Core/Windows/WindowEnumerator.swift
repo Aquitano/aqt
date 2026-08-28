@@ -19,7 +19,23 @@ struct WindowInfo: Equatable, Identifiable {
 /// enumeration inherently excludes minimized windows and other Spaces — exactly
 /// the Cmd-Tab-replacement filter (BATTLEPLAN §3.5).
 enum WindowEnumerator {
+    private struct Cache {
+        let createdAt: ContinuousClock.Instant
+        let windows: [WindowInfo]
+    }
+
+    private static let lock = NSLock()
+    private static var cache: Cache?
+    private static let cacheLifetime: Duration = .milliseconds(100)
+
     static func visibleWindows() -> [WindowInfo] {
+        let now = ContinuousClock.now
+        if let cached = lock.withLock({ cache }), now - cached.createdAt < cacheLifetime {
+            return cached.windows
+        }
+
+        let interval = Perf.beginWindowEnumeration()
+        defer { Perf.endWindowEnumeration(interval) }
         guard let list = CGWindowListCopyWindowInfo(
             [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
         ) as? [[String: Any]] else { return [] }
@@ -27,7 +43,7 @@ enum WindowEnumerator {
         let ownPID = ProcessInfo.processInfo.processIdentifier
         var appCache: [pid_t: NSRunningApplication?] = [:]
 
-        return list.compactMap { entry in
+        let windows: [WindowInfo] = list.compactMap { entry in
             guard let layer = entry[kCGWindowLayer as String] as? Int, layer == 0,
                   let windowNumber = entry[kCGWindowNumber as String] as? Int,
                   let ownerPID = entry[kCGWindowOwnerPID as String] as? Int,
@@ -54,5 +70,11 @@ enum WindowEnumerator {
                 title: entry[kCGWindowName as String] as? String
             )
         }
+        lock.withLock { cache = Cache(createdAt: now, windows: windows) }
+        return windows
+    }
+
+    static func invalidateCache() {
+        lock.withLock { cache = nil }
     }
 }

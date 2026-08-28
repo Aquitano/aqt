@@ -17,6 +17,8 @@ struct RouterOptions {
 }
 
 final class KeyRouter {
+    private let resolveLetter: (Int64) -> Character?
+    private let resolveDigit: (Int64) -> Int?
     private(set) var session = HoldSession()
     private var consumedKeys = Set<Int64>()
 
@@ -29,6 +31,14 @@ final class KeyRouter {
     private var stagesArmedUntil: Double = -.infinity
     private var lastKeyDownTime: Double = -.infinity
     private var rightShiftDownTime: Double = -.infinity
+
+    init(
+        resolveLetter: @escaping (Int64) -> Character? = KeyLayout.letter,
+        resolveDigit: @escaping (Int64) -> Int? = KeyLayout.digit
+    ) {
+        self.resolveLetter = resolveLetter
+        self.resolveDigit = resolveDigit
+    }
 
     /// Intents for a keyDown plus whether the event must be consumed. A
     /// cancelled hold produces no intents but still consumes, so keys after
@@ -43,7 +53,7 @@ final class KeyRouter {
 
         if time < stagesArmedUntil, !modifiers.rightCommandHeld {
             stagesArmedUntil = -.infinity
-            let command: Intent? = Keycode.letters[keyCode].map { .stageRestore($0) }
+            let command: Intent? = resolveLetter(keyCode).map { .stageRestore($0) }
                 ?? (keyCode == Keycode.equal ? .stageBeginSave : nil)
                 ?? (keyCode == Keycode.minus ? .stageClose : nil)
             if let command {
@@ -55,17 +65,23 @@ final class KeyRouter {
 
         guard modifiers.rightCommandHeld else {
             guard modifiers.rightOptionHeld else { return ([], false) }
-            if options.windowJumpEnabled, let letter = Keycode.letters[keyCode] {
+            if options.windowJumpEnabled, let letter = resolveLetter(keyCode) {
                 consumedKeys.insert(keyCode)
                 return ([.jumpAppWindows(letter)], true)
             }
-            if options.spacesMoveWindowEnabled, let digit = Keycode.digits[keyCode] {
+            if options.spacesMoveWindowEnabled, let digit = resolveDigit(keyCode) {
                 consumedKeys.insert(keyCode)
                 return ([.moveWindowToSpace(digit)], true)
             }
             return ([], false)
         }
-        let intents = session.keyDown(keyCode, modifiers: modifiers)
+        let intents = session.keyDown(
+            keyCode,
+            modifiers: modifiers,
+            letter: resolveLetter(keyCode),
+            digit: resolveDigit(keyCode),
+            keyWasResolved: true
+        )
         let consume = !intents.isEmpty || session.cancelled
         if consume { consumedKeys.insert(keyCode) }
         return (intents, consume)

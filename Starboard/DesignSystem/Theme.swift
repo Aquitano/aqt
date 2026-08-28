@@ -5,9 +5,18 @@ import SwiftUI
 enum Theme {
     enum Colors {
         static let accent = Color(red: 1.00, green: 0.478, blue: 0.349) // #FF7A59
-        static let surface = Color(red: 0.118, green: 0.122, blue: 0.133) // #1E1F22
+        static let surface = Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(red: 0.118, green: 0.122, blue: 0.133, alpha: 1)
+                : NSColor(red: 0.96, green: 0.96, blue: 0.97, alpha: 1)
+        })
+        static let header = Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor.white.withAlphaComponent(0.04)
+                : NSColor.black.withAlphaComponent(0.03)
+        })
         static let destructive = Color(red: 1.00, green: 0.373, blue: 0.341) // #FF5F57
-        static let stroke = Color.white.opacity(0.08)
+        static let stroke = Color.primary.opacity(0.10)
         static let selection = accent.opacity(0.16)
     }
 
@@ -23,5 +32,30 @@ enum Theme {
         static let standard = Animation.easeOut(duration: 0.14)
         static let overlayIn = Animation.easeOut(duration: 0.16)
         // Overlay exit: 0.10s fade only. Cycling selection: no animation at all.
+    }
+}
+
+private struct ThemeContrastBoostKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var themeContrastBoost: Bool {
+        get { self[ThemeContrastBoostKey.self] }
+        set { self[ThemeContrastBoostKey.self] = newValue }
+    }
+}
+
+private struct ThemeAccessibilityModifier: ViewModifier {
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    func body(content: Content) -> some View {
+        content.environment(\.themeContrastBoost, contrast == .increased)
+    }
+}
+
+extension View {
+    func themeAccessibility() -> some View {
+        modifier(ThemeAccessibilityModifier())
     }
 }

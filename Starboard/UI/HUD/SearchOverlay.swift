@@ -85,6 +85,7 @@ struct SearchOverlayContent: View {
         .frame(maxHeight: .infinity, alignment: .top)
         .background(SurfaceBackground())
         .clipShape(RoundedRectangle(cornerRadius: Theme.Metrics.panelRadius))
+        .themeAccessibility()
     }
 
     /// Raycast-style search field: the typed query is the hero, with the scope

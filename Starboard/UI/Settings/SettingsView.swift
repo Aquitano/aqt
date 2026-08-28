@@ -15,7 +15,7 @@ struct SettingsView: View {
                 Spacer()
             }
             .padding(Theme.Metrics.grid * 3)
-            .background(headerBackground)
+            .background(Theme.Colors.header)
 
             Divider().overlay(Theme.Colors.stroke)
 
@@ -31,8 +31,8 @@ struct SettingsView: View {
             }
         }
         .frame(width: 560, height: 480)
-        .background(background)
-        .preferredColorScheme(.dark)
+        .background(Theme.Colors.surface)
+        .themeAccessibility()
     }
 
     // MARK: - General
@@ -43,11 +43,27 @@ struct SettingsView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            ToggleRow(
-                title: "Hide app on repeat press",
-                detail: "Pressing an already-focused app's letter hides it.",
-                initial: model.hideOnRepeat
-            ) { SettingsStore.shared.model.hideOnRepeat.toggle() }
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Repeat press").font(.system(size: 13))
+                    Text(repeatPressDetail)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { SettingsStore.shared.model.repeatPress },
+                    set: { SettingsStore.shared.model.repeatPress = $0 }
+                )) {
+                    Text("Cycle windows").tag(RepeatPressAction.cycleWindows)
+                    Text("Hide app").tag(RepeatPressAction.hide)
+                    Text("Cycle apps").tag(RepeatPressAction.cycleApps)
+                }
+                .labelsHidden()
+                .frame(width: 150)
+            }
+            .padding(.vertical, 2)
 
             ToggleRow(
                 title: "Launch apps that aren't running",
@@ -76,6 +92,17 @@ struct SettingsView: View {
             LaunchAtLoginRow()
             ScreenRecordingRow()
             ExportImportRow()
+        }
+    }
+
+    private var repeatPressDetail: String {
+        switch model.repeatPress {
+        case .cycleWindows:
+            "Pressing a focused app's letter steps through its windows, most recent first."
+        case .hide:
+            "Pressing a focused app's letter hides it."
+        case .cycleApps:
+            "Pressing a focused app's letter cycles other apps on the same letter."
         }
     }
 
@@ -240,17 +267,6 @@ struct SettingsView: View {
         return bundle.object(forInfoDictionaryKey: kCFBundleNameKey as String) as? String
     }
 
-    // MARK: - Chrome
-
-    private var background: Color {
-        colorScheme == .dark ? Theme.Colors.surface : Color(red: 0.96, green: 0.96, blue: 0.97)
-    }
-
-    private var headerBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.04) : Color.black.opacity(0.03)
-    }
-
-    @Environment(\.colorScheme) private var colorScheme
 }
 
 // MARK: - Row models & views

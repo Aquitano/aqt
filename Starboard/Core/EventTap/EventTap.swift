@@ -18,6 +18,12 @@ final class EventTap {
     private let handler: Handler
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var disableTimes: [ContinuousClock.Instant] = []
+    private var recoveryLockedOut = false
+
+    static let failedNotification = Notification.Name("StarboardEventTapFailed")
+    private static let failureWindow: Duration = .seconds(30)
+    private static let maximumFailures = 3
 
     init(handler: @escaping Handler) {
         self.handler = handler
@@ -32,10 +38,13 @@ final class EventTap {
         let callback: CGEventTapCallBack = { _, type, event, userInfo in
             let tap = Unmanaged<EventTap>.fromOpaque(userInfo!).takeUnretainedValue()
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                tap.enable()
+                tap.recoverFromSystemDisable()
                 return Unmanaged.passUnretained(event)
             }
-            return tap.handler(type, event) ? nil : Unmanaged.passUnretained(event)
+            let interval = Perf.beginEventRouting()
+            let consumed = tap.handler(type, event)
+            Perf.endEventRouting(interval)
+            return consumed ? nil : Unmanaged.passUnretained(event)
         }
 
         guard let tap = CGEvent.tapCreate(
@@ -54,8 +63,6 @@ final class EventTap {
         runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         enable()
-        // TODO(Phase 1): watchdog timer re-checking CGEvent.tapIsEnabled every 5s
-        // (BATTLEPLAN §7).
     }
 
     var isEnabled: Bool {
@@ -65,11 +72,36 @@ final class EventTap {
 
     func enable() {
         guard let tap else { return }
+        recoveryLockedOut = false
+        disableTimes.removeAll(keepingCapacity: true)
         CGEvent.tapEnable(tap: tap, enable: true)
+    }
+
+    /// Called by the watchdog. Unlike a user-requested `enable()`, this counts
+    /// repeated OS disables and opens the circuit after a crash loop.
+    func recoverIfNeeded() {
+        guard !isEnabled else { return }
+        recoverFromSystemDisable()
     }
 
     func disable() {
         guard let tap else { return }
         CGEvent.tapEnable(tap: tap, enable: false)
+    }
+
+    private func recoverFromSystemDisable(now: ContinuousClock.Instant = .now) {
+        guard !recoveryLockedOut else { return }
+        disableTimes.removeAll { now - $0 > Self.failureWindow }
+        disableTimes.append(now)
+
+        guard disableTimes.count < Self.maximumFailures else {
+            recoveryLockedOut = true
+            NSLog("Starboard: event tap disabled repeatedly; recovery locked out")
+            NotificationCenter.default.post(name: Self.failedNotification, object: self)
+            return
+        }
+
+        guard let tap else { return }
+        CGEvent.tapEnable(tap: tap, enable: true)
     }
 }

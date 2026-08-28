@@ -68,6 +68,8 @@ struct OnboardingView: View {
         }
         .padding(Theme.Metrics.grid * 4)
         .frame(width: 460, height: 300)
+        .background(Theme.Colors.surface)
+        .themeAccessibility()
         .onChange(of: watcher.granted) { _, granted in
             if granted {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { onGranted() }

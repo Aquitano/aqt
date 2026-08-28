@@ -59,6 +59,7 @@ struct StageSaveView: View {
         }
         .padding(Theme.Metrics.grid * 3)
         .frame(width: 380)
+        .themeAccessibility()
         .onAppear {
             included = Set(apps.map(\.bundleID))
             letter = letterOptions.first ?? "w"
