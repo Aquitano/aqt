@@ -23,7 +23,7 @@ enum Intent: Equatable {
     case adjacentSpace(SpaceDirection)
     /// ralt+digit (direct strategy): move the focused window to that Space.
     case moveWindowToSpace(Int)
-    /// Stages leader key tapped: show the hint HUD.
+    /// Stages leader key tapped: show the command toast.
     case stagesArmed
     /// Leader then `=`: snapshot the visible apps into a new Stage.
     case stageBeginSave
@@ -45,7 +45,8 @@ enum SearchItemAction: Equatable {
 ///
 /// Modes:
 /// - idle → first letter switches (hide-toggle if focused) and buffers a query;
-///   Tab opens the window ring; backtick cycles the frontmost app's windows.
+///   Tab opens the window ring; backtick cycles the frontmost app's windows;
+///   arrows select in the hold overlay's letter map.
 /// - letter → same letter repeats the switch, Tab cycles same-letter apps,
 ///   another letter engages the search overlay.
 /// - search → letters extend the query (left-⌘ W/Q/H act on the selection so
@@ -213,14 +214,15 @@ struct HoldSession {
         case Keycode.upArrow, Keycode.downArrow:
             let delta = keyCode == Keycode.upArrow ? -1 : 1
             switch mode {
-            case .letter:
-                // Arrows promote the single-letter preview into a real search
-                // so release commits the highlighted result.
+            case .idle, .letter:
+                // Arrows promote the hold overlay's preview — the letter map
+                // or a single-letter query — into a real search, so release
+                // commits the highlighted result.
                 mode = .search
                 return [.moveSelection(delta)]
             case .search, .windowCycle:
                 return [.moveSelection(delta)]
-            case .idle, .cancelled:
+            case .cancelled:
                 return []
             }
         default:

@@ -27,7 +27,7 @@ changes while collapsing duplicate enumeration during one interaction.
    - rapid Right Command letter switching;
    - app search with 1, 2, 5, and 10-character queries;
    - window search/cycling with 10, 50, and 100 visible windows;
-   - key-hint display with at least 20 running apps;
+   - hold-overlay letter map with at least 20 running apps;
    - a cold installed-app scan.
 5. Export each trace with the macOS version, hardware, app count, window count,
    keyboard layout, and build commit in its filename.

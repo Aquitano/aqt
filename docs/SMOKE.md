@@ -24,7 +24,7 @@ BATTLEPLAN.md. Prereq: Accessibility granted; Safari, Slack, Spotify running.
 
 ## Phase 3 — search
 
-- [ ] Hold rcmd, type "xco": overlay appears at 2 chars, Xcode on top; release focuses it.
+- [ ] Hold rcmd and type "xco" straight away: overlay appears at 2 chars, Xcode on top; release focuses it.
 - [ ] Queries containing w/q/h are typeable ("wha…"); left ⌘+W/Q/H act on the selection instead.
 - [ ] The caret in a Safari text field keeps blinking while the overlay is up (never steals focus).
 - [ ] Escape cancels; releasing afterwards focuses nothing.
@@ -55,7 +55,9 @@ BATTLEPLAN.md. Prereq: Accessibility granted; Safari, Slack, Spotify running.
 
 ## Phase 7 — polish
 
-- [ ] Hold rcmd bare for ~0.5 s: hint grid appears, disappears on keypress/release.
+- [ ] Hold rcmd bare for ~0.3 s: the overlay opens on the letter map (icon, name, letter cap), no row selected; release focuses nothing.
+- [ ] From that state, typing filters the same panel; a letter still switches; arrows select and release focuses.
+- [ ] rcmd+S released before ~0.3 s switches with no overlay flash; held past it, the panel opens on the "s" results.
 - [ ] Mouse-follows toggle warps the pointer after a switch.
 - [ ] Settings export produces JSON; import restores assignments and Stages.
 - [ ] Dark and light system appearance both look intentional in settings.

@@ -78,12 +78,6 @@ struct SettingsView: View {
             ) { SettingsStore.shared.model.windowJumpEnabled.toggle() }
 
             ToggleRow(
-                title: "Key hints",
-                detail: "Hold rcmd for a moment to see which letter focuses which app.",
-                initial: model.showKeyHints
-            ) { SettingsStore.shared.model.showKeyHints.toggle() }
-
-            ToggleRow(
                 title: "Mouse follows focused app",
                 detail: "Warps the pointer to the focused window's center after a switch.",
                 initial: model.mouseFollowsFocus

@@ -12,7 +12,6 @@ final class SearchPanelController {
     private static let visibleRows = 8
 
     private let panel: HudPanel
-    private var pendingShow: DispatchWorkItem?
     private var shown = false
 
     init(content: NSView) {
@@ -20,27 +19,18 @@ final class SearchPanelController {
         panel.contentView = content
     }
 
-    /// Shows the panel. `delayed` postpones the first appearance slightly — a
-    /// quick rcmd+letter switch shouldn't flash the overlay, but holding with
-    /// intent gets feedback fast. Appearance is instant once it fires: a fade
-    /// behind a keystroke reads as lag.
-    func present(delayed: Bool) {
+    /// Shows the panel. Appearance is instant — the caller decides when the
+    /// overlay is due (AppSwitcher's hold timer); a fade behind a keystroke
+    /// would only read as lag.
+    func present() {
         guard !shown else { return }
-        pendingShow?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.panel.setFrame(Self.frame(), display: true)
-            self.shown = true
-            self.panel.alphaValue = 1
-            self.panel.orderFrontRegardless()
-        }
-        pendingShow = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + (delayed ? 0.3 : 0), execute: work)
+        panel.setFrame(Self.frame(), display: true)
+        shown = true
+        panel.alphaValue = 1
+        panel.orderFrontRegardless()
     }
 
     func hide() {
-        pendingShow?.cancel()
-        pendingShow = nil
         guard shown else { return }
         shown = false
         panel.orderOut(nil)
@@ -106,16 +96,18 @@ struct SearchOverlayContent: View {
                 .padding(.vertical, 3)
                 .background(Capsule().fill(Color.white.opacity(0.08)))
                 .foregroundStyle(.secondary)
-            Text("release ⌘ to open")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.tertiary)
+            if model.selectedItem != nil {
+                Text("release ⌘ to open")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(.horizontal, Theme.Metrics.grid * 2.5)
         .frame(height: 52)
     }
 
     private var placeholder: String {
-        model.scope == .windows ? "Type to filter windows…" : "Type to search…"
+        model.scope == .windows ? "Type to filter windows…" : "Type to search, or press a letter"
     }
 
     @ViewBuilder
@@ -140,9 +132,9 @@ struct SearchOverlayContent: View {
                     .padding(Theme.Metrics.grid)
                 }
                 .onChange(of: model.selectedIndex) { _, newValue in
-                    if let id = model.items.indices.contains(newValue) ? model.items[newValue].id : nil {
+                    if let newValue, model.items.indices.contains(newValue) {
                         // No anchor: scroll the minimum needed to reveal the row.
-                        withAnimation(nil) { proxy.scrollTo(id) }
+                        withAnimation(nil) { proxy.scrollTo(model.items[newValue].id) }
                     }
                 }
             }

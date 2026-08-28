@@ -38,7 +38,9 @@ final class SearchModel {
     }
 
     private(set) var items: [Item] = []
-    private(set) var selectedIndex = 0
+    /// nil while the overlay shows the letter map: no row is highlighted until
+    /// the user types or arrows into one, so releasing then commits nothing.
+    private(set) var selectedIndex: Int?
     private(set) var isVisible = false
     private(set) var scope: Scope = .apps
     /// The typed query, displayed in the overlay's search field.
@@ -46,6 +48,8 @@ final class SearchModel {
 
     private let registry: AppRegistry
     private let windowProvider: () -> [WindowInfo]
+    /// The current hold's letter map, restored when the query is emptied.
+    private var letterItems: [Item] = []
 
     init(
         registry: AppRegistry,
@@ -56,7 +60,7 @@ final class SearchModel {
     }
 
     var selectedItem: Item? {
-        items.indices.contains(selectedIndex) ? items[selectedIndex] : nil
+        selectedIndex.flatMap { items.indices.contains($0) ? items[$0] : nil }
     }
 
     // MARK: - Entry points
@@ -66,12 +70,46 @@ final class SearchModel {
     func setQuery(_ query: String) {
         self.query = query
         guard !query.isEmpty else {
-            hide()
+            // Backspacing to empty returns to the hold's letter map; outside a
+            // hold there is nothing left to show.
+            guard !letterItems.isEmpty else {
+                hide()
+                return
+            }
+            items = letterItems
+            selectedIndex = nil
             return
         }
         items = scope == .windows ? windowMatches(query) : appMatches(query)
         selectedIndex = 0
         isVisible = true
+    }
+
+    /// rcmd held with nothing typed: the empty-query state lists the letter
+    /// map — the app each a-z letter focuses — with no selection.
+    func beginHold(candidates: [AppCandidate], assigner: LetterAssigner) {
+        scope = .apps
+        query = ""
+        letterItems = Self.letterMap(candidates: candidates, assigner: assigner)
+        items = letterItems
+        selectedIndex = nil
+        isVisible = !items.isEmpty
+    }
+
+    private static func letterMap(
+        candidates: [AppCandidate],
+        assigner: LetterAssigner
+    ) -> [Item] {
+        "abcdefghijklmnopqrstuvwxyz".compactMap { letter in
+            assigner.apps(for: letter, in: candidates).first.map { app in
+                Item(
+                    kind: .runningApp(bundleID: app.bundleID),
+                    title: app.name,
+                    subtitle: nil,
+                    letter: letter
+                )
+            }
+        }
     }
 
     /// rcmd+Tab: show every visible window, selection starting on the second
@@ -95,7 +133,10 @@ final class SearchModel {
 
     func moveSelection(_ delta: Int) {
         guard !items.isEmpty else { return }
-        selectedIndex = (selectedIndex + delta + items.count) % items.count
+        // From no selection the first move lands where the user is heading:
+        // down on the first row, up on the last.
+        let current = selectedIndex ?? (delta > 0 ? -1 : 0)
+        selectedIndex = (current + delta + items.count) % items.count
     }
 
     func cancel() {
@@ -226,13 +267,16 @@ final class SearchModel {
     private func removeSelected() {
         guard let selected = selectedItem else { return }
         items.removeAll { $0.id == selected.id }
-        if selectedIndex >= items.count { selectedIndex = max(0, items.count - 1) }
+        if let index = selectedIndex, index >= items.count {
+            selectedIndex = items.isEmpty ? nil : items.count - 1
+        }
     }
 
     private func hide() {
         isVisible = false
         items = []
-        selectedIndex = 0
+        letterItems = []
+        selectedIndex = nil
         scope = .apps
         query = ""
     }

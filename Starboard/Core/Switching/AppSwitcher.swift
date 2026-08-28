@@ -34,8 +34,10 @@ final class AppSwitcher {
     /// so a fresh press always lands on the app's last-focused window.
     private var holdWindowRing: (pid: pid_t, windows: [WindowInfo], index: Int)?
 
-    /// Pending key-hint countdown for the current bare rcmd hold.
-    private var hintTask: Task<Void, Never>?
+    /// Pending overlay countdown for the current rcmd hold, and whether it
+    /// has fired. One timer governs the whole hold surface.
+    private var holdTask: Task<Void, Never>?
+    private var holdOverlayDue = false
 
     init(registry: AppRegistry, settings: SettingsStore) {
         self.registry = registry
@@ -46,7 +48,6 @@ final class AppSwitcher {
     }
 
     func handle(_ intent: Intent) {
-        cancelHint()
         switch intent {
         case .switchToLetter(let letter):
             switchTo(letter: letter)
@@ -61,6 +62,9 @@ final class AppSwitcher {
         case .commitSearch:
             searchModel.commit()
         case .cancelSearch:
+            // Escape ends the hold's overlay for good — the pending timer
+            // must not revive it while rcmd is still down.
+            cancelHoldTimer()
             searchModel.cancel()
         case .itemAction(let action):
             searchModel.perform(action)
@@ -102,13 +106,18 @@ final class AppSwitcher {
     }
 
     private func syncSearchPanel() {
-        if searchModel.isVisible {
-            // A quick rcmd+letter switch shouldn't flash the overlay;
-            // anything beyond one character means the user is searching.
-            searchPanel.present(delayed: searchModel.scope == .apps && searchModel.query.count <= 1)
-        } else {
+        guard searchModel.isVisible else {
             searchPanel.hide()
+            return
         }
+        // A quick rcmd+letter switch shouldn't flash the overlay, so a
+        // one-letter query waits for the hold timer, which then reveals the
+        // panel with those results. Anything else — a longer query, the window
+        // ring — is a deliberate search and shows at once.
+        guard holdOverlayDue || searchModel.scope == .windows || searchModel.query.count > 1 else {
+            return
+        }
+        searchPanel.present()
     }
 
     /// Repeat press: step through the frontmost app's windows, second-most
@@ -132,40 +141,45 @@ final class AppSwitcher {
     func endHold() {
         holdCycles.removeAll()
         holdWindowRing = nil
-        cancelHint()
+        cancelHoldTimer()
+        // Releasing on the letter map (nothing selected) produces no intent of
+        // its own, so the overlay is dismissed here.
+        searchModel.cancel()
+        syncSearchPanel()
         if settings.model.mouseFollowsFocus {
             MouseFollower.warpToFocusedWindow()
         }
     }
 
-    // MARK: - Key hints
+    // MARK: - Hold overlay
 
-    /// rcmd pressed: after 400 ms with no keypress, show the letter grid.
+    /// rcmd pressed: a single 300 ms timer owns the overlay. Nothing is on
+    /// screen before it fires, so a quick rcmd+letter switch never flashes the
+    /// panel. When it fires it shows whatever the hold has produced so far —
+    /// the one-letter query's results, or, if nothing was typed, the letter map.
     func holdBegan() {
-        guard settings.model.showKeyHints else { return }
-        hintTask?.cancel()
-        hintTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(400))
+        holdTask?.cancel()
+        holdOverlayDue = false
+        holdTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
-            self?.showHints()
+            self?.showHoldOverlay()
         }
     }
 
-    private func cancelHint() {
-        hintTask?.cancel()
-        hintTask = nil
-        HintHUD.shared.hide()
+    private func showHoldOverlay() {
+        holdOverlayDue = true
+        if !searchModel.isVisible {
+            registry.refresh()
+            searchModel.beginHold(candidates: runningPairs().map(\.candidate), assigner: assigner)
+        }
+        syncSearchPanel()
     }
 
-    private func showHints() {
-        registry.refresh()
-        let candidates = runningPairs().map(\.candidate)
-        let entries: [HintEntry] = "abcdefghijklmnopqrstuvwxyz".compactMap { letter in
-            assigner.apps(for: letter, in: candidates).first.map {
-                HintEntry(letter: letter, bundleID: $0.bundleID)
-            }
-        }
-        HintHUD.shared.show(entries: entries)
+    private func cancelHoldTimer() {
+        holdTask?.cancel()
+        holdTask = nil
+        holdOverlayDue = false
     }
 
     private var assigner: LetterAssigner {

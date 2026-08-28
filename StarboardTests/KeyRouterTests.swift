@@ -159,6 +159,13 @@ final class KeyRouterTests: XCTestCase {
         XCTAssertTrue(session.rightCommandUp().isEmpty)
     }
 
+    func testArrowsSelectInTheBareHoldOverlay() {
+        var session = HoldSession()
+        XCTAssertEqual(session.keyDown(Keycode.downArrow, modifiers: rcmdHeld), [.moveSelection(1)])
+        // The letter map became a real search: release commits the selection.
+        XCTAssertEqual(session.rightCommandUp(), [.commitSearch])
+    }
+
     func testArrowsPromoteSingleLetterPreviewToSearch() {
         var session = HoldSession()
         _ = session.keyDown(0x01, modifiers: rcmdHeld)

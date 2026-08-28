@@ -9,6 +9,54 @@ final class SearchModelTests: XCTestCase {
         WindowInfo(id: 3, pid: 103, appName: "Terminal", bundleID: "com.apple.Terminal", title: "starboard"),
     ]
 
+    private let apps = [
+        AppCandidate(bundleID: "com.apple.Safari", name: "Safari"),
+        AppCandidate(bundleID: "com.apple.Notes", name: "Notes"),
+        AppCandidate(bundleID: "com.apple.Terminal", name: "Terminal"),
+    ]
+
+    func testHoldListsLetterMapWithoutSelection() {
+        let model = SearchModel(registry: AppRegistry(), windowProvider: { [] })
+        model.beginHold(candidates: apps, assigner: LetterAssigner())
+
+        XCTAssertTrue(model.isVisible)
+        XCTAssertNil(model.selectedIndex)
+        XCTAssertNil(model.selectedItem)
+        XCTAssertEqual(model.items.map(\.title), ["Notes", "Safari", "Terminal"])
+        XCTAssertEqual(model.items.map(\.letter), ["n", "s", "t"])
+    }
+
+    func testHoldLetterMapUsesPinnedLetters() {
+        let model = SearchModel(registry: AppRegistry(), windowProvider: { [] })
+        let assigner = LetterAssigner(customAssignments: ["k": "com.apple.Safari"])
+        model.beginHold(candidates: apps, assigner: assigner)
+
+        XCTAssertEqual(model.items.map(\.letter), ["k", "n", "t"])
+        XCTAssertEqual(model.items.first?.title, "Safari")
+    }
+
+    func testArrowsSelectInTheLetterMap() {
+        let model = SearchModel(registry: AppRegistry(), windowProvider: { [] })
+        model.beginHold(candidates: apps, assigner: LetterAssigner())
+
+        model.moveSelection(1)
+        XCTAssertEqual(model.selectedIndex, 0)
+        model.beginHold(candidates: apps, assigner: LetterAssigner())
+        model.moveSelection(-1)
+        XCTAssertEqual(model.selectedIndex, 2)
+    }
+
+    func testEmptyingTheQueryReturnsToTheLetterMap() {
+        let model = SearchModel(registry: AppRegistry(), windowProvider: { [] })
+        model.beginHold(candidates: apps, assigner: LetterAssigner())
+        model.setQuery("saf")
+        model.setQuery("")
+
+        XCTAssertTrue(model.isVisible)
+        XCTAssertNil(model.selectedIndex)
+        XCTAssertEqual(model.items.map(\.letter), ["n", "s", "t"])
+    }
+
     func testWindowSearchRanksAndResetsSelection() {
         let model = SearchModel(registry: AppRegistry(), windowProvider: { self.windows })
         model.beginWindowSearch()
