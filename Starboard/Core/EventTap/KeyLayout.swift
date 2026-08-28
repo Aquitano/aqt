@@ -7,18 +7,14 @@ import Foundation
 enum KeyLayout {
     private static let cache = LayoutCache()
 
+    /// Falls back to the positional ANSI table when the active layout prints no
+    /// Latin letter on that key — on a Cyrillic or Greek layout the letter map
+    /// is positional, which beats disabling every shortcut.
     static func letter(for keyCode: Int64) -> Character? {
-        switch cache.character(for: keyCode) {
-        case .translated(let character):
-            let value = String(character).lowercased()
-            guard value.unicodeScalars.count == 1,
-                  let scalar = value.unicodeScalars.first,
-                  (UnicodeScalar("a").value ... UnicodeScalar("z").value).contains(scalar.value)
-            else { return nil }
-            return Character(value)
-        case .unavailable:
-            return Keycode.letters[keyCode]
-        }
+        guard case .translated(let character) = cache.character(for: keyCode),
+              let latin = latinLetter(character)
+        else { return Keycode.letters[keyCode] }
+        return latin
     }
 
     static func digit(for keyCode: Int64) -> Int? {
@@ -33,9 +29,13 @@ enum KeyLayout {
         }
     }
 
-    /// Public for app lifecycle hooks and deterministic tests.
-    static func invalidate() {
-        cache.invalidate()
+    private static func latinLetter(_ character: Character) -> Character? {
+        let value = String(character).lowercased()
+        guard value.unicodeScalars.count == 1,
+              let scalar = value.unicodeScalars.first,
+              (UnicodeScalar("a").value ... UnicodeScalar("z").value).contains(scalar.value)
+        else { return nil }
+        return Character(value)
     }
 }
 

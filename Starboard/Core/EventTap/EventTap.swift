@@ -16,6 +16,10 @@ final class EventTap {
     }
 
     private let handler: Handler
+    /// Fired whenever the tap starts or stops seeing events. Anything derived
+    /// from observed keystrokes (held modifiers, in-flight holds) is stale
+    /// across such a gap — the releases happened while the tap was off.
+    var onStateInvalidated: (() -> Void)?
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var disableTimes: [ContinuousClock.Instant] = []
@@ -41,9 +45,11 @@ final class EventTap {
                 tap.recoverFromSystemDisable()
                 return Unmanaged.passUnretained(event)
             }
-            let interval = Perf.beginEventRouting()
+            // The handler runs for every keystroke system-wide, so the
+            // signpost is only paid for while Instruments is recording.
+            let interval = Perf.signpostsEnabled ? Perf.beginEventRouting() : nil
             let consumed = tap.handler(type, event)
-            Perf.endEventRouting(interval)
+            if let interval { Perf.endEventRouting(interval) }
             return consumed ? nil : Unmanaged.passUnretained(event)
         }
 
@@ -75,6 +81,7 @@ final class EventTap {
         recoveryLockedOut = false
         disableTimes.removeAll(keepingCapacity: true)
         CGEvent.tapEnable(tap: tap, enable: true)
+        onStateInvalidated?()
     }
 
     /// Called by the watchdog. Unlike a user-requested `enable()`, this counts
@@ -87,6 +94,7 @@ final class EventTap {
     func disable() {
         guard let tap else { return }
         CGEvent.tapEnable(tap: tap, enable: false)
+        onStateInvalidated?()
     }
 
     private func recoverFromSystemDisable(now: ContinuousClock.Instant = .now) {
@@ -103,5 +111,6 @@ final class EventTap {
 
         guard let tap else { return }
         CGEvent.tapEnable(tap: tap, enable: true)
+        onStateInvalidated?()
     }
 }

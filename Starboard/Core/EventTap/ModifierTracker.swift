@@ -7,10 +7,15 @@ struct ModifierState: Equatable {
     var rightShiftHeld = false
 }
 
-/// Tracks which side-specific modifiers are physically held, fed from
-/// flagsChanged events. The generic mask bits (.maskCommand etc.) merge both
-/// sides, so holding left-⌘ would mask a right-⌘ release — the device-side
-/// bits in the raw flags identify each side independently (BATTLEPLAN §3.2).
+/// Tracks which side-specific modifiers are physically held. The generic mask
+/// bits (.maskCommand etc.) merge both sides, so holding left-⌘ would mask a
+/// right-⌘ release — the device-side bits in the raw flags identify each side
+/// independently (BATTLEPLAN §3.2).
+///
+/// Every event carries the full modifier picture, so the state is recomputed
+/// from scratch on each one rather than toggled by keycode: a lost rcmd release
+/// (tap disabled by the OS, secure input, screen lock) would otherwise leave
+/// `rightCommandHeld` stuck true and swallow every letter until the next press.
 final class ModifierTracker {
     private enum DeviceBit {
         static let rightShift: UInt64 = 0x0000_0004 // NX_DEVICERSHIFTKEYMASK
@@ -21,22 +26,21 @@ final class ModifierTracker {
 
     private(set) var state = ModifierState()
 
-    /// Returns true if the flagsChanged event itself should be consumed.
-    func handleFlagsChanged(keyCode: Int64, flags: CGEventFlags) -> Bool {
-        switch keyCode {
-        case Keycode.rightCommand:
-            state.rightCommandHeld = flags.rawValue & DeviceBit.rightCommand != 0
-        case Keycode.leftCommand:
-            state.leftCommandHeld = flags.rawValue & DeviceBit.leftCommand != 0
-        case Keycode.rightOption:
-            state.rightOptionHeld = flags.rawValue & DeviceBit.rightOption != 0
-        case Keycode.rightShift:
-            state.rightShiftHeld = flags.rawValue & DeviceBit.rightShift != 0
-        default:
-            break
-        }
-        // Caps Lock consumption for the Stages trigger happens in the tap
-        // closure before this is called (BATTLEPLAN §3.2).
-        return false
+    /// Reconciles the state with the event's flags and returns it.
+    @discardableResult
+    func update(flags: CGEventFlags) -> ModifierState {
+        let raw = flags.rawValue
+        state = ModifierState(
+            rightCommandHeld: raw & DeviceBit.rightCommand != 0,
+            leftCommandHeld: raw & DeviceBit.leftCommand != 0,
+            rightOptionHeld: raw & DeviceBit.rightOption != 0,
+            rightShiftHeld: raw & DeviceBit.rightShift != 0
+        )
+        return state
+    }
+
+    /// Drops everything held: the tap was off, so releases happened unseen.
+    func reset() {
+        state = ModifierState()
     }
 }

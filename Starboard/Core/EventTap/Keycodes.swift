@@ -1,17 +1,13 @@
 import Foundation
 
-/// Hardware keycodes (ANSI layout). Right-vs-left modifier identity only exists
-/// at the keycode level — CGEventFlags merges both sides (BATTLEPLAN §3.2).
+/// Hardware keycodes (ANSI layout). Side-specific modifier identity comes from
+/// the device bits in the event flags, not from these codes — ModifierTracker
+/// reads them there (BATTLEPLAN §3.2).
 ///
-/// Letter and digit tables are fallbacks for environments where macOS cannot
-/// expose a Unicode keyboard layout (and deterministic defaults for tests).
+/// Letter and digit tables are fallbacks for layouts that print no Latin letter
+/// on a key (and deterministic defaults for tests).
 enum Keycode {
-    static let rightCommand: Int64 = 0x36
-    static let leftCommand: Int64 = 0x37
-    static let leftOption: Int64 = 0x3A
-    static let rightOption: Int64 = 0x3D
     static let capsLock: Int64 = 0x39
-    static let rightShift: Int64 = 0x3C
 
     static let tab: Int64 = 0x30
     static let escape: Int64 = 0x35

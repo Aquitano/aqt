@@ -1,3 +1,5 @@
+import CoreGraphics
+import Observation
 import SwiftUI
 
 /// Shared UI-facing state. AppDelegate writes it; menu bar and onboarding read it.
@@ -42,12 +44,28 @@ struct StarboardApp: App {
     }
 }
 
+/// The settings the event tap reads on every keystroke. Reading `settings.model`
+/// there copies the whole struct (retaining its arrays) inside the hot path;
+/// this snapshot is refreshed only when the settings actually change.
+private final class TapSettings {
+    var stagesTrigger = StagesTrigger.capsLock
+    var windowJumpEnabled = false
+    var spacesMoveWindowEnabled = false
+    /// Letters that currently name a Stage.
+    var stageLetters: Set<Character> = []
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let state = AppState.shared
     private let settings = SettingsStore.shared
     private lazy var registry = AppRegistry()
     private lazy var switcher = AppSwitcher(registry: registry, settings: settings)
+    private let tapSettings = TapSettings()
+    private let modifiers = ModifierTracker()
+    private lazy var router = KeyRouter(hasStage: { [tapSettings] letter in
+        tapSettings.stageLetters.contains(letter)
+    })
     private var eventTap: EventTap?
     private var watchdog: Timer?
     private var onboardingWindow: NSWindow?
@@ -62,6 +80,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.tapRecoveryFailed() }
         }
+
+        trackTapSettings()
 
         if Permissions.hasAccessibility {
             startTapIfWanted()
@@ -127,8 +147,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeTap() throws -> EventTap {
         // The tap source lives on the main run loop, so the callback runs on
-        // the main thread — reading SettingsStore here is safe.
-        let tap = EventTap { [modifiers = ModifierTracker(), router = KeyRouter(), switcher, settings] type, event in
+        // the main thread — touching these captures here is safe.
+        let tap = EventTap { [modifiers, router, tapSettings, switcher] type, event in
             // Events Starboard posted itself (Space shortcuts) must pass
             // through untouched or they'd be re-routed while rcmd is held.
             if event.getIntegerValueField(.eventSourceUserData) == SyntheticSpaceSwitcher.syntheticTag {
@@ -140,33 +160,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Stages leader: Caps Lock is consumed (so the lock never
                 // toggles) and arms the 3-second command window.
                 if keyCode == Keycode.capsLock {
-                    guard settings.model.stagesTrigger == .capsLock else { return false }
+                    guard tapSettings.stagesTrigger == .capsLock else { return false }
                     Self.dispatch(router.armStages(), to: switcher)
                     return true
                 }
-                let wasHeld = modifiers.state.rightCommandHeld
-                let wasShiftHeld = modifiers.state.rightShiftHeld
-                let consumed = modifiers.handleFlagsChanged(keyCode: keyCode, flags: event.flags)
-                if !wasHeld && modifiers.state.rightCommandHeld {
-                    Self.dispatch(router.rightCommandDown(), to: switcher)
-                    DispatchQueue.main.async {
-                        MainActor.assumeIsolated { switcher.holdBegan() }
-                    }
-                } else if wasHeld && !modifiers.state.rightCommandHeld {
-                    Self.dispatch(router.rightCommandUp(), to: switcher)
-                    DispatchQueue.main.async {
-                        MainActor.assumeIsolated { switcher.endHold() }
-                    }
-                }
-                if settings.model.stagesTrigger == .rightShift {
-                    if !wasShiftHeld && modifiers.state.rightShiftHeld {
+                let (was, now) = Self.syncModifiers(modifiers, event, router: router, switcher: switcher)
+                if tapSettings.stagesTrigger == .rightShift {
+                    if !was.rightShiftHeld && now.rightShiftHeld {
                         router.rightShiftDown()
-                    } else if wasShiftHeld && !modifiers.state.rightShiftHeld {
+                    } else if was.rightShiftHeld && !now.rightShiftHeld {
                         Self.dispatch(router.rightShiftUp(), to: switcher)
                     }
                 }
-                return consumed
+                return false
             case .keyDown:
+                Self.syncModifiers(modifiers, event, router: router, switcher: switcher)
                 // Auto-repeat never reaches the session: a held letter would
                 // re-fire the switch (cycling or hiding the app) and duplicate
                 // characters in the search query.
@@ -177,21 +185,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     keyCode,
                     modifiers: modifiers.state,
                     options: RouterOptions(
-                        windowJumpEnabled: settings.model.windowJumpEnabled,
-                        spacesMoveWindowEnabled: settings.model.spacesMoveWindowEnabled
+                        windowJumpEnabled: tapSettings.windowJumpEnabled,
+                        spacesMoveWindowEnabled: tapSettings.spacesMoveWindowEnabled
                             && switcher.spaces.canMoveWindows
                     )
                 )
                 Self.dispatch(intents, to: switcher)
                 return consume
             case .keyUp:
+                Self.syncModifiers(modifiers, event, router: router, switcher: switcher)
                 return router.shouldConsumeKeyUp(keyCode)
             default:
                 return false
             }
         }
+        tap.onStateInvalidated = { [modifiers, router] in
+            modifiers.reset()
+            router.reset()
+        }
         try tap.start()
         return tap
+    }
+
+    /// Reconciles the tracked modifiers with the event's flags and drives the
+    /// hold lifecycle across the transition. Every event carries the full
+    /// modifier picture, so an rcmd release the tap never saw (secure input,
+    /// screen lock, an OS disable) heals on the next keystroke instead of
+    /// swallowing every letter.
+    @discardableResult
+    private static func syncModifiers(
+        _ modifiers: ModifierTracker,
+        _ event: CGEvent,
+        router: KeyRouter,
+        switcher: AppSwitcher
+    ) -> (was: ModifierState, now: ModifierState) {
+        let was = modifiers.state
+        let now = modifiers.update(flags: event.flags)
+        if !was.rightCommandHeld && now.rightCommandHeld {
+            dispatch(router.rightCommandDown(), to: switcher)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { switcher.holdBegan() }
+            }
+        } else if was.rightCommandHeld && !now.rightCommandHeld {
+            dispatch(router.rightCommandUp(), to: switcher)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { switcher.endHold() }
+            }
+        }
+        return (was, now)
+    }
+
+    /// Keeps the tap's settings snapshot fresh. `withObservationTracking` fires
+    /// once per change and must be re-armed, and it fires *before* the value is
+    /// written — hence the hop.
+    private func trackTapSettings() {
+        withObservationTracking {
+            let model = settings.model
+            tapSettings.stagesTrigger = model.stagesTrigger
+            tapSettings.windowJumpEnabled = model.windowJumpEnabled
+            tapSettings.spacesMoveWindowEnabled = model.spacesMoveWindowEnabled
+            tapSettings.stageLetters = Set(model.stages.compactMap { $0.letter.first })
+        } onChange: { [weak self] in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.trackTapSettings() }
+            }
+        }
     }
 
     private static func dispatch(_ intents: [Intent], to switcher: AppSwitcher) {
