@@ -7,6 +7,7 @@ enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case codex
     case openCode
     case ohMyPi
+    case t3code
 
     var id: String { rawValue }
 
@@ -17,6 +18,7 @@ enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .codex: return "codex"
         case .openCode: return "opencode"
         case .ohMyPi: return "omp"
+        case .t3code: return "t3"
         }
     }
 
@@ -26,18 +28,28 @@ enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .codex: return "Codex"
         case .openCode: return "OpenCode"
         case .ohMyPi: return "oh-my-pi"
+        case .t3code: return "T3 Code"
         }
     }
 
-    /// SF Symbol for the agent glyph in list rows.
+    /// Semantic icon key resolved by the app-wide pixel glyph renderer.
     var symbol: String {
         switch self {
         case .claudeCode: return "sparkles"
         case .codex: return "chevron.left.forwardslash.chevron.right"
         case .openCode: return "curlybraces"
         case .ohMyPi: return "fossil.shell.fill"
+        case .t3code: return "square.grid.2x2"
         }
     }
+}
+
+/// Build-level switches for the agent feature. The permission-approval
+/// round-trip (Approve/Deny from the notch) is fully implemented but currently
+/// switched off everywhere — with it off, permission requests are answered
+/// "ask" immediately so the agent falls back to its own terminal prompt.
+enum AgentFeatures {
+    static let permissionApproval = false
 }
 
 /// Lifecycle/activity state of one agent session. The first three are "busy"
@@ -97,6 +109,9 @@ struct AgentSession: Identifiable, Equatable, Sendable {
     var activityVerb: String?
     /// Parent session id when this is a sub-agent (Task), for grouping.
     var parentSessionID: String?
+    /// Pending interactive permission request (Claude's PermissionRequest hook is
+    /// blocked on our reply); non-nil enables the Approve/Deny row actions.
+    var permissionRequestId: String?
 }
 
 /// Tools whose execution applies a file edit, so a session running one reads as
@@ -172,6 +187,11 @@ struct HookEnvelope: Codable, Sendable {
     var project: String?
     /// Parent session id when this is a sub-agent, for grouping.
     var parent: String?
+    /// Correlates a blocking PermissionRequest hook with the app's decision reply.
+    var requestId: String?
+    /// Versioned, allowlisted detail for a permission request. Optional so hooks
+    /// and app versions predating structured requests remain wire-compatible.
+    var permission: AgentPermissionRequest? = nil
 
     // Account-wide usage (status == "usage"), captured from Claude's statusLine.
     var fiveHourUsed: Double?

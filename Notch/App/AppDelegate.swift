@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -8,6 +9,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var windowController: NotchWindowController!
     private var statusItem: NSStatusItem!
+    private var onboardingWindow: NSWindow?
+    private let hotKey = HotKey()
+    private var hotkeyCancellable: AnyCancellable?
+    private var trayMenuCancellable: AnyCancellable?
+    private var clearTrayMenuItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -19,24 +25,86 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.start()
         env.state.showCompact()
 
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(showOnboarding), name: .showOnboarding, object: nil
+        )
+        setupHotkey()
+        if !env.settings.hasCompletedOnboarding {
+            showOnboarding()
+        }
+
         Log.app.info("Notch launched")
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        windowController?.stop()
+        env.agents.stop()
+        env.screenshots.stop()
+        env.persistence.flush()
+    }
+
+    // MARK: - Hotkey
+
+    private func setupHotkey() {
+        hotKey.onPress = { [weak self] in self?.toggleNotch() }
+        hotkeyCancellable = env.settings.$hotkeyEnabled
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                if enabled {
+                    self.hotKey.register(keyCode: UInt32(self.env.settings.hotkeyKeyCode),
+                                         modifiers: UInt32(self.env.settings.hotkeyModifiers))
+                } else {
+                    self.hotKey.unregister()
+                }
+            }
+    }
+
+    // MARK: - Onboarding
+
+    /// First-run welcome tour; also reachable from Settings via `.showOnboarding`.
+    @objc private func showOnboarding() {
+        if onboardingWindow == nil {
+            let root = OnboardingView { [weak self] in
+                self?.onboardingWindow?.close()
+            }
+            .injectNotchEnvironment(env)
+
+            let window = NSWindow(contentViewController: NSHostingController(rootView: root))
+            window.styleMask = [.titled, .closable, .fullSizeContentView]
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.title = "Welcome to Notch"
+            // Closing only hides it; keep the instance so the tour can reopen.
+            window.isReleasedWhenClosed = false
+            window.center()
+            onboardingWindow = window
+        }
+        onboardingWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     // MARK: - Status item
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "rectangle.tophalf.inset.filled",
-                                   accessibilityDescription: "Notch")
-            button.image?.isTemplate = true
+            button.image = PixelIconImage.image(systemName: "rectangle.tophalf.inset.filled")
         }
 
         let menu = NSMenu()
         addItem(to: menu, title: "Toggle Notch", action: #selector(toggleNotch))
-        addItem(to: menu, title: "Clear Tray", action: #selector(clearTray))
+        let clearTrayItem = NSMenuItem(title: "Clear Tray (0)", action: #selector(clearTray), keyEquivalent: "")
+        clearTrayItem.target = self
+        menu.addItem(clearTrayItem)
+        clearTrayMenuItem = clearTrayItem
+        trayMenuCancellable = env.tray.$items
+            .sink { [weak self] items in
+                self?.clearTrayMenuItem?.title = "Clear Tray (\(items.count))"
+                self?.clearTrayMenuItem?.isEnabled = !items.isEmpty
+            }
 
         let timerItem = NSMenuItem(title: "Start Timer", action: nil, keyEquivalent: "")
         let timerMenu = NSMenu()
@@ -84,6 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
+        env.state.collapseImmediately()
         NSApp.activate(ignoringOtherApps: true)
         // macOS 14+ selector; fall back to the legacy one just in case.
         if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
@@ -94,4 +163,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func quit() {
         NSApp.terminate(nil)
     }
+}
+
+extension Notification.Name {
+    /// Present the welcome tour (posted by Settings; AppDelegate owns the window).
+    static let showOnboarding = Notification.Name("app.notch.showOnboarding")
 }

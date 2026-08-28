@@ -15,16 +15,19 @@ protocol AgentProviding: AnyObject {
     /// Whether the opt-in integration is currently installed/active.
     var isEnabled: Bool { get }
 
-    /// Begin watching (only meaningful once enabled). Idempotent.
+    /// Begin watching (only meaningful once enabled). `stop()` discards transient
+    /// sessions but leaves the integration installed so watching can resume cleanly.
     func start()
     func stop()
 
     /// Re-check liveness/state now (e.g. when the user opens the Agents tab).
     func refresh()
 
-    /// Opt-in installer hooks. `enable()` writes the agent's config; `disable()`
-    /// removes only this app's entries. Both idempotent and reversible.
-    func enable()
+    /// Opt-in installer hooks. `enable()` writes the agent's config and throws
+    /// (leaving the feature off) when the write fails, so callers can tell the
+    /// user; `disable()` removes only this app's entries. Both idempotent and
+    /// reversible.
+    func enable() throws
     func disable()
 
     /// Feed a decoded socket envelope addressed to this provider's `kind`.

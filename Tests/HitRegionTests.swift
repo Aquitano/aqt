@@ -15,10 +15,12 @@ final class HitRegionTests: XCTestCase {
         hasInfoRow: Bool = false,
         trayEmpty: Bool = true,
         compact: NotchLayout.CompactContent = .none,
-        dropActive: Bool = false
+        dropActive: Bool = false,
+        expandedWidth: CGFloat = NotchMetrics.expandedWidth
     ) -> LayoutSnapshot {
         LayoutSnapshot(
-            presentation: presentation, notch: notch, panelFrame: panel, tab: tab,
+            presentation: presentation, notch: notch, expandedWidth: expandedWidth,
+            panelFrame: panel, tab: tab,
             hasInfoRow: hasInfoRow, trayEmpty: trayEmpty, compact: compact, dropActive: dropActive
         )
     }
@@ -50,6 +52,14 @@ final class HitRegionTests: XCTestCase {
         assertRect(HitRegion.rect(snapshot(.compact, compact: .media)), x: 335, y: 564, w: 330, h: 36)
     }
 
+    func testCompactTrayCountUsesTotalCountFallback() {
+        let content = NotchLayout.compactContent(
+            hasMedia: false, agentCount: nil, activityLabel: nil, trayItemCount: 3
+        )
+        XCTAssertEqual(content, .activity(label: "3 items"))
+        XCTAssertGreaterThan(NotchLayout.compactExtraWidth(content), 0)
+    }
+
     func testExpandedHomeNoInfoRow() {
         // body 175 + notch 32 = 207; width 540 -> x = 500 - 270.
         assertRect(HitRegion.rect(snapshot(.expanded, tab: .home)), x: 230, y: 393, w: 540, h: 207)
@@ -66,8 +76,9 @@ final class HitRegionTests: XCTestCase {
     }
 
     func testExpandedTrayEmptyVsFilled() {
-        assertRect(HitRegion.rect(snapshot(.expanded, tab: .tray, trayEmpty: true)), x: 230, y: 388, w: 540, h: 212)
-        assertRect(HitRegion.rect(snapshot(.expanded, tab: .tray, trayEmpty: false)), x: 230, y: 322, w: 540, h: 278)
+        // Collections and visible expiry add one compact row to the tray body.
+        assertRect(HitRegion.rect(snapshot(.expanded, tab: .tray, trayEmpty: true)), x: 230, y: 364, w: 540, h: 236)
+        assertRect(HitRegion.rect(snapshot(.expanded, tab: .tray, trayEmpty: false)), x: 230, y: 282, w: 540, h: 318)
     }
 
     func testDropActiveOverridesTabHeight() {
@@ -81,9 +92,18 @@ final class HitRegionTests: XCTestCase {
     // MARK: - Structural (font-dependent) properties
 
     func testAgentPillIsWiderThanNotchAndTallerThanNone() {
-        let agent = HitRegion.rect(snapshot(.compact, compact: .agent))
+        let agent = HitRegion.rect(snapshot(.compact, compact: .agent(count: 1)))
         XCTAssertGreaterThan(agent.width, notch.width)
         XCTAssertEqual(agent.height, notch.height + 4, accuracy: 0.001)
+    }
+
+    func testAgentPillGrowsWithSessionCountButNotBeyondGlyphCap() {
+        let one = NotchLayout.compactExtraWidth(.agent(count: 1))
+        let three = NotchLayout.compactExtraWidth(.agent(count: 3))
+        let capped = NotchLayout.compactExtraWidth(.agent(count: 4))
+        let overCap = NotchLayout.compactExtraWidth(.agent(count: 9))
+        XCTAssertGreaterThan(three, one)
+        XCTAssertEqual(capped, overCap, accuracy: 0.001)
     }
 
     func testRectStaysCenteredOnPanelMidX() {
@@ -92,5 +112,11 @@ final class HitRegionTests: XCTestCase {
             let rect = HitRegion.rect(snap)
             XCTAssertEqual(rect.midX, panel.midX, accuracy: 0.001)
         }
+    }
+
+    func testExpandedWidthUsesDisplayProfile() {
+        let rect = HitRegion.rect(snapshot(.expanded, expandedWidth: 620))
+        XCTAssertEqual(rect.width, 620, accuracy: 0.001)
+        XCTAssertEqual(rect.midX, panel.midX, accuracy: 0.001)
     }
 }

@@ -11,9 +11,7 @@ struct BatteryWidgetView: View {
             HStack(spacing: 6) {
                 BatteryIndicator(level: battery.percent, charging: battery.isCharging, tint: indicatorTint)
                 if battery.lowPowerMode {
-                    Image(systemName: "leaf.fill")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.yellow)
+                    PixelIcon(systemName: "leaf.fill", size: 12, tint: .yellow)
                 }
                 Spacer(minLength: 0)
             }
@@ -21,14 +19,14 @@ struct BatteryWidgetView: View {
             Spacer(minLength: 4)
 
             Text("\(battery.percent)%")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.title.weight(.semibold))
                 .foregroundStyle(.white)
                 .contentTransition(.numericText())
                 .animation(.snappy, value: battery.percent)
 
             if let status = statusLine {
                 Text(status)
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.6))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)

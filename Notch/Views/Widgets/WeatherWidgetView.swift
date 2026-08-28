@@ -15,6 +15,8 @@ struct WeatherWidgetView: View {
                 forecast(snapshot.daily)
             } else if needsLocationAccess {
                 accessPrompt
+            } else if weather.fetchFailed {
+                fetchFailedPrompt
             } else {
                 placeholder
             }
@@ -37,9 +39,8 @@ struct WeatherWidgetView: View {
 
     private func current(_ s: WeatherSnapshot) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: s.symbolName)
-                .font(.system(size: 26, weight: .medium))
-                .symbolRenderingMode(.multicolor)
+            PixelIcon(systemName: s.symbolName, size: 32,
+                      tint: weatherTint(s.symbolName))
                 .frame(width: 32, height: 32)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -77,9 +78,8 @@ struct WeatherWidgetView: View {
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.white.opacity(0.7))
 
-                        Image(systemName: day.symbolName)
-                            .font(.system(size: 13))
-                            .symbolRenderingMode(.multicolor)
+                        PixelIcon(systemName: day.symbolName, size: 16,
+                                  tint: weatherTint(day.symbolName))
                             .frame(height: 16)
 
                         // High and low share a line to keep the row to a single
@@ -101,15 +101,37 @@ struct WeatherWidgetView: View {
 
     // MARK: - Access prompt
 
+    /// Authorized but the fetch failed with nothing cached — say so and offer a
+    /// retry instead of the ambiguous em-dash placeholder.
+    private var fetchFailedPrompt: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PixelIcon(systemName: "wifi.exclamationmark", size: 22,
+                      tint: .white.opacity(0.6))
+
+            Text("Couldn't load the weather.")
+                .font(.callout)
+                .foregroundStyle(.white.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                weather.refresh()
+            } label: {
+                Text("Retry")
+                    .font(.callout.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+    }
+
     private var accessPrompt: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "location.slash")
-                .font(.system(size: 22))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.white.opacity(0.6))
+            PixelIcon(systemName: "location.slash", size: 22,
+                      tint: .white.opacity(0.6))
 
             Text("Show local weather for your location.")
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -117,7 +139,7 @@ struct WeatherWidgetView: View {
                 weather.requestAccess()
             } label: {
                 Text("Enable Location")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -130,10 +152,8 @@ struct WeatherWidgetView: View {
 
     private var placeholder: some View {
         HStack(spacing: 10) {
-            Image(systemName: "location.slash")
-                .font(.system(size: 22))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.white.opacity(0.6))
+            PixelIcon(systemName: "location.slash", size: 22,
+                      tint: .white.opacity(0.6))
 
             VStack(alignment: .leading, spacing: 1) {
                 Text("—")
@@ -149,5 +169,14 @@ struct WeatherWidgetView: View {
 
     private func weekday(for date: Date) -> String {
         date.formatted(.dateTime.weekday(.abbreviated))
+    }
+
+    private func weatherTint(_ symbol: String) -> Color {
+        if symbol.contains("sun") { return .yellow }
+        if symbol.contains("rain") || symbol.contains("drizzle") { return .cyan }
+        if symbol.contains("snow") { return .white }
+        if symbol.contains("bolt") { return .purple }
+        if symbol.contains("moon") { return .indigo }
+        return .white.opacity(0.72)
     }
 }

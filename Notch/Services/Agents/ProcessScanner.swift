@@ -12,29 +12,65 @@ struct ProcessScanner: Sendable {
         .appendingPathComponent(".claude/projects", isDirectory: true)
 
     func scan() -> [ScannedSession] {
-        var result: [ScannedSession] = []
-        var seenCwd = Set<String>()
-        for pid in lookup.allPIDs() where Self.isClaudeProcess(pid, lookup: lookup) {
-            guard let cwd = lookup.cwd(of: pid), !seenCwd.contains(cwd) else { continue }
-            seenCwd.insert(cwd)
-            guard let transcript = Self.newestTranscript(forCwd: cwd) else { continue }
+        let processes = lookup.allPIDs().compactMap { pid -> LiveProcess? in
+            guard Self.isClaudeProcess(pid, lookup: lookup),
+                  let cwd = lookup.cwd(of: pid) else { return nil }
             let terminal = Self.terminalInfo(forPID: pid, lookup: lookup)
-            result.append(ScannedSession(
-                sessionId: transcript.sessionId, cwd: cwd, pid: pid,
+            let openTranscript = Self.openTranscript(forPID: pid, cwd: cwd, lookup: lookup)
+            return LiveProcess(
+                pid: pid, cwd: cwd, startedAt: lookup.startDate(of: pid),
+                terminal: terminal, openTranscript: openTranscript
+            )
+        }
+
+        var assignments: [(LiveProcess, Transcript)] = []
+        var claimed = Set<String>()
+
+        // Open-file evidence is authoritative. Claim those sessions first so a
+        // fallback process cannot take another process's newest transcript.
+        for process in processes {
+            guard let transcript = process.openTranscript else { continue }
+            assignments.append((process, transcript))
+            claimed.insert(transcript.sessionId)
+        }
+        for process in processes where process.openTranscript == nil {
+            guard let transcript = Self.transcripts(forCwd: process.cwd)
+                .first(where: { transcript in
+                    !claimed.contains(transcript.sessionId)
+                        && (process.startedAt.map {
+                            transcript.mtime >= $0.addingTimeInterval(-5)
+                        } ?? true)
+                }) else { continue }
+            assignments.append((process, transcript))
+            claimed.insert(transcript.sessionId)
+        }
+
+        return assignments.map { process, transcript in
+            return ScannedSession(
+                sessionId: transcript.sessionId, cwd: process.cwd, pid: process.pid,
                 lastActivity: transcript.mtime, gitBranch: transcript.state.branch,
                 busyStatus: transcript.state.busy,
-                focusURL: terminal.focusURL, terminalName: terminal.name,
+                focusURL: process.terminal.focusURL, terminalName: process.terminal.name,
                 prompt: transcript.state.prompt, response: transcript.state.response,
                 verb: transcript.state.verb
-            ))
+            )
         }
-        return result
     }
 
-    // Known limitation: two `claude` processes in the SAME directory collapse to
-    // one scanned session (the newest transcript), since cwd is the only link
-    // between a pid and a session without inspecting each process's open files.
-    // Distinct hook sessions still surface separately via the provider's hook state.
+    private struct LiveProcess {
+        let pid: pid_t
+        let cwd: String
+        let startedAt: Date?
+        let terminal: (focusURL: String?, name: String?)
+        let openTranscript: Transcript?
+    }
+
+    private struct Transcript {
+        let sessionId: String
+        let mtime: Date
+        let state: TranscriptState
+    }
+
     /// The `claude` CLI's executable is the versioned binary
     /// (`…/claude/versions/X.Y.Z`), so `proc_name` is the version string, not
     /// "claude" — matching by name finds nothing. Match by executable path, and
@@ -78,18 +114,55 @@ struct ProcessScanner: Sendable {
         }
     }
 
-    private static func newestTranscript(
-        forCwd cwd: String
-    ) -> (sessionId: String, mtime: Date, state: TranscriptState)? {
-        let encoded = cwd.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ".", with: "-")
-        let dir = projectsRoot.appendingPathComponent(encoded, isDirectory: true)
+    /// Allowed characters in Claude Code's project-directory encoding: `[a-zA-Z0-9]`.
+    private static let projectDirAllowed = Set(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    )
+
+    /// Claude Code names each project's transcript directory by replacing every
+    /// non-alphanumeric character of the cwd with "-" (so "/", ".", and spaces all
+    /// become "-"). Handling only "/" and "." missed any path containing a space:
+    /// the scan found no transcript, the session survived only as a hook-only entry,
+    /// then flapped in and out of the UI on the 30s grace window.
+    private static func encodeProjectDir(_ cwd: String) -> String {
+        String(cwd.map { projectDirAllowed.contains($0) ? $0 : "-" })
+    }
+
+    private static func transcripts(forCwd cwd: String) -> [Transcript] {
+        let dir = projectsRoot.appendingPathComponent(encodeProjectDir(cwd), isDirectory: true)
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]
-        ) else { return nil }
-        let jsonls = entries.filter { $0.pathExtension == "jsonl" }
-        guard let newest = jsonls.max(by: { mtime($0) < mtime($1) }) else { return nil }
-        let state = TranscriptParser.parse(readTail(newest, maxBytes: 65536) ?? Data())
-        return (newest.deletingPathExtension().lastPathComponent, mtime(newest), state)
+        ) else { return [] }
+        return entries
+            .filter { $0.pathExtension == "jsonl" }
+            .sorted { mtime($0) > mtime($1) }
+            .map { url in
+                Transcript(
+                    sessionId: url.deletingPathExtension().lastPathComponent,
+                    mtime: mtime(url),
+                    state: TranscriptParser.parse(readTail(url, maxBytes: 65536) ?? Data())
+                )
+            }
+    }
+
+    private static func openTranscript(
+        forPID pid: pid_t,
+        cwd: String,
+        lookup: ProcessLookup
+    ) -> Transcript? {
+        let projectDir = projectsRoot.appendingPathComponent(encodeProjectDir(cwd), isDirectory: true).path
+        let candidates = lookup.openFilePaths(of: pid).filter {
+            $0.hasPrefix(projectDir + "/") && URL(fileURLWithPath: $0).pathExtension == "jsonl"
+        }
+        guard let active = candidates.max(by: { mtime(URL(fileURLWithPath: $0)) < mtime(URL(fileURLWithPath: $1)) }) else {
+            return nil
+        }
+        let url = URL(fileURLWithPath: active)
+        return Transcript(
+            sessionId: url.deletingPathExtension().lastPathComponent,
+            mtime: mtime(url),
+            state: TranscriptParser.parse(readTail(url, maxBytes: 65536) ?? Data())
+        )
     }
 
     private static func readTail(_ url: URL, maxBytes: Int) -> Data? {

@@ -17,11 +17,13 @@ final class ScriptingMediaController: MediaControlling {
 
     private var activeApp: MediaApp = .music
     private var lastArtworkIdentity = ""
+    private var artworkRequestIdentity: String?
+    private var currentTrackIdentity = ""
 
     func start() {
         for app in MediaApp.allCases {
             let token = dnc.addObserver(forName: app.notificationName, object: nil, queue: .main) { [weak self] _ in
-                self?.refresh(preferred: app)
+                Task { @MainActor in self?.refresh(preferred: app) }
             }
             observers.append(token)
         }
@@ -38,7 +40,11 @@ final class ScriptingMediaController: MediaControlling {
         let app = activeApp
         queue.async { [weak self] in
             _ = AppleScript.run(script)
-            self?.read(app: app)
+            let track = Self.readTrack(app: app)
+            Task { @MainActor in
+                guard let self else { return }
+                if let track { self.deliver(track, from: app) }
+            }
         }
     }
 
@@ -47,55 +53,84 @@ final class ScriptingMediaController: MediaControlling {
     private func refresh(preferred: MediaApp?) {
         let order: [MediaApp] = preferred.map { pref in [pref] + MediaApp.allCases.filter { $0 != pref } } ?? MediaApp.allCases
         queue.async { [weak self] in
-            guard let self else { return }
-            for app in order where app.isRunning {
-                if self.read(app: app) { return }
+            let candidates = order.compactMap { app -> (MediaApp, NowPlayingTrack)? in
+                guard app.isRunning, let track = Self.readTrack(app: app) else { return nil }
+                return (app, track)
             }
-            DispatchQueue.main.async { [weak self] in
-                self?.onUpdate?(.empty)
+            // A playing source always wins over a paused one. Within the same state,
+            // the app whose notification triggered this refresh stays preferred.
+            let selected = candidates.first(where: { $0.1.isPlaying }) ?? candidates.first
+            Task { @MainActor in
+                guard let self else { return }
+                if let (app, track) = selected {
+                    self.deliver(track, from: app)
+                } else {
+                    self.currentTrackIdentity = ""
+                    self.artworkRequestIdentity = nil
+                    self.lastArtworkIdentity = ""
+                    self.onUpdate?(.empty)
+                    self.onArtwork?(nil)
+                }
             }
         }
     }
 
-    /// Reads one app; returns true if it produced a non-stopped track.
-    @discardableResult
-    private func read(app: MediaApp) -> Bool {
-        guard app.isRunning, let descriptor = AppleScript.run(app.readScript) else { return false }
+    /// Reads one app off-main and returns its current non-stopped track.
+    nonisolated private static func readTrack(app: MediaApp) -> NowPlayingTrack? {
+        guard app.isRunning, let descriptor = AppleScript.run(app.readScript) else { return nil }
         let raw = descriptor.stringValue ?? ""
-        guard let track = MediaApp.parse(raw, app: app) else { return false }
+        return MediaApp.parse(raw, app: app)
+    }
 
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.activeApp = app
-            self.onUpdate?(track)
-            self.fetchArtwork(for: track, app: app)
-        }
-        return true
+    private func deliver(_ track: NowPlayingTrack, from app: MediaApp) {
+        activeApp = app
+        currentTrackIdentity = track.identity
+        onUpdate?(track)
+        fetchArtwork(for: track, app: app)
     }
 
     // MARK: - Artwork
 
     private func fetchArtwork(for track: NowPlayingTrack, app: MediaApp) {
-        guard track.identity != lastArtworkIdentity else { return }
-        lastArtworkIdentity = track.identity
+        let identity = track.identity
+        guard identity != lastArtworkIdentity,
+              identity != artworkRequestIdentity else { return }
+        artworkRequestIdentity = identity
+        // Never display the prior track's art while a new request is in flight.
+        onArtwork?(nil)
 
         switch app {
         case .spotify:
             queue.async { [weak self] in
-                guard let self,
-                      let urlString = AppleScript.run(app.artworkURLScript)?.stringValue,
-                      let url = URL(string: urlString) else { return }
-                Task { [weak self] in
-                    let data = try? await self?.session.data(from: url).0
-                    await MainActor.run { self?.onArtwork?(data) }
+                let urlString = AppleScript.run(app.artworkURLScript)?.stringValue
+                Task { @MainActor in
+                    guard let self else { return }
+                    guard let urlString, let url = URL(string: urlString) else {
+                        self.completeArtwork(nil, identity: identity)
+                        return
+                    }
+                    await self.downloadArtwork(from: url, identity: identity)
                 }
             }
         case .music:
             queue.async { [weak self] in
                 let data = AppleScript.run(app.artworkDataScript)?.data
-                DispatchQueue.main.async { self?.onArtwork?(data) }
+                Task { @MainActor in self?.completeArtwork(data, identity: identity) }
             }
         }
+    }
+
+    private func downloadArtwork(from url: URL, identity: String) async {
+        let data = try? await session.data(from: url).0
+        completeArtwork(data, identity: identity)
+    }
+
+    private func completeArtwork(_ data: Data?, identity: String) {
+        guard artworkRequestIdentity == identity else { return }
+        artworkRequestIdentity = nil
+        guard currentTrackIdentity == identity else { return }
+        if data != nil { lastArtworkIdentity = identity }
+        onArtwork?(data)
     }
 }
 
@@ -189,7 +224,24 @@ private extension MediaCommand {
         case .toggleShuffle:
             body = app == .music ? "set shuffle enabled to not (shuffle enabled)" : "set shuffling to not shuffling"
         case .toggleRepeat:
-            body = app == .music ? "set song repeat to one" : "set repeating to not repeating"
+            if app == .music {
+                // Music's `song repeat` is off/one/all, not a boolean. Unconditionally
+                // setting it to `one` meant the key could never turn repeat off again
+                // or reach `all`; cycle it so it behaves like a toggle (matching how
+                // Spotify's boolean repeat already toggles).
+                return """
+                tell application "Music"
+                    if song repeat is off then
+                        set song repeat to one
+                    else if song repeat is one then
+                        set song repeat to all
+                    else
+                        set song repeat to off
+                    end if
+                end tell
+                """
+            }
+            body = "set repeating to not repeating"
         }
         return "tell application \"\(name)\" to \(body)"
     }

@@ -10,8 +10,10 @@ struct ExpandedView: View {
 
     @EnvironmentObject private var state: NotchState
     @EnvironmentObject private var settings: Settings
+    @EnvironmentObject private var screenshots: ScreenshotMonitor
 
     @Environment(\.notchGeometry) private var notchSize
+    @Environment(\.notchExpandedWidth) private var expandedWidth
     @Environment(\.openSettings) private var openSettings
 
     @Namespace private var tabNamespace
@@ -22,11 +24,12 @@ struct ExpandedView: View {
                 if !state.isDropActive { tabStrip }
                 content
             }
-            // The blob insets its own left/right edges by the notch corner radius,
-            // so the horizontal padding must add that back to read as the same
-            // visible margin as the bottom; otherwise the sides look pinched and
-            // the bottom looks loose.
-            .padding(.horizontal, 12 + NotchMetrics.compactCornerRadius)
+            // The blob insets its own left/right edges by shoulderInset (not the
+            // corner radius), so the horizontal padding must add that same amount
+            // back to read as a consistent 12pt visible margin like the bottom;
+            // using the corner radius left the sides pinched.
+            .padding(.horizontal, 12 + NotchMetrics.shoulderInset(
+                width: expandedWidth, notchWidth: notchSize.width))
             .padding(.bottom, 12)
             // Keep the tap targets well clear of the physical notch / menu-bar band,
             // which otherwise crowds the top tab row and eats clicks near the notch.
@@ -54,16 +57,18 @@ struct ExpandedView: View {
     private var gearButton: some View {
         Button {
             Haptics.tap(.levelChange)
+            // Settings replaces the notch as the active surface. Collapse before
+            // activating its window instead of waiting for a hover-exit event.
+            state.collapseImmediately()
             // An accessory app isn't frontmost when the notch panel is clicked, so
             // openSettings() alone leaves the window buried or unshown. Activate
             // first to reliably surface it (mirrors the status-item menu path).
             NSApp.activate(ignoringOtherApps: true)
             openSettings()
         } label: {
-            Image(systemName: "gearshape")
-                .font(.system(size: 14, weight: .semibold))
+            PixelIcon(systemName: "gearshape", size: 16,
+                      tint: Color.white.opacity(0.5))
                 .frame(width: 46, height: 32)
-                .foregroundStyle(Color.white.opacity(0.5))
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -80,10 +85,9 @@ struct ExpandedView: View {
             Haptics.tap(.levelChange)
             state.select(tab: tab)
         } label: {
-            Image(systemName: tab.symbol)
-                .font(.system(size: 14, weight: .semibold))
+            PixelIcon(systemName: tab.symbol, size: 16,
+                      tint: selected ? Color.white : Color.white.opacity(0.5))
                 .frame(width: 46, height: 32)
-                .foregroundStyle(selected ? Color.white : Color.white.opacity(0.5))
                 .background {
                     // One shared pill that slides between tabs as the selection
                     // moves. A capsule so its curvature matches the capsule strip
@@ -98,6 +102,7 @@ struct ExpandedView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tab.rawValue.capitalized)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     // MARK: - Body
@@ -121,9 +126,12 @@ struct ExpandedView: View {
     }
 
     private var home: some View {
-        // The compact pill already surfaces transient activities, so home stays a
-        // clean, fixed-height dashboard.
-        WidgetGridView()
+        VStack(spacing: 10) {
+            if !screenshots.candidates.isEmpty {
+                ScreenshotCandidateCard()
+            }
+            WidgetGridView()
+        }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }

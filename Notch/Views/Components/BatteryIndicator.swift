@@ -12,6 +12,8 @@ struct BatteryIndicator: View {
     var width: CGFloat = 26
     var height: CGFloat = 13
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private var fraction: CGFloat { min(max(CGFloat(level) / 100, 0), 1) }
 
     var body: some View {
@@ -23,12 +25,13 @@ struct BatteryIndicator: View {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(tint)
                     .padding(2)
-                    .frame(width: max(2, (width - 4) * fraction + 4))
+                    // The 2pt padding eats 4pt of width, so keep the frame >= 6 to
+                    // leave a visible sliver even at 0% (a bare "+ 4" floored at an
+                    // invisible zero-width fill).
+                    .frame(width: max(6, (width - 4) * fraction + 4))
 
                 if charging {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 8, weight: .heavy))
-                        .foregroundStyle(.white)
+                    PixelIcon(systemName: "bolt.fill", size: 9, tint: .white)
                         .frame(maxWidth: .infinity)
                         .shadow(radius: 1)
                 }
@@ -39,7 +42,7 @@ struct BatteryIndicator: View {
                 .fill(.white.opacity(0.45))
                 .frame(width: 2, height: height * 0.42)
         }
-        .animation(.snappy, value: level)
-        .animation(.snappy, value: charging)
+        .animation(reduceMotion ? nil : .snappy, value: level)
+        .animation(reduceMotion ? nil : .snappy, value: charging)
     }
 }

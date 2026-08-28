@@ -1,90 +1,202 @@
+import Darwin
 import Foundation
 
-/// System-wide Now Playing via the `mediaremote-adapter` perl bridge.
+/// System-wide Now Playing via the pinned `mediaremote-adapter` Perl bridge.
 ///
-/// `/usr/bin/perl` is a platform binary (bundle id `com.apple.perl`), so a
-/// process it hosts passes `mediaremoted`'s entitlement check that unentitled
-/// apps fail since macOS 15.4. We spawn:
-///
-///     /usr/bin/perl <Resources>/mediaremote-adapter.pl <Frameworks>/MediaRemoteAdapter.framework stream
-///
-/// and read newline-delimited JSON. `init?` returns nil (→ scripting fallback)
-/// unless both artifacts are bundled and the one-shot `test` command exits 0.
-///
-/// To enable: bundle `mediaremote-adapter.pl` (Resources) and a signed,
-/// **not-linked** `MediaRemoteAdapter.framework` (Contents/Frameworks). See README.
+/// The package framework is embedded and signed but deliberately not linked.
+/// `/usr/bin/perl` loads its executable at runtime, so mediaremoted sees the
+/// platform Perl process rather than this unentitled app.
+@MainActor
 final class AdapterMediaController: MediaControlling {
+
+    enum ProbeResult: Sendable, Equatable {
+        case available
+        case unavailable(String)
+    }
 
     var onUpdate: ((NowPlayingTrack) -> Void)?
     var onArtwork: ((Data?) -> Void)?
+    var onStreamEnded: (() -> Void)?
     let capabilities: MediaCapabilities = .full
 
-    private static let perlPath = "/usr/bin/perl"
+    private enum Command {
+        static let probe = "get"
+        static let stream = "loop"
+        static let playPause = "toggle_play_pause"
+        static let next = "next_track"
+        static let previous = "previous_track"
+        static let seek = "set_time"
+        static let shuffle = "toggle_shuffle"
+        static let repeatMode = "toggle_repeat"
+    }
+
+    nonisolated private static let perlPath = "/usr/bin/perl"
     private let scriptPath: String
-    private let frameworkPath: String
+    private let frameworkExecutablePath: String
 
     private var streamProcess: Process?
+    private var streamInput: Pipe?
+    private var streamOutput: Pipe?
     private let decoder = JSONDecoder()
     private var buffer = Data()
     private var lastArtworkIdentity = ""
+    private var lastArtworkByteCount = 0
+    private var streamEnded = false
 
     init?() {
-        guard FileManager.default.fileExists(atPath: Self.perlPath),
-              let script = Bundle.main.url(forResource: "mediaremote-adapter", withExtension: "pl"),
-              let framework = Bundle.main.privateFrameworksURL?
-                .appendingPathComponent("MediaRemoteAdapter.framework"),
-              FileManager.default.fileExists(atPath: framework.path)
-        else { return nil }
+        guard FileManager.default.isExecutableFile(atPath: Self.perlPath),
+              let artifacts = Self.locateBundledArtifacts() else { return nil }
+        scriptPath = artifacts.script.path
+        frameworkExecutablePath = artifacts.frameworkExecutable.path
+    }
 
-        self.scriptPath = script.path
-        self.frameworkPath = framework.path
+    private struct Artifacts {
+        let script: URL
+        let frameworkExecutable: URL
+    }
 
-        guard Self.runOneShot(arguments: [script.path, framework.path, "test"]) == 0 else {
-            Log.media.notice("mediaremote-adapter test failed; using scripting fallback")
-            return nil
+    nonisolated private static func locateBundledArtifacts() -> Artifacts? {
+        guard let script = Bundle.main.url(
+            forResource: "mediaremote-adapter",
+            withExtension: "pl"
+        ), let frameworks = Bundle.main.privateFrameworksURL else { return nil }
+
+        let framework = frameworks.appendingPathComponent(
+            "MediaRemoteAdapter.framework",
+            isDirectory: true
+        )
+        let candidates = [
+            framework.appendingPathComponent("Versions/A/MediaRemoteAdapter"),
+            framework.appendingPathComponent("MediaRemoteAdapter"),
+        ]
+        guard let executable = candidates.first(where: {
+            FileManager.default.isExecutableFile(atPath: $0.path)
+        }) else { return nil }
+        return Artifacts(script: script, frameworkExecutable: executable)
+    }
+
+    /// `get` is both a capability test and an ABI/protocol test. A healthy bridge
+    /// must exit successfully and emit either `NIL` or a decodable data frame.
+    nonisolated func probe() -> ProbeResult {
+        let result = Self.runOneShot(
+            arguments: [scriptPath, frameworkExecutablePath, Command.probe],
+            timeout: 5
+        )
+        if result.timedOut {
+            return .unavailable("The bundled adapter self-test timed out.")
         }
+        guard result.status == 0 else {
+            let detail = result.stderr
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "\n", with: " ")
+                .prefix(240)
+            let suffix = detail.isEmpty ? "" : " \(detail)"
+            return .unavailable("The bundled adapter exited with status \(result.status).\(suffix)")
+        }
+        for line in result.stdout.split(whereSeparator: { $0.isNewline }) {
+            if line == "NIL" { return .available }
+            guard let data = String(line).data(using: .utf8),
+                  let envelope = try? JSONDecoder().decode(MediaAdapterEnvelope.self, from: data),
+                  envelope.type == "data",
+                  envelope.payload != nil else { continue }
+            return .available
+        }
+        return .unavailable("The bundled adapter returned no valid self-test response.")
     }
 
     func start() {
+        guard streamProcess == nil else { return }
+        streamEnded = false
+        buffer.removeAll(keepingCapacity: true)
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: Self.perlPath)
-        process.arguments = [scriptPath, frameworkPath, "stream"]
+        process.arguments = [scriptPath, frameworkExecutablePath, Command.stream]
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
+        let input = Pipe()
+        let output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
 
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let chunk = handle.availableData
-            guard !chunk.isEmpty else { return }
-            self?.ingest(chunk)
+            guard !chunk.isEmpty else {
+                handle.readabilityHandler = nil
+                Task { @MainActor in self?.streamDidEnd() }
+                return
+            }
+            Task { @MainActor in self?.ingest(chunk) }
+        }
+        process.terminationHandler = { [weak self] _ in
+            Task { @MainActor in self?.streamDidEnd() }
         }
 
         do {
             try process.run()
             streamProcess = process
+            streamInput = input
+            streamOutput = output
         } catch {
+            output.fileHandleForReading.readabilityHandler = nil
             Log.media.error("Failed to start adapter stream: \(error.localizedDescription)")
+            streamDidEnd()
         }
     }
 
     func stop() {
+        streamEnded = true
+        streamOutput?.fileHandleForReading.readabilityHandler = nil
+        try? streamInput?.fileHandleForWriting.close()
         streamProcess?.terminate()
         streamProcess = nil
+        streamInput = nil
+        streamOutput = nil
+        buffer.removeAll(keepingCapacity: false)
+    }
+
+    private func streamDidEnd() {
+        guard !streamEnded else { return }
+        streamEnded = true
+        let process = streamProcess
+        streamOutput?.fileHandleForReading.readabilityHandler = nil
+        try? streamInput?.fileHandleForWriting.close()
+        streamProcess = nil
+        streamInput = nil
+        streamOutput = nil
+        buffer.removeAll(keepingCapacity: false)
+        if process?.isRunning == true { process?.terminate() }
+        Log.media.notice("mediaremote-adapter stream ended; falling back")
+        onStreamEnded?()
     }
 
     func send(_ command: MediaCommand) {
-        let args: [String]
+        let arguments: [String]
         switch command {
-        case .playPause: args = [scriptPath, frameworkPath, "send", "playpause"]
-        case .next: args = [scriptPath, frameworkPath, "send", "next"]
-        case .previous: args = [scriptPath, frameworkPath, "send", "previous"]
-        case let .seek(position): args = [scriptPath, frameworkPath, "seek", String(Int(position))]
-        case .toggleShuffle: args = [scriptPath, frameworkPath, "shuffle"]
-        case .toggleRepeat: args = [scriptPath, frameworkPath, "repeat"]
+        case .playPause: arguments = [Command.playPause]
+        case .next: arguments = [Command.next]
+        case .previous: arguments = [Command.previous]
+        case let .seek(position): arguments = [Command.seek, String(position)]
+        case .toggleShuffle: arguments = [Command.shuffle]
+        case .toggleRepeat: arguments = [Command.repeatMode]
         }
-        DispatchQueue.global(qos: .userInitiated).async {
-            _ = Self.runOneShot(arguments: args)
+
+        let line = arguments.joined(separator: " ") + "\n"
+        if let process = streamProcess,
+           process.isRunning,
+           let data = line.data(using: .utf8),
+           let handle = streamInput?.fileHandleForWriting {
+            do {
+                try handle.write(contentsOf: data)
+                return
+            } catch {
+                Log.media.notice("Adapter command pipe closed; using one-shot command")
+            }
+        }
+
+        let oneShot = [scriptPath, frameworkExecutablePath] + arguments
+        Task.detached(priority: .userInitiated) {
+            _ = Self.runOneShot(arguments: oneShot, timeout: 3)
         }
     }
 
@@ -94,75 +206,130 @@ final class AdapterMediaController: MediaControlling {
         buffer.append(chunk)
         let newline = UInt8(ascii: "\n")
         while let index = buffer.firstIndex(of: newline) {
-            let lineData = buffer.subdata(in: buffer.startIndex..<index)
+            let line = buffer.subdata(in: buffer.startIndex..<index)
             buffer.removeSubrange(buffer.startIndex...index)
-            guard !lineData.isEmpty else { continue }
-            decodeLine(lineData)
+            guard !line.isEmpty else { continue }
+            decodeLine(line)
+        }
+        // Artwork frames can be large, but an unterminated or malicious stream
+        // must not grow memory forever.
+        if buffer.count > 16 * 1024 * 1024 {
+            Log.media.error("Adapter emitted an oversized unterminated frame")
+            buffer.removeAll(keepingCapacity: false)
         }
     }
 
     private func decodeLine(_ data: Data) {
-        guard let payload = try? decoder.decode(AdapterPayload.self, from: data) else { return }
-        let track = payload.track
-        let artworkData = payload.artworkData.flatMap { Data(base64Encoded: $0) }
+        if data == Data("NIL".utf8) {
+            lastArtworkIdentity = ""
+            lastArtworkByteCount = 0
+            onUpdate?(.empty)
+            onArtwork?(nil)
+            return
+        }
+        guard let envelope = try? decoder.decode(MediaAdapterEnvelope.self, from: data),
+              envelope.type == "data",
+              let payload = envelope.payload else {
+            Log.media.error("Adapter emitted an invalid protocol frame")
+            return
+        }
 
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.onUpdate?(track)
-            if track.identity != self.lastArtworkIdentity {
-                self.lastArtworkIdentity = track.identity
-                self.onArtwork?(artworkData)
-            }
+        let track = payload.track()
+        let artwork = payload.artworkData
+        onUpdate?(track)
+
+        if track.identity != lastArtworkIdentity {
+            lastArtworkIdentity = track.identity
+            lastArtworkByteCount = artwork?.count ?? 0
+            onArtwork?(artwork)
+        } else if let artwork, artwork.count > lastArtworkByteCount {
+            // MediaRemote sometimes follows a full-size image with a thumbnail.
+            // Upgrade artwork for the same track, but never downgrade it.
+            lastArtworkByteCount = artwork.count
+            onArtwork?(artwork)
         }
     }
 
-    @discardableResult
-    private static func runOneShot(arguments: [String]) -> Int32 {
+    // MARK: - Bounded process execution
+
+    private struct ProcessResult: Sendable {
+        let status: Int32
+        let stdout: String
+        let stderr: String
+        let timedOut: Bool
+    }
+
+    nonisolated private static func runOneShot(
+        arguments: [String],
+        timeout: TimeInterval
+    ) -> ProcessResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: perlPath)
         process.arguments = arguments
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        let stdout = LockedData()
+        let stderr = LockedData()
+        let readers = DispatchGroup()
+        readers.enter()
+        DispatchQueue.global(qos: .utility).async {
+            stdout.set(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
+            readers.leave()
+        }
+        readers.enter()
+        DispatchQueue.global(qos: .utility).async {
+            stderr.set(stderrPipe.fileHandleForReading.readDataToEndOfFile())
+            readers.leave()
+        }
+
         do {
             try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus
         } catch {
-            return -1
+            try? stdoutPipe.fileHandleForWriting.close()
+            try? stderrPipe.fileHandleForWriting.close()
+            _ = readers.wait(timeout: .now() + 1)
+            return ProcessResult(
+                status: -1, stdout: "", stderr: error.localizedDescription, timedOut: false
+            )
         }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning, Date() < deadline { usleep(20_000) }
+        let timedOut = process.isRunning
+        if timedOut {
+            process.terminate()
+            let killDeadline = Date().addingTimeInterval(0.5)
+            while process.isRunning, Date() < killDeadline { usleep(20_000) }
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        }
+        process.waitUntilExit()
+        _ = readers.wait(timeout: .now() + 1)
+        return ProcessResult(
+            status: process.terminationStatus,
+            stdout: String(data: stdout.value, encoding: .utf8) ?? "",
+            stderr: String(data: stderr.value, encoding: .utf8) ?? "",
+            timedOut: timedOut
+        )
     }
 }
 
-/// Maps the adapter's JSON line to our model. Keys are optional so a partial
-/// frame never drops the whole update.
-private struct AdapterPayload: Decodable {
-    var title: String?
-    var artist: String?
-    var album: String?
-    var duration: Double?
-    var elapsedTime: Double?
-    var playing: Bool?
-    var bundleIdentifier: String?
-    var artworkData: String?
+private final class LockedData: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = Data()
 
-    enum CodingKeys: String, CodingKey {
-        case title, artist, album, duration
-        case elapsedTime = "elapsedTime"
-        case playing
-        case bundleIdentifier = "bundleIdentifier"
-        case artworkData = "artworkData"
+    func set(_ data: Data) {
+        lock.lock()
+        storage = data
+        lock.unlock()
     }
 
-    var track: NowPlayingTrack {
-        NowPlayingTrack(
-            title: title ?? "",
-            artist: artist ?? "",
-            album: album ?? "",
-            duration: duration ?? 0,
-            elapsed: elapsedTime ?? 0,
-            isPlaying: playing ?? false,
-            bundleIdentifier: bundleIdentifier,
-            appName: nil
-        )
+    var value: Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
     }
 }

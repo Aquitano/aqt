@@ -16,6 +16,10 @@ struct CLIDetector {
             return exists(bin("opencode") + [home(".config/opencode"), home(".opencode/bin/opencode")])
         case .ohMyPi:
             return exists(bin("omp") + [home(".omp")])
+        case .t3code:
+            // Also runnable install-free via `npx t3`, so the Settings row never
+            // gates on this — pairing succeeding is the real proof.
+            return exists(bin("t3") + [home(".t3"), "/Applications/T3 Code.app"])
         }
     }
 

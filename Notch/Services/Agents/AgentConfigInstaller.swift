@@ -9,12 +9,26 @@ import Foundation
 /// clobbering the symlink with a plain file.
 struct AgentConfigInstaller {
 
-    enum InstallerError: Error {
+    enum InstallerError: Error, LocalizedError {
         /// The file exists but could not be read or parsed as a JSON object;
         /// we refuse to overwrite it (that would destroy the user's settings).
         case settingsUnreadable
         /// `hooks` exists but is not a JSON object; refuse to clobber it.
         case unexpectedHooksShape
+        /// The file kept changing while we were merging. Refuse a last-writer-wins
+        /// replacement and let the user retry instead of dropping another writer's edit.
+        case concurrentModification
+
+        var errorDescription: String? {
+            switch self {
+            case .settingsUnreadable:
+                return "The agent's settings file couldn't be parsed, so it was left untouched."
+            case .unexpectedHooksShape:
+                return "The agent's hooks configuration has an unexpected format, so it was left untouched."
+            case .concurrentModification:
+                return "The agent's settings changed while Notch was updating them. Nothing was overwritten; try again."
+            }
+        }
     }
 
     /// The filesystem root all config paths hang off. Defaults to the user's home
@@ -22,9 +36,16 @@ struct AgentConfigInstaller {
     /// uninstall round-trip (symlink write-through, user-hook preservation, the
     /// refuse-unreadable guard) without touching real dotfiles.
     private let home: URL
+    /// Test seam used to simulate another process editing between read and write.
+    private let beforeWrite: ((URL) -> Void)?
+    private static let mutationLock = NSLock()
 
-    init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
+    init(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        beforeWrite: ((URL) -> Void)? = nil
+    ) {
         self.home = home
+        self.beforeWrite = beforeWrite
     }
 
     private var claudeSettingsURL: URL { home.appendingPathComponent(".claude/settings.json") }
@@ -33,6 +54,11 @@ struct AgentConfigInstaller {
     private var appPathCacheURL: URL { bridgeDir.appendingPathComponent(".app-path") }
     private var statusLineURL: URL { bridgeDir.appendingPathComponent("notch-statusline") }
     private var statusLineOrigURL: URL { bridgeDir.appendingPathComponent(".statusline-orig.json") }
+
+    /// Key under which we stash the user's pre-wrap statusLine inside settings.json
+    /// itself, so an uninstall restores it even if the user deleted ~/.notch (and the
+    /// on-disk snapshot with it). NSNull records "the user had no statusLine".
+    private static let statusLineBackupKey = "notchStatusLineBackup"
 
     private var codexHooksURL: URL { home.appendingPathComponent(".codex/hooks.json") }
     private var openCodePluginURL: URL { home.appendingPathComponent(".config/opencode/plugins/notch.js") }
@@ -45,10 +71,20 @@ struct AgentConfigInstaller {
     // (Claude runs a matcher-less group for every tool).
     private static let claudeHookEvents = ["Notification", "Stop", "SessionStart", "SessionEnd",
                                            "UserPromptSubmit", "PreToolUse", "PostToolUse"]
+    /// Installed separately: PermissionRequest blocks on the user's in-notch
+    /// decision, so it carries a long timeout instead of the 5s bound above.
+    private static let claudePermissionEvent = "PermissionRequest"
+    private static var claudeAllHookEvents: [String] { claudeHookEvents + [claudePermissionEvent] }
     private static let codexHookEvents = ["PermissionRequest", "PostToolUse", "SessionStart", "Stop", "UserPromptSubmit"]
-    /// Substring identifying our hook entries — matches both the stable-path
-    /// launcher (`notch-agent-hook`) and any legacy `… --agent-hook` command.
-    private static let hookMarker = "agent-hook"
+    /// Distinctive tokens in our hook commands: the stable-path launcher binary
+    /// (`notch-agent-hook`) and the legacy `… --agent-hook` flag. Matching these,
+    /// rather than the bare substring "agent-hook", avoids deleting an unrelated
+    /// user hook such as ~/bin/my-agent-hook.sh.
+    private static let hookMarkers = ["notch-agent-hook", "--agent-hook"]
+
+    private static func isOurHookCommand(_ command: String) -> Bool {
+        hookMarkers.contains { command.contains($0) }
+    }
 
     /// Defensive call to our stable-path launcher that locates the app and execs
     /// the hook tool. Never blocks the agent. `--source` selects the parser.
@@ -93,7 +129,7 @@ struct AgentConfigInstaller {
     // MARK: - Claude
 
     func claudeHooksInstalled() -> Bool {
-        hasCommand(at: claudeSettingsURL, events: Self.claudeHookEvents, containing: Self.hookMarker)
+        hasCommand(at: claudeSettingsURL, events: Self.claudeHookEvents, matching: Self.isOurHookCommand)
     }
 
     /// True only when the stable-path launcher is wired into *every* event we manage
@@ -101,8 +137,8 @@ struct AgentConfigInstaller {
     /// predates the precise tool events). Requiring all of them lets start() upgrade
     /// an existing install in place the next time the app launches.
     func claudeBridgeInstalled() -> Bool {
-        hasCommand(at: claudeSettingsURL, events: Self.claudeHookEvents,
-                   containing: "notch-agent-hook", requireAll: true)
+        hasCommand(at: claudeSettingsURL, events: Self.claudeAllHookEvents,
+                   matching: { $0.contains("notch-agent-hook") }, requireAll: true)
     }
 
     /// Install the launcher and add our hook to each Claude event. Throws — rather
@@ -110,17 +146,24 @@ struct AgentConfigInstaller {
     /// transient read error or a manual JSON slip can never wipe the user's config.
     func installClaudeHooks() throws {
         try writeBridge()
-        try installHooks(at: claudeSettingsURL, events: Self.claudeHookEvents, command: launcherCommand(source: nil))
+        // Bound each hook so a stalled connect (full accept backlog) can't hold up
+        // the user's Claude turn to the 60s default.
+        try installHooks(at: claudeSettingsURL, events: Self.claudeHookEvents,
+                         command: launcherCommand(source: nil), timeout: 5)
+        // The permission hook blocks up to ~2 min on the user's decision; the
+        // timeout only has to outlast the client's own 120s wait.
+        try installHooks(at: claudeSettingsURL, events: [Self.claudePermissionEvent],
+                         command: launcherCommand(source: nil), timeout: 150)
     }
 
     func removeClaudeHooks() throws {
-        try removeHooks(at: claudeSettingsURL, events: Self.claudeHookEvents)
+        try removeHooks(at: claudeSettingsURL, events: Self.claudeAllHookEvents)
     }
 
     // MARK: - Codex (~/.codex/hooks.json)
 
     func codexHooksInstalled() -> Bool {
-        hasCommand(at: codexHooksURL, events: Self.codexHookEvents, containing: "notch-agent-hook")
+        hasCommand(at: codexHooksURL, events: Self.codexHookEvents, matching: { $0.contains("notch-agent-hook") })
     }
 
     func installCodexHooks() throws {
@@ -171,42 +214,51 @@ struct AgentConfigInstaller {
     /// still running their original command (e.g. ccstatusline) unchanged.
     func installClaudeUsage() throws {
         try writeBridge()
-        var root: [String: Any]
-        switch readSettings(at: claudeSettingsURL) {
-        case .missing: root = [:]
-        case .object(let obj): root = obj
-        case .unreadable: throw InstallerError.settingsUnreadable
+        try mutateSettings(at: claudeSettingsURL) { root in
+            let existing = root["statusLine"] as? [String: Any]
+            let currentCommand = existing?["command"] as? String ?? ""
+            if currentCommand.contains("notch-statusline") {
+                // Already wrapped: refresh the wrapper against the recorded original
+                // (from disk, else the settings.json backup) instead of clobbering it
+                // with "true" when the on-disk snapshot has gone missing.
+                try writeStatusLineWrapper(original: savedOriginalCommand(from: root))
+                return false
+            }
+
+            // Snapshot the original both to disk and inside settings.json, so an
+            // uninstall restores it even if the user deletes ~/.notch. NSNull records
+            // "there was no statusLine" so uninstall removes ours rather than guessing.
+            if let existing { try writeJSONFile(existing, to: statusLineOrigURL) }
+            else { try? FileManager.default.removeItem(at: statusLineOrigURL) }
+            root[Self.statusLineBackupKey] = existing ?? NSNull()
+            try writeStatusLineWrapper(original: currentCommand.isEmpty ? nil : currentCommand)
+
+            var line = existing ?? [:]
+            line["type"] = "command"
+            line["command"] = statusLineURL.path
+            root["statusLine"] = line
+            return true
         }
-
-        let existing = root["statusLine"] as? [String: Any]
-        let currentCommand = existing?["command"] as? String ?? ""
-        if currentCommand.contains("notch-statusline") {
-            try writeStatusLineWrapper(original: savedOriginalCommand())
-            return
-        }
-
-        // Mandatory: if we can't snapshot the original, abort before replacing it.
-        if let existing { try writeJSONFile(existing, to: statusLineOrigURL) }
-        else { try? FileManager.default.removeItem(at: statusLineOrigURL) }
-        try writeStatusLineWrapper(original: currentCommand.isEmpty ? nil : currentCommand)
-
-        var line = existing ?? [:]
-        line["type"] = "command"
-        line["command"] = statusLineURL.path
-        root["statusLine"] = line
-        try writeJSON(root, to: claudeSettingsURL)
     }
 
     func removeClaudeUsage() throws {
-        guard case var .object(root) = readSettings(at: claudeSettingsURL),
-              let line = root["statusLine"] as? [String: Any],
-              (line["command"] as? String)?.contains("notch-statusline") == true else { return }
-        if let original = readJSONFile(statusLineOrigURL) {
-            root["statusLine"] = original
-        } else {
-            root["statusLine"] = nil
+        try mutateSettings(at: claudeSettingsURL) { root in
+            guard let line = root["statusLine"] as? [String: Any],
+                  (line["command"] as? String)?.contains("notch-statusline") == true else { return false }
+            if let original = savedOriginal(from: root) {
+                root["statusLine"] = original
+            } else if root[Self.statusLineBackupKey] != nil {
+                // Backup recorded (as NSNull) that there was no original statusLine.
+                root["statusLine"] = nil
+            } else {
+                // No snapshot on disk and no in-settings backup: a legacy install whose
+                // ~/.notch was deleted. The original is unrecoverable; drop our wrapper
+                // entry rather than leave statusLine pointing at a file we're deleting.
+                root["statusLine"] = nil
+            }
+            root[Self.statusLineBackupKey] = nil
+            return true
         }
-        try writeJSON(root, to: claudeSettingsURL)
         try? FileManager.default.removeItem(at: statusLineURL)
         try? FileManager.default.removeItem(at: statusLineOrigURL)
     }
@@ -229,8 +281,16 @@ struct AgentConfigInstaller {
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: statusLineURL.path)
     }
 
-    private func savedOriginalCommand() -> String? {
-        readJSONFile(statusLineOrigURL)?["command"] as? String
+    /// The user's pre-wrap statusLine object, preferring the on-disk snapshot and
+    /// falling back to the copy stashed inside settings.json (survives ~/.notch
+    /// deletion). Returns nil for the NSNull "no original" sentinel.
+    private func savedOriginal(from root: [String: Any]) -> [String: Any]? {
+        if let fromFile = readJSONFile(statusLineOrigURL) { return fromFile }
+        return root[Self.statusLineBackupKey] as? [String: Any]
+    }
+
+    private func savedOriginalCommand(from root: [String: Any]) -> String? {
+        savedOriginal(from: root)?["command"] as? String
     }
 
     private func writeJSONFile(_ object: [String: Any], to url: URL) throws {
@@ -246,52 +306,48 @@ struct AgentConfigInstaller {
     // MARK: - Generic hook merge (Claude settings.json + Codex hooks.json share the format)
 
     private func installHooks(at url: URL, events: [String], command: String, timeout: Int? = nil) throws {
-        var root: [String: Any]
-        switch readSettings(at: url) {
-        case .missing: root = [:]
-        case .object(let obj): root = obj
-        case .unreadable: throw InstallerError.settingsUnreadable
-        }
-
-        var hooks: [String: Any]
-        switch root["hooks"] {
-        case .none: hooks = [:]
-        case let existing as [String: Any]: hooks = existing
-        default: throw InstallerError.unexpectedHooksShape
-        }
-
-        for event in events {
-            if let existing = hooks[event] {
-                guard let groups = existing as? [[String: Any]] else { continue } // leave malformed value
-                hooks[event] = pruneMarker(from: groups) + [ourGroup(command, timeout: timeout)]
-            } else {
-                hooks[event] = [ourGroup(command, timeout: timeout)]
+        try mutateSettings(at: url) { root in
+            var hooks: [String: Any]
+            switch root["hooks"] {
+            case .none: hooks = [:]
+            case let existing as [String: Any]: hooks = existing
+            default: throw InstallerError.unexpectedHooksShape
             }
+
+            for event in events {
+                if let existing = hooks[event] {
+                    guard let groups = existing as? [[String: Any]] else { continue } // leave malformed value
+                    hooks[event] = pruneMarker(from: groups) + [ourGroup(command, timeout: timeout)]
+                } else {
+                    hooks[event] = [ourGroup(command, timeout: timeout)]
+                }
+            }
+            root["hooks"] = hooks
+            return true
         }
-        root["hooks"] = hooks
-        try writeJSON(root, to: url)
     }
 
     private func removeHooks(at url: URL, events: [String]) throws {
-        guard case var .object(root) = readSettings(at: url),
-              var hooks = root["hooks"] as? [String: Any] else { return }
-        for event in events {
-            guard let groups = hooks[event] as? [[String: Any]] else { continue }
-            let pruned = pruneMarker(from: groups)
-            if pruned.isEmpty { hooks[event] = nil } else { hooks[event] = pruned }
+        try mutateSettings(at: url) { root in
+            guard var hooks = root["hooks"] as? [String: Any] else { return false }
+            for event in events {
+                guard let groups = hooks[event] as? [[String: Any]] else { continue }
+                let pruned = pruneMarker(from: groups)
+                if pruned.isEmpty { hooks[event] = nil } else { hooks[event] = pruned }
+            }
+            if hooks.isEmpty { root["hooks"] = nil } else { root["hooks"] = hooks }
+            return true
         }
-        if hooks.isEmpty { root["hooks"] = nil } else { root["hooks"] = hooks }
-        try writeJSON(root, to: url)
     }
 
     /// `requireAll`: every event must carry the command (used to detect a complete,
     /// up-to-date install); otherwise any single event matching is enough.
-    private func hasCommand(at url: URL, events: [String], containing needle: String,
+    private func hasCommand(at url: URL, events: [String], matching predicate: @escaping (String) -> Bool,
                             requireAll: Bool = false) -> Bool {
         guard case let .object(root) = readSettings(at: url),
               let hooks = root["hooks"] as? [String: Any] else { return false }
         let match: (String) -> Bool = { event in
-            commands(inEvent: hooks[event]).contains { $0.contains(needle) }
+            commands(inEvent: hooks[event]).contains(where: predicate)
         }
         return requireAll ? events.allSatisfy(match) : events.contains(where: match)
     }
@@ -310,7 +366,7 @@ struct AgentConfigInstaller {
     private func pruneMarker(from groups: [[String: Any]]) -> [[String: Any]] {
         groups.compactMap { group in
             guard var inner = group["hooks"] as? [[String: Any]] else { return group }
-            inner.removeAll { ($0["command"] as? String)?.contains(Self.hookMarker) == true }
+            inner.removeAll { ($0["command"] as? String).map(Self.isOurHookCommand) ?? false }
             if inner.isEmpty { return nil }
             var pruned = group
             pruned["hooks"] = inner
@@ -326,22 +382,75 @@ struct AgentConfigInstaller {
         case unreadable
     }
 
-    private func readSettings(at url: URL) -> ReadResult {
-        guard FileManager.default.fileExists(atPath: url.path) else { return .missing }
-        guard let data = try? Data(contentsOf: url) else { return .unreadable }
-        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            return .unreadable
-        }
-        return .object(object)
+    private struct SettingsSnapshot {
+        let result: ReadResult
+        let data: Data?
     }
 
-    private func writeJSON(_ object: [String: Any], to url: URL) throws {
+    private func readSettings(at url: URL) -> ReadResult {
+        readSnapshot(at: url).result
+    }
+
+    private func readSnapshot(at url: URL) -> SettingsSnapshot {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return SettingsSnapshot(result: .missing, data: nil)
+        }
+        guard let data = try? Data(contentsOf: url) else {
+            return SettingsSnapshot(result: .unreadable, data: nil)
+        }
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return SettingsSnapshot(result: .unreadable, data: data)
+        }
+        return SettingsSnapshot(result: .object(object), data: data)
+    }
+
+    private func mutateSettings(
+        at url: URL,
+        _ mutation: (inout [String: Any]) throws -> Bool
+    ) throws {
+        Self.mutationLock.lock()
+        defer { Self.mutationLock.unlock() }
+
+        for _ in 0..<4 {
+            let snapshot = readSnapshot(at: url)
+            var root: [String: Any]
+            switch snapshot.result {
+            case .missing: root = [:]
+            case .object(let object): root = object
+            case .unreadable: throw InstallerError.settingsUnreadable
+            }
+            guard try mutation(&root) else { return }
+            do {
+                try writeJSON(root, to: url, replacing: snapshot.data)
+                return
+            } catch InstallerError.concurrentModification {
+                continue
+            }
+        }
+        throw InstallerError.concurrentModification
+    }
+
+    private func writeJSON(_ object: [String: Any], to url: URL, replacing expectedData: Data?) throws {
         let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         let target = resolvedTarget(of: url)
         try FileManager.default.createDirectory(
             at: target.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
+        beforeWrite?(target)
+        let targetExists = FileManager.default.fileExists(atPath: target.path)
+        if let expectedData {
+            guard targetExists,
+                  let currentData = try? Data(contentsOf: target),
+                  currentData == expectedData else {
+                throw InstallerError.concurrentModification
+            }
+        } else {
+            // `try? Data(contentsOf:)` also returns nil for an unreadable file.
+            // Check existence separately so a file created by another writer is
+            // never treated as the still-missing snapshot we originally read.
+            guard !targetExists else { throw InstallerError.concurrentModification }
+        }
         try data.write(to: target, options: .atomic)
     }
 

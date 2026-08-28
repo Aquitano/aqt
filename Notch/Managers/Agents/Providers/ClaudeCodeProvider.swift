@@ -70,6 +70,10 @@ final class ClaudeCodeProvider: AgentProviding {
     }
 
     func stop() {
+        // Invalidate any in-flight reconcile: its scan runs on a detached task that
+        // doesn't inherit cancellation, so without bumping the generation it would
+        // publish scanned sessions after disable() already sent onSessions([]).
+        reconcileGeneration += 1
         reconcileTask?.cancel()
         reconcileTask = nil
         reconcilePending = false
@@ -80,9 +84,16 @@ final class ClaudeCodeProvider: AgentProviding {
             NotificationCenter.default.removeObserver(activationObserver)
             self.activationObserver = nil
         }
+        sessionsByID = [:]
+        hookState = [:]
+        hookCwd = [:]
+        endedSessionIDs = []
+        emittedAttentionAt = [:]
+        lastScan = []
+        onSessions?([])
     }
 
-    func enable() {
+    func enable() throws {
         do {
             try installer.installClaudeHooks()
             settings.agentClaudeEnabled = true
@@ -93,6 +104,7 @@ final class ClaudeCodeProvider: AgentProviding {
             // flag off so the UI keeps showing the Enable affordance.
             settings.agentClaudeEnabled = false
             Log.agents.error("Claude hook install failed: \(String(describing: error))")
+            throw error
         }
     }
 
@@ -105,13 +117,6 @@ final class ClaudeCodeProvider: AgentProviding {
             Log.agents.error("Claude hook removal failed: \(String(describing: error))")
         }
         stop()
-        sessionsByID = [:]
-        hookState = [:]
-        hookCwd = [:]
-        endedSessionIDs = []
-        emittedAttentionAt = [:]
-        lastScan = []
-        onSessions?([])
     }
 
     private func beginWatching() {
@@ -138,16 +143,27 @@ final class ClaudeCodeProvider: AgentProviding {
     // MARK: - Socket events
 
     func ingest(_ envelope: HookEnvelope, pid: pid_t) {
+        // A still-running claude keeps its hooks loaded after the user toggles the
+        // integration off; without this guard its envelopes resurrect sessions
+        // while the feature is disabled.
+        guard isEnabled else { return }
         guard let sid = envelope.sessionId else { scheduleReconcile(); return }
         if let cwd = envelope.cwd { hookCwd[sid] = cwd }
         if envelope.hook == "SessionEnd" {
             // Tombstone the session for removal, and drop its hook state so it
-            // can't be resurrected on a later rebuild.
+            // can't be resurrected on a later rebuild. Also drop hookCwd: the
+            // reconciler derives expiredHookIDs from hookState.keys, so a cwd left
+            // behind here (this branch is reached with a cwd via the write above)
+            // could never be expired and would leak one entry per session.
             endedSessionIDs.insert(sid)
             hookState[sid] = nil
+            hookCwd[sid] = nil
         } else {
             endedSessionIDs.remove(sid)
-            hookState[sid] = HookSnapshot(name: envelope.hook, time: Date(), message: envelope.message, tool: envelope.tool)
+            hookState[sid] = HookSnapshot(
+                name: envelope.hook, time: Date(), message: envelope.message,
+                tool: envelope.tool, requestId: envelope.requestId
+            )
         }
         rebuild()
         scheduleReconcile() // fill pid / branch / liveness
@@ -172,15 +188,17 @@ final class ClaudeCodeProvider: AgentProviding {
     }
 
     private func reconcile() async {
+        guard isEnabled else { return }
         reconcileGeneration += 1
         let generation = reconcileGeneration
         let scanner = ProcessScanner(lookup: processLookup)
         let scan = await Task.detached(priority: .utility) {
             scanner.scan()
         }.value
-        // A newer reconcile started while this scan ran (Task.detached doesn't
-        // inherit cancellation): drop this stale result so it can't clobber it.
-        guard generation == reconcileGeneration else { return }
+        // A newer reconcile started while this scan ran, or the feature was disabled
+        // (Task.detached doesn't inherit cancellation): drop this stale result so it
+        // can't clobber the current state or re-publish after disable().
+        guard isEnabled, generation == reconcileGeneration else { return }
         lastScan = scan
         rebuild()
     }

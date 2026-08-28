@@ -57,8 +57,19 @@ enum SessionReconciler {
         // a phantom (e.g. a stuck "needs you") on every rebuild.
         for sid in input.hookState.keys where sessions[sid] == nil {
             if input.endedSessionIDs.contains(sid) { continue }
-            guard let hook = input.hookState[sid], let cwd = input.hookCwd[sid] else { continue }
-            if input.now.timeIntervalSince(hook.time) <= input.graceWindow {
+            guard let hook = input.hookState[sid] else { continue }
+            let withinGrace = input.now.timeIntervalSince(hook.time) <= input.graceWindow
+            guard let cwd = input.hookCwd[sid] else {
+                // No cwd to build a session from. Left as-is it would be a permanent
+                // hookState entry (skipped by both the surface and expiry branches),
+                // so expire it once past the grace window.
+                if !withinGrace {
+                    expiredHookIDs.append(sid)
+                    emittedAttentionAt[sid] = nil
+                }
+                continue
+            }
+            if withinGrace {
                 sessions[sid] = AgentSession(
                     id: sid, kind: .claudeCode, project: agentProjectName(cwd), cwd: cwd,
                     status: .idle, startedAt: hook.time, lastActivity: hook.time,
@@ -77,9 +88,16 @@ enum SessionReconciler {
             session.status = resolved.status
             session.activityVerb = resolved.status.isBusy ? resolved.verb : nil
             session.detail = input.hookState[sid]?.message ?? session.detail
+            // Only while the latest hook is the blocked PermissionRequest; any newer
+            // hook means the request was answered (or timed out into the terminal
+            // prompt), so the row's Approve/Deny must disappear.
+            if let hook = input.hookState[sid], hook.name == "PermissionRequest" {
+                session.permissionRequestId = hook.requestId
+            }
             if let prev = input.previous[sid] {
                 session.startedAt = prev.startedAt
                 // Keep previously-captured detail if this cycle didn't see it.
+                session.detail = session.detail ?? prev.detail
                 session.terminalFocusURL = session.terminalFocusURL ?? prev.terminalFocusURL
                 session.terminalName = session.terminalName ?? prev.terminalName
                 session.lastPrompt = session.lastPrompt ?? prev.lastPrompt
@@ -109,9 +127,11 @@ enum SessionReconciler {
         for (sid, session) in sessions {
             // A fresh permission prompt surfaces even when the status was already
             // needsAttention (two prompts in a row share the status). Keyed on the
-            // Notification hook time so each distinct prompt fires exactly once.
+            // attention hook's time so each distinct prompt fires exactly once.
             if session.status == .needsAttention,
-               let attentionTime = hookState[sid].flatMap({ $0.name == "Notification" ? $0.time : nil }) {
+               let attentionTime = hookState[sid].flatMap({
+                   $0.name == "Notification" || $0.name == "PermissionRequest" ? $0.time : nil
+               }) {
                 if emittedAttentionAt[sid] != attentionTime {
                     emittedAttentionAt[sid] = attentionTime
                     events.append(AgentEvent(kind: .needsAttention, session: session, message: session.detail))

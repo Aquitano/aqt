@@ -19,7 +19,7 @@ struct CalendarWidgetView: View {
             } else if upcoming.isEmpty {
                 Spacer(minLength: 0)
                 Text("No upcoming events")
-                    .font(.system(size: 12))
+                    .font(.callout)
                     .foregroundStyle(.white.opacity(0.5))
                 Spacer(minLength: 0)
             } else {
@@ -41,7 +41,7 @@ struct CalendarWidgetView: View {
     private var accessPrompt: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("See your next events at a glance.")
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -49,7 +49,7 @@ struct CalendarWidgetView: View {
                 Task { await calendar.requestAccess() }
             } label: {
                 Text("Enable Calendar")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -71,7 +71,7 @@ struct CalendarWidgetView: View {
                     .font(.caption.weight(event.isInProgress ? .semibold : .regular))
                     .lineLimit(1)
                 Text(timeText(for: event))
-                    .font(.system(size: 10))
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
@@ -79,7 +79,7 @@ struct CalendarWidgetView: View {
 
             if let url = event.conferenceURL {
                 Button("Join") { NSWorkspace.shared.open(url) }
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.caption.weight(.medium))
                     .buttonStyle(.borderless)
             }
         }

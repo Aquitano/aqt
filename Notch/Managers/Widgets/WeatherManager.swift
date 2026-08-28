@@ -10,12 +10,16 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
 
     @Published private(set) var snapshot: WeatherSnapshot?
     @Published private(set) var authorization: CLAuthorizationStatus = .notDetermined
+    /// The last fetch failed and there is no snapshot to show — distinguishes
+    /// "couldn't load" (offer Retry) from "still loading" in the widget.
+    @Published private(set) var fetchFailed = false
 
     private let settings: Settings
     private let manager = CLLocationManager()
     private let session = URLSession(configuration: .default)
     private var lastLocation: CLLocation?
     private var cancellables = Set<AnyCancellable>()
+    private var fetchGeneration = 0
 
     init(settings: Settings) {
         self.settings = settings
@@ -26,8 +30,13 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
 
     func start() {
         authorization = manager.authorizationStatus
-        manager.requestWhenInUseAuthorization()
-        manager.requestLocation()
+        // Fetch when we already have permission, but don't prompt at launch: that
+        // stacks a dialog on top of the Focus prompt and reads as a freeze (the
+        // reason CalendarManager defers). The widget's "Enable Location" affordance
+        // requests access on demand instead.
+        if Self.hasLocationAccess(authorization) {
+            manager.requestLocation()
+        }
 
         settings.$temperatureUnit
             .dropFirst()
@@ -36,6 +45,25 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
                 Task { await self.fetch(for: location) }
             }
             .store(in: &cancellables)
+
+        // Weather is otherwise a one-shot at launch: without a cadence the widget
+        // presents the launch-time temperature as current forever. Coarse (15 min);
+        // .common so it also fires while the run loop is tracking.
+        Timer.publish(every: 15 * 60, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in self?.refresh() }
+            .store(in: &cancellables)
+    }
+
+    /// Re-fetch for the last known location, or retry the location request if an
+    /// earlier fix never landed. Driven by the cadence timer and by panel open, so
+    /// a single transient CoreLocation failure isn't terminal.
+    func refresh() {
+        if let location = lastLocation {
+            Task { await fetch(for: location) }
+        } else if Self.hasLocationAccess(manager.authorizationStatus) {
+            manager.requestLocation()
+        }
     }
 
     /// Surface the location prompt on demand (the widget's "Enable" button).
@@ -63,10 +91,12 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
     // since init runs on the main actor), so asserting isolation is safe and lets
     // the delegate conformance stay off the main actor.
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        MainActor.assumeIsolated {
-            authorization = manager.authorizationStatus
-            if authorization == .authorizedAlways {
-                manager.requestLocation()
+        let status = manager.authorizationStatus
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.authorization = status
+            if Self.hasLocationAccess(status) {
+                self.manager.requestLocation()
             }
         }
     }
@@ -86,6 +116,8 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
     // MARK: - Fetch
 
     private func fetch(for location: CLLocation) async {
+        fetchGeneration += 1
+        let generation = fetchGeneration
         let unit = settings.temperatureUnit
         var components = URLComponents(string: "https://api.open-meteo.com/v1/forecast")!
         components.queryItems = [
@@ -100,11 +132,19 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
         guard let url = components.url else { return }
 
         do {
-            let (data, _) = try await session.data(from: url)
-            let response = try JSONDecoder().decode(OpenMeteoResponse.self, from: data)
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+                throw URLError(.badServerResponse)
+            }
+            let forecast = try JSONDecoder().decode(OpenMeteoResponse.self, from: data)
             let placeName = await cityName(for: location)
-            apply(response, unit: unit, placeName: placeName)
+            guard generation == fetchGeneration else { return }
+            apply(forecast, unit: unit, placeName: placeName)
+            fetchFailed = false
         } catch {
+            guard generation == fetchGeneration else { return }
+            // A stale snapshot beats an error tile; only flag when there's nothing to show.
+            fetchFailed = snapshot == nil
             Log.widgets.error("Weather fetch failed: \(error.localizedDescription)")
         }
     }
@@ -125,15 +165,25 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
     private func apply(_ response: OpenMeteoResponse, unit: WeatherSnapshot.TemperatureUnit, placeName: String?) {
         let isDay = response.current.is_day == 1
         let dayFormatter = DateFormatter()
+        // POSIX locale + Gregorian calendar so "yyyy-MM-dd" parses regardless of the
+        // user's system calendar (a non-Gregorian one would parse the year wrong).
+        dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dayFormatter.calendar = Calendar(identifier: .gregorian)
         dayFormatter.dateFormat = "yyyy-MM-dd"
 
-        let days: [WeatherDay] = zip(response.daily.time.indices, response.daily.time).compactMap { index, dateString in
-            guard let date = dayFormatter.date(from: dateString) else { return nil }
-            let code = response.daily.weather_code[index]
+        // Index only across what every parallel array actually holds: a shorter
+        // weather_code / min / max array (partial data, API change) would otherwise
+        // be an out-of-bounds crash on untrusted network input.
+        let daily = response.daily
+        let count = min(daily.time.count, daily.weather_code.count,
+                        daily.temperature_2m_max.count, daily.temperature_2m_min.count)
+        let days: [WeatherDay] = (0..<count).compactMap { index in
+            guard let date = dayFormatter.date(from: daily.time[index]) else { return nil }
+            let code = daily.weather_code[index]
             return WeatherDay(
                 date: date,
-                high: response.daily.temperature_2m_max[index],
-                low: response.daily.temperature_2m_min[index],
+                high: daily.temperature_2m_max[index],
+                low: daily.temperature_2m_min[index],
                 weatherCode: code,
                 symbolName: WMO.symbol(for: code, isDay: true)
             )
@@ -150,6 +200,10 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
             unit: unit,
             daily: days
         )
+    }
+
+    nonisolated private static func hasLocationAccess(_ status: CLAuthorizationStatus) -> Bool {
+        status == .authorizedAlways
     }
 }
 
@@ -171,7 +225,7 @@ private struct OpenMeteoResponse: Decodable {
     }
 }
 
-/// WMO weather-code → our own SF Symbols + text (no Apple condition enum).
+/// WMO weather-code → semantic pixel-icon keys + text (no Apple condition enum).
 enum WMO {
     static func symbol(for code: Int, isDay: Bool) -> String {
         switch code {

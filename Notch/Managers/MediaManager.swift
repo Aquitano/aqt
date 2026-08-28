@@ -12,6 +12,19 @@ final class MediaManager: ObservableObject {
     @Published private(set) var capabilities: MediaCapabilities = []
     @Published private(set) var isAvailable = false
 
+    /// Where the system-wide adapter ended up, for the Settings UI — the toggle
+    /// alone can't show that the adapter was requested but silently fell back.
+    enum AdapterState: Equatable {
+        case notRequested
+        case starting
+        case active
+        /// Artifacts found nowhere (bundle or Application Support): Settings
+        /// offers the guided install instead of a bare error.
+        case missing
+        case unavailable(String)
+    }
+    @Published private(set) var adapterState: AdapterState = .notRequested
+
     /// Wall-clock of the last snapshot, so views can interpolate the seek bar.
     private(set) var lastUpdate = Date()
 
@@ -21,6 +34,7 @@ final class MediaManager: ObservableObject {
 
     private var controller: MediaControlling?
     private var renderingActive = true
+    private var cancellables = Set<AnyCancellable>()
 
     init(activities: ActivityManager, imageCache: ImageCache, settings: Settings) {
         self.activities = activities
@@ -29,13 +43,79 @@ final class MediaManager: ObservableObject {
     }
 
     func start() {
-        let controller = makeController()
-        controller.onUpdate = { [weak self] track in self?.apply(track) }
-        controller.onArtwork = { [weak self] data in self?.applyArtwork(data) }
+        settings.$showCompactNowPlaying
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                self.activities.setNowPlaying(active: enabled && !self.track.isEmpty)
+            }
+            .store(in: &cancellables)
+
+        // Start on the always-available scripting controller so launch never blocks
+        // on the adapter's synchronous perl probe (hundreds of ms). If the adapter is
+        // enabled and its probe passes off-main, upgrade to it in place.
+        let controller: MediaControlling = ScriptingMediaController()
+        wire(controller)
         controller.start()
         self.controller = controller
         self.capabilities = controller.capabilities
         Log.media.info("Media controller: \(String(describing: type(of: controller)))")
+
+        if settings.enableMediaAdapter {
+            guard let adapter = AdapterMediaController() else {
+                adapterState = .missing
+                return
+            }
+            adapterState = .starting
+            Task.detached(priority: .userInitiated) {
+                let probe = adapter.probe()
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    switch probe {
+                    case .available:
+                        self.upgradeToAdapter(adapter)
+                    case .unavailable(let reason):
+                        self.adapterState = .unavailable("\(reason) Using per-app control instead.")
+                        Log.media.notice("mediaremote-adapter self-test failed; staying on scripting")
+                    }
+                }
+            }
+        }
+    }
+
+    private func upgradeToAdapter(_ adapter: AdapterMediaController) {
+        controller?.stop()
+        wire(adapter)
+        controller = adapter
+        capabilities = adapter.capabilities
+        adapter.start()
+        // start() may synchronously report a launch failure and install the
+        // scripting fallback. Do not overwrite that failure state with active.
+        guard controller === adapter else { return }
+        adapterState = .active
+        Log.media.info("Media controller upgraded to system-wide adapter")
+    }
+
+    private func wire(_ controller: MediaControlling) {
+        controller.onUpdate = { [weak self] track in self?.apply(track) }
+        controller.onArtwork = { [weak self] data in self?.applyArtwork(data) }
+        if let adapter = controller as? AdapterMediaController {
+            adapter.onStreamEnded = { [weak self] in self?.fallBackToScripting() }
+        }
+    }
+
+    /// The adapter's perl bridge died; swap in per-app scripting so playback control
+    /// keeps working instead of freezing on the last track forever.
+    private func fallBackToScripting() {
+        guard controller is AdapterMediaController else { return }
+        controller?.stop()
+        let scripting = ScriptingMediaController()
+        wire(scripting)
+        scripting.start()
+        controller = scripting
+        capabilities = scripting.capabilities
+        adapterState = .unavailable("The adapter stopped; using per-app control instead.")
+        Log.media.notice("Media adapter stream died; fell back to scripting")
     }
 
     func send(_ command: MediaCommand) {
@@ -53,18 +133,6 @@ final class MediaManager: ObservableObject {
         track.position(asOf: date, lastUpdate: lastUpdate)
     }
 
-    // MARK: - Controller selection
-
-    private func makeController() -> MediaControlling {
-        // System-wide bridge when its artifacts are bundled and `test` passes;
-        // otherwise per-app scripting. The adapter init returns nil when the
-        // perl/framework artifacts aren't present, so this always degrades.
-        if settings.enableMediaAdapter, let adapter = AdapterMediaController() {
-            return adapter
-        }
-        return ScriptingMediaController()
-    }
-
     // MARK: - State updates
 
     private func apply(_ newTrack: NowPlayingTrack) {
@@ -72,7 +140,7 @@ final class MediaManager: ObservableObject {
         track = newTrack
         lastUpdate = Date()
         isAvailable = true
-        activities.setNowPlaying(active: !newTrack.isEmpty)
+        activities.setNowPlaying(active: settings.showCompactNowPlaying && !newTrack.isEmpty)
         if newTrack.isEmpty || identityChanged {
             artwork = nil
         }

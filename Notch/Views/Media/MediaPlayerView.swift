@@ -45,9 +45,8 @@ struct MediaPlayerView: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(.white.opacity(0.08))
                     .overlay {
-                        Image(systemName: "music.note")
-                            .font(.system(size: 32, weight: .medium))
-                            .foregroundStyle(.secondary)
+                        PixelIcon(systemName: "music.note", size: 34,
+                                  tint: .white.opacity(0.55))
                     }
             }
         }
@@ -102,6 +101,7 @@ private struct SeekBar: View {
 
     @State private var isScrubbing = false
     @State private var scrubPosition: TimeInterval = 0
+    @State private var seekHoldTask: Task<Void, Never>?
 
     var body: some View {
         if isPlaying {
@@ -133,6 +133,7 @@ private struct SeekBar: View {
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
+                            seekHoldTask?.cancel()
                             isScrubbing = true
                             scrubPosition = position(for: value.location.x, width: width)
                         }
@@ -140,11 +141,26 @@ private struct SeekBar: View {
                             let target = position(for: value.location.x, width: width)
                             scrubPosition = target
                             onScrub(target)
-                            isScrubbing = false
+                            holdUntilSeekLands(target)
                         }
                 )
             }
             .frame(height: 14)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Playback position")
+            .accessibilityValue("\(displayed.clockString) of \(duration.clockString)")
+            .accessibilityAdjustableAction { direction in
+                let step: TimeInterval = 15
+                let target: TimeInterval
+                switch direction {
+                case .increment: target = min(displayed + step, duration)
+                case .decrement: target = max(displayed - step, 0)
+                @unknown default: return
+                }
+                scrubPosition = target
+                onScrub(target)
+                holdUntilSeekLands(target)
+            }
 
             HStack {
                 Text(displayed.clockString)
@@ -159,5 +175,21 @@ private struct SeekBar: View {
     private func position(for x: CGFloat, width: CGFloat) -> TimeInterval {
         guard width > 0 else { return 0 }
         return min(max(x / width, 0), 1) * duration
+    }
+
+    /// The seek is async: clearing `isScrubbing` on release would let the next 0.5s
+    /// tick render the pre-seek position, snapping the fill back until the player
+    /// reports the new one. Keep showing the scrub target until the live position
+    /// lands near it (or a short timeout), so the fill holds steady across the trip.
+    private func holdUntilSeekLands(_ target: TimeInterval) {
+        seekHoldTask?.cancel()
+        seekHoldTask = Task { @MainActor in
+            for _ in 0..<20 {
+                try? await Task.sleep(for: .milliseconds(100))
+                if Task.isCancelled { return }
+                if abs(position(Date()) - target) < 1.5 { break }
+            }
+            isScrubbing = false
+        }
     }
 }

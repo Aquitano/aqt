@@ -44,6 +44,8 @@ final class NotchState: ObservableObject {
     /// Which drop field the pointer is currently over during a file drag, for the
     /// chooser's highlight. Set by the root drop delegate.
     @Published var activeDropZone: DropZone?
+    @Published var activeDropRepresentation: TrayRepresentationKind?
+    @Published var isOptionMoveActive = false
 
     /// True from the start of a collapse until the close animation ends. Keeps the
     /// expanded body mounted (fading, clipped by the shrinking blob) for the whole
@@ -132,32 +134,62 @@ final class NotchState: ObservableObject {
         // both this (via the window controller) and SwiftUI's performDrop; clearing
         // the zone here would race that and misroute the drop to the shelf.
         isDropActive = false
+        activeDropRepresentation = nil
+        isOptionMoveActive = false
     }
 
-    /// Collapse to the compact pill when there is something to show, otherwise hide.
-    func collapse(hasCompactContent: Bool = true) {
+    /// Collapse to the physical notch-sized hover target. The compact presentation
+    /// remains on-screen even without side content; otherwise ordering the panel
+    /// out would make the notch impossible to reopen by hovering it. `.hidden` is
+    /// reserved for the explicit status-menu / keyboard toggle.
+    func collapse() {
         guard !isDropActive else { return }
         cancelPendingExpand()
         collapseTask?.cancel()
         collapseTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(160))
             guard let self, !Task.isCancelled else { return }
-            let target: Presentation = hasCompactContent ? .compact : .hidden
-            guard self.presentation != target else { return }
-            // Set `isCollapsing` before the state flip so the expanded body stays
-            // mounted across it (fading + clipped by the blob) instead of unmounting
-            // the instant `presentation` leaves `.expanded`. Only when closing from
-            // the open panel; a compact->hidden collapse has nothing to retract.
-            let wasExpanded = self.presentation == .expanded
-            if wasExpanded { self.holdCollapsing() }
-            withAnimation(NotchAnimation.close(reduceMotion: self.reduceMotion)) {
-                self.presentation = target
-                self.expandedTab = .home
-            }
+            self.collapseTask = nil
+            self.performCollapse()
         }
     }
 
-    /// Keep the expanded content mounted for one close cycle, then release it.
+    /// Collapse without the hover-exit grace period. Use when another app window
+    /// is about to replace the notch as the active surface (for example Settings),
+    /// so the expanded panel does not remain behind it while waiting for pointer
+    /// tracking to notice the transition.
+    func collapseImmediately() {
+        guard !isDropActive else { return }
+        cancelPendingExpand()
+        collapseTask?.cancel()
+        collapseTask = nil
+        performCollapse()
+    }
+
+    private func performCollapse() {
+        let target: Presentation = .compact
+        guard presentation != target else { return }
+        // Set `isCollapsing` before the state flip so the expanded body stays
+        // mounted across it (fading + clipped by the blob) instead of unmounting
+        // the instant `presentation` leaves `.expanded`. Only when closing from
+        // the open panel; an already compact notch has nothing to retract.
+        // Reset the tab only after the close completes (see `holdCollapsing`);
+        // resetting it inside the close animation cross-fades the still-mounted
+        // expanded body to home while it shrinks. An already compact notch has
+        // no mounted body, so it can reset immediately.
+        let wasExpanded = presentation == .expanded
+        if wasExpanded {
+            holdCollapsing()
+        } else {
+            expandedTab = .home
+        }
+        withAnimation(NotchAnimation.close(reduceMotion: reduceMotion)) {
+            presentation = target
+        }
+    }
+
+    /// Keep the expanded content mounted for one close cycle, then release it and
+    /// reset the tab back to home.
     private func holdCollapsing() {
         isCollapsing = true
         collapsingResetTask?.cancel()
@@ -165,6 +197,7 @@ final class NotchState: ObservableObject {
             try? await Task.sleep(for: .seconds(NotchAnimation.closeDuration + 0.1))
             guard let self, !Task.isCancelled else { return }
             self.isCollapsing = false
+            self.expandedTab = .home
         }
     }
 

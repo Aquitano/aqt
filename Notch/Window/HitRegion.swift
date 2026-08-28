@@ -7,6 +7,7 @@ import AppKit
 struct LayoutSnapshot: Equatable {
     var presentation: NotchState.Presentation
     var notch: CGSize
+    var expandedWidth: CGFloat = NotchMetrics.expandedWidth
     /// The full panel frame; the content rect is centered in it, pinned to the top.
     var panelFrame: CGRect
     var tab: NotchState.ExpandedTab
@@ -26,6 +27,7 @@ enum HitRegion {
         let size = NotchLayout.contentSize(
             presentation: snapshot.presentation,
             notch: snapshot.notch,
+            expandedWidth: snapshot.expandedWidth,
             tab: snapshot.tab,
             hasInfoRow: snapshot.hasInfoRow,
             trayEmpty: snapshot.trayEmpty,

@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import UserNotifications
 
@@ -45,16 +44,12 @@ final class AgentNotifier {
         }
     }
 
-    /// macOS system sounds available for the per-event sound pack.
-    static let availableSounds = [
-        "Basso", "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero",
-        "Morse", "Ping", "Pop", "Purr", "Sosumi", "Submarine", "Tink",
-    ]
+    /// Cohesive synthesized sound pack; names are persisted in Settings.
+    static let availableSounds = AgentSound.availableNames
 
-    /// Play a named system sound for preview (Settings).
+    /// Play a synthesized cue for preview in Settings.
     static func preview(_ name: String) {
-        guard !name.isEmpty else { return }
-        NSSound(named: name)?.play()
+        AgentSoundPlayer.play(name)
     }
 
     private func emit(_ event: AgentEvent, suffix: String, sound: String,
@@ -68,7 +63,7 @@ final class AgentNotifier {
 
         activities.peek(title: title, message: message, symbol: symbol, tint: tint, ttl: 5)
 
-        if settings.agentNotifySound, !sound.isEmpty { NSSound(named: sound)?.play() }
+        if settings.agentNotifySound { AgentSoundPlayer.play(sound) }
         if settings.agentSystemNotifications { postSystemNotification(title: title, body: message) }
     }
 

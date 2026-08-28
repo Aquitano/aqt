@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -5,6 +6,7 @@ import UniformTypeIdentifiers
 /// compact/expanded morph, the HUD overlay, and the drop target. All hit-testing
 /// is scoped to the actual content so the rest of the panel stays click-through.
 struct NotchRootView: View {
+    var showsHUD = true
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var state: NotchState
     @EnvironmentObject private var hud: HUDManager
@@ -14,6 +16,8 @@ struct NotchRootView: View {
     @EnvironmentObject private var settings: Settings
 
     @Environment(\.notchGeometry) private var notchSize
+    @Environment(\.notchExpandedWidth) private var expandedWidth
+    @Environment(\.notchUsesVirtualChrome) private var usesVirtualChrome
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Namespace private var morph
@@ -22,7 +26,7 @@ struct NotchRootView: View {
         ZStack(alignment: .top) {
             Color.clear.allowsHitTesting(false)
 
-            if hud.isVisible {
+            if showsHUD && hud.isVisible {
                 HUDOverlayView(namespace: morph)
                     .padding(.top, notchSize.height + 12)
                     .transition(.opacity.combined(with: .move(edge: .top)))
@@ -42,10 +46,12 @@ struct NotchRootView: View {
         // don't resolve reliably, and SwiftUI's drop location proved unreliable too,
         // so the two chooser fields are pure visuals and the field is resolved from
         // the live cursor position in screen space (see `dropZoneAtCursor`).
-        .onDrop(of: [.fileURL, .data], delegate: NotchDropDelegate(
+        .onDrop(of: TrayDropCapabilities.acceptedTypes, delegate: NotchDropDelegate(
             state: state,
             resolveZone: { env.windowController?.dropZoneAtCursor() ?? .keep },
-            onKeep: { tray.handleDrop($0) },
+            moveEnabled: { settings.trayMoveEnabled },
+            originalFileURLs: { env.windowController?.originalFileURLsForDrop() ?? [] },
+            onKeep: { tray.handleDrop($0, moveOriginalURLs: $1) },
             onShare: { env.shareDrop($0) }
         ))
     }
@@ -61,7 +67,12 @@ struct NotchRootView: View {
         let hoverGrow = state.presentation == .compact && state.isHovering && !state.isDropActive
 
         return ZStack {
-            NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius, notchWidth: notchSize.width)
+            NotchShape(
+                topRadius: NotchMetrics.compactCornerRadius,
+                bottomRadius: bottomRadius,
+                usesVirtualChrome: usesVirtualChrome,
+                notchWidth: notchSize.width
+            )
                 .fill(.black)
                 .shadow(color: .black.opacity(expanded ? 0.45 : 0), radius: 18, y: 8)
 
@@ -77,30 +88,51 @@ struct NotchRootView: View {
                     ExpandedView(namespace: morph)
                         .frame(width: expandedSize.width, height: expandedSize.height, alignment: .top)
                         .opacity(state.isExpanded ? 1 : 0)
+                        .accessibilityAction(named: "Collapse notch") {
+                            state.collapse()
+                        }
                 }
 
                 if state.presentation == .compact {
                     CompactView(namespace: morph)
                         .frame(width: size.width, height: size.height, alignment: .top)
                         .transition(.opacity)
+                        // The pill expands on hover only, which VoiceOver can't do;
+                        // expose it as a button whose activation opens the panel.
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Notch")
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { state.expand() }
+                        .accessibilityAction(named: "Expand notch") { state.expand() }
                 }
             }
             .frame(width: size.width, height: size.height, alignment: .top)
-            .clipShape(NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius, notchWidth: notchSize.width))
+            .clipShape(NotchShape(
+                topRadius: NotchMetrics.compactCornerRadius,
+                bottomRadius: bottomRadius,
+                usesVirtualChrome: usesVirtualChrome,
+                notchWidth: notchSize.width
+            ))
         }
         .frame(width: size.width, height: size.height)
         .scaleEffect(hoverGrow ? 1.06 : 1.0, anchor: .top)
         .animation(NotchAnimation.hoverGrow(reduceMotion: state.reduceMotion), value: hoverGrow)
-        .contentShape(NotchShape(topRadius: NotchMetrics.compactCornerRadius, bottomRadius: bottomRadius, notchWidth: notchSize.width))
+        .contentShape(NotchShape(
+            topRadius: NotchMetrics.compactCornerRadius,
+            bottomRadius: bottomRadius,
+            usesVirtualChrome: usesVirtualChrome,
+            notchWidth: notchSize.width
+        ))
         .onHover { hovering in handleHover(hovering) }
         .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private var compactContent: NotchLayout.CompactContent {
         NotchLayout.compactContent(
-            hasMedia: !media.track.isEmpty,
-            isAgent: activities.compactActivity?.isAgent ?? false,
-            activityLabel: activities.compactActivity.map { ActivityPresenter.compactLabel(for: $0.kind) }
+            hasMedia: settings.showCompactNowPlaying && !media.track.isEmpty,
+            agentCount: activities.compactActivity?.agentCount,
+            activityLabel: activities.compactActivity.map { ActivityPresenter.compactLabel(for: $0.kind) },
+            trayItemCount: tray.items.count
         )
     }
 
@@ -108,8 +140,9 @@ struct NotchRootView: View {
         NotchLayout.contentSize(
             presentation: state.presentation,
             notch: notchSize,
+            expandedWidth: expandedWidth,
             tab: state.expandedTab,
-            hasInfoRow: settings.showWeatherWidget || settings.showCalendarWidget,
+            hasInfoRow: settings.hasInfoRowWidgets,
             trayEmpty: tray.items.isEmpty,
             compact: compactContent,
             dropActive: state.isDropActive
@@ -120,8 +153,9 @@ struct NotchRootView: View {
         NotchLayout.contentSize(
             presentation: .expanded,
             notch: notchSize,
+            expandedWidth: expandedWidth,
             tab: state.expandedTab,
-            hasInfoRow: settings.showWeatherWidget || settings.showCalendarWidget,
+            hasInfoRow: settings.hasInfoRowWidgets,
             trayEmpty: tray.items.isEmpty,
             compact: .media,
             dropActive: state.isDropActive
@@ -143,11 +177,13 @@ struct NotchRootView: View {
 private struct NotchDropDelegate: DropDelegate {
     let state: NotchState
     let resolveZone: () -> DropZone
-    let onKeep: ([NSItemProvider]) -> Bool
+    let moveEnabled: () -> Bool
+    let originalFileURLs: () -> [URL]
+    let onKeep: ([NSItemProvider], [URL]) -> Bool
     let onShare: ([NSItemProvider]) -> Bool
 
     func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [.fileURL, .data])
+        info.hasItemsConforming(to: TrayDropCapabilities.acceptedTypes)
     }
 
     func dropEntered(info: DropInfo) {
@@ -155,16 +191,29 @@ private struct NotchDropDelegate: DropDelegate {
         state.beginDropTargeting()
     }
 
+    func dropExited(info: DropInfo) {
+        // Matching backup for dropEntered: if the controller missed the enter it
+        // also misses the exit, so without this a drag-away or Esc leaves
+        // isDropActive true and collapse() bails forever, pinning the panel open.
+        state.endDropTargeting()
+        state.collapse()
+    }
+
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .copy)
+        let canMove = moveEnabled()
+            && NSEvent.modifierFlags.contains(.option)
+            && !originalFileURLs().isEmpty
+        return DropProposal(operation: canMove ? .move : .copy)
     }
 
     func performDrop(info: DropInfo) -> Bool {
         let target = resolveZone()
-        let providers = info.itemProviders(for: [.fileURL, .data])
+        let providers = info.itemProviders(for: TrayDropCapabilities.acceptedTypes)
         state.activeDropZone = nil
         state.isDropActive = false
-        let accepted = target == .share ? onShare(providers) : onKeep(providers)
+        let moveURLs = moveEnabled() && NSEvent.modifierFlags.contains(.option)
+            ? originalFileURLs() : []
+        let accepted = target == .share ? onShare(providers) : onKeep(providers, moveURLs)
         if accepted { Haptics.tap(.alignment) }
         Log.tray.notice("drop routed to \(target == .share ? "share" : "keep")")
         return accepted

@@ -5,17 +5,21 @@ import AppKit
 /// notch gap, and a trailing slot. The host already draws the black blob, so
 /// this view stays white-on-clear and never adds glass.
 ///
-/// Idle is cheap on purpose. The only motion is data-driven and one-shot:
-/// the now-playing bars pulse via a `phaseAnimator(trigger:)` keyed off each
-/// media snapshot, and a "pop" fires once per new activity. No render loop,
-/// no `repeatForever`.
+/// Idle is cheap on purpose. The audio meter is fed by real capture samples only
+/// while this compact media surface is visible and playing; everything else is
+/// data-driven and one-shot. No render loop and no `repeatForever`.
 struct CompactView: View {
     let namespace: Namespace.ID
 
     @EnvironmentObject private var media: MediaManager
     @EnvironmentObject private var activities: ActivityManager
+    @EnvironmentObject private var settings: Settings
+    @EnvironmentObject private var env: AppEnvironment
+    @EnvironmentObject private var tray: TrayManager
+    @EnvironmentObject private var agents: AgentManager
 
     @Environment(\.notchGeometry) private var notchSize
+    @Environment(\.notchControlsSharedRendering) private var controlsSharedRendering
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -37,19 +41,29 @@ struct CompactView: View {
 
     @ViewBuilder
     private var content: some View {
-        if !media.track.isEmpty {
+        if showCompactMedia {
             pill(
                 leading: artworkThumbnail,
-                trailing: NowPlayingIndicator(
-                    isPlaying: media.track.isPlaying,
-                    trigger: media.lastUpdate,
-                    reduceMotion: reduceMotion
-                )
+                trailing: mediaTrailing
             )
         } else if let activity = activities.compactActivity {
+            if case let .agent(count, _, _, status) = activity.kind {
+                pill(
+                    leading: agentLeading(status: status),
+                    trailing: agentTrailing(count: count)
+                )
+            } else {
+                pill(
+                    leading: activityIcon(activity),
+                    trailing: activityLabel(activity)
+                )
+            }
+        } else if !tray.items.isEmpty {
             pill(
-                leading: activityIcon(activity),
-                trailing: activityLabel(activity)
+                leading: PixelIcon(systemName: "tray.full", size: 15, tint: .white),
+                trailing: Text(tray.items.count == 1 ? "1 item" : "\(tray.items.count) items")
+                    .font(.system(size: NotchLayout.compactLabelFontSize, weight: .medium))
+                    .lineLimit(1)
             )
         } else {
             Color.clear
@@ -84,6 +98,31 @@ struct CompactView: View {
 
     // MARK: - Media slots
 
+    private var showCompactMedia: Bool {
+        settings.showCompactNowPlaying && !media.track.isEmpty
+    }
+
+    private var visualizerRequested: Bool {
+        showCompactMedia
+            && settings.showAudioVisualizer
+            && media.track.isPlaying
+            && env.renderingActive
+    }
+
+    @ViewBuilder
+    private var mediaTrailing: some View {
+        if settings.showAudioVisualizer {
+            CompactAudioVisualizer(
+                requested: visualizerRequested,
+                controlsCapture: controlsSharedRendering
+            )
+        } else {
+            // Keep the flanking slots symmetrical so album art never shifts the
+            // physical notch off-centre when the meter is disabled.
+            Color.clear.frame(width: 14, height: 12)
+        }
+    }
+
     private var artSize: CGFloat {
         max(18, min(26, notchSize.height - 10))
     }
@@ -97,9 +136,8 @@ struct CompactView: View {
             } else {
                 ZStack {
                     Rectangle().fill(.white.opacity(0.12))
-                    Image(systemName: "music.note")
-                        .font(.system(size: artSize * 0.5, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.8))
+                    PixelIcon(systemName: "music.note", size: artSize * 0.55,
+                              tint: .white.opacity(0.8))
                 }
             }
         }
@@ -109,30 +147,60 @@ struct CompactView: View {
         .accessibilityLabel("Album art")
     }
 
-    // MARK: - Activity slots
+    // MARK: - Agent slots
 
-    @ViewBuilder
-    private func activityIcon(_ activity: Activity) -> some View {
-        if case let .agent(_, _, _, status) = activity.kind {
-            // Retro pixel spinner: animates while an agent is actively working.
-            // Ease the tint between states (busy green -> attention orange) so the
-            // status shift reads as a transition, not a hard cut. Only fires on a
-            // tint change, so the per-frame spinner stays a zero-cost render.
-            PixelWorkingIndicator(active: status.isBusy, tint: agentPixelTint(status))
-                .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: agentPixelTint(status))
-        } else {
-            Image(systemName: ActivityPresenter.symbol(for: activity.kind))
-                .font(.system(size: 13, weight: .semibold))
-                .symbolRenderingMode(.hierarchical)
+    /// Per-session pixel glyphs + the aggregate status ("Running"). Falls back
+    /// to one aggregate glyph if the live session list is momentarily out of
+    /// step with the published activity.
+    private func agentLeading(status: AgentStatus) -> some View {
+        HStack(spacing: NotchLayout.agentStatusGap) {
+            PixelSessionStrip(entries: sessionEntries(fallback: status))
+            Text(ActivityPresenter.agentCompactStatus(status))
+                .font(.system(size: NotchLayout.compactLabelFontSize, weight: .medium))
+                .lineLimit(1)
+                .contentTransition(.opacity)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: status)
         }
+    }
+
+    /// Bold count + a quiet monospaced unit, mirroring the reserved width in
+    /// `NotchLayout.compactAgentSlotWidth`.
+    private func agentTrailing(count: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: NotchLayout.agentCountGap) {
+            Text("\(count)")
+                .font(.system(size: NotchLayout.compactLabelFontSize, weight: .bold))
+                .contentTransition(.numericText())
+                .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: count)
+            Text(count == 1 ? "session" : "sessions")
+                .font(.system(size: NotchLayout.agentSessionsFontSize, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.55))
+        }
+        .lineLimit(1)
+    }
+
+    private func sessionEntries(fallback status: AgentStatus) -> [PixelSessionStrip.Entry] {
+        let live = agents.pillSessions.prefix(NotchLayout.agentMaxGlyphs).map {
+            PixelSessionStrip.Entry(id: $0.id, busy: $0.status.isBusy, tint: agentPixelTint($0.status))
+        }
+        return live.isEmpty
+            ? [PixelSessionStrip.Entry(id: "aggregate", busy: status.isBusy, tint: agentPixelTint(status))]
+            : Array(live)
     }
 
     private func agentPixelTint(_ status: AgentStatus) -> Color {
         switch status {
-        case .needsAttention: return .orange
-        case .finished: return .green
-        default: return Color(red: 0.40, green: 0.92, blue: 0.55) // retro green
+        // Attention/finished share the canonical palette; busy sessions render
+        // in the pill's working blue.
+        case .needsAttention, .finished: return ActivityPresenter.agentTint(status)
+        default: return ActivityPresenter.agentWorkingTint
         }
+    }
+
+    // MARK: - Activity slots
+
+    private func activityIcon(_ activity: Activity) -> some View {
+        PixelIcon(systemName: ActivityPresenter.symbol(for: activity.kind),
+                  size: 15, tint: .white)
     }
 
     @ViewBuilder
@@ -167,53 +235,62 @@ struct CompactView: View {
     }
 }
 
-/// Tiny now-playing equalizer. Bars pulse only while playing, and only when a
-/// new media snapshot arrives (`trigger`), so there is no perpetual animation.
-private struct NowPlayingIndicator: View {
-    let isPlaying: Bool
-    let trigger: Date
-    let reduceMotion: Bool
+/// Keeps high-frequency audio-level observation at the smallest possible leaf.
+/// Capture ownership still follows the primary display, but a 30 fps meter no
+/// longer invalidates and rebuilds the full compact media layout.
+private struct CompactAudioVisualizer: View {
+    @EnvironmentObject private var visualizer: AudioVisualizerManager
 
-    private let barCount = 4
-    private let barWidth: CGFloat = 2.5
-    private let maxHeight: CGFloat = 12
-
-    /// rest -> peak -> settle; ends calm so the resting frame looks intentional.
-    private let phases: [Int] = [0, 1, 2]
+    let requested: Bool
+    let controlsCapture: Bool
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 2.5) {
+        LiveAudioVisualizer(levels: visualizer.levels)
+            .onChange(of: requested, initial: true) { _, active in
+                if controlsCapture { visualizer.setActive(active) }
+            }
+            .onChange(of: controlsCapture) { wasControlling, isControlling in
+                if wasControlling { visualizer.setActive(false) }
+                if isControlling { visualizer.setActive(requested) }
+            }
+            .onDisappear {
+                if controlsCapture { visualizer.setActive(false) }
+            }
+    }
+}
+
+/// Three real frequency bands (bass, mids, treble), quantized to whole-point
+/// heights to preserve the retro pixel edge. The analyzer already applies a fast
+/// attack and gentle release, so adding another animation here would only add lag.
+private struct LiveAudioVisualizer: View {
+    let levels: AudioLevels
+
+    private let barCount = 3
+    private let barWidth: CGFloat = 3
+    private let maxHeight: CGFloat = 12
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 2) {
             ForEach(0..<barCount, id: \.self) { index in
-                bar(index)
+                Rectangle()
+                    .fill(.white)
+                    .frame(width: barWidth, height: height(for: level(at: index)))
             }
         }
         .frame(height: maxHeight, alignment: .bottom)
         .accessibilityHidden(true)
     }
 
-    @ViewBuilder
-    private func bar(_ index: Int) -> some View {
-        let shape = Capsule(style: .continuous)
-            .fill(.white)
-            .frame(width: barWidth)
-
-        if isPlaying && !reduceMotion {
-            shape.phaseAnimator(phases, trigger: trigger) { view, phase in
-                view.frame(height: height(bar: index, phase: phase))
-            } animation: { _ in
-                .easeInOut(duration: 0.22)
-            }
-        } else {
-            shape.frame(height: maxHeight * 0.42)
+    private func level(at index: Int) -> Float {
+        switch index {
+        case 0: levels.low
+        case 1: levels.mid
+        default: levels.high
         }
     }
 
-    private func height(bar: Int, phase: Int) -> CGFloat {
-        let pattern: [[CGFloat]] = [
-            [0.45, 0.70, 0.50, 0.65],   // rest
-            [1.00, 0.40, 0.90, 0.50],   // peak
-            [0.60, 0.80, 0.45, 0.70],   // settle
-        ]
-        return maxHeight * pattern[phase][bar]
+    private func height(for level: Float) -> CGFloat {
+        let clamped = min(1, max(0, CGFloat(level)))
+        return 2 + round(clamped * 5) * 2
     }
 }

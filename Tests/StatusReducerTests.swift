@@ -89,10 +89,57 @@ final class StatusReducerTests: XCTestCase {
 
     func testIdleNotificationWithoutScanIsIdle() {
         let resolved = StatusReducer.reduce(
-            hook: hook("Notification", at: later, message: "idle"),
+            hook: hook("Notification", at: later, message: "Claude is waiting for your input"),
             scan: nil
         )
         XCTAssertEqual(resolved, .init(status: .idle, verb: nil))
+    }
+
+    func testPermissionPromptMentioningWaitingStillNeedsAttention() {
+        // A permission prompt whose tool name/description contains "waiting" must not
+        // be demoted to an idle nudge by a bare-substring match.
+        let resolved = StatusReducer.reduce(
+            hook: hook("Notification", at: later,
+                       message: "Claude needs your permission to use waiting-room-cli"),
+            scan: nil
+        )
+        XCTAssertEqual(resolved.status, .needsAttention)
+    }
+
+    func testNotificationWithNilMessageNeedsAttention() {
+        // No message is not an idle nudge; a permission prompt can arrive without one.
+        let resolved = StatusReducer.reduce(
+            hook: hook("Notification", at: later, message: nil),
+            scan: nil
+        )
+        XCTAssertEqual(resolved.status, .needsAttention)
+    }
+
+    // MARK: - Permission requests
+
+    func testPermissionRequestNeedsAttention() {
+        // The blocking hook means the session is waiting on the user, whatever the
+        // transcript structure says.
+        let resolved = StatusReducer.reduce(
+            hook: hook("PermissionRequest", at: later, message: "Bash: rm -rf build"),
+            scan: scan(at: t0, busy: .tool)
+        )
+        XCTAssertEqual(resolved.status, .needsAttention)
+    }
+
+    func testPermissionResolvedIsRunning() {
+        let resolved = StatusReducer.reduce(hook: hook("PermissionResolved", at: later), scan: nil)
+        XCTAssertEqual(resolved.status, .running)
+        XCTAssertEqual(resolved.verb, "Thinking")
+    }
+
+    func testPermissionTimedOutStillNeedsAttention() {
+        let resolved = StatusReducer.reduce(
+            hook: hook("PermissionTimedOut", at: later),
+            scan: scan(at: t0, busy: .tool)
+        )
+        XCTAssertEqual(resolved.status, .needsAttention)
+        XCTAssertNil(resolved.verb)
     }
 
     // MARK: - Stop / SessionStart

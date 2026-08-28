@@ -32,8 +32,8 @@ struct BluetoothWidgetView: View {
 
     private func row(for device: BluetoothDevice) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: device.symbol)
-                .font(.system(size: 13))
+            PixelIcon(systemName: device.symbol, size: 16,
+                      tint: .white.opacity(0.75))
                 .frame(width: 18)
 
             Text(device.name)
@@ -43,7 +43,7 @@ struct BluetoothWidgetView: View {
             Spacer(minLength: 4)
 
             Text(batteryText(for: device))
-                .font(.system(size: 10).monospacedDigit())
+                .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)

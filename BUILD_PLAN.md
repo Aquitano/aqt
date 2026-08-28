@@ -60,8 +60,9 @@ NotchApp (LSUIElement / .accessory agent)
 **Concurrency model.** Managers are `@MainActor` `ObservableObject`s that own their
 subscriptions; heavy work (image decode, `system_profiler`, file copies, perl I/O) runs on
 background queues/`Task.detached` and hops back to main only to publish. Everything is
-push-based (Combine publishers / `NotificationCenter` / async sequences). **Zero repeating
-`Timer`s** — they are the #1 cause of phantom idle CPU in these apps.
+push-based (Combine publishers / `NotificationCenter` / async sequences). **No repeating
+`Timer`s** except the weather (15 min) and calendar (5 min) refresh cadences, which have no
+push source — repeating timers are the #1 cause of phantom idle CPU in these apps.
 
 **State → UI.** `NotchState.presentation` drives the morph. Activities are a priority queue;
 the topmost renders in the compact notch, the rest are cyclable. One SwiftUI tree hosted in

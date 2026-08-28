@@ -7,7 +7,7 @@ import SwiftUI
 /// a producer being able to shift notch geometry by editing a label on the model.
 enum ActivityPresenter {
 
-    /// SF Symbol shown in the compact pill and the activity card.
+    /// Semantic icon key shown through the shared pixel glyph renderer.
     static func symbol(for kind: Activity.Kind) -> String {
         switch kind {
         case .nowPlaying: return "music.note"
@@ -20,6 +20,7 @@ enum ActivityPresenter {
         case let .peek(_, _, symbol, _): return symbol
         case .timer: return "timer"
         case let .agent(_, kind, _, _): return kind.symbol
+        case .screenshotCandidates: return "photo"
         }
     }
 
@@ -42,6 +43,8 @@ enum ActivityPresenter {
         // Terse in the pill (it hugs the notch); the pixel glyph shows activity,
         // the expanded card carries detail. Show the count when more than one runs.
         case let .agent(count, _, _, status): return count > 1 ? "\(count) agents" : status.label
+        case let .screenshotCandidates(candidates):
+            return ScreenshotCandidatePolicy.coalescedLabel(count: candidates.count)
         }
     }
 
@@ -88,10 +91,37 @@ enum ActivityPresenter {
                 ? "\(count) agents · \(status.label)"
                 : "\(kind.shortName) · \(status.label)"
             return Card(title: count > 1 ? "Agents" : project, subtitle: subtitle, tint: agentTint(status))
+
+        case let .screenshotCandidates(candidates):
+            return Card(
+                title: ScreenshotCandidatePolicy.coalescedLabel(count: candidates.count),
+                subtitle: "Add to Shelf, preview, or dismiss",
+                tint: .cyan
+            )
         }
     }
 
-    private static func agentTint(_ status: AgentStatus) -> Color {
+    /// Capitalized aggregate status for the compact agent pill's leading label.
+    /// The strings must stay in sync with the widest-label list measured in
+    /// `NotchLayout.compactAgentSlotWidth`.
+    static func agentCompactStatus(_ status: AgentStatus) -> String {
+        switch status {
+        case .running: return "Running"
+        case .editing: return "Editing"
+        case .tool: return "Working"
+        case .idle: return "Idle"
+        case .needsAttention: return "Needs you"
+        case .finished: return "Done"
+        }
+    }
+
+    /// Working-session blue for the pill's pixel glyphs; attention/finished keep
+    /// the canonical `agentTint` palette.
+    static let agentWorkingTint = Color(red: 0.42, green: 0.58, blue: 1.0)
+
+    /// Canonical status → color for the agent feature, so the pill, the card, and
+    /// the session rows can't drift apart (they used to keep three copies).
+    static func agentTint(_ status: AgentStatus) -> Color {
         switch status {
         case .needsAttention: return .orange
         case .finished: return .green

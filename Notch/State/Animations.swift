@@ -65,7 +65,9 @@ enum NotchMetrics {
 /// the panel never swallows clicks over its large but invisible surrounding frame.
 enum NotchLayout {
     /// Point size of the compact pill's trailing label. Shared with `CompactView`
-    /// so the width reserved here matches exactly what gets drawn.
+    /// so the width reserved here matches exactly what gets drawn. Deliberately
+    /// fixed (no Dynamic Type): the pill must fit the physical notch strip, whose
+    /// height doesn't scale with the user's text size.
     static let compactLabelFontSize: CGFloat = 12
 
     /// Resting horizontal padding the compact pill keeps clear of the rounded
@@ -101,30 +103,59 @@ enum NotchLayout {
         /// An agent pill. Its status label changes constantly (running -> tool ->
         /// editing ...); reserving per-label would resize the pill on every change
         /// and shove the leading icon under the rounded corner mid-transition, so
-        /// the agent pill keeps one fixed width across all states.
-        case agent
+        /// the agent pill sizes once for the widest status label. Only the session
+        /// count (rare) changes its width, via the per-session glyph strip.
+        case agent(count: Int)
         case activity(label: String)
     }
 
     /// Resolve the compact content from the live state. Media wins over an
     /// activity (mirrors `CompactView`), so all three readers stay in sync. An
     /// agent activity is its own fixed-width case so status changes don't resize.
-    static func compactContent(hasMedia: Bool, isAgent: Bool, activityLabel: String?) -> CompactContent {
+    static func compactContent(
+        hasMedia: Bool,
+        agentCount: Int?,
+        activityLabel: String?,
+        trayItemCount: Int = 0
+    ) -> CompactContent {
         if hasMedia { return .media }
-        if isAgent { return .agent }
+        if let agentCount { return .agent(count: agentCount) }
         if let label = activityLabel { return .activity(label: label) }
+        if trayItemCount > 0 {
+            return .activity(label: trayItemCount == 1 ? "1 item" : "\(trayItemCount) items")
+        }
         return .none
     }
 
-    /// Fixed slot width for the agent pill, sized once for the widest status label
-    /// so every agent state renders at the same width (see `CompactContent.agent`).
-    static let compactAgentSlotWidth: CGFloat = {
-        let font = NSFont.systemFont(ofSize: compactLabelFontSize, weight: .medium)
-        let widest = ["running", "editing", "needs you", "99 agents"]
-            .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
-            .max() ?? 64
-        return min(max(widest, 30), 120) + compactSlotInset
-    }()
+    // Agent pill metrics, shared between the width reserved here and the views
+    // that draw it (`CompactView` / `PixelSessionStrip`) so they can't drift.
+    static let agentGlyphWidth: CGFloat = 13
+    static let agentGlyphSpacing: CGFloat = 5
+    static let agentMaxGlyphs = 4
+    static let agentStatusGap: CGFloat = 7
+    static let agentCountGap: CGFloat = 5
+    static let agentSessionsFontSize: CGFloat = 11
+
+    /// Slot width for the agent pill: per-session glyph strip + the widest status
+    /// label on one side, "N sessions" on the other. Sized for the widest status
+    /// so state changes never resize; only the session count (rare) does.
+    static func compactAgentSlotWidth(count: Int) -> CGFloat {
+        let glyphs = min(max(count, 1), agentMaxGlyphs)
+        let strip = CGFloat(glyphs) * agentGlyphWidth + CGFloat(glyphs - 1) * agentGlyphSpacing
+        let statusFont = NSFont.systemFont(ofSize: compactLabelFontSize, weight: .medium)
+        // Mirrors ActivityPresenter.agentCompactStatus's possible labels.
+        let widestStatus = ["Running", "Editing", "Working", "Needs you", "Done", "Idle"]
+            .map { ($0 as NSString).size(withAttributes: [.font: statusFont]).width }
+            .max() ?? 60
+        let leading = strip + agentStatusGap + widestStatus
+        let countFont = NSFont.systemFont(ofSize: compactLabelFontSize, weight: .bold)
+        let sessionsFont = NSFont.monospacedSystemFont(ofSize: agentSessionsFontSize, weight: .medium)
+        let trailing = ("\(min(max(count, 1), 99))" as NSString)
+            .size(withAttributes: [.font: countFont]).width
+            + agentCountGap
+            + ("sessions" as NSString).size(withAttributes: [.font: sessionsFont]).width
+        return min(max(leading, trailing), 170) + compactSlotInset
+    }
 
     /// Width of each of the two equal slots flanking the centered notch gap.
     /// Both sides reserve the same width so the gap stays aligned with the
@@ -139,8 +170,8 @@ enum NotchLayout {
             return 0
         case .media:
             return 47
-        case .agent:
-            return compactAgentSlotWidth
+        case let .agent(count):
+            return compactAgentSlotWidth(count: count)
         case let .activity(label):
             let font = NSFont.systemFont(ofSize: compactLabelFontSize, weight: .medium)
             let measured = (label as NSString).size(withAttributes: [.font: font]).width
@@ -164,7 +195,7 @@ enum NotchLayout {
         case .home: return hasInfoRow ? 296 : 175
         case .agents: return 320
         case .media: return 220
-        case .tray: return trayEmpty ? 180 : 246
+        case .tray: return trayEmpty ? 204 : 286
         }
     }
 
@@ -174,6 +205,7 @@ enum NotchLayout {
 
     static func contentSize(presentation: NotchState.Presentation,
                             notch: CGSize,
+                            expandedWidth: CGFloat = NotchMetrics.expandedWidth,
                             tab: NotchState.ExpandedTab,
                             hasInfoRow: Bool,
                             trayEmpty: Bool,
@@ -189,7 +221,7 @@ enum NotchLayout {
             let body = dropActive
                 ? dropChooserHeight
                 : expandedBodyHeight(tab: tab, hasInfoRow: hasInfoRow, trayEmpty: trayEmpty)
-            return CGSize(width: NotchMetrics.expandedWidth, height: body + notch.height)
+            return CGSize(width: expandedWidth, height: body + notch.height)
         }
     }
 }

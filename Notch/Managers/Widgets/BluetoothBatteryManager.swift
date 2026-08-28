@@ -1,6 +1,8 @@
 import IOBluetooth
+import AppKit
 import Foundation
 import Combine
+import Darwin
 
 /// Bluetooth device battery via `system_profiler SPBluetoothDataType -json`
 /// (off-main, cached). Connect events come from IOBluetooth notifications and
@@ -13,6 +15,7 @@ final class BluetoothBatteryManager: NSObject, ObservableObject {
     private unowned let activities: ActivityManager
     private var connectNotification: IOBluetoothUserNotification?
     private var scanning = false
+    private var cancellables = Set<AnyCancellable>()
 
     init(activities: ActivityManager) {
         self.activities = activities
@@ -25,15 +28,22 @@ final class BluetoothBatteryManager: NSObject, ObservableObject {
             forConnectNotifications: self,
             selector: #selector(deviceConnected(_:fromDevice:))
         )
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.refresh() }
+            }
+            .store(in: &cancellables)
     }
 
     /// View-driven (e.g. on expand) so battery is fresh without polling.
     func refresh() {
         guard !scanning else { return }
         scanning = true
-        Task.detached(priority: .utility) { [weak self] in
-            let scanned = BluetoothBatteryManager.scan()
-            await MainActor.run { self?.apply(scanned) }
+        Task { @MainActor [weak self] in
+            let scanned = await Task.detached(priority: .utility) {
+                BluetoothBatteryManager.scan()
+            }.value
+            self?.apply(scanned)
         }
     }
 
@@ -52,14 +62,14 @@ final class BluetoothBatteryManager: NSObject, ObservableObject {
         }
     }
 
-    private func apply(_ scanned: [BluetoothDevice]) {
+    private func apply(_ scanned: [BluetoothDevice]?) {
         scanning = false
-        devices = scanned
+        if let scanned { devices = scanned }
     }
 
     // MARK: - system_profiler
 
-    nonisolated private static func scan() -> [BluetoothDevice] {
+    nonisolated private static func scan() -> [BluetoothDevice]? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
         process.arguments = ["SPBluetoothDataType", "-json"]
@@ -69,10 +79,22 @@ final class BluetoothBatteryManager: NSObject, ObservableObject {
         do {
             try process.run()
         } catch {
-            return []
+            return nil
+        }
+        let deadline = Date().addingTimeInterval(8)
+        while process.isRunning, Date() < deadline {
+            usleep(50_000)
+        }
+        guard !process.isRunning else {
+            process.terminate()
+            let terminationDeadline = Date().addingTimeInterval(1)
+            while process.isRunning, Date() < terminationDeadline { usleep(20_000) }
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            Log.widgets.error("Bluetooth scan timed out")
+            return nil
         }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
         return parse(data)
     }
 

@@ -13,16 +13,14 @@ struct GlassButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: size * 0.42, weight: .semibold))
-                .foregroundStyle(.primary)
+            PixelIcon(systemName: systemName, size: size * 0.46, tint: .primary)
                 .frame(width: size, height: size)
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
         .glassEffect(.regular, in: .circle)
-        .scaleEffect(hovering && !reduceMotion ? 1.08 : 1)
-        .animation(NotchAnimation.pop, value: hovering)
+        .scaleEffect(hovering && !reduceMotion ? 1.04 : 1)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: hovering)
         .onHover { hovering = $0 }
         .accessibilityLabel(Self.label(for: systemName))
         .accessibilityAddTraits(.isButton)

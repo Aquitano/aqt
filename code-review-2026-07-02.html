@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notch — Code Review, 2026-07-02</title>
+<style>
+  :root {
+    --bg: #101114; --panel: #17181c; --panel2: #1d1f24; --border: #2a2d34;
+    --text: #d7dae0; --muted: #8b909a; --accent: #7aa2f7;
+    --high: #f7768e; --med: #e0af68; --low: #9ece6a; --info: #7dcfff;
+    --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 20px; margin: 44px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16px; margin: 26px 0 8px; color: var(--accent); }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .summary { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin: 20px 0; }
+  .summary p { margin: 8px 0; }
+  .counts { display: flex; gap: 12px; flex-wrap: wrap; margin: 14px 0 4px; }
+  .count { border-radius: 8px; padding: 8px 14px; background: var(--panel2); border: 1px solid var(--border); }
+  .count b { font-size: 20px; display: block; }
+  .count.high b { color: var(--high); } .count.med b { color: var(--med); }
+  .count.low b { color: var(--low); } .count.arch b { color: var(--info); }
+  .toc { columns: 2; gap: 32px; margin: 12px 0; padding-left: 18px; }
+  .toc li { margin: 3px 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .finding {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin: 12px 0;
+  }
+  .finding .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .badge {
+    font-size: 11px; font-weight: 700; letter-spacing: .06em; border-radius: 5px;
+    padding: 2px 8px; text-transform: uppercase; flex: none;
+  }
+  .badge.high { background: rgba(247,118,142,.15); color: var(--high); border: 1px solid rgba(247,118,142,.4); }
+  .badge.med  { background: rgba(224,175,104,.13); color: var(--med);  border: 1px solid rgba(224,175,104,.4); }
+  .badge.low  { background: rgba(158,206,106,.12); color: var(--low);  border: 1px solid rgba(158,206,106,.35); }
+  .badge.verified { background: rgba(125,207,255,.12); color: var(--info); border: 1px solid rgba(125,207,255,.35); }
+  .badge.done { background: rgba(158,206,106,.2); color: var(--low); border: 1px solid rgba(158,206,106,.55); }
+  .finding.done { opacity: .68; border-left: 3px solid var(--low); }
+  .finding.done .title { text-decoration: line-through; text-decoration-color: rgba(158,206,106,.6); }
+  .finding .title { font-weight: 600; }
+  .finding .loc { font-family: var(--mono); font-size: 12.5px; color: var(--muted); margin: 4px 0 8px; }
+  .finding .body { color: var(--text); margin: 0; }
+  .finding .body p { margin: 6px 0; }
+  code { font-family: var(--mono); font-size: 13px; background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+  .clean li { margin: 6px 0; color: var(--muted); }
+  .clean li b { color: var(--text); font-weight: 600; }
+  .arch-item { margin: 14px 0 18px; }
+  .arch-item .body { color: var(--text); }
+  .note { color: var(--muted); font-size: 13.5px; }
+  footer { margin-top: 60px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Notch — Code Review</h1>
+<p class="sub">Full-app review: bugs, design flaws, inconsistencies, architecture. Repo at commit <code>9fc82ff</code>, 2026-07-02.</p>
+
+<div class="summary">
+  <p><b>Scope &amp; method.</b> All ~9,650 lines of Swift across app, window, state, managers, services, agent-watch, widgets, and views were reviewed by six parallel subsystem passes; the highest-severity claims were then re-verified directly against the source. The logic test suite passes: <b>71 tests, 0 failures</b>.</p>
+  <p><b>Overall.</b> The codebase is well above average for a project of this kind: a clean composition root, deliberate pure-core extractions with tests, careful comments explaining non-obvious decisions. The problems cluster in four places: (1) global event monitors and click-through state that trust the wrong signals, (2) lifecycle gaps in long-running integrations (media adapter stream, weather one-shot fetch, agent liveness), (3) an event pipeline that loses ordering between the Unix socket and the main actor, and (4) config-file surgery on <code>~/.claude/settings.json</code> with two genuine data-loss edges.</p>
+  <div class="counts">
+    <div class="count high"><b>8</b>High</div>
+    <div class="count med"><b>26</b>Medium</div>
+    <div class="count low"><b>28</b>Low</div>
+    <div class="count arch"><b>9</b>Architecture themes</div>
+  </div>
+  <p class="note">Findings tagged <span class="badge verified">verified</span> were confirmed line-by-line in this review pass, not just reported by a subsystem sweep.</p>
+  <p class="note">Remediation in progress: items tagged <span class="badge done">Fixed</span> have landed on branch <code>code-review-fixes-2026-07-02</code>, one commit per finding. So far: all <b>8 High</b> and <b>~31 Medium</b> across security, core, media, widgets, the agent-watch pipeline, UI, and design (plus a few Low; one socket finding partially). Remaining: the deeper architectural themes (strict-concurrency migration, server-side socket read model, Theme-token adoption, dead-plumbing sweep) and the Low assorted items. Build green, logic suite 78/78.</p>
+</div>
+
+<ul class="toc">
+  <li><a href="#high">1. High-severity bugs</a></li>
+  <li><a href="#security">2. Security &amp; data integrity (agent-watch)</a></li>
+  <li><a href="#bugs-core">3. Bugs — core, window &amp; media</a></li>
+  <li><a href="#bugs-widgets">4. Bugs — widgets</a></li>
+  <li><a href="#bugs-agents">5. Bugs — agent-watch pipeline</a></li>
+  <li><a href="#bugs-ui">6. Bugs — UI layer</a></li>
+  <li><a href="#design">7. Design flaws &amp; inconsistencies</a></li>
+  <li><a href="#arch">8. Architecture flaws</a></li>
+  <li><a href="#tests">9. Test coverage gaps</a></li>
+  <li><a href="#clean">10. Checked and found sound</a></li>
+</ul>
+
+<h2 id="high">1. High-severity bugs</h2>
+
+<div class="finding done">
+  <div class="head"><span class="badge high">High</span><span class="badge done">Fixed</span><span class="title">Any left-button drag opens the file-drop UI — not just file drags</span></div>
+  <div class="loc">Notch/Window/NotchWindowController.swift:110–160, 189–198</div>
+  <div class="body"><p><code>dragMoved()</code> is driven by a global <code>.leftMouseDragged</code> monitor with no way to distinguish a file drag from a text-selection drag, window drag, or toolbar drag. Any drag passing through the generous catch area (notch width + 200pt wide, ~90pt tall) flips <code>panel.ignoresMouseEvents = false</code> and calls <code>beginDropTargeting()</code> — the panel expands onto the tray and starts intercepting mouse events mid-drag. On a non-notched display the simulated-notch fallback puts this zone over the center of the menu bar, so ordinary drags near the menu bar trip it too. The drag session needs a real file-drag signal (e.g. <code>NSPasteboard(name: .drag)</code> contents or deferring entirely to the SwiftUI drop delegate's <code>validateDrop</code>).</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge high">High</span><span class="badge done">Fixed</span><span class="title">Media adapter stream death causes an EOF busy-loop and permanently stale media UI</span></div>
+  <div class="loc">Notch/Managers/Media/AdapterMediaController.swift:57–61</div>
+  <div class="body"><p>The pipe's <code>readabilityHandler</code> handles EOF with <code>guard !chunk.isEmpty else { return }</code> but never clears itself. Once the perl bridge exits or crashes, the fd stays readable-at-EOF and FileHandle re-invokes the handler continuously — a spinning dispatch queue at high CPU. There is also no <code>terminationHandler</code>, no restart, and no fallback to the scripting controller, so the app silently shows the last track forever. On EOF the handler should nil itself and the controller should recover or fall back.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge high">High</span><span class="badge done">Fixed</span><span class="title">Weather is fetched once at launch and never refreshed</span></div>
+  <div class="loc">Notch/Managers/Widgets/WeatherManager.swift:27–39</div>
+  <div class="body"><p><code>start()</code> issues a single one-shot <code>requestLocation()</code>; <code>fetch</code> runs only from <code>didUpdateLocations</code> and the temperature-unit sink. There is no timer, no re-fetch on panel open (<code>WidgetGridView.onAppear</code> refreshes only bluetooth and focus), and no cadence at all — the widget presents the launch-time temperature as current indefinitely. Compounding it, <code>didFailWithError</code> only logs: one transient CoreLocation failure leaves an authorized user on the placeholder permanently with no retry path.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge high">High</span><span class="badge done">Fixed</span><span class="title">Disabled agent providers resurrect sessions: <code>ingest()</code> has no <code>isEnabled</code> guard</span></div>
+  <div class="loc">Notch/Managers/Agents/Providers/SocketAgentProvider.swift:85; ClaudeCodeProvider.swift:140</div>
+  <div class="body"><p><code>refresh()</code> guards <code>isEnabled</code> in both providers, but <code>ingest()</code> does not, and <code>AgentManager.route()</code> forwards envelopes without checking. A running agent process keeps its hooks/plugin loaded after the user toggles the integration off, so its envelopes rebuild and re-publish sessions — rows and the compact pill reappear while the feature is disabled.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge high">High</span><span class="badge done">Fixed</span><span class="title">Killed agent process leaves a stuck "working" pill: no liveness timer for <code>.processPid</code> providers</span></div>
+  <div class="loc">Notch/Managers/Agents/Providers/SocketAgentProvider.swift:161–188</div>
+  <div class="body"><p><code>prune()</code> only runs inside <code>ingest()</code>/<code>refresh()</code>, and <code>scheduleStalePrune()</code> exits early unless <code>liveness == .staleness</code>. If an OpenCode/oh-my-pi process is killed mid-turn (no "ended" envelope), its busy session stays published and the compact pill shows a working agent indefinitely. Sessions whose envelopes never carried a pid (peer pid can be 0) are unprunable under <code>.processPid</code> and live forever.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge high">High</span><span class="badge done">Fixed</span><span class="title">Project paths containing spaces break transcript lookup — live sessions flap in and out of the UI</span></div>
+  <div class="loc">Notch/Services/Agents/ProcessScanner.swift:84</div>
+  <div class="body"><p><code>newestTranscript</code> encodes the cwd by replacing only <code>/</code> and <code>.</code> with <code>-</code>, but Claude Code also rewrites spaces (verified on this machine: <code>~/Library/Application Support/…</code> is stored as <code>-Users-…-Application-Support-…</code>). For any project path with a space, the computed directory doesn't exist, the scan sees no transcript, and the session survives only as a hook-only entry — purged after the 30s grace window, then re-added on the next hook. The session visibly flaps.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge high">High</span><span class="badge done">Fixed</span><span class="title">Collapse resets the tab mid-close, swapping visible content during the fade-out</span></div>
+  <div class="loc">Notch/State/NotchState.swift:155; Notch/Views/ExpandedView.swift:106–121; NotchRootView.swift:119–129</div>
+  <div class="body"><p><code>collapse()</code> sets <code>presentation = target</code> and <code>expandedTab = .home</code> in the same animation, while <code>isCollapsing</code> deliberately keeps the expanded body mounted for the whole ~0.4s close. Collapsing from media/tray/agents therefore cross-fades the dying panel to <code>WidgetGridView</code> while it shrinks, jumps <code>expandedSize</code> to the home height mid-animation, and freshly mounts the widget grid (and everything its widgets kick off) on every close from a non-home tab — exactly what the <code>NotchRootView</code> comment says the design avoids. The tab reset should happen after the close completes (where <code>isCollapsing</code> is already released).</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge high">High</span><span class="badge done">Fixed</span><span class="title">Backup <code>dropEntered</code> has no matching <code>dropExited</code> — a missed drag-exit pins the panel open forever</span></div>
+  <div class="loc">Notch/Views/NotchRootView.swift:153–156</div>
+  <div class="body"><p><code>NotchDropDelegate.dropEntered</code> calls <code>state.beginDropTargeting()</code> as a backup for the window controller, but the delegate implements no <code>dropExited</code>. If the backup path is the one that fired (the controller missed the enter, so it will also miss the exit) and the user drags away or cancels with Esc, nothing calls <code>endDropTargeting()</code>. <code>isDropActive</code> stays true and <code>collapse()</code> bails on <code>guard !isDropActive</code>: the notch is stuck expanded on the drop chooser until another successful drop cycle.</p></div>
+</div>
+
+<h2 id="security">2. Security &amp; data integrity (agent-watch)</h2>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Substring marker <code>"agent-hook"</code> can delete unrelated user hooks from settings.json</span></div>
+  <div class="loc">Notch/Services/Agents/AgentConfigInstaller.swift:51, 310–319</div>
+  <div class="body"><p><code>pruneMarker</code> removes any inner hook whose command merely <em>contains</em> <code>"agent-hook"</code>, and it runs on every install (prune-then-re-add) and uninstall across all seven managed events. A user hook like <code>~/bin/my-agent-hook.sh</code> is silently deleted from <code>~/.claude/settings.json</code>. This is user-config data loss from a substring match; the marker should be an exact command match or a dedicated marker key.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">statusLine uninstall silently erases the user's original command when the snapshot file is gone</span></div>
+  <div class="loc">Notch/Services/Agents/AgentConfigInstaller.swift:183–186, 200–212</div>
+  <div class="body"><p>The user's original <code>statusLine</code> survives only in <code>~/.notch/bin/.statusline-orig.json</code>. If that file is missing (user deleted <code>~/.notch</code> while cleaning up), <code>removeClaudeUsage</code> sets <code>root["statusLine"] = nil</code> — the original command (e.g. ccstatusline) is permanently removed from settings.json. The already-installed path in <code>installClaudeUsage</code> has the same failure: it regenerates the wrapper with <code>"true"</code>, silently disabling the user's status line.</p></div>
+</div>
+
+<div class="finding">
+  <div class="head"><span class="badge med">Medium</span><span class="badge verified">verified</span><span class="title">Unlocked read-modify-write of settings.json can drop concurrent edits</span></div>
+  <div class="loc">Notch/Services/Agents/AgentConfigInstaller.swift:248–273, 329–346</div>
+  <div class="body"><p><code>installHooks</code>/<code>removeHooks</code>/<code>installClaudeUsage</code> read, mutate, and atomically rewrite the file with no lock or mtime check. Claude Code itself rewrites <code>~/.claude/settings.json</code>, and <code>ClaudeCodeProvider.start()</code> re-runs the installer at every launch whenever <code>claudeBridgeInstalled()</code> is false — a write landing between read and write is silently clobbered (last-writer-wins). Related: the full-file rewrite is pretty-printed and key-sorted, so the first install also reformats the user's whole settings file.</p></div>
+</div>
+
+<div class="finding">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed (partial)</span><span class="title">Unbounded concurrent socket reads allow thread exhaustion; hook client has no connect timeout</span></div>
+  <p class="note" style="margin: 8px 16px 0;">Fixed the client half: <code>HookClient.send</code> connects non-blocking with a 2s poll + 2s send timeout, and the Claude hook installs with <code>timeout: 5</code>. Open: the server-side concurrent-read cap (thread exhaustion), an accept/read-model change.</p>
+  <div class="loc">Notch/Services/Agents/AgentSocketServer.swift:17, 133–160; Notch/App/HookClient.swift:147</div>
+  <div class="body"><p>Every accepted client blocks a GCD worker in <code>read()</code> on the concurrent <code>ioQueue</code> with no cap. The 2s <code>SO_RCVTIMEO</code> is per-<code>read()</code>, so a peer trickling one byte every &lt;2s holds its slot indefinitely (the 1&nbsp;MB cap bounds memory, not time); N such peers pin N threads toward the ~64-thread pool limit. Once the <code>listen(fd, 8)</code> backlog fills, <code>HookClient.send</code> blocks in <code>connect()</code> with no timeout — and since the Claude hook entry is installed without a <code>timeout</code> field, each hook can stall the user's Claude turn up to the 60s default. Same-uid trust domain, but reachable by any buggy client.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Hook envelopes can be delivered out of order, and ingest-time timestamps make the stale one authoritative</span></div>
+  <div class="loc">AgentSocketServer.swift:122–127; AgentManager.swift:68–70; ClaudeCodeProvider.swift:150</div>
+  <div class="body"><p>Clients are read on a concurrent queue and each envelope hops to the main actor via an independent <code>Task { @MainActor … }</code> — two hooks fired back-to-back (separate short-lived hook processes, e.g. <code>PostToolUse</code> then <code>Stop</code>) can be processed reversed. <code>HookSnapshot.time</code> is stamped <code>Date()</code> at receipt, so the reordered older hook wins the <code>hook.time &gt;= fileTime</code> rule in <code>StatusReducer</code>, leaving a session stuck on "Thinking" after the turn finished. For <code>SocketAgentProvider</code>, an "ended" processed before an earlier "busy" resurrects the session (up to 30 minutes under staleness liveness). Delivery needs a serial ordering (serial ingest queue or a sequence number).</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">DirectoryWatcher deinit tears down the FSEvents stream off the watcher queue — use-after-free race</span></div>
+  <div class="loc">Notch/Services/Agents/DirectoryWatcher.swift:28–36, 44, 50–54</div>
+  <div class="body"><p>The stream context uses <code>Unmanaged.passUnretained(self)</code> and the callback does <code>takeUnretainedValue()</code> on the watcher queue, but <code>deinit</code> runs on whatever thread drops the last reference and calls <code>FSEventStreamStop/Invalidate/Release</code> there, unsynchronized with the queue. A callback already scheduled can dereference the deallocated object. Fix: <code>passRetained</code> with release in a cancel path, or drain the queue synchronously in deinit.</p></div>
+</div>
+
+<div class="finding">
+  <div class="head"><span class="badge low">Low</span><span class="badge verified">verified</span><span class="title">Socket permission race; directory attributes are no-ops for pre-existing <code>~/.notch</code>; unconditional unlink lets a second instance steal the socket</span></div>
+  <div class="loc">Notch/Services/Agents/AgentSocketServer.swift:36–43, 79</div>
+  <div class="body"><p>The socket is bound with umask permissions and only <code>chmod(path, 0o600)</code> afterward — a brief window of looser access. <code>createDirectory(attributes: [.posixPermissions: 0o700])</code> applies the mode only on creation, so a pre-existing <code>~/.notch</code> keeps whatever mode it had. Separately, <code>unlink(path)</code> runs unconditionally at bind, so a second app instance (dev build beside installed build) silently steals the socket while the first keeps accepting on a bound-but-unlinked fd; there is also no already-started guard, so a double <code>start()</code> leaks the prior source/fd.</p></div>
+</div>
+
+<div class="finding">
+  <div class="head"><span class="badge low">Low</span><span class="badge verified">verified</span><span class="title">Client-claimed pid overrides the kernel-verified peer pid, and it's the wrong pid anyway</span></div>
+  <div class="loc">AgentSocketServer.swift:146; HookClient.swift:24; AgentConfigInstaller.swift:57</div>
+  <div class="body"><p>The server prefers <code>envelope.pid</code> (client-supplied) over <code>LOCAL_PEERPID</code>. And because the installed hook command is <code>/bin/sh -c '… ; exit 0'</code> (the trailing <code>exit 0</code> prevents an exec), <code>getppid()</code> in the hook tool returns a transient shell pid that is dead by delivery — not the agent, as <code>HookEnvelope.pid</code>'s doc claims. Harmless for Claude/Codex today, but <code>SocketAgentProvider</code>'s <code>.processPid</code> liveness does <code>kill(pid, 0)</code> on this trusted value: a wrong or reused pid keeps phantom sessions alive or prunes live ones.</p></div>
+</div>
+
+<div class="finding">
+  <div class="head"><span class="badge low">Low</span><span class="title">TerminalJumper opens an environment-sourced URL with any scheme; dead-pid path scans the whole pid table on the main actor</span></div>
+  <div class="loc">Notch/Services/Agents/TerminalJumper.swift:23–26, 126–131; ProcessScanner.swift:59–63</div>
+  <div class="body"><p><code>focusURL</code> comes from the watched process's environment (<code>WARP_FOCUS_URL</code>) and is passed straight to <code>NSWorkspace.shared.open(url)</code> with no scheme allowlist — any same-uid process matching <code>isClaudeProcess</code> can plant an arbitrary URL that opens on the user's click. Also, when the pid is dead, <code>resolvePID</code> synchronously runs <code>cwd(of:)</code> over every pid on the system on the main actor — thousands of syscalls, a visible UI hitch.</p></div>
+</div>
+
+<h2 id="bugs-core">3. Bugs — core, window &amp; media</h2>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Overlapping shares wedge the panel's key-capable state</span></div>
+  <div class="loc">Notch/App/AppEnvironment.swift:125–131</div>
+  <div class="body"><p><code>shareCoordinator = coordinator</code> deallocates any in-flight coordinator while its share sheet may still be open. <code>NSSharingService.delegate</code> is <code>weak</code> (verified in the macOS SDK header), so the first share's <code>didShareItems</code>/<code>didFail…</code> callbacks are silently dropped — no crash, but that coordinator's <code>endShareSheet()</code> never runs, so <code>panel.presentingShareSheet</code> can stay latched true and the passive overlay stays permanently key-capable. <code>share(urls:via:)</code> needs a reentrancy guard or per-share coordinator retention.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Click-through region goes stale when the pill resizes under a stationary cursor</span></div>
+  <div class="loc">Notch/Window/NotchWindowController.swift:200–221, 231–246</div>
+  <div class="body"><p><code>updatePassthrough()</code> is only re-run on pointer moves and presentation/HUD changes, but the hit rect depends on live content (media track, compact activity, tray items, settings). If the pill grows or shrinks while the cursor is stationary — an activity appears/expires, media starts — <code>panel.ignoresMouseEvents</code> keeps the old answer: a click on a newly appeared pill passes through to the window beneath, or a click beside a shrunk pill is swallowed, until the next mouse move.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title"><code>.receive(on: RunLoop.main)</code> defers panel ordering during event-tracking modes</span></div>
+  <div class="loc">Notch/Window/NotchWindowController.swift:72</div>
+  <div class="body"><p>The presentation/HUD sink that orders the panel in/out is scheduled on <code>RunLoop.main</code>, which only fires in <code>.default</code> mode. While the run loop is tracking (status-bar menu open, scroll momentum, window drag), a HUD or expand won't order the panel front until tracking ends. The publishers are already main-actor; drop the scheduler or use <code>DispatchQueue.main</code>.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Scripting media controller runs main-actor methods and NSAppleScript on a background queue</span></div>
+  <div class="loc">Notch/Managers/Media/ScriptingMediaController.swift:39–73, 199–210</div>
+  <div class="body"><p>The class is <code>@MainActor</code>, yet <code>send()</code>/<code>refresh()</code> hop to a private DispatchQueue and call the isolated <code>read(app:)</code> there — GCD closures aren't isolation-checked under <code>SWIFT_STRICT_CONCURRENCY: minimal</code>, so this compiles but violates the annotation. <code>NSAppleScript</code> is additionally documented main-thread-only. Works today, breaks under strict concurrency, and is undefined behavior per Apple's thread-safety guidance. <code>AdapterMediaController</code> has the same shape: it inherits <code>@MainActor</code> from <code>MediaControlling</code> but mutates <code>buffer</code> on the FileHandle readability queue.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Adapter probe blocks the main thread at startup</span></div>
+  <div class="loc">Notch/Managers/Media/AdapterMediaController.swift:42; MediaManager.swift:62</div>
+  <div class="body"><p><code>MediaManager.start()</code> runs on the main actor and <code>AdapterMediaController.init?</code> synchronously spawns perl and calls <code>process.waitUntilExit()</code> for the "test" probe. Loading the perl interpreter plus the framework check can take hundreds of milliseconds, freezing launch right after the window appears.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Music "toggleRepeat" is not a toggle</span></div>
+  <div class="loc">Notch/Managers/Media/ScriptingMediaController.swift:192</div>
+  <div class="body"><p>For Music the command unconditionally runs <code>set song repeat to one</code>, so once pressed the user can never turn repeat off (or reach "all") from the notch, while Spotify genuinely toggles. Two backends behind the same <code>MediaCommand.toggleRepeat</code> behave differently.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Brightness HUD can display the previous volume value</span></div>
+  <div class="loc">Notch/Managers/HUDManager.swift:56–66; Notch/Services/Brightness.swift:33</div>
+  <div class="body"><p>On a brightness key, <code>kind = .brightness; show()</code> fires immediately and <code>value</code> updates 50ms later — and only if <code>brightness.current()</code> succeeds. <code>DisplayServicesGetBrightness(CGMainDisplayID(), …)</code> fails when the main display is external (or the private symbol is missing), so the HUD renders the last volume level (e.g. 0.75) under a brightness glyph, every time.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title"><code>setNowPlaying</code> bypasses <code>publish()</code>, so starting music never surfaces the notch from hidden</span></div>
+  <div class="loc">Notch/Managers/ActivityManager.swift:103–111</div>
+  <div class="body"><p>Every other activity goes through <code>publish()</code>, which calls <code>state.showCompact()</code>; <code>setNowPlaying</code> calls <code>replaceOrInsert</code> directly. When playback starts while the notch is hidden, the now-playing sliver doesn't appear until some unrelated activity fires. It also skips the <code>lastEventID</code>/TTL bookkeeping — a second mutation path in a class designed around one.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">TrayManager blocks the item-provider callback ~3s per file for no reason</span></div>
+  <div class="loc">Notch/Managers/TrayManager.swift:60, 193–210</div>
+  <div class="body"><p>The comment justifies the synchronous <code>semaphore.wait(timeout: .now() + 3)</code> because "the drag URL dies when the handler returns" — but <code>makeThumbnail</code> reads <code>item.url(relativeTo: root)</code>, the already-persisted copy, not the drag temp URL. The wait only delays the shelf entry and the "Added to Shelf" peek by up to 3 seconds per file and blocks NSItemProvider's queue. Thumbnailing can be fully async after the copy.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title"><code>position(asOf:)</code> reports 0:00 for unknown-duration tracks</span></div>
+  <div class="loc">Notch/Model/MediaModels.swift:29</div>
+  <div class="body"><p><code>guard isPlaying, duration &gt; 0 else { return min(elapsed, duration) }</code> — the doc says duration is "0 if unknown", but for such tracks (live streams, some adapters) <code>min(elapsed, 0)</code> is 0 whether paused or playing. Elapsed time is discarded exactly when it's the only signal available.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">mediaremote-adapter enablement instructions point at the wrong target</span></div>
+  <div class="loc">project.yml:87–92</div>
+  <div class="body"><p>The commented <code>dependencies: - package: mediaremote-adapter</code> block sits under the <code>notch-hook</code> tool target, not the <code>Notch</code> app. Following the README/comment instruction links the adapter into the Foundation-only CLI while the app's <code>#if canImport(MediaRemoteAdapter)</code> stays false — the opt-in feature silently never activates.</p></div>
+</div>
+
+<div class="finding">
+  <div class="head"><span class="badge low">Low</span><span class="title">Assorted low-severity core/media items</span></div>
+  <div class="loc">various</div>
+  <div class="body">
+    <p>• <b>Paused Music beats playing Spotify</b> — <code>refresh(preferred: nil)</code> walks <code>[music, spotify]</code> and takes the first non-stopped app, so a paused Music track wins over actively playing Spotify at launch (ScriptingMediaController.swift:47–74).</p>
+    <p>• <b>Artwork failures never retried</b> — <code>lastArtworkIdentity</code> is set before the fetch; an error leaves the track permanently artless (ScriptingMediaController.swift:78–91).</p>
+    <p>• <b>Tray TTL and share staging only pruned at launch</b> — for an app that runs for weeks, <code>trayTTLDays</code> is effectively ignored mid-session and <code>ShareStaging</code> copies accumulate on disk (TrayManager.swift:33–36, 140–153).</p>
+    <p>• <b>Synchronous disk I/O in view accessors</b> — <code>thumbnail(for:)</code> does <code>Data(contentsOf:)</code> + decode on the main actor per shelf item during layout (TrayManager.swift:124–132); <code>persist()</code> likewise writes pretty-printed JSON synchronously on every add/remove, contradicting Persistence.swift's "only touched from background contexts" comment.</p>
+    <p>• <b>SystemDefinedTap / BatteryManager teardown traps</b> — both hold <code>Unmanaged.passUnretained(self)</code> in C callbacks with no invalidation path; safe only because AppEnvironment owns them for app lifetime (SystemDefinedTap.swift:29–56, BatteryManager.swift:26–43). HUDManager's comment that "the tap can't be torn down cleanly" is wrong — <code>CGEvent.tapEnable</code> + <code>CFMachPortInvalidate</code> exist.</p>
+    <p>• <span class="badge done">Fixed</span> <b><code>clockString</code> has no hour component</b> — a 90-minute item renders "90:00" (Extensions.swift:39–45).</p>
+    <p>• <b>Settings opened via private stringly-typed selectors</b> — <code>Selector(("showSettingsWindow:"))</code> silently no-ops if macOS renames it; the supported <code>openSettings</code> action exists at this deployment target (AppDelegate.swift:89–91).</p>
+    <p>• <b><code>NSScreen()</code> fallback yields degenerate geometry</b> — a zero frame during display reconfiguration, and the simulated-notch path draws over the menu bar of non-notched displays (ScreenGeometry.swift:73).</p>
+    <p>• <b>Main-thread-only AppKit call in nonisolated deinit</b> — <code>NSEvent.removeMonitor</code> in <code>NotchWindowController.deinit</code> (52–54).</p>
+  </div>
+</div>
+
+<h2 id="bugs-widgets">4. Bugs — widgets</h2>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Battery: first power source assumed internal; desktop Macs show a fake permanent "100%"</span></div>
+  <div class="loc">Notch/Managers/Widgets/BatteryManager.swift:52–71</div>
+  <div class="body"><p><code>refresh()</code> takes the first entry of <code>IOPSCopyPowerSourcesList</code> with a <code>break // internal battery is the first source</code> and never checks <code>kIOPSTypeKey</code>, so a UPS can be read as the Mac's battery. On a desktop with no battery the list is empty, <code>percent</code> stays at its initial 100, and the battery tile renders a permanent fake 100%.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Calendar data never advances with time — ended events linger, the horizon is frozen at launch</span></div>
+  <div class="loc">Notch/Managers/Widgets/CalendarManager.swift:49–63</div>
+  <div class="body"><p><code>reload()</code> builds its predicate with <code>withStart: now</code>, but nothing time-driven ever re-runs it — no timer, no day-change observer, and <code>WidgetGridView.onAppear</code> doesn't touch calendar. Hours after the last <code>.EKEventStoreChanged</code>, finished meetings still occupy the widget's rows, <code>isInProgress</code> styling is computed against a stale list, and events beyond the launch-time 7-day/25-item window never surface.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Weather forecast decode can crash on a malformed API response</span></div>
+  <div class="loc">Notch/Managers/Widgets/WeatherManager.swift:130–139</div>
+  <div class="body"><p>Indices are derived only from <code>daily.time</code>, then used to subscript <code>weather_code</code>, <code>temperature_2m_max</code>, and <code>temperature_2m_min</code>. If Open-Meteo ever returns a shorter parallel array (partial data, API change), that's an out-of-bounds crash on untrusted network input. The same fetch path also parses API dates with a <code>DateFormatter</code> lacking <code>en_US_POSIX</code> and a timezone: a non-Gregorian system calendar parses "2026-07-02" wrong, and location-vs-device timezone differences can shift day labels by one (127–131).</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Launch-time permission prompts stack, contradicting the app's own no-stacking rule</span></div>
+  <div class="loc">WeatherManager.swift:29; FocusManager.swift:23; CalendarManager comment</div>
+  <div class="body"><p><code>CalendarManager.start()</code> deliberately defers its TCC prompt ("that stacks dialogs on top of the location prompt and feels like a freeze"), yet <code>WeatherManager.start()</code> and <code>FocusManager.start()</code> both prompt unconditionally at launch — two dialogs can still stack on first run. The weather prompt fires even when <code>showWeatherWidget</code> is false, since all managers start unconditionally in <code>AppEnvironment.start()</code>.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Focus tile confidently shows "Off" when authorization was never granted</span></div>
+  <div class="loc">Notch/Views/Widgets/FocusWidgetView.swift:22; FocusManager.swift</div>
+  <div class="body"><p>The view renders <code>focus.isOn ? "On" : "Off"</code> without reading <code>focus.authorized</code>; when access is denied or undetermined, <code>refresh()</code> bails and the tile displays "Off" for an unknown state. Calendar and Weather both grew an "Enable" affordance for this case; Focus has none, so it can't be fixed from the UI.</p></div>
+</div>
+
+<div class="finding">
+  <div class="head"><span class="badge low">Low</span><span class="title">Assorted low-severity widget items</span></div>
+  <div class="loc">various</div>
+  <div class="body">
+    <p>• <b>Bluetooth <code>scanning</code> flag can wedge permanently</b> — if <code>system_profiler</code> hangs, <code>readDataToEndOfFile()</code> blocks forever, <code>scanning</code> stays true, and every future refresh no-ops for the rest of the session; no <code>Process</code> timeout (BluetoothBatteryManager.swift:31–38, 62–77). Disconnects also leave stale devices until the next panel open (connect-only notifications).</p>
+    <p>• <b>Weather auth handler only reacts to <code>.authorizedAlways</code></b> — on macOS the grant usually lands as Always so this mostly works, but a when-in-use grant would never trigger the fetch; brittle against exactly the case the Enable affordance exists for (WeatherManager.swift:65–72).</p>
+    <p>• <b>Concurrent weather fetches can apply out of order</b> — no generation check; a stale response can overwrite a newer one after unit toggles (WeatherManager.swift:88–110).</p>
+    <p>• <span class="badge done">Fixed (toast)</span> <b>Focus "On" toast on every launch</b> — the first refresh compares against the default <code>isOn = false</code>, so launching during an active Focus publishes a spurious transition; <code>name</code> is dead plumbing that is never assigned (FocusManager.swift:12, 43). <span class="note">Toast suppressed via a first-read seed; the dead <code>name</code> plumbing is still present.</span></p>
+    <p>• <b>Reminder copy hardcodes "Starts in 5 min"</b> independently of <code>reminderLead</code>, and <code>Task.sleep</code> fires late after machine sleep, announcing meetings that already began (CalendarManager.swift:18, 81).</p>
+    <p>• <b>Bluetooth tile pops in after layout settles</b> — gated on <code>!devices.isEmpty</code>, which is always empty until the multi-second first scan finishes; the status row visibly reflows (WidgetGridView.swift:37–39).</p>
+  </div>
+</div>
+
+<h2 id="bugs-agents">5. Bugs — agent-watch pipeline</h2>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Enabling "Watch coding agents" at runtime is a silent no-op</span></div>
+  <div class="loc">Notch/Managers/Agents/AgentManager.swift:34–35; SettingsView.swift:44, 65, 78</div>
+  <div class="body"><p><code>start()</code> runs once from <code>AppEnvironment.start()</code> behind <code>guard settings.agentsEnabled</code>; the Settings toggle binds straight to the setting and never calls <code>agents.start()</code>. Turning the feature on later builds no providers and no socket server — the "Coding agents" section renders with zero rows and the per-agent toggles no-op. The footer only warns that turning it <em>off</em> needs a relaunch.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title"><code>hookCwd</code> grows unbounded — one leaked entry per Claude session</span></div>
+  <div class="loc">Notch/Managers/Agents/Providers/ClaudeCodeProvider.swift:142; SessionReconciler.swift:58</div>
+  <div class="body"><p>Every envelope with a cwd writes <code>hookCwd[sid]</code>, but SessionEnd clears only <code>hookState[sid]</code>. The reconciler derives <code>expiredHookIDs</code> by iterating <code>hookState.keys</code>, so a sid whose hookState is already gone can never be expired — <code>hookCwd</code> accumulates every session ever seen until relaunch. Related: a hook-only sid that arrives without a cwd leaves a permanent <code>hookState</code> entry that is skipped by both the surface and expiry branches (SessionReconciler.swift:60).</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">In-flight reconcile survives <code>disable()</code>; liveness loop can keep scanning while disabled</span></div>
+  <div class="loc">ClaudeCodeProvider.swift:72–83, 174–186</div>
+  <div class="body"><p><code>stop()</code> cancels the tracked tasks, but the unstructured <code>Task { await self?.reconcile() }</code> from <code>beginWatching()</code>/<code>refresh()</code> is untracked, <code>reconcileGeneration</code> isn't bumped on stop, and neither <code>reconcile()</code> nor <code>rebuild()</code> checks <code>isEnabled</code>. Disabling during a scan publishes scanned sessions <em>after</em> <code>onSessions([])</code>, and a busy session re-arms the 8s liveness recheck while the integration is off.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title"><code>isIdleNotification</code> substring heuristic can suppress genuine permission prompts</span></div>
+  <div class="loc">Notch/Services/Agents/StatusReducer.swift:79–82</div>
+  <div class="body"><p>Any Notification whose message contains "waiting" or "idle" is demoted to an idle nudge — a permission prompt for a tool whose description contains either word silently loses <code>.needsAttention</code>, the feature's headline event. Conversely, if Claude's nudge wording changes or is localized, the stuck-"needs you" bug the comment describes returns. Flagged independently by two review passes; deserves a structured signal or at least anchored matching.</p></div>
+</div>
+
+<div class="finding">
+  <div class="head"><span class="badge med">Medium</span><span class="title">Two Claude sessions in one cwd flap and fire spurious ended events</span></div>
+  <div class="loc">ProcessScanner.swift:17–37; SessionReconciler.swift:56–71; ClaudeCodeProvider.swift:135–138, 209</div>
+  <div class="body"><p>The scanner dedups by cwd and attributes the pid to whichever transcript is newest, so the scanned sessionId flips between tabs as they alternate writes — each flip drops the other sid (emitting <code>.ended</code>) and later re-adds it with a reset <code>startedAt</code>. The ProcessScanner comment claims hook state keeps distinct sessions visible, but the reconciler purges hook-only sessions after 30s, so an idle second tab vanishes and reappears on every hook. A freshly started <code>claude</code> in a directory with older transcripts is also briefly reported under the previous session's id, prompt, and response.</p></div>
+</div>
+
+<div class="finding">
+  <div class="head"><span class="badge low">Low</span><span class="title">Assorted low-severity agent-watch items</span></div>
+  <div class="loc">various</div>
+  <div class="body">
+    <p>• <b>First envelope emits <code>.started</code> regardless of status</b> — a session first seen as "finished" produces an "agent started" peek and swallows the real finished transition (SocketAgentProvider.swift:150–153).</p>
+    <p>• <b><code>.finished</code> documented as "transient, then idle" but no transition exists</b> — sessions show "done" until the 30-minute staleness prune or process exit (AgentModels.swift:52).</p>
+    <p>• <b>Pill signature omits the representative's kind</b> — switching representative between two agents with matching count/status/project keeps the previous kind's glyph (AgentManager.swift:162).</p>
+    <p>• <b>Usage-limits disable leaves stale state</b> — <code>usage = nil</code> sits after a throwing call, and <code>route()</code> accepts "usage" envelopes unconditionally, so an old wrapper repopulates the panel after the user turned it off (AgentManager.swift:83–87, 126–135).</p>
+    <p>• <b>Malformed hooks event value → settings.json rewritten every launch</b> — <code>installHooks</code> skips the event but <code>claudeBridgeInstalled(requireAll: true)</code> stays false forever, so <code>start()</code> re-serializes the user's settings file on each launch (AgentConfigInstaller.swift:265; ClaudeCodeProvider.swift:66–68).</p>
+    <p>• <b>Unknown <code>--source</code> masquerades as Claude Code</b> — misattributed envelopes instead of a drop or log (HookClient.swift:33–42).</p>
+  </div>
+</div>
+
+<h2 id="bugs-ui">6. Bugs — UI layer</h2>
+
+<div class="finding">
+  <div class="head"><span class="badge med">Medium</span><span class="title">The advertised compact→expanded artwork morph is dead code</span></div>
+  <div class="loc">Notch/Views/MediaPlayerView.swift:56; CompactView.swift:108</div>
+  <div class="body"><p>The <code>matchedGeometryEffect(id: "artwork")</code> pair can never animate: every collapse resets <code>expandedTab = .home</code>, so at expansion the media tab is never selected — <code>MediaPlayerView</code> mounts only on a later tab click, when <code>CompactView</code> is long unmounted. The namespace plumbed through <code>ExpandedView</code>/<code>NotchRootView</code> does nothing, as does <code>HUDOverlayView.namespace</code>, which is accepted and never read.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Expanded panel side padding compensates with the wrong inset</span></div>
+  <div class="loc">Notch/Views/ExpandedView.swift:29; NotchShape.swift:35–36; Animations.swift:56–59</div>
+  <div class="body"><p>The content pads <code>12 + compactCornerRadius</code> (24pt) on the theory that the blob insets its sides by the corner radius — but with <code>notchWidth &gt; 0</code>, <code>NotchShape</code>'s side inset is <code>shoulderInset = (width − notchWidth)/18</code> ≈ 18.3pt at expanded width. The visible side margin is ~5.7pt against the 12pt bottom margin — the "pinched sides" the padding was written to prevent. The compensation should use <code>NotchMetrics.shoulderInset(width:notchWidth:)</code>.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Seek bar snaps back after a scrub</span></div>
+  <div class="loc">Notch/Views/MediaPlayerView.swift:139–144</div>
+  <div class="body"><p><code>onEnded</code> runs <code>onScrub(target); isScrubbing = false</code> synchronously, but the seek is async — the next 0.5s TimelineView tick renders the pre-seek snapshot, so the fill visibly jumps back, then forward when the player reports the new position. Hold the scrub value (or optimistically update the snapshot) until the seek round-trips.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Sessions nested more than one level deep silently disappear from the agents list</span></div>
+  <div class="loc">Notch/Views/Agents/AgentsView.swift:37–47</div>
+  <div class="body"><p><code>topLevelSessions</code> excludes any session whose parent is present, and rows are emitted only for top-level sessions plus direct children. A grandchild (a sub-agent spawning its own sub-session, which OpenCode supports) is excluded from the top level and never returned by <code>children(of:)</code> for any rendered row.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Seek bar is invisible to accessibility</span></div>
+  <div class="loc">Notch/Views/MediaPlayerView.swift:97–163; ExpandedView.swift:100</div>
+  <div class="body"><p>The scrubber is a bare Capsule ZStack with a DragGesture — no label, no value, no <code>.adjustable</code> action; VoiceOver users cannot perceive progress or seek at all, in contrast to the otherwise carefully labeled UI. Smaller gap: the expanded tab buttons never set <code>.isSelected</code>, so the current tab is not announced.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">In-place activity updates replay the attention pop the code explicitly tries to suppress</span></div>
+  <div class="loc">Notch/Managers/ActivityManager.swift:41–43; CompactView.swift:31</div>
+  <div class="body"><p><code>publish()</code> carefully avoids resetting <code>cycleOffset</code> for a channel replacement, but unconditionally bumps <code>lastEventID</code>, and <code>CompactView</code> runs its <code>phaseAnimator</code> pop on that trigger — every agent status flip or charging-percent update replays the pop. The pop also fires on the media pill's artwork/equalizer when an unrelated activity arrives while media owns the pill: an attention cue with no referent.</p></div>
+</div>
+
+<div class="finding">
+  <div class="head"><span class="badge low">Low</span><span class="title">Assorted low-severity UI items</span></div>
+  <div class="loc">various</div>
+  <div class="body">
+    <p>• <b>Hit-region width math diverges from drawn padding</b> — <code>compactExtraWidth</code> assumes 18pt padding but <code>CompactView</code> draws <code>shoulderInset + 9</code> once larger; measured-to-fit labels truncate ~8pt early (Animations.swift:157 vs CompactView.swift:80). The timer pill similarly reserves width from a time-dependent string that goes stale across width boundaries like "10:00"→"9:59" (ActivityPresenter.swift:41).</p>
+    <p>• <b>Per-mouse-move text measurement</b> — every system-wide pointer move runs <code>NSString.size(withAttributes:)</code> through <code>updatePassthrough → HitRegion → compactSlotWidth</code> when an activity label is showing; the width should be cached per label (NotchWindowController.swift:99–105; Animations.swift:136–148).</p>
+    <p>• <b>Uptime/reset strings frozen in <code>body</code></b> — <code>Date()</code>-derived strings only refresh on unrelated re-renders; an idle session shows "42s" for minutes (AgentRowView.swift:117–122; AgentsView.swift:89–95).</p>
+    <p>• <b><code>topRadius</code> is dead but animatable</b> — with <code>notchWidth &gt; 0</code> the parameter is ignored, yet callers pass it and <code>animatableData</code> interpolates it (NotchShape.swift:33–37).</p>
+    <p>• <span class="badge done">Fixed</span> <b>BatteryIndicator 0% renders no fill</b> — the <code>max(2, …)</code> clamp is dead (floor of 4 from the <code>+ 4</code>), and after the 2pt inner padding a 0% fill is invisible; also uses raw <code>.animation(.snappy)</code> ignoring reduce-motion, unlike the rest of the app (BatteryIndicator.swift:26; same in DropChooserView.swift:58). <span class="note">BatteryIndicator fixed; the identical DropChooserView instance still open.</span></p>
+    <p>• <b>MarqueeText restart snaps to origin</b> — <code>runScroll()</code> starts with an unanimated <code>offset = 0</code>, hard-jumping mid-leg on text change; task lifecycle itself is correct (MarqueeText.swift:86).</p>
+    <p>• <b><code>SettingRow</code> is dead code</b> referencing a removed in-notch settings tab (SettingRow.swift:6). Similarly <code>collapse(hasCompactContent:)</code> is always called with true, so the <code>.hidden</code> target is unreachable (NotchState.swift:138).</p>
+  </div>
+</div>
+
+<h2 id="design">7. Design flaws &amp; inconsistencies</h2>
+
+<div class="finding">
+  <div class="head"><span class="badge med">Medium</span><span class="title">Theme tokens exist but are bypassed by every view</span></div>
+  <div class="loc">Notch/Views/Theme.swift:5–16</div>
+  <div class="body"><p><code>Theme.Spacing</code>/<code>Theme.Radius</code> are referenced nowhere outside Theme.swift. The views hard-code a divergent set of radii (6, 12, 14, 16, 18) and paddings (8, 12, 14, 16, 18) — "reach for these instead of scattering magic numbers" is aspirational; there is no single spacing/radius rhythm and no one place to change it.</p></div>
+</div>
+
+<div class="finding done">
+  <div class="head"><span class="badge med">Medium</span><span class="badge done">Fixed</span><span class="title">Agent status→color mapping duplicated in three places, already diverging</span></div>
+  <div class="loc">ActivityPresenter.swift:94–102; AgentRowView.swift:107–115; CompactView.swift:130–136</div>
+  <div class="body"><p><code>ActivityPresenter.agentTint</code>, <code>AgentRowView.statusColor</code> (an identical duplicate), and <code>CompactView.agentPixelTint</code> (running = retro green vs cyan elsewhere) each restate the mapping. ActivityPresenter exists precisely to centralize per-kind presentation; two of the three already disagree.</p></div>
+</div>
+
+<div class="finding">
+  <div class="head"><span class="badge low">Low</span><span class="title">Push-vs-poll strategy differs per widget with no rationale</span></div>
+  <div class="loc">Notch/Managers/Widgets/*</div>
+  <div class="body"><p>Battery is push (IOKit notifications), calendar is event-driven only (no time axis), weather is one-shot, bluetooth polls on panel open via a <code>system_profiler</code> subprocess, focus refreshes on appear/app-active. Each staleness bug in sections 3–4 traces back to this: there is no shared "refreshable widget" contract (e.g. refresh-on-open plus a coarse timer) even though <code>WidgetGridView.onAppear</code> already refreshes two of the five by hand.</p></div>
+</div>
+
+<div class="finding">
+  <div class="head"><span class="badge low">Low</span><span class="title">Copy and constants drift apart</span></div>
+  <div class="loc">various</div>
+  <div class="body"><p>"Starts in 5 min" is a literal while <code>reminderLead</code> is a constant 60 lines away; the NotchTests target comment claims "Foundation-only … no AppKit" while compiling SwiftUI/AppKit files (NotchState, Animations, HitRegion); Persistence.swift's threading comment is false; HUDManager's "tap can't be torn down" comment is wrong; ProcessScanner's "hook state keeps distinct sessions visible" claim is defeated by the reconciler's 30s purge. Comments in this codebase are load-bearing documentation — several now actively mislead.</p></div>
+</div>
+
+<h2 id="arch">8. Architecture flaws</h2>
+
+<div class="arch-item">
+  <h3>1. The concurrency model is annotation-deep, not enforcement-deep</h3>
+  <div class="body"><p><code>SWIFT_STRICT_CONCURRENCY: minimal</code> (project.yml:15) means the pervasive <code>@MainActor</code> annotations and <code>MainActor.assumeIsolated</code> hops are unchecked assertions. Three confirmed violations already exist (ScriptingMediaController and AdapterMediaController doing isolated work on GCD queues; BatteryManager's callback pattern diverging from the rest), and <code>AppEnvironment.start()</code>'s <code>assumeIsolated</code> is safe only because AudioHardware happens to dispatch to main — an invariant enforced nowhere. A strict-concurrency migration will surface all of these at once; better to fix them incrementally now, file by file, than under duress later.</p></div>
+</div>
+
+<div class="arch-item">
+  <h3>2. Lifecycle asymmetry: start() without stop() everywhere</h3>
+  <div class="body"><p>Nearly every long-lived object can start but not cleanly stop: <code>MediaControlling.stop()</code> is a dead protocol requirement, <code>SystemDefinedTap</code> and <code>BatteryManager</code> hold unretained self-pointers in C callbacks with no invalidation, <code>DirectoryWatcher</code>'s deinit races its own queue, <code>AgentSocketServer.bind</code> has no double-start guard, and runtime enable/disable of the agents feature is half-implemented (silent no-op on enable, in-flight tasks surviving disable). All of it is "safe because AppEnvironment owns everything for app lifetime" — a single implicit invariant carrying a dozen latent use-after-free and leak traps. Either make the objects genuinely restartable or document and assert the app-lifetime ownership.</p></div>
+</div>
+
+<div class="arch-item">
+  <h3>3. The event pipeline discards ordering, then trusts timestamps it created</h3>
+  <div class="body"><p>Socket envelopes travel: concurrent read queue → independent unstructured <code>Task</code> hops → ingest-time <code>Date()</code> stamps → a reducer that resolves hook-vs-transcript by comparing those stamps. Each stage is individually reasonable; composed, they mean the system can manufacture evidence that a stale event is the newest. Ordering should be established once, early (serial delivery queue or client sequence numbers), so the reducer's time comparisons mean what they say.</p></div>
+</div>
+
+<div class="arch-item">
+  <h3>4. Two sources of truth for compact-pill geometry</h3>
+  <div class="body"><p>The AppKit side (<code>HitRegion</code>/<code>NotchLayout</code>, driving click-through) and the SwiftUI side (<code>CompactView</code>'s actual layout) compute the pill's size independently, and they already disagree (fixed 18pt vs <code>shoulderInset + 9</code> padding; time-dependent timer labels; the stale-on-resize click-through region). The pure <code>LayoutSnapshot → HitRegion.rect</code> extraction is good; the missing piece is making SwiftUI consume the same numbers (or report its measured frame back) so the two can't drift, and re-running passthrough on content changes, not just pointer moves.</p></div>
+</div>
+
+<div class="arch-item">
+  <h3>5. Config-file surgery without a safety contract</h3>
+  <div class="body"><p><code>AgentConfigInstaller</code> edits a file it doesn't own (<code>~/.claude/settings.json</code>) with a substring marker, no locking, a full pretty-printed rewrite, and a recovery snapshot stored in a directory the user is likely to delete when removing the app. The refuse-to-clobber-unreadable guard and symlink write-through show the right instincts; the remaining edges (sections 2) are all consequences of treating a shared config as an exclusive resource. An exact-match marker, an advisory lock or read-verify-retry, and storing the statusLine snapshot inside settings.json itself (e.g. a <code>notchOriginalStatusLine</code> key) would close them.</p></div>
+</div>
+
+<div class="arch-item">
+  <h3>6. Composition root undermined by residual singletons</h3>
+  <div class="body"><p><code>AppEnvironment</code> is a textbook composition root, but <code>init()</code> hardcodes <code>Settings.shared</code> and <code>Haptics.tap</code> reads the global directly, while every manager takes settings by injection. Since <code>Settings(defaults:)</code> is public, a test-constructed Settings and the singleton can diverge. Pass settings into the root and let Haptics take its dependency.</p></div>
+</div>
+
+<div class="arch-item">
+  <h3>7. Single-slot callbacks as the app-internal event bus</h3>
+  <div class="body"><p><code>AudioHardware</code> exposes exactly one <code>onChange</code> and one <code>onRouteChange</code>, assigned by different owners; <code>DirectoryWatcher</code>, the providers, and <code>AgentSocketServer</code> follow the same single-closure pattern. Any future second consumer silently steals the slot. The rest of the app is Combine/ObservableObject-driven — publishers would match the house style and remove the clobbering hazard.</p></div>
+</div>
+
+<div class="arch-item">
+  <h3>8. Dead plumbing is accumulating</h3>
+  <div class="body"><p><code>renderingActive</code> is write-only (the occlusion-pause feature it implies doesn't exist), <code>MediaControlling.stop()</code> has no caller, <code>SettingRow</code> references a removed feature, <code>collapse(hasCompactContent:)</code> is always true, <code>topRadius</code> is ignored but animatable, the matched-geometry namespace threads through three views to do nothing, and <code>FocusManager.name</code> is never assigned. Individually trivial; collectively they misdescribe the system to the next reader. Worth a dedicated cleanup pass.</p></div>
+</div>
+
+<div class="arch-item">
+  <h3>9. The riskiest layer is the least tested</h3>
+  <div class="body"><p>The pure-core extraction strategy works — 71 passing tests pin StatusReducer, TranscriptParser, SessionReconciler, the installer, BatteryPolicy, CalendarReminders, and HitRegion. But the stateful orchestration where most of this report's agent-watch bugs live has zero coverage: <code>SocketAgentProvider</code> (the sole path for 3 of 4 agent kinds), <code>ClaudeCodeProvider</code>'s debounce/generation/disable races, and <code>AgentManager</code>'s routing and pill signature. SocketAgentProvider in particular is <code>@MainActor</code> with injectable closures and no I/O in its ingest path — unit-testable as-is.</p></div>
+</div>
+
+<h2 id="tests">9. Test coverage gaps</h2>
+<div class="finding">
+  <div class="head"><span class="badge med">Medium</span><span class="title">Specific missing tests, in priority order</span></div>
+  <div class="loc">Tests/</div>
+  <div class="body">
+    <p>• <b>SocketAgentProvider</b>: <code>mapStatus</code> normalization, staleness/pid prune, <code>emitEvents</code> dedup (needsAttention re-entry, started-on-first-envelope, ended handling). Every socket-provider bug above would have been caught here.</p>
+    <p>• <b>SessionReconciler</b>: carry-forward of <code>terminalFocusURL</code>/<code>lastPrompt</code>/<code>lastResponse</code>, hook-only tombstone exclusion, <code>emittedAttentionAt</code> cleanup on ended, missing-cwd path. <code>testHookOnlySessionKeptWithinGrace</code> asserts only non-nil.</p>
+    <p>• <b>StatusReducer</b>: adversarial <code>isIdleNotification</code> case (permission text containing "waiting"), Notification with nil message, Stop-induced <code>.finished</code> persisting across reconciles.</p>
+    <p>• <b>Provider lifecycle</b>: reconcile debounce coalescing, <code>reconcileGeneration</code> stale-scan guard, disable-during-reconcile, <code>endedSessionIDs</code> intersection pruning.</p>
+    <p>• <b>Installer</b>: the substring-marker false positive (a user hook containing "agent-hook"), statusLine restore with a missing snapshot — both are data-loss paths and both are pure enough to pin today.</p>
+    <p class="note">Maintenance note: the NotchTests target's hand-maintained <code>sources:</code> list (project.yml:100–115) means a tested file gaining a new dependency breaks the suite build — a recurring tax that argues for extracting the pure core into a small framework target.</p>
+  </div>
+</div>
+
+<h2 id="clean">10. Checked and found sound</h2>
+<ul class="clean">
+  <li><b>BatteryPolicy and CalendarReminders</b> — hysteresis dead band, re-arm on charge, per-occurrence reminder fan-out all verified correct with their tests.</li>
+  <li><b>AudioHardware queue confinement</b> — rebind/snapshot/listeners all on the private queue; no deadlock path found.</li>
+  <li><b>HitRegion / ScreenGeometry math</b> — consistent global bottom-left coordinates, multi-display handling correct (modulo the <code>NSScreen()</code> fallback noted above).</li>
+  <li><b>HookClient plumbing</b> — <code>sockaddr_un</code> handling, SIGPIPE suppression, and fail-open exit-0 semantics are correct.</li>
+  <li><b>Installer guardrails</b> — refuses to overwrite unreadable settings, writes through symlinks correctly (bounded chain resolution), preserves co-resident user hooks at inner-hook granularity.</li>
+  <li><b>TrayManager staging</b> — DispatchGroup + lock in <code>stageForShare</code> is race-free; <code>scan()</code> reads pipes to EOF before <code>waitUntilExit()</code>, so no pipe deadlock.</li>
+  <li><b>NotchState transition machine</b> — expand/collapse task cancellation, drop-pinning, and the isCollapsing hold are coherent (apart from the tab-reset timing above).</li>
+  <li><b>ImageCache</b> — cost-based eviction computes estimated cost correctly from the bitmap rep.</li>
+  <li><b>MarqueeText / view task lifecycles</b> — <code>.task(id:)</code> usage cancels correctly on unmount; no timer or task leaks found in the view layer.</li>
+  <li><b>Ownership graph</b> — all <code>unowned</code> manager references are held for app lifetime by AppEnvironment in correct init order.</li>
+</ul>
+
+<footer>
+  Generated 2026-07-02 against commit <code>9fc82ff</code> · six parallel subsystem review passes + manual verification of high-severity findings · logic test suite: 71/71 passing.
+</footer>
+
+</div>
+</body>
+</html>

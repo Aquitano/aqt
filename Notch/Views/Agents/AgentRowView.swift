@@ -10,10 +10,7 @@ struct AgentRowView: View {
     var body: some View {
         Button(action: onJump) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: session.kind.symbol)
-                    .font(.system(size: 16, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(kindTint)
+                PixelIcon(systemName: session.kind.symbol, size: 18, tint: kindTint)
                     .frame(width: 26)
 
                 VStack(alignment: .leading, spacing: 5) {
@@ -26,12 +23,13 @@ struct AgentRowView: View {
 
                     if let response = session.lastResponse, !response.isEmpty {
                         Text(response)
-                            .font(.system(size: 11))
+                            .font(.subheadline)
                             .foregroundStyle(.white.opacity(0.45))
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+
                 }
             }
             .padding(.horizontal, 14)
@@ -45,28 +43,29 @@ struct AgentRowView: View {
     }
 
     private var title: Text {
-        var text = Text(session.project)
-            .font(.system(size: 13, weight: .semibold))
+        let project = Text(session.project)
+            .font(.body.weight(.semibold))
             .foregroundStyle(.white)
         if let prompt = session.lastPrompt, !prompt.isEmpty {
-            text = text + Text("  \(prompt)")
-                .font(.system(size: 13))
+            let detail = Text(prompt)
+                .font(.body)
                 .foregroundStyle(.white.opacity(0.5))
+            return Text("\(project)  \(detail)")
         }
-        return text
+        return project
     }
 
     private var metaRow: some View {
         HStack(spacing: 6) {
             Circle().fill(statusColor).frame(width: 6, height: 6)
             Text(session.activityVerb ?? session.status.label)
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.6))
                 .lineLimit(1)
                 .truncationMode(.tail)
             if let branch = session.gitBranch, !branch.isEmpty {
                 Text("· \(branch)")
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.4))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -79,7 +78,7 @@ struct AgentRowView: View {
                 badge(terminal, tint: .white.opacity(0.5))
             }
             Text(uptime)
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .monospacedDigit()
                 .foregroundStyle(.white.opacity(0.45))
         }
@@ -87,7 +86,7 @@ struct AgentRowView: View {
 
     private func badge(_ text: String, tint: Color) -> some View {
         Text(text)
-            .font(.system(size: 10, weight: .semibold))
+            .font(.caption.weight(.semibold))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(tint.opacity(0.18), in: .capsule)
@@ -101,17 +100,12 @@ struct AgentRowView: View {
         case .codex: return .green
         case .openCode: return .cyan
         case .ohMyPi: return .mint
+        case .t3code: return .purple
         }
     }
 
     private var statusColor: Color {
-        switch session.status {
-        case .running, .tool: return .cyan
-        case .editing: return .blue
-        case .needsAttention: return .orange
-        case .finished: return .green
-        case .idle: return .white.opacity(0.4)
-        }
+        ActivityPresenter.agentTint(session.status)
     }
 
     private var uptime: String {

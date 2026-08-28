@@ -10,10 +10,9 @@ struct HUDOverlayView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: hud.muted ? "speaker.slash.fill" : hud.kind.symbol)
-                .font(.system(size: 15, weight: .semibold))
+            PixelIcon(systemName: hud.muted ? "speaker.slash.fill" : hud.kind.symbol,
+                      size: 17, tint: .white)
                 .frame(width: 22)
-                .contentTransition(.symbolEffect(.replace))
 
             progressBar
 

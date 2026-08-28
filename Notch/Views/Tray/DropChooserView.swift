@@ -13,26 +13,52 @@ struct DropChooserView: View {
         HStack(spacing: 12) {
             zone(
                 .keep,
-                title: "Keep",
-                subtitle: "Add to shelf",
+                title: keepTitle,
+                subtitle: keepSubtitle,
                 systemImage: "tray.and.arrow.down.fill"
             )
             zone(
                 .share,
-                title: settings.shareMethod.actionTitle,
-                subtitle: "Share now",
-                systemImage: settings.shareMethod.symbol
+                title: shareTitle,
+                subtitle: shareSubtitle,
+                systemImage: shareSymbol
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var keepTitle: String {
+        if state.isOptionMoveActive { return "Move to Shelf" }
+        switch state.activeDropRepresentation {
+        case .webURL: return "Keep Link"
+        case .plainText: return "Keep Text"
+        default: return "Keep"
+        }
+    }
+
+    private var keepSubtitle: String {
+        state.isOptionMoveActive ? "Original removed after verification" : "Add to Shelf"
+    }
+
+    private var shareTitle: String {
+        state.activeDropRepresentation == .webURL
+            ? "Open / Share"
+            : settings.shareMethod.actionTitle
+    }
+
+    private var shareSubtitle: String {
+        state.activeDropRepresentation == .plainText ? "Share text" : "Share now"
+    }
+
+    private var shareSymbol: String {
+        state.activeDropRepresentation == .webURL ? "link" : settings.shareMethod.symbol
+    }
+
     private func zone(_ id: DropZone, title: String, subtitle: String, systemImage: String) -> some View {
         let targeted = state.activeDropZone == id
         return VStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.system(size: 26, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
+            PixelIcon(systemName: systemImage, size: 28,
+                      tint: .white.opacity(targeted ? 1 : 0.85))
             VStack(spacing: 2) {
                 Text(title)
                     .font(.system(size: 14, weight: .semibold))
@@ -55,6 +81,6 @@ struct DropChooserView: View {
                 }
         }
         .scaleEffect(targeted ? 1.02 : 1)
-        .animation(.snappy(duration: 0.18), value: targeted)
+        .animation(state.reduceMotion ? nil : .snappy(duration: 0.18), value: targeted)
     }
 }

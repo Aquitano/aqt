@@ -4,7 +4,7 @@ import CoreGraphics
 /// Listen-only event tap on NX_SYSDEFINED. Never consumes events, so the system
 /// still changes volume/brightness and draws its own HUD; we just observe the
 /// key presses to render our overlay alongside. Needs Input Monitoring.
-final class SystemDefinedTap {
+final class SystemDefinedTap: @unchecked Sendable {
 
     enum MediaKey { case volumeUp, volumeDown, mute, brightnessUp, brightnessDown }
 

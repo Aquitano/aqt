@@ -8,7 +8,7 @@ import Foundation
 /// All access to `deviceID` and the address structs is confined to `queue`
 /// (listener blocks dispatch there too), so the synchronous `snapshot()` reads
 /// can't race the rebind that the default-device listener performs.
-final class AudioHardware {
+final class AudioHardware: @unchecked Sendable {
 
     /// volume 0...1, muted flag. Always delivered on the main queue.
     var onChange: ((Float, Bool) -> Void)?

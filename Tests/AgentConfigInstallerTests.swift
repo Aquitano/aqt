@@ -68,6 +68,56 @@ final class AgentConfigInstallerTests: XCTestCase {
         XCTAssertFalse(afterRemove.contains("agent-hook"), "our hook must be fully pruned")
     }
 
+    func testPreservesUserHookWhoseCommandContainsAgentHook() throws {
+        // A user hook named like ~/bin/my-agent-hook.sh contains the substring
+        // "agent-hook" but is not ours; a substring marker would silently delete it.
+        try writeSettings(#"""
+        { "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "/Users/me/bin/my-agent-hook.sh" } ] } ] } }
+        """#)
+
+        try installer.installClaudeHooks()
+        try installer.removeClaudeHooks()
+
+        XCTAssertTrue(try settingsText().contains("my-agent-hook.sh"),
+                      "a user hook merely containing \"agent-hook\" must survive our uninstall")
+        XCTAssertFalse(installer.claudeHooksInstalled())
+    }
+
+    // MARK: - statusLine usage wrapper
+
+    func testUsageUninstallRestoresOriginalStatusLineWhenSnapshotFileIsGone() throws {
+        try writeSettings(#"""
+        { "statusLine": { "type": "command", "command": "ccstatusline" } }
+        """#)
+
+        try installer.installClaudeUsage()
+        XCTAssertTrue(installer.claudeUsageInstalled())
+
+        // Simulate the user deleting ~/.notch while cleaning up, taking the on-disk
+        // snapshot with it.
+        try FileManager.default.removeItem(at: home.appendingPathComponent(".notch"))
+
+        try installer.removeClaudeUsage()
+
+        let line = try XCTUnwrap(settingsObject()["statusLine"] as? [String: Any])
+        XCTAssertEqual(line["command"] as? String, "ccstatusline",
+                       "the user's original statusLine must be restored from the in-settings backup")
+    }
+
+    func testUsageUninstallRemovesWrapperWhenUserHadNoStatusLine() throws {
+        try writeSettings("{}")
+
+        try installer.installClaudeUsage()
+        XCTAssertTrue(installer.claudeUsageInstalled())
+
+        try FileManager.default.removeItem(at: home.appendingPathComponent(".notch"))
+        try installer.removeClaudeUsage()
+
+        XCTAssertNil(try settingsObject()["statusLine"], "no original -> our wrapper is removed")
+        XCTAssertFalse(try settingsText().contains("notchStatusLineBackup"),
+                       "our private backup key must not linger after uninstall")
+    }
+
     func testRefusesToClobberUnreadableSettings() throws {
         let garbage = "{ not valid json"
         try writeSettings(garbage)
@@ -94,5 +144,25 @@ final class AgentConfigInstallerTests: XCTestCase {
         XCTAssertEqual(dest, real.path, "settings.json must remain a symlink to the real file")
         XCTAssertTrue(try String(contentsOf: real, encoding: .utf8).contains("agent-hook"),
                       "the real target must receive the hooks")
+    }
+
+    func testConcurrentEditIsMergedInsteadOfOverwritten() throws {
+        try writeSettings(#"{"theme":"dark"}"#)
+        var intervened = false
+        installer = AgentConfigInstaller(home: home) { url in
+            guard !intervened else { return }
+            intervened = true
+            let data = try! Data(contentsOf: url)
+            var object = try! JSONSerialization.jsonObject(with: data) as! [String: Any]
+            object["concurrentEdit"] = "preserve me"
+            let changed = try! JSONSerialization.data(withJSONObject: object)
+            try! changed.write(to: url, options: .atomic)
+        }
+
+        try installer.installClaudeHooks()
+
+        let result = try settingsObject()
+        XCTAssertEqual(result["concurrentEdit"] as? String, "preserve me")
+        XCTAssertNotNil(result["hooks"], "Notch's hook merge should retry against the new file")
     }
 }

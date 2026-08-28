@@ -8,6 +8,15 @@ final class NotchPanel: NSPanel {
     /// Flipped true only for the duration of an AirDrop / share interaction.
     var presentingShareSheet = false
 
+    /// Flipped true while the quick-note editor holds focus, so typing reaches it.
+    var editingText = false
+
+    /// Flipped while the tray owns keyboard selection/paste handling.
+    var interactingWithTray = false
+
+    /// Separate latch for the system Quick Look panel lifecycle.
+    var previewing = false
+
     init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
@@ -32,7 +41,9 @@ final class NotchPanel: NSPanel {
         animationBehavior = .none
     }
 
-    override var canBecomeKey: Bool { presentingShareSheet }
+    override var canBecomeKey: Bool {
+        presentingShareSheet || editingText || interactingWithTray || previewing
+    }
     override var canBecomeMain: Bool { false }
-    override var acceptsFirstResponder: Bool { presentingShareSheet }
+    override var acceptsFirstResponder: Bool { canBecomeKey }
 }

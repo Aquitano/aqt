@@ -26,21 +26,33 @@ final class ActivityManager: ObservableObject {
         }
     }
 
+    /// Now Playing owns a dedicated compact presentation (artwork + meter), so
+    /// its bookkeeping activity must never reappear as a generic music-note pill
+    /// when that presentation is disabled.
+    private var compactOrdered: [Activity] {
+        ordered.filter { !isNowPlaying($0) }
+    }
+
     var compactActivity: Activity? {
-        let list = ordered
+        let list = compactOrdered
         guard !list.isEmpty else { return nil }
         return list[cycleOffset % list.count]
     }
 
+    var compactActivityCount: Int { compactOrdered.count }
+
     // MARK: - Mutation
 
     func publish(_ activity: Activity) {
-        // Resetting the cycle only on a genuinely new entry keeps an in-place
-        // channel update (e.g. an agent's running -> editing) from yanking the
-        // pill back to the top while the user is cycling through activities.
+        // Resetting the cycle and firing the attention pop only on a genuinely new
+        // entry keeps an in-place channel update (e.g. an agent's running -> editing,
+        // or a charging-percent tick) from yanking the pill back to the top or
+        // replaying the pop on every status flip.
         let replaced = replaceOrInsert(activity)
-        if !replaced { cycleOffset = 0 }
-        lastEventID = activity.id
+        if !replaced {
+            cycleOffset = 0
+            lastEventID = activity.id
+        }
         scheduleTTL(activity)
         state.showCompact()
     }
@@ -76,6 +88,21 @@ final class ActivityManager: ObservableObject {
         ids.forEach { remove(id: $0) }
     }
 
+    func publishScreenshotCandidates(_ candidates: [ScreenshotCandidate]) {
+        publish(Activity(
+            kind: .screenshotCandidates(candidates), priority: .high,
+            createdAt: Date(), ttl: 30
+        ))
+    }
+
+    func removeScreenshotCandidates() {
+        let ids = activities.compactMap { activity -> UUID? in
+            if case .screenshotCandidates = activity.kind { return activity.id }
+            return nil
+        }
+        ids.forEach { remove(id: $0) }
+    }
+
     /// Open the panel on the Agents tab — used when a session needs attention and
     /// the user opted into auto-expand.
     func requestAutoExpand() {
@@ -93,7 +120,7 @@ final class ActivityManager: ObservableObject {
     /// Rotate which queued activity the compact pill shows. `cycleOffset` is not a
     /// `@Published` property, so notify observers explicitly.
     func cycle(forward: Bool = true) {
-        let count = activities.count
+        let count = compactOrdered.count
         guard count > 1 else { return }
         objectWillChange.send()
         cycleOffset = ((cycleOffset + (forward ? 1 : -1)) % count + count) % count
@@ -102,9 +129,11 @@ final class ActivityManager: ObservableObject {
     /// Media owns whether a now-playing activity exists.
     func setNowPlaying(active: Bool) {
         if active {
-            if !activities.contains(where: { isNowPlaying($0) }) {
-                replaceOrInsert(Activity(kind: .nowPlaying, priority: .ambient, createdAt: Date()))
-            }
+            // Go through publish() (not a bare replaceOrInsert) so starting playback
+            // while the notch is hidden surfaces the compact pill and keeps the
+            // lastEventID/TTL bookkeeping this class is built around.
+            guard !activities.contains(where: { isNowPlaying($0) }) else { return }
+            publish(Activity(kind: .nowPlaying, priority: .ambient, createdAt: Date()))
         } else {
             activities.removeAll { isNowPlaying($0) }
         }
@@ -143,6 +172,7 @@ final class ActivityManager: ObservableObject {
         case let .deviceConnected(name, _, _): return "device.\(name)"
         case let .audioRoute(name, _): return "route.\(name)"
         case .agent: return "agents"
+        case .screenshotCandidates: return "screenshots"
         case .peek, .timer: return nil
         }
     }

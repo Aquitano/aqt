@@ -8,8 +8,7 @@ struct TileHeader: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: systemImage)
-                .font(.system(size: 10, weight: .semibold))
+            PixelIcon(systemName: systemImage, size: 11, tint: .white.opacity(0.55))
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
         }
