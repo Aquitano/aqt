@@ -10,6 +10,8 @@ final class NotchPanelHost {
     let displayKey: String
     let state: NotchState
     let panel: NotchPanel
+    /// Hover target for the compact pill while `panel` is click-through.
+    let hoverSensor: HoverSensorPanel
 
     private let env: AppEnvironment
     private let hostingView: NSHostingView<AnyView>
@@ -20,6 +22,8 @@ final class NotchPanelHost {
 
     var onPresentationChange: ((NotchState.Presentation) -> Void)?
     var onTabChange: ((NotchState.ExpandedTab) -> Void)?
+    var onHoverChange: ((Bool) -> Void)?
+    var onHoverSensorEntered: (() -> Void)?
 
     init(env: AppEnvironment, geometry: ScreenGeometry) {
         self.env = env
@@ -27,7 +31,9 @@ final class NotchPanelHost {
         self.geometry = geometry
         self.state = NotchState()
         self.panel = NotchPanel(contentRect: geometry.panelFrame)
+        self.hoverSensor = HoverSensorPanel()
         self.hostingView = NSHostingView(rootView: AnyView(EmptyView()))
+        hoverSensor.onEnter = { [weak self] in self?.onHoverSensorEntered?() }
 
         hostingView.frame = NSRect(origin: .zero, size: geometry.panelFrame.size)
         hostingView.autoresizingMask = [.width, .height]
@@ -42,6 +48,11 @@ final class NotchPanelHost {
         state.$expandedTab
             .dropFirst()
             .sink { [weak self] in self?.onTabChange?($0) }
+            .store(in: &cancellables)
+        state.$isHovering
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] in self?.onHoverChange?($0) }
             .store(in: &cancellables)
 
         rebuildRoot()
@@ -77,6 +88,7 @@ final class NotchPanelHost {
 
     func orderOut() {
         panel.orderOut(nil)
+        hoverSensor.orderOut(nil)
     }
 
     private func rebuildRoot() {

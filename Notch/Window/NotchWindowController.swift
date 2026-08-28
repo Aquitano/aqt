@@ -17,6 +17,14 @@ final class NotchWindowController {
     private var compactHitRegions: [String: NSRect] = [:]
     private var cancellables = Set<AnyCancellable>()
     private var mouseMonitors: [Any] = []
+    /// Global left-mouse-up monitor, installed only for the duration of a drag session.
+    private var dragUpMonitor: Any?
+    /// Low-rate pointer poll for follow-the-pointer on several displays
+    /// (see `updatePointerDisplayPolling`).
+    private var pointerDisplayTask: Task<Void, Never>?
+    /// Per-host guard for a compact panel left interactive with the pointer gone
+    /// (see `applyPassthrough`).
+    private var passthroughWatchdogs: [String: Task<Void, Never>] = [:]
     private var handlingHostChange = false
 
     private var isDragSessionActive = false
@@ -48,6 +56,10 @@ final class NotchWindowController {
 
     func stop() {
         activeDisplayTask?.cancel()
+        pointerDisplayTask?.cancel()
+        for task in passthroughWatchdogs.values { task.cancel() }
+        passthroughWatchdogs.removeAll()
+        removeDragUpMonitor()
         for monitor in mouseMonitors { NSEvent.removeMonitor(monitor) }
         mouseMonitors.removeAll()
         for host in hosts.values { host.orderOut() }
@@ -71,6 +83,9 @@ final class NotchWindowController {
             hosts[key]?.orderOut()
             hosts[key]?.onPresentationChange = nil
             hosts[key]?.onTabChange = nil
+            hosts[key]?.onHoverChange = nil
+            hosts[key]?.onHoverSensorEntered = nil
+            passthroughWatchdogs.removeValue(forKey: key)?.cancel()
             hosts[key] = nil
         }
 
@@ -95,6 +110,14 @@ final class NotchWindowController {
                 host.onTabChange = { [weak self] tab in
                     self?.hostTabChanged(displayKey: display.key, tab: tab)
                 }
+                host.onHoverChange = { [weak self] _ in
+                    guard let self, let host = self.hosts[display.key] else { return }
+                    self.applyPassthrough(host, mouseLocation: NSEvent.mouseLocation)
+                }
+                host.onHoverSensorEntered = { [weak self] in
+                    guard let self, let host = self.hosts[display.key] else { return }
+                    self.hoverSensorEntered(host)
+                }
                 hosts[display.key] = host
             }
         }
@@ -107,6 +130,7 @@ final class NotchWindowController {
         updateHostRoles()
         syncGlobalPresentation(env.state.presentation)
         applyAll()
+        updatePointerDisplayPolling()
     }
 
     private func prepareInteractionHostForRemoval(desiredKeys: Set<String>) {
@@ -133,11 +157,7 @@ final class NotchWindowController {
             host.panel.editingText = false
             host.panel.interactingWithTray = false
             host.panel.previewing = false
-            if dragHostKey == key {
-                isDragSessionActive = false
-                dragHostKey = nil
-                host.state.endDropTargeting()
-            }
+            if dragHostKey == key { endDragSession(host) }
             env.state.collapseImmediately()
         }
     }
@@ -292,8 +312,15 @@ final class NotchWindowController {
 
         Publishers.CombineLatest(env.state.$presentation, env.hud.$isVisible)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] presentation, _ in
-                self?.syncGlobalPresentation(presentation)
+            .sink { [weak self] presentation, hudVisible in
+                guard let self else { return }
+                // With a notch on every display the HUD belongs on the pointer's
+                // display; resolve that now rather than tracking the pointer.
+                if hudVisible, self.env.settings.displayPlacement == .all,
+                   let key = self.displayKeyAtPointer(), self.hosts[key] != nil {
+                    self.activateDisplay(key)
+                }
+                self.syncGlobalPresentation(presentation)
             }
             .store(in: &cancellables)
 
@@ -344,10 +371,13 @@ final class NotchWindowController {
 
     // MARK: - Pointer and drag routing
 
+    /// Only local monitors, plus one global monitor for drags. Pointer moves reach
+    /// us via each host's `HoverSensorPanel` (while the panel is click-through) or
+    /// the panel itself (once interactive), so the app is not woken by every
+    /// system-wide mouse move, scroll, or click. Scroll and middle-click on the
+    /// compact pill arrive locally because the sensor has already made the panel
+    /// interactive by then.
     private func setupMouseTracking() {
-        let globalMove = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
-            self?.pointerMoved()
-        }
         let localMove = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
             self?.pointerMoved()
             return event
@@ -355,49 +385,66 @@ final class NotchWindowController {
         let globalDrag = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDragged]) { [weak self] _ in
             self?.dragMoved()
         }
-        let globalUp = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] _ in
-            self?.dragEnded()
-        }
-        let scrollGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
-            self?.scrollWheel(event)
-        }
         let scrollLocal = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
             self?.scrollWheel(event)
             return event
-        }
-        let middleGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.otherMouseDown]) { [weak self] event in
-            self?.otherMouseDown(event)
         }
         let middleLocal = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown]) { [weak self] event in
             self?.otherMouseDown(event)
             return event
         }
-        mouseMonitors = [globalMove, localMove, globalDrag, globalUp,
-                         scrollGlobal, scrollLocal, middleGlobal, middleLocal].compactMap { $0 }
+        mouseMonitors = [localMove, globalDrag, scrollLocal, middleLocal].compactMap { $0 }
     }
 
     private func pointerMoved() {
-        if isDragSessionActive {
-            isDragSessionActive = false
-            dragHost?.state.endDropTargeting()
-            dragHostKey = nil
-        }
+        if isDragSessionActive, let host = dragHost { endDragSession(host) }
         for host in hosts.values where host.state.activeDropZone != nil {
             host.state.activeDropZone = nil
         }
+        applyPassthroughAtPointer()
+    }
 
-        if env.settings.displayPlacement == .all {
-            if let key = displayKeyAtPointer(),
-               hosts[key] != nil, key != activeDisplayKey {
-                activeDisplayKey = key
-                if env.state.presentation != .expanded { interactionHostKey = key }
-                updateHostRoles()
-                applyAll()
+    /// The pointer landed on a compact pill while its panel was click-through:
+    /// make the panel interactive so SwiftUI hover tracking takes over.
+    private func hoverSensorEntered(_ host: NotchPanelHost) {
+        guard host.state.presentation == .compact, host.panel.isVisible else { return }
+        if env.settings.displayPlacement == .all { activateDisplay(host.displayKey) }
+        setIgnoresMouseEvents(false, on: host)
+        armPassthroughWatchdog(host)
+    }
+
+    // MARK: - Pointer display tracking
+
+    /// Follow-the-pointer moves the single notch to whichever display the pointer
+    /// is on, which needs the pointer's position even when it is nowhere near a
+    /// notch. Poll at a low rate for that case only; with a notch on every display
+    /// the sensors and the HUD resolve the active display on demand, and a single
+    /// display needs nothing.
+    private func updatePointerDisplayPolling() {
+        let wanted = displayInventory.count > 1
+            && env.settings.displayPlacement != .all
+            && env.settings.followActiveDisplay
+        guard wanted != (pointerDisplayTask != nil) else { return }
+        if wanted {
+            pointerDisplayTask = Task { @MainActor [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    guard let self, !Task.isCancelled else { return }
+                    self.considerActiveDisplay()
+                }
             }
         } else {
-            considerActiveDisplay()
+            pointerDisplayTask?.cancel()
+            pointerDisplayTask = nil
         }
-        applyPassthroughAtPointer()
+    }
+
+    private func activateDisplay(_ key: String) {
+        guard key != activeDisplayKey else { return }
+        activeDisplayKey = key
+        if env.state.presentation != .expanded { interactionHostKey = key }
+        updateHostRoles()
+        applyAll()
     }
 
     private func considerActiveDisplay() {
@@ -443,6 +490,7 @@ final class NotchWindowController {
             host.state.activeDropRepresentation = representation
             host.state.beginDropTargeting()
             updateHostRoles()
+            installDragUpMonitor()
         }
         guard let host = dragHost else { return }
         host.state.isOptionMoveActive = env.settings.trayMoveEnabled
@@ -480,13 +528,30 @@ final class NotchWindowController {
 
     private func dragEnded() {
         guard isDragSessionActive, let host = dragHost else { return }
-        isDragSessionActive = false
-        dragHostKey = nil
-        host.state.endDropTargeting()
+        endDragSession(host)
         if !interactiveContentRect(for: host).contains(NSEvent.mouseLocation) {
             host.state.collapse()
         }
         updatePassthrough()
+    }
+
+    private func endDragSession(_ host: NotchPanelHost) {
+        isDragSessionActive = false
+        dragHostKey = nil
+        host.state.endDropTargeting()
+        removeDragUpMonitor()
+    }
+
+    private func installDragUpMonitor() {
+        guard dragUpMonitor == nil else { return }
+        dragUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] _ in
+            self?.dragEnded()
+        }
+    }
+
+    private func removeDragUpMonitor() {
+        if let monitor = dragUpMonitor { NSEvent.removeMonitor(monitor) }
+        dragUpMonitor = nil
     }
 
     private func dragDropZone(_ host: NotchPanelHost) -> NSRect {
@@ -517,21 +582,53 @@ final class NotchWindowController {
         }
     }
 
+    /// Decide whether the panel is interactive or click-through, and show the
+    /// hover sensor only in the compact state (the only one where the panel can
+    /// be click-through while still needing to notice the pointer).
     private func applyPassthrough(_ host: NotchPanelHost, mouseLocation: NSPoint) {
-        guard host.panel.isVisible else { return }
+        guard host.panel.isVisible else {
+            host.hoverSensor.update(rect: nil)
+            return
+        }
         if isDragSessionActive, dragHostKey == host.displayKey {
             setIgnoresMouseEvents(false, on: host)
+            host.hoverSensor.update(rect: nil)
             return
         }
         switch host.state.presentation {
         case .expanded:
             setIgnoresMouseEvents(false, on: host)
+            host.hoverSensor.update(rect: nil)
         case .hidden:
             setIgnoresMouseEvents(true, on: host)
+            host.hoverSensor.update(rect: nil)
         case .compact:
             let hit = compactHitRegions[host.displayKey]
                 ?? interactiveContentRect(for: host).insetBy(dx: -4, dy: -4)
-            setIgnoresMouseEvents(!hit.contains(mouseLocation), on: host)
+            let inside = host.state.isHovering || hit.contains(mouseLocation)
+            setIgnoresMouseEvents(!inside, on: host)
+            host.hoverSensor.update(rect: hit)
+            if inside { armPassthroughWatchdog(host) }
+        }
+    }
+
+    /// A compact panel made interactive by the sensor only learns the pointer
+    /// left through its own mouse-moved events, which stop once the pointer is
+    /// outside the panel frame. Re-check at a low rate until the panel is
+    /// click-through again (or hovering / expanded, where SwiftUI reports exit).
+    private func armPassthroughWatchdog(_ host: NotchPanelHost) {
+        let key = host.displayKey
+        guard passthroughWatchdogs[key] == nil else { return }
+        passthroughWatchdogs[key] = Task { @MainActor [weak self] in
+            defer { self?.passthroughWatchdogs[key] = nil }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard let self, !Task.isCancelled, let host = self.hosts[key] else { return }
+                guard host.state.presentation == .compact,
+                      !host.state.isHovering,
+                      !host.panel.ignoresMouseEvents else { return }
+                self.applyPassthrough(host, mouseLocation: NSEvent.mouseLocation)
+            }
         }
     }
 
