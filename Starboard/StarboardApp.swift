@@ -112,6 +112,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        // Persistence is coalesced to the next run-loop turn; a quit in the
+        // same turn as a change must not lose it.
+        settings.flush()
+    }
+
     func setEnabled(_ enabled: Bool) {
         state.starboardEnabled = enabled
         syncTap()
