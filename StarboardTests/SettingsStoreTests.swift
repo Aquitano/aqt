@@ -12,6 +12,7 @@ final class SettingsStoreTests: XCTestCase {
         let (store, defaults) = makeStore()
         store.model.customAssignments["k"] = "com.tinyspeck.slackmacgap"
         store.model.repeatPress = .hide
+        store.flush()
 
         let reloaded = SettingsStore(defaults: defaults)
         XCTAssertEqual(reloaded.model.customAssignments["k"], "com.tinyspeck.slackmacgap")
@@ -41,5 +42,14 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.model.customAssignments["s"], "com.apple.Safari")
         XCTAssertEqual(store.model.repeatPress, .cycleWindows)
         XCTAssertFalse(store.model.windowJumpEnabled)
+    }
+
+    func testWritesAreCoalescedUntilFlush() throws {
+        let (store, defaults) = makeStore()
+        store.model.windowJumpEnabled = true
+        XCTAssertNil(defaults.data(forKey: "starboard.settings"))
+
+        store.flush()
+        XCTAssertNotNil(defaults.data(forKey: "starboard.settings"))
     }
 }

@@ -21,6 +21,7 @@ BATTLEPLAN.md. Prereq: Accessibility granted; Safari, Slack, Spotify running.
 - [ ] rcmd+ralt+K pins the frontmost app to K; toast confirms.
 - [ ] Quit and relaunch Starboard; rcmd+K still works, even launching the pinned app from cold.
 - [ ] Settings shows the pin with a CUSTOM badge; Clear removes it.
+- [ ] Settings → Backup → Import a JSON with different toggles: every switch redraws to the imported value.
 
 ## Phase 3 — search
 
@@ -45,6 +46,8 @@ BATTLEPLAN.md. Prereq: Accessibility granted; Safari, Slack, Spotify running.
 - [ ] rcmd+[ and rcmd+] jump to adjacent Spaces.
 - [ ] Instant engine: same jumps with no swipe animation; menu bar shows the Space number when enabled.
 - [ ] ralt+2 (Instant + toggle on) moves the focused window to Space 2.
+- [ ] Two displays with "Displays have separate Spaces": rcmd+3 switches the display the pointer is on.
+- [ ] Compatible engine selected: the move-window and Space-number toggles are disabled under an Instant-engine note.
 
 ## Phase 6 — Stages
 
@@ -52,6 +55,8 @@ BATTLEPLAN.md. Prereq: Accessibility granted; Safari, Slack, Spotify running.
 - [ ] Save "Writing" on W with Notes + Safari and a URL item; switch away; Caps Lock, W restores both, opens the URL, hides everything else.
 - [ ] Repeat Caps Lock, W: re-hides intruders without reopening items.
 - [ ] Caps Lock, `-`: closes only the Stage's windows; apps stay running.
+- [ ] Quit the Stage's first app, then Caps Lock, W: it launches and ends up frontmost.
+- [ ] Caps Lock, `=` twice in a row: only one save sheet is on screen.
 
 ## Phase 7 — polish
 

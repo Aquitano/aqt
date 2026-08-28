@@ -54,9 +54,13 @@ final class SpacesController {
             var value: CFTypeRef?
             guard AXUIElementCopyAttributeValue(
                 appElement, kAXFocusedWindowAttribute as CFString, &value
-            ) == .success, let focused = value else { return }
+            ) == .success, let focused = value,
+                CFGetTypeID(focused) == AXUIElementGetTypeID() else { return }
+            // Swift has no checked cast for CoreFoundation types; the type ID
+            // guard above is the check.
+            let element = unsafeDowncast(focused, to: AXUIElement.self)
             var windowID = CGWindowID(0)
-            guard _AXUIElementGetWindow(focused as! AXUIElement, &windowID) == .success else {
+            guard _AXUIElementGetWindow(element, &windowID) == .success else {
                 return
             }
             direct.move(windowID: windowID, toSpace: index)

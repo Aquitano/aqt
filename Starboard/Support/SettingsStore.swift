@@ -104,8 +104,12 @@ final class SettingsStore {
     private let defaults: UserDefaults
 
     var model: Model {
-        didSet { persist() }
+        didSet { schedulePersist() }
     }
+
+    /// Persisting encodes the whole model, so bursts of mutations (pinning
+    /// mid-hold, typing in the Stage items editor) coalesce into one write.
+    @ObservationIgnored private var persistPending = false
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -117,13 +121,19 @@ final class SettingsStore {
         }
     }
 
-    func assignment(for letter: Character) -> String? {
-        model.customAssignments[letter.lowercased()]
-    }
-
-    private func persist() {
+    /// Writes a coalesced change immediately. Call before reading the defaults
+    /// back; the app itself never has to.
+    func flush() {
+        guard persistPending else { return }
+        persistPending = false
         guard let data = try? JSONEncoder().encode(model) else { return }
         defaults.set(data, forKey: Self.key)
+    }
+
+    private func schedulePersist() {
+        guard !persistPending else { return }
+        persistPending = true
+        DispatchQueue.main.async { [weak self] in self?.flush() }
     }
 
     // MARK: - Export / import

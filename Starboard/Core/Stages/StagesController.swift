@@ -24,6 +24,9 @@ final class StagesController {
     // MARK: - Save
 
     func beginSave() {
+        // A second leader+`=` replaces the sheet; the old one has no close
+        // button, so it would otherwise linger unreachable.
+        closeSaveWindow()
         let captured = capturedApps()
         guard !captured.isEmpty else {
             ToastHUD.shared.show(message: "No visible apps to save")
@@ -100,11 +103,22 @@ final class StagesController {
         let runningIDs = Set(stage.apps.compactMap { runningApp($0.bundleID)?.bundleIdentifier })
         let fullRestore = Self.restoreMode(for: stage, runningBundleIDs: runningIDs) == .fullRestore
 
+        // The Stage's first app ends up frontmost. When it has to be launched
+        // it isn't running yet by the time the hides below finish, so it can
+        // only be activated from the launch completion.
+        let leadBundleID = stage.apps.first?.bundleID
+        var launchedLead = false
+
         for stageApp in stage.apps {
             if let app = runningApp(stageApp.bundleID) {
                 app.unhide()
             } else if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: stageApp.bundleID) {
-                NSWorkspace.shared.openApplication(at: url, configuration: .init())
+                let isLead = stageApp.bundleID == leadBundleID
+                launchedLead = launchedLead || isLead
+                NSWorkspace.shared.openApplication(at: url, configuration: .init()) { app, _ in
+                    guard isLead, let app else { return }
+                    Task { @MainActor in app.activateReliably() }
+                }
             }
             if fullRestore {
                 stageApp.openItems.forEach(openItem)
@@ -118,7 +132,7 @@ final class StagesController {
             app.hide()
         }
 
-        if let first = stage.apps.first, let app = runningApp(first.bundleID) {
+        if !launchedLead, let leadBundleID, let app = runningApp(leadBundleID) {
             app.activateReliably()
         }
         activeStageID = stage.id

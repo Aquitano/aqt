@@ -35,20 +35,16 @@ final class DirectSpaceSwitcher {
 
     var canMoveWindows: Bool { moveWindows != nil }
 
-    /// 1-based index of the active Space among the main display's user Spaces.
+    /// 1-based index of the active Space among the active display's user Spaces.
     var currentSpaceIndex: Int? {
-        guard let display = mainDisplay(),
+        guard let display = activeDisplay(),
               let current = (display["Current Space"] as? [String: Any])?["ManagedSpaceID"] as? Int64
         else { return nil }
         return userSpaceIDs(of: display).firstIndex(of: UInt64(current)).map { $0 + 1 }
     }
 
-    var userSpaceCount: Int {
-        mainDisplay().map { userSpaceIDs(of: $0).count } ?? 0
-    }
-
     func jump(to index: Int) {
-        guard let display = mainDisplay(),
+        guard let display = activeDisplay(),
               let identifier = display["Display Identifier"] as? String else { return }
         let spaces = userSpaceIDs(of: display)
         guard spaces.indices.contains(index - 1) else { return }
@@ -63,7 +59,7 @@ final class DirectSpaceSwitcher {
     /// Moves one window (by CGWindowID) to the Space at 1-based `index`.
     func move(windowID: CGWindowID, toSpace index: Int) {
         guard let moveWindows,
-              let display = mainDisplay() else { return }
+              let display = activeDisplay() else { return }
         let spaces = userSpaceIDs(of: display)
         guard spaces.indices.contains(index - 1) else { return }
         moveWindows(connection, [NSNumber(value: windowID)] as CFArray, spaces[index - 1])
@@ -71,12 +67,29 @@ final class DirectSpaceSwitcher {
 
     // MARK: - Managed display parsing
 
-    private func mainDisplay() -> [String: Any]? {
+    /// The managed display the pointer is on — the one Mission Control acts on
+    /// when "Displays have separate Spaces" is enabled. SkyLight identifies
+    /// displays by their CoreGraphics UUID string, but not on every macOS (a
+    /// single-display setup reports "Main"), so an unmatched pointer falls back
+    /// to the first display.
+    private func activeDisplay() -> [String: Any]? {
         guard let array = copySpaces(connection)?.takeRetainedValue() as? [[String: Any]] else {
             return nil
         }
-        // The first managed display is the one with the menu bar focus.
-        return array.first
+        guard array.count > 1, let uuid = pointerDisplayUUID() else { return array.first }
+        return array.first { ($0["Display Identifier"] as? String) == uuid } ?? array.first
+    }
+
+    /// CoreGraphics rather than NSScreen/NSEvent: `move(windowID:toSpace:)` is
+    /// called off the main thread.
+    private func pointerDisplayUUID() -> String? {
+        guard let location = CGEvent(source: nil)?.location else { return nil }
+        var displayID = CGDirectDisplayID(0)
+        var count: UInt32 = 0
+        guard CGGetDisplaysWithPoint(location, 1, &displayID, &count) == .success, count == 1,
+              let uuid = CGDisplayCreateUUIDFromDisplayID(displayID)?.takeRetainedValue()
+        else { return nil }
+        return CFUUIDCreateString(nil, uuid) as String
     }
 
     /// User Spaces only (type 0) — fullscreen app Spaces are not numbered.
