@@ -39,6 +39,9 @@ final class AppSwitcher {
     private var holdTask: Task<Void, Never>?
     private var holdOverlayDue = false
 
+    private var cachedAssigner: LetterAssigner?
+    private var cachedPins: [String: String]?
+
     init(registry: AppRegistry, settings: SettingsStore) {
         self.registry = registry
         self.settings = settings
@@ -96,7 +99,6 @@ final class AppSwitcher {
 
     /// ralt+letter: step through the windows of the letter's app.
     private func jumpWindows(letter: Character) {
-        registry.refresh()
         let pairs = runningPairs()
         guard let target = assigner.apps(for: letter, in: pairs.map(\.candidate)).first,
               let app = pairs.first(where: { $0.candidate.bundleID == target.bundleID })?.app else {
@@ -158,6 +160,9 @@ final class AppSwitcher {
     /// panel. When it fires it shows whatever the hold has produced so far —
     /// the one-letter query's results, or, if nothing was typed, the letter map.
     func holdBegan() {
+        // The first Tab or backtick of the hold reads the window list on the
+        // main thread; warm it now so that read is a cache hit.
+        WindowEnumerator.prime()
         holdTask?.cancel()
         holdOverlayDue = false
         holdTask = Task { [weak self] in
@@ -170,7 +175,6 @@ final class AppSwitcher {
     private func showHoldOverlay() {
         holdOverlayDue = true
         if !searchModel.isVisible {
-            registry.refresh()
             searchModel.beginHold(candidates: runningPairs().map(\.candidate), assigner: assigner)
         }
         syncSearchPanel()
@@ -182,14 +186,21 @@ final class AppSwitcher {
         holdOverlayDue = false
     }
 
+    /// Rebuilt only when the pins change — every intent asks for it, and
+    /// folding the settings dictionary on each key press is pure overhead.
     private var assigner: LetterAssigner {
-        LetterAssigner(
+        let pins = settings.model.customAssignments
+        if let cachedAssigner, cachedPins == pins { return cachedAssigner }
+        let built = LetterAssigner(
             customAssignments: Dictionary(
-                uniqueKeysWithValues: settings.model.customAssignments.compactMap { key, value in
+                uniqueKeysWithValues: pins.compactMap { key, value in
                     key.lowercased().first.map { ($0, value) }
                 }
             )
         )
+        cachedPins = pins
+        cachedAssigner = built
+        return built
     }
 
     /// rcmd+ralt+letter: pin the frontmost app to `letter`, persisted by bundle
@@ -206,7 +217,6 @@ final class AppSwitcher {
     }
 
     private func switchTo(letter: Character) {
-        registry.refresh()
         let pairs = runningPairs()
         let matches = assigner.apps(for: letter, in: pairs.map(\.candidate))
         let frontmostID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
@@ -243,7 +253,6 @@ final class AppSwitcher {
 
     /// Tab (or repeat press with hide-on-repeat off): advance the letter's ring.
     private func cycle(letter: Character) {
-        registry.refresh()
         let pairs = runningPairs()
         if holdCycles[letter] == nil {
             holdCycles[letter] = assigner.apps(for: letter, in: pairs.map(\.candidate)).map(\.bundleID)

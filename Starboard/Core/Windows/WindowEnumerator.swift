@@ -8,6 +8,8 @@ struct WindowInfo: Equatable, Identifiable {
     let appName: String
     let bundleID: String?
     let title: String?
+    /// False for minimized windows and windows on other Spaces.
+    let isOnScreen: Bool
 
     var displayTitle: String {
         if let title, !title.isEmpty { return title }
@@ -15,9 +17,10 @@ struct WindowInfo: Equatable, Identifiable {
     }
 }
 
-/// Lists the current Space's visible windows front-to-back. On-screen-only
-/// enumeration inherently excludes minimized windows and other Spaces — exactly
-/// the Cmd-Tab-replacement filter (BATTLEPLAN §3.5).
+/// Lists windows front-to-back. One CGWindowList pass covers both audiences:
+/// `visibleWindows()` is the Cmd-Tab-replacement filter (current Space, not
+/// minimized, BATTLEPLAN §3.5), `allWindows()` is what search offers so a
+/// minimized or other-Space window is still reachable by name.
 enum WindowEnumerator {
     private struct Cache {
         let createdAt: ContinuousClock.Instant
@@ -26,9 +29,18 @@ enum WindowEnumerator {
 
     private static let lock = NSLock()
     private static var cache: Cache?
-    private static let cacheLifetime: Duration = .milliseconds(100)
+    /// Long enough that priming at the start of a hold still pays off on the
+    /// first Tab. Anything that reorders windows — Space changes, app
+    /// activation, launches and quits — invalidates the cache outright.
+    private static let cacheLifetime: Duration = .seconds(1)
 
+    /// Windows of the current Space, minimized ones excluded.
     static func visibleWindows() -> [WindowInfo] {
+        allWindows().filter(\.isOnScreen)
+    }
+
+    /// Every window of every regular app, including minimized and other Spaces.
+    static func allWindows() -> [WindowInfo] {
         let now = ContinuousClock.now
         if let cached = lock.withLock({ cache }), now - cached.createdAt < cacheLifetime {
             return cached.windows
@@ -37,7 +49,7 @@ enum WindowEnumerator {
         let interval = Perf.beginWindowEnumeration()
         defer { Perf.endWindowEnumeration(interval) }
         guard let list = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+            [.optionAll, .excludeDesktopElements], kCGNullWindowID
         ) as? [[String: Any]] else { return [] }
 
         let ownPID = ProcessInfo.processInfo.processIdentifier
@@ -67,11 +79,18 @@ enum WindowEnumerator {
                     ?? entry[kCGWindowOwnerName as String] as? String
                     ?? "App",
                 bundleID: app.bundleIdentifier,
-                title: entry[kCGWindowName as String] as? String
+                title: entry[kCGWindowName as String] as? String,
+                isOnScreen: entry[kCGWindowIsOnscreen as String] as? Bool ?? false
             )
         }
         lock.withLock { cache = Cache(createdAt: now, windows: windows) }
         return windows
+    }
+
+    /// Fills the cache off the main thread so the first Tab of a hold reads it
+    /// instead of blocking on CGWindowList.
+    static func prime() {
+        DispatchQueue.global(qos: .userInitiated).async { _ = allWindows() }
     }
 
     static func invalidateCache() {

@@ -36,6 +36,9 @@ final class AppRegistry {
     }
 
     func refresh() {
+        // Launches, quits and activations all reorder the window list, so the
+        // two caches expire together.
+        WindowEnumerator.invalidateCache()
         let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
         runningApps = apps.sorted { a, b in
             if a.isActive != b.isActive { return a.isActive }

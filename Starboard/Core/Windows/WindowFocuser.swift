@@ -16,6 +16,13 @@ enum WindowFocuser {
     static func focus(_ window: WindowInfo) {
         activateThenOnAppElement(pid: window.pid) { appElement in
             guard let target = axWindow(matching: window, in: appElement) else { return }
+            // Search can surface minimized windows; raising one in the Dock
+            // does nothing until it is restored.
+            if copy(target, kAXMinimizedAttribute as CFString) == true {
+                AXUIElementSetAttributeValue(
+                    target, kAXMinimizedAttribute as CFString, kCFBooleanFalse
+                )
+            }
             raise(target)
         }
     }

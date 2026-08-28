@@ -47,16 +47,22 @@ final class SearchModel {
     private(set) var query = ""
 
     private let registry: AppRegistry
-    private let windowProvider: () -> [WindowInfo]
+    /// The rcmd+Tab ring stays a Cmd-Tab replacement (current Space, not
+    /// minimized); search reaches every window so a minimized or other-Space
+    /// one is still findable by name.
+    private let ringWindows: () -> [WindowInfo]
+    private let searchWindows: () -> [WindowInfo]
     /// The current hold's letter map, restored when the query is emptied.
     private var letterItems: [Item] = []
 
     init(
         registry: AppRegistry,
-        windowProvider: @escaping () -> [WindowInfo] = WindowEnumerator.visibleWindows
+        ringWindows: @escaping () -> [WindowInfo] = WindowEnumerator.visibleWindows,
+        searchWindows: @escaping () -> [WindowInfo] = WindowEnumerator.allWindows
     ) {
         self.registry = registry
-        self.windowProvider = windowProvider
+        self.ringWindows = ringWindows
+        self.searchWindows = searchWindows
     }
 
     var selectedItem: Item? {
@@ -117,7 +123,7 @@ final class SearchModel {
     func beginWindowCycle() {
         scope = .windows
         query = ""
-        items = windowProvider().map(windowItem)
+        items = ringWindows().map(windowItem)
         selectedIndex = items.count > 1 ? 1 : 0
         isVisible = !items.isEmpty
     }
@@ -126,7 +132,7 @@ final class SearchModel {
     func beginWindowSearch() {
         scope = .windows
         query = ""
-        items = windowProvider().map(windowItem)
+        items = searchWindows().map(windowItem)
         selectedIndex = 0
         isVisible = true
     }
@@ -191,51 +197,84 @@ final class SearchModel {
     private func appMatches(_ query: String) -> [Item] {
         registry.ensureInstalledScan()
 
-        let running: [(Item, String)] = registry.runningApps.compactMap { app in
+        let running: [Candidate] = registry.runningApps.enumerated().compactMap { index, app in
             guard let id = app.bundleIdentifier, let name = app.localizedName else { return nil }
-            return (
-                Item(
+            return Candidate(
+                item: Item(
                     kind: .runningApp(bundleID: id),
                     title: name,
                     subtitle: nil,
                     letter: LetterAssigner.dynamicLetter(for: name)
                 ),
-                name
+                target: name,
+                isRunning: true,
+                order: index
             )
         }
         let runningIDs = Set(registry.runningApps.compactMap(\.bundleIdentifier))
-        let installed: [(Item, String)] = registry.cachedInstalledApps
+        let installed: [Candidate] = registry.cachedInstalledApps
             .filter { !runningIDs.contains($0.bundleID) }
             .map { candidate in
-                (
-                    Item(
+                Candidate(
+                    item: Item(
                         kind: .installedApp(bundleID: candidate.bundleID),
                         title: candidate.name,
                         subtitle: "Launch",
                         letter: nil
                     ),
-                    candidate.name
+                    target: candidate.name,
+                    isRunning: false,
+                    order: .max
                 )
             }
 
-        return rank(query, candidates: running + installed)
+        return Self.rank(query, candidates: running + installed)
     }
 
     private func windowMatches(_ query: String) -> [Item] {
-        let candidates = windowProvider().map { window in
-            (windowItem(window), "\(window.displayTitle) \(window.appName)")
+        let candidates = searchWindows().enumerated().map { index, window in
+            Candidate(
+                item: windowItem(window),
+                target: "\(window.displayTitle) \(window.appName)",
+                isRunning: true,
+                order: index
+            )
         }
-        return rank(query, candidates: candidates)
+        return Self.rank(query, candidates: candidates)
     }
 
-    private func rank(_ query: String, candidates: [(Item, String)]) -> [Item] {
+    /// A row before ranking, with the tiebreakers that give equal fuzzy scores
+    /// a total order.
+    struct Candidate {
+        let item: Item
+        /// Text the query is scored against.
+        let target: String
+        /// False for installed-but-closed apps, which never outrank a running one.
+        let isRunning: Bool
+        /// MRU position — registry order for apps, front-to-back for windows.
+        /// `.max` where there is no such order (closed apps).
+        let order: Int
+    }
+
+    /// Score first, then running before closed, more recent before older,
+    /// shorter title, alphabetical. Every key is total, so equally scoring rows
+    /// ("s" over Safari / Slack / System Settings) keep the same order from one
+    /// keystroke to the next instead of shuffling under an unstable sort.
+    static func rank(_ query: String, candidates: [Candidate]) -> [Item] {
         let interval = Perf.beginSearchRanking()
         defer { Perf.endSearchRanking(interval) }
-        return candidates.compactMap { item, target in
-            FuzzyMatcher.score(query: query, target: target).map { (item, $0) }
+        return candidates.compactMap { candidate in
+            FuzzyMatcher.score(query: query, target: candidate.target).map { (candidate, $0) }
         }
-        .sorted { $0.1 > $1.1 }
-        .map(\.0)
+        .sorted { lhs, rhs in
+            if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
+            if lhs.0.isRunning != rhs.0.isRunning { return lhs.0.isRunning }
+            if lhs.0.order != rhs.0.order { return lhs.0.order < rhs.0.order }
+            let (a, b) = (lhs.0.item.title, rhs.0.item.title)
+            if a.count != b.count { return a.count < b.count }
+            return a < b
+        }
+        .map(\.0.item)
     }
 
     private func windowItem(_ window: WindowInfo) -> Item {

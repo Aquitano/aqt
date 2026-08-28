@@ -35,15 +35,6 @@ enum FuzzyMatcher {
         return score
     }
 
-    /// Rank all targets; unmatched are dropped. Descending score.
-    static func ranked<S: Sequence>(query: String, targets: S) -> [(target: S.Element, score: Int)]
-    where S.Element == String {
-        targets.compactMap { target in
-            score(query: query, target: target).map { (target, $0) }
-        }
-        .sorted { $0.score > $1.score }
-    }
-
     private static func firstOccurrence(_ char: Character, in chars: [Character], after start: Int) -> Int? {
         for i in start..<chars.count where chars[i] == char {
             return i

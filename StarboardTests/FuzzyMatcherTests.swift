@@ -31,12 +31,12 @@ final class FuzzyMatcherTests: XCTestCase {
         XCTAssertGreaterThan(consecutive, scattered)
     }
 
-    func testRankingTable() {
-        let ranked = FuzzyMatcher.ranked(
-            query: "xco",
-            targets: ["Xcode", "Preview", "Coin X", "xcodes helper"]
-        )
-        XCTAssertEqual(ranked.first?.target, "Xcode")
+    func testPrefixBeatsScatteredAndSuffixMatches() {
+        let exact = FuzzyMatcher.score(query: "xco", target: "Xcode")!
+        let scattered = FuzzyMatcher.score(query: "xco", target: "Coin X".lowercased())
+        let suffixed = FuzzyMatcher.score(query: "xco", target: "xcodes helper")!
+        XCTAssertNil(scattered)
+        XCTAssertGreaterThanOrEqual(exact, suffixed)
     }
 
     func testDiacriticsFold() {
