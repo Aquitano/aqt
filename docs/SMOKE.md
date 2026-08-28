@@ -35,6 +35,7 @@ BATTLEPLAN.md. Prereq: Accessibility granted; Safari, Slack, Spotify running.
 - [ ] Selecting a background window raises exactly that window.
 - [ ] Typing while cycling switches to fuzzy window search.
 - [ ] Double-tap-and-hold rcmd lists windows only.
+- [ ] Window search (double-tap rcmd, or typing while cycling) finds a minimized window and one on another Space; committing it unminimizes and raises it. The rcmd+Tab ring still shows neither.
 - [ ] rcmd+` cycles the frontmost app's windows.
 - [ ] Without Screen Recording, windows show as "App Window"; with it, real titles.
 - [ ] Window jump: enable in settings, ralt+S steps Safari's windows.

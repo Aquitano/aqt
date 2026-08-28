@@ -13,9 +13,10 @@ The `Performance` signpost category records four intervals:
 - `Search ranking`: fuzzy scoring and result sorting.
 - `Installed app scan`: the background filesystem scan.
 
-Window enumeration also has a 100 ms coalescing cache. Space changes invalidate
-it immediately; the short lifetime avoids stale results after ordinary window
-changes while collapsing duplicate enumeration during one interaction.
+Window enumeration also has a 1 s coalescing cache, primed off-main when an
+rcmd hold begins so the first Tab of the hold never blocks. Everything that
+reorders windows invalidates it outright: Space changes, and app launches,
+quits and activations via `AppRegistry.refresh()`.
 
 ## Baseline procedure
 

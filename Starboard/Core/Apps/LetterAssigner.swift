@@ -6,6 +6,16 @@ struct AppCandidate: Equatable {
     let bundleID: String
     let name: String
     var launchedAt: Date?
+    /// The name's dynamic letter, folded once here: building the letter map
+    /// asks every candidate 26 times.
+    let letter: Character?
+
+    init(bundleID: String, name: String, launchedAt: Date? = nil) {
+        self.bundleID = bundleID
+        self.name = name
+        self.launchedAt = launchedAt
+        self.letter = LetterAssigner.dynamicLetter(for: name)
+    }
 }
 
 /// Maps letters to apps: custom pins win, then dynamic first-letter matches.
@@ -23,15 +33,16 @@ struct LetterAssigner {
         let pinned = candidates.filter { $0.bundleID == pinnedID }
         let dynamic = candidates.filter {
             $0.bundleID != pinnedID
+                && $0.letter == letter
                 && !customAssignments.values.contains($0.bundleID)
-                && Self.dynamicLetter(for: $0.name) == letter
         }
         .sorted { ($0.launchedAt ?? .distantFuture) < ($1.launchedAt ?? .distantFuture) }
         return pinned + dynamic
     }
 
     /// First alphanumeric of the name, lowercased, diacritics folded
-    /// ("Übersicht" → "u", "1Password" → "1").
+    /// ("Übersicht" → "u", "1Password" → "1"). Single source of the dynamic
+    /// rule; AppCandidate stores the result.
     static func dynamicLetter(for name: String) -> Character? {
         name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
             .first { $0.isLetter || $0.isNumber }

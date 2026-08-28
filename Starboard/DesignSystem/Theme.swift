@@ -29,7 +29,6 @@ enum Theme {
     }
 
     enum Motion {
-        static let standard = Animation.easeOut(duration: 0.14)
         static let overlayIn = Animation.easeOut(duration: 0.16)
         // Keyboard-driven surfaces animate nothing: the search overlay
         // appears and disappears instantly, and selection never animates — a
