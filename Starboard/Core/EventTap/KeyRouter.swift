@@ -3,7 +3,8 @@ import QuartzCore
 /// Thin holder so the event-tap closure has one stable object to talk to.
 /// Routing logic lives in HoldSession, which stays pure and unit-testable.
 /// This layer owns the tap-level invariants:
-/// - Nothing is routed while rcmd is up — except the opt-in ralt window jump.
+/// - Nothing is routed while rcmd is up — except the opt-in ralt window jump
+///   and the armed Stages leader.
 /// - Every consumed keyDown swallows its matching keyUp too, even if rcmd was
 ///   released in between — apps must never see half a keystroke.
 /// - A double rcmd tap-and-hold (two bare presses within 300 ms) opens
@@ -19,6 +20,7 @@ struct RouterOptions {
 final class KeyRouter {
     private let resolveLetter: (Int64) -> Character?
     private let resolveDigit: (Int64) -> Int?
+    private let hasStage: (Character) -> Bool
     private(set) var session = HoldSession()
     private var consumedKeys = Set<Int64>()
 
@@ -32,12 +34,16 @@ final class KeyRouter {
     private var lastKeyDownTime: Double = -.infinity
     private var rightShiftDownTime: Double = -.infinity
 
+    /// `hasStage` answers whether a Stage is bound to a letter. Letters without
+    /// one pass through: an armed leader must never eat an ordinary keystroke.
     init(
         resolveLetter: @escaping (Int64) -> Character? = KeyLayout.letter,
-        resolveDigit: @escaping (Int64) -> Int? = KeyLayout.digit
+        resolveDigit: @escaping (Int64) -> Int? = KeyLayout.digit,
+        hasStage: @escaping (Character) -> Bool = { _ in false }
     ) {
         self.resolveLetter = resolveLetter
         self.resolveDigit = resolveDigit
+        self.hasStage = hasStage
     }
 
     /// Intents for a keyDown plus whether the event must be consumed. A
@@ -51,16 +57,17 @@ final class KeyRouter {
     ) -> (intents: [Intent], consume: Bool) {
         lastKeyDownTime = time
 
-        if time < stagesArmedUntil, !modifiers.rightCommandHeld {
+        if time < stagesArmedUntil {
+            // One key ends the leader window either way — including a key
+            // modified by rcmd, which routes as a normal hold instead.
             stagesArmedUntil = -.infinity
-            let command: Intent? = resolveLetter(keyCode).map { .stageRestore($0) }
-                ?? (keyCode == Keycode.equal ? .stageBeginSave : nil)
-                ?? (keyCode == Keycode.minus ? .stageClose : nil)
-            if let command {
+            if !modifiers.rightCommandHeld {
+                guard let command = stageCommand(for: keyCode) else {
+                    return ([], false) // no Stage on that key: passes through
+                }
                 consumedKeys.insert(keyCode)
                 return ([command], true)
             }
-            return ([], false) // unrelated key: disarmed, passes through
         }
 
         guard modifiers.rightCommandHeld else {
@@ -100,6 +107,11 @@ final class KeyRouter {
 
     /// rcmd pressed: detects the double-tap-and-hold windows-search gesture.
     func rightCommandDown(at time: Double = CACurrentMediaTime()) -> [Intent] {
+        // A keyUp the tap never saw (app-modal grab, tap disabled mid-press)
+        // would otherwise leave an entry that eats an unrelated keyUp later.
+        // Clearing here and not on release keeps late keyUps of this hold's
+        // own keys swallowed.
+        consumedKeys.removeAll(keepingCapacity: true)
         guard lastReleaseWasBareTap, time - lastReleaseTime < 0.3 else { return [] }
         lastReleaseWasBareTap = false
         return session.beginWindowSearch()
@@ -110,6 +122,17 @@ final class KeyRouter {
         lastReleaseWasBareTap = session.isBareHold
         lastReleaseTime = time
         return session.rightCommandUp()
+    }
+
+    /// Drops all in-flight state. The tap was off, so the presses and releases
+    /// that would have ended it were never delivered.
+    func reset() {
+        session = HoldSession()
+        consumedKeys.removeAll(keepingCapacity: true)
+        stagesArmedUntil = -.infinity
+        lastReleaseWasBareTap = false
+        lastReleaseTime = -.infinity
+        rightShiftDownTime = -.infinity
     }
 
     // MARK: - Stages leader
@@ -131,5 +154,16 @@ final class KeyRouter {
             return []
         }
         return armStages(at: time)
+    }
+
+    private func stageCommand(for keyCode: Int64) -> Intent? {
+        if let letter = resolveLetter(keyCode) {
+            return hasStage(letter) ? .stageRestore(letter) : nil
+        }
+        switch keyCode {
+        case Keycode.equal: return .stageBeginSave
+        case Keycode.minus: return .stageClose
+        default: return nil
+        }
     }
 }

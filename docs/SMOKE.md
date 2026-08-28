@@ -9,11 +9,13 @@ BATTLEPLAN.md. Prereq: Accessibility granted; Safari, Slack, Spotify running.
 - [ ] Left ⌘ shortcuts (⌘C, ⌘Tab, ⌘Space) all work as stock.
 - [ ] Hold rcmd, press Escape, then press Q — the frontmost app must NOT quit.
 - [ ] Menu bar → Disable Starboard: everything passes through, including rcmd.
+- [ ] Hold rcmd, lock the screen, unlock, release rcmd: typing is normal again (no stuck modifier).
 
 ## Phase 1 — core switching
 
 - [ ] rcmd+S focuses the best S app; rcmd+M launches Mail from cold.
 - [ ] rcmd+S while an S app is focused hides it (toggle off in settings → cycles instead).
+- [ ] rcmd+S then rcmd+M within a fraction of a second: Mail keeps focus (the first switch never steals it back).
 - [ ] rcmd held + Tab after S cycles Safari/Slack/Spotify in a stable order, wrapping past the third.
 
 ## Phase 2 — assignments
@@ -52,6 +54,7 @@ BATTLEPLAN.md. Prereq: Accessibility granted; Safari, Slack, Spotify running.
 - [ ] Save "Writing" on W with Notes + Safari and a URL item; switch away; Caps Lock, W restores both, opens the URL, hides everything else.
 - [ ] Repeat Caps Lock, W: re-hides intruders without reopening items.
 - [ ] Caps Lock, `-`: closes only the Stage's windows; apps stay running.
+- [ ] Caps Lock, then a letter with no Stage, in a text field: the letter is typed and nothing is swallowed.
 
 ## Phase 7 — polish
 

@@ -241,7 +241,9 @@ final class KeyRouterTests: XCTestCase {
         XCTAssertEqual(result.intents, [.switchToLetter("o"), .searchQuery("o")])
     }
 
-    func testUnsupportedLayoutCharacterDoesNotFallBackToANSI() {
+    func testKeysTheLayoutCannotResolveAreNeverRoutedOrConsumed() {
+        // KeyLayout itself falls back to the positional ANSI table, so this is
+        // reachable only for keys that are letters on no layout.
         let router = KeyRouter(
             resolveLetter: { _ in nil },
             resolveDigit: { _ in nil }
@@ -271,7 +273,7 @@ final class KeyRouterTests: XCTestCase {
     // MARK: - Phase 6: Stages leader
 
     func testArmedLeaderMapsStageCommands() {
-        let router = KeyRouter()
+        let router = KeyRouter(hasStage: { $0 == "w" })
         _ = router.armStages(at: 0)
         XCTAssertEqual(
             router.keyDown(0x0D, modifiers: ModifierState(), at: 1).intents,
@@ -307,6 +309,40 @@ final class KeyRouterTests: XCTestCase {
         XCTAssertTrue(space.intents.isEmpty)
         XCTAssertFalse(space.consume)
         XCTAssertTrue(router.keyDown(0x0D, modifiers: ModifierState(), at: 1.5).intents.isEmpty)
+    }
+
+    func testLetterWithoutAStagePassesThroughAndDisarms() {
+        let router = KeyRouter(hasStage: { _ in false })
+        _ = router.armStages(at: 0)
+        // Typing right after the leader must not lose the keystroke.
+        let typed = router.keyDown(0x0D, modifiers: ModifierState(), at: 0.5)
+        XCTAssertTrue(typed.intents.isEmpty)
+        XCTAssertFalse(typed.consume)
+        XCTAssertFalse(router.shouldConsumeKeyUp(0x0D))
+    }
+
+    func testRightCommandKeyDisarmsTheLeaderInsteadOfRestoring() {
+        let router = KeyRouter(hasStage: { _ in true })
+        _ = router.armStages(at: 0)
+        // rcmd+letter is a switch, not a Stage restore...
+        XCTAssertEqual(
+            router.keyDown(0x0D, modifiers: rcmdHeld, at: 0.5).intents,
+            [.switchToLetter("w"), .searchQuery("w")]
+        )
+        // ...and it ended the leader window, so the next letter is just a letter.
+        _ = router.rightCommandUp(at: 0.6)
+        let typed = router.keyDown(0x0D, modifiers: ModifierState(), at: 0.7)
+        XCTAssertTrue(typed.intents.isEmpty)
+        XCTAssertFalse(typed.consume)
+    }
+
+    func testStaleConsumedKeyIsDroppedAtTheNextHold() {
+        let router = KeyRouter()
+        _ = router.keyDown(0x01, modifiers: rcmdHeld) // s consumed
+        _ = router.rightCommandUp()
+        // Its keyUp never arrived; the next hold must not eat an unrelated one.
+        _ = router.rightCommandDown()
+        XCTAssertFalse(router.shouldConsumeKeyUp(0x01))
     }
 
     func testBareRightShiftTapArmsButTypingDoesNot() {
