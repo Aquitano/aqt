@@ -167,6 +167,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 return consumed
             case .keyDown:
+                // Auto-repeat never reaches the session: a held letter would
+                // re-fire the switch (cycling or hiding the app) and duplicate
+                // characters in the search query.
+                if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+                    return router.isConsumed(keyCode)
+                }
                 let (intents, consume) = router.keyDown(
                     keyCode,
                     modifiers: modifiers.state,

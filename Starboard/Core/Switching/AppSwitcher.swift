@@ -103,12 +103,9 @@ final class AppSwitcher {
 
     private func syncSearchPanel() {
         if searchModel.isVisible {
-            searchPanel.present(
-                rowCount: searchModel.items.count,
-                // A quick rcmd+letter switch shouldn't flash the overlay;
-                // anything beyond one character means the user is searching.
-                delayed: searchModel.scope == .apps && searchModel.query.count <= 1
-            )
+            // A quick rcmd+letter switch shouldn't flash the overlay;
+            // anything beyond one character means the user is searching.
+            searchPanel.present(delayed: searchModel.scope == .apps && searchModel.query.count <= 1)
         } else {
             searchPanel.hide()
         }

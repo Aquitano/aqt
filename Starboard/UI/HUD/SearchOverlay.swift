@@ -3,41 +3,36 @@ import SwiftUI
 /// Nonactivating fuzzy-search overlay. Input arrives via the event tap, never
 /// through the panel — the frontmost app keeps key focus (BATTLEPLAN Phase 3).
 ///
-/// The panel's frame is owned here and driven by the row count; the hosting
-/// view must never auto-size the window (that collapses the HUD to its
-/// intrinsic size — the "squished pill" bug).
+/// The panel's frame is owned here and fixed: the hosting view must never
+/// auto-size the window (that collapses the HUD to its intrinsic size — the
+/// "squished pill" bug), and a height that tracked the result count would make
+/// the window jump on every keystroke.
 final class SearchPanelController {
+    /// The panel is always sized for a full page of results.
+    private static let visibleRows = 8
+
     private let panel: HudPanel
     private var pendingShow: DispatchWorkItem?
     private var shown = false
 
     init(content: NSView) {
-        panel = HudPanel(contentRect: NSRect(x: 0, y: 0, width: Theme.Metrics.searchWidth, height: 120))
+        panel = HudPanel(contentRect: Self.frame())
         panel.contentView = content
     }
 
-    /// Shows (or resizes) the panel for `rowCount` results. `delayed` postpones
-    /// the first appearance slightly — a quick rcmd+letter switch shouldn't
-    /// flash the overlay, but holding with intent gets feedback fast.
-    func present(rowCount: Int, delayed: Bool) {
+    /// Shows the panel. `delayed` postpones the first appearance slightly — a
+    /// quick rcmd+letter switch shouldn't flash the overlay, but holding with
+    /// intent gets feedback fast. Appearance is instant once it fires: a fade
+    /// behind a keystroke reads as lag.
+    func present(delayed: Bool) {
+        guard !shown else { return }
         pendingShow?.cancel()
-        let frame = Self.frame(rowCount: rowCount)
-
-        if shown {
-            panel.setFrame(frame, display: true)
-            return
-        }
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            self.panel.setFrame(frame, display: true)
+            self.panel.setFrame(Self.frame(), display: true)
             self.shown = true
-            self.panel.alphaValue = 0
+            self.panel.alphaValue = 1
             self.panel.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.16
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                self.panel.animator().alphaValue = 1
-            }
         }
         pendingShow = work
         DispatchQueue.main.asyncAfter(deadline: .now() + (delayed ? 0.3 : 0), execute: work)
@@ -48,19 +43,14 @@ final class SearchPanelController {
         pendingShow = nil
         guard shown else { return }
         shown = false
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.1
-            panel.animator().alphaValue = 0
-        }, completionHandler: { self.panel.orderOut(nil) })
+        panel.orderOut(nil)
     }
 
-    /// Centered horizontally, top edge at 28% of screen height; height follows
-    /// the results (capped at 8 rows) so there is no dead space below.
-    private static func frame(rowCount: Int) -> NSRect {
+    /// Centered horizontally on the screen under the pointer, top edge at 28%
+    /// of its height, tall enough for a full page of results.
+    private static func frame() -> NSRect {
         let width = Theme.Metrics.searchWidth
-        let rowsHeight: CGFloat = rowCount == 0
-            ? 64
-            : CGFloat(min(rowCount, 8)) * (Theme.Metrics.rowHeight + 2) + Theme.Metrics.grid * 2
+        let rowsHeight = CGFloat(visibleRows) * (Theme.Metrics.rowHeight + 2) + Theme.Metrics.grid * 2
         let height = 52 + rowsHeight
         let screen = HudPanel.mainScreenBounds
         return NSRect(
@@ -95,10 +85,19 @@ struct SearchOverlayContent: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.secondary)
-            Text(model.query.isEmpty ? placeholder : model.query)
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(model.query.isEmpty ? .secondary : .primary)
-                .lineLimit(1)
+            HStack(spacing: 3) {
+                Text(model.query.isEmpty ? placeholder : model.query)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(model.query.isEmpty ? .secondary : .primary)
+                    .lineLimit(1)
+                // Static caret: the field is a real input, but it is driven by
+                // the event tap, so a blink would only be noise.
+                if !model.query.isEmpty {
+                    RoundedRectangle(cornerRadius: 0.75)
+                        .fill(Theme.Colors.accent)
+                        .frame(width: 1.5, height: 18)
+                }
+            }
             Spacer()
             Text(model.scope == .windows ? "WINDOWS" : "APPS")
                 .font(.system(size: 9, weight: .semibold))
@@ -125,21 +124,25 @@ struct SearchOverlayContent: View {
             Text("No matches")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
+                .frame(height: 64)
         } else {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 2) {
                         ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
-                            SearchResultRow(item: item, isSelected: index == model.selectedIndex)
-                                .id(item.id)
+                            SearchResultRow(item: item, isSelected: index == model.selectedIndex) {
+                                model.commit(item)
+                            }
+                            .id(item.id)
                         }
                     }
                     .padding(Theme.Metrics.grid)
                 }
                 .onChange(of: model.selectedIndex) { _, newValue in
                     if let id = model.items.indices.contains(newValue) ? model.items[newValue].id : nil {
-                        withAnimation(nil) { proxy.scrollTo(id, anchor: .center) }
+                        // No anchor: scroll the minimum needed to reveal the row.
+                        withAnimation(nil) { proxy.scrollTo(id) }
                     }
                 }
             }
@@ -150,6 +153,9 @@ struct SearchOverlayContent: View {
 struct SearchResultRow: View {
     let item: SearchModel.Item
     let isSelected: Bool
+    var onSelect: () -> Void = {}
+
+    @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: Theme.Metrics.grid * 1.5) {
@@ -188,7 +194,7 @@ struct SearchResultRow: View {
         .frame(height: Theme.Metrics.rowHeight)
         .background(
             RoundedRectangle(cornerRadius: Theme.Metrics.rowRadius)
-                .fill(isSelected ? Theme.Colors.selection : .clear)
+                .fill(rowBackground)
         )
         .overlay(alignment: .leading) {
             if isSelected {
@@ -199,13 +205,17 @@ struct SearchResultRow: View {
             }
         }
         .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .onTapGesture(perform: onSelect)
     }
 
+    private var rowBackground: Color {
+        if isSelected { return Theme.Colors.selection }
+        return isHovered ? Color.primary.opacity(0.06) : .clear
+    }
+
+    @MainActor
     private var iconImage: NSImage? {
-        guard let bundleID = item.iconBundleID,
-              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
-            return nil
-        }
-        return NSWorkspace.shared.icon(forFile: url.path)
+        item.iconBundleID.flatMap(AppIcons.icon(for:))
     }
 }

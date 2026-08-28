@@ -91,6 +91,13 @@ final class KeyRouter {
         consumedKeys.remove(keyCode) != nil
     }
 
+    /// Whether the key's original keyDown was consumed, without clearing it.
+    /// Auto-repeat events are answered with this: they must never be routed,
+    /// but they still have to be swallowed if the first press was.
+    func isConsumed(_ keyCode: Int64) -> Bool {
+        consumedKeys.contains(keyCode)
+    }
+
     /// rcmd pressed: detects the double-tap-and-hold windows-search gesture.
     func rightCommandDown(at time: Double = CACurrentMediaTime()) -> [Intent] {
         guard lastReleaseWasBareTap, time - lastReleaseTime < 0.3 else { return [] }

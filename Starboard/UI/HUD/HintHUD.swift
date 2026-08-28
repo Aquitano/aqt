@@ -38,12 +38,10 @@ final class HintHUD {
         }
     }
 
+    /// Instant: the hint grid disappears the moment a key lands, and a fade
+    /// there would trail behind the switch it triggered.
     func hide() {
-        guard let panel, panel.isVisible else { return }
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.1
-            panel.animator().alphaValue = 0
-        }, completionHandler: { panel.orderOut(nil) })
+        panel?.orderOut(nil)
     }
 }
 
@@ -64,7 +62,7 @@ private struct HintGrid: View {
             ForEach(entries) { entry in
                 HStack(spacing: 6) {
                     KeyCap(character: entry.letter)
-                    if let icon = StageSaveView.icon(for: entry.bundleID) {
+                    if let icon = AppIcons.icon(for: entry.bundleID) {
                         Image(nsImage: icon)
                             .resizable()
                             .frame(width: 22, height: 22)

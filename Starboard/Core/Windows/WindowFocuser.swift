@@ -8,14 +8,15 @@ func _AXUIElementGetWindow(
     _ element: AXUIElement,
     _ identifier: UnsafeMutablePointer<CGWindowID>) -> AXError
 
-/// Focuses specific windows via AX: raise + make-main off the main thread
-/// (with the 250 ms timeout), then activate the owning app on main.
+/// Focuses specific windows via AX: activate the owning app first (on main),
+/// then raise + make-main off the main thread (with the 250 ms timeout). The
+/// other order lets a slow AX call finish after activation, which brings the
+/// app's previously focused window forward instead of the requested one.
 enum WindowFocuser {
     static func focus(_ window: WindowInfo) {
-        onAppElement(pid: window.pid) { appElement in
+        activateThenOnAppElement(pid: window.pid) { appElement in
             guard let target = axWindow(matching: window, in: appElement) else { return }
             raise(target)
-            activateOnMain(pid: window.pid)
         }
     }
 
@@ -28,27 +29,31 @@ enum WindowFocuser {
     /// ralt+letter window jump: bring the app forward and step its windows.
     static func cycleWindows(of app: NSRunningApplication) {
         let pid = app.processIdentifier
-        onAppElement(pid: pid) { appElement in
+        activateThenOnAppElement(pid: pid) { appElement in
+            // No AX windows (or none resolvable): the activation above is all
+            // this jump can do.
             guard let windows: [AXUIElement] = copy(appElement, kAXWindowsAttribute as CFString),
-                  !windows.isEmpty else {
-                activateOnMain(pid: pid)
-                return
-            }
+                  !windows.isEmpty else { return }
             let focused: AXUIElement? = copy(appElement, kAXFocusedWindowAttribute as CFString)
             let focusedID = focused.map(windowID)
             let currentIndex = windows.firstIndex { windowID($0) == focusedID } ?? -1
             raise(windows[(currentIndex + 1) % windows.count])
-            activateOnMain(pid: pid)
         }
     }
 
     // MARK: - Primitives
 
-    private static func onAppElement(pid: pid_t, _ body: @escaping (AXUIElement) -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let element = AXUIElementCreateApplication(pid)
-            AXUIElementSetMessagingTimeout(element, 0.25)
-            body(element)
+    /// Activates the app on main, then runs `body` against its AX element on a
+    /// background queue — AX calls must stay off the main thread, and the
+    /// nesting guarantees they are issued after activation.
+    private static func activateThenOnAppElement(pid: pid_t, _ body: @escaping (AXUIElement) -> Void) {
+        DispatchQueue.main.async {
+            NSRunningApplication(processIdentifier: pid)?.activateReliably()
+            DispatchQueue.global(qos: .userInitiated).async {
+                let element = AXUIElementCreateApplication(pid)
+                AXUIElementSetMessagingTimeout(element, 0.25)
+                body(element)
+            }
         }
     }
 
@@ -75,12 +80,6 @@ enum WindowFocuser {
     private static func raise(_ window: AXUIElement) {
         AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
         AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-    }
-
-    private static func activateOnMain(pid: pid_t) {
-        DispatchQueue.main.async {
-            NSRunningApplication(processIdentifier: pid)?.activateReliably()
-        }
     }
 
     private static func copy<T>(_ element: AXUIElement, _ attribute: CFString) -> T? {

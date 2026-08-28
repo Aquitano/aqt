@@ -33,7 +33,7 @@ struct StageSaveView: View {
                 ForEach(apps, id: \.bundleID) { app in
                     Toggle(isOn: binding(for: app.bundleID)) {
                         HStack(spacing: Theme.Metrics.grid) {
-                            if let icon = Self.icon(for: app.bundleID) {
+                            if let icon = AppIcons.icon(for: app.bundleID) {
                                 Image(nsImage: icon)
                                     .resizable()
                                     .frame(width: 18, height: 18)
@@ -79,12 +79,5 @@ struct StageSaveView: View {
                 if isOn { included.insert(bundleID) } else { included.remove(bundleID) }
             }
         )
-    }
-
-    static func icon(for bundleID: String) -> NSImage? {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
-            return nil
-        }
-        return NSWorkspace.shared.icon(forFile: url.path)
     }
 }

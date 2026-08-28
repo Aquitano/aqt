@@ -22,6 +22,16 @@ final class KeyRouterTests: XCTestCase {
         XCTAssertFalse(router.shouldConsumeKeyUp(0x01)) // but only once
     }
 
+    func testAutorepeatOnlySwallowsKeysTheFirstPressConsumed() {
+        let router = KeyRouter()
+        _ = router.keyDown(0x01, modifiers: rcmdHeld) // s → switched
+        // Repeats are answered from the consumed set, never routed, and the
+        // matching keyUp must still be swallowed afterwards.
+        XCTAssertTrue(router.isConsumed(0x01))
+        XCTAssertFalse(router.isConsumed(0x26)) // never pressed → passes through
+        XCTAssertTrue(router.shouldConsumeKeyUp(0x01))
+    }
+
     func testCancelledHoldConsumesWithoutActing() {
         let router = KeyRouter()
         _ = router.keyDown(0x01, modifiers: rcmdHeld) // s

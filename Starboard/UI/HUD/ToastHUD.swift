@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Base class for nonactivating overlay panels: never takes key focus, floats
-/// above everything, positioned relative to the main screen.
+/// above everything, positioned relative to the screen under the pointer.
 class HudPanel: NSPanel {
     init(contentRect: NSRect) {
         super.init(
@@ -20,8 +20,13 @@ class HudPanel: NSPanel {
     /// Overlays must never take key focus from the frontmost app.
     override var canBecomeKey: Bool { false }
 
+    /// HUDs belong on the screen the user is looking at, which the pointer
+    /// tracks better than `NSScreen.main` does. `visibleFrame` keeps them clear
+    /// of the menu bar and the Dock.
     static var mainScreenBounds: NSRect {
-        NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
+        return screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
     }
 }
 
@@ -115,13 +120,10 @@ final class ToastHUD {
         panel.contentView = hosting
         panel.setFrame(placementFrame(width: 360, height: 52), display: true)
 
-        panel.alphaValue = 0
+        // The content view animates itself in; a panel fade on top of it would
+        // be a second, slower fade over the same moment.
+        panel.alphaValue = 1
         panel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.16
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().alphaValue = 1
-        }
 
         dismissTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.8))

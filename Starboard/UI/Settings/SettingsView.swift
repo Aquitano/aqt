@@ -288,7 +288,7 @@ struct StageRow: View {
                 .lineLimit(1)
             HStack(spacing: 4) {
                 ForEach(stage.apps, id: \.bundleID) { app in
-                    if let icon = StageSaveView.icon(for: app.bundleID) {
+                    if let icon = AppIcons.icon(for: app.bundleID) {
                         Image(nsImage: icon)
                             .resizable()
                             .frame(width: 16, height: 16)

@@ -119,6 +119,13 @@ final class SearchModel {
         hide()
     }
 
+    /// Mouse click on a row: make it the selection, then commit it.
+    func commit(_ item: Item) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        selectedIndex = index
+        commit()
+    }
+
     /// Acts on the selection but keeps the overlay open — the user is still
     /// mid-hold and may act on further results or commit a different one.
     func perform(_ action: SearchItemAction) {

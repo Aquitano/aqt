@@ -31,7 +31,11 @@ enum Theme {
     enum Motion {
         static let standard = Animation.easeOut(duration: 0.14)
         static let overlayIn = Animation.easeOut(duration: 0.16)
-        // Overlay exit: 0.10s fade only. Cycling selection: no animation at all.
+        // Keyboard-driven surfaces animate nothing: the search overlay and the
+        // key-hint grid appear and disappear instantly, and selection never
+        // animates — a fade trailing a keystroke reads as lag. `overlayIn` is
+        // for surfaces the user waited for (toasts, the hint grid's fade-in);
+        // toasts fade out over 0.10s.
     }
 }
 
