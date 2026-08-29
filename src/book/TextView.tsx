@@ -9,12 +9,13 @@ type TextViewProps = {
 export function TextView({ element, scale }: TextViewProps) {
   return (
     <div
-      className="absolute whitespace-pre-wrap"
+      data-element={element.id}
+      className="absolute leading-tight whitespace-pre-wrap"
       style={{
         left: element.x * scale,
         top: element.y * scale,
         width: element.w * scale,
-        height: element.h * scale,
+        minHeight: element.h * scale,
         transform: `rotate(${element.rotation}deg)`,
         fontFamily: element.font === 'hand' ? 'var(--font-hand)' : 'var(--font-sans)',
         fontSize: element.size * scale,

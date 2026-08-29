@@ -1,31 +1,49 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
+import type { PageSide } from '@/domain/element'
 import { cn } from '@/lib/utils'
+import { PAPER, PAPER_GRAIN } from './materials'
 
 type PageSurfaceProps = {
   /** Rendered page size in CSS pixels. Pages are always square. */
   sizePx: number
-  side: 'left' | 'right'
+  side: PageSide
   children?: ReactNode
   className?: string
+  style?: CSSProperties
 }
 
-// phase 2: grain (feTurbulence), gutter gradient and the hairline inner edge.
-export function PageSurface({
-  sizePx,
-  side,
-  children,
-  className,
-}: PageSurfaceProps) {
+/**
+ * The paper: warm off-white with grain, a gutter shadow toward the spine and a
+ * hairline edge. Children are laid out in absolute coordinates inside it.
+ */
+export function PageSurface({ sizePx, side, children, className, style }: PageSurfaceProps) {
+  const gutterSide = side === 'left' ? 'right' : 'left'
   return (
     <div
-      className={cn(
-        'relative overflow-hidden bg-[oklch(0.985_0.006_85)]',
-        side === 'left' ? 'rounded-l-sm' : 'rounded-r-sm',
-        className,
-      )}
-      style={{ width: sizePx, height: sizePx }}
+      className={cn('relative overflow-hidden', className)}
+      style={{
+        width: sizePx,
+        height: sizePx,
+        backgroundColor: PAPER,
+        borderRadius: side === 'left' ? '3px 0 0 3px' : '0 3px 3px 0',
+        boxShadow: 'inset 0 0 0 1px rgb(0 0 0 / .035)',
+        ...style,
+      }}
     >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{ backgroundImage: PAPER_GRAIN, opacity: 0.04, mixBlendMode: 'multiply' }}
+      />
       {children}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 w-[6%]"
+        style={{
+          [gutterSide]: 0,
+          backgroundImage: `linear-gradient(to ${side}, rgb(0 0 0 / .12), rgb(0 0 0 / .03) 50%, transparent)`,
+        }}
+      />
     </div>
   )
 }

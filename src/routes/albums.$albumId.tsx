@@ -34,7 +34,7 @@ function AlbumPage() {
 
   return (
     <EditorStoreProvider value={store}>
-      <main className="flex min-h-dvh flex-col">
+      <main className="flex h-dvh flex-col">
         <header className="flex items-center gap-3 px-6 py-4">
           <Button variant="ghost" size="icon" asChild aria-label="Back to albums">
             <Link to="/albums">
@@ -44,8 +44,8 @@ function AlbumPage() {
           <h1 className="text-lg font-medium">{data.album.title}</h1>
         </header>
 
-        {/* phase 2: Editor.tsx wraps this with the toolbar, sheets and handles. */}
-        <div className="flex flex-1 items-center justify-center bg-[radial-gradient(closest-side,--theme(--color-foreground/0.04),transparent)] px-6 pb-10">
+        {/* phase 3: Editor.tsx wraps this with the toolbar, sheets and handles. */}
+        <div className="flex min-h-0 flex-1 px-6 pb-10">
           <BookView />
         </div>
       </main>
@@ -54,11 +54,18 @@ function AlbumPage() {
 }
 
 function BookView() {
+  const album = useEditor((state) => state.album)
   const spreads = useEditor((state) => state.spreads)
   const current = useEditor((state) => state.current)
   const setCurrent = useEditor((state) => state.setCurrent)
 
   return (
-    <Book spreads={spreads} current={current} onCurrentChange={setCurrent} />
+    <Book
+      title={album.title}
+      cover={album.cover}
+      spreads={spreads}
+      current={current}
+      onCurrentChange={setCurrent}
+    />
   )
 }

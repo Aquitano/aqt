@@ -4,6 +4,7 @@ import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-q
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { MoreHorizontal, Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { ShelfCover } from '@/book/Cover'
 import { COVER_COLORS, COVER_MATERIALS, type CoverColorName } from '@/book/palette'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
@@ -76,12 +77,8 @@ function Shelf() {
                 params={{ albumId: album.id }}
                 className="block"
               >
-                <CardContent className="px-0">
-                  {/* phase 2: the real <Cover> component with material textures. */}
-                  <div
-                    className="aspect-[3/4] w-full"
-                    style={{ background: album.cover.color }}
-                  />
+                <CardContent className="bg-muted/40 px-8 pt-8 pb-6">
+                  <ShelfCover cover={album.cover} title={album.title} />
                 </CardContent>
               </Link>
               <CardFooter className="flex items-center justify-between gap-2">
