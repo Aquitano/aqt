@@ -20,3 +20,6 @@ __unconfig*
 # e2e smoke artifacts
 scripts/e2e-out
 scripts/e2e-out-dev.log
+
+# qa artifacts
+scripts/qa/out
