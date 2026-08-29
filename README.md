@@ -25,6 +25,10 @@ cp .dev.vars.example .dev.vars # read by the Worker runtime
 Both files hold `VITE_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`. For
 production, push the secret with `bunx wrangler secret put CLERK_SECRET_KEY`.
 
+Real keys are required even for local dev: Clerk's keyless fallback cannot
+persist its temporary keys under workerd, so without them every server-rendered
+page, including public share links, fails with a handshake error.
+
 ### Cloudflare resources
 
 ```sh
