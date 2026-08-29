@@ -5,6 +5,7 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { MoreHorizontal, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { ShelfCover } from '@/book/Cover'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { COVER_COLORS, COVER_MATERIALS, type CoverColorName } from '@/book/palette'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
@@ -28,6 +29,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import type { CoverMaterial } from '@/domain/element'
+import type { Album } from '@/server/db/schema'
 import { requireSignedIn } from '@/lib/guard'
 import { albumsQuery } from '@/lib/queries'
 import { cn } from '@/lib/utils'
@@ -42,6 +44,7 @@ export const Route = createFileRoute('/albums/')({
 function Shelf() {
   const { data: albums } = useSuspenseQuery(albumsQuery())
   const queryClient = useQueryClient()
+  const [pendingDelete, setPendingDelete] = useState<Album | null>(null)
 
   const remove = useMutation({
     mutationFn: (albumId: string) => albumFns.remove({ data: { albumId } }),
@@ -54,6 +57,7 @@ function Shelf() {
       <header className="mb-8 flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Albums</h1>
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           <CreateAlbumDialog />
           <UserButton />
         </div>
@@ -101,7 +105,7 @@ function Shelf() {
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
                       variant="destructive"
-                      onSelect={() => remove.mutate(album.id)}
+                      onSelect={() => setPendingDelete(album)}
                     >
                       Delete
                     </DropdownMenuItem>
@@ -112,6 +116,31 @@ function Shelf() {
           ))}
         </div>
       )}
+
+      <Dialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete "{pendingDelete?.title}"?</DialogTitle>
+            <DialogDescription>
+              The album and every page in it go for good. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingDelete(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (pendingDelete) remove.mutate(pendingDelete.id)
+                setPendingDelete(null)
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }

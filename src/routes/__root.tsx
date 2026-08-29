@@ -3,6 +3,7 @@ import { ClerkProvider } from '@clerk/tanstack-react-start'
 import { HeadContent, Scripts, createRootRouteWithContext } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
+import { ThemeProvider } from 'next-themes'
 import type { QueryClient } from '@tanstack/react-query'
 import { Toaster } from '@/components/ui/sonner'
 import appCss from '../styles.css?url'
@@ -29,15 +30,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
-        <ClerkProvider>
-          {children}
-          <Toaster />
-        </ClerkProvider>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          <ClerkProvider>
+            {children}
+            <Toaster />
+          </ClerkProvider>
+        </ThemeProvider>
         <TanStackDevtools
           config={{ position: 'bottom-right' }}
           plugins={[

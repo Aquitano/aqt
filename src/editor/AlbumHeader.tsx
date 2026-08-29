@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Check, ChevronLeft, Copy, Link2, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -30,6 +31,7 @@ export function AlbumHeader({ canEdit }: AlbumHeaderProps) {
       </Button>
       <Title />
       <div className="ml-auto flex items-center gap-2">
+        <ThemeToggle />
         {canEdit ? <SharePopover /> : null}
         {canEdit ? (
           <Button
@@ -120,8 +122,12 @@ function SharePopover() {
   })
 
   const copy = async () => {
-    await navigator.clipboard.writeText(url)
-    toast.success('Link copied')
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('Link copied')
+    } catch {
+      toast.error('Could not copy the link. Select it and copy by hand.')
+    }
   }
 
   return (
