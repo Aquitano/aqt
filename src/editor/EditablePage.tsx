@@ -11,7 +11,7 @@ import { PhotoView } from '@/book/PhotoView'
 import { TextView } from '@/book/TextView'
 import type { Element, PageSide } from '@/domain/element'
 import type { Spread } from '@/server/db/schema'
-import { axisLock, snapMove, type Box, type Guide, type Point } from './geometry'
+import { axisLock, clampToPage, snapMove, type Box, type Guide, type Point } from './geometry'
 import { beginGesture } from './history'
 import { photoElementFor, type PhotoRef } from './place'
 import { useEditor, useEditorStore } from './store'
@@ -26,7 +26,15 @@ type EditablePageProps = {
   layout: PageLayout
 }
 
-type MoveGesture = { id: string; start: Box; origin: Point; end: () => void }
+type MoveGesture = {
+  id: string
+  start: Box
+  origin: Point
+  /** The element node holds the capture, so click and dblclick still target it. */
+  node: HTMLElement
+  pointerId: number
+  end: () => void
+}
 
 /**
  * One page of the open spread in edit mode. Elements are clipped to the paper
@@ -61,8 +69,9 @@ export function EditablePage({ spread, side, layout }: EditablePageProps) {
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
-    const id = elementIdAt(event.target)
-    if (!id) {
+    const node = elementNodeAt(event.target)
+    const id = node?.dataset.element
+    if (!node || !id) {
       select(null)
       return
     }
@@ -71,11 +80,13 @@ export function EditablePage({ spread, side, layout }: EditablePageProps) {
     if (!element) return
     event.preventDefault()
     select(id)
-    event.currentTarget.setPointerCapture(event.pointerId)
+    node.setPointerCapture(event.pointerId)
     move.current = {
       id,
       start: element,
       origin: toPage(event.clientX, event.clientY),
+      node,
+      pointerId: event.pointerId,
       end: beginGesture(store),
     }
   }
@@ -90,21 +101,22 @@ export function EditablePage({ spread, side, layout }: EditablePageProps) {
       { ...g.start, x: g.start.x + delta.x, y: g.start.y + delta.y },
       SNAP_PX / scale,
     )
+    const box = clampToPage(snapped.box)
     setGuides(snapped.guides)
-    updateElement(spread.id, g.id, { x: snapped.box.x, y: snapped.box.y })
+    updateElement(spread.id, g.id, { x: box.x, y: box.y })
   }
 
-  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const onPointerUp = () => {
     const g = move.current
     if (!g) return
     move.current = null
-    event.currentTarget.releasePointerCapture(event.pointerId)
+    if (g.node.hasPointerCapture(g.pointerId)) g.node.releasePointerCapture(g.pointerId)
     setGuides([])
     g.end()
   }
 
   const onDoubleClick = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const id = elementIdAt(event.target)
+    const id = elementNodeAt(event.target)?.dataset.element
     const element = elements.find((el) => el.id === id)
     if (element?.kind === 'text') setEditing(element.id)
   }
@@ -241,8 +253,8 @@ function EditableText({ element, scale, editing, onMeasure, onCommit, onCancel }
   )
 }
 
-function elementIdAt(target: EventTarget | null) {
+function elementNodeAt(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return null
   if (target.closest('[data-handle]')) return null
-  return target.closest<HTMLElement>('[data-element]')?.dataset.element ?? null
+  return target.closest<HTMLElement>('[data-element]')
 }

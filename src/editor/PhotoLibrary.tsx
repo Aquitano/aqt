@@ -33,14 +33,11 @@ export function PhotoLibrary() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const remove = useMutation({
-    mutationFn: (photoId: string) => photoFns.remove({ data: { photoId } }),
+    mutationFn: async (photoId: string) =>
+      rejectFailures(photoFns.remove({ data: { photoId } })),
     onSuccess: () => queryClient.invalidateQueries(photosQuery()),
     onError: (error) =>
-      toast.error(
-        isConflict(error)
-          ? 'That photo is still on a page. Remove it there first.'
-          : 'Could not delete that photo',
-      ),
+      toast.error(isConflict(error) ? error.message : 'Could not delete that photo'),
   })
 
   const place = (photo: PhotoRef) => {
@@ -52,7 +49,12 @@ export function PhotoLibrary() {
   }
 
   const upload = async (files: FileList | File[]) => {
-    const list = Array.from(files).filter((file) => file.type.startsWith('image/') || /\.heic$/i.test(file.name))
+    const all = Array.from(files)
+    const list = all.filter((file) => file.type.startsWith('image/') || /\.heic$/i.test(file.name))
+    const rejected = all.length - list.length
+    if (rejected > 0) {
+      toast.error(rejected === 1 ? 'That file is not an image' : `${rejected} files are not images`)
+    }
     await Promise.all(
       list.map(async (file) => {
         const key = `${file.name}-${Date.now()}-${Math.random()}`
@@ -90,7 +92,11 @@ export function PhotoLibrary() {
 
   return (
     <Sheet open={open} onOpenChange={(next) => setPanel(next ? 'photos' : null)} modal={false}>
-      <SheetContent side="right" className="w-full sm:max-w-md" onInteractOutside={(event) => event.preventDefault()}>
+      <SheetContent
+        side="right"
+        className="w-full sm:max-w-sm"
+        onInteractOutside={(event) => event.preventDefault()}
+      >
         <SheetHeader>
           <SheetTitle>Photos</SheetTitle>
           <SheetDescription>Click a photo to place it, or drag it onto a page.</SheetDescription>
@@ -198,7 +204,27 @@ async function put(url: string, blob: Blob) {
   if (!response.ok) throw new Error(`Upload failed (${response.status})`)
 }
 
-function isConflict(error: unknown) {
-  if (error instanceof Response) return error.status === 409
-  return error instanceof Error && /409|still placed/i.test(error.message)
+class ServerError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+    this.name = 'ServerError'
+  }
+}
+
+/**
+ * A `throw new Response(...)` in a server fn does not reject on the client: the
+ * raw Response arrives as the resolved value. Turn a failed one into a real
+ * rejection carrying the server's own wording.
+ */
+async function rejectFailures<T>(work: Promise<T>): Promise<T> {
+  const result = await work
+  if (result instanceof Response && !result.ok) {
+    throw new ServerError(result.status, (await result.text()) || result.statusText)
+  }
+  return result
+}
+
+/** The server refuses to delete a photo that is still on a page. */
+function isConflict(error: unknown): error is ServerError {
+  return error instanceof ServerError && error.status === 409
 }

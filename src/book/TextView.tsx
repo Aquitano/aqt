@@ -21,6 +21,9 @@ export function TextView({ element, scale, ref, editing }: TextViewProps) {
     if (!editing) return
     if (event.key === 'Escape') {
       event.preventDefault()
+      // React re-renders the same text it rendered before the edit, so it would
+      // leave the typed characters in the DOM. Put the original back by hand.
+      event.currentTarget.textContent = element.text
       editing.onCancel()
     }
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {

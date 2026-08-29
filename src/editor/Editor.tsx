@@ -3,9 +3,10 @@ import { Book, PageElements, type PageLayout } from '@/book/Book'
 import type { PageSide } from '@/domain/element'
 import type { Spread } from '@/server/db/schema'
 import { EditablePage } from './EditablePage'
+import { clampToPage } from './geometry'
 import { Filmstrip } from './Filmstrip'
 import { PhotoLibrary } from './PhotoLibrary'
-import { useEditor, useEditorStore } from './store'
+import { useEditor, useEditorStore, type EditorState } from './store'
 import { Toolbar } from './Toolbar'
 
 const NUDGE = 5
@@ -77,11 +78,12 @@ function useEditorKeys(canEdit: boolean) {
   useEffect(() => {
     if (!canEdit) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (isEditable(event.target)) return
+      if (isTextEntry(event.target)) return
       const state = store.getState()
       const meta = event.metaKey || event.ctrlKey
+      const onControl = isToolbarControl(event.target)
 
-      if (!meta && event.key.toLowerCase() === 'e' && !event.altKey) {
+      if (!onControl && !meta && event.key.toLowerCase() === 'e' && !event.altKey) {
         event.preventDefault()
         state.setMode(state.mode === 'edit' ? 'view' : 'edit')
         return
@@ -95,9 +97,22 @@ function useEditorKeys(canEdit: boolean) {
         else temporal.undo()
         return
       }
+      // The size slider and the toolbar buttons keep the plain keys they react
+      // to; the book is locked in edit mode, so nothing turns behind them.
+      if (onControl) return
 
       const spread = state.spreads[state.current]
       const selected = spread?.elements.find((el) => el.id === state.selection)
+
+      // Edit mode stays on real spreads, so it owns navigation instead of the
+      // book, which would happily turn to a cover there is nothing to edit on.
+      const target = navigationTarget(event.key, state)
+      if (target !== null && !(selected && ARROWS[event.key])) {
+        event.preventDefault()
+        event.stopPropagation()
+        state.setCurrent(target)
+        return
+      }
       if (!spread || !selected) return
 
       if (event.key === 'Escape') {
@@ -124,10 +139,12 @@ function useEditorKeys(canEdit: boolean) {
         event.preventDefault()
         event.stopPropagation()
         const step = event.shiftKey ? NUDGE_FAST : NUDGE
-        state.updateElement(spread.id, selected.id, {
+        const box = clampToPage({
+          ...selected,
           x: selected.x + nudge.x * step,
           y: selected.y + nudge.y * step,
         })
+        state.updateElement(spread.id, selected.id, { x: box.x, y: box.y })
       }
     }
     window.addEventListener('keydown', onKeyDown, true)
@@ -142,9 +159,34 @@ const ARROWS: Record<string, { x: number; y: number }> = {
   ArrowDown: { x: 0, y: 1 },
 }
 
-function isEditable(target: EventTarget | null) {
+/** Where a spread key should land, or null when the key is not navigation. */
+function navigationTarget(key: string, state: EditorState): number | null {
+  switch (key) {
+    case 'Home':
+      return 0
+    case 'End':
+      return state.spreads.length - 1
+    case 'ArrowLeft':
+      return state.current - 1
+    case 'ArrowRight':
+      return state.current + 1
+    default:
+      return null
+  }
+}
+
+/** A text field owns every key, Cmd-Z included: it has its own undo history. */
+function isTextEntry(target: EventTarget | null) {
   return (
     target instanceof HTMLElement &&
     (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName))
+  )
+}
+
+/** The size slider and the other toolbar controls own the plain keys they use. */
+function isToolbarControl(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    target.closest('[role="slider"], [data-editor-toolbar]') !== null
   )
 }

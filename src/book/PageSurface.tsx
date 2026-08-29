@@ -19,6 +19,7 @@ type PageSurfaceProps = {
 export function PageSurface({ sizePx, side, children, className, style }: PageSurfaceProps) {
   return (
     <div
+      data-paper={side}
       className={cn('relative overflow-hidden', className)}
       style={{
         width: sizePx,

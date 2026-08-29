@@ -154,7 +154,7 @@ export function Book({
           pagePx={pagePx}
           turned={turned}
           onTurnedChange={handleTurned}
-          endTurned={phone ? 2 * n + 1 : n + 1}
+          endTurned={sheets.length}
           locked={locked}
           overlay={phone ? undefined : overlay?.({ pagePx, scale })}
         />
@@ -171,7 +171,7 @@ type BookStackProps = {
   pagePx: number
   turned: number
   onTurnedChange: (turned: number) => void
-  /** Where the End key lands. */
+  /** Where the End key lands: every sheet turned, i.e. the inside back cover. */
   endTurned: number
   locked: boolean
   overlay?: ReactNode
@@ -200,6 +200,8 @@ function BookStack({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // Locked means someone else drives the book; they own the keys too.
+      if (locked) return
       if (event.metaKey || event.ctrlKey || event.altKey || isEditable(event.target)) return
       const handler = KEYS[event.key]
       if (!handler) return
@@ -208,7 +210,7 @@ function BookStack({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [engine, endTurned])
+  }, [engine, endTurned, locked])
 
   const boxWidth = spineAt === 'center' ? 2 * pagePx : pagePx
   const coverWidth = pagePx + OVERHANG

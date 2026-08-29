@@ -62,7 +62,10 @@ export function Toolbar() {
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
-      <Card className="pointer-events-auto flex-row items-center gap-1 px-2 py-1.5 shadow-lg">
+      <Card
+        data-editor-toolbar
+        className="pointer-events-auto flex-row items-center gap-1 px-2 py-1.5 shadow-lg"
+      >
         <IconButton label="Add photo" onClick={() => setPanel('photos')} disabled={!spread}>
           <ImagePlus />
         </IconButton>

@@ -19,6 +19,8 @@ export const CORNERS: readonly Corner[] = [
 
 const MIN_SIZE = 40
 const LINES = [0, PAGE_UNITS / 2, PAGE_UNITS]
+/** Fraction of a box that must stay on the page so it can always be grabbed. */
+const MIN_ON_PAGE = 0.1
 
 export function centerOf(box: Box): Point {
   return { x: box.x + box.w / 2, y: box.y + box.h / 2 }
@@ -34,7 +36,8 @@ function rotate(p: Point, deg: number): Point {
 /**
  * Resize by dragging one corner while the opposite corner stays put. The
  * pointer is mapped into the box's own rotated frame, so the maths is the same
- * at any angle: the new size is simply the local vector from the fixed corner.
+ * at any angle. Aspect-locked resizing projects the pointer onto the box
+ * diagonal, so dragging inward shrinks and outward grows.
  */
 export function resizeFromCorner(
   box: Box,
@@ -49,8 +52,10 @@ export function resizeFromCorner(
   let w = Math.max(MIN_SIZE, local.x * corner.sx)
   let h = box.h
   if (mode === 'aspect') {
-    const rawH = Math.max(MIN_SIZE, local.y * corner.sy)
-    const factor = Math.max(w / box.w, rawH / box.h)
+    const dx = corner.sx * box.w
+    const dy = corner.sy * box.h
+    const along = (local.x * dx + local.y * dy) / (dx * dx + dy * dy)
+    const factor = Math.max(along, MIN_SIZE / box.w, MIN_SIZE / box.h)
     w = box.w * factor
     h = box.h * factor
   }
@@ -97,6 +102,19 @@ function snapAxis(edges: number[], threshold: number) {
     }
   }
   return best
+}
+
+/** Keeps at least MIN_ON_PAGE of the box inside the page, so it stays reachable. */
+export function clampToPage(box: Box): Box {
+  return {
+    ...box,
+    x: clamp(box.x, -box.w * (1 - MIN_ON_PAGE), PAGE_UNITS - box.w * MIN_ON_PAGE),
+    y: clamp(box.y, -box.h * (1 - MIN_ON_PAGE), PAGE_UNITS - box.h * MIN_ON_PAGE),
+  }
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
 }
 
 export function axisLock(delta: Point): Point {
