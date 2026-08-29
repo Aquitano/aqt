@@ -1,13 +1,33 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNotNull, like } from 'drizzle-orm'
 import { currentUserId } from '@/server/auth'
 import { db } from '@/server/db/client'
-import { photos } from '@/server/db/schema'
+import { albums, photos, spreads } from '@/server/db/schema'
 import { storage } from '@/server/storage'
 
 /** `?thumb=1` addresses the 400px thumbnail instead of the display image. */
 function wantsThumb(url: string) {
   return new URL(url).searchParams.get('thumb') === '1'
+}
+
+/**
+ * A photo is readable by its owner, or by anyone once it sits on a spread of an
+ * album that has link sharing on. Same `LIKE` on the elements JSON that the
+ * delete guard uses; good enough at this scale.
+ */
+async function isOnASharedSpread(photoId: string) {
+  const [row] = await db()
+    .select({ id: spreads.id })
+    .from(spreads)
+    .innerJoin(albums, eq(albums.id, spreads.albumId))
+    .where(
+      and(
+        isNotNull(albums.shareSlug),
+        like(spreads.elements, `%"photoId":"${photoId}"%`),
+      ),
+    )
+    .limit(1)
+  return row !== undefined
 }
 
 export const Route = createFileRoute('/api/photos/$id')({
@@ -19,6 +39,11 @@ export const Route = createFileRoute('/api/photos/$id')({
           .from(photos)
           .where(eq(photos.id, params.id))
         if (!photo) return new Response('Not found', { status: 404 })
+
+        const viewerId = await currentUserId()
+        const allowed =
+          photo.ownerId === viewerId || (await isOnASharedSpread(photo.id))
+        if (!allowed) return new Response('Not found', { status: 404 })
 
         const object = await storage.get(
           wantsThumb(request.url) ? photo.thumbKey : photo.key,

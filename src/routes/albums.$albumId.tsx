@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, notFound } from '@tanstack/react-router'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AlbumHeader } from '@/editor/AlbumHeader'
 import { attachAutosave } from '@/editor/autosave'
@@ -9,24 +9,34 @@ import { EditorStoreProvider, createEditorStore } from '@/editor/store'
 import { requireSignedIn } from '@/lib/guard'
 import { albumQuery } from '@/lib/queries'
 import { useMediaQuery } from '@/lib/use-media-query'
+import type { Album, Spread } from '@/server/db/schema'
 
 export const Route = createFileRoute('/albums/$albumId')({
   beforeLoad: requireSignedIn,
-  loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(albumQuery(params.albumId)),
-  component: AlbumPage,
+  loader: async ({ context, params }) => {
+    const album = await context.queryClient.ensureQueryData(albumQuery(params.albumId))
+    if (!album) throw notFound()
+  },
+  notFoundComponent: () => (
+    <main className="flex min-h-dvh items-center justify-center px-6">
+      <p className="text-muted-foreground">This album is not available.</p>
+    </main>
+  ),
+  component: AlbumRoute,
 })
 
-function AlbumPage() {
+function AlbumRoute() {
   const { albumId } = Route.useParams()
   const { data } = useSuspenseQuery(albumQuery(albumId))
+  if (!data) return null
+  return <AlbumPage album={data.album} spreads={data.spreads} />
+}
+
+function AlbumPage({ album, spreads }: { album: Album; spreads: Spread[] }) {
   const phone = useMediaQuery('(max-width: 767px)')
 
   // One store per open album; recreated when the album identity changes.
-  const store = useMemo(
-    () => createEditorStore(data.album, data.spreads),
-    [data.album.id],
-  )
+  const store = useMemo(() => createEditorStore(album, spreads), [album.id])
 
   useEffect(() => attachAutosave(store), [store])
 

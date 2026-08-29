@@ -56,7 +56,10 @@ export const remove = createServerFn({ method: 'POST' })
       )
       .limit(1)
     if (reference) {
-      throw new Response('Photo is still placed on a spread', { status: 409 })
+      // The client shows this verbatim, so it reads as a user-facing message.
+      throw new Response('That photo is still on a page. Remove it there first.', {
+        status: 409,
+      })
     }
 
     await Promise.all([

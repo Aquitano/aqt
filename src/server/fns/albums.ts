@@ -20,12 +20,18 @@ const updateInput = type({
 
 const albumIdInput = type({ albumId: 'string' })
 
-/** Throws 404 when the album is missing or owned by someone else. */
-async function ownedAlbum(albumId: string, ownerId: string) {
+/** The album, or undefined when it is missing or owned by someone else. */
+async function findOwnedAlbum(albumId: string, ownerId: string) {
   const [album] = await db()
     .select()
     .from(albums)
     .where(and(eq(albums.id, albumId), eq(albums.ownerId, ownerId)))
+  return album
+}
+
+/** Throws 404 when the album is missing or owned by someone else. */
+async function ownedAlbum(albumId: string, ownerId: string) {
+  const album = await findOwnedAlbum(albumId, ownerId)
   if (!album) throw new Response('Not found', { status: 404 })
   return album
 }
@@ -39,11 +45,13 @@ export const list = createServerFn({ method: 'GET' }).handler(async () => {
     .orderBy(desc(albums.updatedAt))
 })
 
+/** Null rather than a throw, so the route can render its not-found page. */
 export const get = createServerFn({ method: 'GET' })
   .validator(albumIdInput)
   .handler(async ({ data }) => {
     const ownerId = await requireUser()
-    const album = await ownedAlbum(data.albumId, ownerId)
+    const album = await findOwnedAlbum(data.albumId, ownerId)
+    if (!album) return null
     const pages = await db()
       .select()
       .from(spreads)
