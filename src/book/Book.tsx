@@ -28,10 +28,18 @@ type BookProps = {
   current: number
   onCurrentChange: (index: number) => void
   /** Editor slot; defaults to read-only element rendering. */
-  renderPage?: (spread: Spread, page: PageSide) => ReactNode
+  renderPage?: (spread: Spread, page: PageSide, layout: PageLayout) => ReactNode
+  /**
+   * Rendered above the open spread in the book's own coordinate space, so the
+   * editor can draw handles that reach past the paper. Desktop only.
+   */
+  overlay?: (layout: PageLayout) => ReactNode
   /** Disables drag and click turning. Arrow keys keep working. */
   locked?: boolean
 }
+
+/** Size of one rendered page and its page-unit multiplier. */
+export type PageLayout = { pagePx: number; scale: number }
 
 type SheetSpec = {
   front: ReactNode
@@ -51,6 +59,7 @@ export function Book({
   current,
   onCurrentChange,
   renderPage,
+  overlay,
   locked = false,
 }: BookProps) {
   const phone = useMediaQuery('(max-width: 767px)')
@@ -92,7 +101,9 @@ export function Book({
 
   const page = (spread: Spread, side: PageSide) => (
     <PageSurface sizePx={pagePx} side={side}>
-      {renderPage?.(spread, side) ?? (
+      {renderPage ? (
+        renderPage(spread, side, { pagePx, scale })
+      ) : (
         <PageElements elements={spread.elements} side={side} scale={scale} />
       )}
     </PageSurface>
@@ -145,6 +156,7 @@ export function Book({
           onTurnedChange={handleTurned}
           endTurned={phone ? 2 * n + 1 : n + 1}
           locked={locked}
+          overlay={phone ? undefined : overlay?.({ pagePx, scale })}
         />
       ) : null}
     </div>
@@ -162,6 +174,7 @@ type BookStackProps = {
   /** Where the End key lands. */
   endTurned: number
   locked: boolean
+  overlay?: ReactNode
 }
 
 function BookStack({
@@ -173,6 +186,7 @@ function BookStack({
   onTurnedChange,
   endTurned,
   locked,
+  overlay,
 }: BookStackProps) {
   const boxRef = useRef<HTMLDivElement>(null)
   const sheetCount = sheets.length
@@ -260,6 +274,12 @@ function BookStack({
             />
           )
         })}
+
+        {overlay ? (
+          <div className="absolute inset-0" style={{ zIndex: 3 * sheetCount }}>
+            {overlay}
+          </div>
+        ) : null}
       </motion.div>
     </div>
   )
@@ -311,8 +331,8 @@ function EdgeStripes({ side, count, pagePx }: { side: 'left' | 'right'; count: n
   )
 }
 
-// phase 3: the editor replaces this via `renderPage` with selectable elements.
-function PageElements({ elements, side, scale }: { elements: Element[]; side: PageSide; scale: number }) {
+/** Read-only element rendering; the editor swaps in its own via `renderPage`. */
+export function PageElements({ elements, side, scale }: { elements: Element[]; side: PageSide; scale: number }) {
   return (
     <>
       {elements

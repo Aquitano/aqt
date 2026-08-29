@@ -17,7 +17,6 @@ type PageSurfaceProps = {
  * hairline edge. Children are laid out in absolute coordinates inside it.
  */
 export function PageSurface({ sizePx, side, children, className, style }: PageSurfaceProps) {
-  const gutterSide = side === 'left' ? 'right' : 'left'
   return (
     <div
       className={cn('relative overflow-hidden', className)}
@@ -36,14 +35,22 @@ export function PageSurface({ sizePx, side, children, className, style }: PageSu
         style={{ backgroundImage: PAPER_GRAIN, opacity: 0.04, mixBlendMode: 'multiply' }}
       />
       {children}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 w-[6%]"
-        style={{
-          [gutterSide]: 0,
-          backgroundImage: `linear-gradient(to ${side}, rgb(0 0 0 / .12), rgb(0 0 0 / .03) 50%, transparent)`,
-        }}
-      />
+      <PageGutter side={side} />
     </div>
+  )
+}
+
+/** The shadow that falls into the spine. Sits above whatever is on the page. */
+export function PageGutter({ side }: { side: PageSide }) {
+  const gutterSide = side === 'left' ? 'right' : 'left'
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-y-0 w-[6%]"
+      style={{
+        [gutterSide]: 0,
+        backgroundImage: `linear-gradient(to ${side}, rgb(0 0 0 / .12), rgb(0 0 0 / .03) 50%, transparent)`,
+      }}
+    />
   )
 }

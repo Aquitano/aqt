@@ -9,6 +9,7 @@ import type { Album, Spread } from '@/server/db/schema'
 export type EditorMode = 'view' | 'edit'
 export type SaveStatus = 'saved' | 'saving' | 'error'
 export type ZOrder = 'forward' | 'backward' | 'front' | 'back'
+export type EditorPanel = 'photos' | 'pages' | null
 
 export type EditorState = {
   album: Album
@@ -17,12 +18,18 @@ export type EditorState = {
   current: number
   mode: EditorMode
   selection: string | null
+  /** Text element being edited inline. */
+  editing: string | null
+  panel: EditorPanel
   saveStatus: SaveStatus
 
   setCurrent: (index: number) => void
   setMode: (mode: EditorMode) => void
   select: (id: string | null) => void
+  setEditing: (id: string | null) => void
+  setPanel: (panel: EditorPanel) => void
   setSaveStatus: (status: SaveStatus) => void
+  updateAlbum: (patch: Partial<Pick<Album, 'title' | 'cover' | 'shareSlug'>>) => void
 
   updateElement: (spreadId: string, id: string, patch: Partial<Element>) => void
   addElement: (spreadId: string, element: Element) => void
@@ -45,12 +52,17 @@ export function createEditorStore(album: Album, spreads: Spread[]) {
         current: 0,
         mode: 'view',
         selection: null,
+        editing: null,
+        panel: null,
         saveStatus: 'saved',
 
-        setCurrent: (current) => set({ current, selection: null }),
-        setMode: (mode) => set({ mode }),
-        select: (selection) => set({ selection }),
+        setCurrent: (current) => set({ current, selection: null, editing: null }),
+        setMode: (mode) => set({ mode, selection: null, editing: null, panel: null }),
+        select: (selection) => set({ selection, editing: null }),
+        setEditing: (editing) => set({ editing, selection: editing }),
+        setPanel: (panel) => set({ panel }),
         setSaveStatus: (saveStatus) => set({ saveStatus }),
+        updateAlbum: (patch) => set((state) => ({ album: { ...state.album, ...patch } })),
 
         updateElement: (spreadId, id, patch) =>
           set((state) => ({
@@ -70,6 +82,7 @@ export function createEditorStore(album: Album, spreads: Spread[]) {
         removeElement: (spreadId, id) =>
           set((state) => ({
             selection: state.selection === id ? null : state.selection,
+            editing: state.editing === id ? null : state.editing,
             spreads: mapElements(state.spreads, spreadId, (elements) =>
               elements.filter((el) => el.id !== id),
             ),
@@ -124,6 +137,7 @@ export function createEditorStore(album: Album, spreads: Spread[]) {
       {
         // Undo/redo covers page content only; navigation and mode are not history.
         partialize: (state) => ({ spreads: state.spreads }),
+        equality: (past, current) => past.spreads === current.spreads,
         limit: 100,
       },
     ),
@@ -133,6 +147,13 @@ export function createEditorStore(album: Album, spreads: Spread[]) {
 const EditorStoreContext = createContext<EditorStore | null>(null)
 
 export const EditorStoreProvider = EditorStoreContext.Provider
+
+/** The raw store, for imperative reads and zundo access. */
+export function useEditorStore(): EditorStore {
+  const store = useContext(EditorStoreContext)
+  if (!store) throw new Error('useEditorStore must be used inside EditorStoreProvider')
+  return store
+}
 
 export function useEditor<T>(selector: (state: EditorState) => T): T {
   const store = useContext(EditorStoreContext)

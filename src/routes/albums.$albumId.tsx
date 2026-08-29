@@ -1,17 +1,14 @@
 import { useEffect, useMemo } from 'react'
 import { useSuspenseQuery } from '@tanstack/react-query'
-import { Link, createFileRoute } from '@tanstack/react-router'
-import { ChevronLeft } from 'lucide-react'
-import { Book } from '@/book/Book'
-import { Button } from '@/components/ui/button'
+import { createFileRoute } from '@tanstack/react-router'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { AlbumHeader } from '@/editor/AlbumHeader'
 import { attachAutosave } from '@/editor/autosave'
-import {
-  EditorStoreProvider,
-  createEditorStore,
-  useEditor,
-} from '@/editor/store'
+import { Editor } from '@/editor/Editor'
+import { EditorStoreProvider, createEditorStore } from '@/editor/store'
 import { requireSignedIn } from '@/lib/guard'
 import { albumQuery } from '@/lib/queries'
+import { useMediaQuery } from '@/lib/use-media-query'
 
 export const Route = createFileRoute('/albums/$albumId')({
   beforeLoad: requireSignedIn,
@@ -23,6 +20,7 @@ export const Route = createFileRoute('/albums/$albumId')({
 function AlbumPage() {
   const { albumId } = Route.useParams()
   const { data } = useSuspenseQuery(albumQuery(albumId))
+  const phone = useMediaQuery('(max-width: 767px)')
 
   // One store per open album; recreated when the album identity changes.
   const store = useMemo(
@@ -34,38 +32,12 @@ function AlbumPage() {
 
   return (
     <EditorStoreProvider value={store}>
-      <main className="flex h-dvh flex-col">
-        <header className="flex items-center gap-3 px-6 py-4">
-          <Button variant="ghost" size="icon" asChild aria-label="Back to albums">
-            <Link to="/albums">
-              <ChevronLeft />
-            </Link>
-          </Button>
-          <h1 className="text-lg font-medium">{data.album.title}</h1>
-        </header>
-
-        {/* phase 3: Editor.tsx wraps this with the toolbar, sheets and handles. */}
-        <div className="flex min-h-0 flex-1 px-6 pb-10">
-          <BookView />
-        </div>
-      </main>
+      <TooltipProvider>
+        <main className="relative flex h-dvh flex-col">
+          <AlbumHeader canEdit={!phone} />
+          <Editor canEdit={!phone} />
+        </main>
+      </TooltipProvider>
     </EditorStoreProvider>
-  )
-}
-
-function BookView() {
-  const album = useEditor((state) => state.album)
-  const spreads = useEditor((state) => state.spreads)
-  const current = useEditor((state) => state.current)
-  const setCurrent = useEditor((state) => state.setCurrent)
-
-  return (
-    <Book
-      title={album.title}
-      cover={album.cover}
-      spreads={spreads}
-      current={current}
-      onCurrentChange={setCurrent}
-    />
   )
 }
