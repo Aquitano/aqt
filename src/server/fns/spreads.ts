@@ -42,8 +42,14 @@ async function setPositions(albumId: string, orderedIds: string[]) {
 
 export const insert = createServerFn({ method: 'POST' })
   .validator(
-    // The editor creates the id up front so its optimistic state matches the row.
-    type({ albumId: 'string', afterPosition: 'number.integer', 'id?': 'string' }),
+    // The editor creates the id up front so its optimistic state matches the
+    // row, and passes elements when it re-inserts a spread it had deleted.
+    type({
+      albumId: 'string',
+      afterPosition: 'number.integer',
+      'id?': 'string',
+      'elements?': elementList,
+    }),
   )
   .handler(async ({ data }) => {
     const ownerId = await requireUser()
@@ -53,7 +59,7 @@ export const insert = createServerFn({ method: 'POST' })
       id: data.id ?? nanoid(12),
       albumId: data.albumId,
       position: at,
-      elements: [],
+      elements: data.elements ?? [],
       updatedAt: Date.now(),
     }
     await db().batch([

@@ -1,16 +1,21 @@
-import type { EditorStore } from './store'
+import { HISTORY_LIMIT, type EditorStore } from './store'
 
 /**
  * Collapses every store update made during a pointer gesture into one undo
- * step. Call at pointer-down; the returned function runs at pointer-up and
- * drops all but the first history entry the gesture produced.
+ * step. Call at pointer-down: history tracking is paused for the duration and
+ * the pre-gesture spreads are pushed back as a single entry at pointer-up.
  */
 export function beginGesture(store: EditorStore) {
-  const before = store.temporal.getState().pastStates.length
+  const before = store.getState().spreads
+  store.temporal.getState().pause()
+
   return () => {
     const temporal = store.temporal.getState()
-    if (temporal.pastStates.length > before + 1) {
-      store.temporal.setState({ pastStates: temporal.pastStates.slice(0, before + 1) })
-    }
+    temporal.resume()
+    if (store.getState().spreads === before) return
+    store.temporal.setState({
+      pastStates: [...temporal.pastStates, { spreads: before }].slice(-HISTORY_LIMIT),
+      futureStates: [],
+    })
   }
 }

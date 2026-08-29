@@ -43,21 +43,37 @@ export type EditorState = {
 
 export type EditorStore = ReturnType<typeof createEditorStore>
 
+/** How many undo steps zundo keeps; gesture entries respect it too. */
+export const HISTORY_LIMIT = 100
+
 export function createEditorStore(album: Album, spreads: Spread[]) {
-  return createStore<EditorState>()(
+  const store = createStore<EditorState>()(
     temporal(
       (set) => ({
         album,
         spreads,
-        current: 0,
+        // Albums open the way a book does: closed, on the front cover.
+        current: -1,
         mode: 'view',
         selection: null,
         editing: null,
         panel: null,
         saveStatus: 'saved',
 
-        setCurrent: (current) => set({ current, selection: null, editing: null }),
-        setMode: (mode) => set({ mode, selection: null, editing: null, panel: null }),
+        setCurrent: (current) =>
+          set((state) => ({
+            current: clampCurrent(current, state.spreads.length, state.mode),
+            selection: null,
+            editing: null,
+          })),
+        setMode: (mode) =>
+          set((state) => ({
+            mode,
+            current: clampCurrent(state.current, state.spreads.length, mode),
+            selection: null,
+            editing: null,
+            panel: null,
+          })),
         select: (selection) => set({ selection, editing: null }),
         setEditing: (editing) => set({ editing, selection: editing }),
         setPanel: (panel) => set({ panel }),
@@ -116,13 +132,9 @@ export function createEditorStore(album: Album, spreads: Spread[]) {
           }),
 
         removeSpread: (id) =>
-          set((state) => {
-            const spreads = reposition(state.spreads.filter((s) => s.id !== id))
-            return {
-              spreads,
-              current: Math.min(state.current, Math.max(spreads.length - 1, 0)),
-            }
-          }),
+          set((state) => ({
+            spreads: reposition(state.spreads.filter((s) => s.id !== id)),
+          })),
 
         reorderSpreads: (ids) =>
           set((state) => {
@@ -138,10 +150,30 @@ export function createEditorStore(album: Album, spreads: Spread[]) {
         // Undo/redo covers page content only; navigation and mode are not history.
         partialize: (state) => ({ spreads: state.spreads }),
         equality: (past, current) => past.spreads === current.spreads,
-        limit: 100,
+        limit: HISTORY_LIMIT,
       },
     ),
   )
+
+  // Any change to `spreads` can strand `current` outside the book, including
+  // the ones zundo makes on undo/redo. One subscriber covers them all.
+  store.subscribe((state, prev) => {
+    if (state.spreads === prev.spreads) return
+    const current = clampCurrent(state.current, state.spreads.length, state.mode)
+    if (current !== state.current) store.setState({ current })
+  })
+
+  return store
+}
+
+/**
+ * View mode spans the covers; edit mode only has real spreads to edit, so it
+ * clamps onto the nearest one.
+ */
+function clampCurrent(index: number, count: number, mode: EditorMode) {
+  if (mode === 'view') return Math.min(Math.max(index, -1), count)
+  if (count === 0) return -1
+  return Math.min(Math.max(index, 0), count - 1)
 }
 
 const EditorStoreContext = createContext<EditorStore | null>(null)
@@ -186,18 +218,23 @@ function mapElements(
   )
 }
 
-/** Array order is z-order: last element is topmost. */
+/**
+ * Array order is z-order: last element is topmost. Steps only pass elements on
+ * the same page, since the other page never overlaps this one.
+ */
 function moveInArray(elements: Element[], id: string, to: ZOrder): Element[] {
   const from = elements.findIndex((el) => el.id === id)
   if (from === -1) return elements
+  const peers = elements.flatMap((el, index) => (el.page === elements[from].page ? [index] : []))
+  const at = peers.indexOf(from)
   const target =
     to === 'front'
-      ? elements.length - 1
+      ? peers[peers.length - 1]
       : to === 'back'
-        ? 0
+        ? peers[0]
         : to === 'forward'
-          ? Math.min(from + 1, elements.length - 1)
-          : Math.max(from - 1, 0)
+          ? peers[Math.min(at + 1, peers.length - 1)]
+          : peers[Math.max(at - 1, 0)]
   if (target === from) return elements
   const next = [...elements]
   const [moved] = next.splice(from, 1)
