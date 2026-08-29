@@ -1,5 +1,6 @@
 import type { Element } from '@/domain/element'
 import * as spreadFns from '@/server/fns/spreads'
+import { rejectFailures } from '@/lib/server-error'
 import type { EditorState, EditorStore } from './store'
 import type { Spread } from '@/server/db/schema'
 
@@ -42,7 +43,7 @@ export function attachAutosave(store: EditorStore) {
     timers.delete(spreadId)
     pending.delete(spreadId)
     if (!elements) return
-    run(spreadFns.saveElements({ data: { spreadId, elements } }))
+    run(rejectFailures(spreadFns.saveElements({ data: { spreadId, elements } })))
   }
 
   const flushAll = () => {
@@ -90,23 +91,27 @@ async function syncStructure(state: EditorState, prevIds: string[]) {
   await Promise.all(
     prevIds
       .filter((id) => !after.has(id))
-      .map((id) => spreadFns.remove({ data: { spreadId: id } })),
+      .map((id) => rejectFailures(spreadFns.remove({ data: { spreadId: id } }))),
   )
 
   // Re-inserting carries the elements, so undoing a spread delete restores it whole.
   for (const [index, spread] of state.spreads.entries()) {
     if (before.has(spread.id)) continue
-    await spreadFns.insert({
-      data: {
-        albumId: state.album.id,
-        afterPosition: index - 1,
-        id: spread.id,
-        elements: spread.elements,
-      },
-    })
+    await rejectFailures(
+      spreadFns.insert({
+        data: {
+          albumId: state.album.id,
+          afterPosition: index - 1,
+          id: spread.id,
+          elements: spread.elements,
+        },
+      }),
+    )
   }
 
-  await spreadFns.reorder({
-    data: { albumId: state.album.id, orderedIds: ids },
-  })
+  await rejectFailures(
+    spreadFns.reorder({
+      data: { albumId: state.album.id, orderedIds: ids },
+    }),
+  )
 }

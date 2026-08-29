@@ -1,3 +1,4 @@
+import { ServerError, rejectFailures } from '@/lib/server-error'
 import { useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ImagePlus, Trash2, Upload } from 'lucide-react'
@@ -202,26 +203,6 @@ async function put(url: string, blob: Blob) {
     headers: { 'Content-Type': blob.type || 'image/jpeg' },
   })
   if (!response.ok) throw new Error(`Upload failed (${response.status})`)
-}
-
-class ServerError extends Error {
-  constructor(readonly status: number, message: string) {
-    super(message)
-    this.name = 'ServerError'
-  }
-}
-
-/**
- * A `throw new Response(...)` in a server fn does not reject on the client: the
- * raw Response arrives as the resolved value. Turn a failed one into a real
- * rejection carrying the server's own wording.
- */
-async function rejectFailures<T>(work: Promise<T>): Promise<T> {
-  const result = await work
-  if (result instanceof Response && !result.ok) {
-    throw new ServerError(result.status, (await result.text()) || result.statusText)
-  }
-  return result
 }
 
 /** The server refuses to delete a photo that is still on a page. */
