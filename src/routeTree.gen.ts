@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AlbumsIndexRouteImport } from './routes/albums.index'
 import { Route as AlbumsAlbumIdRouteImport } from './routes/albums.$albumId'
+import { Route as PrintAlbumIdRouteImport } from './routes/print.$albumId'
 import { Route as SSlugRouteImport } from './routes/s.$slug'
 import { Route as ApiPhotosIdRouteImport } from './routes/api/photos.$id'
 import { Route as ApiV1SplatRouteImport } from './routes/api/v1/$'
@@ -29,6 +30,11 @@ const AlbumsIndexRoute = AlbumsIndexRouteImport.update({
 const AlbumsAlbumIdRoute = AlbumsAlbumIdRouteImport.update({
   id: '/albums/$albumId',
   path: '/albums/$albumId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrintAlbumIdRoute = PrintAlbumIdRouteImport.update({
+  id: '/print/$albumId',
+  path: '/print/$albumId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SSlugRoute = SSlugRouteImport.update({
@@ -50,6 +56,7 @@ const ApiV1SplatRoute = ApiV1SplatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/albums/$albumId': typeof AlbumsAlbumIdRoute
+  '/print/$albumId': typeof PrintAlbumIdRoute
   '/s/$slug': typeof SSlugRoute
   '/albums/': typeof AlbumsIndexRoute
   '/api/photos/$id': typeof ApiPhotosIdRoute
@@ -58,6 +65,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/albums/$albumId': typeof AlbumsAlbumIdRoute
+  '/print/$albumId': typeof PrintAlbumIdRoute
   '/s/$slug': typeof SSlugRoute
   '/albums': typeof AlbumsIndexRoute
   '/api/photos/$id': typeof ApiPhotosIdRoute
@@ -67,6 +75,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/albums/$albumId': typeof AlbumsAlbumIdRoute
+  '/print/$albumId': typeof PrintAlbumIdRoute
   '/s/$slug': typeof SSlugRoute
   '/albums/': typeof AlbumsIndexRoute
   '/api/photos/$id': typeof ApiPhotosIdRoute
@@ -77,6 +86,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/albums/$albumId'
+    | '/print/$albumId'
     | '/s/$slug'
     | '/albums/'
     | '/api/photos/$id'
@@ -85,6 +95,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/albums/$albumId'
+    | '/print/$albumId'
     | '/s/$slug'
     | '/albums'
     | '/api/photos/$id'
@@ -93,6 +104,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/albums/$albumId'
+    | '/print/$albumId'
     | '/s/$slug'
     | '/albums/'
     | '/api/photos/$id'
@@ -102,6 +114,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AlbumsAlbumIdRoute: typeof AlbumsAlbumIdRoute
+  PrintAlbumIdRoute: typeof PrintAlbumIdRoute
   SSlugRoute: typeof SSlugRoute
   AlbumsIndexRoute: typeof AlbumsIndexRoute
   ApiPhotosIdRoute: typeof ApiPhotosIdRoute
@@ -131,6 +144,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AlbumsAlbumIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/print/$albumId': {
+      id: '/print/$albumId'
+      path: '/print/$albumId'
+      fullPath: '/print/$albumId'
+      preLoaderRoute: typeof PrintAlbumIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/s/$slug': {
       id: '/s/$slug'
       path: '/s/$slug'
@@ -158,6 +178,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AlbumsAlbumIdRoute: AlbumsAlbumIdRoute,
+  PrintAlbumIdRoute: PrintAlbumIdRoute,
   SSlugRoute: SSlugRoute,
   AlbumsIndexRoute: AlbumsIndexRoute,
   ApiPhotosIdRoute: ApiPhotosIdRoute,

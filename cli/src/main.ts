@@ -20,6 +20,7 @@ const USAGE = `album - photo books from the terminal
   album book get <album id>            prints the book as JSON
   album book put <album id> [file|-]   replaces the book from JSON (stdin by default)
   album share on|off <album id>
+  album export <album id> [--out book.pdf]
   album mcp                            serve the same commands over MCP (stdio)
 
   --json on any command prints raw API responses.`
@@ -30,6 +31,7 @@ type Flags = {
   key?: string
   material?: string
   color?: string
+  out?: string
 }
 
 async function main(argv: string[]) {
@@ -42,6 +44,7 @@ async function main(argv: string[]) {
       key: { type: 'string' },
       material: { type: 'string' },
       color: { type: 'string' },
+      out: { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   })
@@ -64,6 +67,12 @@ async function main(argv: string[]) {
 
   const client = createClient(await loadConfig())
   const out = (data: unknown, human: () => string) => print(flags.json ? JSON.stringify(data, null, 2) : human())
+
+  if (command === 'export') {
+    const { exportPdf } = await import('./export')
+    const file = await exportPdf(client, need(rest[0], 'album id'), flags.out)
+    return out({ file }, () => `Wrote ${file}`)
+  }
 
   switch (`${command} ${rest[0] ?? ''}`.trim()) {
     case 'whoami': {

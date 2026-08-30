@@ -18,13 +18,11 @@ type ReservedPhoto = Photo & { uploadUrl: string; thumbUploadUrl: string }
 
 /** Typed wrapper over `/api/v1` plus the photo byte endpoints. */
 export function createClient({ url, key }: Config) {
+  const headers = { Authorization: `Bearer ${key}` }
   const request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
     const res = await fetch(`${url}${path}`, {
       method,
-      headers: {
-        Authorization: `Bearer ${key}`,
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      },
+      headers: { ...headers, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
     if (!res.ok) {
@@ -40,7 +38,7 @@ export function createClient({ url, key }: Config) {
   const upload = async (path: string, bytes: Uint8Array) => {
     const res = await fetch(`${url}${path}`, {
       method: 'PUT',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'image/jpeg' },
+      headers: { ...headers, 'Content-Type': 'image/jpeg' },
       // A fresh copy is backed by a plain ArrayBuffer, which is what fetch accepts.
       body: new Uint8Array(bytes),
     })
@@ -49,6 +47,8 @@ export function createClient({ url, key }: Config) {
 
   return {
     url,
+    /** For clients that fetch pages themselves, such as the PDF exporter. */
+    headers,
     me: () => request<{ userId: string }>('GET', '/api/v1/me'),
     albums: {
       list: () => request<Album[]>('GET', '/api/v1/albums'),
