@@ -10,7 +10,7 @@
     "dev": "vite dev --port 3000",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && bun run --cwd cli typecheck",
     "generate-routes": "tsr generate",
     "cf-typegen": "wrangler types",
     "deploy": "wrangler deploy",
@@ -58,5 +58,8 @@
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
     "wrangler": "^4.70.0"
-  }
+  },
+  "workspaces": [
+    "cli"
+  ]
 }
