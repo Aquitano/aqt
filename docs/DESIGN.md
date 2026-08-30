@@ -15,8 +15,10 @@ Decisions below were settled in the initial interview. Anything not listed here 
 - Autosave with undo/redo.
 - Read-only share links (`/s/:slug`), no auth required to view.
 - Desktop + tablet: full editor. Phone: single-page flip-through, no editing.
+- JSON API with per-user API keys, a CLI on top of it, and an MCP server so an agent can author a book.
+- PDF export through a print route.
 
-**Out of v1**: stickers/decorations, PDF/print export, collaboration, per-album page formats (pages are always square).
+**Out of v1**: stickers/decorations, collaboration, per-album page formats (pages are always square).
 
 ## Stack
 
@@ -100,12 +102,26 @@ photos
   thumb_key     text      R2 key of thumbnail       (photos/{ownerId}/{id}.thumb.jpg, max 400px)
   width         integer   display image px
   height        integer
+  taken_at      integer   nullable, EXIF capture time when the importer could read one
   created_at    integer
+
+spread_photos
+  spread_id     text fk -> spreads.id (cascade)   pk (spread_id, photo_id)
+  photo_id      text idx
+
+api_keys
+  id            text pk
+  owner_id      text idx
+  name          text
+  hash          text      unique, sha256 of the key; the key itself is shown once
+  prefix        text      first characters, for telling keys apart in a list
+  created_at    integer
+  last_used_at  integer   nullable, refreshed at most hourly
 ```
 
-Elements live as a JSON column on the spread rather than as rows. One user edits one spread at a time; a spread is the natural unit of save, undo and rendering. Cross-element queries are never needed.
+Elements live as a JSON column on the spread rather than as rows. One user edits one spread at a time; a spread is the natural unit of save, undo and rendering. The one cross-element question, "which spreads place this photo?", is answered by `spread_photos`, rewritten from the elements on every spread write.
 
-Deleting a photo that is referenced by an element is refused (409) until it is removed from every spread. Server checks with a `LIKE '%"photoId":"<id>"%'` on `spreads.elements` scoped to the owner. Good enough at this scale.
+Every write validates elements with the ArkType schemas (bounds included: a box must overlap its page, sizes and text sizes are capped) and rejects photo ids the caller does not own. Deleting a photo that is still placed is refused (409) until it is removed from every spread.
 
 ## Routes
 
@@ -115,7 +131,13 @@ Deleting a photo that is referenced by an element is refused (409) until it is r
 | `/albums` | Shelf. Grid of album covers rendered with the real cover component. Create album dialog. |
 | `/albums/$albumId` | The book. View mode by default, `E` or toolbar toggles edit mode. |
 | `/s/$slug` | Public read-only book. Same `Book` component, no editor, no Clerk. |
+| `/print/$albumId` | Cover on a square page, one landscape page per spread, at 1 CSS px per page unit. `album export` prints it. |
 | `/api/photos/$id` | `PUT` streams body to R2 (auth required). `GET` serves from R2 with long cache headers. `?thumb=1` for the thumbnail. |
+| `/api/v1/*` | JSON API, see below. |
+
+Auth (`src/server/auth.ts`) accepts an `Authorization: Bearer alb_...` API key before falling back to the Clerk session, on every server function and route.
+
+The album, spread and photo logic lives in plain functions in `src/server/{albums,spreads,photos,api-keys}.ts` that take the caller's user id. Server functions and the JSON API are both thin wrappers over them.
 
 Server functions (TanStack `createServerFn`), all auth-guarded except share reads:
 
@@ -127,6 +149,34 @@ Server functions (TanStack `createServerFn`), all auth-guarded except share read
 - `spreads.saveElements(spreadId, elements)` (the autosave target)
 - `photos.create({ width, height })` -> `{ id, key, thumbKey }` then client `PUT`s both files
 - `photos.list`, `photos.delete`
+- `apiKeys.list`, `apiKeys.create(name)` -> key shown once, `apiKeys.revoke(id)`
+
+### JSON API
+
+`/api/v1`, one splat route with a small matcher (`src/server/api/index.ts`). Bodies are validated with the schemas in `src/domain/api.ts`, which the CLI reuses. Errors are `{ error }` with the matching status.
+
+```
+GET    /me                          { userId }
+GET    /albums                      Album[]
+POST   /albums                      { title, cover } -> Album
+GET    /albums/:id                  { album, spreads }
+PATCH  /albums/:id                  { title?, cover? } -> Album
+DELETE /albums/:id
+PUT    /albums/:id/book             { title?, cover?, spreads: [{ id?, elements }] } -> { album, spreads }
+POST   /albums/:id/share            { slug, url }
+DELETE /albums/:id/share
+GET    /photos                      Photo[]
+POST   /photos                      { width, height, takenAt? } -> Photo + uploadUrl, thumbUploadUrl
+DELETE /photos/:id
+```
+
+Photo bytes go through `PUT /api/photos/:id` (and `?thumb=1`) exactly as the browser sends them; the client makes the renditions. `PUT .../book` replaces every spread in one batch and keeps supplied ids, so get -> edit -> put round-trips.
+
+### CLI and MCP
+
+`cli/` (bun workspace) wraps the API: `login`, `albums`, `photos import` (sharp makes the same 2500px/400px JPEGs as the browser, exifr reads the capture date), `book get|put`, `share`, `export` (Playwright prints `/print/:id` to PDF with the key as a bearer header) and `mcp`.
+
+`album mcp` is a stdio MCP server exposing the same operations as tools, plus a layout guide (page geometry, frame styles, spread recipes, sequencing rules) and the book JSON schema derived from the ArkType schema. It runs on the user's machine so `import_photos` can read local files.
 
 ## The book
 
@@ -213,6 +263,8 @@ Own implementation with pointer events and `setPointerCapture`, no library:
 - Keyboard: arrow keys nudge 5 units (Shift: 25), Delete removes, `Cmd-]` / `Cmd-[` change z-order, Esc deselects.
 - Double-click a text element to edit inline (`contentEditable` on the same node, so it is WYSIWYG).
 
+While the photo library or filmstrip sheet is open the book gives up the sheet's width, so no page is covered at narrow desktop sizes.
+
 ### Toolbar
 
 A floating shadcn `Card` docked at the bottom, always visible in edit mode:
@@ -255,15 +307,18 @@ Cover color palette (six swatches): oxblood, forest, navy, sand, charcoal, cream
 
 ```
 src/
-  routes/                TanStack Start file routes (+ api/photos.$id.ts)
+  routes/                TanStack Start file routes (+ api/photos.$id.ts, api/v1/$.ts, print.$albumId.tsx)
   server/
     db/schema.ts         Drizzle schema
     db/client.ts         D1 binding -> drizzle
     storage.ts           Storage interface + R2 implementation
-    auth.ts              getAuth helper (Clerk) + requireUser
-    fns/                 createServerFn groups: albums.ts, spreads.ts, photos.ts, share.ts
+    auth.ts              currentUserId (bearer key or Clerk) + requireUser
+    albums.ts, spreads.ts, photos.ts, api-keys.ts   transport-independent logic
+    api/index.ts         JSON API router
+    fns/                 createServerFn wrappers: albums.ts, spreads.ts, photos.ts, share.ts, api-keys.ts
   domain/
     element.ts           ArkType schemas + inferred types for Element, Cover
+    api.ts               request schemas of the JSON API
     page.ts              PAGE_UNITS = 1000, helpers
   book/
     Book.tsx, Leaf.tsx, Cover.tsx, PageSurface.tsx, PhotoView.tsx, TextView.tsx
@@ -278,6 +333,12 @@ src/
   lib/
     image.ts             client-side resize
     utils.ts             cn
+cli/
+  src/main.ts            command line entry
+  src/client.ts          typed API client
+  src/photos.ts          sharp renditions + EXIF
+  src/mcp.ts             MCP server
+  src/export.ts          PDF export
 drizzle/                 migrations
 wrangler.jsonc
 drizzle.config.ts

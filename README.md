@@ -63,9 +63,36 @@ bun run deploy
 `bun run cf-typegen` regenerates `worker-configuration.d.ts` after changing
 bindings in `wrangler.jsonc`.
 
+## CLI and MCP
+
+`cli/` is a bun workspace with a command line client for the JSON API. It runs
+straight from source:
+
+```sh
+alias album="bun $(pwd)/cli/src/main.ts"
+album login --url https://your-app.workers.dev --key alb_...   # key from the shelf's key icon
+album photos import ~/Pictures/trip/*.jpg                       # resized locally, EXIF dates kept
+album albums create "Summer" --material cloth --color sand
+album book get <album id> > book.json                           # edit, then:
+album book put <album id> book.json
+album share on <album id>
+album export <album id> --out summer.pdf                        # needs: bunx playwright install chromium
+```
+
+`album mcp` serves the same operations over MCP on stdio, with a layout guide
+and the book's JSON schema as resources, so an agent can lay out a book. For
+Claude Code:
+
+```sh
+claude mcp add album -- bun /path/to/aqt-img/cli/src/main.ts mcp
+```
+
+Config lives in `~/.config/album/config.json`; `ALBUM_URL` and `ALBUM_API_KEY`
+override it, which is the way to pass credentials to an MCP host.
+
+The API itself is documented in [docs/DESIGN.md](docs/DESIGN.md#json-api).
+
 ## Status
 
-Phase 1 (scaffolding) only. The book renders a spread as two flat pages; the 3D
-page turn, cover materials, transform handles, toolbar, photo library and
-filmstrip are phase 2. Places where phase 2 code slots in are marked
-`// phase 2`.
+v1 is complete: book, editor, sharing, JSON API, CLI, MCP and PDF export.
+Remote D1/R2 and the deploy have not been exercised yet.
