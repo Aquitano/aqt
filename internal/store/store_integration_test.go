@@ -58,6 +58,84 @@ func TestMalformedIdentifiersDoNotBreakInsertion(t *testing.T) {
 	}
 }
 
+func TestInsertMessagesBatchesInOrderAndRethreads(t *testing.T) {
+	ctx := context.Background()
+	st, schema := storetest.NewNamed(t)
+	const n = 1005 // crosses the store's protocol-batch boundary
+	at := time.Date(2024, 5, 13, 21, 8, 0, 0, time.UTC)
+	messages := make([]store.Message, 0, n+1)
+	for i := 0; i < n; i++ {
+		messages = append(messages, store.Message{
+			Source: "batch", ExternalID: fmt.Sprintf("m-%04d", i),
+			ThreadID: "old", Subject: "old subject", Body: fmt.Sprintf("body %d", i), SentAt: at,
+		})
+	}
+	// A duplicate inside the same call must preserve result alignment.
+	messages = append(messages, messages[0])
+	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != len(messages) || ids[0] == 0 || ids[n-1] == 0 || ids[n] != 0 {
+		t.Fatalf("ids have wrong shape or duplicate result: first=%d last-new=%d duplicate=%d len=%d",
+			ids[0], ids[n-1], ids[n], len(ids))
+	}
+	if rows := storetest.QueryInt(t, schema, `select count(*) from messages where source = 'batch'`); rows != n {
+		t.Fatalf("rows = %d, want %d", rows, n)
+	}
+
+	again, err := st.InsertMessages(ctx, messages[:n], store.InsertMessagesOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, id := range again {
+		if id != 0 {
+			t.Fatalf("unchanged row %d returned id %d", i, id)
+		}
+	}
+
+	newAt := at.Add(time.Hour)
+	rethreaded, err := st.InsertMessages(ctx, []store.Message{
+		{Source: "batch", ExternalID: "m-0000", ThreadID: "new", Subject: "new subject", Body: "must not replace body", SentAt: newAt},
+		{Source: "batch", ExternalID: "fresh", ThreadID: "new", Subject: "fresh", Body: "fresh body", SentAt: newAt},
+	}, store.InsertMessagesOpts{Rethread: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rethreaded[0] != 0 || rethreaded[1] == 0 {
+		t.Fatalf("rethread results = %v, want duplicate then insert", rethreaded)
+	}
+	got, _, err := st.GetMessage(ctx, ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ThreadID != "new" || got.Subject != "new subject" || !got.SentAt.Equal(newAt) {
+		t.Errorf("derived fields were not updated: %+v", got)
+	}
+	if got.Body != "body 0" {
+		t.Errorf("rethread replaced body with %q", got.Body)
+	}
+}
+
+func TestInsertMessagesCleansWholeBatchBeforeWriting(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	_, err := st.InsertMessages(ctx, []store.Message{
+		{Source: "batch", ExternalID: "valid", Body: "would otherwise land", SentAt: time.Now()},
+		{Source: "batch", Body: "missing external id", SentAt: time.Now()},
+	}, store.InsertMessagesOpts{})
+	if err == nil {
+		t.Fatal("invalid message did not reject the batch")
+	}
+	has, err := st.HasMessage(ctx, "batch", "valid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has {
+		t.Fatal("valid prefix was written before the invalid message was rejected")
+	}
+}
+
 func TestEmptyResultsAreArrays(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)

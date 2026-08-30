@@ -73,6 +73,13 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSour
 		return res, err
 	}
 	seen := map[string]int{}
+	type pendingEntry struct {
+		index      int
+		entry      entry
+		externalID string
+	}
+	pending := make([]pendingEntry, 0, len(entries))
+	messages := make([]store.Message, 0, len(entries))
 	for i, e := range entries {
 		if e.Source == "" {
 			e.Source = defaultSource
@@ -100,7 +107,8 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSour
 		if sentAt.IsZero() {
 			sentAt = now
 		}
-		id, err := st.InsertMessage(ctx, store.Message{
+		pending = append(pending, pendingEntry{index: i, entry: e, externalID: externalID})
+		messages = append(messages, store.Message{
 			Source:     e.Source,
 			ExternalID: externalID,
 			ThreadID:   e.Thread,
@@ -111,9 +119,13 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSour
 			SentAt:     sentAt,
 			RawRef:     rawRef,
 		})
-		if err != nil {
-			return res, fail.Opf("insert message: %w", err)
-		}
+	}
+	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{})
+	if err != nil {
+		return res, fail.Opf("insert messages: %w", err)
+	}
+	for j, p := range pending {
+		i, e, externalID, id := p.index, p.entry, p.externalID, ids[j]
 		fresh := id != 0
 		if fresh {
 			res.Inserted++

@@ -226,7 +226,12 @@ func (s *Store) contactAliases(ctx context.Context, contactID int64) ([]ContactA
 }
 
 func (s *Store) ListContacts(ctx context.Context) ([]Contact, error) {
-	rows, err := s.pool.Query(ctx, `select id, name, note, created_at from contacts order by name`)
+	rows, err := s.pool.Query(ctx, `
+		select c.id, c.name, c.note, c.created_at,
+		       a.value is not null, coalesce(a.source, ''), coalesce(a.value, ''), coalesce(a.value_norm, '')
+		from contacts c
+		left join contact_aliases a on a.contact_id = c.id
+		order by c.name, a.source, a.value_norm`)
 	if err != nil {
 		return nil, err
 	}
@@ -234,20 +239,21 @@ func (s *Store) ListContacts(ctx context.Context) ([]Contact, error) {
 	out := []Contact{}
 	for rows.Next() {
 		var c Contact
-		if err := rows.Scan(&c.ID, &c.Name, &c.Note, &c.CreatedAt); err != nil {
+		var a ContactAlias
+		var hasAlias bool
+		if err := rows.Scan(&c.ID, &c.Name, &c.Note, &c.CreatedAt,
+			&hasAlias, &a.Source, &a.Value, &a.Normalized); err != nil {
 			return nil, err
 		}
-		out = append(out, c)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	for i := range out {
-		if out[i].Aliases, err = s.contactAliases(ctx, out[i].ID); err != nil {
-			return nil, err
+		if len(out) == 0 || out[len(out)-1].ID != c.ID {
+			c.Aliases = []ContactAlias{}
+			out = append(out, c)
+		}
+		if hasAlias {
+			out[len(out)-1].Aliases = append(out[len(out)-1].Aliases, a)
 		}
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // AddAlias attaches one identity to a contact. Normalization happens in SQL so

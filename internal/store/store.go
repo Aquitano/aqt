@@ -62,6 +62,36 @@ type Message struct {
 	AttachmentSnippet string `json:"attachment_snippet,omitempty"`
 }
 
+// InsertMessagesOpts selects how an import treats a message it has already
+// stored. The zero value preserves the existing row exactly. Rethread updates
+// the fields an importer derives from raw input and may learn to derive better
+// after a parser fix; the row still counts as a duplicate in the result.
+type InsertMessagesOpts struct {
+	Rethread bool
+}
+
+// messageBatchSize bounds one PostgreSQL protocol batch. The whole call still
+// runs in one transaction, so an import pays for one commit and remains atomic,
+// while batches keep client and server buffers bounded for histories with tens
+// of thousands of records.
+const messageBatchSize = 1000
+
+const insertMessageSQL = `
+	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref)
+	values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	on conflict do nothing
+	returning id`
+
+const rethreadMessageSQL = `
+	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref)
+	values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	on conflict (source, external_id) do update
+		set thread_id = excluded.thread_id, subject = excluded.subject, sent_at = excluded.sent_at
+		where messages.thread_id is distinct from excluded.thread_id
+		   or messages.subject is distinct from excluded.subject
+		   or messages.sent_at is distinct from excluded.sent_at
+	returning id, xmax = 0`
+
 type Attachment struct {
 	ID        int64  `json:"id"`
 	MessageID int64  `json:"message_id"`
@@ -187,29 +217,119 @@ func (s *Store) migrate(ctx context.Context) error {
 	return nil
 }
 
-// InsertMessage is idempotent via the (source, external_id) unique constraint.
-// Returns (0, nil) when the message was already present.
+// InsertMessages inserts a batch atomically and returns one id per input, in
+// input order. An id of zero means that row was already present. Records are
+// cleaned before the transaction begins, so malformed input cannot leave a
+// valid prefix committed.
 //
-// The bare "on conflict do nothing" also swallows the partial unique index on
-// (source, message_id), which is how mail imports dedup two copies of the same
-// mail that arrived under different provider ids.
-func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
-	m, err := m.clean()
-	if err != nil {
-		return 0, err
+// Work is sent through bounded pgx batches inside one transaction: a 40,000-row
+// history uses 40 protocol exchanges and one commit instead of 40,000 of each.
+// The zero-value options use a bare "on conflict do nothing", which also
+// swallows the partial unique index on (source, message_id). Rethread targets
+// only (source, external_id), matching InsertMessageRethreading's contract.
+func (s *Store) InsertMessages(ctx context.Context, messages []Message, o InsertMessagesOpts) ([]int64, error) {
+	cleaned := make([]Message, len(messages))
+	for i, m := range messages {
+		var err error
+		if cleaned[i], err = m.clean(); err != nil {
+			return nil, fmt.Errorf("message %d: %w", i, err)
+		}
 	}
+	ids := make([]int64, len(cleaned))
+	if len(cleaned) == 0 {
+		return ids, nil
+	}
+
+	// A singleton is the compatibility path used by mail ingestion. Avoid an
+	// explicit BEGIN/COMMIT around the one statement; PostgreSQL's autocommit is
+	// already atomic and Gmail intentionally runs several of these concurrently.
+	if len(cleaned) == 1 {
+		id, err := s.insertMessageRow(ctx, cleaned[0], o)
+		if err != nil {
+			return nil, err
+		}
+		ids[0] = id
+		return ids, nil
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(context.WithoutCancel(ctx))
+
+	for start := 0; start < len(cleaned); start += messageBatchSize {
+		end := min(start+messageBatchSize, len(cleaned))
+		var batch pgx.Batch
+		query := insertMessageSQL
+		if o.Rethread {
+			query = rethreadMessageSQL
+		}
+		for _, m := range cleaned[start:end] {
+			batch.Queue(query, messageArgs(m)...)
+		}
+		results := tx.SendBatch(ctx, &batch)
+		var batchErr error
+		for i := start; i < end; i++ {
+			ids[i], batchErr = scanMessageInsert(results.QueryRow(), o)
+			if batchErr != nil {
+				break
+			}
+		}
+		if closeErr := results.Close(); batchErr == nil {
+			batchErr = closeErr
+		}
+		if batchErr != nil {
+			return nil, batchErr
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (s *Store) insertMessageRow(ctx context.Context, m Message, o InsertMessagesOpts) (int64, error) {
+	query := insertMessageSQL
+	if o.Rethread {
+		query = rethreadMessageSQL
+	}
+	return scanMessageInsert(s.pool.QueryRow(ctx, query, messageArgs(m)...), o)
+}
+
+func messageArgs(m Message) []any {
+	return []any{m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef}
+}
+
+func scanMessageInsert(row pgx.Row, o InsertMessagesOpts) (int64, error) {
 	var id int64
-	err = s.pool.QueryRow(ctx, `
-		insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		on conflict do nothing
-		returning id`,
-		m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef,
-	).Scan(&id)
+	if !o.Rethread {
+		err := row.Scan(&id)
+		if err == pgx.ErrNoRows {
+			return 0, nil
+		}
+		return id, err
+	}
+	var inserted bool
+	err := row.Scan(&id, &inserted)
 	if err == pgx.ErrNoRows {
 		return 0, nil
 	}
-	return id, err
+	if err != nil || !inserted {
+		return 0, err
+	}
+	return id, nil
+}
+
+// InsertMessage is the single-record compatibility wrapper around
+// InsertMessages. It is idempotent via (source, external_id) and returns zero
+// when the message was already present.
+func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
+	ids, err := s.InsertMessages(ctx, []Message{m}, InsertMessagesOpts{})
+	if err != nil {
+		return 0, err
+	}
+	return ids[0], nil
 }
 
 // InsertMessageRethreading is InsertMessage for sources whose thread id,
@@ -228,33 +348,11 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
 // sets MessageID would hit the second unique index as a raw error rather than
 // the silent skip InsertMessage gives it.
 func (s *Store) InsertMessageRethreading(ctx context.Context, m Message) (int64, error) {
-	m, err := m.clean()
+	ids, err := s.InsertMessages(ctx, []Message{m}, InsertMessagesOpts{Rethread: true})
 	if err != nil {
 		return 0, err
 	}
-	var id int64
-	var inserted bool
-	// The where clause keeps an unchanged re-import from rewriting every row,
-	// at the cost of returning nothing for it — which is a duplicate either
-	// way. xmax tells a fresh insert from a re-keyed conflict.
-	err = s.pool.QueryRow(ctx, `
-		insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		on conflict (source, external_id) do update
-			set thread_id = excluded.thread_id, subject = excluded.subject, sent_at = excluded.sent_at
-			where messages.thread_id is distinct from excluded.thread_id
-			   or messages.subject is distinct from excluded.subject
-			   or messages.sent_at is distinct from excluded.sent_at
-		returning id, xmax = 0`,
-		m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef,
-	).Scan(&id, &inserted)
-	if err == pgx.ErrNoRows {
-		return 0, nil
-	}
-	if err != nil || !inserted {
-		return 0, err
-	}
-	return id, nil
+	return ids[0], nil
 }
 
 // clean normalizes every text field to what the columns accept and rejects a

@@ -342,6 +342,38 @@ func TestImportContactsAppliesABatch(t *testing.T) {
 	}
 }
 
+func TestListContactsLoadsAliasesInOneResult(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	for _, name := range []string{"alice", "bob"} {
+		if _, err := st.CreateContact(ctx, name, "note for "+name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, a := range []struct{ source, value string }{
+		{"whatsapp", "Alice"},
+		{"", "alice@example.com"},
+	} {
+		if _, err := st.AddAlias(ctx, "alice", a.source, a.value); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	contacts, err := st.ListContacts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contacts) != 2 || contacts[0].Name != "alice" || contacts[1].Name != "bob" {
+		t.Fatalf("contacts = %+v", contacts)
+	}
+	if len(contacts[0].Aliases) != 2 {
+		t.Errorf("alice aliases = %+v", contacts[0].Aliases)
+	}
+	if contacts[1].Aliases == nil || len(contacts[1].Aliases) != 0 {
+		t.Errorf("bob aliases = %#v, want a non-nil empty slice", contacts[1].Aliases)
+	}
+}
+
 func TestContactAliasScope(t *testing.T) {
 	known := func(s string) bool { return s == "whatsapp" || s == "discord" }
 	cases := map[string][2]string{

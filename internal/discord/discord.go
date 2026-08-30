@@ -108,15 +108,13 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 			continue
 		}
 		res.Channels++
+		messages := make([]store.Message, 0, len(msgs))
 		for _, m := range msgs {
 			if m.Body == "" || m.ID == "" {
 				res.Skipped++
 				continue
 			}
-			// Rethreading, not a plain insert: an archive filled before threads
-			// were keyed on channel ids still holds these messages under the
-			// channel name, and only a re-import can move them.
-			id, err := st.InsertMessageRethreading(ctx, store.Message{
+			messages = append(messages, store.Message{
 				Source:     "discord",
 				ExternalID: m.ID,
 				ThreadID:   channelID,
@@ -126,9 +124,15 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 				SentAt:     m.SentAt,
 				RawRef:     rawRef,
 			})
-			if err != nil {
-				return res, fail.Opf("insert message: %w", err)
-			}
+		}
+		// Rethreading, not a plain insert: an archive filled before threads
+		// were keyed on channel ids still holds these messages under the channel
+		// name, and only a re-import can move them.
+		ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{Rethread: true})
+		if err != nil {
+			return res, fail.Opf("insert messages: %w", err)
+		}
+		for _, id := range ids {
 			if id == 0 {
 				res.Duplicates++
 			} else {

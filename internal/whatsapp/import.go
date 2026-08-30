@@ -159,9 +159,12 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 	}
 
 	seen := map[string]int{}
+	externalIDs := make([]string, 0, len(msgs))
+	messages := make([]store.Message, 0, len(msgs))
 	for _, pm := range msgs {
 		externalID := messageDigest(res.Thread, pm, seen)
-		id, err := st.InsertMessage(ctx, store.Message{
+		externalIDs = append(externalIDs, externalID)
+		messages = append(messages, store.Message{
 			Source:     "whatsapp",
 			ExternalID: externalID,
 			ThreadID:   res.Thread,
@@ -170,9 +173,13 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 			SentAt:     pm.SentAt,
 			RawRef:     rawRef,
 		})
-		if err != nil {
-			return res, fail.Opf("insert message: %w", err)
-		}
+	}
+	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{})
+	if err != nil {
+		return res, fail.Opf("insert messages: %w", err)
+	}
+	for i, pm := range msgs {
+		externalID, id := externalIDs[i], ids[i]
 		if id == 0 {
 			res.Duplicates++
 			// Heal attachments: an earlier import of the same chat without

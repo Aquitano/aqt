@@ -97,6 +97,8 @@ type media struct {
 }
 
 func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef string, msgs []message, md *media) error {
+	valid := make([]message, 0, len(msgs))
+	messages := make([]store.Message, 0, len(msgs))
 	for _, m := range msgs {
 		if m.ExternalID == "" {
 			// One malformed export record (a mapping node without an id, a
@@ -112,10 +114,8 @@ func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef str
 		if m.SentAt.IsZero() {
 			m.SentAt = time.Unix(0, 0) // unknown date: obvious epoch sentinel
 		}
-		// Rethreading, not a plain insert: an archive filled before threads were
-		// keyed on conversation ids still holds these messages under their old
-		// title-keyed thread, and only a re-import can move them.
-		id, err := st.InsertMessageRethreading(ctx, store.Message{
+		valid = append(valid, m)
+		messages = append(messages, store.Message{
 			Source:     source,
 			ExternalID: m.ExternalID,
 			ThreadID:   m.Thread,
@@ -125,9 +125,16 @@ func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef str
 			SentAt:     m.SentAt,
 			RawRef:     rawRef,
 		})
-		if err != nil {
-			return fail.Opf("insert message: %w", err)
-		}
+	}
+	// Rethreading, not a plain insert: an archive filled before threads were
+	// keyed on conversation ids still holds these messages under their old
+	// title-keyed thread, and only a re-import can move them.
+	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{Rethread: true})
+	if err != nil {
+		return fail.Opf("insert messages: %w", err)
+	}
+	for i, m := range valid {
+		id := ids[i]
 		if id == 0 {
 			r.Duplicates++
 			// Heal attachments: an earlier import from a media-less input

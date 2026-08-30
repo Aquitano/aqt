@@ -50,6 +50,7 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 	if err != nil {
 		return res, err
 	}
+	messages := make([]store.Message, 0, len(msgs))
 	for _, m := range msgs {
 		if m.Body == "" && m.Subject == "" {
 			res.Skipped++
@@ -60,7 +61,7 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 		if m.To != "" {
 			recipients = []string{m.To}
 		}
-		id, err := st.InsertMessage(ctx, store.Message{
+		messages = append(messages, store.Message{
 			Source:     "linkedin",
 			ExternalID: hex.EncodeToString(sum[:]),
 			ThreadID:   m.Thread,
@@ -71,9 +72,12 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 			SentAt:     m.SentAt,
 			RawRef:     rawRef,
 		})
-		if err != nil {
-			return res, fail.Opf("insert message: %w", err)
-		}
+	}
+	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{})
+	if err != nil {
+		return res, fail.Opf("insert messages: %w", err)
+	}
+	for _, id := range ids {
 		if id == 0 {
 			res.Duplicates++
 		} else {

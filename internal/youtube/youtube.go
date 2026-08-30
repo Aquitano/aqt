@@ -85,13 +85,10 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 
 	channels := map[string]bool{}
 	seen := map[string]int{}
+	messages := make([]store.Message, 0, len(watches))
 	for _, w := range watches {
 		thread := w.thread()
-		// Rethreading, not plain insert: thread, subject and sent_at are all
-		// derived (channel-name fallback, prefix stripping, HTML zone
-		// resolution), so `bank reimport youtube` must be able to re-key rows
-		// when a derivation is fixed — the same reason Discord rethreads.
-		id, err := st.InsertMessageRethreading(ctx, store.Message{
+		messages = append(messages, store.Message{
 			Source:     "youtube",
 			ExternalID: watchDigest(w, seen),
 			ThreadID:   thread,
@@ -101,17 +98,24 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 			SentAt:     w.WatchedAt,
 			RawRef:     rawRef,
 		})
-		if err != nil {
-			return res, fail.Opf("insert message: %w", err)
-		}
 		if thread != "" {
 			channels[thread] = true
 		}
+	}
+	// Rethreading, not plain insert: thread, subject and sent_at are all
+	// derived (channel-name fallback, prefix stripping, HTML zone resolution),
+	// so `bank reimport youtube` must be able to re-key rows when a derivation
+	// is fixed — the same reason Discord rethreads.
+	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{Rethread: true})
+	if err != nil {
+		return res, fail.Opf("insert messages: %w", err)
+	}
+	for _, id := range ids {
 		if id == 0 {
 			res.Duplicates++
-			continue
+		} else {
+			res.Inserted++
 		}
-		res.Inserted++
 	}
 	res.Channels = len(channels)
 	return res, nil
