@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -137,15 +138,52 @@ func (e entry) watch() (watch, bool) {
 	return w, true
 }
 
-// videoID reads the v parameter out of a watch URL. www.youtube.com and
-// music.youtube.com spell it the same way; anything else — a community post, a
-// channel page the export linked instead — has no id to read.
+// videoRoutes are the path segments that name a video, with its id in the
+// segment after. /v/ is the old flash embed; it still turns up in exports old
+// enough to predate /embed/.
+var videoRoutes = []string{"shorts", "live", "embed", "v"}
+
+// videoID reads the video id out of a watch URL. www.youtube.com and
+// music.youtube.com spell it ?v=, but Takeout has also written youtu.be/<id>,
+// /shorts/<id> and /live/<id> for the same kind of event, and the id is what
+// the digest keys on — so a form that is not read here is a watch event that
+// falls back to hashing its title, and splits into a second row as soon as an
+// export spells it the other way.
+//
+// Route segments are matched positionally, never by substring: /@handle/shorts
+// is a channel tab with no id at all, and /playlist and /post carry segments
+// that look like ids and are not. The id itself is returned as written, with
+// no shape check — the ?v= form has always done that, and rejecting an id here
+// would send an already-imported record back to the title fallback and re-key
+// it. Callers that put the id somewhere it must be well-formed, such as a URL
+// they request, validate it themselves.
 func videoID(rawURL string) string {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
 		return ""
 	}
-	return u.Query().Get("v")
+	if v := u.Query().Get("v"); v != "" {
+		return v
+	}
+	segs := strings.FieldsFunc(u.Path, func(r rune) bool { return r == '/' })
+	// youtu.be puts the id where every other host puts a route name, so that
+	// reading is gated on the host: on youtube.com the same shape is /playlist
+	// or /feed, which name no video.
+	if strings.EqualFold(strings.TrimPrefix(u.Host, "www."), "youtu.be") {
+		if len(segs) == 1 {
+			return segs[0]
+		}
+		return ""
+	}
+	// A channel handle may precede the route (/@fireship/shorts/<id>). Nothing
+	// else may, which is what keeps /post/<id> reading as no video.
+	if len(segs) > 1 && strings.HasPrefix(segs[0], "@") {
+		segs = segs[1:]
+	}
+	if len(segs) == 2 && slices.Contains(videoRoutes, segs[0]) {
+		return segs[1]
+	}
+	return ""
 }
 
 // channelID reads the id out of a channel URL
@@ -301,7 +339,14 @@ func htmlText(s string) string {
 // video that was watched. Takeout has written channel links as /channel/UC...,
 // /user/name, /c/name and /@handle across its generations, and the video link
 // is never any of those.
+//
+// A link that names a video is settled by that and never reaches the prefix
+// check, because /@handle/shorts/<id> shares its prefix with the channel it
+// belongs to and is still the video.
 func isChannelURL(href string) bool {
+	if videoID(href) != "" {
+		return false
+	}
 	u, err := url.Parse(strings.TrimSpace(href))
 	if err != nil {
 		return false

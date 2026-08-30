@@ -225,3 +225,94 @@ func TestParseHTMLRejectsSomethingElse(t *testing.T) {
 		t.Fatal("a page with no activity records should not parse as a history export")
 	}
 }
+
+// Every form below is one Takeout has written, or could write, for a watch
+// event. They must all yield the id, because the digest keys on it: two
+// spellings of one watch that disagree here become two rows for one event.
+func TestVideoIDReadsEveryFormThatCarriesAnID(t *testing.T) {
+	for _, tc := range []struct {
+		url  string
+		want string
+	}{
+		{"https://www.youtube.com/watch?v=5C_HPTJg5ek", "5C_HPTJg5ek"},
+		{"https://music.youtube.com/watch?v=5C_HPTJg5ek", "5C_HPTJg5ek"},
+		{"https://www.youtube.com/watch?v=5C_HPTJg5ek&t=42s", "5C_HPTJg5ek"},
+		{"https://youtu.be/5C_HPTJg5ek", "5C_HPTJg5ek"},
+		{"https://youtu.be/5C_HPTJg5ek?t=42", "5C_HPTJg5ek"},
+		{"https://www.youtube.com/shorts/5C_HPTJg5ek", "5C_HPTJg5ek"},
+		{"https://www.youtube.com/live/5C_HPTJg5ek", "5C_HPTJg5ek"},
+		{"https://www.youtube.com/embed/5C_HPTJg5ek", "5C_HPTJg5ek"},
+		{"https://www.youtube.com/v/5C_HPTJg5ek", "5C_HPTJg5ek"},
+		{"https://www.youtube.com/@fireship/shorts/5C_HPTJg5ek", "5C_HPTJg5ek"},
+		{"  https://www.youtube.com/shorts/5C_HPTJg5ek  ", "5C_HPTJg5ek"},
+	} {
+		if got := videoID(tc.url); got != tc.want {
+			t.Errorf("videoID(%q) = %q, want %q", tc.url, got, tc.want)
+		}
+	}
+}
+
+// The cost of reading a segment that is not an id is a wrong identity, which is
+// worse than the title fallback these all get instead.
+func TestVideoIDReadsNothingOutOfURLsThatNameNoVideo(t *testing.T) {
+	for _, raw := range []string{
+		"",
+		"https://www.youtube.com/",
+		"https://www.youtube.com/playlist?list=PL5C_HPTJg5ek",
+		"https://www.youtube.com/post/UgkxSomeCommunityPost",
+		"https://www.youtube.com/feed/history",
+		"https://www.youtube.com/channel/UCsBjURrPoezykLs9EqgamOA",
+		"https://www.youtube.com/@fireship",
+		"https://www.youtube.com/@fireship/shorts",
+		"https://www.youtube.com/@fireship/videos",
+		"https://youtu.be/",
+		// The bare-first-segment reading is host-gated, or every route on
+		// youtube.com would read as an id.
+		"https://www.youtube.com/results?search_query=rust",
+	} {
+		if got := videoID(raw); got != "" {
+			t.Errorf("videoID(%q) = %q, want no id", raw, got)
+		}
+	}
+}
+
+// parseHTMLRecord picks the video anchor as the first one that is not a
+// channel link, so a video URL that shares a channel URL's prefix has to settle
+// as the video or the record loses its id and keys on its title.
+func TestIsChannelURLYieldsToALinkThatNamesAVideo(t *testing.T) {
+	for _, raw := range []string{
+		"https://www.youtube.com/channel/UCsBjURrPoezykLs9EqgamOA",
+		"https://www.youtube.com/user/fireship",
+		"https://www.youtube.com/c/fireship",
+		"https://www.youtube.com/@fireship",
+		"https://www.youtube.com/@fireship/shorts",
+	} {
+		if !isChannelURL(raw) {
+			t.Errorf("isChannelURL(%q) = false, want true", raw)
+		}
+	}
+	for _, raw := range []string{
+		"https://www.youtube.com/watch?v=5C_HPTJg5ek",
+		"https://www.youtube.com/@fireship/shorts/5C_HPTJg5ek",
+		"https://youtu.be/5C_HPTJg5ek",
+	} {
+		if isChannelURL(raw) {
+			t.Errorf("isChannelURL(%q) = true, want the video to win", raw)
+		}
+	}
+}
+
+// The whole point of reading the id out of every form: one watch event spelled
+// two ways is one row, not two.
+func TestTwoSpellingsOfOneWatchShareADigest(t *testing.T) {
+	at := time.Date(2026, 8, 14, 9, 12, 33, 0, time.UTC)
+	base := watch{Title: "Rust in 100 Seconds", WatchedAt: at}
+
+	asWatch, asShorts := base, base
+	asWatch.VideoID = videoID("https://www.youtube.com/watch?v=5C_HPTJg5ek")
+	asShorts.VideoID = videoID("https://www.youtube.com/shorts/5C_HPTJg5ek")
+
+	if got := watchDigest(asWatch, map[string]int{}); got != watchDigest(asShorts, map[string]int{}) {
+		t.Errorf("watch?v= and /shorts/ of one event hash differently: %s", got)
+	}
+}
