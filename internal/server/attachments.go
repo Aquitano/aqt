@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/aquitano/aqt-bank/internal/blob"
 	"github.com/aquitano/aqt-bank/internal/extract"
 	"github.com/aquitano/aqt-bank/internal/store"
 )
@@ -54,7 +55,7 @@ func (s *Server) handleAttachmentStats(w http.ResponseWriter, r *http.Request) {
 // a file path, and reports whether the handler should carry on.
 func pathDigest(w http.ResponseWriter, r *http.Request) (string, bool) {
 	sum := r.PathValue("sha256")
-	if !sha256Hex.MatchString(sum) {
+	if blob.ValidDigest(sum) != nil {
 		writeErr(w, http.StatusBadRequest, "sha256 must be 64 lowercase hex characters")
 		return "", false
 	}

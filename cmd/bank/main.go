@@ -249,6 +249,9 @@ func cmdSync(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	if client.FromEnv() != nil {
+		return fmt.Errorf("sync reads the OAuth token beside the blob store and writes rows, blobs and raw mail together; run it on the server, not through BANK_URL")
+	}
 	d, closeStore, err := openLocal(ctx)
 	if err != nil {
 		return err
@@ -1413,6 +1416,9 @@ func cmdFetch(ctx context.Context, args []string) error {
 		return fmt.Errorf("usage: bank fetch <sha256> [-o path]")
 	}
 	sum := fs.Arg(0)
+	if err := blob.ValidDigest(sum); err != nil {
+		return err
+	}
 	dest := *out
 	if dest == "" {
 		dest = sum
@@ -1555,6 +1561,12 @@ func openBrowser(u string) {
 func cmdToken(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: bank token <new|list|revoke> [name]")
+	}
+	// The token file is only ever read by the server, so writing one anywhere
+	// else produces a token that looks valid and 401s on every request. Being
+	// told the path afterwards is the diagnosis; refusing is the cure.
+	if client.FromEnv() != nil {
+		return fmt.Errorf("token writes the file the server checks on every request; run it there, not through BANK_URL")
 	}
 	switch args[0] {
 	case "new":

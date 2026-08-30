@@ -86,7 +86,7 @@ bank serve [--listen addr]              # HTTP API for remote CLIs (default 127.
 bank token new|list|revoke <name>       # bearer tokens for bank serve
 ```
 
-With `BANK_URL` (and `BANK_TOKEN`) set, `search`, `thread`, `show`, `stats`, `contact`, `import` and `fetch` talk to a remote `bank serve` instead of Postgres — same flags, same output. `auth`, `sync`, `serve`, `token`, `verify` and `import inbox` are always local: they need the archive, the blob store or the token file on the same box.
+With `BANK_URL` (and `BANK_TOKEN`) set, `search`, `thread`, `show`, `stats`, `contact`, `import` and `fetch` talk to a remote `bank serve` instead of Postgres — same flags, same output. `auth`, `sync`, `serve`, `token`, `verify`, `reimport` and `import inbox` are always local: they need the archive, the blob store or the token file on the same box. All of them except `auth` and `serve` refuse outright when `BANK_URL` is set — acting on the wrong box is the split-brain the Decisions table's "Remote access" row exists to prevent, and the CLI should not need the operator to remember which side a command belongs on.
 
 Migrations are embedded in the binary and run automatically on startup — idempotent, no separate step.
 

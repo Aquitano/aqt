@@ -199,7 +199,7 @@ bank contact list
 bank fetch <sha256> -o invoice.pdf
 ```
 
-`auth`, `sync`, `serve`, `token`, `verify` and `import inbox` stay server-side and ignore `BANK_URL`.
+`sync`, `token`, `verify`, `reimport` and `import inbox` stay server-side and refuse to run with `BANK_URL` set, rather than acting on the wrong box. `auth` and `serve` are server-side too but do not refuse: running `bank auth gmail` on the laptop and copying `gmail/` over is a documented option (section 3), and `bank serve` is the server.
 
 ## 6. Cron
 

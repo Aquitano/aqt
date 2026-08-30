@@ -14,7 +14,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -216,12 +215,10 @@ func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
-
 func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	sum := r.PathValue("sha256")
 	// Validated before it ever reaches a filepath.Join, so no traversal is possible.
-	if !sha256Hex.MatchString(sum) {
+	if blob.ValidDigest(sum) != nil {
 		writeErr(w, http.StatusBadRequest, "sha256 must be 64 lowercase hex characters")
 		return
 	}
