@@ -17,8 +17,6 @@ export const CAPTION_COLORS = [
   'oklch(0.62 0.12 60)',
 ] as const
 
-export const MIN_TEXT_SIZE = 20
-export const MAX_TEXT_SIZE = 200
 
 /** Page for a new element: the selection's page, otherwise the emptier one. */
 export function targetPage(elements: Element[], selection: string | null): PageSide {

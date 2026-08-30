@@ -28,9 +28,9 @@ import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import type { PhotoElement, PhotoFrame, TextElement } from '@/domain/element'
+import { MAX_TEXT_SIZE, MIN_TEXT_SIZE, type PhotoElement, type PhotoFrame, type TextElement } from '@/domain/element'
 import { cn } from '@/lib/utils'
-import { CAPTION_COLORS, MAX_TEXT_SIZE, MIN_TEXT_SIZE, targetPage, textElementFor } from './place'
+import { CAPTION_COLORS, targetPage, textElementFor } from './place'
 import { useEditor, useEditorTemporal, type SaveStatus } from './store'
 
 const FRAMES: readonly PhotoFrame[] = ['none', 'polaroid', 'corners', 'tape']

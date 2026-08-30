@@ -1,3 +1,4 @@
+import { MIN_ELEMENT_SIZE } from '@/domain/element'
 import { PAGE_UNITS } from '@/domain/page'
 
 export type Point = { x: number; y: number }
@@ -17,7 +18,7 @@ export const CORNERS: readonly Corner[] = [
   { sx: -1, sy: 1 },
 ]
 
-const MIN_SIZE = 40
+const MIN_SIZE = MIN_ELEMENT_SIZE
 const LINES = [0, PAGE_UNITS / 2, PAGE_UNITS]
 /** Fraction of a box that must stay on the page so it can always be grabbed. */
 const MIN_ON_PAGE = 0.1
