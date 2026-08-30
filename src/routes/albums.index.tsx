@@ -5,6 +5,7 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { MoreHorizontal, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { ShelfCover } from '@/book/Cover'
+import { ApiKeysDialog } from '@/components/api-keys-dialog'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { COVER_COLORS, COVER_MATERIALS, type CoverColorName } from '@/book/palette'
 import { Button } from '@/components/ui/button'
@@ -58,6 +59,7 @@ function Shelf() {
         <h1 className="text-2xl font-semibold tracking-tight">Albums</h1>
         <div className="flex items-center gap-3">
           <ThemeToggle />
+          <ApiKeysDialog />
           <CreateAlbumDialog />
           <UserButton />
         </div>

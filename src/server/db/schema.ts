@@ -64,6 +64,23 @@ export const spreadPhotos = sqliteTable(
   ],
 )
 
+/** Bearer tokens for the JSON API. Only a hash is stored; the key is shown once. */
+export const apiKeys = sqliteTable(
+  'api_keys',
+  {
+    id: text('id').primaryKey(),
+    ownerId: text('owner_id').notNull(),
+    name: text('name').notNull(),
+    hash: text('hash').notNull().unique(),
+    /** Leading characters of the key, so a list can tell keys apart. */
+    prefix: text('prefix').notNull(),
+    createdAt: integer('created_at').notNull(),
+    lastUsedAt: integer('last_used_at'),
+  },
+  (t) => [index('api_keys_owner_id_idx').on(t.ownerId)],
+)
+
 export type Album = typeof albums.$inferSelect
 export type Spread = typeof spreads.$inferSelect
 export type Photo = typeof photos.$inferSelect
+export type ApiKey = typeof apiKeys.$inferSelect

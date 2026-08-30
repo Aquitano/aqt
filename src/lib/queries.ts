@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import * as albumFns from '@/server/fns/albums'
+import * as apiKeyFns from '@/server/fns/api-keys'
 import * as photoFns from '@/server/fns/photos'
 
 export const albumsQuery = () =>
@@ -24,4 +25,10 @@ export const photosQuery = () =>
   queryOptions({
     queryKey: ['photos'] as const,
     queryFn: () => photoFns.list(),
+  })
+
+export const apiKeysQuery = () =>
+  queryOptions({
+    queryKey: ['api-keys'] as const,
+    queryFn: () => apiKeyFns.list(),
   })
