@@ -94,6 +94,45 @@ func TestParseJSONRejectsSomethingElse(t *testing.T) {
 	}
 }
 
+// Takeout's schema reference documents subtitles and details as strings while
+// the exports write lists of objects. A record in the shape this importer did
+// not predict must cost the fields it touched, never the rest of the export.
+func TestParseJSONSurvivesUnexpectedFieldShapes(t *testing.T) {
+	watches, _, _, err := parseJSON(strings.NewReader(
+		`[{"header":"YouTube","title":"Watched Rust in 100 Seconds",
+		   "titleUrl":"https://www.youtube.com/watch?v=5C_HPTJg5ek",
+		   "subtitles":[{"name":"Fireship"}],"time":"2026-08-14T09:12:33Z"},
+		  {"header":"YouTube","title":"Watched Vim in 100 Seconds",
+		   "titleUrl":"https://www.youtube.com/watch?v=RZ4p-saaQkc",
+		   "subtitles":"Fireship","time":"2026-08-14T09:20:00Z"},
+		  {"header":"YouTube","title":"Watched Go in 100 Seconds",
+		   "titleUrl":"https://www.youtube.com/watch?v=446E-r0rXHI",
+		   "subtitles":[{"name":"Fireship"}],"time":"2026-08-14T09:30:00Z"}]`))
+	if err != nil {
+		t.Fatalf("one string-shaped subtitles field ended the whole import: %v", err)
+	}
+	if len(watches) != 3 {
+		t.Fatalf("watches = %d, want all three kept", len(watches))
+	}
+	if watches[1].Title != "Vim in 100 Seconds" || watches[1].VideoID != "RZ4p-saaQkc" {
+		t.Errorf("the odd record lost more than the field it got wrong: %+v", watches[1])
+	}
+	if watches[1].Channel != "" {
+		t.Errorf("channel = %q, want empty — the unreadable field is the one that goes", watches[1].Channel)
+	}
+}
+
+// Tolerating a bad shape must not extend to tolerating corruption: past a
+// syntax error the decoder cannot know where the next record starts, so
+// continuing would silently import an arbitrary prefix of the file.
+func TestParseJSONStillRejectsMalformedJSON(t *testing.T) {
+	if _, _, _, err := parseJSON(strings.NewReader(
+		`[{"header":"YouTube","title":"Watched Rust in 100 Seconds",
+		   "time":"2026-08-14T09:12:33Z"},{"header":`)); err == nil {
+		t.Fatal("a truncated file should end the import, not import what came before it")
+	}
+}
+
 // The HTML export a default-configured Takeout writes, one outer-cell per
 // record. The narrow no-break space before AM is what Takeout actually writes.
 // The last record's title names Google Ads without being one — the marker only

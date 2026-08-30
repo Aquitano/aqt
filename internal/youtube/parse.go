@@ -2,6 +2,7 @@ package youtube
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -59,6 +60,13 @@ const watchedPrefix = "Watched "
 //
 // Ads are counted apart from records that carried nothing usable, so a
 // deliberate drop never looks like a parse failure.
+//
+// A field written in an unexpected shape costs that field, never the export:
+// Takeout's own schema reference disagrees with what the exports write —
+// details and subtitles are documented as strings and emitted as lists of
+// objects — so a shape this importer did not predict is a live possibility
+// across export eras, and one such record must not be able to discard the
+// other seventeen thousand.
 func parseJSON(r io.Reader) (watches []watch, ads, skipped int, err error) {
 	dec := json.NewDecoder(r)
 	tok, err := dec.Token()
@@ -71,7 +79,18 @@ func parseJSON(r io.Reader) (watches []watch, ads, skipped int, err error) {
 	for dec.More() {
 		var e entry
 		if err := dec.Decode(&e); err != nil {
-			return nil, 0, 0, err
+			// A type error is one odd field, not a broken file: the decoder
+			// has consumed the whole record and filled everything it could
+			// read, so the array still advances and the record keeps whatever
+			// survived. If what it lost was the title or the timestamp, watch()
+			// drops it below and counts it as skipped, like any other record
+			// with nothing to store. A syntax error is unrecoverable — the
+			// decoder cannot know where the next record begins — and still
+			// ends the import.
+			var typeErr *json.UnmarshalTypeError
+			if !errors.As(err, &typeErr) {
+				return nil, 0, 0, err
+			}
 		}
 		if e.isAd() {
 			ads++
