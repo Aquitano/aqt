@@ -3,11 +3,9 @@ import { readFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
 import { type } from 'arktype'
 import { bookInput } from '@/domain/api'
-import { coverMaterial, type Cover } from '@/domain/element'
-import { COVER_COLORS, type CoverColorName } from '@/book/palette'
-import { ApiError, createClient, type Client } from './client'
+import { ApiError, createClient } from './client'
 import { loadConfig, saveConfig } from './config'
-import { preparePhoto } from './photos'
+import { bookDocument, coverFrom, importPhotos } from './ops'
 
 const USAGE = `album - photo books from the terminal
 
@@ -22,6 +20,7 @@ const USAGE = `album - photo books from the terminal
   album book get <album id>            prints the book as JSON
   album book put <album id> [file|-]   replaces the book from JSON (stdin by default)
   album share on|off <album id>
+  album mcp                            serve the same commands over MCP (stdio)
 
   --json on any command prints raw API responses.`
 
@@ -56,6 +55,11 @@ async function main(argv: string[]) {
     const { userId } = await client.me()
     const file = await saveConfig({ url: client.url, key: flags.key })
     return print(`Logged in as ${userId}. Saved to ${file}`)
+  }
+
+  if (command === 'mcp') {
+    const { serveMcp } = await import('./mcp')
+    return serveMcp(createClient(await loadConfig()))
   }
 
   const client = createClient(await loadConfig())
@@ -127,38 +131,6 @@ async function main(argv: string[]) {
     default:
       throw new UsageError(`Unknown command: ${[command, ...rest].join(' ')}\n\n${USAGE}`)
   }
-}
-
-/** The editable shape of a book: what `book put` accepts, minus server fields. */
-export function bookDocument(book: { album: { title: string; cover: Cover }; spreads: { id: string; elements: unknown[] }[] }) {
-  return {
-    title: book.album.title,
-    cover: book.album.cover,
-    spreads: book.spreads.map((s) => ({ id: s.id, elements: s.elements })),
-  }
-}
-
-/** Uploads files one after another so progress reads in order. */
-export async function importPhotos(client: Client, files: string[], log: (line: string) => void) {
-  const imported = []
-  for (const file of files) {
-    const prepared = await preparePhoto(file)
-    const photo = await client.photos.import(
-      { width: prepared.width, height: prepared.height, takenAt: prepared.takenAt },
-      prepared.display,
-      prepared.thumb,
-    )
-    log(`${photo.id}  ${file}  ${photo.width}x${photo.height}`)
-    imported.push({ ...photo, file })
-  }
-  return imported
-}
-
-function coverFrom(flags: Pick<Flags, 'material' | 'color'>): Cover {
-  const material = coverMaterial(flags.material ?? 'linen')
-  if (material instanceof type.errors) throw new UsageError(`--material ${material.summary}`)
-  const color = flags.color ?? 'oxblood'
-  return { material, color: color in COVER_COLORS ? COVER_COLORS[color as CoverColorName] : color }
 }
 
 function need(value: string | undefined, what: string) {
