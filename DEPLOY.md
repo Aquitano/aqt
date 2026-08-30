@@ -216,7 +216,7 @@ Every scheduled job runs the same image as a one-off container, so it sees the s
 
 The nightly `bank extract` is a backstop, not the main path — imports already read what they can. It catches whatever a bounded post-import batch left behind, and picks up content whose extractor only arrived with a later version. It does not do OCR; that is the `ocr` profile above.
 
-Manual sources (WhatsApp zips, Discord package, LinkedIn export): scp into `/data/aqt-bank/inbox/<kind>/` and let the sweep pick them up, or run the import from the laptop with `BANK_URL` set (section 5) so rows and blobs still land together. Swept files move to `inbox/.done/<kind>/`; ones no importer could read move to `inbox/.rejected/<kind>/`. A file left in place means the import failed operationally (database down, disk full) and the next sweep retries it.
+Manual sources (WhatsApp zips, Discord package, LinkedIn export, YouTube Takeout): scp into `/data/aqt-bank/inbox/<kind>/` and let the sweep pick them up, or run the import from the laptop with `BANK_URL` set (section 5) so rows and blobs still land together. Swept files move to `inbox/.done/<kind>/`; ones no importer could read move to `inbox/.rejected/<kind>/`. A file left in place means the import failed operationally (database down, disk full) and the next sweep retries it.
 
 Files dropped by hand need to be readable by uid 65532:
 

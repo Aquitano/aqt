@@ -46,6 +46,11 @@ func TestImportersReportADatabaseOutageAsOperational(t *testing.T) {
 		"mbox":     write("mbox/all.mbox", "From a@example.com Mon May 13 21:08:00 2024\nFrom: a@example.com\nSubject: hi\n\nbody\n"),
 		"linkedin": write("linkedin/messages.csv",
 			"CONVERSATION ID,FROM,TO,DATE,SUBJECT,CONTENT\nc-1,Jane,Thomas,2023-05-13 21:08:45 UTC,hi,hello there\n"),
+		"youtube": write("youtube/watch-history.json",
+			`[{"header":"YouTube","title":"Watched Rust in 100 Seconds",`+
+				`"titleUrl":"https://www.youtube.com/watch?v=5C_HPTJg5ek",`+
+				`"subtitles":[{"name":"Fireship","url":"https://www.youtube.com/channel/UC1"}],`+
+				`"time":"2026-08-14T09:12:33.123Z"}]`),
 		"chatgpt": write("chatgpt/conversations.json",
 			`[{"title":"t","conversation_id":"c-1","mapping":{"n":{"message":{"id":"m-1","author":{"role":"user"},`+
 				`"create_time":1715629680.5,"content":{"content_type":"text","parts":["hello"]}}}}}]`),

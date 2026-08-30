@@ -50,6 +50,7 @@ Semantics that matter:
 - A result may also carry `attachment_snippet`, meaning the match is inside an attached document rather than the message body — quote it as coming from the attachment, not from what the sender wrote. It is only set for exact-token matches; a fuzzy hit inside a document leaves it empty.
 - Searching finds text inside PDFs, Office and OpenDocument files, HTML and text attachments. It does **not** find text in scanned pages or photographs unless someone has OCR'd them: `bank show <id>` reports `text_status` per attachment, where `needs_ocr` means the words are pixels and invisible to search. If a document ought to contain something and does not match, check that before concluding the archive lacks it.
 - `--from` is a case-insensitive substring of the sender field, so `--from alice` matches `Alice Example` and `alice@example.com`. `--to` is the same against recipients.
+- `youtube` rows are watch events, not correspondence: the sender is the channel, the subject the video title, the body only the watch URL, and the thread is the channel — so `--source youtube --from fireship` is everything watched from one channel, and `bank thread <channel id> --source youtube` reads it in order. Advertisements are not imported, and a video the export no longer names keeps its title with no URL.
 - `--person <contact>` is the better filter when you know who you mean: a contact ties one person's email addresses, WhatsApp display name and Discord handle together, so it catches them across sources where `--from alice` only catches one spelling. Run `bank contact list` to see which exist; an unknown name is an error, not an empty result.
 - `--until` is exclusive; both dates are plain `YYYY-MM-DD`.
 - `--limit` defaults to 20 and must be between 1 and 500; `--fuzzy` between 0 and 2. Out-of-range values are a usage error, not an empty result. Start generous (50-100), then narrow with `--source`/`--from`/dates rather than re-running blind.
@@ -130,7 +131,7 @@ bank query "select sender, count(*) n, min(sent_at)::date first, max(sent_at)::d
 
 ## Sources
 
-`whatsapp`, `gmail`, `proton`, `discord`, `linkedin`, `chatgpt`, `claude` (claude.ai exports), `claude-code`, `codex`, `opencode`, `antigravity` (AI coding session transcripts), plus any name created by a past `bank import json --source <name>`. Run `bank stats` to see which actually exist here before filtering on one — a `--source` typo silently returns nothing.
+`whatsapp`, `gmail`, `proton`, `discord`, `linkedin`, `youtube` (watch history from Google Takeout), `chatgpt`, `claude` (claude.ai exports), `claude-code`, `codex`, `opencode`, `antigravity` (AI coding session transcripts), plus any name created by a past `bank import json --source <name>`. Run `bank stats` to see which actually exist here before filtering on one — a `--source` typo silently returns nothing.
 
 ## Writing
 

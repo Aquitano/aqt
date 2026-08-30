@@ -23,6 +23,7 @@ One place for every message I've ever sent or received, searchable in millisecon
 | Discord | GDPR data package ("Request my data"), dropped into inbox | manual, ~quarterly |
 | LinkedIn | official data export CSV, dropped into inbox | manual, ~quarterly |
 | WhatsApp | per-chat "Export chat" zips from the phone, dropped into inbox | manual |
+| YouTube | Google Takeout, "YouTube and YouTube Music" → history (`watch-history.html` by default, `watch-history.json` when the export is set to "Multiple formats" — prefer JSON: HTML timestamps are localized, and a layout the parser does not know skips the record); not in the Data API, so Takeout is the only route. Watch history only — search history is a log of two-word queries that would dilute BM25 for common words while adding nothing retrievable | scheduled Takeout export into Drive, swept into the inbox |
 | ChatGPT | official data export zip (conversations.json or numbered shards, message tree incl. regenerated branches) | manual, on demand |
 | Claude.ai | official data export zip (conversations.json) | manual, on demand |
 | Claude Code | local session .jsonl transcripts (user/assistant text only, tool noise dropped) | `bank import ai` (or claude-code + a path) |
@@ -41,7 +42,7 @@ Everything normalizes to one `messages` table; source-specific richness stays in
 
 - `messages(id, source, external_id, thread_id, sender, recipients[], subject, body, sent_at, raw_ref, ingested_at)`
   - `unique (source, external_id)` makes every importer idempotent — re-importing a dump is always safe.
-  - Sources without stable IDs (WhatsApp) derive `external_id = sha256(thread|sent_at|sender|body)`.
+  - Sources without stable IDs derive one: WhatsApp from `sha256(thread|sent_at|sender|body)`, YouTube from `sha256(video|second watched)` — overlapping Takeout exports of the same watch collapse, a second watch of the same video does not.
   - Citations use a derived `ref`, not `id`: `substr(sha256(source || '\x00' || coalesce(nullif(message_id,''), external_id)), 1, 12)`, computed in the select list of every read and accepted by `bank show`. `id` is a row serial, so rebuilding the archive repoints every `bank:<id>` a note ever recorded; the ref depends only on the pair that already defines a message's identity, and survives. Deliberately not stored and not indexed — a stored copy could disagree with the formula, and a sequential scan answers a ref lookup in a fraction of a second at this scale.
   - `thread_id` is the source's own conversation id wherever there is one — ChatGPT `conversation_id`, Claude.ai `uuid`, a Claude Code session id, a Discord channel id — and the human title lives in `subject`. Titles repeat ("New chat", a #general on every server) and get renamed, so keying threads on them merged unrelated conversations and split renamed ones.
 - `attachments(id, message_id, filename, mime_type, size_bytes, sha256)` — bytes live in the blob store, not the DB.
@@ -54,7 +55,9 @@ Everything normalizes to one `messages` table; source-specific richness stays in
 
 ```
 blobs/ab/abcdef…        content-addressed attachments (sha256, two-char fan-out)
-archive/<source>/…      raw inputs exactly as received (mbox, zips, CSV, EML) — re-ingestable forever
+archive/<source>/…      raw inputs exactly as received (mbox, zips, CSV, EML) — re-ingestable forever.
+                        The one exception: a YouTube Takeout archives only its history file — the
+                        rest of the export is other sources' data, archived under their own names
 inbox/<source>/         drop zone for manual exports; `bank import inbox` sweeps and moves to archive/
 ```
 
@@ -62,6 +65,7 @@ inbox/<source>/         drop zone for manual exports; `bank import inbox` sweeps
 
 ```
 bank import whatsapp <file.zip|.txt>…   # per-source explicit import
+bank import youtube <takeout.zip|dir>   # YouTube watch history (Takeout)
 bank import inbox                       # sweep the inbox drop zone
 bank sync                               # pull deltas from API sources (Gmail)
 bank search "query" [--source s] [--from alice] [--to bob] [--person alice]

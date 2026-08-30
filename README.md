@@ -16,6 +16,9 @@ go build -o bank ./cmd/bank
 ./bank import mbox takeout/All\ mail.mbox     # Gmail Takeout
 ./bank import discord package.zip             # GDPR data package
 ./bank import linkedin Complete_LinkedInDataExport.zip
+./bank import youtube takeout.zip               # YouTube watch history from Google
+                                                #  Takeout (zip, unpacked dir, or the
+                                                #  watch-history.json/.html itself)
 ./bank import chatgpt chatgpt-export.zip        # ChatGPT data export (zip or unpacked
                                                 #  dir; uploaded/generated files come
                                                 #  along as attachments, and re-importing

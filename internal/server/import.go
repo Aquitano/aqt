@@ -22,6 +22,7 @@ import (
 	"github.com/aquitano/aqt-bank/internal/generic"
 	"github.com/aquitano/aqt-bank/internal/linkedin"
 	"github.com/aquitano/aqt-bank/internal/whatsapp"
+	"github.com/aquitano/aqt-bank/internal/youtube"
 )
 
 // Uploads are always single files: directory inputs stay a client concern, the
@@ -123,6 +124,8 @@ func (s *Server) importFile(ctx context.Context, kind, source, path string) (any
 		return discord.Import(ctx, s.db, s.archiveDir, path)
 	case "linkedin":
 		return linkedin.Import(ctx, s.db, s.archiveDir, path)
+	case "youtube":
+		return youtube.Import(ctx, s.db, s.archiveDir, path)
 	case "chatgpt":
 		return aichat.ImportChatGPT(ctx, s.db, s.blobs, s.archiveDir, path)
 	case "claude":

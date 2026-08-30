@@ -48,6 +48,7 @@ import (
 	"github.com/aquitano/aqt-bank/internal/verify"
 	"github.com/aquitano/aqt-bank/internal/webui"
 	"github.com/aquitano/aqt-bank/internal/whatsapp"
+	"github.com/aquitano/aqt-bank/internal/youtube"
 )
 
 const usage = `bank — personal message archive
@@ -60,6 +61,7 @@ Usage:
   bank import mbox [--source s] <file>...     mbox files (default source: gmail)
   bank import discord <package.zip|dir>...    Discord GDPR data package
   bank import linkedin <zip|csv|dir>...       LinkedIn data export
+  bank import youtube <takeout.zip|dir|json>  YouTube watch history (Google Takeout)
   bank import chatgpt <export.zip|json|dir>   ChatGPT data export
   bank import claude <export.zip|json|dir>    Claude.ai data export
   bank import claude-code <file.jsonl|dir>    Claude Code session transcripts
@@ -276,7 +278,7 @@ func printSyncResult(res gmail.SyncResult) {
 
 func cmdImport(ctx context.Context, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: bank import <inbox|ai|whatsapp|eml|mbox|discord|linkedin|chatgpt|claude|claude-code|codex|opencode|antigravity|json> <path>...")
+		return fmt.Errorf("usage: bank import <inbox|ai|whatsapp|eml|mbox|discord|linkedin|youtube|chatgpt|claude|claude-code|codex|opencode|antigravity|json> <path>...")
 	}
 	kind := args[0]
 	if kind == "inbox" {
@@ -459,6 +461,8 @@ func importLocal(ctx context.Context, d *local, kind, source, path string) (any,
 		return discord.Import(ctx, d.st, d.archiveDir, path)
 	case "linkedin":
 		return linkedin.Import(ctx, d.st, d.archiveDir, path)
+	case "youtube":
+		return youtube.Import(ctx, d.st, d.archiveDir, path)
 	case "chatgpt":
 		return aichat.ImportChatGPT(ctx, d.st, d.blobs, d.archiveDir, path)
 	case "claude":
@@ -552,7 +556,7 @@ func cmdImportInbox(ctx context.Context, args []string) error {
 // eml/mbox archives live under a --source (proton, gmail, ...) that does not
 // determine the kind. `reimport mbox --heal-bodies` is the one pass that does
 // re-read mail, and it repairs one column instead of replaying an import.
-var reimportKinds = []string{"chatgpt", "claude", "claude-code", "codex", "opencode", "antigravity", "discord", "whatsapp", "linkedin"}
+var reimportKinds = []string{"chatgpt", "claude", "claude-code", "codex", "opencode", "antigravity", "discord", "whatsapp", "linkedin", "youtube"}
 
 // healBodiesKind is the pseudo-kind that reaches the mail healer. It is a kind
 // rather than a command of its own because it is the same operation from the
@@ -734,6 +738,8 @@ func importOutcome(res any) inbox.Outcome {
 		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Rejected: len(r.FailedChannels), Result: r}
 	case linkedin.Result:
 		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Result: r}
+	case youtube.Result:
+		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Result: r}
 	case aichat.Result:
 		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Rejected: len(r.FailedSessions), Result: r}
 	case generic.Result:
@@ -752,6 +758,8 @@ func printImportResult(kind, source, path string, res any) {
 		printDiscordResult(r)
 	case linkedin.Result:
 		printLinkedInResult(r)
+	case youtube.Result:
+		printYouTubeResult(r)
 	case aichat.Result:
 		printAIChatResult(kind, path, r)
 	case generic.Result:
@@ -796,6 +804,15 @@ func printDiscordResult(res discord.Result) {
 func printLinkedInResult(res linkedin.Result) {
 	fmt.Printf("linkedin: %d new, %d already known, %d empty rows skipped\n",
 		res.Inserted, res.Duplicates, res.Skipped)
+}
+
+func printYouTubeResult(res youtube.Result) {
+	fmt.Printf("youtube: %d channels, %d new, %d already known, %d records skipped",
+		res.Channels, res.Inserted, res.Duplicates, res.Skipped)
+	if res.Ads > 0 {
+		fmt.Printf(", %d ad impressions dropped", res.Ads)
+	}
+	fmt.Println()
 }
 
 // printAIChatResult names the file it is reporting on, so a sharded export does
@@ -925,6 +942,12 @@ func importRemoteFile(ctx context.Context, c *client.Client, kind, source, path 
 			return err
 		}
 		printLinkedInResult(res)
+	case "youtube":
+		res, err := client.ImportFile[youtube.Result](ctx, c, kind, source, path)
+		if err != nil {
+			return err
+		}
+		printYouTubeResult(res)
 	case "chatgpt", "claude", "claude-code", "codex", "opencode", "antigravity":
 		res, err := client.ImportFile[aichat.Result](ctx, c, kind, source, path)
 		if err != nil {
@@ -1623,7 +1646,7 @@ func excerpt(s string, n int) string {
 // an alias can be scoped to a source before anything from it exists, and that
 // "whatsapp:Alice" is read as a scope rather than as a name with a colon in it.
 var builtinSources = []string{
-	"whatsapp", "gmail", "proton", "discord", "linkedin", "chatgpt", "claude", "claude-code",
+	"whatsapp", "gmail", "proton", "discord", "linkedin", "youtube", "chatgpt", "claude", "claude-code",
 	"codex", "opencode", "antigravity",
 }
 
