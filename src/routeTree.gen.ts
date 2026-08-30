@@ -14,6 +14,7 @@ import { Route as AlbumsIndexRouteImport } from './routes/albums.index'
 import { Route as AlbumsAlbumIdRouteImport } from './routes/albums.$albumId'
 import { Route as SSlugRouteImport } from './routes/s.$slug'
 import { Route as ApiPhotosIdRouteImport } from './routes/api/photos.$id'
+import { Route as ApiV1SplatRouteImport } from './routes/api/v1/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +41,11 @@ const ApiPhotosIdRoute = ApiPhotosIdRouteImport.update({
   path: '/api/photos/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1SplatRoute = ApiV1SplatRouteImport.update({
+  id: '/api/v1/$',
+  path: '/api/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +53,7 @@ export interface FileRoutesByFullPath {
   '/s/$slug': typeof SSlugRoute
   '/albums/': typeof AlbumsIndexRoute
   '/api/photos/$id': typeof ApiPhotosIdRoute
+  '/api/v1/$': typeof ApiV1SplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +61,7 @@ export interface FileRoutesByTo {
   '/s/$slug': typeof SSlugRoute
   '/albums': typeof AlbumsIndexRoute
   '/api/photos/$id': typeof ApiPhotosIdRoute
+  '/api/v1/$': typeof ApiV1SplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,13 +70,25 @@ export interface FileRoutesById {
   '/s/$slug': typeof SSlugRoute
   '/albums/': typeof AlbumsIndexRoute
   '/api/photos/$id': typeof ApiPhotosIdRoute
+  '/api/v1/$': typeof ApiV1SplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/albums/$albumId' | '/s/$slug' | '/albums/' | '/api/photos/$id'
+    | '/'
+    | '/albums/$albumId'
+    | '/s/$slug'
+    | '/albums/'
+    | '/api/photos/$id'
+    | '/api/v1/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/albums/$albumId' | '/s/$slug' | '/albums' | '/api/photos/$id'
+  to:
+    | '/'
+    | '/albums/$albumId'
+    | '/s/$slug'
+    | '/albums'
+    | '/api/photos/$id'
+    | '/api/v1/$'
   id:
     | '__root__'
     | '/'
@@ -76,6 +96,7 @@ export interface FileRouteTypes {
     | '/s/$slug'
     | '/albums/'
     | '/api/photos/$id'
+    | '/api/v1/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -84,6 +105,7 @@ export interface RootRouteChildren {
   SSlugRoute: typeof SSlugRoute
   AlbumsIndexRoute: typeof AlbumsIndexRoute
   ApiPhotosIdRoute: typeof ApiPhotosIdRoute
+  ApiV1SplatRoute: typeof ApiV1SplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -123,6 +145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPhotosIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/$': {
+      id: '/api/v1/$'
+      path: '/api/v1/$'
+      fullPath: '/api/v1/$'
+      preLoaderRoute: typeof ApiV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -132,6 +161,7 @@ const rootRouteChildren: RootRouteChildren = {
   SSlugRoute: SSlugRoute,
   AlbumsIndexRoute: AlbumsIndexRoute,
   ApiPhotosIdRoute: ApiPhotosIdRoute,
+  ApiV1SplatRoute: ApiV1SplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

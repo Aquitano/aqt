@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, sql } from 'drizzle-orm'
+import { and, asc, eq, gte, inArray, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import type { Element } from '@/domain/element'
 import { ownedAlbum } from '@/server/albums'
@@ -111,4 +111,32 @@ export async function saveElements(spreadId: string, ownerId: string, elements: 
     ...spreadPhotoWrites(spreadId, elements),
   ])
   return updatedAt
+}
+
+/**
+ * Replaces every spread of an album in one batch. Supplied ids are kept so a
+ * client can round-trip the book; duplicates and missing ids get fresh ones.
+ */
+export async function replaceSpreads(
+  albumId: string,
+  ownerId: string,
+  list: { id?: string; elements: Element[] }[],
+) {
+  await ownedAlbum(albumId, ownerId)
+  await assertOwnsPhotos(ownerId, photoIdsOf(list.flatMap((s) => s.elements)))
+  const updatedAt = Date.now()
+  const seen = new Set<string>()
+  const rows: Spread[] = list.map((s, position) => {
+    const id = s.id && !seen.has(s.id) ? s.id : nanoid(12)
+    seen.add(id)
+    return { id, albumId, position, elements: s.elements, updatedAt }
+  })
+  const albumSpreads = db().select({ id: spreads.id }).from(spreads).where(eq(spreads.albumId, albumId))
+  await db().batch([
+    db().delete(spreadPhotos).where(inArray(spreadPhotos.spreadId, albumSpreads)),
+    db().delete(spreads).where(eq(spreads.albumId, albumId)),
+    ...(rows.length > 0 ? [db().insert(spreads).values(rows)] : []),
+    ...rows.flatMap((row) => spreadPhotoWrites(row.id, row.elements).slice(1)),
+  ])
+  return rows
 }
