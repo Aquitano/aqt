@@ -1,8 +1,8 @@
-import { and, asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import type { Cover } from '@/domain/element'
 import { db } from '@/server/db/client'
-import { albums, spreads, type Album } from '@/server/db/schema'
+import { albums, spreadPhotos, spreads, type Album } from '@/server/db/schema'
 
 /**
  * Album operations, independent of transport. Server functions and the JSON
@@ -103,7 +103,9 @@ export async function updateAlbum(
 export async function deleteAlbum(albumId: string, ownerId: string) {
   await ownedAlbum(albumId, ownerId)
   // Explicit, so the delete does not depend on D1 having FK enforcement on.
+  const albumSpreads = db().select({ id: spreads.id }).from(spreads).where(eq(spreads.albumId, albumId))
   await db().batch([
+    db().delete(spreadPhotos).where(inArray(spreadPhotos.spreadId, albumSpreads)),
     db().delete(spreads).where(eq(spreads.albumId, albumId)),
     db().delete(albums).where(eq(albums.id, albumId)),
   ])

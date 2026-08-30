@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { and, eq, isNotNull, like } from 'drizzle-orm'
+import { and, eq, isNotNull } from 'drizzle-orm'
 import { currentUserId } from '@/server/auth'
 import { db } from '@/server/db/client'
-import { albums, photos, spreads } from '@/server/db/schema'
+import { albums, photos, spreadPhotos, spreads } from '@/server/db/schema'
 import { storage } from '@/server/storage'
 
 /** `?thumb=1` addresses the 400px thumbnail instead of the display image. */
@@ -12,20 +12,15 @@ function wantsThumb(url: string) {
 
 /**
  * A photo is readable by its owner, or by anyone once it sits on a spread of an
- * album that has link sharing on. Same `LIKE` on the elements JSON that the
- * delete guard uses; good enough at this scale.
+ * album that has link sharing on.
  */
 async function isOnASharedSpread(photoId: string) {
   const [row] = await db()
-    .select({ id: spreads.id })
-    .from(spreads)
+    .select({ id: spreadPhotos.spreadId })
+    .from(spreadPhotos)
+    .innerJoin(spreads, eq(spreads.id, spreadPhotos.spreadId))
     .innerJoin(albums, eq(albums.id, spreads.albumId))
-    .where(
-      and(
-        isNotNull(albums.shareSlug),
-        like(spreads.elements, `%"photoId":"${photoId}"%`),
-      ),
-    )
+    .where(and(eq(spreadPhotos.photoId, photoId), isNotNull(albums.shareSlug)))
     .limit(1)
   return row !== undefined
 }

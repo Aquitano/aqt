@@ -1,7 +1,7 @@
-import { and, desc, eq, like } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { db } from '@/server/db/client'
-import { albums, photos, spreads, type Photo } from '@/server/db/schema'
+import { photos, spreadPhotos, type Photo } from '@/server/db/schema'
 import { photoKeys, storage } from '@/server/storage'
 
 export function listPhotos(ownerId: string) {
@@ -13,7 +13,10 @@ export function listPhotos(ownerId: string) {
 }
 
 /** Reserves a row and its R2 keys; the caller then PUTs both files. */
-export async function createPhoto(ownerId: string, data: { width: number; height: number }) {
+export async function createPhoto(
+  ownerId: string,
+  data: { width: number; height: number; takenAt?: number },
+) {
   const id = nanoid(12)
   const row: Photo = {
     id,
@@ -21,10 +24,25 @@ export async function createPhoto(ownerId: string, data: { width: number; height
     ...photoKeys(ownerId, id),
     width: data.width,
     height: data.height,
+    takenAt: data.takenAt ?? null,
     createdAt: Date.now(),
   }
   await db().insert(photos).values(row)
   return row
+}
+
+/** 400 unless every id names a photo of this owner. */
+export async function assertOwnsPhotos(ownerId: string, photoIds: string[]) {
+  if (photoIds.length === 0) return
+  const rows = await db()
+    .select({ id: photos.id })
+    .from(photos)
+    .where(and(eq(photos.ownerId, ownerId), inArray(photos.id, photoIds)))
+  const known = new Set(rows.map((r) => r.id))
+  const unknown = photoIds.filter((id) => !known.has(id))
+  if (unknown.length > 0) {
+    throw new Response(`Unknown photo: ${unknown.join(', ')}`, { status: 400 })
+  }
 }
 
 export async function deletePhoto(photoId: string, ownerId: string) {
@@ -35,12 +53,9 @@ export async function deletePhoto(photoId: string, ownerId: string) {
   if (!photo) throw new Response('Not found', { status: 404 })
 
   const [reference] = await db()
-    .select({ id: spreads.id })
-    .from(spreads)
-    .innerJoin(albums, eq(albums.id, spreads.albumId))
-    .where(
-      and(eq(albums.ownerId, ownerId), like(spreads.elements, `%"photoId":"${photo.id}"%`)),
-    )
+    .select({ spreadId: spreadPhotos.spreadId })
+    .from(spreadPhotos)
+    .where(eq(spreadPhotos.photoId, photo.id))
     .limit(1)
   if (reference) {
     // The client shows this verbatim, so it reads as a user-facing message.

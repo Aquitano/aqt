@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type { Cover, Element } from '@/domain/element'
 
 export const albums = sqliteTable(
@@ -38,9 +38,30 @@ export const photos = sqliteTable(
     thumbKey: text('thumb_key').notNull(),
     width: integer('width').notNull(),
     height: integer('height').notNull(),
+    /** EXIF capture time (unix ms), when the importer could read one. */
+    takenAt: integer('taken_at'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => [index('photos_owner_id_idx').on(t.ownerId)],
+)
+
+/**
+ * Which photos each spread places, derived from `spreads.elements` on every
+ * write. Answers "is this photo in use?" and "is it on a shared album?"
+ * without scanning JSON.
+ */
+export const spreadPhotos = sqliteTable(
+  'spread_photos',
+  {
+    spreadId: text('spread_id')
+      .notNull()
+      .references(() => spreads.id, { onDelete: 'cascade' }),
+    photoId: text('photo_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.spreadId, t.photoId] }),
+    index('spread_photos_photo_id_idx').on(t.photoId),
+  ],
 )
 
 export type Album = typeof albums.$inferSelect

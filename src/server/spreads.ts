@@ -3,7 +3,8 @@ import { nanoid } from 'nanoid'
 import type { Element } from '@/domain/element'
 import { ownedAlbum } from '@/server/albums'
 import { db } from '@/server/db/client'
-import { albums, spreads, type Spread } from '@/server/db/schema'
+import { albums, spreadPhotos, spreads, type Spread } from '@/server/db/schema'
+import { assertOwnsPhotos } from '@/server/photos'
 
 /** Resolves a spread to its album after checking ownership. */
 async function ownedSpread(spreadId: string, ownerId: string) {
@@ -29,17 +30,34 @@ async function setPositions(albumId: string, orderedIds: string[]) {
     .where(eq(spreads.albumId, albumId))
 }
 
+export function photoIdsOf(elements: Element[]) {
+  return [...new Set(elements.flatMap((el) => (el.kind === 'photo' ? [el.photoId] : [])))]
+}
+
+/** Statements that make `spread_photos` match `elements` for one spread. */
+function spreadPhotoWrites(spreadId: string, elements: Element[]) {
+  const ids = photoIdsOf(elements)
+  return [
+    db().delete(spreadPhotos).where(eq(spreadPhotos.spreadId, spreadId)),
+    ...(ids.length > 0
+      ? [db().insert(spreadPhotos).values(ids.map((photoId) => ({ spreadId, photoId })))]
+      : []),
+  ]
+}
+
 export async function insertSpread(
   ownerId: string,
   data: { albumId: string; afterPosition: number; id?: string; elements?: Element[] },
 ) {
   await ownedAlbum(data.albumId, ownerId)
+  const elements = data.elements ?? []
+  await assertOwnsPhotos(ownerId, photoIdsOf(elements))
   const at = data.afterPosition + 1
   const spread: Spread = {
     id: data.id ?? nanoid(12),
     albumId: data.albumId,
     position: at,
-    elements: data.elements ?? [],
+    elements,
     updatedAt: Date.now(),
   }
   await db().batch([
@@ -48,13 +66,17 @@ export async function insertSpread(
       .set({ position: sql`${spreads.position} + 1` })
       .where(and(eq(spreads.albumId, data.albumId), gte(spreads.position, at))),
     db().insert(spreads).values(spread),
+    ...spreadPhotoWrites(spread.id, elements),
   ])
   return spread
 }
 
 export async function deleteSpread(spreadId: string, ownerId: string) {
   const spread = await ownedSpread(spreadId, ownerId)
-  await db().delete(spreads).where(eq(spreads.id, spread.id))
+  await db().batch([
+    db().delete(spreadPhotos).where(eq(spreadPhotos.spreadId, spread.id)),
+    db().delete(spreads).where(eq(spreads.id, spread.id)),
+  ])
   const rest = await db()
     .select({ id: spreads.id })
     .from(spreads)
@@ -82,7 +104,11 @@ export async function reorderSpreads(albumId: string, ownerId: string, orderedId
 /** Autosave target. */
 export async function saveElements(spreadId: string, ownerId: string, elements: Element[]) {
   await ownedSpread(spreadId, ownerId)
+  await assertOwnsPhotos(ownerId, photoIdsOf(elements))
   const updatedAt = Date.now()
-  await db().update(spreads).set({ elements, updatedAt }).where(eq(spreads.id, spreadId))
+  await db().batch([
+    db().update(spreads).set({ elements, updatedAt }).where(eq(spreads.id, spreadId)),
+    ...spreadPhotoWrites(spreadId, elements),
+  ])
   return updatedAt
 }
