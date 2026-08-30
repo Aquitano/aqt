@@ -6,6 +6,7 @@ import { EditablePage } from './EditablePage'
 import { clampToPage } from './geometry'
 import { Filmstrip } from './Filmstrip'
 import { PhotoLibrary } from './PhotoLibrary'
+import { cn } from '@/lib/utils'
 import { useEditor, useEditorStore, type EditorState } from './store'
 import { Toolbar } from './Toolbar'
 
@@ -24,6 +25,7 @@ export function Editor({ canEdit }: EditorProps) {
   const current = useEditor((state) => state.current)
   const mode = useEditor((state) => state.mode)
   const setCurrent = useEditor((state) => state.setCurrent)
+  const panel = useEditor((state) => state.panel)
   const editing = canEdit && mode === 'edit'
   const spread = spreads[current]
 
@@ -39,7 +41,15 @@ export function Editor({ canEdit }: EditorProps) {
 
   return (
     <>
-      <div className="flex min-h-0 flex-1 px-6 pb-16">
+      {/* The sheets are non-modal and sit beside the book; give up their width
+          rather than letting them cover a page. Widths match the SheetContents. */}
+      <div
+        className={cn(
+          'flex min-h-0 flex-1 px-6 pb-16 transition-[padding] duration-300',
+          panel === 'photos' && 'pr-[calc(24rem+1.5rem)]',
+          panel === 'pages' && 'pl-[calc(20rem+1.5rem)]',
+        )}
+      >
         <Book
           title={album.title}
           cover={album.cover}
