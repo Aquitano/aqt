@@ -11,6 +11,7 @@ final class Settings: ObservableObject {
     private let defaults: UserDefaults
     private enum Key {
         static let showHUD = "showHUD"
+        static let hudReplacesSystem = "hudReplacesSystem"
         static let temperatureUnit = "temperatureUnit"
         static let launchAtLogin = "launchAtLogin"
         static let enableMediaAdapter = "enableMediaAdapter"
@@ -60,6 +61,8 @@ final class Settings: ObservableObject {
     }
 
     @Published var showHUD: Bool { didSet { defaults.set(showHUD, forKey: Key.showHUD) } }
+    /// Consume media keys and suppress the native HUD (needs Accessibility).
+    @Published var hudReplacesSystem: Bool { didSet { defaults.set(hudReplacesSystem, forKey: Key.hudReplacesSystem) } }
     @Published var temperatureUnit: WeatherSnapshot.TemperatureUnit {
         didSet { defaults.set(temperatureUnit.rawValue, forKey: Key.temperatureUnit) }
     }
@@ -157,6 +160,7 @@ final class Settings: ObservableObject {
         self.defaults = defaults
         defaults.register(defaults: [
             Key.showHUD: true,
+            Key.hudReplacesSystem: false,
             Key.temperatureUnit: WeatherSnapshot.TemperatureUnit.celsius.rawValue,
             Key.launchAtLogin: false,
             Key.enableMediaAdapter: true,
@@ -205,6 +209,7 @@ final class Settings: ObservableObject {
             Key.virtualNotchMode: VirtualNotchMode.automatic.rawValue,
         ])
         self.showHUD = defaults.bool(forKey: Key.showHUD)
+        self.hudReplacesSystem = defaults.bool(forKey: Key.hudReplacesSystem)
         self.temperatureUnit = WeatherSnapshot.TemperatureUnit(
             rawValue: defaults.string(forKey: Key.temperatureUnit) ?? "celsius"
         ) ?? .celsius

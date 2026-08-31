@@ -105,4 +105,13 @@ enum HUDKind: Equatable {
         case .mute: return "speaker.slash.fill"
         }
     }
+
+    /// Short name shown beside the glyph in the HUD capsule.
+    var title: String {
+        switch self {
+        case .volume: return "Volume"
+        case .brightness: return "Display"
+        case .mute: return "Muted"
+        }
+    }
 }

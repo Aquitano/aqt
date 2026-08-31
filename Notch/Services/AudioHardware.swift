@@ -62,6 +62,43 @@ final class AudioHardware: @unchecked Sendable {
         queue.sync { (readVolumeLocked(), readMutedLocked()) }
     }
 
+    // MARK: - Writes (serialized on `queue`)
+
+    /// Step the output volume and return the read-back state, or nil when the
+    /// device rejects the write — callers must not swallow the media key then.
+    /// Raising the volume also unmutes, matching the system's key behaviour.
+    func applyVolumeStep(_ delta: Float) -> (volume: Float, muted: Bool)? {
+        queue.sync {
+            var target = min(max(readVolumeLocked() + delta, 0), 1)
+            var settable = DarwinBoolean(false)
+            guard AudioObjectIsPropertySettable(deviceID, &volumeAddress, &settable) == noErr,
+                  settable.boolValue,
+                  AudioObjectSetPropertyData(deviceID, &volumeAddress, 0, nil,
+                                             UInt32(MemoryLayout<Float32>.size), &target) == noErr
+            else { return nil }
+            if delta > 0, readMutedLocked() { _ = setMutedLocked(false) }
+            return (readVolumeLocked(), readMutedLocked())
+        }
+    }
+
+    /// Toggle mute and return the read-back state, or nil when the device has
+    /// no writable mute control.
+    func toggleMute() -> (volume: Float, muted: Bool)? {
+        queue.sync {
+            guard setMutedLocked(!readMutedLocked()) else { return nil }
+            return (readVolumeLocked(), readMutedLocked())
+        }
+    }
+
+    private func setMutedLocked(_ muted: Bool) -> Bool {
+        var settable = DarwinBoolean(false)
+        guard AudioObjectIsPropertySettable(deviceID, &muteAddress, &settable) == noErr,
+              settable.boolValue else { return false }
+        var value: UInt32 = muted ? 1 : 0
+        return AudioObjectSetPropertyData(deviceID, &muteAddress, 0, nil,
+                                          UInt32(MemoryLayout<UInt32>.size), &value) == noErr
+    }
+
     private func readVolumeLocked() -> Float {
         var value = Float32(0)
         var size = UInt32(MemoryLayout<Float32>.size)

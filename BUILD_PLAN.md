@@ -237,7 +237,7 @@ brightness-stops-working bug. Implementation:
   `CGRequestListenEventAccess`). Periodically verify with `CGEvent.tapIsEnabled`; re-enable
   on `tapDisabledByTimeout`.
 
-**Upgrade path (not v1):** if you later want the *clean single HUD*, switch the tap to
+**Upgrade path (shipped as the opt-in "Replace the system HUD" setting):** if you later want the *clean single HUD*, switch the tap to
 `.defaultTap`, return `nil` to swallow the key (this is what hides the native HUD without
 SIP changes), and then you become responsible for applying the change yourself
 (`AudioObjectSetPropertyData` / `DisplayServicesSetBrightness`) — with a read-back, or you

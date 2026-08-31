@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ApplicationServices
 
 /// Content of the standard Settings window. A grouped Form that binds directly
 /// to the shared `Settings` object; the login-item toggle additionally syncs the
@@ -451,10 +452,39 @@ struct SettingsView: View {
 
     // MARK: - HUD
 
+    @State private var accessibilityTrusted = AXIsProcessTrusted()
+
     private var hudSection: some View {
-        Section("HUD") {
+        Section {
             Toggle("Show volume/brightness HUD", isOn: $settings.showHUD)
+            Toggle("Replace the system HUD", isOn: Binding(
+                get: { settings.hudReplacesSystem },
+                set: {
+                    settings.hudReplacesSystem = $0
+                    accessibilityTrusted = AXIsProcessTrusted()
+                }
+            ))
+            .disabled(!settings.showHUD)
+            if settings.showHUD, settings.hudReplacesSystem, !accessibilityTrusted {
+                LabeledContent {
+                    Button("Open") { PrivacyPane.accessibility.open() }
+                        .controlSize(.small)
+                } label: {
+                    PixelLabel(title: "Allow Accessibility access",
+                               systemName: "exclamationmark.triangle.fill",
+                               size: 13, tint: .orange)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+        } header: {
+            Text("HUD")
+        } footer: {
+            Text("Replacing intercepts the media keys and applies volume and brightness changes itself, so only Notch's HUD appears. Keys Notch can't drive (like external display brightness) fall back to the system.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
+        .onAppear { accessibilityTrusted = AXIsProcessTrusted() }
     }
 
     // MARK: - Widgets
@@ -647,6 +677,7 @@ private struct VirtualNotchPreview: View {
 /// right pane on current macOS.
 private enum PrivacyPane: String, CaseIterable, Identifiable {
     case inputMonitoring
+    case accessibility
     case screenRecording
     case calendars
     case automation
@@ -657,6 +688,7 @@ private enum PrivacyPane: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .inputMonitoring: return "Input Monitoring"
+        case .accessibility: return "Accessibility"
         case .screenRecording: return "Screen & System Audio Recording"
         case .calendars: return "Calendars"
         case .automation: return "Automation"
@@ -668,6 +700,7 @@ private enum PrivacyPane: String, CaseIterable, Identifiable {
         let base = "x-apple.systempreferences:com.apple.preference.security?"
         switch self {
         case .inputMonitoring: return base + "Privacy_ListenEvent"
+        case .accessibility: return base + "Privacy_Accessibility"
         case .screenRecording: return base + "Privacy_ScreenCapture"
         case .calendars: return base + "Privacy_Calendars"
         case .automation: return base + "Privacy_Automation"
