@@ -15,6 +15,7 @@ struct ScannedSession: Sendable {
     let busyStatus: AgentStatus
     let focusURL: String?
     let terminalName: String?
+    let herdrPaneID: String?
     let prompt: String?
     let response: String?
     let verb: String?

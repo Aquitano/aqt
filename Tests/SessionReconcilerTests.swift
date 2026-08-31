@@ -13,7 +13,7 @@ final class SessionReconcilerTests: XCTestCase {
     ) -> ScannedSession {
         ScannedSession(
             sessionId: id, cwd: cwd, pid: 42, lastActivity: at ?? t0, gitBranch: "main",
-            busyStatus: busy, focusURL: nil, terminalName: "Warp",
+            busyStatus: busy, focusURL: nil, terminalName: "Warp", herdrPaneID: nil,
             prompt: "p", response: "r", verb: verb
         )
     }

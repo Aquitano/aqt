@@ -201,7 +201,10 @@ final class AgentManager: ObservableObject {
 
     func jumpToTerminal(_ session: AgentSession) {
         TerminalJumper(processLookup: processLookup)
-            .jump(toPID: session.pid, cwd: session.cwd, focusURL: session.terminalFocusURL)
+            .jump(
+                toPID: session.pid, cwd: session.cwd,
+                focusURL: session.terminalFocusURL, herdrPaneID: session.herdrPaneID
+            )
     }
 
     func jumpToTerminal(_ pending: PendingAgentPermission) {

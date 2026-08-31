@@ -51,6 +51,7 @@ struct ProcessScanner: Sendable {
                 lastActivity: transcript.mtime, gitBranch: transcript.state.branch,
                 busyStatus: transcript.state.busy,
                 focusURL: process.terminal.focusURL, terminalName: process.terminal.name,
+                herdrPaneID: process.terminal.herdrPane,
                 prompt: transcript.state.prompt, response: transcript.state.response,
                 verb: transcript.state.verb
             )
@@ -61,7 +62,7 @@ struct ProcessScanner: Sendable {
         let pid: pid_t
         let cwd: String
         let startedAt: Date?
-        let terminal: (focusURL: String?, name: String?)
+        let terminal: (focusURL: String?, name: String?, herdrPane: String?)
         let openTranscript: Transcript?
     }
 
@@ -89,7 +90,10 @@ struct ProcessScanner: Sendable {
 
     /// Terminal locator + display name, read from the agent process's environment.
     /// Warp exports `WARP_FOCUS_URL` (warp://session/<uuid>) per tab.
-    private static func terminalInfo(forPID pid: pid_t, lookup: ProcessLookup) -> (focusURL: String?, name: String?) {
+    private static func terminalInfo(
+        forPID pid: pid_t,
+        lookup: ProcessLookup
+    ) -> (focusURL: String?, name: String?, herdrPane: String?) {
         let env = lookup.environment(of: pid)
         var focusURL: String?
         if let url = env["WARP_FOCUS_URL"], !url.isEmpty {
@@ -97,7 +101,23 @@ struct ProcessScanner: Sendable {
         } else if let uuid = env["WARP_TERMINAL_SESSION_UUID"], !uuid.isEmpty {
             focusURL = "warp://session/\(uuid)"
         }
-        return (focusURL, terminalName(env["TERM_PROGRAM"]))
+        // A herdr pane inherits its client's TERM_PROGRAM, so the raw value names
+        // the window herdr happens to be attached to rather than what hosts the
+        // session. Name the workspace instead — that is what a jump lands on.
+        guard let pane = env[HerdrBridge.paneIDKey] else {
+            return (focusURL, terminalName(env["TERM_PROGRAM"]), nil)
+        }
+        return (focusURL, herdrTerminalName(workspace: env[HerdrBridge.workspaceIDKey]), pane)
+    }
+
+    /// The row badge is `fixedSize`, so an unbounded workspace label would
+    /// squeeze the session title out of the row.
+    private static let herdrLabelLimit = 18
+
+    private static func herdrTerminalName(workspace: String?) -> String {
+        guard let workspace, let label = HerdrBridge.workspaceLabels()[workspace] else { return "Herdr" }
+        guard label.count > herdrLabelLimit else { return "Herdr · \(label)" }
+        return "Herdr · \(label.prefix(herdrLabelLimit - 1))…"
     }
 
     private static func terminalName(_ termProgram: String?) -> String? {

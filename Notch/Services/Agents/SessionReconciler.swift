@@ -46,7 +46,8 @@ enum SessionReconciler {
                 cwd: scanned.cwd, status: .idle, startedAt: scanned.lastActivity,
                 lastActivity: scanned.lastActivity, pid: scanned.pid, gitBranch: scanned.gitBranch,
                 terminalFocusURL: scanned.focusURL, lastPrompt: scanned.prompt,
-                lastResponse: scanned.response, terminalName: scanned.terminalName
+                lastResponse: scanned.response, terminalName: scanned.terminalName,
+                herdrPaneID: scanned.herdrPaneID
             )
         }
 
@@ -100,6 +101,7 @@ enum SessionReconciler {
                 session.detail = session.detail ?? prev.detail
                 session.terminalFocusURL = session.terminalFocusURL ?? prev.terminalFocusURL
                 session.terminalName = session.terminalName ?? prev.terminalName
+                session.herdrPaneID = session.herdrPaneID ?? prev.herdrPaneID
                 session.lastPrompt = session.lastPrompt ?? prev.lastPrompt
                 session.lastResponse = session.lastResponse ?? prev.lastResponse
             }

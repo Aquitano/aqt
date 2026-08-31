@@ -16,11 +16,13 @@ struct TerminalJumper {
         "/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"
     ]
 
-    func jump(toPID pid: pid_t?, cwd: String?, focusURL: String? = nil) {
+    func jump(toPID pid: pid_t?, cwd: String?, focusURL: String? = nil, herdrPaneID: String? = nil) {
         // Precise path: the tab exports a focus deep link (e.g. Warp's
         // warp://session/<uuid>); opening it selects the exact tab. The terminal
-        // gets activated as a side effect of handling the URL.
-        if let focusURL, let url = URL(string: focusURL),
+        // gets activated as a side effect of handling the URL. A known herdr pane
+        // outranks it: panes inherit the client's Warp env at creation, so the
+        // URL may point at a long-gone tab while the pane is authoritative.
+        if herdrPaneID == nil, let focusURL, let url = URL(string: focusURL),
            url.scheme?.lowercased() == "warp" {
             NSWorkspace.shared.open(url)
             return
@@ -31,6 +33,32 @@ struct TerminalJumper {
             let resolvedPID = await Task.detached {
                 Self.resolvePID(pid, cwd: cwd, lookup: lookup)
             }.value
+
+            // herdr hands its panes to a detached server, so a hosted agent's own
+            // ancestry stops at the daemon and never reaches a window. Move herdr's
+            // focus to the pane, then aim the terminal focus at the client drawing it.
+            let herdrPane = herdrPaneID ?? resolvedPID.flatMap {
+                HerdrBridge.paneID(ofAgent: $0, lookup: lookup)
+            }
+            if let herdrPane {
+                let client = await Task.detached { () -> pid_t? in
+                    HerdrBridge.focus(pane: herdrPane)
+                    guard let client = HerdrBridge.clientPIDs(lookup: lookup)
+                        .first(where: { Self.guiAncestor(of: $0, lookup: lookup) != nil })
+                    else { return nil }
+                    _ = Self.focusPrecise(pid: client, lookup: lookup)
+                    return client
+                }.value
+                guard let client else {
+                    Log.agents.notice(
+                        "terminal jump: no attached herdr client for pane \(herdrPane, privacy: .public)"
+                    )
+                    return
+                }
+                Self.activateTerminal(forPID: client, lookup: lookup)
+                return
+            }
+
             guard let pid = resolvedPID else {
                 Log.agents.notice("terminal jump: no pid or trusted focus URL for session")
                 return
@@ -204,18 +232,28 @@ struct TerminalJumper {
     }
 
     private static func activateTerminal(forPID pid: pid_t, lookup: ProcessLookup) {
+        guard let app = guiAncestor(of: pid, lookup: lookup) else {
+            Log.agents.notice("terminal jump: no GUI ancestor for pid \(pid)")
+            return
+        }
+        app.activate()
+    }
+
+    /// Nearest ancestor that is a regular, Dock-visible app: the window hosting a
+    /// terminal process. Also how a live herdr client is told from a stale one,
+    /// whose chain dead-ends at launchd once its window is gone.
+    nonisolated private static func guiAncestor(of pid: pid_t, lookup: ProcessLookup) -> NSRunningApplication? {
         var current: pid_t? = pid
         var depth = 0
         while let c = current, depth < 12 {
             if let app = NSRunningApplication(processIdentifier: c),
                app.bundleIdentifier != nil, app.activationPolicy == .regular {
-                app.activate()
-                return
+                return app
             }
             current = lookup.ppid(of: c)
             depth += 1
         }
-        Log.agents.notice("terminal jump: no GUI ancestor for pid \(pid)")
+        return nil
     }
 
     nonisolated private static func selectTmuxPane(forAgent pid: pid_t, lookup: ProcessLookup) {

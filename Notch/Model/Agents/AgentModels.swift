@@ -104,6 +104,10 @@ struct AgentSession: Identifiable, Equatable, Sendable {
     var lastResponse: String?
     /// Terminal hosting the session (e.g. "Warp"), for the row badge.
     var terminalName: String?
+    /// herdr pane hosting the session (e.g. "wX:p2") when it runs inside herdr,
+    /// captured from the agent process's environment. Jumping needs it because
+    /// the pane's owner is a detached daemon, not the window on screen.
+    var herdrPaneID: String?
     /// Human verb for what it's doing now ("Reading", "Editing", "Running",
     /// "Thinking"), shown in the row instead of the bare status when present.
     var activityVerb: String?
