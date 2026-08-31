@@ -77,6 +77,13 @@ final class NotchState: ObservableObject {
     /// collapses out from under a click.
     private var collapseTask: Task<Void, Never>?
 
+    /// A tab switch can shrink the panel, pulling the surface (and the floating
+    /// dock) up out from under a stationary pointer; the resulting hover-exit
+    /// must not close the panel the user just clicked in. Hover-out collapses
+    /// requested before this deadline wait it out, giving the morph time to
+    /// settle and the pointer time to land back on the moved surface.
+    private var resizeHoldUntil: Date = .distantPast
+
     /// Drops `isCollapsing` once the close animation has finished.
     private var collapsingResetTask: Task<Void, Never>?
 
@@ -147,10 +154,14 @@ final class NotchState: ObservableObject {
         guard !isDropActive else { return }
         cancelPendingExpand()
         collapseTask?.cancel()
+        let grace = max(0.16, resizeHoldUntil.timeIntervalSinceNow + 0.16)
         collapseTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(160))
+            try? await Task.sleep(for: .seconds(grace))
             guard let self, !Task.isCancelled else { return }
             self.collapseTask = nil
+            // The pointer may have settled back onto the moved surface during
+            // the hold without a fresh hover event cancelling this task.
+            guard !self.isHovering else { return }
             self.performCollapse()
         }
     }
@@ -228,6 +239,8 @@ final class NotchState: ObservableObject {
     }
 
     func select(tab: ExpandedTab) {
+        guard tab != expandedTab else { return }
+        resizeHoldUntil = Date().addingTimeInterval(0.7)
         withAnimation(NotchAnimation.morph(reduceMotion: reduceMotion)) {
             expandedTab = tab
         }
