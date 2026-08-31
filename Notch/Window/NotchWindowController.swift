@@ -685,6 +685,18 @@ final class NotchWindowController {
     // MARK: - Activity cycling
 
     private func scrollWheel(_ event: NSEvent) {
+        // Scroll over the expanded timer tab adjusts the dial. Routed from here
+        // (not a view-local monitor) because this monitor is the one path that
+        // reliably sees scroll events over the non-activating panel.
+        if let host = hostAtCursor(), host.state.presentation == .expanded {
+            guard host.state.expandedTab == .timer else { return }
+            NotificationCenter.default.post(
+                name: .timerDialScroll, object: nil,
+                userInfo: [TimerDialScroll.deltaY: event.scrollingDeltaY,
+                           TimerDialScroll.precise: event.hasPreciseScrollingDeltas]
+            )
+            return
+        }
         guard !cycleCooldown, let host = cyclableHostAtCursor() else { return }
         let dy = event.scrollingDeltaY
         guard abs(dy) > 2 else { return }

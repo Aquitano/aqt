@@ -123,13 +123,14 @@ struct TimerPanelView: View {
 
             Spacer()
 
+            // Rolls only inside animated transactions (the phase-switch glide);
+            // scrub and scroll updates carry no animation so fast changes stay
+            // a crisp direct readout instead of mushing digit transitions.
             Text(String(format: "%d:00", minutesBinding.wrappedValue))
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(tint)
                 .contentTransition(.numericText(value: Double(minutesBinding.wrappedValue)))
-                .animation(reduceMotion ? nil : .snappy(duration: 0.25),
-                           value: minutesBinding.wrappedValue)
         }
         .padding(.horizontal, Theme.Spacing.tiny)
     }
@@ -226,20 +227,29 @@ struct TimerPanelView: View {
     }
 }
 
+/// Scroll events over the expanded timer tab, forwarded by the window
+/// controller's proven scroll monitor (a view-local monitor is unreliable on
+/// the non-activating panel).
+extension Notification.Name {
+    static let timerDialScroll = Notification.Name("app.notch.timerDialScroll")
+}
+
+enum TimerDialScroll {
+    static let deltaY = "deltaY"
+    static let precise = "precise"
+}
+
 /// Horizontal tape-measure dial: one tick per minute, labels every five, the
 /// selected minute centered over a fixed indicator. Dragging scrubs the value,
-/// the scroll wheel nudges it while hovered, and each snapped minute taps the
-/// haptic engine. The scale itself animates through a continuous offset, so a
-/// phase switch glides the tape instead of teleporting it.
+/// the scroll wheel nudges it while the timer tab is open, and each snapped
+/// minute taps the haptic engine. Scrub and scroll track instantly; only the
+/// phase switch glides the tape (via the chip's animated transaction).
 private struct TimerDial: View {
     @Binding var minutes: Int
     let range: ClosedRange<Int>
     let tint: Color
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dragBaseMinutes: Int?
-    @State private var hovering = false
-    @State private var scrollMonitor: Any?
     @State private var scrollAccumulator: CGFloat = 0
 
     private static let tickSpacing: CGFloat = 9
@@ -248,13 +258,12 @@ private struct TimerDial: View {
 
     var body: some View {
         DialScale(offsetMinutes: CGFloat(minutes), range: range, tint: tint)
-            .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: minutes)
             .frame(height: 56)
             .contentShape(.rect)
             .gesture(drag)
-            .onHover { hovering = $0 }
-            .onAppear { installScrollMonitor() }
-            .onDisappear { removeScrollMonitor() }
+            .onReceive(NotificationCenter.default.publisher(for: .timerDialScroll)) { note in
+                handleScroll(note)
+            }
             .accessibilityElement()
             .accessibilityLabel("Timer duration")
             .accessibilityValue("\(minutes) minutes")
@@ -269,47 +278,25 @@ private struct TimerDial: View {
                 let base = dragBaseMinutes ?? minutes
                 dragBaseMinutes = base
                 let delta = Int((-value.translation.width / Self.tickSpacing).rounded())
-                let updated = PomodoroPolicy.clampedMinutes(base + delta)
-                if updated != minutes {
-                    minutes = updated
-                    Haptics.tap(.levelChange)
-                }
+                adjust(by: PomodoroPolicy.clampedMinutes(base + delta) - minutes)
             }
             .onEnded { _ in dragBaseMinutes = nil }
     }
 
-    // MARK: - Scroll wheel
-
-    /// Local monitor rather than an AppKit subview, so the SwiftUI drag gesture
-    /// keeps the mouse events; the monitor only acts (and swallows) while the
-    /// pointer is over the dial.
-    private func installScrollMonitor() {
-        guard scrollMonitor == nil else { return }
-        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
-            MainActor.assumeIsolated {
-                guard hovering else { return event }
-                handleScroll(event)
-                return nil
-            }
-        }
-    }
-
-    private func removeScrollMonitor() {
-        if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
-        scrollMonitor = nil
-        scrollAccumulator = 0
-    }
-
-    private func handleScroll(_ event: NSEvent) {
-        if event.hasPreciseScrollingDeltas {
-            scrollAccumulator += event.scrollingDeltaY
+    private func handleScroll(_ note: Notification) {
+        guard let deltaY = note.userInfo?[TimerDialScroll.deltaY] as? CGFloat,
+              let precise = note.userInfo?[TimerDialScroll.precise] as? Bool else { return }
+        // Scrolling up (fingers up under natural scrolling: negative deltaY)
+        // increases the duration, matching how sliders and steppers respond.
+        if precise {
+            scrollAccumulator -= deltaY
             let steps = Int(scrollAccumulator / Self.scrollPointsPerStep)
             guard steps != 0 else { return }
             scrollAccumulator -= CGFloat(steps) * Self.scrollPointsPerStep
             adjust(by: steps)
-        } else if event.scrollingDeltaY != 0 {
+        } else if deltaY != 0 {
             // A clicky mouse wheel: one detent, one minute.
-            adjust(by: event.scrollingDeltaY > 0 ? 1 : -1)
+            adjust(by: deltaY < 0 ? 1 : -1)
         }
     }
 
