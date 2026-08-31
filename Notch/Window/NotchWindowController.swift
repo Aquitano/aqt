@@ -660,7 +660,7 @@ final class NotchWindowController {
             expandedWidth: host.geometry.expandedWidth,
             panelFrame: host.geometry.panelFrame,
             tab: host.state.expandedTab,
-            hasInfoRow: env.settings.hasInfoRowWidgets,
+            hasInfoRow: env.settings.hasInfoRowWidgets(for: host.displayKey),
             trayEmpty: env.tray.items.isEmpty,
             compact: NotchLayout.compactContent(
                 hasMedia: env.settings.showCompactNowPlaying && !env.media.track.isEmpty,

@@ -18,6 +18,7 @@ struct NotchRootView: View {
     @Environment(\.notchGeometry) private var notchSize
     @Environment(\.notchExpandedWidth) private var expandedWidth
     @Environment(\.notchUsesVirtualChrome) private var usesVirtualChrome
+    @Environment(\.notchDisplayKey) private var displayKey
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Namespace private var morph
@@ -154,7 +155,7 @@ struct NotchRootView: View {
             notch: notchSize,
             expandedWidth: expandedWidth,
             tab: state.expandedTab,
-            hasInfoRow: settings.hasInfoRowWidgets,
+            hasInfoRow: settings.hasInfoRowWidgets(for: displayKey),
             trayEmpty: tray.items.isEmpty,
             compact: compactContent,
             dropActive: state.isDropActive,
@@ -168,7 +169,7 @@ struct NotchRootView: View {
             notch: notchSize,
             expandedWidth: expandedWidth,
             tab: state.expandedTab,
-            hasInfoRow: settings.hasInfoRowWidgets,
+            hasInfoRow: settings.hasInfoRowWidgets(for: displayKey),
             trayEmpty: tray.items.isEmpty,
             compact: .media,
             dropActive: state.isDropActive,

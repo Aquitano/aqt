@@ -30,8 +30,9 @@ final class NotchPanelHost {
         self.displayKey = geometry.display.key
         self.geometry = geometry
         self.state = NotchState()
-        state.defaultTab = { env.settings.resolvedDefaultTab }
-        state.expandedTab = env.settings.resolvedDefaultTab
+        let displayKey = geometry.display.key
+        state.defaultTab = { env.settings.resolvedDefaultTab(for: displayKey) }
+        state.expandedTab = env.settings.resolvedDefaultTab(for: displayKey)
         self.panel = NotchPanel(contentRect: geometry.panelFrame)
         self.hoverSensor = HoverSensorPanel()
         self.hostingView = NSHostingView(rootView: AnyView(EmptyView()))
@@ -99,6 +100,7 @@ final class NotchPanelHost {
             .environment(\.notchExpandedWidth, geometry.expandedWidth)
             .environment(\.notchUsesVirtualChrome, geometry.usesVirtualChrome)
             .environment(\.notchControlsSharedRendering, controlsSharedRendering)
+            .environment(\.notchDisplayKey, displayKey)
             .injectNotchEnvironment(env, state: state)
         hostingView.rootView = AnyView(root)
     }

@@ -183,6 +183,13 @@ struct SettingsView: View {
                         range: 0...80, suffix: " pt"
                     )
                 }
+                Toggle("Custom widget set on this display", isOn: customWidgetLayoutBinding(display.key))
+                Picker("Opens on", selection: displayDefaultTabBinding(display.key)) {
+                    Text("Same as everywhere").tag("")
+                    ForEach(settings.tabLayout) { tab in
+                        Text(tab.title).tag(tab.rawValue)
+                    }
+                }
                 Button("Reset Display Size and Position") {
                     settings.resetDisplayProfile(for: display.key)
                 }
@@ -216,6 +223,26 @@ struct SettingsView: View {
                 guard let display = selectedDisplay else { return }
                 var profile = settings.displayProfile(for: display.key)
                 profile[keyPath: keyPath] = value
+                settings.updateDisplayProfile(profile)
+            }
+        )
+    }
+
+    /// Forks the global widget layout into a display override (or drops it).
+    /// The forked set is then edited on that display's own home tab.
+    private func customWidgetLayoutBinding(_ displayKey: String) -> Binding<Bool> {
+        Binding(
+            get: { settings.hasCustomWidgetLayout(for: displayKey) },
+            set: { settings.setCustomWidgetLayout($0, for: displayKey) }
+        )
+    }
+
+    private func displayDefaultTabBinding(_ displayKey: String) -> Binding<String> {
+        Binding(
+            get: { settings.displayProfile(for: displayKey).defaultTab ?? "" },
+            set: { raw in
+                var profile = settings.displayProfile(for: displayKey)
+                profile.defaultTab = raw.isEmpty ? nil : raw
                 settings.updateDisplayProfile(profile)
             }
         )

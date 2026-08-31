@@ -18,6 +18,10 @@ private struct NotchVirtualChromeKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct NotchDisplayKeyKey: EnvironmentKey {
+    static let defaultValue = ""
+}
+
 extension EnvironmentValues {
     /// The physical notch size, injected by the window controller.
     var notchGeometry: CGSize {
@@ -43,6 +47,13 @@ extension EnvironmentValues {
     var notchUsesVirtualChrome: Bool {
         get { self[NotchVirtualChromeKey.self] }
         set { self[NotchVirtualChromeKey.self] = newValue }
+    }
+
+    /// The hosting display's stable key, for per-display settings resolution.
+    /// Empty (the default) resolves to the global settings.
+    var notchDisplayKey: String {
+        get { self[NotchDisplayKeyKey.self] }
+        set { self[NotchDisplayKeyKey.self] = newValue }
     }
 }
 

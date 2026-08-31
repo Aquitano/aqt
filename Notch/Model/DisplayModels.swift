@@ -55,6 +55,11 @@ struct DisplayProfile: Codable, Equatable, Sendable, Identifiable {
     var horizontalOffset: Double = 0
     var verticalOffset: Double = 0
     var expandedWidthAdjustment: Double = 0
+    /// Per-display overrides; nil follows the global setting. Stored as raw
+    /// values so this file stays free of the WidgetKind / NotchState types
+    /// (Settings owns the typed resolution).
+    var widgetLayout: [String]?
+    var defaultTab: String?
 
     var id: String { displayKey }
 

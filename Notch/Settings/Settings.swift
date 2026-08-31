@@ -349,24 +349,94 @@ final class Settings: ObservableObject {
     }
 
     func setWidget(_ kind: WidgetKind, enabled: Bool) {
-        if enabled {
-            guard !widgetLayout.contains(kind) else { return }
-            widgetLayout.append(kind)
-        } else {
-            widgetLayout.removeAll { $0 == kind }
-        }
+        widgetLayout = Self.applying(kind, enabled: enabled, to: widgetLayout)
     }
 
     /// Shifts a widget by whole slots within its own row, leaving the other
     /// row's ordering untouched.
     func moveWidget(_ kind: WidgetKind, by slots: Int) {
-        var row = widgetLayout.filter { $0.row == kind.row }
-        guard let index = row.firstIndex(of: kind), slots != 0 else { return }
+        widgetLayout = Self.moving(kind, by: slots, in: widgetLayout)
+    }
+
+    private static func applying(_ kind: WidgetKind, enabled: Bool, to layout: [WidgetKind]) -> [WidgetKind] {
+        var layout = layout
+        if enabled {
+            if !layout.contains(kind) { layout.append(kind) }
+        } else {
+            layout.removeAll { $0 == kind }
+        }
+        return layout
+    }
+
+    private static func moving(_ kind: WidgetKind, by slots: Int, in layout: [WidgetKind]) -> [WidgetKind] {
+        var row = layout.filter { $0.row == kind.row }
+        guard let index = row.firstIndex(of: kind), slots != 0 else { return layout }
         let target = max(0, min(row.count - 1, index + slots))
         row.remove(at: index)
         row.insert(kind, at: target)
-        let other = widgetLayout.filter { $0.row != kind.row }
-        widgetLayout = kind.row == .status ? row + other : other + row
+        let other = layout.filter { $0.row != kind.row }
+        return kind.row == .status ? row + other : other + row
+    }
+
+    // MARK: - Per-display overrides
+
+    /// The widget layout a given display renders: its override when one exists,
+    /// otherwise the global layout. An unknown/empty key resolves globally.
+    func widgetLayout(for displayKey: String) -> [WidgetKind] {
+        overrideWidgetLayout(for: displayKey) ?? widgetLayout
+    }
+
+    func hasInfoRowWidgets(for displayKey: String) -> Bool {
+        widgetLayout(for: displayKey).contains { $0.row == .info }
+    }
+
+    func hasCustomWidgetLayout(for displayKey: String) -> Bool {
+        displayProfiles.first { $0.displayKey == displayKey }?.widgetLayout != nil
+    }
+
+    /// Fork the current global layout into a display override, or drop the
+    /// override so the display follows the global layout again.
+    func setCustomWidgetLayout(_ custom: Bool, for displayKey: String) {
+        var profile = displayProfile(for: displayKey)
+        profile.widgetLayout = custom ? widgetLayout.map(\.rawValue) : nil
+        updateDisplayProfile(profile)
+    }
+
+    func setWidget(_ kind: WidgetKind, enabled: Bool, on displayKey: String) {
+        if let override = overrideWidgetLayout(for: displayKey) {
+            storeWidgetOverride(Self.applying(kind, enabled: enabled, to: override), for: displayKey)
+        } else {
+            setWidget(kind, enabled: enabled)
+        }
+    }
+
+    func moveWidget(_ kind: WidgetKind, by slots: Int, on displayKey: String) {
+        if let override = overrideWidgetLayout(for: displayKey) {
+            storeWidgetOverride(Self.moving(kind, by: slots, in: override), for: displayKey)
+        } else {
+            moveWidget(kind, by: slots)
+        }
+    }
+
+    /// The tab a given display's panel opens on: its override when set and
+    /// still visible, otherwise the global resolution.
+    func resolvedDefaultTab(for displayKey: String) -> NotchState.ExpandedTab {
+        guard let raw = displayProfiles.first(where: { $0.displayKey == displayKey })?.defaultTab,
+              let tab = NotchState.ExpandedTab(rawValue: raw),
+              tabLayout.contains(tab), tab != .agents || agentsEnabled
+        else { return resolvedDefaultTab }
+        return tab
+    }
+
+    private func overrideWidgetLayout(for displayKey: String) -> [WidgetKind]? {
+        displayProfiles.first { $0.displayKey == displayKey }?.widgetLayout?
+            .compactMap(WidgetKind.init(rawValue:))
+    }
+
+    private func storeWidgetOverride(_ layout: [WidgetKind], for displayKey: String) {
+        var profile = displayProfile(for: displayKey)
+        profile.widgetLayout = layout.map(\.rawValue)
+        updateDisplayProfile(profile)
     }
 
     func displayProfile(for displayKey: String) -> DisplayProfile {
@@ -380,7 +450,17 @@ final class Settings: ObservableObject {
         displayProfiles.append(profile)
     }
 
+    /// Resets a display's geometry adjustments while keeping its widget/tab
+    /// overrides (the Settings button only promises size and position).
     func resetDisplayProfile(for displayKey: String) {
-        displayProfiles.removeAll { $0.displayKey == displayKey }
+        guard let existing = displayProfiles.first(where: { $0.displayKey == displayKey }) else { return }
+        var profile = DisplayProfile.standard(for: displayKey)
+        profile.widgetLayout = existing.widgetLayout
+        profile.defaultTab = existing.defaultTab
+        if profile == .standard(for: displayKey) {
+            displayProfiles.removeAll { $0.displayKey == displayKey }
+        } else {
+            updateDisplayProfile(profile)
+        }
     }
 }

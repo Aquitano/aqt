@@ -14,6 +14,8 @@ struct WidgetGridView: View {
     @EnvironmentObject private var calendar: CalendarManager
     @EnvironmentObject private var battery: BatteryManager
 
+    @Environment(\.notchDisplayKey) private var displayKey
+
     @State private var isEditing = false
     @State private var isHoveringGrid = false
     @State private var draggedKind: WidgetKind?
@@ -79,7 +81,7 @@ struct WidgetGridView: View {
     }
 
     private func visibleKinds(in row: WidgetKind.Row) -> [WidgetKind] {
-        settings.widgetLayout.filter { $0.row == row && isAvailable($0) }
+        settings.widgetLayout(for: displayKey).filter { $0.row == row && isAvailable($0) }
     }
 
     /// Hardware-bound tiles stay in the layout but only render when the machine
@@ -152,7 +154,7 @@ struct WidgetGridView: View {
     /// are always present, so slot widths stay stable while editing.
     private func editRow(_ row: WidgetKind.Row) -> some View {
         GeometryReader { geo in
-            let enabled = settings.widgetLayout.filter { $0.row == row }
+            let enabled = settings.widgetLayout(for: displayKey).filter { $0.row == row }
             let disabled = WidgetKind.allCases.filter { $0.row == row && !enabled.contains($0) }
             let count = enabled.count + disabled.count
             let slot = (geo.size.width - spacing * CGFloat(count - 1)) / CGFloat(count) + spacing
@@ -177,7 +179,7 @@ struct WidgetGridView: View {
         Button {
             guard !enabled else { return }
             Haptics.tap(.levelChange)
-            withAnimation(NotchAnimation.reorder) { settings.setWidget(kind, enabled: true) }
+            withAnimation(NotchAnimation.reorder) { settings.setWidget(kind, enabled: true, on: displayKey) }
         } label: {
             VStack(spacing: 6) {
                 PixelIcon(systemName: kind.symbol, size: 18,
@@ -203,7 +205,7 @@ struct WidgetGridView: View {
         .overlay(alignment: .topTrailing) {
             Button {
                 Haptics.tap(.levelChange)
-                withAnimation(NotchAnimation.reorder) { settings.setWidget(kind, enabled: !enabled) }
+                withAnimation(NotchAnimation.reorder) { settings.setWidget(kind, enabled: !enabled, on: displayKey) }
             } label: {
                 PixelIcon(systemName: enabled ? "minus.circle.fill" : "plus.circle.fill",
                           size: 14, tint: .white.opacity(enabled ? 0.7 : 0.5))
@@ -244,7 +246,7 @@ struct WidgetGridView: View {
             .onEnded { value in
                 let slots = Int((value.translation.width / slot).rounded())
                 withAnimation(NotchAnimation.reorder) {
-                    settings.moveWidget(kind, by: slots)
+                    settings.moveWidget(kind, by: slots, on: displayKey)
                     draggedKind = nil
                     dragOffset = 0
                 }
