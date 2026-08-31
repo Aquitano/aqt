@@ -19,3 +19,7 @@ xcuserdata/
 *.p12
 *.provisionprofile
 ExportOptions.plist
+
+# Local tooling artifacts
+.claude/
+perf-results/
