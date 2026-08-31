@@ -11,6 +11,7 @@ struct SettingsView: View {
     @EnvironmentObject private var media: MediaManager
     @EnvironmentObject private var visualizer: AudioVisualizerManager
     @EnvironmentObject private var shortcuts: ShortcutsManager
+    @EnvironmentObject private var powerMode: PowerModeController
     @EnvironmentObject private var tray: TrayManager
 
     @State private var shortcutToPin = ""
@@ -29,6 +30,7 @@ struct SettingsView: View {
             }
             mediaSection
             hudSection
+            batterySection
             widgetsSection
             traySection
             sharingSection
@@ -485,6 +487,35 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
         }
         .onAppear { accessibilityTrusted = AXIsProcessTrusted() }
+    }
+
+    // MARK: - Battery
+
+    private var batterySection: some View {
+        Section {
+            Stepper("Low battery alert at \(settings.lowBatteryThreshold)%",
+                    value: $settings.lowBatteryThreshold, in: 5...50, step: 5)
+            if powerMode.shortcutInstalled == true {
+                PixelLabel(title: "Low Power Mode shortcut installed",
+                           systemName: "checkmark.circle.fill", size: 13, tint: .green)
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            } else {
+                LabeledContent {
+                    Button("Install…") { powerMode.installShortcut() }
+                        .controlSize(.small)
+                } label: {
+                    Text("Low Power Mode shortcut")
+                }
+            }
+        } header: {
+            Text("Battery")
+        } footer: {
+            Text("The battery tile's leaf toggles Low Power Mode through a Shortcuts action — macOS offers no direct control. Install adds the bundled \"\(PowerModeController.shortcutName)\" shortcut; approve the one-time import in Shortcuts.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear { powerMode.refreshAvailability() }
     }
 
     // MARK: - Widgets

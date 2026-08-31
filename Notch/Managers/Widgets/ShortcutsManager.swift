@@ -42,7 +42,9 @@ final class ShortcutsManager: ObservableObject {
         }
     }
 
-    nonisolated private static func execute(_ arguments: [String])
+    /// Shared `shortcuts` CLI runner; also used by `PowerModeController` for
+    /// the Low Power Mode bridge.
+    nonisolated static func execute(_ arguments: [String])
         -> (status: Int32, output: String, errorOutput: String)? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")

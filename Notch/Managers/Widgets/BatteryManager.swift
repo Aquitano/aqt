@@ -18,11 +18,13 @@ final class BatteryManager: ObservableObject {
     @Published private(set) var hasBattery = true
 
     private unowned let activities: ActivityManager
+    private let settings: Settings
     private var runLoopSource: CFRunLoopSource?
     private var policy = BatteryPolicy.State()
 
-    init(activities: ActivityManager) {
+    init(activities: ActivityManager, settings: Settings) {
         self.activities = activities
+        self.settings = settings
     }
 
     func start() {
@@ -92,7 +94,11 @@ final class BatteryManager: ObservableObject {
             percent: percent, isCharging: isCharging, isPluggedIn: isPluggedIn,
             isFullyCharged: isFullyCharged, lowPowerMode: lowPowerMode
         )
-        let output = BatteryPolicy.decide(snapshot, previous: policy, now: Date())
+        let output = BatteryPolicy.decide(
+            snapshot, previous: policy,
+            config: BatteryPolicy.Config(alertThreshold: settings.lowBatteryThreshold),
+            now: Date()
+        )
         policy = output.state
         output.activities.forEach { activities.publish($0) }
     }

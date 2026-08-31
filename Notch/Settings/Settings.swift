@@ -47,6 +47,7 @@ final class Settings: ObservableObject {
         static let hotkeyEnabled = "hotkeyEnabled"
         static let hotkeyKeyCode = "hotkeyKeyCode"
         static let hotkeyModifiers = "hotkeyModifiers"
+        static let lowBatteryThreshold = "lowBatteryThreshold"
         static let pomodoroFocusMinutes = "pomodoroFocusMinutes"
         static let pomodoroBreakMinutes = "pomodoroBreakMinutes"
         static let showClockWidget = "showClockWidget"
@@ -123,6 +124,8 @@ final class Settings: ObservableObject {
     /// recording UI yet; changeable via `defaults write` until one exists.
     @Published var hotkeyKeyCode: Int { didSet { defaults.set(hotkeyKeyCode, forKey: Key.hotkeyKeyCode) } }
     @Published var hotkeyModifiers: Int { didSet { defaults.set(hotkeyModifiers, forKey: Key.hotkeyModifiers) } }
+    /// Battery percentage that fires the low-battery alert; re-arms 5 above it.
+    @Published var lowBatteryThreshold: Int { didSet { defaults.set(lowBatteryThreshold, forKey: Key.lowBatteryThreshold) } }
     /// Last dial position per pomodoro phase, so the timer tab reopens on the
     /// durations the user actually uses.
     @Published var pomodoroFocusMinutes: Int { didSet { defaults.set(pomodoroFocusMinutes, forKey: Key.pomodoroFocusMinutes) } }
@@ -197,6 +200,7 @@ final class Settings: ObservableObject {
             Key.hotkeyEnabled: false,
             Key.hotkeyKeyCode: 45,       // kVK_ANSI_N
             Key.hotkeyModifiers: 6144,   // controlKey | optionKey
+            Key.lowBatteryThreshold: 20,
             Key.pomodoroFocusMinutes: PomodoroPolicy.defaultMinutes(for: .focus),
             Key.pomodoroBreakMinutes: PomodoroPolicy.defaultMinutes(for: .rest),
             Key.showClockWidget: false,
@@ -258,6 +262,7 @@ final class Settings: ObservableObject {
         self.hotkeyEnabled = defaults.bool(forKey: Key.hotkeyEnabled)
         self.hotkeyKeyCode = defaults.integer(forKey: Key.hotkeyKeyCode)
         self.hotkeyModifiers = defaults.integer(forKey: Key.hotkeyModifiers)
+        self.lowBatteryThreshold = defaults.integer(forKey: Key.lowBatteryThreshold)
         self.pomodoroFocusMinutes = PomodoroPolicy.clampedMinutes(defaults.integer(forKey: Key.pomodoroFocusMinutes))
         self.pomodoroBreakMinutes = PomodoroPolicy.clampedMinutes(defaults.integer(forKey: Key.pomodoroBreakMinutes))
         self.showClockWidget = defaults.bool(forKey: Key.showClockWidget)

@@ -88,6 +88,27 @@ final class BatteryPolicyTests: XCTestCase {
         XCTAssertEqual(out.activities.map(\.kind), [.lowBattery(percent: 18)])
     }
 
+    // MARK: - Configurable threshold
+
+    func testCustomThresholdMovesAlertAndRearmBand() {
+        let config = BatteryPolicy.Config(alertThreshold: 30)
+
+        let fired = BatteryPolicy.decide(snapshot(percent: 30), previous: .init(), config: config, now: now)
+        XCTAssertEqual(fired.activities.map(\.kind), [.lowBattery(percent: 30)])
+
+        // 33% sits in the moved dead band (30...35): armed, no re-fire.
+        let held = BatteryPolicy.decide(
+            snapshot(percent: 33), previous: .init(lowBatteryNotified: true), config: config, now: now
+        )
+        XCTAssertTrue(held.activities.isEmpty)
+        XCTAssertTrue(held.state.lowBatteryNotified)
+
+        let rearmed = BatteryPolicy.decide(
+            snapshot(percent: 36), previous: .init(lowBatteryNotified: true), config: config, now: now
+        )
+        XCTAssertFalse(rearmed.state.lowBatteryNotified)
+    }
+
     // MARK: - Low Power Mode edge
 
     func testLowPowerModeOnEmitsTransition() {

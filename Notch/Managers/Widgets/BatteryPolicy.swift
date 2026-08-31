@@ -13,11 +13,21 @@ struct BatterySnapshot: Equatable {
 }
 
 /// Turns successive battery snapshots into the activities the notch should
-/// publish. Pure: the plug-in edge, the low-battery hysteresis (alerts at <=20%,
-/// re-arms only above 25%), the Low Power Mode edge, and each activity's TTL are
-/// all decided here from `(snapshot, previous)` — so the transitions are
-/// table-testable without a real battery, charger, or Low Power Mode toggle.
+/// publish. Pure: the plug-in edge, the low-battery hysteresis (alerts at the
+/// configured threshold, re-arms only 5 points above it), the Low Power Mode
+/// edge, and each activity's TTL are all decided here from
+/// `(snapshot, previous)` — so the transitions are table-testable without a
+/// real battery, charger, or Low Power Mode toggle.
 enum BatteryPolicy {
+
+    struct Config: Equatable {
+        var alertThreshold = 20
+        /// Alerts re-arm only above this dead band, so a percentage hovering at
+        /// the threshold can't flap.
+        var rearmThreshold: Int { min(alertThreshold + 5, 100) }
+
+        static let standard = Config()
+    }
 
     /// The slice of prior state the edge/hysteresis decisions read.
     struct State: Equatable {
@@ -32,7 +42,8 @@ enum BatteryPolicy {
         var state: State
     }
 
-    static func decide(_ snapshot: BatterySnapshot, previous: State, now: Date) -> Output {
+    static func decide(_ snapshot: BatterySnapshot, previous: State,
+                       config: Config = .standard, now: Date) -> Output {
         var state = previous
         var activities: [Activity] = []
 
@@ -47,15 +58,15 @@ enum BatteryPolicy {
             }
         }
 
-        // Hysteresis: alert once at <=20% on battery, re-arm only above 25% (or
-        // once charging) so a percentage hovering at the threshold can't flap.
-        if snapshot.percent <= 20 && !snapshot.isCharging && !state.lowBatteryNotified {
+        // Hysteresis: alert once at the threshold on battery, re-arm only above
+        // the dead band (or once charging).
+        if snapshot.percent <= config.alertThreshold && !snapshot.isCharging && !state.lowBatteryNotified {
             state.lowBatteryNotified = true
             activities.append(Activity(
                 kind: .lowBattery(percent: snapshot.percent),
                 priority: .urgent, createdAt: now, ttl: 6
             ))
-        } else if snapshot.percent > 25 || snapshot.isCharging {
+        } else if snapshot.percent > config.rearmThreshold || snapshot.isCharging {
             state.lowBatteryNotified = false
         }
 

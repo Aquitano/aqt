@@ -28,6 +28,7 @@ final class AppEnvironment: ObservableObject {
     let agents: AgentManager
 
     let battery: BatteryManager
+    let powerMode: PowerModeController
     let calendar: CalendarManager
     let weather: WeatherManager
     let bluetooth: BluetoothBatteryManager
@@ -67,7 +68,8 @@ final class AppEnvironment: ObservableObject {
         self.screenshots = ScreenshotMonitor(settings: settings, activities: activities, tray: tray)
         self.timer = TimerManager(activities: activities)
         self.agents = AgentManager(activities: activities, settings: settings)
-        self.battery = BatteryManager(activities: activities)
+        self.battery = BatteryManager(activities: activities, settings: settings)
+        self.powerMode = PowerModeController(activities: activities)
         self.calendar = CalendarManager(activities: activities)
         self.weather = WeatherManager(settings: settings)
         self.bluetooth = BluetoothBatteryManager(activities: activities)
@@ -242,6 +244,7 @@ extension View {
             .environmentObject(env.timer)
             .environmentObject(env.agents)
             .environmentObject(env.battery)
+            .environmentObject(env.powerMode)
             .environmentObject(env.calendar)
             .environmentObject(env.weather)
             .environmentObject(env.bluetooth)
