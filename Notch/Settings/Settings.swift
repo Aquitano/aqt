@@ -22,8 +22,7 @@ final class Settings: ObservableObject {
         static let trayMoveEnabled = "trayMoveEnabled"
         static let offerScreenshots = "offerScreenshots"
         static let trayLastCollectionID = "trayLastCollectionID"
-        static let showWeatherWidget = "showWeatherWidget"
-        static let showCalendarWidget = "showCalendarWidget"
+        static let widgetLayout = "widgetLayout"
         static let shareMethod = "shareMethod"
         static let agentsEnabled = "agentsEnabled"
         static let agentClaudeEnabled = "agentClaudeEnabled"
@@ -51,11 +50,8 @@ final class Settings: ObservableObject {
         static let lowBatteryThreshold = "lowBatteryThreshold"
         static let pomodoroFocusMinutes = "pomodoroFocusMinutes"
         static let pomodoroBreakMinutes = "pomodoroBreakMinutes"
-        static let showClockWidget = "showClockWidget"
         static let clockSecondaryTimeZone = "clockSecondaryTimeZone"
-        static let showShortcutsWidget = "showShortcutsWidget"
         static let pinnedShortcuts = "pinnedShortcuts"
-        static let showNoteWidget = "showNoteWidget"
         static let displayPlacement = "displayPlacement"
         static let followActiveDisplay = "followActiveDisplay"
         static let virtualNotchMode = "virtualNotchMode"
@@ -92,8 +88,11 @@ final class Settings: ObservableObject {
     var trayLastCollectionID: String {
         didSet { defaults.set(trayLastCollectionID, forKey: Key.trayLastCollectionID) }
     }
-    @Published var showWeatherWidget: Bool { didSet { defaults.set(showWeatherWidget, forKey: Key.showWeatherWidget) } }
-    @Published var showCalendarWidget: Bool { didSet { defaults.set(showCalendarWidget, forKey: Key.showCalendarWidget) } }
+    /// Ordered home-tab widgets. Membership means enabled; order is the render
+    /// order within each grid row (rows are carved out by `WidgetKind.row`).
+    @Published var widgetLayout: [WidgetKind] {
+        didSet { defaults.set(widgetLayout.map(\.rawValue), forKey: Key.widgetLayout) }
+    }
     @Published var shareMethod: ShareMethod { didSet { defaults.set(shareMethod.rawValue, forKey: Key.shareMethod) } }
     @Published var agentsEnabled: Bool { didSet { defaults.set(agentsEnabled, forKey: Key.agentsEnabled) } }
     @Published var agentClaudeEnabled: Bool { didSet { defaults.set(agentClaudeEnabled, forKey: Key.agentClaudeEnabled) } }
@@ -134,12 +133,9 @@ final class Settings: ObservableObject {
     /// durations the user actually uses.
     @Published var pomodoroFocusMinutes: Int { didSet { defaults.set(pomodoroFocusMinutes, forKey: Key.pomodoroFocusMinutes) } }
     @Published var pomodoroBreakMinutes: Int { didSet { defaults.set(pomodoroBreakMinutes, forKey: Key.pomodoroBreakMinutes) } }
-    @Published var showClockWidget: Bool { didSet { defaults.set(showClockWidget, forKey: Key.showClockWidget) } }
     /// Time-zone identifier for the clock tile's second line; empty = none.
     @Published var clockSecondaryTimeZone: String { didSet { defaults.set(clockSecondaryTimeZone, forKey: Key.clockSecondaryTimeZone) } }
-    @Published var showShortcutsWidget: Bool { didSet { defaults.set(showShortcutsWidget, forKey: Key.showShortcutsWidget) } }
     @Published var pinnedShortcuts: [String] { didSet { defaults.set(pinnedShortcuts, forKey: Key.pinnedShortcuts) } }
-    @Published var showNoteWidget: Bool { didSet { defaults.set(showNoteWidget, forKey: Key.showNoteWidget) } }
     @Published var displayPlacement: DisplayPlacement {
         didSet { defaults.set(displayPlacement.rawValue, forKey: Key.displayPlacement) }
     }
@@ -160,7 +156,7 @@ final class Settings: ObservableObject {
     /// Widgets occupying the expanded home's info row. Drives both the grid and
     /// the panel height, so the two can never disagree about an empty row.
     var hasInfoRowWidgets: Bool {
-        showWeatherWidget || showCalendarWidget || showShortcutsWidget || showNoteWidget
+        widgetLayout.contains { $0.row == .info }
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -180,8 +176,6 @@ final class Settings: ObservableObject {
             Key.trayMoveEnabled: false,
             Key.offerScreenshots: false,
             Key.trayLastCollectionID: TrayCollection.shelfID.uuidString,
-            Key.showWeatherWidget: true,
-            Key.showCalendarWidget: true,
             Key.shareMethod: ShareMethod.airdrop.rawValue,
             Key.agentsEnabled: true,
             Key.agentClaudeEnabled: false,
@@ -208,11 +202,8 @@ final class Settings: ObservableObject {
             Key.lowBatteryThreshold: 20,
             Key.pomodoroFocusMinutes: PomodoroPolicy.defaultMinutes(for: .focus),
             Key.pomodoroBreakMinutes: PomodoroPolicy.defaultMinutes(for: .rest),
-            Key.showClockWidget: false,
             Key.clockSecondaryTimeZone: "",
-            Key.showShortcutsWidget: false,
             Key.pinnedShortcuts: [String](),
-            Key.showNoteWidget: false,
             Key.displayPlacement: DisplayPlacement.builtIn.rawValue,
             Key.followActiveDisplay: false,
             Key.virtualNotchMode: VirtualNotchMode.automatic.rawValue,
@@ -235,8 +226,7 @@ final class Settings: ObservableObject {
         self.offerScreenshots = defaults.bool(forKey: Key.offerScreenshots)
         self.trayLastCollectionID = defaults.string(forKey: Key.trayLastCollectionID)
             ?? TrayCollection.shelfID.uuidString
-        self.showWeatherWidget = defaults.bool(forKey: Key.showWeatherWidget)
-        self.showCalendarWidget = defaults.bool(forKey: Key.showCalendarWidget)
+        self.widgetLayout = Self.loadWidgetLayout(from: defaults)
         self.shareMethod = ShareMethod(rawValue: defaults.string(forKey: Key.shareMethod) ?? "airdrop") ?? .airdrop
         self.agentsEnabled = defaults.bool(forKey: Key.agentsEnabled)
         self.agentClaudeEnabled = defaults.bool(forKey: Key.agentClaudeEnabled)
@@ -271,11 +261,8 @@ final class Settings: ObservableObject {
         self.lowBatteryThreshold = defaults.integer(forKey: Key.lowBatteryThreshold)
         self.pomodoroFocusMinutes = PomodoroPolicy.clampedMinutes(defaults.integer(forKey: Key.pomodoroFocusMinutes))
         self.pomodoroBreakMinutes = PomodoroPolicy.clampedMinutes(defaults.integer(forKey: Key.pomodoroBreakMinutes))
-        self.showClockWidget = defaults.bool(forKey: Key.showClockWidget)
         self.clockSecondaryTimeZone = defaults.string(forKey: Key.clockSecondaryTimeZone) ?? ""
-        self.showShortcutsWidget = defaults.bool(forKey: Key.showShortcutsWidget)
         self.pinnedShortcuts = defaults.stringArray(forKey: Key.pinnedShortcuts) ?? []
-        self.showNoteWidget = defaults.bool(forKey: Key.showNoteWidget)
         self.displayPlacement = DisplayPlacement(
             rawValue: defaults.string(forKey: Key.displayPlacement) ?? "builtIn"
         ) ?? .builtIn
@@ -285,6 +272,50 @@ final class Settings: ObservableObject {
         ) ?? .automatic
         self.displayProfiles = defaults.data(forKey: Key.displayProfiles)
             .flatMap { try? JSONDecoder().decode([DisplayProfile].self, from: $0) } ?? []
+    }
+
+    /// Reads the stored layout, migrating from the pre-layout per-widget booleans
+    /// on first run so an existing setup keeps its exact widget set.
+    private static func loadWidgetLayout(from defaults: UserDefaults) -> [WidgetKind] {
+        if let stored = defaults.stringArray(forKey: Key.widgetLayout) {
+            return stored.compactMap(WidgetKind.init(rawValue:))
+        }
+        func legacy(_ key: String, default fallback: Bool) -> Bool {
+            defaults.object(forKey: key) as? Bool ?? fallback
+        }
+        var layout: [WidgetKind] = [.battery]
+        if legacy("showClockWidget", default: false) { layout.append(.clock) }
+        layout += [.focus, .bluetooth]
+        if legacy("showWeatherWidget", default: true) { layout.append(.weather) }
+        if legacy("showCalendarWidget", default: true) { layout.append(.calendar) }
+        if legacy("showShortcutsWidget", default: false) { layout.append(.shortcuts) }
+        if legacy("showNoteWidget", default: false) { layout.append(.note) }
+        return layout
+    }
+
+    func isWidgetEnabled(_ kind: WidgetKind) -> Bool {
+        widgetLayout.contains(kind)
+    }
+
+    func setWidget(_ kind: WidgetKind, enabled: Bool) {
+        if enabled {
+            guard !widgetLayout.contains(kind) else { return }
+            widgetLayout.append(kind)
+        } else {
+            widgetLayout.removeAll { $0 == kind }
+        }
+    }
+
+    /// Shifts a widget by whole slots within its own row, leaving the other
+    /// row's ordering untouched.
+    func moveWidget(_ kind: WidgetKind, by slots: Int) {
+        var row = widgetLayout.filter { $0.row == kind.row }
+        guard let index = row.firstIndex(of: kind), slots != 0 else { return }
+        let target = max(0, min(row.count - 1, index + slots))
+        row.remove(at: index)
+        row.insert(kind, at: target)
+        let other = widgetLayout.filter { $0.row != kind.row }
+        widgetLayout = kind.row == .status ? row + other : other + row
     }
 
     func displayProfile(for displayKey: String) -> DisplayProfile {

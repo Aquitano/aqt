@@ -29,6 +29,10 @@ enum NotchAnimation {
     static func hoverGrow(reduceMotion: Bool) -> Animation {
         reduceMotion ? .smooth(duration: 0.2) : .spring(response: 0.28, dampingFraction: 0.72)
     }
+
+    /// Widget-grid editing: tiles sliding aside during a reorder drag, and
+    /// add/remove layout changes. Tight, no bounce — slots should open crisply.
+    static let reorder: Animation = .spring(response: 0.28, dampingFraction: 0.85)
 }
 
 /// Layout constants for the notch geometry and morph.

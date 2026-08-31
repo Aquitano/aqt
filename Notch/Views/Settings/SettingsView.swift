@@ -572,27 +572,20 @@ struct SettingsView: View {
             Section {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
                           spacing: 10) {
-                    widgetCard("Weather", subtitle: "Conditions and temperature",
-                               symbol: "cloud.sun.fill", tint: .cyan, isOn: $settings.showWeatherWidget)
-                    widgetCard("Calendar", subtitle: "Upcoming events",
-                               symbol: "calendar", tint: .red, isOn: $settings.showCalendarWidget)
-                    widgetCard("Clock", subtitle: "Time and a second zone",
-                               symbol: "clock", tint: .indigo, isOn: $settings.showClockWidget)
-                    widgetCard("Shortcuts", subtitle: "Pinned quick actions",
-                               symbol: "sparkles", tint: .purple, isOn: $settings.showShortcutsWidget)
-                    widgetCard("Quick note", subtitle: "Scratch text on the home tab",
-                               symbol: "note.text", tint: .yellow, isOn: $settings.showNoteWidget)
+                    ForEach(WidgetKind.allCases) { kind in
+                        widgetCard(kind, isOn: widgetBinding(kind))
+                    }
                 }
                 .padding(.vertical, 2)
             } header: {
                 Text("Home tab widgets")
             } footer: {
-                Text("Battery, Focus, and Bluetooth tiles appear automatically when the hardware or state calls for them.")
+                Text("Battery and Bluetooth tiles only appear when the hardware calls for them. Reorder widgets on the home tab itself via its Edit button.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            if settings.showWeatherWidget {
+            if settings.isWidgetEnabled(.weather) {
                 Section("Weather") {
                     Picker("Units", selection: $settings.temperatureUnit) {
                         Text(WeatherSnapshot.TemperatureUnit.celsius.suffix)
@@ -602,13 +595,13 @@ struct SettingsView: View {
                     }
                 }
             }
-            if settings.showClockWidget {
+            if settings.isWidgetEnabled(.clock) {
                 Section("Clock") {
                     TextField("Second time zone", text: $settings.clockSecondaryTimeZone,
                               prompt: Text("e.g. Europe/Berlin (optional)"))
                 }
             }
-            if settings.showShortcutsWidget {
+            if settings.isWidgetEnabled(.shortcuts) {
                 Section("Shortcuts") {
                     pinnedShortcutsEditor
                 }
@@ -617,25 +610,31 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    private func widgetCard(_ title: String, subtitle: String, symbol: String,
-                            tint: Color, isOn: Binding<Bool>) -> some View {
+    private func widgetBinding(_ kind: WidgetKind) -> Binding<Bool> {
+        Binding(
+            get: { settings.isWidgetEnabled(kind) },
+            set: { settings.setWidget(kind, enabled: $0) }
+        )
+    }
+
+    private func widgetCard(_ kind: WidgetKind, isOn: Binding<Bool>) -> some View {
         HStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(tint.gradient)
+                .fill(kind.tint.gradient)
                 .frame(width: 34, height: 34)
                 .overlay {
-                    PixelIcon(systemName: symbol, size: 18, tint: .white)
+                    PixelIcon(systemName: kind.symbol, size: 18, tint: .white)
                 }
             VStack(alignment: .leading, spacing: 1) {
-                Text(title)
+                Text(kind.title)
                     .font(.system(size: 13, weight: .semibold))
-                Text(subtitle)
+                Text(kind.subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
-            Toggle(title, isOn: isOn)
+            Toggle(kind.title, isOn: isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)
