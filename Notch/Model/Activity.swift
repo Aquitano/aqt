@@ -41,7 +41,8 @@ struct Activity: Identifiable, Equatable {
         case audioRoute(name: String, symbol: String)
         case focus(name: String?, isOn: Bool)
         case peek(title: String, message: String, symbol: String, tint: PeekTint)
-        case timer(name: String, endsAt: Date)
+        /// `pausedRemaining` non-nil freezes the countdown at that value.
+        case timer(name: String, endsAt: Date, pausedRemaining: TimeInterval?)
         case agent(count: Int, kind: AgentKind, project: String, status: AgentStatus)
         case screenshotCandidates([ScreenshotCandidate])
     }

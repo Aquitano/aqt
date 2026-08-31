@@ -207,13 +207,22 @@ struct CompactView: View {
     private func activityLabel(_ activity: Activity) -> some View {
         // A running timer ticks once a second via a scoped TimelineView — it only
         // mounts while the compact pill is on-screen (collapsed/occluded panels
-        // are ordered out), so idle stays a zero render loop.
-        if case let .timer(_, endsAt) = activity.kind {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(max(0, endsAt.timeIntervalSince(context.date)).clockString)
+        // are ordered out), so idle stays a zero render loop. A paused timer is a
+        // static value, so it skips the TimelineView entirely.
+        if case let .timer(_, endsAt, pausedRemaining) = activity.kind {
+            if let pausedRemaining {
+                Text(pausedRemaining.clockString)
                     .font(.system(size: NotchLayout.compactLabelFontSize, weight: .medium))
                     .monospacedDigit()
                     .lineLimit(1)
+                    .opacity(0.6)
+            } else {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(max(0, endsAt.timeIntervalSince(context.date)).clockString)
+                        .font(.system(size: NotchLayout.compactLabelFontSize, weight: .medium))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
             }
         } else {
             let label = ActivityPresenter.compactLabel(for: activity.kind)

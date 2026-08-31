@@ -195,6 +195,7 @@ enum NotchLayout {
         case .home: return hasInfoRow ? 296 : 175
         case .agents: return 320
         case .media: return 220
+        case .timer: return 240
         case .tray: return trayEmpty ? 204 : 286
         }
     }

@@ -119,6 +119,7 @@ targets:
       - path: Notch/Services/Agents/AgentConfigInstaller.swift
       - path: Notch/Services/Agents/AgentSoundPlayer.swift
       - path: Notch/Managers/Widgets/BatteryPolicy.swift
+      - path: Notch/Managers/TimerPolicy.swift
       - path: Notch/Managers/Widgets/CalendarReminders.swift
       - path: Notch/Model/Activity.swift
       - path: Notch/Model/MediaModels.swift

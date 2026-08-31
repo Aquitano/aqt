@@ -95,7 +95,7 @@ private enum PixelGlyph {
     case calendar, bolt, share, radio, wifi, location, speaker, mute, sun
     case cloud, rain, snow, fog, storm, headphones, keyboard, mouse, layers
     case spark, code, braces, shell, battery, eye, clipboard, link
-    case plus, pause, folder, open, photo, power
+    case plus, pause, folder, open, photo, power, xmark
 
     static func resolve(_ rawName: String) -> PixelGlyph {
         let name = rawName.lowercased()
@@ -123,6 +123,7 @@ private enum PixelGlyph {
         if name.contains("square.grid") { return .grid }
         if name.contains("gear") { return .gear }
         if name.contains("exclamation") { return .warning }
+        if name.contains("xmark") || name.contains("stop") { return .xmark }
         if name.contains("checkmark") { return .check }
         if name.contains("hourglass") { return .hourglass }
         if name.contains("minus") { return .minus }
@@ -207,6 +208,7 @@ private enum PixelGlyph {
         case .open: return bits("...#...", "..###..", ".#.#.#.", "...#...", "##.#.##", "#.....#", "#######")
         case .photo: return bits(".......", "..#....", ".#####.", "#.....#", "#.#.#.#", "#..#..#", "#######")
         case .power: return bits("...#...", "...#...", ".#.#.#.", "#.....#", "#.....#", ".#...#.", "..###..")
+        case .xmark: return bits(".......", ".#...#.", "..#.#..", "...#...", "..#.#..", ".#...#.", ".......")
         }
     }
 

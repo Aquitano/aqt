@@ -46,6 +46,8 @@ final class Settings: ObservableObject {
         static let hotkeyEnabled = "hotkeyEnabled"
         static let hotkeyKeyCode = "hotkeyKeyCode"
         static let hotkeyModifiers = "hotkeyModifiers"
+        static let pomodoroFocusMinutes = "pomodoroFocusMinutes"
+        static let pomodoroBreakMinutes = "pomodoroBreakMinutes"
         static let showClockWidget = "showClockWidget"
         static let clockSecondaryTimeZone = "clockSecondaryTimeZone"
         static let showShortcutsWidget = "showShortcutsWidget"
@@ -118,6 +120,10 @@ final class Settings: ObservableObject {
     /// recording UI yet; changeable via `defaults write` until one exists.
     @Published var hotkeyKeyCode: Int { didSet { defaults.set(hotkeyKeyCode, forKey: Key.hotkeyKeyCode) } }
     @Published var hotkeyModifiers: Int { didSet { defaults.set(hotkeyModifiers, forKey: Key.hotkeyModifiers) } }
+    /// Last dial position per pomodoro phase, so the timer tab reopens on the
+    /// durations the user actually uses.
+    @Published var pomodoroFocusMinutes: Int { didSet { defaults.set(pomodoroFocusMinutes, forKey: Key.pomodoroFocusMinutes) } }
+    @Published var pomodoroBreakMinutes: Int { didSet { defaults.set(pomodoroBreakMinutes, forKey: Key.pomodoroBreakMinutes) } }
     @Published var showClockWidget: Bool { didSet { defaults.set(showClockWidget, forKey: Key.showClockWidget) } }
     /// Time-zone identifier for the clock tile's second line; empty = none.
     @Published var clockSecondaryTimeZone: String { didSet { defaults.set(clockSecondaryTimeZone, forKey: Key.clockSecondaryTimeZone) } }
@@ -187,6 +193,8 @@ final class Settings: ObservableObject {
             Key.hotkeyEnabled: false,
             Key.hotkeyKeyCode: 45,       // kVK_ANSI_N
             Key.hotkeyModifiers: 6144,   // controlKey | optionKey
+            Key.pomodoroFocusMinutes: PomodoroPolicy.defaultMinutes(for: .focus),
+            Key.pomodoroBreakMinutes: PomodoroPolicy.defaultMinutes(for: .rest),
             Key.showClockWidget: false,
             Key.clockSecondaryTimeZone: "",
             Key.showShortcutsWidget: false,
@@ -245,6 +253,8 @@ final class Settings: ObservableObject {
         self.hotkeyEnabled = defaults.bool(forKey: Key.hotkeyEnabled)
         self.hotkeyKeyCode = defaults.integer(forKey: Key.hotkeyKeyCode)
         self.hotkeyModifiers = defaults.integer(forKey: Key.hotkeyModifiers)
+        self.pomodoroFocusMinutes = PomodoroPolicy.clampedMinutes(defaults.integer(forKey: Key.pomodoroFocusMinutes))
+        self.pomodoroBreakMinutes = PomodoroPolicy.clampedMinutes(defaults.integer(forKey: Key.pomodoroBreakMinutes))
         self.showClockWidget = defaults.bool(forKey: Key.showClockWidget)
         self.clockSecondaryTimeZone = defaults.string(forKey: Key.clockSecondaryTimeZone) ?? ""
         self.showShortcutsWidget = defaults.bool(forKey: Key.showShortcutsWidget)

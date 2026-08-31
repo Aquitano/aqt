@@ -20,13 +20,14 @@ final class NotchState: ObservableObject {
     }
 
     enum ExpandedTab: String, CaseIterable, Identifiable {
-        case home, agents, media, tray
+        case home, agents, media, timer, tray
         var id: String { rawValue }
         var symbol: String {
             switch self {
             case .home: return "square.grid.2x2"
             case .agents: return "terminal"
             case .media: return "play.circle"
+            case .timer: return "timer"
             case .tray: return "tray.full"
             }
         }

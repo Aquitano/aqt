@@ -39,7 +39,8 @@ enum ActivityPresenter {
         case let .peek(title, _, _, _): return title
         // The pill draws the live countdown (see CompactView), not the name, so
         // reserve width for the clock — that string is what actually gets rendered.
-        case let .timer(_, endsAt): return max(0, endsAt.timeIntervalSinceNow).clockString
+        case let .timer(_, endsAt, pausedRemaining):
+            return (pausedRemaining ?? max(0, endsAt.timeIntervalSinceNow)).clockString
         // Terse in the pill (it hugs the notch); the pixel glyph shows activity,
         // the expanded card carries detail. Show the count when more than one runs.
         case let .agent(count, _, _, status): return count > 1 ? "\(count) agents" : status.label
@@ -83,7 +84,10 @@ enum ActivityPresenter {
 
         // Snapshot of time left; the card re-renders when its activity changes, so
         // this avoids pinning a render loop just to tick a subtitle.
-        case let .timer(name, endsAt):
+        case let .timer(name, endsAt, pausedRemaining):
+            if let pausedRemaining {
+                return Card(title: name, subtitle: "Paused · \(pausedRemaining.clockString)", tint: .white)
+            }
             return Card(title: name, subtitle: max(0, endsAt.timeIntervalSinceNow).clockString, tint: .white)
 
         case let .agent(count, kind, project, status):

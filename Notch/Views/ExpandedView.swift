@@ -119,6 +119,8 @@ struct ExpandedView: View {
                 AgentsView()
             case .media:
                 MediaPlayerView(namespace: namespace)
+            case .timer:
+                TimerPanelView()
             case .tray:
                 TrayView()
             }

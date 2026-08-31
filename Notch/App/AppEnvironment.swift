@@ -239,6 +239,7 @@ extension View {
             .environmentObject(env.hud)
             .environmentObject(env.tray)
             .environmentObject(env.screenshots)
+            .environmentObject(env.timer)
             .environmentObject(env.agents)
             .environmentObject(env.battery)
             .environmentObject(env.calendar)
