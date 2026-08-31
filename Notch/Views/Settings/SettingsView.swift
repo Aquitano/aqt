@@ -2,9 +2,10 @@ import SwiftUI
 import AppKit
 import ApplicationServices
 
-/// Content of the standard Settings window. A grouped Form that binds directly
-/// to the shared `Settings` object; the login-item toggle additionally syncs the
-/// real `SMAppService` registration so the preference and the OS agree.
+/// Content of the standard Settings window: System Settings-style toolbar tabs,
+/// each a grouped Form binding directly to the shared `Settings` object; the
+/// login-item toggle additionally syncs the real `SMAppService` registration so
+/// the preference and the OS agree.
 struct SettingsView: View {
     @EnvironmentObject private var settings: Settings
     @EnvironmentObject private var agents: AgentManager
@@ -21,28 +22,74 @@ struct SettingsView: View {
     @State private var customizedDisplayKey = ""
 
     var body: some View {
-        Form {
-            generalSection
-            displaySection
-            agentsSection
-            if settings.agentsEnabled {
-                agentIntegrationsSection
+        TabView {
+            Tab("General", systemImage: "gearshape") {
+                pane { generalSection }
             }
-            mediaSection
-            hudSection
-            batterySection
-            widgetsSection
-            traySection
-            sharingSection
-            permissionsSection
+            Tab("Notch", systemImage: "rectangle.tophalf.inset.filled") {
+                pane {
+                    notchLayoutSection
+                    displaySection
+                }
+            }
+            Tab("Widgets", systemImage: "square.grid.2x2") {
+                widgetsPane
+            }
+            Tab("Media", systemImage: "play.circle") {
+                pane { mediaSection }
+            }
+            Tab("System", systemImage: "slider.horizontal.3") {
+                pane {
+                    hudSection
+                    batterySection
+                }
+            }
+            Tab("Agents", systemImage: "terminal") {
+                pane {
+                    agentsSection
+                    if settings.agentsEnabled {
+                        agentIntegrationsSection
+                    }
+                }
+            }
+            Tab("Tray", systemImage: "tray.full") {
+                pane {
+                    traySection
+                    sharingSection
+                }
+            }
+            Tab("Permissions", systemImage: "lock.shield") {
+                pane { permissionsSection }
+            }
         }
-        .formStyle(.grouped)
-        .frame(width: 460, height: 560)
+        .frame(width: 580, height: 540)
         .onAppear { refreshDisplays() }
         .onReceive(NotificationCenter.default.publisher(
             for: NSApplication.didChangeScreenParametersNotification
         )) { _ in
             refreshDisplays()
+        }
+    }
+
+    private func pane<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        Form { content() }
+            .formStyle(.grouped)
+    }
+
+    // MARK: - Notch layout
+
+    private var notchLayoutSection: some View {
+        Section {
+            Picker("Tab bar", selection: $settings.floatingTabBar) {
+                Text("Floating below the notch").tag(true)
+                Text("Inside the panel").tag(false)
+            }
+        } header: {
+            Text("Layout")
+        } footer: {
+            Text("Floating detaches the tab icons from the black panel into their own capsule under it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -520,31 +567,81 @@ struct SettingsView: View {
 
     // MARK: - Widgets
 
-    private var widgetsSection: some View {
-        Section("Widgets") {
-            Toggle("Calendar", isOn: $settings.showCalendarWidget)
-            Toggle("Weather", isOn: $settings.showWeatherWidget)
-
-            Picker("Units", selection: $settings.temperatureUnit) {
-                Text(WeatherSnapshot.TemperatureUnit.celsius.suffix)
-                    .tag(WeatherSnapshot.TemperatureUnit.celsius)
-                Text(WeatherSnapshot.TemperatureUnit.fahrenheit.suffix)
-                    .tag(WeatherSnapshot.TemperatureUnit.fahrenheit)
+    private var widgetsPane: some View {
+        Form {
+            Section {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                          spacing: 10) {
+                    widgetCard("Weather", subtitle: "Conditions and temperature",
+                               symbol: "cloud.sun.fill", tint: .cyan, isOn: $settings.showWeatherWidget)
+                    widgetCard("Calendar", subtitle: "Upcoming events",
+                               symbol: "calendar", tint: .red, isOn: $settings.showCalendarWidget)
+                    widgetCard("Clock", subtitle: "Time and a second zone",
+                               symbol: "clock", tint: .indigo, isOn: $settings.showClockWidget)
+                    widgetCard("Shortcuts", subtitle: "Pinned quick actions",
+                               symbol: "sparkles", tint: .purple, isOn: $settings.showShortcutsWidget)
+                    widgetCard("Quick note", subtitle: "Scratch text on the home tab",
+                               symbol: "note.text", tint: .yellow, isOn: $settings.showNoteWidget)
+                }
+                .padding(.vertical, 2)
+            } header: {
+                Text("Home tab widgets")
+            } footer: {
+                Text("Battery, Focus, and Bluetooth tiles appear automatically when the hardware or state calls for them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
-            Toggle("Clock", isOn: $settings.showClockWidget)
+            if settings.showWeatherWidget {
+                Section("Weather") {
+                    Picker("Units", selection: $settings.temperatureUnit) {
+                        Text(WeatherSnapshot.TemperatureUnit.celsius.suffix)
+                            .tag(WeatherSnapshot.TemperatureUnit.celsius)
+                        Text(WeatherSnapshot.TemperatureUnit.fahrenheit.suffix)
+                            .tag(WeatherSnapshot.TemperatureUnit.fahrenheit)
+                    }
+                }
+            }
             if settings.showClockWidget {
-                TextField("Second time zone", text: $settings.clockSecondaryTimeZone,
-                          prompt: Text("e.g. Europe/Berlin (optional)"))
+                Section("Clock") {
+                    TextField("Second time zone", text: $settings.clockSecondaryTimeZone,
+                              prompt: Text("e.g. Europe/Berlin (optional)"))
+                }
             }
-
-            Toggle("Shortcuts", isOn: $settings.showShortcutsWidget)
             if settings.showShortcutsWidget {
-                pinnedShortcutsEditor
+                Section("Shortcuts") {
+                    pinnedShortcutsEditor
+                }
             }
-
-            Toggle("Quick note", isOn: $settings.showNoteWidget)
         }
+        .formStyle(.grouped)
+    }
+
+    private func widgetCard(_ title: String, subtitle: String, symbol: String,
+                            tint: Color, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(tint.gradient)
+                .frame(width: 34, height: 34)
+                .overlay {
+                    PixelIcon(systemName: symbol, size: 18, tint: .white)
+                }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Toggle(title, isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var pinnedShortcutsEditor: some View {
@@ -631,17 +728,37 @@ struct SettingsView: View {
     private var permissionsSection: some View {
         Section {
             ForEach(PrivacyPane.allCases) { pane in
-                LabeledContent(pane.title) {
+                LabeledContent {
                     Button("Open") { pane.open() }
                         .controlSize(.small)
+                } label: {
+                    HStack(spacing: 7) {
+                        if let granted = Self.status(of: pane) {
+                            Circle()
+                                .fill(granted ? Color.green : Color.orange)
+                                .frame(width: 7, height: 7)
+                                .accessibilityLabel(granted ? "Granted" : "Not granted")
+                        }
+                        Text(pane.title)
+                    }
                 }
             }
         } header: {
             Text("Permissions")
         } footer: {
-            Text("Opens the matching pane in System Settings so you can grant access.")
+            Text("Opens the matching pane in System Settings so you can grant access. Input Monitoring (or Accessibility for HUD replacement) is what lets the volume and brightness keys reach Notch; a grant may need an app relaunch to take effect.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Live grant state for the panes the system lets us query cheaply; nil for
+    /// the rest (their state only shows up when the feature actually asks).
+    private static func status(of pane: PrivacyPane) -> Bool? {
+        switch pane {
+        case .inputMonitoring: return CGPreflightListenEventAccess()
+        case .accessibility: return AXIsProcessTrusted()
+        default: return nil
         }
     }
 }
