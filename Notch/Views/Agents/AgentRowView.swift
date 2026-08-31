@@ -2,44 +2,79 @@ import SwiftUI
 
 /// One agent session as a rich card: agent glyph, "project · prompt" title,
 /// status dot, agent/terminal badges, branch + uptime, and a preview of the
-/// latest exchange. Tapping jumps to the hosting terminal tab.
+/// latest exchange. Tapping jumps to the hosting terminal tab. Long-idle
+/// sessions render `collapsed`: a single quiet line so a day's worth of
+/// finished sessions doesn't drown the ones still working.
 struct AgentRowView: View {
     let session: AgentSession
+    var collapsed = false
     let onJump: () -> Void
 
     var body: some View {
         Button(action: onJump) {
-            HStack(alignment: .top, spacing: 12) {
-                PixelIcon(systemName: session.kind.symbol, size: 18, tint: kindTint)
-                    .frame(width: 26)
-
-                VStack(alignment: .leading, spacing: 5) {
-                    title
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    metaRow
-
-                    if let response = session.lastResponse, !response.isEmpty {
-                        Text(response)
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.45))
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(.rect)
+            if collapsed { compactBody } else { fullBody }
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .glassEffect(.regular, in: .rect(cornerRadius: collapsed ? 12 : 16))
         .accessibilityLabel(accessibilityText)
+    }
+
+    private var fullBody: some View {
+        HStack(alignment: .top, spacing: 12) {
+            PixelIcon(systemName: session.kind.symbol, size: 18, tint: kindTint)
+                .frame(width: 26)
+
+            VStack(alignment: .leading, spacing: 5) {
+                title
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                metaRow
+
+                if let response = session.lastResponse, !response.isEmpty {
+                    Text(response)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.45))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
+    }
+
+    private var compactBody: some View {
+        HStack(spacing: 8) {
+            PixelIcon(systemName: session.kind.symbol, size: 12, tint: kindTint.opacity(0.7))
+                .frame(width: 18)
+            Text(session.project)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.75))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Circle().fill(statusColor.opacity(0.7)).frame(width: 5, height: 5)
+            Text("\(session.status.label) \(sinceActivity)")
+                .font(.system(size: 11))
+                .monospacedDigit()
+                .foregroundStyle(.white.opacity(0.4))
+                .lineLimit(1)
+            Spacer(minLength: 6)
+            if let terminal = session.terminalName {
+                Text(terminal)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.35))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
     }
 
     private var title: Text {
@@ -109,7 +144,15 @@ struct AgentRowView: View {
     }
 
     private var uptime: String {
-        let seconds = max(0, Int(Date().timeIntervalSince(session.startedAt)))
+        Self.duration(since: session.startedAt)
+    }
+
+    private var sinceActivity: String {
+        Self.duration(since: session.lastActivity)
+    }
+
+    private static func duration(since date: Date) -> String {
+        let seconds = max(0, Int(Date().timeIntervalSince(date)))
         if seconds < 60 { return "\(seconds)s" }
         if seconds < 3600 { return "\(seconds / 60)m" }
         return "\(seconds / 3600)h\((seconds % 3600) / 60)m"

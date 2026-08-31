@@ -1,11 +1,23 @@
 import SwiftUI
 
 /// The Agents tab: live sessions (tap to jump to the terminal) plus Claude usage
-/// limits. Per-agent enable/install lives in the Settings window, so this view
+/// limits. Sessions quiet for a while collapse to one-line rows under an "idle"
+/// rule, and the scroll edges fade so overflow reads as scrollable instead of
+/// clipped. Per-agent enable/install lives in the Settings window, so this view
 /// stays focused on what's actually running.
 struct AgentsView: View {
     @EnvironmentObject private var agents: AgentManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedPermissionId: String?
+    @State private var scrollEdges = ScrollEdges()
+
+    /// Quiet this long (and not waiting on the user) collapses a session.
+    private static let idleCollapseAfter: TimeInterval = 10 * 60
+
+    private struct ScrollEdges: Equatable {
+        var top = false
+        var bottom = false
+    }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { _ in
@@ -14,7 +26,8 @@ struct AgentsView: View {
     }
 
     private var content: some View {
-        ScrollView(.vertical, showsIndicators: false) {
+        let rows = sessionRows
+        return ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 10) {
                 if let usage = agents.usage {
                     usagePanel(usage)
@@ -22,20 +35,18 @@ struct AgentsView: View {
                 if let pending = selectedPermission {
                     permissionCard(pending)
                 }
-                ForEach(sessionRows) { row in
-                    AgentRowView(
-                        session: row.session,
-                        onJump: {
-                            if let requestId = row.session.permissionRequestId,
-                               agents.permissionRequests[requestId] != nil {
-                                selectedPermissionId = requestId
-                            } else {
-                                agents.jumpToTerminal(row.session)
-                            }
-                        }
-                    )
+                ForEach(rows.active) { row in
+                    AgentRowView(session: row.session, onJump: { jump(row.session) })
                         .padding(.leading, CGFloat(row.depth) * 22)
                         .opacity(row.depth > 0 ? 0.92 : 1)
+                }
+                if !rows.collapsed.isEmpty {
+                    if !rows.active.isEmpty {
+                        idleDivider
+                    }
+                    ForEach(rows.collapsed) { session in
+                        AgentRowView(session: session, collapsed: true, onJump: { jump(session) })
+                    }
                 }
                 if agents.sessions.isEmpty {
                     emptyState
@@ -43,11 +54,67 @@ struct AgentsView: View {
             }
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .top)
+            .animation(NotchAnimation.morph(reduceMotion: reduceMotion),
+                       value: rows.collapsed.map(\.id))
         }
+        .onScrollGeometryChange(for: ScrollEdges.self) { geometry in
+            let overflow = geometry.contentSize.height - geometry.containerSize.height
+            return ScrollEdges(
+                top: geometry.contentOffset.y > 2,
+                bottom: overflow > 2 && geometry.contentOffset.y < overflow - 2
+            )
+        } action: { _, edges in
+            scrollEdges = edges
+        }
+        .mask(edgeFadeMask)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear { agents.refresh() }
         .onAppear { selectBestPermissionIfNeeded() }
         .onChange(of: permissionIds) { _, _ in selectBestPermissionIfNeeded() }
+    }
+
+    private func jump(_ session: AgentSession) {
+        if let requestId = session.permissionRequestId,
+           agents.permissionRequests[requestId] != nil {
+            selectedPermissionId = requestId
+        } else {
+            agents.jumpToTerminal(session)
+        }
+    }
+
+    /// Soft fades where content continues past the visible edge — the standard
+    /// "there's more, scroll" affordance without a scrollbar.
+    private var edgeFadeMask: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [.black.opacity(scrollEdges.top ? 0 : 1), .black],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(height: 16)
+            Rectangle().fill(.black)
+            LinearGradient(
+                colors: [.black, .black.opacity(scrollEdges.bottom ? 0 : 1)],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(height: 22)
+        }
+        .animation(.easeOut(duration: 0.18), value: scrollEdges)
+    }
+
+    private var idleDivider: some View {
+        HStack(spacing: 8) {
+            dividerLine
+            Text("idle")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.35))
+            dividerLine
+        }
+        .padding(.horizontal, 4)
+        .accessibilityHidden(true)
+    }
+
+    private var dividerLine: some View {
+        Rectangle().fill(.white.opacity(0.12)).frame(height: 1)
     }
 
     private var permissionIds: [String] { agents.permissionRequests.keys.sorted() }
@@ -89,10 +156,18 @@ struct AgentsView: View {
         var id: String { session.id }
     }
 
+    private struct Rows {
+        var active: [Row] = []
+        var collapsed: [AgentSession] = []
+    }
+
     /// The session forest flattened depth-first, so a sub-agent that spawns its own
     /// sub-session (a grandchild, which OpenCode supports) still renders — indented
     /// by depth — instead of vanishing between the top-level and direct-child passes.
-    private var sessionRows: [Row] {
+    /// A root whose whole subtree has been quiet past the idle threshold moves to
+    /// `collapsed` (one-line rows after the active cards); its stale sub-agent rows
+    /// are folded into it.
+    private var sessionRows: Rows {
         let sessions = agents.sessions
         let ids = Set(sessions.map(\.id))
         let childrenByParent = Dictionary(
@@ -105,14 +180,36 @@ struct AgentsView: View {
             return !ids.contains(parent)
         }
 
-        var rows: [Row] = []
+        func isLongIdle(_ session: AgentSession) -> Bool {
+            !session.status.isBusy
+                && session.status != .needsAttention
+                && session.permissionRequestId == nil
+                && Date().timeIntervalSince(session.lastActivity) > Self.idleCollapseAfter
+        }
+
+        func subtreeIsLongIdle(_ session: AgentSession, visited: inout Set<String>) -> Bool {
+            guard visited.insert(session.id).inserted else { return true } // guard against parent cycles
+            guard isLongIdle(session) else { return false }
+            return (childrenByParent[session.id] ?? [])
+                .allSatisfy { subtreeIsLongIdle($0, visited: &visited) }
+        }
+
+        var rows = Rows()
         var visited = Set<String>()
         func visit(_ session: AgentSession, depth: Int) {
             guard visited.insert(session.id).inserted else { return } // guard against parent cycles
-            rows.append(Row(session: session, depth: depth))
+            rows.active.append(Row(session: session, depth: depth))
             for child in childrenByParent[session.id] ?? [] { visit(child, depth: depth + 1) }
         }
-        for root in roots { visit(root, depth: 0) }
+        for root in roots {
+            var probe = visited
+            if subtreeIsLongIdle(root, visited: &probe) {
+                visited = probe
+                rows.collapsed.append(root)
+            } else {
+                visit(root, depth: 0)
+            }
+        }
         return rows
     }
 
