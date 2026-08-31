@@ -242,13 +242,16 @@ enum TimerDialScroll {
 /// Horizontal tape-measure dial: one tick per minute, labels every five, the
 /// selected minute centered over a fixed indicator. Dragging scrubs the value,
 /// the scroll wheel nudges it while the timer tab is open, and each snapped
-/// minute taps the haptic engine. Scrub and scroll track instantly; only the
-/// phase switch glides the tape (via the chip's animated transaction).
+/// minute taps the haptic engine. Dragging tracks the finger 1:1; scroll and
+/// accessibility steps glide the tape to the new minute (the animatable
+/// offset retargets smoothly under rapid wheel events), and the phase switch
+/// glides via the chip's animated transaction.
 private struct TimerDial: View {
     @Binding var minutes: Int
     let range: ClosedRange<Int>
     let tint: Color
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dragBaseMinutes: Int?
     @State private var scrollAccumulator: CGFloat = 0
 
@@ -268,7 +271,7 @@ private struct TimerDial: View {
             .accessibilityLabel("Timer duration")
             .accessibilityValue("\(minutes) minutes")
             .accessibilityAdjustableAction { direction in
-                adjust(by: direction == .increment ? 1 : -1)
+                adjust(by: direction == .increment ? 1 : -1, animated: true)
             }
     }
 
@@ -293,17 +296,19 @@ private struct TimerDial: View {
             let steps = Int(scrollAccumulator / Self.scrollPointsPerStep)
             guard steps != 0 else { return }
             scrollAccumulator -= CGFloat(steps) * Self.scrollPointsPerStep
-            adjust(by: steps)
+            adjust(by: steps, animated: true)
         } else if deltaY != 0 {
             // A clicky mouse wheel: one detent, one minute.
-            adjust(by: deltaY < 0 ? 1 : -1)
+            adjust(by: deltaY < 0 ? 1 : -1, animated: true)
         }
     }
 
-    private func adjust(by steps: Int) {
+    private func adjust(by steps: Int, animated: Bool = false) {
         let updated = PomodoroPolicy.clampedMinutes(minutes + steps)
         guard updated != minutes else { return }
-        minutes = updated
+        withAnimation(animated && !reduceMotion ? .snappy(duration: 0.22) : nil) {
+            minutes = updated
+        }
         Haptics.tap(.levelChange)
     }
 }
