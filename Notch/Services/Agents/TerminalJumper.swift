@@ -49,7 +49,7 @@ struct TerminalJumper {
     /// Select the exact tab/pane using whatever control surface the hosting
     /// terminal exposes, keyed on the agent process's environment + controlling
     /// tty. Returns false for terminals we can only raise at the app level
-    /// (Ghostty, VS Code) so the caller falls back. Reads/commands run off-main.
+    /// (VS Code) so the caller falls back. Reads/commands run off-main.
     nonisolated private static func focusPrecise(pid: pid_t, lookup: ProcessLookup) -> Bool {
         let env = lookup.environment(of: pid)
         let term = env["TERM_PROGRAM"]
@@ -60,6 +60,7 @@ struct TerminalJumper {
         if let pane = env["WEZTERM_PANE"] { return focusWezTerm(pane: pane) }
         if let windowID = env["KITTY_WINDOW_ID"] { return focusKitty(windowID: windowID, listenOn: env["KITTY_LISTEN_ON"]) }
         if term == "Apple_Terminal", let tty { return focusAppleTerminal(tty: tty) }
+        if term == "ghostty" { return focusGhostty(agentPID: pid, lookup: lookup) }
         return false
     }
 
@@ -118,6 +119,70 @@ struct TerminalJumper {
         if let listenOn { args += ["--to", listenOn] }
         args += ["focus-window", "--match", "id:\(windowID)"]
         return run(kitten, args) != nil
+    }
+
+    /// Ghostty 1.3+ ships an AppleScript dictionary: each terminal surface
+    /// exposes its shell-integration working directory and a `focus` command
+    /// that selects the surface and raises its window. Ghostty stamps no
+    /// per-surface ID into child environments, so the agent's cwd is the
+    /// matching key; the first surface in that directory wins.
+    nonisolated private static func focusGhostty(agentPID: pid_t, lookup: ProcessLookup) -> Bool {
+        guard let cwd = lookup.cwd(of: agentPID) else { return false }
+        // libproc reports the directory's real name while Ghostty echoes whatever
+        // the shell was cd'd to, which on a case-insensitive volume need not match
+        // ("/Users/x/Brain" vs "/Users/x/brain"). Fold case so they compare equal.
+        let target = lookup.normalize(cwd).lowercased()
+
+        // `tab` must be hoisted: Ghostty's sdef defines a `tab` class that
+        // shadows AppleScript's tab-character constant inside the tell block.
+        let listScript = """
+        set d to tab
+        tell application "Ghostty"
+          set out to ""
+          repeat with t in terminals
+            set wd to working directory of t
+            if wd is missing value then set wd to ""
+            set out to out & (id of t) & d & wd & linefeed
+          end repeat
+          return out
+        end tell
+        """
+        guard let listing = run("/usr/bin/osascript", ["-e", listScript]) else { return false }
+
+        let surfaceID = listing.split(separator: "\n").lazy
+            .compactMap { line -> String? in
+                let parts = line.split(separator: "\t", maxSplits: 1)
+                guard parts.count == 2,
+                      normalizedGhosttyPath(String(parts[1]), lookup: lookup).lowercased() == target
+                else { return nil }
+                return String(parts[0])
+            }
+            .first
+        guard let surfaceID else { return false }
+
+        let escaped = surfaceID
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let focusScript = """
+        tell application "Ghostty"
+          repeat with t in terminals
+            if id of t is "\(escaped)" then
+              focus t
+              return "ok"
+            end if
+          end repeat
+        end tell
+        return "no"
+        """
+        return run("/usr/bin/osascript", ["-e", focusScript])?.contains("ok") == true
+    }
+
+    /// Ghostty reports the shell's cwd, occasionally as a file URL.
+    nonisolated private static func normalizedGhosttyPath(_ raw: String, lookup: ProcessLookup) -> String {
+        var path = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: path), url.isFileURL { path = url.path(percentEncoded: false) }
+        if path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        return lookup.normalize(path)
     }
 
     nonisolated private static func binary(_ name: String) -> String? {
