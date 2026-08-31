@@ -128,20 +128,17 @@ enum NotchLayout {
     }
 
     // Agent pill metrics, shared between the width reserved here and the views
-    // that draw it (`CompactView` / `PixelSessionStrip`) so they can't drift.
-    static let agentGlyphWidth: CGFloat = 13
-    static let agentGlyphSpacing: CGFloat = 5
-    static let agentMaxGlyphs = 4
+    // that draw it (`CompactView` / `PixelWorkingIndicator`) so they can't drift.
+    static let agentGlyphWidth: CGFloat = 13.5
     static let agentStatusGap: CGFloat = 7
     static let agentCountGap: CGFloat = 5
     static let agentSessionsFontSize: CGFloat = 11
 
-    /// Slot width for the agent pill: per-session glyph strip + the widest status
+    /// Slot width for the agent pill: one spinner glyph + the widest status
     /// label on one side, "N sessions" on the other. Sized for the widest status
     /// so state changes never resize; only the session count (rare) does.
     static func compactAgentSlotWidth(count: Int) -> CGFloat {
-        let glyphs = min(max(count, 1), agentMaxGlyphs)
-        let strip = CGFloat(glyphs) * agentGlyphWidth + CGFloat(glyphs - 1) * agentGlyphSpacing
+        let strip = agentGlyphWidth
         let statusFont = NSFont.systemFont(ofSize: compactLabelFontSize, weight: .medium)
         // Mirrors ActivityPresenter.agentCompactStatus's possible labels.
         let widestStatus = ["Running", "Editing", "Working", "Needs you", "Done", "Idle"]

@@ -16,7 +16,6 @@ struct CompactView: View {
     @EnvironmentObject private var settings: Settings
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var tray: TrayManager
-    @EnvironmentObject private var agents: AgentManager
 
     @Environment(\.notchGeometry) private var notchSize
     @Environment(\.notchControlsSharedRendering) private var controlsSharedRendering
@@ -149,12 +148,13 @@ struct CompactView: View {
 
     // MARK: - Agent slots
 
-    /// Per-session pixel glyphs + the aggregate status ("Running"). Falls back
-    /// to one aggregate glyph if the live session list is momentarily out of
-    /// step with the published activity.
+    /// One retro spinner for the aggregate state (regardless of session count)
+    /// + the aggregate status ("Running"). Ease the tint between states so a
+    /// status shift reads as a transition, not a hard cut.
     private func agentLeading(status: AgentStatus) -> some View {
         HStack(spacing: NotchLayout.agentStatusGap) {
-            PixelSessionStrip(entries: sessionEntries(fallback: status))
+            PixelWorkingIndicator(active: status.isBusy, tint: agentPixelTint(status))
+                .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: agentPixelTint(status))
             Text(ActivityPresenter.agentCompactStatus(status))
                 .font(.system(size: NotchLayout.compactLabelFontSize, weight: .medium))
                 .lineLimit(1)
@@ -178,19 +178,10 @@ struct CompactView: View {
         .lineLimit(1)
     }
 
-    private func sessionEntries(fallback status: AgentStatus) -> [PixelSessionStrip.Entry] {
-        let live = agents.pillSessions.prefix(NotchLayout.agentMaxGlyphs).map {
-            PixelSessionStrip.Entry(id: $0.id, busy: $0.status.isBusy, tint: agentPixelTint($0.status))
-        }
-        return live.isEmpty
-            ? [PixelSessionStrip.Entry(id: "aggregate", busy: status.isBusy, tint: agentPixelTint(status))]
-            : Array(live)
-    }
-
     private func agentPixelTint(_ status: AgentStatus) -> Color {
         switch status {
         // Attention/finished share the canonical palette; busy sessions render
-        // in the pill's working blue.
+        // in the spinner's retro working green.
         case .needsAttention, .finished: return ActivityPresenter.agentTint(status)
         default: return ActivityPresenter.agentWorkingTint
         }

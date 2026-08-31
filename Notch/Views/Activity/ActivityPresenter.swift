@@ -119,9 +119,9 @@ enum ActivityPresenter {
         }
     }
 
-    /// Working-session blue for the pill's pixel glyphs; attention/finished keep
-    /// the canonical `agentTint` palette.
-    static let agentWorkingTint = Color(red: 0.42, green: 0.58, blue: 1.0)
+    /// Retro-green working look specific to the pill's pixel spinner glyphs;
+    /// attention/finished keep the canonical `agentTint` palette.
+    static let agentWorkingTint = Color(red: 0.40, green: 0.92, blue: 0.55)
 
     /// Canonical status → color for the agent feature, so the pill, the card, and
     /// the session rows can't drift apart (they used to keep three copies).

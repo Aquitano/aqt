@@ -97,13 +97,14 @@ final class HitRegionTests: XCTestCase {
         XCTAssertEqual(agent.height, notch.height + 4, accuracy: 0.001)
     }
 
-    func testAgentPillGrowsWithSessionCountButNotBeyondGlyphCap() {
+    func testAgentPillWidthStableAcrossSessionCounts() {
+        // One spinner regardless of session count: the pill must not resize as
+        // sessions come and go (only the count digits could ever widen it).
         let one = NotchLayout.compactExtraWidth(.agent(count: 1))
         let three = NotchLayout.compactExtraWidth(.agent(count: 3))
-        let capped = NotchLayout.compactExtraWidth(.agent(count: 4))
-        let overCap = NotchLayout.compactExtraWidth(.agent(count: 9))
-        XCTAssertGreaterThan(three, one)
-        XCTAssertEqual(capped, overCap, accuracy: 0.001)
+        let nine = NotchLayout.compactExtraWidth(.agent(count: 9))
+        XCTAssertEqual(one, three, accuracy: 0.001)
+        XCTAssertEqual(three, nine, accuracy: 0.001)
     }
 
     func testRectStaysCenteredOnPanelMidX() {
