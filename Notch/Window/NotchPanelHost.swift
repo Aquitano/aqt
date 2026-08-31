@@ -30,6 +30,8 @@ final class NotchPanelHost {
         self.displayKey = geometry.display.key
         self.geometry = geometry
         self.state = NotchState()
+        state.defaultTab = { env.settings.resolvedDefaultTab }
+        state.expandedTab = env.settings.resolvedDefaultTab
         self.panel = NotchPanel(contentRect: geometry.panelFrame)
         self.hoverSensor = HoverSensorPanel()
         self.hostingView = NSHostingView(rootView: AnyView(EmptyView()))

@@ -23,6 +23,8 @@ final class Settings: ObservableObject {
         static let offerScreenshots = "offerScreenshots"
         static let trayLastCollectionID = "trayLastCollectionID"
         static let widgetLayout = "widgetLayout"
+        static let tabLayout = "tabLayout"
+        static let defaultExpandedTab = "defaultExpandedTab"
         static let shareMethod = "shareMethod"
         static let agentsEnabled = "agentsEnabled"
         static let agentClaudeEnabled = "agentClaudeEnabled"
@@ -92,6 +94,16 @@ final class Settings: ObservableObject {
     /// order within each grid row (rows are carved out by `WidgetKind.row`).
     @Published var widgetLayout: [WidgetKind] {
         didSet { defaults.set(widgetLayout.map(\.rawValue), forKey: Key.widgetLayout) }
+    }
+    /// Ordered visible tabs in the expanded panel. Home is always a member — it
+    /// is the reset target the panel falls back to.
+    @Published var tabLayout: [NotchState.ExpandedTab] {
+        didSet { defaults.set(tabLayout.map(\.rawValue), forKey: Key.tabLayout) }
+    }
+    /// The tab the panel opens on. Read through `resolvedDefaultTab`, which
+    /// falls back to home when this tab is hidden or its feature is off.
+    @Published var defaultExpandedTab: NotchState.ExpandedTab {
+        didSet { defaults.set(defaultExpandedTab.rawValue, forKey: Key.defaultExpandedTab) }
     }
     @Published var shareMethod: ShareMethod { didSet { defaults.set(shareMethod.rawValue, forKey: Key.shareMethod) } }
     @Published var agentsEnabled: Bool { didSet { defaults.set(agentsEnabled, forKey: Key.agentsEnabled) } }
@@ -227,6 +239,10 @@ final class Settings: ObservableObject {
         self.trayLastCollectionID = defaults.string(forKey: Key.trayLastCollectionID)
             ?? TrayCollection.shelfID.uuidString
         self.widgetLayout = Self.loadWidgetLayout(from: defaults)
+        self.tabLayout = Self.loadTabLayout(from: defaults)
+        self.defaultExpandedTab = NotchState.ExpandedTab(
+            rawValue: defaults.string(forKey: Key.defaultExpandedTab) ?? "home"
+        ) ?? .home
         self.shareMethod = ShareMethod(rawValue: defaults.string(forKey: Key.shareMethod) ?? "airdrop") ?? .airdrop
         self.agentsEnabled = defaults.bool(forKey: Key.agentsEnabled)
         self.agentClaudeEnabled = defaults.bool(forKey: Key.agentClaudeEnabled)
@@ -291,6 +307,37 @@ final class Settings: ObservableObject {
         if legacy("showShortcutsWidget", default: false) { layout.append(.shortcuts) }
         if legacy("showNoteWidget", default: false) { layout.append(.note) }
         return layout
+    }
+
+    private static func loadTabLayout(from defaults: UserDefaults) -> [NotchState.ExpandedTab] {
+        var layout = defaults.stringArray(forKey: Key.tabLayout)?
+            .compactMap(NotchState.ExpandedTab.init(rawValue:))
+            ?? NotchState.ExpandedTab.allCases
+        if !layout.contains(.home) { layout.insert(.home, at: 0) }
+        return layout
+    }
+
+    /// The tab the panel actually opens on: the configured default, unless it is
+    /// hidden or the agents feature backing it is off.
+    var resolvedDefaultTab: NotchState.ExpandedTab {
+        let tab = defaultExpandedTab
+        guard tabLayout.contains(tab), tab != .agents || agentsEnabled else { return .home }
+        return tab
+    }
+
+    func isTabVisible(_ tab: NotchState.ExpandedTab) -> Bool {
+        tabLayout.contains(tab)
+    }
+
+    func setTab(_ tab: NotchState.ExpandedTab, visible: Bool) {
+        guard tab != .home else { return }
+        if visible {
+            guard !tabLayout.contains(tab) else { return }
+            tabLayout.append(tab)
+        } else {
+            tabLayout.removeAll { $0 == tab }
+            if defaultExpandedTab == tab { defaultExpandedTab = .home }
+        }
     }
 
     func isWidgetEnabled(_ kind: WidgetKind) -> Bool {

@@ -22,6 +22,7 @@ final class NotchState: ObservableObject {
     enum ExpandedTab: String, CaseIterable, Identifiable {
         case home, agents, media, timer, tray
         var id: String { rawValue }
+        var title: String { rawValue.capitalized }
         var symbol: String {
             switch self {
             case .home: return "square.grid.2x2"
@@ -36,6 +37,11 @@ final class NotchState: ObservableObject {
     @Published var presentation: Presentation = .hidden
     @Published var isHovering: Bool = false
     @Published var expandedTab: ExpandedTab = .home
+
+    /// Injected reset target so the panel can reopen on a user-chosen tab
+    /// without NotchState depending on Settings (this file also compiles into
+    /// the host-less test target, which carries no Settings).
+    var defaultTab: () -> ExpandedTab = { .home }
 
     /// True while a file drag is hovering the notch. Pins the panel open on the
     /// tray and suppresses the hover-out collapse so a flickering hover can't pull
@@ -193,7 +199,7 @@ final class NotchState: ObservableObject {
         if wasExpanded {
             holdCollapsing()
         } else {
-            expandedTab = .home
+            expandedTab = defaultTab()
         }
         withAnimation(NotchAnimation.close(reduceMotion: reduceMotion)) {
             presentation = target
@@ -209,7 +215,7 @@ final class NotchState: ObservableObject {
             try? await Task.sleep(for: .seconds(NotchAnimation.closeDuration + 0.1))
             guard let self, !Task.isCancelled else { return }
             self.isCollapsing = false
-            self.expandedTab = .home
+            self.expandedTab = self.defaultTab()
         }
     }
 
@@ -234,7 +240,7 @@ final class NotchState: ObservableObject {
         guard presentation != .hidden else { return }
         withAnimation(NotchAnimation.close(reduceMotion: reduceMotion)) {
             presentation = .hidden
-            expandedTab = .home
+            expandedTab = defaultTab()
         }
     }
 

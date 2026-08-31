@@ -48,6 +48,8 @@ final class AppEnvironment: ObservableObject {
     init() {
         let settings = Settings.shared
         let state = NotchState()
+        state.defaultTab = { settings.resolvedDefaultTab }
+        state.expandedTab = settings.resolvedDefaultTab
         let imageCache = ImageCache()
         let persistence = Persistence()
         let activities = ActivityManager(state: state)

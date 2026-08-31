@@ -29,6 +29,7 @@ struct SettingsView: View {
             Tab("Notch", systemImage: "rectangle.tophalf.inset.filled") {
                 pane {
                     notchLayoutSection
+                    tabsSection
                     displaySection
                 }
             }
@@ -94,6 +95,44 @@ struct SettingsView: View {
     }
 
     // MARK: - Display
+
+    private var tabsSection: some View {
+        Section {
+            ForEach(settings.tabLayout) { tab in
+                tabRow(tab, visible: true)
+            }
+            .onMove { settings.tabLayout.move(fromOffsets: $0, toOffset: $1) }
+            ForEach(NotchState.ExpandedTab.allCases.filter { !settings.isTabVisible($0) }) { tab in
+                tabRow(tab, visible: false)
+            }
+            Picker("Opens on", selection: $settings.defaultExpandedTab) {
+                ForEach(settings.tabLayout) { tab in
+                    Text(tab.title).tag(tab)
+                }
+            }
+        } header: {
+            Text("Tabs")
+        } footer: {
+            Text("Drag visible tabs to reorder them. Home always stays available — the panel falls back to it when the chosen tab is hidden.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func tabRow(_ tab: NotchState.ExpandedTab, visible: Bool) -> some View {
+        HStack {
+            Label(tab.title, systemImage: tab.symbol)
+            Spacer()
+            Toggle(tab.title, isOn: Binding(
+                get: { visible },
+                set: { settings.setTab(tab, visible: $0) }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .disabled(tab == .home)
+        }
+    }
 
     private var displaySection: some View {
         Section {
