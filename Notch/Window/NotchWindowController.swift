@@ -670,7 +670,8 @@ final class NotchWindowController {
                 },
                 trayItemCount: env.tray.items.count
             ),
-            dropActive: host.state.isDropActive
+            dropActive: host.state.isDropActive,
+            floatingTabBar: env.settings.floatingTabBar
         )
     }
 

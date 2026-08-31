@@ -34,6 +34,8 @@
 - Keyboard-capable custom surfaces may use `.focusable()` for key routing while suppressing the container halo with `.focusEffectDisabled()` when selection already supplies the visible focus affordance.
 - `Resources/Toggle Low Power Mode.shortcut` is a pre-signed binary (Shortcuts refuses unsigned imports). To regenerate: author the `WFWorkflowActions` plist (single action `is.workflow.actions.lowpowermode` with `operation: toggle`), `plutil -convert binary1`, then `shortcuts sign --mode anyone --input … --output …`.
 - The HUD's consuming tap must never swallow a media key it could not apply (unwritable device, external-display brightness); returning the event to the system is the guard against the "key eaten but nothing happens" failure class.
+- TCC grants (Input Monitoring, Accessibility) bind to the signing identity: a `CODE_SIGNING_ALLOWED=NO` build can compile-check but must never be the one launched for feature testing — media keys silently stay dead. Launch the `run.sh` signed Debug build.
+- The floating tab bar detaches the strip from the blob: `NotchLayout.contentSize` shrinks the blob by `tabStripAllowance` and `HitRegion` extends the clickable rect by `floatingDockGap + floatingDockHeight`; the dock view itself needs its own `.onHover` or crossing the gap collapses the panel mid-click.
 
 ## 3. User Preferences
 

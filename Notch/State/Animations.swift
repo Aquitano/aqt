@@ -201,6 +201,13 @@ enum NotchLayout {
     /// store/share fields get a stable, comfortable size regardless of the tray.
     static let dropChooserHeight: CGFloat = 188
 
+    /// Vertical room the in-blob tab strip occupies (strip + the stack spacing
+    /// under it). With the floating tab bar the blob gives this back, and the
+    /// bar renders in its own capsule below the blob instead.
+    static let tabStripAllowance: CGFloat = 52
+    static let floatingDockGap: CGFloat = 8
+    static let floatingDockHeight: CGFloat = 44
+
     static func contentSize(presentation: NotchState.Presentation,
                             notch: CGSize,
                             expandedWidth: CGFloat = NotchMetrics.expandedWidth,
@@ -208,7 +215,8 @@ enum NotchLayout {
                             hasInfoRow: Bool,
                             trayEmpty: Bool,
                             compact: CompactContent,
-                            dropActive: Bool = false) -> CGSize {
+                            dropActive: Bool = false,
+                            floatingTabBar: Bool = false) -> CGSize {
         switch presentation {
         case .hidden:
             return notch
@@ -219,6 +227,7 @@ enum NotchLayout {
             let body = dropActive
                 ? dropChooserHeight
                 : expandedBodyHeight(tab: tab, hasInfoRow: hasInfoRow, trayEmpty: trayEmpty)
+                    - (floatingTabBar ? tabStripAllowance : 0)
             return CGSize(width: expandedWidth, height: body + notch.height)
         }
     }

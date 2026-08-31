@@ -89,6 +89,28 @@ final class HitRegionTests: XCTestCase {
         XCTAssertEqual(tray, agents)
     }
 
+    func testFloatingTabBarShrinksBlobButCoversTheDock() {
+        let inside = HitRegion.rect(snapshot(.expanded, tab: .home))
+        var floatingSnapshot = snapshot(.expanded, tab: .home)
+        floatingSnapshot.floatingTabBar = true
+        let floating = HitRegion.rect(floatingSnapshot)
+
+        // Blob gives back the in-blob strip; the region extends past the blob to
+        // cover the detached dock capsule. Still pinned to the panel top.
+        let expected = inside.height - NotchLayout.tabStripAllowance
+            + NotchLayout.floatingDockGap + NotchLayout.floatingDockHeight
+        XCTAssertEqual(floating.height, expected, accuracy: 0.001)
+        XCTAssertEqual(floating.maxY, inside.maxY, accuracy: 0.001)
+    }
+
+    func testFloatingTabBarAddsNothingDuringDropChooser() {
+        // The chooser replaces the tabs, so the dock (and its region) is absent.
+        var floatingSnapshot = snapshot(.expanded, tab: .tray, dropActive: true)
+        floatingSnapshot.floatingTabBar = true
+        XCTAssertEqual(HitRegion.rect(floatingSnapshot),
+                       HitRegion.rect(snapshot(.expanded, tab: .tray, dropActive: true)))
+    }
+
     // MARK: - Structural (font-dependent) properties
 
     func testAgentPillIsWiderThanNotchAndTallerThanNone() {
