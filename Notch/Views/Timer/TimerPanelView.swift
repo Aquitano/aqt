@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The timer tab: a Focus/Break selector, a scrubbable tick dial, and the
 /// running countdown. Phase decisions live in `PomodoroPolicy`; the view only
@@ -8,18 +9,26 @@ struct TimerPanelView: View {
     @EnvironmentObject private var settings: Settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    @Namespace private var chipNamespace
+
     var body: some View {
         VStack(spacing: Theme.Spacing.medium) {
             if timer.runState == .idle {
-                phasePicker
-                TimerDial(minutes: minutesBinding,
-                          range: PomodoroPolicy.minuteRange,
-                          tint: tint)
-                idleControls
+                Group {
+                    phasePicker
+                    TimerDial(minutes: minutesBinding,
+                              range: PomodoroPolicy.minuteRange,
+                              tint: tint)
+                    idleControls
+                }
+                .transition(.blurReplace)
             } else {
-                runningHeader
-                countdown
-                runningControls
+                Group {
+                    runningHeader
+                    countdown
+                    runningControls
+                }
+                .transition(.blurReplace)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -71,17 +80,28 @@ struct TimerPanelView: View {
         let chipTint = Self.tint(for: phase)
         return Button {
             Haptics.tap(.levelChange)
-            timer.selectedPhase = phase
+            withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) {
+                timer.selectedPhase = phase
+            }
         } label: {
             Text(phase.title)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(selected ? chipTint : .white.opacity(0.6))
                 .padding(.horizontal, 14)
                 .frame(height: 28)
+                .background {
+                    // One shared highlight that glides between the chips as the
+                    // phase changes, mirroring the tab strip's selection pill.
+                    if selected {
+                        Capsule(style: .continuous)
+                            .fill(chipTint.opacity(0.22))
+                            .matchedGeometryEffect(id: "phaseSelection", in: chipNamespace)
+                    }
+                }
                 .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .glassEffect(selected ? .regular.tint(chipTint.opacity(0.25)) : .regular, in: .capsule)
+        .glassEffect(.regular, in: .capsule)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
@@ -107,8 +127,8 @@ struct TimerPanelView: View {
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(tint)
-                .contentTransition(.numericText())
-                .animation(reduceMotion ? nil : .snappy(duration: 0.2),
+                .contentTransition(.numericText(value: Double(minutesBinding.wrappedValue)))
+                .animation(reduceMotion ? nil : .snappy(duration: 0.25),
                            value: minutesBinding.wrappedValue)
         }
         .padding(.horizontal, Theme.Spacing.tiny)
@@ -150,6 +170,10 @@ struct TimerPanelView: View {
                 .font(.system(size: 40, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(tint.opacity(paused ? 0.5 : 1))
+                // Digits roll downward each second instead of hard-cutting.
+                .contentTransition(.numericText(countsDown: true))
+                .animation(reduceMotion ? nil : .smooth(duration: 0.35),
+                           value: Int(remaining.rounded()))
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -160,6 +184,7 @@ struct TimerPanelView: View {
                 }
             }
             .frame(width: 220, height: 4)
+            .animation(reduceMotion ? nil : .linear(duration: 1), value: remaining)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(remaining.clockString) remaining\(paused ? ", paused" : "")")
@@ -192,22 +217,123 @@ struct TimerPanelView: View {
                 Circle()
                     .fill(Self.tint(for: .focus).opacity(0.8))
                     .frame(width: 5, height: 5)
+                    .transition(.scale.combined(with: .opacity))
             }
         }
+        .animation(reduceMotion ? nil : NotchAnimation.pop, value: timer.completedFocusSessions)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(timer.completedFocusSessions) focus sessions completed")
     }
 }
 
 /// Horizontal tape-measure dial: one tick per minute, labels every five, the
-/// selected minute centered over a fixed indicator. Dragging scrubs the value;
-/// each snapped minute taps the haptic engine.
+/// selected minute centered over a fixed indicator. Dragging scrubs the value,
+/// the scroll wheel nudges it while hovered, and each snapped minute taps the
+/// haptic engine. The scale itself animates through a continuous offset, so a
+/// phase switch glides the tape instead of teleporting it.
 private struct TimerDial: View {
     @Binding var minutes: Int
     let range: ClosedRange<Int>
     let tint: Color
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dragBaseMinutes: Int?
+    @State private var hovering = false
+    @State private var scrollMonitor: Any?
+    @State private var scrollAccumulator: CGFloat = 0
+
+    private static let tickSpacing: CGFloat = 9
+    /// Precise (trackpad) scroll points per one-minute step.
+    private static let scrollPointsPerStep: CGFloat = 12
+
+    var body: some View {
+        DialScale(offsetMinutes: CGFloat(minutes), range: range, tint: tint)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: minutes)
+            .frame(height: 56)
+            .contentShape(.rect)
+            .gesture(drag)
+            .onHover { hovering = $0 }
+            .onAppear { installScrollMonitor() }
+            .onDisappear { removeScrollMonitor() }
+            .accessibilityElement()
+            .accessibilityLabel("Timer duration")
+            .accessibilityValue("\(minutes) minutes")
+            .accessibilityAdjustableAction { direction in
+                adjust(by: direction == .increment ? 1 : -1)
+            }
+    }
+
+    private var drag: some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                let base = dragBaseMinutes ?? minutes
+                dragBaseMinutes = base
+                let delta = Int((-value.translation.width / Self.tickSpacing).rounded())
+                let updated = PomodoroPolicy.clampedMinutes(base + delta)
+                if updated != minutes {
+                    minutes = updated
+                    Haptics.tap(.levelChange)
+                }
+            }
+            .onEnded { _ in dragBaseMinutes = nil }
+    }
+
+    // MARK: - Scroll wheel
+
+    /// Local monitor rather than an AppKit subview, so the SwiftUI drag gesture
+    /// keeps the mouse events; the monitor only acts (and swallows) while the
+    /// pointer is over the dial.
+    private func installScrollMonitor() {
+        guard scrollMonitor == nil else { return }
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            MainActor.assumeIsolated {
+                guard hovering else { return event }
+                handleScroll(event)
+                return nil
+            }
+        }
+    }
+
+    private func removeScrollMonitor() {
+        if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
+        scrollMonitor = nil
+        scrollAccumulator = 0
+    }
+
+    private func handleScroll(_ event: NSEvent) {
+        if event.hasPreciseScrollingDeltas {
+            scrollAccumulator += event.scrollingDeltaY
+            let steps = Int(scrollAccumulator / Self.scrollPointsPerStep)
+            guard steps != 0 else { return }
+            scrollAccumulator -= CGFloat(steps) * Self.scrollPointsPerStep
+            adjust(by: steps)
+        } else if event.scrollingDeltaY != 0 {
+            // A clicky mouse wheel: one detent, one minute.
+            adjust(by: event.scrollingDeltaY > 0 ? 1 : -1)
+        }
+    }
+
+    private func adjust(by steps: Int) {
+        let updated = PomodoroPolicy.clampedMinutes(minutes + steps)
+        guard updated != minutes else { return }
+        minutes = updated
+        Haptics.tap(.levelChange)
+    }
+}
+
+/// The drawn tape. `offsetMinutes` is the animatable position of the scale, so
+/// SwiftUI interpolates it frame by frame; emphasis (tick height, label color)
+/// derives from continuous distance to the centerline and rolls across the
+/// tape as it moves.
+private struct DialScale: View, Animatable {
+    var offsetMinutes: CGFloat
+    let range: ClosedRange<Int>
+    let tint: Color
+
+    var animatableData: CGFloat {
+        get { offsetMinutes }
+        set { offsetMinutes = newValue }
+    }
 
     private let tickSpacing: CGFloat = 9
     private let labelHeight: CGFloat = 18
@@ -219,33 +345,25 @@ private struct TimerDial: View {
             drawIndicator(context: context, size: size)
         }
         .frame(height: labelHeight + tickAreaHeight + 12)
-        .contentShape(.rect)
-        .gesture(drag)
-        .accessibilityElement()
-        .accessibilityLabel("Timer duration")
-        .accessibilityValue("\(minutes) minutes")
-        .accessibilityAdjustableAction { direction in
-            let step = direction == .increment ? 1 : -1
-            minutes = PomodoroPolicy.clampedMinutes(minutes + step)
-        }
     }
 
     private func drawScale(context: GraphicsContext, size: CGSize) {
         let centerX = size.width / 2
         for value in range {
-            let x = centerX + CGFloat(value - minutes) * tickSpacing
+            let x = centerX + (CGFloat(value) - offsetMinutes) * tickSpacing
             guard x > -tickSpacing, x < size.width + tickSpacing else { continue }
 
+            // Continuous emphasis: 1 at the centerline, 0 one tick away — the
+            // white highlight hands over smoothly while the tape glides.
             let distance = abs(x - centerX)
-            // The scale is white near the indicator and phase-tinted further out,
-            // fading toward the edges — the same read as the reference dial.
+            let emphasis = max(0, 1 - distance / tickSpacing)
             let nearCenter = distance < tickSpacing * 2.5
             let fade = max(0.25, 1 - distance / (size.width * 0.62))
             let color = (nearCenter ? Color.white : tint).opacity(fade)
 
             let isLabelTick = value % 5 == 0
-            let tickHeight: CGFloat = value == minutes ? tickAreaHeight
-                : (isLabelTick ? 20 : 13)
+            let baseHeight: CGFloat = isLabelTick ? 20 : 13
+            let tickHeight = baseHeight + (tickAreaHeight - baseHeight) * emphasis
             let tickRect = CGRect(
                 x: x - 0.75,
                 y: labelHeight + (tickAreaHeight - tickHeight),
@@ -255,10 +373,11 @@ private struct TimerDial: View {
             context.fill(Path(roundedRect: tickRect, cornerRadius: 0.75), with: .color(color))
 
             if isLabelTick {
+                let selected = emphasis > 0.5
                 let label = context.resolve(
                     Text("\(value)")
-                        .font(.system(size: 12, weight: value == minutes ? .bold : .medium))
-                        .foregroundStyle(value == minutes ? Color.white : color)
+                        .font(.system(size: 12, weight: selected ? .bold : .medium))
+                        .foregroundStyle(selected ? Color.white : color)
                 )
                 context.draw(label, at: CGPoint(x: x, y: labelHeight / 2), anchor: .center)
             }
@@ -274,20 +393,5 @@ private struct TimerDial: View {
         triangle.addLine(to: CGPoint(x: centerX + 4.5, y: top + 7))
         triangle.closeSubpath()
         context.fill(triangle, with: .color(tint))
-    }
-
-    private var drag: some Gesture {
-        DragGesture(minimumDistance: 1)
-            .onChanged { value in
-                let base = dragBaseMinutes ?? minutes
-                dragBaseMinutes = base
-                let delta = Int((-value.translation.width / tickSpacing).rounded())
-                let updated = PomodoroPolicy.clampedMinutes(base + delta)
-                if updated != minutes {
-                    minutes = updated
-                    Haptics.tap(.levelChange)
-                }
-            }
-            .onEnded { _ in dragBaseMinutes = nil }
     }
 }
