@@ -49,17 +49,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupHotkey() {
         hotKey.onPress = { [weak self] in self?.toggleNotch() }
-        hotkeyCancellable = env.settings.$hotkeyEnabled
-            .removeDuplicates()
-            .sink { [weak self] enabled in
-                guard let self else { return }
-                if enabled {
-                    self.hotKey.register(keyCode: UInt32(self.env.settings.hotkeyKeyCode),
-                                         modifiers: UInt32(self.env.settings.hotkeyModifiers))
-                } else {
-                    self.hotKey.unregister()
-                }
+        // Re-register whenever the chord changes, and suspend while the Settings
+        // recorder is capturing so the current chord can be re-typed without
+        // toggling the notch mid-recording.
+        hotkeyCancellable = Publishers.CombineLatest4(
+            env.settings.$hotkeyEnabled,
+            env.settings.$hotkeyKeyCode,
+            env.settings.$hotkeyModifiers,
+            env.settings.$isRecordingHotkey
+        )
+        .sink { [weak self] enabled, keyCode, modifiers, recording in
+            guard let self else { return }
+            if enabled, !recording {
+                self.hotKey.register(keyCode: UInt32(keyCode), modifiers: UInt32(modifiers))
+            } else {
+                self.hotKey.unregister()
             }
+        }
     }
 
     // MARK: - Onboarding

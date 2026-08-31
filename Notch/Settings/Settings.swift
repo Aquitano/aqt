@@ -132,10 +132,14 @@ final class Settings: ObservableObject {
     @Published var agentPermissionApproval: Bool { didSet { defaults.set(agentPermissionApproval, forKey: Key.agentPermissionApproval) } }
     @Published var hasCompletedOnboarding: Bool { didSet { defaults.set(hasCompletedOnboarding, forKey: Key.hasCompletedOnboarding) } }
     @Published var hotkeyEnabled: Bool { didSet { defaults.set(hotkeyEnabled, forKey: Key.hotkeyEnabled) } }
-    /// Carbon virtual key code + modifier mask for the toggle-notch hotkey. No
-    /// recording UI yet; changeable via `defaults write` until one exists.
+    /// Carbon virtual key code + modifier mask for the toggle-notch hotkey,
+    /// recorded via the Settings shortcut control.
     @Published var hotkeyKeyCode: Int { didSet { defaults.set(hotkeyKeyCode, forKey: Key.hotkeyKeyCode) } }
     @Published var hotkeyModifiers: Int { didSet { defaults.set(hotkeyModifiers, forKey: Key.hotkeyModifiers) } }
+    /// True while the Settings recorder is capturing a chord. Not persisted;
+    /// the AppDelegate suspends the live registration so the current chord can
+    /// be re-typed without toggling the notch.
+    @Published var isRecordingHotkey = false
     /// Render the expanded panel's tab bar as a detached capsule below the
     /// blob (Dynamic-Island style) instead of inside it.
     @Published var floatingTabBar: Bool { didSet { defaults.set(floatingTabBar, forKey: Key.floatingTabBar) } }

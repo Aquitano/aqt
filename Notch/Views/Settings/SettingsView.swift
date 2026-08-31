@@ -256,7 +256,10 @@ struct SettingsView: View {
             // this toggle and the in-notch one stay in sync.
             Toggle("Launch at Login", isOn: $settings.launchAtLogin)
             Toggle("Haptic feedback", isOn: $settings.hapticFeedback)
-            Toggle("Toggle notch with ⌃⌥N", isOn: $settings.hotkeyEnabled)
+            Toggle("Toggle notch with a keyboard shortcut", isOn: $settings.hotkeyEnabled)
+            if settings.hotkeyEnabled {
+                HotkeyRecorderView()
+            }
             Button("Show Welcome Tour…") {
                 NotificationCenter.default.post(name: .showOnboarding, object: nil)
             }
