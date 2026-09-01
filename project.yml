@@ -82,11 +82,11 @@ targets:
     type: tool
     platform: macOS
     sources:
-      - path: Notch/Model/Agents/AgentModels.swift
-      - path: Notch/Model/Agents/AgentPermission.swift
-      - path: Notch/Services/Agents/AgentSocketPath.swift
-      - path: Notch/Services/Agents/ProcessLookup.swift
-      - path: Notch/App/HookClient.swift
+      - path: Notch/Features/Agents/AgentModels.swift
+      - path: Notch/Features/Agents/AgentPermission.swift
+      - path: Notch/Features/Agents/AgentSocketPath.swift
+      - path: Notch/Features/Agents/ProcessLookup.swift
+      - path: Notch/Features/Agents/HookClient.swift
       - path: HookTool
     settings:
       base:
@@ -110,39 +110,41 @@ targets:
     platform: macOS
     sources:
       - path: Tests
-      - path: Notch/Model/Agents/AgentModels.swift
-      - path: Notch/Model/Agents/AgentPermission.swift
-      - path: Notch/Model/Agents/ScannedSession.swift
-      - path: Notch/Services/Agents/StatusReducer.swift
-      - path: Notch/Services/Agents/TranscriptParser.swift
-      - path: Notch/Services/Agents/SessionReconciler.swift
-      - path: Notch/Services/Agents/T3Wire.swift
-      - path: Notch/Services/Agents/AgentConfigInstaller.swift
-      - path: Notch/Services/Agents/HookRestorePolicy.swift
-      - path: Notch/Services/Agents/AgentSoundPlayer.swift
-      - path: Notch/Managers/Widgets/BatteryPolicy.swift
-      - path: Notch/Managers/TimerPolicy.swift
-      - path: Notch/Managers/Widgets/CalendarReminders.swift
-      - path: Notch/Model/Activity.swift
-      - path: Notch/Model/MediaModels.swift
-      - path: Notch/Model/SystemModels.swift
-      - path: Notch/Model/DisplayModels.swift
-      - path: Notch/Model/DropItem.swift
-      - path: Notch/Model/TrayTransfer.swift
-      - path: Notch/Model/TrayLifecycle.swift
-      - path: Notch/Model/ScreenshotCandidate.swift
-      - path: Notch/Services/TrayIngestionPipeline.swift
-      - path: Notch/Services/Persistence.swift
-      - path: Notch/Services/Diagnostics.swift
-      - path: Notch/Managers/Media/MediaAdapterPayload.swift
-      - path: Notch/Managers/Audio/AudioLevelAnalysis.swift
-      - path: Notch/Window/HitRegion.swift
-      - path: Notch/State/Animations.swift
-      - path: Notch/State/NotchState.swift
-      - path: Notch/State/NotchCoordinator.swift
-      - path: Notch/Settings/Preferences.swift
-      - path: Notch/Model/WidgetKind.swift
-      - path: Notch/Utilities/Logging.swift
+      - path: Notch/Features/Agents/AgentModels.swift
+      - path: Notch/Features/Agents/AgentPermission.swift
+      - path: Notch/Features/Agents/ScannedSession.swift
+      - path: Notch/Features/Agents/StatusReducer.swift
+      - path: Notch/Features/Agents/TranscriptParser.swift
+      - path: Notch/Features/Agents/SessionReconciler.swift
+      - path: Notch/Features/Agents/T3Wire.swift
+      - path: Notch/Features/Agents/AgentConfigInstaller.swift
+      - path: Notch/Features/Agents/HookRestorePolicy.swift
+      - path: Notch/Features/Agents/AgentSoundPlayer.swift
+      - path: Notch/Features/Widgets/BatteryPolicy.swift
+      - path: Notch/Features/Timer/TimerPolicy.swift
+      - path: Notch/Features/Widgets/CalendarReminders.swift
+      - path: Notch/Features/Activities/Activity.swift
+      - path: Notch/Features/Media/MediaModels.swift
+      - path: Notch/Features/Widgets/WidgetModels.swift
+      - path: Notch/Features/Tray/ShareMethod.swift
+      - path: Notch/Shell/Views/TabBarStyle.swift
+      - path: Notch/Shell/Window/DisplayModels.swift
+      - path: Notch/Features/Tray/DropItem.swift
+      - path: Notch/Features/Tray/TrayTransfer.swift
+      - path: Notch/Features/Tray/TrayLifecycle.swift
+      - path: Notch/Features/Tray/ScreenshotCandidate.swift
+      - path: Notch/Features/Tray/TrayIngestionPipeline.swift
+      - path: Notch/Platform/Persistence.swift
+      - path: Notch/Platform/Diagnostics.swift
+      - path: Notch/Features/Media/MediaAdapterPayload.swift
+      - path: Notch/Features/Media/AudioLevelAnalysis.swift
+      - path: Notch/Shell/Window/HitRegion.swift
+      - path: Notch/Shell/State/Animations.swift
+      - path: Notch/Shell/State/NotchState.swift
+      - path: Notch/Shell/State/NotchCoordinator.swift
+      - path: Notch/Features/Settings/Preferences.swift
+      - path: Notch/Features/Widgets/WidgetKind.swift
+      - path: Notch/Platform/Logging.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aquitano.notch.tests

@@ -90,28 +90,37 @@ pin, validation matrix, diagnostics, and rollback procedure.
 
 ## Architecture
 
-Single background agent process; one SwiftUI tree hosted in an AppKit overlay panel.
+Single background agent process; one SwiftUI tree per display hosted in an AppKit
+overlay panel. Sources are grouped by feature, not by layer.
 
 ```
 App/            NotchApp (@main), AppDelegate (status item, lifecycle), AppEnvironment (DI root)
-Window/         NotchPanel (borderless non-activating), NotchWindowController, ScreenGeometry
-State/          NotchState (presentation machine), Animations (the asymmetric springs)
-Model/          Activity, MediaModels, SystemModels, DropItem
-Managers/       MediaManager (+ Media/ controllers), AudioVisualizerManager, HUDManager,
-                ActivityManager, TrayManager,
-                Widgets/ (Battery, Calendar, Weather, BluetoothBattery, Focus)
-Services/       ImageCache (ImageIO downsample), Persistence, AudioHardware (CoreAudio),
-                Brightness (DisplayServices dlopen), SystemDefinedTap (listen-only event tap)
-Views/          NotchRootView + NotchShape, Compact/Expanded, Media/, HUD/, Activity/, Tray/,
-                Widgets/, Components/ (GlassButton, MarqueeText)
-Settings/       Settings (UserDefaults model), SettingsView
+Shell/          The notch itself
+  Window/         NotchPanel (borderless non-activating), NotchWindowController, ScreenGeometry,
+                  DisplayInventory + display policies, HitRegion
+  State/          NotchCoordinator (one NotchState per display), NotchState (presentation machine),
+                  Animations (the asymmetric springs)
+  Views/          NotchRootView + NotchShape, Compact/Expanded, tab strips, Theme
+  Components/     GlassButton, MarqueeText, PixelIcon, ...
+Features/       One folder per feature: model, manager, services and views together
+  Activities/     ActivityManager (generic priority queue), Activity, ActivityPresenter
+  Agents/         AgentManager, providers, socket server, transcript/status parsers, hook client
+  HUD/            HUDManager, CoreAudio, DisplayServices brightness, the media-key event tap
+  Media/          MediaManager + controllers, audio visualizer
+  Tray/           TrayManager, ingestion pipeline, Quick Look, screenshot candidates, views
+  Timer/          Pomodoro timer
+  Widgets/        Battery, Calendar, Weather, Bluetooth, Focus, Shortcuts, Note, Clock
+  Settings/       Preferences document, Settings (live), SettingsView
+  Onboarding/
+Platform/       Shared adapters and utilities: Persistence, Diagnostics, ImageCache, HotKey,
+                LoginItem, Haptics, Keychain, Logging, watch()
 ```
 
 **Iconography:** custom controls and status glyphs use one crisp 7×7 pixel system,
 matching the agent working indicator. Semantic color remains feature-driven; album artwork
 and file thumbnails remain native content rather than being stylized.
 
-**Concurrency:** managers are `@MainActor ObservableObject`s; heavy work (image decode,
+**Concurrency:** managers are `@MainActor @Observable` classes; heavy work (image decode,
 `system_profiler`, perl I/O, system-audio analysis, file copies) runs off-main and hops back
 only to publish.
 
