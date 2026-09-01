@@ -2,16 +2,18 @@
 
 ## 1. Project Patterns & Conventions
 
-- Native macOS 26 app generated with XcodeGen from `project.yml`; the system-wide media bridge is the sole external package and is pinned to an exact revision, embedded without linking.
-- Managers are `@MainActor` observable objects. File/process/network work should use nonisolated helpers or dedicated workers and return to the main actor only to publish state.
+- Native macOS 26 app generated with XcodeGen from `project.yml`. Foundation-only logic (models, policies, parsers, wire types, the preferences document, persistence) lives in the local SwiftPM package `Packages/NotchCore`, which the app, `notch-hook` and the Xcode test bundle import with `package` access (`SWIFT_PACKAGE_NAME: notchcore`). External packages: the pinned, embedded-but-unlinked media bridge and Sparkle.
+- Managers are `@MainActor @Observable` classes; views read them with `@Environment(Type.self)`, non-view observers use `watch()` (Platform/Watch.swift) over `Observations`. No Combine. File/process/network work runs off-main and returns to the main actor only to publish state. Sources are grouped by feature (`Notch/Shell`, `Notch/Features/*`, `Notch/Platform`).
 - Build with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` because the system-selected developer directory may point at Command Line Tools.
-- Keep the main app, `notch-hook`, and hostless logic tests independently buildable.
+- Keep the main app, `notch-hook`, the NotchCore package (`swift test` in `Packages/NotchCore`) and the host-less `NotchTests` bundle (SwiftUI-dependent pieces: NotchState, NotchCoordinator, HitRegion) independently buildable. All targets are in Swift 6 language mode.
 
 ## 2. Lessons Learned & Gotchas
 
+- Preferences are one versioned `Preferences` document (`preferences.json`, merged over defaults on load); `Settings` exposes one tracked property per group (`settings.agents.notifyStarted`). Adding a preference is one line in its group struct. Recovered failures go to `Diagnostics` (Settings > Diagnostics tab), not `try?`.
+- Grace timers in `NotchState`, `ActivityManager` and `TimerManager` sleep on an injected `Clock`; tests drive them with `Tests/ManualClock.swift`.
 - The checked-in Xcode project must be regenerated after adding source or asset files: `xcodegen generate`.
 - macOS XCTest execution needs access to `testmanagerd`; restricted sandboxes can compile tests but cannot run them.
-- The `NotchTests` target compiles production source files directly, so helper signatures and its explicit source list must stay synchronized.
+- The `NotchTests` bundle still compiles four app source files directly (listed in `project.yml`); everything else it needs comes from NotchCore. New core types used from the app need `package` visibility and, for structs, an explicit `package init`.
 - Agent integration mutates user-owned CLI configuration; writes must be coordinated and preserve concurrent edits.
 - `MediaRemoteAdapter.framework` must be embedded + signed but never linked into Notch; `/usr/bin/perl` loads its executable and the `get` response gates activation.
 - App semantic iconography uses `PixelIcon`: crisp 7×7 glyphs keyed by existing semantic symbol names. Keep SF Symbols out of custom notch surfaces; retain real artwork and file thumbnails as content.
@@ -22,7 +24,7 @@
 - Opening a separate app window from the expanded notch must call `NotchState.collapseImmediately()` before activating that window; hover-exit collapse has an intentional grace delay and is not a reliable dismissal mechanism for explicit navigation.
 - Keep window hit-region snapshots sourced from the same aggregate layout properties as SwiftUI (`Settings.hasInfoRowWidgets`); duplicating individual widget flags makes newly added rows visible but click-through.
 - The master agent-watch switch pauses providers and the Unix socket without uninstalling per-agent hooks. Stop/start must invalidate queued socket events and discard transient provider sessions so stale activity cannot return after resume.
-- Multi-display presentation uses one local `NotchState` per `NotchPanelHost`, coordinated through the global state for programmatic commands. Only the active primary host may own HUD and shared rendering lifecycle work, so capture does not multiply with display count.
+- Multi-display presentation: `NotchCoordinator` owns one `NotchState` per display and keeps expansion exclusive through a synchronous `onExpand` hook; app-level commands (status item, hotkey, agent attention) go to the coordinator, never to a host. Hover is geometric: the window controller derives it from the pointer against the content's hit rect, so views carry no `.onHover` for expand/collapse. Only the active primary host may own HUD and shared rendering lifecycle work.
 - Treat structured agent permission payloads as untrusted at both ends: the hook allowlists, sanitizes, and caps fields, while the app independently validates schema, request-ID correlation, deadlines, and sizes before lexical path/risk analysis. Never log command or path content.
 - Permission approvals are capability-gated per provider and modeled as one-way state transitions. Disable controls before socket delivery, publish success only after confirmed delivery, and fall back to the terminal on expiry or transport failure.
 - Tray payloads are always materialized inside the managed storage root before publishing metadata. Store migrations retain the original JSON for one clean launch, quarantine missing/unreadable payloads without deleting folders, and route every durable ingress through `TrayIngestionPipeline`.

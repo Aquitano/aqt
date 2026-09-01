@@ -31,6 +31,15 @@ Migrate in place, one focused commit per item, tests green throughout:
 11. Swift 6 language mode.
 12. Sparkle for updates, with a notarize workflow.
 
+## Deviations while executing
+
+- Item 7 moved hover tracking to AppKit but left the drop destination on SwiftUI's
+  `.onDrop`. The tray ingestion pipeline is built around the `NSItemProvider` shapes SwiftUI
+  hands it (file representations for Finder drags); rebuilding those from an `NSPasteboard`
+  would have changed how dropped files are classified for no user-visible gain.
+- Item 10 keeps `NotchState`, `NotchCoordinator`, the layout metrics and `HitRegion` in the
+  app: they depend on SwiftUI (`withAnimation`), so the Xcode test bundle stays for them.
+
 ## Consequences
 
 The pure/impure boundary becomes an import wall rather than a convention. Adding a
