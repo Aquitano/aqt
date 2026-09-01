@@ -28,6 +28,10 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Personal use.</string>
+	<key>SUFeedURL</key>
+	<string>$(SPARKLE_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(SPARKLE_PUBLIC_ED_KEY)</string>
 
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Notch controls Music and Spotify to show and drive Now Playing when the system-wide media bridge is unavailable.</string>

@@ -47,6 +47,17 @@ and leaves `DEVELOPMENT_TEAM` empty. For local runs either:
 Use a **stable** signing identity during development: TCC grants (Input Monitoring,
 Calendars, Automation) are keyed to the identity, so ad-hoc re-signing makes macOS forget them.
 
+## Releases and updates
+
+Updates ship through [Sparkle](https://sparkle-project.org). Local builds leave `SUFeedURL`
+empty, so they never check; `.github/workflows/release.yml` builds, signs, notarizes and
+publishes a tagged release together with a signed `appcast.xml` served from the latest
+release's assets. One-time setup:
+
+1. `generate_keys` (from Sparkle's `bin/`) once; keep the private key out of the repo.
+2. Add the secrets listed at the top of the workflow to the GitHub repository.
+3. Tag a commit `vX.Y.Z` and push the tag.
+
 ## Permissions
 
 The app requests these lazily; deny-able without crashing:
@@ -134,7 +145,6 @@ fully hidden and pauses work on occlusion.
 
 - System-wide Now Playing uses a private MediaRemote bridge that Apple can change in a macOS
   update; the runtime self-test automatically falls back to Music/Spotify if that happens.
-- Direct distribution still needs a Developer ID signing/notarization/update pipeline.
 - No fullscreen / lock-screen presence (decided): `collectionBehavior` only, no CGS/SkyLight.
 - Third-party notification mirroring is out of scope; Quick Peeks are self-generated
   (battery / device connect / focus / timer).

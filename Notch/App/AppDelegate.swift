@@ -1,5 +1,6 @@
 import AppKit
 import NotchCore
+import Sparkle
 import SwiftUI
 
 @MainActor
@@ -14,6 +15,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkeyObserver: Task<Void, Never>?
     private var trayMenuObserver: Task<Void, Never>?
     private var clearTrayMenuItem: NSMenuItem?
+    /// Started only when a feed URL is baked in (release builds); local builds
+    /// carry an empty SUFeedURL and never check.
+    private let updater = SPUStandardUpdaterController(
+        startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil
+    )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -22,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.windowController = windowController
 
         setupStatusItem()
+        startUpdaterIfConfigured()
         env.start()
         env.notch.showCompact()
 
@@ -123,6 +130,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
         addItem(to: menu, title: "Settings…", action: #selector(openSettings), key: ",")
+        if Self.updateFeedConfigured {
+            addItem(to: menu, title: "Check for Updates…", action: #selector(checkForUpdates))
+        }
         menu.addItem(.separator())
         addItem(to: menu, title: "Quit Notch", action: #selector(quit), key: "q")
         statusItem.menu = menu
@@ -161,6 +171,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+
+    // MARK: - Updates
+
+    private static var updateFeedConfigured: Bool {
+        !(Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String ?? "").isEmpty
+    }
+
+    private func startUpdaterIfConfigured() {
+        guard Self.updateFeedConfigured else { return }
+        do {
+            try updater.updater.start()
+        } catch {
+            env.diagnostics.report(source: "Updates", error)
+        }
+    }
+
+    @objc private func checkForUpdates() {
+        updater.checkForUpdates(nil)
     }
 }
 
