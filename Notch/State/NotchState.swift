@@ -85,9 +85,8 @@ final class NotchState {
     }
 
     /// Pending hover-out collapse, cancelled if the pointer comes back. The grace
-    /// period absorbs the brief `onHover` drop that happens when the pointer skims
-    /// the menu-bar edge while reaching for the top tab row, so the panel no longer
-    /// collapses out from under a click.
+    /// period absorbs a pointer that briefly leaves the content rect on its way
+    /// somewhere inside it, so the panel does not collapse out from under a click.
     private var collapseTask: Task<Void, Never>?
 
     /// A tab switch can shrink the panel, pulling the surface (and the floating

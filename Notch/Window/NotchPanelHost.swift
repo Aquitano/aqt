@@ -13,6 +13,7 @@ final class NotchPanelHost {
     let hoverSensor: HoverSensorPanel
 
     private let env: AppEnvironment
+    private let contentView = NotchContentView()
     private let hostingView: NSHostingView<AnyView>
     private(set) var geometry: ScreenGeometry
     private var showsHUD = false
@@ -21,7 +22,10 @@ final class NotchPanelHost {
 
     var onPresentationChange: ((NotchState.Presentation) -> Void)?
     var onTabChange: ((NotchState.ExpandedTab) -> Void)?
-    var onHoverChange: ((Bool) -> Void)?
+    /// The pointer moved over, entered, or left the panel while it was
+    /// interactive. The controller re-derives hover and click-through from the
+    /// pointer's position on every call.
+    var onPointerEvent: (() -> Void)?
     var onHoverSensorEntered: (() -> Void)?
 
     init(env: AppEnvironment, geometry: ScreenGeometry) {
@@ -40,14 +44,15 @@ final class NotchPanelHost {
         hostingView.frame = NSRect(origin: .zero, size: geometry.panelFrame.size)
         hostingView.autoresizingMask = [.width, .height]
         hostingView.sizingOptions = []
-        panel.contentView = hostingView
+        contentView.addSubview(hostingView)
+        contentView.onPointerEvent = { [weak self] in self?.onPointerEvent?() }
+        panel.contentView = contentView
         panel.ignoresMouseEvents = true
 
         let state = self.state
         observers = [
             watch(initial: false, { state.presentation }) { [weak self] in self?.onPresentationChange?($0) },
             watch(initial: false, { state.expandedTab }) { [weak self] in self?.onTabChange?($0) },
-            watch(initial: false, { state.isHovering }) { [weak self] in self?.onHoverChange?($0) },
         ]
 
         rebuildRoot()
@@ -96,4 +101,27 @@ final class NotchPanelHost {
             .injectNotchEnvironment(env, state: state)
         hostingView.rootView = AnyView(root)
     }
+}
+
+/// The panel's root view: hosts the SwiftUI tree and reports pointer motion
+/// over the whole panel frame. Hover is decided by the controller from the
+/// pointer's position against the content's hit rect, not by SwiftUI hit
+/// testing, so a blob that morphs under a stationary pointer or a gap between
+/// the blob and its floating dock cannot produce a spurious exit.
+private final class NotchContentView: NSView {
+    var onPointerEvent: (() -> Void)?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+            owner: self
+        ))
+    }
+
+    override func mouseEntered(with event: NSEvent) { onPointerEvent?() }
+    override func mouseMoved(with event: NSEvent) { onPointerEvent?() }
+    override func mouseExited(with event: NSEvent) { onPointerEvent?() }
 }

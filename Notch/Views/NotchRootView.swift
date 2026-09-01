@@ -38,14 +38,13 @@ struct NotchRootView: View {
                 .zIndex(2)
 
             // Detached tab capsule below the blob. Mounted through the whole
-            // close (fading with `isCollapsing`, like the expanded body) and
-            // hover-tracked so crossing the gap from the blob doesn't collapse
-            // the panel out from under a click.
+            // close (fading with `isCollapsing`, like the expanded body). Hover
+            // is decided by the window controller from the content's hit rect,
+            // which covers the dock and the gap above it.
             if settings.notch.tabBarStyle == .floating, state.isExpanded || state.isCollapsing, !state.isDropActive {
                 NotchTabStrip(floating: true)
                     .padding(.top, expandedSize.height + NotchLayout.floatingDockGap)
                     .opacity(state.isExpanded ? 1 : 0)
-                    .onHover { hovering in handleHover(hovering) }
                     .zIndex(3)
             }
         }
@@ -136,7 +135,6 @@ struct NotchRootView: View {
             usesVirtualChrome: usesVirtualChrome,
             notchWidth: notchSize.width
         ))
-        .onHover { hovering in handleHover(hovering) }
         .frame(maxWidth: .infinity, alignment: .center)
     }
 
@@ -177,13 +175,6 @@ struct NotchRootView: View {
         )
     }
 
-    private func handleHover(_ hovering: Bool) {
-        // Route through `hoverChanged` so `isHovering` (which drives the pill's
-        // hover-swell) updates in lockstep with the expand/collapse timers. On exit
-        // it settles back to the compact pill, keeping the panel on-screen and
-        // mouse-tracking alive so the next hover can expand again.
-        state.hoverChanged(hovering)
-    }
 }
 
 /// Always-present drop surface for the panel. The field (keep vs share) is decided
