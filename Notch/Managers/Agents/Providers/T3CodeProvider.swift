@@ -26,8 +26,8 @@ final class T3CodeProvider: AgentProviding {
         self.settings = settings
     }
 
-    var isEnabled: Bool { settings.agentT3Enabled }
-    var environments: [T3Environment] { settings.agentT3Environments }
+    var isEnabled: Bool { settings.agents.t3Enabled }
+    var environments: [T3Environment] { settings.agents.t3Environments }
 
     // MARK: - Lifecycle
 
@@ -48,13 +48,13 @@ final class T3CodeProvider: AgentProviding {
     /// opt-in and flips the setting itself); this path only covers re-enabling.
     func enable() throws {
         guard !environments.isEmpty else { throw T3PairingError.notPaired }
-        settings.agentT3Enabled = true
+        settings.agents.t3Enabled = true
         syncWatchers()
     }
 
     /// Pausing keeps the pairings; forgetting a server is `removeEnvironment`.
     func disable() {
-        settings.agentT3Enabled = false
+        settings.agents.t3Enabled = false
         stop()
     }
 
@@ -86,7 +86,7 @@ final class T3CodeProvider: AgentProviding {
         )
         try KeychainStore.set(token, account: environment.tokenAccount)
 
-        var list = settings.agentT3Environments
+        var list = settings.agents.t3Environments
         if let index = list.firstIndex(where: { $0.id == environment.id }) {
             // Re-pairing an existing server: its watcher must pick up the new
             // base URL/token, so drop the old one before syncing.
@@ -96,8 +96,8 @@ final class T3CodeProvider: AgentProviding {
         } else {
             list.append(environment)
         }
-        settings.agentT3Environments = list
-        settings.agentT3Enabled = true
+        settings.agents.t3Environments = list
+        settings.agents.t3Enabled = true
         syncWatchers()
     }
 
@@ -110,8 +110,8 @@ final class T3CodeProvider: AgentProviding {
         if let environment = environments.first(where: { $0.id == id }) {
             KeychainStore.delete(account: environment.tokenAccount)
         }
-        settings.agentT3Environments.removeAll { $0.id == id }
-        if environments.isEmpty { settings.agentT3Enabled = false }
+        settings.agents.t3Environments.removeAll { $0.id == id }
+        if environments.isEmpty { settings.agents.t3Enabled = false }
         publish()
         publishDrift()
     }

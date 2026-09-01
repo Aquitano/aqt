@@ -28,7 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(showOnboarding), name: .showOnboarding, object: nil
         )
         setupHotkey()
-        if !env.settings.hasCompletedOnboarding {
+        if !env.settings.general.hasCompletedOnboarding {
             showOnboarding()
         }
 
@@ -53,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // toggling the notch mid-recording.
         let settings = env.settings
         hotkeyObserver = watch({
-            (settings.hotkeyEnabled, settings.hotkeyKeyCode, settings.hotkeyModifiers, settings.isRecordingHotkey)
+            (settings.general.hotkeyEnabled, settings.general.hotkeyKeyCode, settings.general.hotkeyModifiers, settings.isRecordingHotkey)
         }) { [weak self] enabled, keyCode, modifiers, recording in
             guard let self else { return }
             if enabled, !recording {

@@ -24,7 +24,7 @@ final class ScreenshotMonitor {
     }
 
     func start() {
-        settingsObserver = watch({ [settings] in settings.offerScreenshots }) { [weak self] enabled in
+        settingsObserver = watch({ [settings] in settings.tray.offerScreenshots }) { [weak self] enabled in
             enabled ? self?.beginMonitoring() : self?.stop()
         }
     }
@@ -66,7 +66,7 @@ final class ScreenshotMonitor {
 
     private func beginMonitoring() {
         stop()
-        guard settings.offerScreenshots else { return }
+        guard settings.tray.offerScreenshots else { return }
         let directory = Self.screenshotDirectory()
         monitoringStartedAt = Date()
         knownPaths = Set(Self.directoryEntries(directory).map(\.path))

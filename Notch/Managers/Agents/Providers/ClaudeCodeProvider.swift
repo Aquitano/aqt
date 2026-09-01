@@ -61,7 +61,7 @@ final class ClaudeCodeProvider: AgentProviding {
         self.settings = settings
     }
 
-    var isEnabled: Bool { settings.agentClaudeEnabled }
+    var isEnabled: Bool { settings.agents.claudeEnabled }
 
     // MARK: - Lifecycle
 
@@ -111,20 +111,20 @@ final class ClaudeCodeProvider: AgentProviding {
     func enable() throws {
         do {
             try installer.installClaudeHooks()
-            settings.agentClaudeEnabled = true
+            settings.agents.claudeEnabled = true
             Log.agents.info("Claude hooks installed")
             beginWatching()
         } catch {
             // Don't claim "enabled" if we couldn't write the hooks — leave the
             // flag off so the UI keeps showing the Enable affordance.
-            settings.agentClaudeEnabled = false
+            settings.agents.claudeEnabled = false
             Log.agents.error("Claude hook install failed: \(String(describing: error))")
             throw error
         }
     }
 
     func disable() {
-        settings.agentClaudeEnabled = false
+        settings.agents.claudeEnabled = false
         persistence.removeFile(named: Self.bindingsFile)
         do {
             try installer.removeClaudeHooks()

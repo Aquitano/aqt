@@ -43,7 +43,7 @@ final class HUDManager {
             // is safe and keeps the swallow decision synchronous.
             MainActor.assumeIsolated { self?.handle(key, fine: fine) ?? false }
         }
-        settingsObserver = watch({ [settings] in (settings.showHUD, settings.hudReplacesSystem) }) { [weak self] show, replace in
+        settingsObserver = watch({ [settings] in (settings.hud.enabled, settings.hud.replacesSystem) }) { [weak self] show, replace in
             self?.configure(show: show, replace: replace)
         }
     }
@@ -73,7 +73,7 @@ final class HUDManager {
                     try? await Task.sleep(for: .seconds(3))
                 }
                 guard !Task.isCancelled, let self else { return }
-                self.configure(show: self.settings.showHUD, replace: self.settings.hudReplacesSystem)
+                self.configure(show: self.settings.hud.enabled, replace: self.settings.hud.replacesSystem)
             }
         }
     }
@@ -87,7 +87,7 @@ final class HUDManager {
 
     /// Returns true when the key was fully handled here and must be swallowed.
     private func handle(_ key: SystemDefinedTap.MediaKey, fine: Bool) -> Bool {
-        guard settings.showHUD else { return false }
+        guard settings.hud.enabled else { return false }
         let step = fine ? fineStep : coarseStep
 
         switch key {

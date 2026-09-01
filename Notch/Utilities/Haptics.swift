@@ -1,12 +1,14 @@
 import AppKit
 
-/// Small wrapper over the trackpad haptic engine. Gated by the user's preference
-/// so the "Haptic feedback" setting actually changes behaviour.
+/// Small wrapper over the trackpad haptic engine. `Settings` mirrors the user's
+/// "Haptic feedback" preference into `isEnabled`, so call sites stay one line.
 @MainActor
 enum Haptics {
 
+    static var isEnabled = true
+
     static func tap(_ pattern: NSHapticFeedbackManager.FeedbackPattern = .generic) {
-        guard Settings.shared.hapticFeedback else { return }
+        guard isEnabled else { return }
         NSHapticFeedbackManager.defaultPerformer.perform(pattern, performanceTime: .now)
     }
 }

@@ -19,7 +19,7 @@ final class NotchState {
         case expanded   // full panel
     }
 
-    enum ExpandedTab: String, CaseIterable, Identifiable {
+    enum ExpandedTab: String, CaseIterable, Identifiable, Codable {
         case home, agents, media, timer, tray
         var id: String { rawValue }
         var title: String { rawValue.capitalized }

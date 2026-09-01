@@ -43,7 +43,7 @@ struct DropChooserView: View {
     private var shareTitle: String {
         state.activeDropRepresentation == .webURL
             ? "Open / Share"
-            : settings.shareMethod.actionTitle
+            : settings.tray.shareMethod.actionTitle
     }
 
     private var shareSubtitle: String {
@@ -51,7 +51,7 @@ struct DropChooserView: View {
     }
 
     private var shareSymbol: String {
-        state.activeDropRepresentation == .webURL ? "link" : settings.shareMethod.symbol
+        state.activeDropRepresentation == .webURL ? "link" : settings.tray.shareMethod.symbol
     }
 
     private func zone(_ id: DropZone, title: String, subtitle: String, systemImage: String) -> some View {

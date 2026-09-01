@@ -3,7 +3,7 @@ import SwiftUI
 /// One home-tab widget. The ordered list in `Settings.widgetLayout` is the
 /// single source of truth for which widgets show and in what order; a kind's
 /// `row` decides which of the two grid rows it renders in.
-enum WidgetKind: String, CaseIterable, Identifiable {
+enum WidgetKind: String, CaseIterable, Identifiable, Codable {
     case battery, clock, focus, bluetooth
     case weather, calendar, shortcuts, note
 

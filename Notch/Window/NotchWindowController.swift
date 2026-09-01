@@ -69,8 +69,8 @@ final class NotchWindowController {
     private func reconcileHosts() {
         let selection = DisplaySelectionPolicy.resolve(
             displays: displayInventory,
-            placement: env.settings.displayPlacement,
-            followActiveDisplay: env.settings.followActiveDisplay,
+            placement: env.settings.display.placement,
+            followActiveDisplay: env.settings.display.followActive,
             activeDisplayKey: activeDisplayKey
         )
         let targets = selection.targets.isEmpty ? [displayInventory[0]] : selection.targets
@@ -92,7 +92,7 @@ final class NotchWindowController {
             let profile = env.settings.displayProfile(for: display.key)
             let geometry = ScreenGeometry.make(
                 for: display, profile: profile,
-                virtualMode: env.settings.virtualNotchMode
+                virtualMode: env.settings.display.virtualNotchMode
             )
             if let host = hosts[display.key] {
                 host.update(
@@ -291,11 +291,11 @@ final class NotchWindowController {
                 }
             },
             watch(initial: false, {
-                _ = env.settings.displayPlacement
-                _ = env.settings.displayProfiles
-                _ = env.settings.virtualNotchMode
+                _ = env.settings.display.placement
+                _ = env.settings.display.profiles
+                _ = env.settings.display.virtualNotchMode
             }) { [weak self] in self?.reconcileHosts() },
-            watch(initial: false, { env.settings.followActiveDisplay }) { [weak self] enabled in
+            watch(initial: false, { env.settings.display.followActive }) { [weak self] enabled in
                 guard let self else { return }
                 if enabled {
                     self.activeDisplayKey = self.displayKeyAtPointer()
@@ -306,7 +306,7 @@ final class NotchWindowController {
                 guard let self else { return }
                 // With a notch on every display the HUD belongs on the pointer's
                 // display; resolve that now rather than tracking the pointer.
-                if hudVisible, self.env.settings.displayPlacement == .all,
+                if hudVisible, self.env.settings.display.placement == .all,
                    let key = self.displayKeyAtPointer(), self.hosts[key] != nil {
                     self.activateDisplay(key)
                 }
@@ -330,7 +330,7 @@ final class NotchWindowController {
                 _ = env.media.track
                 _ = env.activities.activities
                 _ = env.tray.items
-                _ = env.settings.showCompactNowPlaying
+                _ = env.settings.media.compactNowPlaying
             }) { [weak self] in self?.updatePassthrough() },
         ]
     }
@@ -392,7 +392,7 @@ final class NotchWindowController {
     /// make the panel interactive so SwiftUI hover tracking takes over.
     private func hoverSensorEntered(_ host: NotchPanelHost) {
         guard host.state.presentation == .compact, host.panel.isVisible else { return }
-        if env.settings.displayPlacement == .all { activateDisplay(host.displayKey) }
+        if env.settings.display.placement == .all { activateDisplay(host.displayKey) }
         setIgnoresMouseEvents(false, on: host)
         armPassthroughWatchdog(host)
     }
@@ -406,8 +406,8 @@ final class NotchWindowController {
     /// display needs nothing.
     private func updatePointerDisplayPolling() {
         let wanted = displayInventory.count > 1
-            && env.settings.displayPlacement != .all
-            && env.settings.followActiveDisplay
+            && env.settings.display.placement != .all
+            && env.settings.display.followActive
         guard wanted != (pointerDisplayTask != nil) else { return }
         if wanted {
             pointerDisplayTask = Task { @MainActor [weak self] in
@@ -432,7 +432,7 @@ final class NotchWindowController {
     }
 
     private func considerActiveDisplay() {
-        guard env.settings.followActiveDisplay,
+        guard env.settings.display.followActive,
               !isDragSessionActive,
               interactionHost?.panel.presentingShareSheet != true,
               interactionHost?.panel.editingText != true,
@@ -477,7 +477,7 @@ final class NotchWindowController {
             installDragUpMonitor()
         }
         guard let host = dragHost else { return }
-        host.state.isOptionMoveActive = env.settings.trayMoveEnabled
+        host.state.isOptionMoveActive = env.settings.tray.moveEnabled
             && NSEvent.modifierFlags.contains(.option)
             && !originalFileURLsForDrop().isEmpty
         let zone = dropZone(for: mouse, host: host)
@@ -499,7 +499,7 @@ final class NotchWindowController {
     }
 
     func originalFileURLsForDrop() -> [URL] {
-        guard env.settings.trayMoveEnabled else { return [] }
+        guard env.settings.tray.moveEnabled else { return [] }
         let pasteboard = NSPasteboard(name: .drag)
         let urls = pasteboard.readObjects(
             forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]
@@ -647,7 +647,7 @@ final class NotchWindowController {
             hasInfoRow: env.settings.hasInfoRowWidgets(for: host.displayKey),
             trayEmpty: env.tray.items.isEmpty,
             compact: NotchLayout.compactContent(
-                hasMedia: env.settings.showCompactNowPlaying && !env.media.track.isEmpty,
+                hasMedia: env.settings.media.compactNowPlaying && !env.media.track.isEmpty,
                 agentCount: env.activities.compactActivity?.agentCount,
                 activityLabel: env.activities.compactActivity.map {
                     ActivityPresenter.compactLabel(for: $0.kind)
@@ -655,7 +655,7 @@ final class NotchWindowController {
                 trayItemCount: env.tray.items.count
             ),
             dropActive: host.state.isDropActive,
-            tabBarStyle: env.settings.tabBarStyle
+            tabBarStyle: env.settings.notch.tabBarStyle
         )
     }
 
@@ -693,7 +693,7 @@ final class NotchWindowController {
     }
 
     private func cyclableHostAtCursor() -> NotchPanelHost? {
-        guard (!env.settings.showCompactNowPlaying || env.media.track.isEmpty),
+        guard (!env.settings.media.compactNowPlaying || env.media.track.isEmpty),
               env.activities.compactActivityCount > 1,
               let host = hostAtCursor(), host.state.presentation == .compact else { return nil }
         return host

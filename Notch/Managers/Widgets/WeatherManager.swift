@@ -39,7 +39,7 @@ final class WeatherManager: NSObject, CLLocationManagerDelegate {
             manager.requestLocation()
         }
 
-        unitObserver = watch(initial: false, { [settings] in settings.temperatureUnit }) { [weak self] _ in
+        unitObserver = watch(initial: false, { [settings] in settings.widgets.temperatureUnit }) { [weak self] _ in
             guard let self, let location = self.lastLocation else { return }
             Task { await self.fetch(for: location) }
         }
@@ -118,7 +118,7 @@ final class WeatherManager: NSObject, CLLocationManagerDelegate {
     private func fetch(for location: CLLocation) async {
         fetchGeneration += 1
         let generation = fetchGeneration
-        let unit = settings.temperatureUnit
+        let unit = settings.widgets.temperatureUnit
         var components = URLComponents(string: "https://api.open-meteo.com/v1/forecast")!
         components.queryItems = [
             .init(name: "latitude", value: String(location.coordinate.latitude)),

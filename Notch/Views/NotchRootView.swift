@@ -41,7 +41,7 @@ struct NotchRootView: View {
             // close (fading with `isCollapsing`, like the expanded body) and
             // hover-tracked so crossing the gap from the blob doesn't collapse
             // the panel out from under a click.
-            if settings.tabBarStyle == .floating, state.isExpanded || state.isCollapsing, !state.isDropActive {
+            if settings.notch.tabBarStyle == .floating, state.isExpanded || state.isCollapsing, !state.isDropActive {
                 NotchTabStrip(floating: true)
                     .padding(.top, expandedSize.height + NotchLayout.floatingDockGap)
                     .opacity(state.isExpanded ? 1 : 0)
@@ -62,7 +62,7 @@ struct NotchRootView: View {
         .onDrop(of: TrayDropCapabilities.acceptedTypes, delegate: NotchDropDelegate(
             state: state,
             resolveZone: { env.windowController?.dropZoneAtCursor() ?? .keep },
-            moveEnabled: { settings.trayMoveEnabled },
+            moveEnabled: { settings.tray.moveEnabled },
             originalFileURLs: { env.windowController?.originalFileURLsForDrop() ?? [] },
             onKeep: { tray.handleDrop($0, moveOriginalURLs: $1) },
             onShare: { env.shareDrop($0) }
@@ -142,7 +142,7 @@ struct NotchRootView: View {
 
     private var compactContent: NotchLayout.CompactContent {
         NotchLayout.compactContent(
-            hasMedia: settings.showCompactNowPlaying && !media.track.isEmpty,
+            hasMedia: settings.media.compactNowPlaying && !media.track.isEmpty,
             agentCount: activities.compactActivity?.agentCount,
             activityLabel: activities.compactActivity.map { ActivityPresenter.compactLabel(for: $0.kind) },
             trayItemCount: tray.items.count
@@ -159,7 +159,7 @@ struct NotchRootView: View {
             trayEmpty: tray.items.isEmpty,
             compact: compactContent,
             dropActive: state.isDropActive,
-            tabBarStyle: settings.tabBarStyle
+            tabBarStyle: settings.notch.tabBarStyle
         )
     }
 
@@ -173,7 +173,7 @@ struct NotchRootView: View {
             trayEmpty: tray.items.isEmpty,
             compact: .media,
             dropActive: state.isDropActive,
-            tabBarStyle: settings.tabBarStyle
+            tabBarStyle: settings.notch.tabBarStyle
         )
     }
 

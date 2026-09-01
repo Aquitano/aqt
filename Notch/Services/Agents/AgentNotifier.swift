@@ -23,7 +23,7 @@ final class AgentNotifier {
     /// can't see. When the session's own terminal is the thing in front of you,
     /// they're noise — so check that first, and deliver only if it isn't.
     func notify(_ event: AgentEvent) {
-        guard settings.agentQuietWhenFocused,
+        guard settings.agents.quietWhenFocused,
               let bundleID = event.session.terminalBundleID,
               NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleID
         else { return deliver(event) }
@@ -44,21 +44,21 @@ final class AgentNotifier {
         let agent = event.session.kind.shortName
         switch event.kind {
         case .started:
-            guard settings.agentNotifyStarted else { return }
-            emit(event, suffix: "started", sound: settings.agentSoundStarted,
+            guard settings.agents.notifyStarted else { return }
+            emit(event, suffix: "started", sound: settings.agents.soundStarted,
                  title: "\(agent) started", message: event.session.project,
                  symbol: event.session.kind.symbol, tint: .neutral)
         case .needsAttention:
-            guard settings.agentNotifyAttention else { return }
-            emit(event, suffix: "attention", sound: settings.agentSoundAttention,
+            guard settings.agents.notifyAttention else { return }
+            emit(event, suffix: "attention", sound: settings.agents.soundAttention,
                  title: "\(agent) needs you", message: event.message ?? event.session.project,
                  symbol: "exclamationmark.bubble.fill", tint: .warning)
-            if settings.agentAutoExpandOnAttention {
+            if settings.agents.autoExpandOnAttention {
                 activities.requestAutoExpand()
             }
         case .finished:
-            guard settings.agentNotifyFinished else { return }
-            emit(event, suffix: "finished", sound: settings.agentSoundFinished,
+            guard settings.agents.notifyFinished else { return }
+            emit(event, suffix: "finished", sound: settings.agents.soundFinished,
                  title: "\(agent) finished", message: event.session.project,
                  symbol: "checkmark.circle.fill", tint: .success)
         case .ended:
@@ -73,7 +73,7 @@ final class AgentNotifier {
     func notice(title: String, message: String) {
         activities.peek(title: title, message: message, symbol: "wrench.and.screwdriver.fill",
                         tint: .warning, ttl: 6)
-        if settings.agentSystemNotifications { postSystemNotification(title: title, body: message) }
+        if settings.agents.systemNotifications { postSystemNotification(title: title, body: message) }
     }
 
     /// Cohesive synthesized sound pack; names are persisted in Settings.
@@ -95,8 +95,8 @@ final class AgentNotifier {
 
         activities.peek(title: title, message: message, symbol: symbol, tint: tint, ttl: 5)
 
-        if settings.agentNotifySound { AgentSoundPlayer.play(sound) }
-        if settings.agentSystemNotifications { postSystemNotification(title: title, body: message) }
+        if settings.agents.soundEnabled { AgentSoundPlayer.play(sound) }
+        if settings.agents.systemNotifications { postSystemNotification(title: title, body: message) }
     }
 
     // MARK: - Notification Center

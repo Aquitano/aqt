@@ -47,12 +47,12 @@ final class AppEnvironment {
     private var shareCoordinator: ShareCoordinator?
 
     init() {
-        let settings = Settings.shared
+        let persistence = Persistence()
+        let settings = Settings(store: PreferencesStore(persistence: persistence))
         let state = NotchState()
         state.defaultTab = { settings.resolvedDefaultTab }
         state.expandedTab = settings.resolvedDefaultTab
         let imageCache = ImageCache()
-        let persistence = Persistence()
         let activities = ActivityManager(state: state)
         let audio = AudioHardware()
 
@@ -122,7 +122,7 @@ final class AppEnvironment {
     @discardableResult
     func shareDrop(_ providers: [NSItemProvider]) -> Bool {
         guard !providers.isEmpty else { return false }
-        let method = settings.shareMethod
+        let method = settings.tray.shareMethod
         tray.stageForShare(providers) { [weak self] items in
             self?.share(items: items, via: method)
         }

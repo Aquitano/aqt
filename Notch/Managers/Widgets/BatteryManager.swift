@@ -96,7 +96,7 @@ final class BatteryManager {
         )
         let output = BatteryPolicy.decide(
             snapshot, previous: policy,
-            config: BatteryPolicy.Config(alertThreshold: settings.lowBatteryThreshold),
+            config: BatteryPolicy.Config(alertThreshold: settings.widgets.lowBatteryThreshold),
             now: Date()
         )
         policy = output.state

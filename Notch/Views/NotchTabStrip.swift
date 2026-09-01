@@ -29,7 +29,7 @@ struct NotchTabStrip: View {
     }
 
     private var visibleTabs: [NotchState.ExpandedTab] {
-        settings.tabLayout.filter { $0 != .agents || settings.agentsEnabled }
+        settings.notch.tabLayout.filter { $0 != .agents || settings.agents.enabled }
     }
 
     private func tabButton(_ tab: NotchState.ExpandedTab) -> some View {

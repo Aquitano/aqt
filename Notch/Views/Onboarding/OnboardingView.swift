@@ -15,7 +15,8 @@ struct OnboardingView: View {
     let onFinish: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
+        @Bindable var settings = settings
+        return VStack(spacing: 0) {
             header
                 .padding(.top, 28)
                 .padding(.bottom, 20)
@@ -46,7 +47,7 @@ struct OnboardingView: View {
                 .padding(.vertical, 16)
 
             VStack(spacing: 10) {
-                Toggle(isOn: Bindable(settings).launchAtLogin) {
+                Toggle(isOn: $settings.general.launchAtLogin) {
                     toggleLabel(symbol: "power", title: "Launch at login",
                                 subtitle: "Start the notch when you log in.")
                 }
@@ -62,7 +63,7 @@ struct OnboardingView: View {
             Spacer(minLength: 20)
 
             Button {
-                settings.hasCompletedOnboarding = true
+                settings.general.hasCompletedOnboarding = true
                 onFinish()
             } label: {
                 Text("Get Started")
@@ -133,7 +134,7 @@ struct OnboardingView: View {
 
     private var agentsEnabledBinding: Binding<Bool> {
         Binding(
-            get: { settings.agentsEnabled },
+            get: { settings.agents.enabled },
             set: { agents.setWatchingEnabled($0) }
         )
     }

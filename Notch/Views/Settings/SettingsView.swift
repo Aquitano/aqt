@@ -48,7 +48,7 @@ struct SettingsView: View {
             Tab("Agents", systemImage: "terminal") {
                 pane {
                     agentsSection
-                    if settings.agentsEnabled {
+                    if settings.agents.enabled {
                         agentIntegrationsSection
                     }
                 }
@@ -81,7 +81,7 @@ struct SettingsView: View {
 
     private var notchLayoutSection: some View {
         Section {
-            Picker("Tab bar", selection: $settings.tabBarStyle) {
+            Picker("Tab bar", selection: $settings.notch.tabBarStyle) {
                 ForEach(TabBarStyle.allCases) { style in
                     Text(style.title).tag(style)
                 }
@@ -99,15 +99,15 @@ struct SettingsView: View {
 
     private var tabsSection: some View {
         Section {
-            ForEach(settings.tabLayout) { tab in
+            ForEach(settings.notch.tabLayout) { tab in
                 tabRow(tab, visible: true)
             }
-            .onMove { settings.tabLayout.move(fromOffsets: $0, toOffset: $1) }
+            .onMove { settings.notch.tabLayout.move(fromOffsets: $0, toOffset: $1) }
             ForEach(NotchState.ExpandedTab.allCases.filter { !settings.isTabVisible($0) }) { tab in
                 tabRow(tab, visible: false)
             }
-            Picker("Opens on", selection: $settings.defaultExpandedTab) {
-                ForEach(settings.tabLayout) { tab in
+            Picker("Opens on", selection: $settings.notch.defaultTab) {
+                ForEach(settings.notch.tabLayout) { tab in
                     Text(tab.title).tag(tab)
                 }
             }
@@ -137,26 +137,26 @@ struct SettingsView: View {
 
     private var displaySection: some View {
         Section {
-            Picker("Show Notch on", selection: $settings.displayPlacement) {
+            Picker("Show Notch on", selection: $settings.display.placement) {
                 Text(DisplayPlacement.builtIn.title).tag(DisplayPlacement.builtIn)
                 Text(DisplayPlacement.main.title).tag(DisplayPlacement.main)
                 Text(DisplayPlacement.all.title).tag(DisplayPlacement.all)
             }
             // Keep the picker usable if an older/defaults-edited install ever
             // contains the otherwise invalid `all + follow active` combination.
-            .disabled(settings.followActiveDisplay && settings.displayPlacement != .all)
+            .disabled(settings.display.followActive && settings.display.placement != .all)
 
-            Toggle("Only show on active display", isOn: $settings.followActiveDisplay)
-                .disabled(settings.displayPlacement == .all)
+            Toggle("Only show on active display", isOn: $settings.display.followActive)
+                .disabled(settings.display.placement == .all)
 
             if let display = selectedDisplay {
                 Divider()
-                Picker("Virtual notch", selection: $settings.virtualNotchMode) {
+                Picker("Virtual notch", selection: $settings.display.virtualNotchMode) {
                     ForEach(VirtualNotchMode.allCases) { mode in
                         Text(mode.title).tag(mode)
                     }
                 }
-                VirtualNotchPreview(display: display, mode: settings.virtualNotchMode)
+                VirtualNotchPreview(display: display, mode: settings.display.virtualNotchMode)
                 Picker("Customize", selection: $customizedDisplayKey) {
                     ForEach(displays, id: \.key) { option in
                         Text(option.name).tag(option.key)
@@ -187,7 +187,7 @@ struct SettingsView: View {
                 Toggle("Custom widget set on this display", isOn: customWidgetLayoutBinding(display.key))
                 Picker("Opens on", selection: displayDefaultTabBinding(display.key)) {
                     Text("Same as everywhere").tag("")
-                    ForEach(settings.tabLayout) { tab in
+                    ForEach(settings.notch.tabLayout) { tab in
                         Text(tab.title).tag(tab.rawValue)
                     }
                 }
@@ -210,7 +210,7 @@ struct SettingsView: View {
             return customized
         }
         return DisplaySelectionPolicy.resolve(
-            displays: displays, placement: settings.displayPlacement
+            displays: displays, placement: settings.display.placement
         ).targets.first
     }
 
@@ -271,7 +271,7 @@ struct SettingsView: View {
         displays = DisplayInventory.current()
         if !displays.contains(where: { $0.key == customizedDisplayKey }) {
             customizedDisplayKey = DisplaySelectionPolicy.resolve(
-                displays: displays, placement: settings.displayPlacement
+                displays: displays, placement: settings.display.placement
             ).targets.first?.key ?? displays.first?.key ?? ""
         }
     }
@@ -282,10 +282,10 @@ struct SettingsView: View {
         Section("General") {
             // The SMAppService registration is driven from the Settings model, so
             // this toggle and the in-notch one stay in sync.
-            Toggle("Launch at Login", isOn: $settings.launchAtLogin)
-            Toggle("Haptic feedback", isOn: $settings.hapticFeedback)
-            Toggle("Toggle notch with a keyboard shortcut", isOn: $settings.hotkeyEnabled)
-            if settings.hotkeyEnabled {
+            Toggle("Launch at Login", isOn: $settings.general.launchAtLogin)
+            Toggle("Haptic feedback", isOn: $settings.general.hapticFeedback)
+            Toggle("Toggle notch with a keyboard shortcut", isOn: $settings.general.hotkeyEnabled)
+            if settings.general.hotkeyEnabled {
                 HotkeyRecorderView()
             }
             Button("Show Welcome Tour…") {
@@ -299,35 +299,35 @@ struct SettingsView: View {
     private var agentsSection: some View {
         Section {
             Toggle("Watch coding agents", isOn: Binding(
-                get: { settings.agentsEnabled },
+                get: { settings.agents.enabled },
                 set: { agents.setWatchingEnabled($0) }
             ))
-            if settings.agentsEnabled {
-                Toggle("Notify when an agent needs you", isOn: $settings.agentNotifyAttention)
-                Toggle("Notify when an agent finishes", isOn: $settings.agentNotifyFinished)
-                Toggle("Notify when an agent starts", isOn: $settings.agentNotifyStarted)
-                Toggle("Auto-expand on needs-you", isOn: $settings.agentAutoExpandOnAttention)
-                Toggle("Stay quiet while its terminal is in front", isOn: $settings.agentQuietWhenFocused)
+            if settings.agents.enabled {
+                Toggle("Notify when an agent needs you", isOn: $settings.agents.notifyAttention)
+                Toggle("Notify when an agent finishes", isOn: $settings.agents.notifyFinished)
+                Toggle("Notify when an agent starts", isOn: $settings.agents.notifyStarted)
+                Toggle("Auto-expand on needs-you", isOn: $settings.agents.autoExpandOnAttention)
+                Toggle("Stay quiet while its terminal is in front", isOn: $settings.agents.quietWhenFocused)
                 // Approve/deny from the notch is switched off build-wide for now
                 // (see AgentFeatures); the round-trip code stays in place.
                 if AgentFeatures.permissionApproval {
-                    Toggle("Approve permission prompts from the notch", isOn: $settings.agentPermissionApproval)
-                    if settings.agentPermissionApproval {
+                    Toggle("Approve permission prompts from the notch", isOn: $settings.agents.permissionApproval)
+                    if settings.agents.permissionApproval {
                         Text("Claude waits up to 2 minutes for your decision here before falling back to the terminal prompt.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
                 Toggle("Claude usage limits", isOn: Binding(
-                    get: { settings.agentUsageLimits },
+                    get: { settings.agents.usageLimits },
                     set: { agents.setUsageLimits($0) }
                 ))
-                Toggle("System notifications", isOn: $settings.agentSystemNotifications)
-                Toggle("Play 8-bit sounds", isOn: $settings.agentNotifySound)
-                if settings.agentNotifySound {
-                    soundPicker("Needs-you sound", $settings.agentSoundAttention)
-                    soundPicker("Finished sound", $settings.agentSoundFinished)
-                    soundPicker("Started sound", $settings.agentSoundStarted)
+                Toggle("System notifications", isOn: $settings.agents.systemNotifications)
+                Toggle("Play 8-bit sounds", isOn: $settings.agents.soundEnabled)
+                if settings.agents.soundEnabled {
+                    soundPicker("Needs-you sound", $settings.agents.soundAttention)
+                    soundPicker("Finished sound", $settings.agents.soundFinished)
+                    soundPicker("Started sound", $settings.agents.soundStarted)
                 }
             }
         } header: {
@@ -477,11 +477,11 @@ struct SettingsView: View {
 
     private var mediaSection: some View {
         Section("Media") {
-            Toggle("Show compact Now Playing", isOn: $settings.showCompactNowPlaying)
+            Toggle("Show compact Now Playing", isOn: $settings.media.compactNowPlaying)
             Toggle("Live three-band audio visualizer", isOn: Binding(
-                get: { settings.showAudioVisualizer },
+                get: { settings.media.audioVisualizer },
                 set: { enabled in
-                    settings.showAudioVisualizer = enabled
+                    settings.media.audioVisualizer = enabled
                     if enabled {
                         visualizer.requestPermission()
                     } else {
@@ -489,14 +489,14 @@ struct SettingsView: View {
                     }
                 }
             ))
-            .disabled(!settings.showCompactNowPlaying)
+            .disabled(!settings.media.compactNowPlaying)
 
-            if settings.showAudioVisualizer {
+            if settings.media.audioVisualizer {
                 visualizerStatus
             }
 
-            Toggle("System-wide Now Playing (adapter)", isOn: $settings.enableMediaAdapter)
-            if settings.enableMediaAdapter {
+            Toggle("System-wide Now Playing (adapter)", isOn: $settings.media.systemWideAdapter)
+            if settings.media.systemWideAdapter {
                 switch media.adapterState {
                 case .starting:
                     PixelLabel(title: "Checking the bundled adapter…", systemName: "hourglass",
@@ -527,7 +527,7 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
         }
         .onAppear {
-            visualizer.refreshPermissionState(required: settings.showAudioVisualizer)
+            visualizer.refreshPermissionState(required: settings.media.audioVisualizer)
         }
     }
 
@@ -576,16 +576,16 @@ struct SettingsView: View {
 
     private var hudSection: some View {
         Section {
-            Toggle("Show volume/brightness HUD", isOn: $settings.showHUD)
+            Toggle("Show volume/brightness HUD", isOn: $settings.hud.enabled)
             Toggle("Replace the system HUD", isOn: Binding(
-                get: { settings.hudReplacesSystem },
+                get: { settings.hud.replacesSystem },
                 set: {
-                    settings.hudReplacesSystem = $0
+                    settings.hud.replacesSystem = $0
                     accessibilityTrusted = AXIsProcessTrusted()
                 }
             ))
-            .disabled(!settings.showHUD)
-            if settings.showHUD, settings.hudReplacesSystem, !accessibilityTrusted {
+            .disabled(!settings.hud.enabled)
+            if settings.hud.enabled, settings.hud.replacesSystem, !accessibilityTrusted {
                 LabeledContent {
                     Button("Open") { PrivacyPane.accessibility.open() }
                         .controlSize(.small)
@@ -611,8 +611,8 @@ struct SettingsView: View {
 
     private var batterySection: some View {
         Section {
-            Stepper("Low battery alert at \(settings.lowBatteryThreshold)%",
-                    value: $settings.lowBatteryThreshold, in: 5...50, step: 5)
+            Stepper("Low battery alert at \(settings.widgets.lowBatteryThreshold)%",
+                    value: $settings.widgets.lowBatteryThreshold, in: 5...50, step: 5)
             if powerMode.shortcutInstalled == true {
                 PixelLabel(title: "Low Power Mode shortcut installed",
                            systemName: "checkmark.circle.fill", size: 13, tint: .green)
@@ -658,7 +658,7 @@ struct SettingsView: View {
 
             if settings.isWidgetEnabled(.weather) {
                 Section("Weather") {
-                    Picker("Units", selection: $settings.temperatureUnit) {
+                    Picker("Units", selection: $settings.widgets.temperatureUnit) {
                         Text(WeatherSnapshot.TemperatureUnit.celsius.suffix)
                             .tag(WeatherSnapshot.TemperatureUnit.celsius)
                         Text(WeatherSnapshot.TemperatureUnit.fahrenheit.suffix)
@@ -668,7 +668,7 @@ struct SettingsView: View {
             }
             if settings.isWidgetEnabled(.clock) {
                 Section("Clock") {
-                    TextField("Second time zone", text: $settings.clockSecondaryTimeZone,
+                    TextField("Second time zone", text: $settings.widgets.clockSecondaryTimeZone,
                               prompt: Text("e.g. Europe/Berlin (optional)"))
                 }
             }
@@ -716,12 +716,12 @@ struct SettingsView: View {
 
     private var pinnedShortcutsEditor: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(settings.pinnedShortcuts, id: \.self) { name in
+            ForEach(settings.widgets.pinnedShortcuts, id: \.self) { name in
                 HStack {
                     Text(name)
                     Spacer()
                     Button {
-                        settings.pinnedShortcuts.removeAll { $0 == name }
+                        settings.widgets.pinnedShortcuts.removeAll { $0 == name }
                     } label: {
                         PixelIcon(systemName: "minus.circle.fill", size: 13,
                                   tint: .primary.opacity(0.6))
@@ -735,7 +735,7 @@ struct SettingsView: View {
             HStack {
                 Picker("Pin a shortcut", selection: $shortcutToPin) {
                     Text("Choose…").tag("")
-                    ForEach(shortcuts.available.filter { !settings.pinnedShortcuts.contains($0) },
+                    ForEach(shortcuts.available.filter { !settings.widgets.pinnedShortcuts.contains($0) },
                             id: \.self) { name in
                         Text(name).tag(name)
                     }
@@ -743,7 +743,7 @@ struct SettingsView: View {
                 .labelsHidden()
                 Button("Pin") {
                     guard !shortcutToPin.isEmpty else { return }
-                    settings.pinnedShortcuts.append(shortcutToPin)
+                    settings.widgets.pinnedShortcuts.append(shortcutToPin)
                     shortcutToPin = ""
                 }
                 .disabled(shortcutToPin.isEmpty)
@@ -757,18 +757,18 @@ struct SettingsView: View {
     private var traySection: some View {
         Section("Tray") {
             Stepper(
-                "Keep files for \(settings.trayTTLDays) days",
-                value: $settings.trayTTLDays,
+                "Keep files for \(settings.tray.ttlDays) days",
+                value: $settings.tray.ttlDays,
                 in: 1...90
             )
             Button("Apply to Existing Unpinned Items") {
                 tray.applyGlobalTTLToExistingItems()
             }
-            Toggle("Allow Option-drag to move originals", isOn: $settings.trayMoveEnabled)
+            Toggle("Allow Option-drag to move originals", isOn: $settings.tray.moveEnabled)
             Text("When enabled, Option-drop removes eligible originals only after Notch verifies its managed copy.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Toggle("Offer new screenshots in Notch", isOn: $settings.offerScreenshots)
+            Toggle("Offer new screenshots in Notch", isOn: $settings.tray.offerScreenshots)
             Text("Watches only your configured screenshot folder and never copies a screenshot until you choose Add to Shelf.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -779,7 +779,7 @@ struct SettingsView: View {
 
     private var sharingSection: some View {
         Section {
-            Picker("Share files with", selection: $settings.shareMethod) {
+            Picker("Share files with", selection: $settings.tray.shareMethod) {
                 ForEach(ShareMethod.allCases) { method in
                     Text(method.title).tag(method)
                 }

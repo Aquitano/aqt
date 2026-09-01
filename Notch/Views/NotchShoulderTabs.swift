@@ -59,7 +59,7 @@ struct NotchShoulderTabs: View {
     /// trailing slot, so it counts when picking where to cut — otherwise the right
     /// shoulder always carries one icon more than the left.
     private var shoulders: (leading: [NotchState.ExpandedTab], trailing: [NotchState.ExpandedTab]) {
-        let tabs = settings.tabLayout.filter { $0 != .agents || settings.agentsEnabled }
+        let tabs = settings.notch.tabLayout.filter { $0 != .agents || settings.agents.enabled }
         let cut = (tabs.count + 2) / 2
         return (Array(tabs.prefix(cut)), Array(tabs.dropFirst(cut)))
     }

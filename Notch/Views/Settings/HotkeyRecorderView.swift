@@ -34,8 +34,8 @@ struct HotkeyRecorderView: View {
         if isRecording {
             return heldModifiers.isEmpty ? "Type shortcut…" : heldModifiers
         }
-        return HotKeyChord(keyCode: settings.hotkeyKeyCode,
-                           carbonModifiers: settings.hotkeyModifiers).display
+        return HotKeyChord(keyCode: settings.general.hotkeyKeyCode,
+                           carbonModifiers: settings.general.hotkeyModifiers).display
     }
 
     private func startRecording() {
@@ -69,8 +69,8 @@ struct HotkeyRecorderView: View {
                 NSSound.beep()
                 return nil
             }
-            settings.hotkeyKeyCode = chord.keyCode
-            settings.hotkeyModifiers = chord.carbonModifiers
+            settings.general.hotkeyKeyCode = chord.keyCode
+            settings.general.hotkeyModifiers = chord.carbonModifiers
             stopRecording()
             return nil
         default:

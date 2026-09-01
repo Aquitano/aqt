@@ -51,18 +51,18 @@ final class AgentManager {
         let notifier = AgentNotifier(activities: activities, settings: settings)
         self.notifier = notifier
         self.hookGuard = HookGuard(notifier: notifier)
-        self.permissionApprovalObserver = watch(initial: false, { settings.agentPermissionApproval }) { [weak self] enabled in
+        self.permissionApprovalObserver = watch(initial: false, { settings.agents.permissionApproval }) { [weak self] enabled in
             if !enabled { self?.disablePermissionResponses() }
         }
     }
 
     func start() {
-        guard settings.agentsEnabled, !isRunning else { return }
+        guard settings.agents.enabled, !isRunning else { return }
         configureProvidersIfNeeded()
         isRunning = true
 
         providers.forEach { $0.start() }
-        if settings.agentClaudeEnabled { hookGuard.start() }
+        if settings.agents.claudeEnabled { hookGuard.start() }
 
         // Deliver envelopes through one serial stream instead of an independent
         // Task per envelope. Independent tasks have no ordering guarantee, so two
@@ -88,7 +88,7 @@ final class AgentManager {
         }
 
         let installer = AgentConfigInstaller()
-        if settings.agentUsageLimits { try? installer.installClaudeUsage() }
+        if settings.agents.usageLimits { try? installer.installClaudeUsage() }
     }
 
     /// Pause every provider and the shared socket while preserving the user's
@@ -117,7 +117,7 @@ final class AgentManager {
     /// The single entry point for both master switches so persisted state and the
     /// live subsystem can never disagree.
     func setWatchingEnabled(_ enabled: Bool) {
-        settings.agentsEnabled = enabled
+        settings.agents.enabled = enabled
         if enabled { start() } else { stop() }
     }
 
@@ -129,18 +129,18 @@ final class AgentManager {
             // Codex hooks are short-lived subprocesses (pid unreliable) -> age out by staleness.
             SocketAgentProvider(
                 kind: .codex, liveness: .staleness,
-                settings: settings, enabledKey: \.agentCodexEnabled,
+                settings: settings, enabledKey: \.agents.codexEnabled,
                 install: { try installer.installCodexHooks() }, uninstall: { try installer.removeCodexHooks() }
             ),
             // OpenCode/oh-my-pi report from inside the agent process -> prune by live pid.
             SocketAgentProvider(
                 kind: .openCode, liveness: .processPid,
-                settings: settings, enabledKey: \.agentOpenCodeEnabled,
+                settings: settings, enabledKey: \.agents.openCodeEnabled,
                 install: { try installer.installOpenCodePlugin() }, uninstall: { try installer.removeOpenCodePlugin() }
             ),
             SocketAgentProvider(
                 kind: .ohMyPi, liveness: .processPid,
-                settings: settings, enabledKey: \.agentOhMyPiEnabled,
+                settings: settings, enabledKey: \.agents.ohMyPiEnabled,
                 install: { try installer.installOhMyPi() }, uninstall: { try installer.removeOhMyPi() }
             ),
             // t3 is a WebSocket client of the local t3 server, not a hook install.
@@ -178,14 +178,14 @@ final class AgentManager {
         do {
             if enabled {
                 try installer.installClaudeUsage()
-                settings.agentUsageLimits = true
+                settings.agents.usageLimits = true
             } else {
-                settings.agentUsageLimits = false
+                settings.agents.usageLimits = false
                 try installer.removeClaudeUsage()
                 usage = nil
             }
         } catch {
-            settings.agentUsageLimits = false
+            settings.agents.usageLimits = false
             integrationError = "Couldn't update Claude usage limits: \(error.localizedDescription)"
             Log.agents.error("usage-limits toggle failed: \(String(describing: error))")
         }
@@ -324,7 +324,7 @@ final class AgentManager {
                 envelope.permission, matchingRequestId: requestId
             )
             let receivedAt = Date()
-            let canRespond = kind == .claudeCode && settings.agentPermissionApproval
+            let canRespond = kind == .claudeCode && settings.agents.permissionApproval
             let deadline = min(request?.replyDeadline ?? receivedAt.addingTimeInterval(120),
                                receivedAt.addingTimeInterval(120))
             let risk = request.map {
@@ -359,7 +359,7 @@ final class AgentManager {
 
     func respondToPermission(requestId: String, decision: AgentPermissionDecision) {
         guard AgentFeatures.permissionApproval,
-              settings.agentPermissionApproval,
+              settings.agents.permissionApproval,
               var pending = permissionRequests[requestId],
               let next = AgentPermissionStateMachine.transition(
                 from: pending.state, event: .respond(decision)

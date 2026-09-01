@@ -95,7 +95,7 @@ enum ShareMethod: String, CaseIterable, Identifiable, Codable {
 /// Where the expanded panel's section switcher renders. Only `.inside` spends a
 /// row of the body on itself; the other two draw outside it, so the blob gives
 /// that row back to the content.
-enum TabBarStyle: String, CaseIterable, Identifiable {
+enum TabBarStyle: String, CaseIterable, Identifiable, Codable {
     /// Detached capsule below the blob, Dynamic-Island style.
     case floating
     /// Glass strip inside the blob, above the body.

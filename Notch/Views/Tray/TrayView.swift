@@ -312,7 +312,7 @@ struct TrayView: View {
             .disabled(selectedItems.isEmpty || tray.collections.count < 2)
             .help("Move to collection")
             .accessibilityLabel("Move to collection")
-            actionButton(settings.shareMethod.symbol, label: "Share", disabled: selectedItems.isEmpty) {
+            actionButton(settings.tray.shareMethod.symbol, label: "Share", disabled: selectedItems.isEmpty) {
                 shareSelection()
             }
             actionButton("trash", label: "Remove", disabled: selectedItems.isEmpty) {
@@ -423,7 +423,7 @@ struct TrayView: View {
     private func share(_ items: [TrayItem]) {
         guard !items.isEmpty else { return }
         tray.quickLook.close()
-        env.share(items: items.map(shareRepresentation), via: settings.shareMethod)
+        env.share(items: items.map(shareRepresentation), via: settings.tray.shareMethod)
     }
 
     private func shareRepresentation(_ item: TrayItem) -> Any {

@@ -43,7 +43,7 @@ final class MediaManager {
     }
 
     func start() {
-        settingsObserver = watch({ [settings] in settings.showCompactNowPlaying }) { [weak self] enabled in
+        settingsObserver = watch({ [settings] in settings.media.compactNowPlaying }) { [weak self] enabled in
             guard let self else { return }
             self.activities.setNowPlaying(active: enabled && !self.track.isEmpty)
         }
@@ -58,7 +58,7 @@ final class MediaManager {
         self.capabilities = controller.capabilities
         Log.media.info("Media controller: \(String(describing: type(of: controller)))")
 
-        if settings.enableMediaAdapter {
+        if settings.media.systemWideAdapter {
             guard let adapter = AdapterMediaController() else {
                 adapterState = .missing
                 return
@@ -137,7 +137,7 @@ final class MediaManager {
         track = newTrack
         lastUpdate = Date()
         isAvailable = true
-        activities.setNowPlaying(active: settings.showCompactNowPlaying && !newTrack.isEmpty)
+        activities.setNowPlaying(active: settings.media.compactNowPlaying && !newTrack.isEmpty)
         if newTrack.isEmpty || identityChanged {
             artwork = nil
         }

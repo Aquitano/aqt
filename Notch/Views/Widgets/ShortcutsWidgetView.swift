@@ -17,14 +17,14 @@ struct ShortcutsWidgetView: View {
                 Spacer(minLength: 0)
             }
 
-            if settings.pinnedShortcuts.isEmpty {
+            if settings.widgets.pinnedShortcuts.isEmpty {
                 Text("Pin shortcuts in Settings to run them from here.")
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.45))
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                    ForEach(settings.pinnedShortcuts, id: \.self) { name in
+                    ForEach(settings.widgets.pinnedShortcuts, id: \.self) { name in
                         Button {
                             shortcuts.run(name)
                         } label: {

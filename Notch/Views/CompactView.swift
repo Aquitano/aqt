@@ -98,19 +98,19 @@ struct CompactView: View {
     // MARK: - Media slots
 
     private var showCompactMedia: Bool {
-        settings.showCompactNowPlaying && !media.track.isEmpty
+        settings.media.compactNowPlaying && !media.track.isEmpty
     }
 
     private var visualizerRequested: Bool {
         showCompactMedia
-            && settings.showAudioVisualizer
+            && settings.media.audioVisualizer
             && media.track.isPlaying
             && env.renderingActive
     }
 
     @ViewBuilder
     private var mediaTrailing: some View {
-        if settings.showAudioVisualizer {
+        if settings.media.audioVisualizer {
             CompactAudioVisualizer(
                 requested: visualizerRequested,
                 controlsCapture: controlsSharedRendering

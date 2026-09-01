@@ -75,7 +75,7 @@ final class TrayManager {
                 }
             } else if let legacy = persistence.decode([LegacyDropItem].self, from: data) {
                 let result = TrayStoreMigration.migrate(
-                    legacy, ttlDays: settings.trayTTLDays,
+                    legacy, ttlDays: settings.tray.ttlDays,
                     fileExists: { relativePath in
                         FileManager.default.fileExists(
                             atPath: storageRoot.appendingPathComponent(relativePath).path
@@ -99,7 +99,7 @@ final class TrayManager {
                 self.loadIssue = "The tray index is unreadable; stored files were left untouched."
             }
         }
-        if let savedID = UUID(uuidString: settings.trayLastCollectionID),
+        if let savedID = UUID(uuidString: settings.tray.lastCollectionID),
            collections.contains(where: { $0.id == savedID }) {
             activeCollectionID = savedID
         }
@@ -133,7 +133,7 @@ final class TrayManager {
         _ providers: [NSItemProvider],
         moveOriginalURLs: [URL] = []
     ) -> Bool {
-        if settings.trayMoveEnabled, !moveOriginalURLs.isEmpty {
+        if settings.tray.moveEnabled, !moveOriginalURLs.isEmpty {
             return moveOriginalFiles(moveOriginalURLs, collectionID: activeCollectionID)
         }
         guard !providers.isEmpty else { return false }
@@ -396,7 +396,7 @@ final class TrayManager {
     func selectCollection(_ id: UUID) {
         guard collections.contains(where: { $0.id == id }) else { return }
         activeCollectionID = id
-        settings.trayLastCollectionID = id.uuidString
+        settings.tray.lastCollectionID = id.uuidString
     }
 
     @discardableResult
@@ -511,14 +511,14 @@ final class TrayManager {
     }
 
     func applyGlobalTTLToExistingItems() {
-        items = TrayExpiryPolicy.applying(days: settings.trayTTLDays, to: items)
+        items = TrayExpiryPolicy.applying(days: settings.tray.ttlDays, to: items)
         persist()
         pruneExpired()
     }
 
     func expiryPresentation(for item: TrayItem, now: Date = Date()) -> TrayExpiryPresentation? {
         let days = collections.first(where: { $0.id == item.collectionID })?
-            .expiryDaysOverride ?? settings.trayTTLDays
+            .expiryDaysOverride ?? settings.tray.ttlDays
         return TrayExpiryPresentation.make(for: item, now: now, lifetimeDays: days)
     }
 
@@ -617,7 +617,7 @@ final class TrayManager {
             items[index].cleanupError = nil
             let days = collections.first(where: {
                 $0.id == items[index].collectionID
-            })?.expiryDaysOverride ?? settings.trayTTLDays
+            })?.expiryDaysOverride ?? settings.tray.ttlDays
             items[index].expiresAt = pinned ? nil : TrayExpiryPolicy.deadline(
                 addedAt: Date(), days: days
             )
@@ -876,7 +876,7 @@ final class TrayManager {
     private func ingestionContext(collectionID: UUID) -> TrayIngestionContext {
         let addedAt = Date()
         let days = collections.first(where: { $0.id == collectionID })?
-            .expiryDaysOverride ?? settings.trayTTLDays
+            .expiryDaysOverride ?? settings.tray.ttlDays
         return TrayIngestionContext(
             collectionID: collectionID,
             expiresAt: TrayExpiryPolicy.deadline(addedAt: addedAt, days: days),

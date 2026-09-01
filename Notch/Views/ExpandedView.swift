@@ -19,7 +19,7 @@ struct ExpandedView: View {
     var body: some View {
         GlassEffectContainer(spacing: 10) {
             VStack(spacing: 12) {
-                if !state.isDropActive, settings.tabBarStyle == .inside {
+                if !state.isDropActive, settings.notch.tabBarStyle == .inside {
                     NotchTabStrip()
                 }
                 content
@@ -41,7 +41,7 @@ struct ExpandedView: View {
         .tint(.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .top) {
-            if settings.tabBarStyle == .shoulders, !state.isDropActive {
+            if settings.notch.tabBarStyle == .shoulders, !state.isDropActive {
                 NotchShoulderTabs()
                     .padding(.top, NotchLayout.shoulderRowTopInset)
             }

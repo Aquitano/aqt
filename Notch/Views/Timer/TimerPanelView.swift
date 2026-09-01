@@ -53,8 +53,8 @@ struct TimerPanelView: View {
     private var minutesBinding: Binding<Int> {
         let settings = Bindable(settings)
         switch timer.selectedPhase {
-        case .focus: return settings.pomodoroFocusMinutes
-        case .rest: return settings.pomodoroBreakMinutes
+        case .focus: return settings.widgets.pomodoroFocusMinutes
+        case .rest: return settings.widgets.pomodoroBreakMinutes
         }
     }
 

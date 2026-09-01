@@ -138,6 +138,9 @@ targets:
       - path: Notch/Window/HitRegion.swift
       - path: Notch/State/Animations.swift
       - path: Notch/State/NotchState.swift
+      - path: Notch/Settings/Preferences.swift
+      - path: Notch/Model/WidgetKind.swift
+      - path: Notch/Utilities/Logging.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aquitano.notch.tests

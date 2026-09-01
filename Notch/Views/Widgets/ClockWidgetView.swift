@@ -35,7 +35,7 @@ struct ClockWidgetView: View {
     }
 
     private var secondaryZone: TimeZone? {
-        let identifier = settings.clockSecondaryTimeZone
+        let identifier = settings.widgets.clockSecondaryTimeZone
         guard !identifier.isEmpty else { return nil }
         return TimeZone(identifier: identifier)
     }
