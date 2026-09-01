@@ -92,10 +92,13 @@ final class ActivityManager {
     }
 
     /// Open the panel on a tab on a producer's behalf (for example when an agent
-    /// needs attention and the user opted into auto-expand).
+    /// needs attention and the user opted into auto-expand). The tab is set
+    /// before the expand: flipping the presentation first mounts the expanded
+    /// body inside that transaction, and a body first evaluated there does not
+    /// pick up a tab written later in the same turn.
     func requestExpand(tab: NotchState.ExpandedTab) {
-        notch.expand()
         notch.select(tab: tab)
+        notch.expand()
     }
 
     // MARK: - Helpers
