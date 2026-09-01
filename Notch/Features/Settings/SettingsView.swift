@@ -644,11 +644,11 @@ struct SettingsView: View {
     // MARK: - Widgets
 
     private var widgetsPane: some View {
-        Form {
+        List {
             widgetRowSection(.status, title: "Status tiles",
-                             footer: "Compact tiles along the top of the home tab. Battery and Bluetooth only appear when the hardware calls for them.")
+                             footer: "Compact tiles along the top of the home tab. Drag to reorder. Battery and Bluetooth only appear when the hardware calls for them.")
             widgetRowSection(.info, title: "Info panels",
-                             footer: "Taller panels below the tiles. Order here is the order on the home tab.")
+                             footer: "Taller panels below the tiles. Drag to reorder; the order here is the order on the home tab.")
 
             if settings.isWidgetEnabled(.weather) {
                 Section("Weather") {
@@ -672,21 +672,27 @@ struct SettingsView: View {
                 }
             }
         }
-        .formStyle(.grouped)
+        .listStyle(.inset)
     }
 
     /// One grid row of the home tab: enabled widgets in their layout order,
-    /// then the row's disabled ones. Arrows move a widget within its row.
+    /// draggable like the tiles in Notification Center, then the row's disabled
+    /// ones. Turning a widget on appends it to the end of its row.
     private func widgetRowSection(_ row: WidgetKind.Row, title: String, footer: String) -> some View {
         let enabled = settings.notch.widgetLayout.filter { $0.row == row }
         let disabled = WidgetKind.allCases.filter { $0.row == row && !enabled.contains($0) }
         return Section {
-            ForEach(Array(enabled.enumerated()), id: \.element) { index, kind in
-                widgetRow(kind, isOn: widgetBinding(kind),
-                          canMoveUp: index > 0, canMoveDown: index < enabled.count - 1)
+            ForEach(enabled) { kind in
+                widgetRow(kind, isOn: widgetBinding(kind))
+            }
+            .onMove { source, destination in
+                guard let from = source.first else { return }
+                let target = destination > from ? destination - 1 : destination
+                withAnimation { settings.moveWidget(enabled[from], by: target - from) }
             }
             ForEach(disabled) { kind in
-                widgetRow(kind, isOn: widgetBinding(kind), canMoveUp: false, canMoveDown: false)
+                widgetRow(kind, isOn: widgetBinding(kind))
+                    .moveDisabled(true)
             }
         } header: {
             Text(title)
@@ -704,8 +710,7 @@ struct SettingsView: View {
         )
     }
 
-    private func widgetRow(_ kind: WidgetKind, isOn: Binding<Bool>,
-                           canMoveUp: Bool, canMoveDown: Bool) -> some View {
+    private func widgetRow(_ kind: WidgetKind, isOn: Binding<Bool>) -> some View {
         HStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(kind.tint.gradient)
@@ -722,31 +727,13 @@ struct SettingsView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
-            HStack(spacing: 2) {
-                Button {
-                    withAnimation { settings.moveWidget(kind, by: -1) }
-                } label: {
-                    Image(systemName: "chevron.up")
-                }
-                .disabled(!canMoveUp)
-                .accessibilityLabel("Move \(kind.title) earlier")
-                Button {
-                    withAnimation { settings.moveWidget(kind, by: 1) }
-                } label: {
-                    Image(systemName: "chevron.down")
-                }
-                .disabled(!canMoveDown)
-                .accessibilityLabel("Move \(kind.title) later")
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
-            .opacity(isOn.wrappedValue ? 1 : 0.35)
             Toggle(kind.title, isOn: isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
+        .opacity(isOn.wrappedValue ? 1 : 0.6)
     }
 
     private var pinnedShortcutsEditor: some View {
