@@ -3,14 +3,14 @@ import NotchCore
 import AppKit
 
 /// The "Apple feel" lives here: one asymmetric spring set, ~0.4s each.
-/// Open bounces, close settles, compact<->expanded snaps. Reduce Motion
+/// Open and close both settle without overshoot, compact<->expanded snaps. Reduce Motion
 /// swaps every curve for a non-bouncy `.smooth`.
 enum NotchAnimation {
 
-    /// A settled spring with a hint of overshoot: enough life to feel physical,
-    /// not so much that the body visibly rebounds while its content is arriving.
+    /// A critically damped spring: fast out of the gate, decelerating into
+    /// place with no overshoot, so the body never rebounds after it lands.
     static func open(reduceMotion: Bool) -> Animation {
-        reduceMotion ? .smooth(duration: 0.35) : .spring(duration: 0.42, bounce: 0.12)
+        .smooth(duration: reduceMotion ? 0.35 : 0.4)
     }
 
     /// The expanded content fades in once the blob has mostly landed, and
@@ -37,7 +37,7 @@ enum NotchAnimation {
 
     /// Gentle swell while the cursor rests on the compact pill, before it opens.
     static func hoverGrow(reduceMotion: Bool) -> Animation {
-        reduceMotion ? .smooth(duration: 0.18) : .spring(response: 0.22, dampingFraction: 0.7)
+        .smooth(duration: reduceMotion ? 0.18 : 0.22)
     }
 
     /// Widget-grid editing: tiles sliding aside during a reorder drag, and
