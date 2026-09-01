@@ -7,8 +7,17 @@ import AppKit
 /// swaps every curve for a non-bouncy `.smooth`.
 enum NotchAnimation {
 
+    /// A settled spring with a hint of overshoot: enough life to feel physical,
+    /// not so much that the body visibly rebounds while its content is arriving.
     static func open(reduceMotion: Bool) -> Animation {
-        reduceMotion ? .smooth(duration: 0.35) : .bouncy(duration: 0.4)
+        reduceMotion ? .smooth(duration: 0.35) : .spring(duration: 0.42, bounce: 0.12)
+    }
+
+    /// The expanded content fades in once the blob has mostly landed, and
+    /// drops out quickly on close so nothing lingers inside a shrinking body.
+    static func contentReveal(expanded: Bool, reduceMotion: Bool) -> Animation {
+        if reduceMotion { return .smooth(duration: 0.2) }
+        return expanded ? .easeOut(duration: 0.2).delay(0.14) : .easeIn(duration: 0.12)
     }
 
     /// Duration of the close/collapse. Also gates how long the expanded content
@@ -223,7 +232,7 @@ enum NotchLayout {
     /// notch on both sides and drops a little, so the swell reads as the island
     /// lifting off the bezel rather than a scaled bitmap whose top edge sticks
     /// out beside the physical cutout.
-    static let hoverInflation = CGSize(width: 28, height: 6)
+    static let hoverInflation = CGSize(width: 18, height: 8)
 
     static func hoverInflated(_ size: CGSize) -> CGSize {
         CGSize(width: size.width + hoverInflation.width, height: size.height + hoverInflation.height)

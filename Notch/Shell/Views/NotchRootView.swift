@@ -104,6 +104,9 @@ struct NotchRootView: View {
                     ExpandedView(namespace: morph)
                         .frame(width: expandedSize.width, height: expandedSize.height, alignment: .top)
                         .opacity(state.isExpanded ? 1 : 0)
+                        .animation(NotchAnimation.contentReveal(expanded: state.isExpanded,
+                                                                reduceMotion: state.reduceMotion),
+                                   value: state.isExpanded)
                         .accessibilityAction(named: "Collapse notch") {
                             state.collapse()
                         }
