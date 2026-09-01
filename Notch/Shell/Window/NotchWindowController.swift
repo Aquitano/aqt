@@ -492,9 +492,20 @@ final class NotchWindowController {
     private func updatePassthrough() {
         compactHitRegions = hosts.reduce(into: [:]) { result, entry in
             let (key, host) = entry
-            result[key] = interactiveContentRect(for: host).insetBy(dx: -4, dy: -4)
+            result[key] = hoverRect(for: host)
         }
         applyPassthroughAtPointer()
+    }
+
+    /// The rect the pointer counts as "on the notch" in every presentation: the
+    /// content rect with a small margin, extended past the top of the screen.
+    /// A pointer pushed into the notch parks on the screen's top edge, which a
+    /// plain `contains` excludes; using different rects for compact and expanded
+    /// made that pointer flip between inside and outside on every open.
+    private func hoverRect(for host: NotchPanelHost) -> NSRect {
+        var rect = interactiveContentRect(for: host).insetBy(dx: -4, dy: -4)
+        rect.size.height += 100
+        return rect
     }
 
     private func applyPassthroughAtPointer() {
@@ -521,21 +532,25 @@ final class NotchWindowController {
             host.hoverSensor.update(rect: nil)
             return
         }
+        // The cache is refreshed after a presentation change lands; while
+        // expanded, compute fresh so the first pointer moves after the open
+        // are judged against the expanded rect, not the pill's.
+        let hit = host.state.presentation == .expanded
+            ? hoverRect(for: host)
+            : compactHitRegions[host.displayKey] ?? hoverRect(for: host)
+        let inside = hit.contains(mouseLocation)
         switch host.state.presentation {
         case .expanded:
             setIgnoresMouseEvents(false, on: host)
             host.hoverSensor.update(rect: nil)
-            setHovering(interactiveContentRect(for: host).contains(mouseLocation), on: host)
+            setHovering(inside, on: host)
         case .hidden:
             setIgnoresMouseEvents(true, on: host)
             host.hoverSensor.update(rect: nil)
             setHovering(false, on: host)
         case .compact:
-            let hit = compactHitRegions[host.displayKey]
-                ?? interactiveContentRect(for: host).insetBy(dx: -4, dy: -4)
-            let inside = hit.contains(mouseLocation)
             setIgnoresMouseEvents(!inside, on: host)
-            host.hoverSensor.update(rect: hit)
+            host.hoverSensor.update(rect: hit.intersection(host.geometry.panelFrame))
             setHovering(inside, on: host)
         }
     }
