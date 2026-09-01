@@ -219,6 +219,16 @@ enum NotchLayout {
     /// this is the one number to nudge if they turn out flaky.
     static let shoulderRowTopInset: CGFloat = 0
 
+    /// How much the compact pill grows while hovered: the body widens past the
+    /// notch on both sides and drops a little, so the swell reads as the island
+    /// lifting off the bezel rather than a scaled bitmap whose top edge sticks
+    /// out beside the physical cutout.
+    static let hoverInflation = CGSize(width: 28, height: 6)
+
+    static func hoverInflated(_ size: CGSize) -> CGSize {
+        CGSize(width: size.width + hoverInflation.width, height: size.height + hoverInflation.height)
+    }
+
     static func contentSize(presentation: NotchState.Presentation,
                             notch: CGSize,
                             expandedWidth: CGFloat = NotchMetrics.expandedWidth,

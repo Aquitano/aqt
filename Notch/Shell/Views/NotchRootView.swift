@@ -74,10 +74,10 @@ struct NotchRootView: View {
     private var notchContent: some View {
         let expanded = state.presentation == .expanded
         let size = currentSize
-        let bottomRadius = expanded ? NotchMetrics.expandedCornerRadius : NotchMetrics.compactCornerRadius
-        // Hover the compact pill and it swells slightly first (an intent preview),
-        // then opens after a brief delay — a softer, more deliberate reveal.
-        let hoverGrow = state.presentation == .compact && state.isHovering && !state.isDropActive
+        let bottomRadius = expanded
+            ? NotchMetrics.expandedCornerRadius
+            : (isHoverSwollen ? NotchMetrics.compactCornerRadius + 4 : NotchMetrics.compactCornerRadius)
+        let hoverGrow = isHoverSwollen
 
         return ZStack {
             NotchShape(
@@ -131,7 +131,6 @@ struct NotchRootView: View {
             ))
         }
         .frame(width: size.width, height: size.height)
-        .scaleEffect(hoverGrow ? 1.09 : 1.0, anchor: .top)
         .animation(NotchAnimation.hoverGrow(reduceMotion: state.reduceMotion), value: hoverGrow)
         .contentShape(NotchShape(
             topRadius: NotchMetrics.compactCornerRadius,
@@ -151,8 +150,16 @@ struct NotchRootView: View {
         )
     }
 
+    /// Hover the compact pill and it swells first (an intent preview), then
+    /// opens after a short delay. The swell is a layout change, not a scale
+    /// transform, so the top stays matched to the physical notch and the open
+    /// continues from the swollen size as one morph.
+    private var isHoverSwollen: Bool {
+        state.presentation == .compact && state.isHovering && !state.isDropActive
+    }
+
     private var currentSize: CGSize {
-        NotchLayout.contentSize(
+        let size = NotchLayout.contentSize(
             presentation: state.presentation,
             notch: notchSize,
             expandedWidth: expandedWidth,
@@ -163,6 +170,7 @@ struct NotchRootView: View {
             dropActive: state.isDropActive,
             tabBarStyle: settings.notch.tabBarStyle
         )
+        return isHoverSwollen ? NotchLayout.hoverInflated(size) : size
     }
 
     private var expandedSize: CGSize {
