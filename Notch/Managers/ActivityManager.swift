@@ -14,10 +14,12 @@ final class ActivityManager {
 
     private var cycleOffset = 0
     @ObservationIgnored private unowned let state: NotchState
+    @ObservationIgnored private let clock: any Clock<Duration>
     @ObservationIgnored private var ttlTasks: [UUID: Task<Void, Never>] = [:]
 
-    init(state: NotchState) {
+    init(state: NotchState, clock: any Clock<Duration> = ContinuousClock()) {
         self.state = state
+        self.clock = clock
     }
 
     /// Highest priority first; newest breaks ties.
@@ -114,8 +116,8 @@ final class ActivityManager {
     private func scheduleTTL(_ activity: Activity) {
         guard let ttl = activity.ttl else { return }
         ttlTasks[activity.id]?.cancel()
-        ttlTasks[activity.id] = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(ttl))
+        ttlTasks[activity.id] = Task { [weak self, clock] in
+            try? await clock.sleep(for: .seconds(ttl))
             guard !Task.isCancelled else { return }
             self?.remove(id: activity.id)
         }

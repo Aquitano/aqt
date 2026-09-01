@@ -25,12 +25,14 @@ final class TimerManager {
     var isRunning: Bool { runState != .idle }
 
     private unowned let activities: ActivityManager
+    private let clock: any Clock<Duration>
     private var activityID: UUID?
     private var name = ""
     private var task: Task<Void, Never>?
 
-    init(activities: ActivityManager) {
+    init(activities: ActivityManager, clock: any Clock<Duration> = ContinuousClock()) {
         self.activities = activities
+        self.clock = clock
     }
 
     func start(phase: PomodoroPhase, minutes: Int) {
@@ -84,8 +86,8 @@ final class TimerManager {
     }
 
     private func schedule(seconds: TimeInterval) {
-        task = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(seconds))
+        task = Task { [weak self, clock] in
+            try? await clock.sleep(for: .seconds(seconds))
             guard !Task.isCancelled else { return }
             self?.complete()
         }

@@ -66,6 +66,13 @@ final class NotchState {
     var isExpanded: Bool { presentation == .expanded }
     var isVisible: Bool { presentation != .hidden }
 
+    /// Every grace period sleeps on this clock, so tests drive them by hand.
+    @ObservationIgnored private let clock: any Clock<Duration>
+
+    init(clock: any Clock<Duration> = ContinuousClock()) {
+        self.clock = clock
+    }
+
     // MARK: - Transitions
 
     func hoverChanged(_ hovering: Bool) {
@@ -86,9 +93,9 @@ final class NotchState {
     /// A tab switch can shrink the panel, pulling the surface (and the floating
     /// dock) up out from under a stationary pointer; the resulting hover-exit
     /// must not close the panel the user just clicked in. Hover-out collapses
-    /// requested before this deadline wait it out, giving the morph time to
-    /// settle and the pointer time to land back on the moved surface.
-    private var resizeHoldUntil: Date = .distantPast
+    /// requested while this runs wait it out, giving the morph time to settle
+    /// and the pointer time to land back on the moved surface.
+    private var resizeHoldTask: Task<Void, Never>?
 
     /// Drops `isCollapsing` once the close animation has finished.
     private var collapsingResetTask: Task<Void, Never>?
@@ -118,7 +125,7 @@ final class NotchState {
         expandTask?.cancel()
         expandTask = Task { @MainActor [weak self] in
             // Brief intent delay so the pill's hover-swell reads before it opens.
-            try? await Task.sleep(for: .milliseconds(210))
+            try? await self?.clock.sleep(for: .milliseconds(210))
             guard let self, !Task.isCancelled else { return }
             self.expandTask = nil
             self.endCollapsing()
@@ -160,9 +167,10 @@ final class NotchState {
         guard !isDropActive else { return }
         cancelPendingExpand()
         collapseTask?.cancel()
-        let grace = max(0.16, resizeHoldUntil.timeIntervalSinceNow + 0.16)
+        let hold = resizeHoldTask
         collapseTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(grace))
+            await hold?.value
+            try? await self?.clock.sleep(for: .milliseconds(160))
             guard let self, !Task.isCancelled else { return }
             self.collapseTask = nil
             // The pointer may have settled back onto the moved surface during
@@ -212,7 +220,7 @@ final class NotchState {
         isCollapsing = true
         collapsingResetTask?.cancel()
         collapsingResetTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(NotchAnimation.closeDuration + 0.1))
+            try? await self?.clock.sleep(for: .seconds(NotchAnimation.closeDuration + 0.1))
             guard let self, !Task.isCancelled else { return }
             self.isCollapsing = false
             self.expandedTab = self.defaultTab()
@@ -246,7 +254,8 @@ final class NotchState {
 
     func select(tab: ExpandedTab) {
         guard tab != expandedTab else { return }
-        resizeHoldUntil = Date().addingTimeInterval(0.7)
+        resizeHoldTask?.cancel()
+        resizeHoldTask = Task { [clock] in try? await clock.sleep(for: .milliseconds(700)) }
         withAnimation(NotchAnimation.morph(reduceMotion: reduceMotion)) {
             expandedTab = tab
         }

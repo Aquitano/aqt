@@ -2,14 +2,57 @@ import XCTest
 
 @MainActor
 final class NotchStateTests: XCTestCase {
-    func testHoverExitKeepsPhysicalNotchAvailableWithoutCompactContent() async {
-        let state = NotchState()
+    func testHoverExitCollapsesAfterGrace() async {
+        let clock = ManualClock()
+        let state = NotchState(clock: clock)
         state.expand()
 
         state.hoverChanged(false)
-        try? await Task.sleep(for: .milliseconds(220))
+        await clock.advance(by: .milliseconds(100))
+        XCTAssertEqual(state.presentation, .expanded, "still inside the hover-out grace")
 
+        await clock.advance(by: .milliseconds(100))
         XCTAssertEqual(state.presentation, .compact)
+    }
+
+    func testPointerReturningDuringGraceCancelsCollapse() async {
+        let clock = ManualClock()
+        let state = NotchState(clock: clock)
+        state.expand()
+
+        state.hoverChanged(false)
+        await clock.advance(by: .milliseconds(100))
+        state.hoverChanged(true)
+        await clock.advance(by: .seconds(1))
+
+        XCTAssertEqual(state.presentation, .expanded)
+    }
+
+    func testTabSwitchHoldsOffHoverExitCollapse() async {
+        let clock = ManualClock()
+        let state = NotchState(clock: clock)
+        state.expand()
+        state.select(tab: .media)
+
+        state.hoverChanged(false)
+        await clock.advance(by: .milliseconds(500))
+        XCTAssertEqual(state.presentation, .expanded, "the resize hold absorbs the hover exit")
+
+        await clock.advance(by: .milliseconds(400))
+        XCTAssertEqual(state.presentation, .compact)
+    }
+
+    func testHoverEntryExpandsAfterIntentDelay() async {
+        let clock = ManualClock()
+        let state = NotchState(clock: clock)
+        state.showCompact()
+
+        state.hoverChanged(true)
+        await clock.advance(by: .milliseconds(100))
+        XCTAssertEqual(state.presentation, .compact, "a skim across the pill must not open it")
+
+        await clock.advance(by: .milliseconds(150))
+        XCTAssertEqual(state.presentation, .expanded)
     }
 
     func testExplicitHideStillOrdersTheNotchOut() {
