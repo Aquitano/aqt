@@ -13,12 +13,12 @@ final class ActivityManager {
     private(set) var lastEventID = UUID()
 
     private var cycleOffset = 0
-    @ObservationIgnored private unowned let state: NotchState
+    @ObservationIgnored private unowned let notch: NotchCoordinator
     @ObservationIgnored private let clock: any Clock<Duration>
     @ObservationIgnored private var ttlTasks: [UUID: Task<Void, Never>] = [:]
 
-    init(state: NotchState, clock: any Clock<Duration> = ContinuousClock()) {
-        self.state = state
+    init(notch: NotchCoordinator, clock: any Clock<Duration> = ContinuousClock()) {
+        self.notch = notch
         self.clock = clock
     }
 
@@ -58,7 +58,7 @@ final class ActivityManager {
             lastEventID = activity.id
         }
         scheduleTTL(activity)
-        state.showCompact()
+        notch.showCompact()
     }
 
     /// Push a generic Quick Peek from any internal source. Peeks have no channel,
@@ -93,8 +93,8 @@ final class ActivityManager {
     /// Open the panel on a tab on a producer's behalf (for example when an agent
     /// needs attention and the user opted into auto-expand).
     func requestExpand(tab: NotchState.ExpandedTab) {
-        state.expand()
-        state.select(tab: tab)
+        notch.expand()
+        notch.select(tab: tab)
     }
 
     // MARK: - Helpers

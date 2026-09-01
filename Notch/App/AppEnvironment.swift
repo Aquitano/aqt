@@ -9,7 +9,7 @@ import SwiftUI
 final class AppEnvironment {
 
     let settings: Settings
-    let state: NotchState
+    let notch: NotchCoordinator
 
     let imageCache: ImageCache
     let persistence: Persistence
@@ -51,15 +51,14 @@ final class AppEnvironment {
         let diagnostics = Diagnostics()
         let persistence = Persistence(onFailure: { diagnostics.report(source: "Storage", $0) })
         let settings = Settings(store: PreferencesStore(persistence: persistence, diagnostics: diagnostics))
-        let state = NotchState()
-        state.defaultTab = { settings.resolvedDefaultTab }
-        state.expandedTab = settings.resolvedDefaultTab
+        let notch = NotchCoordinator()
+        notch.defaultTab = { settings.resolvedDefaultTab(for: $0) }
         let imageCache = ImageCache()
-        let activities = ActivityManager(state: state)
+        let activities = ActivityManager(notch: notch)
         let audio = AudioHardware()
 
         self.settings = settings
-        self.state = state
+        self.notch = notch
         self.imageCache = imageCache
         self.persistence = persistence
         self.diagnostics = diagnostics
@@ -235,14 +234,16 @@ private final class ShareCoordinator: NSObject, NSSharingServiceDelegate, @preco
 }
 
 extension View {
-    /// Inject every manager so views can pull exactly what they need from the environment.
+    /// Inject every manager so views can pull exactly what they need from the
+    /// environment. Panel trees also get their display's `NotchState`; the
+    /// Settings and onboarding windows have none.
     @MainActor
     func injectNotchEnvironment(_ env: AppEnvironment, state: NotchState? = nil) -> some View {
         self
             .environment(env)
             .environment(env.settings)
             .environment(env.diagnostics)
-            .environment(state ?? env.state)
+            .environment(state)
             .environment(env.activities)
             .environment(env.media)
             .environment(env.audioVisualizer)

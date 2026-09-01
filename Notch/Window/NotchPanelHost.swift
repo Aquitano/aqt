@@ -18,24 +18,18 @@ final class NotchPanelHost {
     private(set) var geometry: ScreenGeometry
     private var showsHUD = false
     private var controlsSharedRendering = false
-    private var observers: [Task<Void, Never>] = []
 
-    var onPresentationChange: ((NotchState.Presentation) -> Void)?
-    var onTabChange: ((NotchState.ExpandedTab) -> Void)?
     /// The pointer moved over, entered, or left the panel while it was
     /// interactive. The controller re-derives hover and click-through from the
     /// pointer's position on every call.
     var onPointerEvent: (() -> Void)?
     var onHoverSensorEntered: (() -> Void)?
 
-    init(env: AppEnvironment, geometry: ScreenGeometry) {
+    init(env: AppEnvironment, geometry: ScreenGeometry, state: NotchState) {
         self.env = env
         self.displayKey = geometry.display.key
         self.geometry = geometry
-        self.state = NotchState()
-        let displayKey = geometry.display.key
-        state.defaultTab = { env.settings.resolvedDefaultTab(for: displayKey) }
-        state.expandedTab = env.settings.resolvedDefaultTab(for: displayKey)
+        self.state = state
         self.panel = NotchPanel(contentRect: geometry.panelFrame)
         self.hoverSensor = HoverSensorPanel()
         self.hostingView = NSHostingView(rootView: AnyView(EmptyView()))
@@ -48,12 +42,6 @@ final class NotchPanelHost {
         contentView.onPointerEvent = { [weak self] in self?.onPointerEvent?() }
         panel.contentView = contentView
         panel.ignoresMouseEvents = true
-
-        let state = self.state
-        observers = [
-            watch(initial: false, { state.presentation }) { [weak self] in self?.onPresentationChange?($0) },
-            watch(initial: false, { state.expandedTab }) { [weak self] in self?.onTabChange?($0) },
-        ]
 
         rebuildRoot()
     }

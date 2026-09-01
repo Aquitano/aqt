@@ -6,9 +6,10 @@ enum DropZone: Hashable {
     case share  // share immediately via the configured method
 }
 
-/// Single source of truth for what the notch is showing right now.
-/// Owns the presentation phase and the active-activity selection; the feature
-/// managers own their own data and publish into the SwiftUI environment.
+/// What one display's notch is showing right now: the presentation phase, the
+/// selected tab, and the hover/grace timers that move between them. One per
+/// display, owned by `NotchCoordinator`; the feature managers own their own
+/// data and publish into the SwiftUI environment.
 @MainActor
 @Observable
 final class NotchState {
@@ -41,7 +42,11 @@ final class NotchState {
     /// Injected reset target so the panel can reopen on a user-chosen tab
     /// without NotchState depending on Settings (this file also compiles into
     /// the host-less test target, which carries no Settings).
-    var defaultTab: () -> ExpandedTab = { .home }
+    @ObservationIgnored var defaultTab: () -> ExpandedTab = { .home }
+
+    /// Called synchronously just before this machine expands, so the owner can
+    /// compact every other display's machine.
+    @ObservationIgnored var onExpand: ((NotchState) -> Void)?
 
     /// True while a file drag is hovering the notch. Pins the panel open on the
     /// tray and suppresses the hover-out collapse so a flickering hover can't pull
@@ -111,6 +116,7 @@ final class NotchState {
         collapseTask = nil
         endCollapsing()
         guard presentation != .expanded else { return }
+        onExpand?(self)
         withAnimation(NotchAnimation.open(reduceMotion: reduceMotion)) {
             presentation = .expanded
         }
@@ -128,6 +134,8 @@ final class NotchState {
             guard let self, !Task.isCancelled else { return }
             self.expandTask = nil
             self.endCollapsing()
+            guard self.presentation != .expanded else { return }
+            self.onExpand?(self)
             withAnimation(NotchAnimation.open(reduceMotion: self.reduceMotion)) {
                 self.presentation = .expanded
             }

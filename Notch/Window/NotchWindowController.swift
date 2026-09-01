@@ -2,12 +2,17 @@ import AppKit
 import SwiftUI
 
 /// Coordinates one display-local panel host per selected screen. Feature data
-/// remains shared, but presentation is local so every display can keep a compact
-/// hover target while expansion and key-capable interactions stay exclusive.
+/// remains shared; each host renders its display's `NotchState`, which the
+/// `NotchCoordinator` owns and keeps mutually exclusive for expansion. This
+/// controller turns those machines into windows: frames, visibility, hover,
+/// click-through, drag routing, and the key-capable interactions.
 @MainActor
 final class NotchWindowController {
     private let env: AppEnvironment
+    private var notch: NotchCoordinator { env.notch }
     private var hosts: [String: NotchPanelHost] = [:]
+    /// The host a transient key-capable interaction (share sheet, text editing,
+    /// drag) is bound to while nothing is expanded; an expanded host always wins.
     private var interactionHostKey: String?
     private var activeDisplayKey: String?
     private var activeDisplayCandidate: String?
@@ -21,7 +26,6 @@ final class NotchWindowController {
     /// Low-rate pointer poll for follow-the-pointer on several displays
     /// (see `updatePointerDisplayPolling`).
     private var pointerDisplayTask: Task<Void, Never>?
-    private var handlingHostChange = false
 
     private var isDragSessionActive = false
     private var dragHostKey: String?
@@ -31,7 +35,8 @@ final class NotchWindowController {
     var panelContentView: NSView? { interactionHost?.panel.contentView }
 
     private var interactionHost: NotchPanelHost? {
-        interactionHostKey.flatMap { hosts[$0] }
+        notch.expandedKey.flatMap { hosts[$0] }
+            ?? interactionHostKey.flatMap { hosts[$0] }
             ?? activeDisplayKey.flatMap { hosts[$0] }
             ?? hosts.values.first
     }
@@ -45,6 +50,11 @@ final class NotchWindowController {
             containing: NSEvent.mouseLocation,
             in: inventory
         )
+        env.notch.expansionTarget = { [weak self] in
+            guard let self else { return nil }
+            if let key = self.displayKeyAtPointer(), self.hosts[key] != nil { return key }
+            return self.interactionHostKey.flatMap { self.hosts[$0] != nil ? $0 : nil }
+        }
         reconcileHosts()
         wire()
         setupMouseTracking()
@@ -71,15 +81,14 @@ final class NotchWindowController {
         let targets = selection.targets.isEmpty ? [displayInventory[0]] : selection.targets
         let desiredKeys = Set(targets.map(\.key))
 
-        prepareInteractionHostForRemoval(desiredKeys: desiredKeys)
+        let migration = prepareInteractionHostForRemoval(desiredKeys: desiredKeys)
 
         for key in Array(hosts.keys) where !desiredKeys.contains(key) {
             hosts[key]?.orderOut()
-            hosts[key]?.onPresentationChange = nil
-            hosts[key]?.onTabChange = nil
             hosts[key]?.onPointerEvent = nil
             hosts[key]?.onHoverSensorEntered = nil
             hosts[key] = nil
+            notch.unregister(displayKey: key)
         }
 
         for display in targets {
@@ -95,14 +104,10 @@ final class NotchWindowController {
                     controlsSharedRendering: false
                 )
             } else {
-                let host = NotchPanelHost(env: env, geometry: geometry)
-                host.state.expandedTab = env.state.expandedTab
-                host.onPresentationChange = { [weak self] presentation in
-                    self?.hostPresentationChanged(displayKey: display.key, presentation: presentation)
-                }
-                host.onTabChange = { [weak self] tab in
-                    self?.hostTabChanged(displayKey: display.key, tab: tab)
-                }
+                let host = NotchPanelHost(
+                    env: env, geometry: geometry,
+                    state: notch.register(displayKey: display.key)
+                )
                 host.onPointerEvent = { [weak self] in
                     guard let self, let host = self.hosts[display.key] else { return }
                     self.applyPassthrough(host, mouseLocation: NSEvent.mouseLocation)
@@ -120,14 +125,18 @@ final class NotchWindowController {
             current: interactionHostKey,
             active: activeDisplayKey
         )
+        // A programmatic expansion whose display went away reopens on the
+        // display the pointer is on now.
+        if migration == .restoreProgrammaticExpansion { notch.expand() }
         updateHostRoles()
-        syncGlobalPresentation(env.state.presentation)
         applyAll()
         updatePointerDisplayPolling()
     }
 
-    private func prepareInteractionHostForRemoval(desiredKeys: Set<String>) {
-        guard let key = interactionHostKey, let host = hosts[key] else { return }
+    @discardableResult
+    private func prepareInteractionHostForRemoval(desiredKeys: Set<String>) -> DisplayHostMigrationInstruction {
+        guard let host = interactionHost else { return .keepPresentation }
+        let key = host.displayKey
         let hasTransientInteraction = host.panel.presentingShareSheet
             || host.panel.editingText
             || host.panel.interactingWithTray
@@ -144,15 +153,16 @@ final class NotchWindowController {
         case .keepPresentation, .restoreProgrammaticExpansion:
             break
         case .collapse:
-            env.state.collapseImmediately()
+            host.state.collapseImmediately()
         case .endTransientInteractionAndCollapse:
             host.panel.presentingShareSheet = false
             host.panel.editingText = false
             host.panel.interactingWithTray = false
             host.panel.previewing = false
             if dragHostKey == key { endDragSession(host) }
-            env.state.collapseImmediately()
+            host.state.collapseImmediately()
         }
+        return instruction
     }
 
     /// HUD and shared capture lifecycle belong to one host. Rebuild the old role
@@ -179,80 +189,23 @@ final class NotchWindowController {
         }
     }
 
-    // MARK: - State synchronization
+    // MARK: - Presentation changes
 
-    private func hostPresentationChanged(
-        displayKey: String,
-        presentation: NotchState.Presentation
-    ) {
-        guard !handlingHostChange, let host = hosts[displayKey] else { return }
-        handlingHostChange = true
-        defer { handlingHostChange = false }
-
-        switch presentation {
-        case .expanded:
-            interactionHostKey = displayKey
-            for other in hosts.values where other.displayKey != displayKey {
-                makeCompact(other.state)
-            }
-            if env.state.expandedTab != host.state.expandedTab {
-                env.state.expandedTab = host.state.expandedTab
-            }
-            if env.state.presentation != .expanded { env.state.expand() }
-            updateHostRoles()
-
-        case .compact:
-            if interactionHostKey == displayKey,
-               env.state.presentation == .expanded {
-                env.state.collapseImmediately()
-            }
-
-        case .hidden:
-            break
+    /// A machine changed presentation (hover, a command, the coordinator's
+    /// exclusivity rule): the expanded display becomes the interaction host,
+    /// roles and window visibility follow.
+    private func presentationsChanged(hudVisible: Bool) {
+        // With a notch on every display the HUD belongs on the pointer's
+        // display; resolve that now rather than tracking the pointer.
+        if hudVisible, env.settings.display.placement == .all,
+           let key = displayKeyAtPointer(), hosts[key] != nil {
+            activateDisplay(key)
         }
-        applyAll()
-    }
-
-    private func hostTabChanged(displayKey: String, tab: NotchState.ExpandedTab) {
-        guard !handlingHostChange, interactionHostKey == displayKey else { return }
-        if env.state.expandedTab != tab { env.state.expandedTab = tab }
-    }
-
-    private func syncGlobalPresentation(_ presentation: NotchState.Presentation) {
-        guard !handlingHostChange else { return }
-        handlingHostChange = true
-        defer { handlingHostChange = false }
-
-        if presentation == .expanded {
-            chooseInteractionHostAtPointer()
-        }
-        for host in hosts.values {
-            switch presentation {
-            case .hidden:
-                host.state.hide()
-            case .compact:
-                makeCompact(host.state)
-            case .expanded:
-                if host.displayKey == interactionHostKey {
-                    if host.state.expandedTab != env.state.expandedTab {
-                        host.state.expandedTab = env.state.expandedTab
-                    }
-                    host.state.expand()
-                } else {
-                    makeCompact(host.state)
-                }
-            }
+        if let expanded = notch.expandedKey, hosts[expanded] != nil {
+            interactionHostKey = expanded
         }
         updateHostRoles()
         applyAll()
-    }
-
-    private func makeCompact(_ state: NotchState) {
-        switch state.presentation {
-        case .hidden: state.showCompact()
-        case .expanded: state.collapseImmediately()
-        case .compact: break
-        }
     }
 
     private func chooseInteractionHostAtPointer() {
@@ -296,22 +249,8 @@ final class NotchWindowController {
                 }
                 self.reconcileHosts()
             },
-            watch({ (env.state.presentation, env.hud.isVisible) }) { [weak self] presentation, hudVisible in
-                guard let self else { return }
-                // With a notch on every display the HUD belongs on the pointer's
-                // display; resolve that now rather than tracking the pointer.
-                if hudVisible, self.env.settings.display.placement == .all,
-                   let key = self.displayKeyAtPointer(), self.hosts[key] != nil {
-                    self.activateDisplay(key)
-                }
-                self.syncGlobalPresentation(presentation)
-            },
-            watch(initial: false, { env.state.expandedTab }) { [weak self] tab in
-                guard let self, let host = self.interactionHost,
-                      host.state.expandedTab != tab else { return }
-                self.handlingHostChange = true
-                host.state.expandedTab = tab
-                self.handlingHostChange = false
+            watch({ (env.notch.states.mapValues(\.presentation), env.hud.isVisible) }) { [weak self] _, hudVisible in
+                self?.presentationsChanged(hudVisible: hudVisible)
             },
             Task { @MainActor [weak self] in
                 for await _ in NotificationCenter.default.notifications(
@@ -421,7 +360,7 @@ final class NotchWindowController {
     private func activateDisplay(_ key: String) {
         guard key != activeDisplayKey else { return }
         activeDisplayKey = key
-        if env.state.presentation != .expanded { interactionHostKey = key }
+        if notch.expandedKey == nil { interactionHostKey = key }
         updateHostRoles()
         applyAll()
     }
@@ -433,7 +372,7 @@ final class NotchWindowController {
               interactionHost?.panel.editingText != true,
               interactionHost?.panel.interactingWithTray != true,
               interactionHost?.panel.previewing != true,
-              env.state.presentation != .expanded,
+              notch.expandedKey == nil,
               let candidate = displayKeyAtPointer(),
               candidate != activeDisplayKey else { return }
         guard candidate != activeDisplayCandidate else { return }

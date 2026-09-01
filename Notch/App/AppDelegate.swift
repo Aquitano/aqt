@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupStatusItem()
         env.start()
-        env.state.showCompact()
+        env.notch.showCompact()
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(showOnboarding), name: .showOnboarding, object: nil
@@ -134,11 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleNotch() {
-        if env.state.isVisible {
-            env.state.hide()
-        } else {
-            env.state.expand()
-        }
+        env.notch.toggle()
     }
 
     @objc private func clearTray() {
@@ -154,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
-        env.state.collapseImmediately()
+        env.notch.collapseImmediately()
         NSApp.activate(ignoringOtherApps: true)
         // macOS 14+ selector; fall back to the legacy one just in case.
         if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
