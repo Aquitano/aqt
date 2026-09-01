@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 import AppKit
 
 /// The full expanded panel body. Lives inside the black notch blob, so every

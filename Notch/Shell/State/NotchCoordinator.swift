@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 import Observation
 
 /// The app-level view of the notch across displays. Every display has its own

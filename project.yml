@@ -13,6 +13,8 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: "26.0"
     DEVELOPMENT_TEAM: "" # set your Developer-ID team for local signing
     SWIFT_STRICT_CONCURRENCY: complete
+    # Lets app targets use NotchCore's `package` declarations (same package group).
+    SWIFT_PACKAGE_NAME: notchcore
     CLANG_ENABLE_MODULES: YES
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
@@ -44,6 +46,7 @@ targets:
         embed: true
         link: false
         codeSign: true
+      - package: NotchCore
     settings:
       base:
         PRODUCT_NAME: Notch
@@ -82,12 +85,9 @@ targets:
     type: tool
     platform: macOS
     sources:
-      - path: Notch/Features/Agents/AgentModels.swift
-      - path: Notch/Features/Agents/AgentPermission.swift
-      - path: Notch/Features/Agents/AgentSocketPath.swift
-      - path: Notch/Features/Agents/ProcessLookup.swift
-      - path: Notch/Features/Agents/HookClient.swift
       - path: HookTool
+    dependencies:
+      - package: NotchCore
     settings:
       base:
         PRODUCT_NAME: notch-hook
@@ -110,41 +110,12 @@ targets:
     platform: macOS
     sources:
       - path: Tests
-      - path: Notch/Features/Agents/AgentModels.swift
-      - path: Notch/Features/Agents/AgentPermission.swift
-      - path: Notch/Features/Agents/ScannedSession.swift
-      - path: Notch/Features/Agents/StatusReducer.swift
-      - path: Notch/Features/Agents/TranscriptParser.swift
-      - path: Notch/Features/Agents/SessionReconciler.swift
-      - path: Notch/Features/Agents/T3Wire.swift
-      - path: Notch/Features/Agents/AgentConfigInstaller.swift
-      - path: Notch/Features/Agents/HookRestorePolicy.swift
-      - path: Notch/Features/Agents/AgentSoundPlayer.swift
-      - path: Notch/Features/Widgets/BatteryPolicy.swift
-      - path: Notch/Features/Timer/TimerPolicy.swift
-      - path: Notch/Features/Widgets/CalendarReminders.swift
-      - path: Notch/Features/Activities/Activity.swift
-      - path: Notch/Features/Media/MediaModels.swift
-      - path: Notch/Features/Widgets/WidgetModels.swift
-      - path: Notch/Features/Tray/ShareMethod.swift
-      - path: Notch/Shell/Views/TabBarStyle.swift
-      - path: Notch/Shell/Window/DisplayModels.swift
-      - path: Notch/Features/Tray/DropItem.swift
-      - path: Notch/Features/Tray/TrayTransfer.swift
-      - path: Notch/Features/Tray/TrayLifecycle.swift
-      - path: Notch/Features/Tray/ScreenshotCandidate.swift
-      - path: Notch/Features/Tray/TrayIngestionPipeline.swift
-      - path: Notch/Platform/Persistence.swift
-      - path: Notch/Platform/Diagnostics.swift
-      - path: Notch/Features/Media/MediaAdapterPayload.swift
-      - path: Notch/Features/Media/AudioLevelAnalysis.swift
       - path: Notch/Shell/Window/HitRegion.swift
       - path: Notch/Shell/State/Animations.swift
       - path: Notch/Shell/State/NotchState.swift
       - path: Notch/Shell/State/NotchCoordinator.swift
-      - path: Notch/Features/Settings/Preferences.swift
-      - path: Notch/Features/Widgets/WidgetKind.swift
-      - path: Notch/Platform/Logging.swift
+    dependencies:
+      - package: NotchCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aquitano.notch.tests
@@ -168,6 +139,8 @@ schemes:
         - NotchTests
 
 packages:
+  NotchCore:
+    path: Packages/NotchCore
   mediaremote-adapter:
     url: https://github.com/ejbills/mediaremote-adapter
     revision: cf30c4f1af29b5829d859f088f8dbdf12611a046

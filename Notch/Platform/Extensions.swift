@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 // MARK: - Notch geometry through the environment
 

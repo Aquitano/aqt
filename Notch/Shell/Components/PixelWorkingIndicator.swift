@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// A small retro pixel "spinner": a 3×3 grid whose perimeter lights a moving
 /// two-cell comet while an agent works. Animation is scoped to a `TimelineView`

@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// Single-line label that gently scrolls when its text is wider than the space
 /// it's given. Scrolling only happens while `isActive` (the caller gates this on

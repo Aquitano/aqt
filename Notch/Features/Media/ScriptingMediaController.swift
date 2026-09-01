@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 
 /// Per-app Now Playing via AppleScript for Music and Spotify. Push-driven by
 /// each app's DistributedNotification (no polling). Scripts run on a background

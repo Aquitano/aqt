@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// One persistent scratch note. The overlay panel is non-activating and only
 /// key-capable on demand, so the editor latches the panel key while focused

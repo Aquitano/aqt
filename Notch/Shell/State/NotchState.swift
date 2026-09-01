@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// The two fields shown while a file is dragged onto the notch.
 enum DropZone: Hashable {
@@ -20,20 +21,7 @@ final class NotchState {
         case expanded   // full panel
     }
 
-    enum ExpandedTab: String, CaseIterable, Identifiable, Codable {
-        case home, agents, media, timer, tray
-        var id: String { rawValue }
-        var title: String { rawValue.capitalized }
-        var symbol: String {
-            switch self {
-            case .home: return "square.grid.2x2"
-            case .agents: return "terminal"
-            case .media: return "play.circle"
-            case .timer: return "timer"
-            case .tray: return "tray.full"
-            }
-        }
-    }
+    typealias ExpandedTab = NotchTab
 
     var presentation: Presentation = .hidden
     var isHovering: Bool = false

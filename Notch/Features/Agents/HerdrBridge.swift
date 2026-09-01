@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 
 /// Adapter for herdr (https://herdr.dev), a terminal multiplexer that hosts
 /// coding agents in panes owned by a detached background server. That server

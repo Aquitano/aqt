@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 
 /// Whether an agent's terminal is still on screen. A session whose window died —
 /// the tab closed, or the terminal app restarted under it — keeps running on an

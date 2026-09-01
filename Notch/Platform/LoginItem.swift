@@ -1,4 +1,5 @@
 import ServiceManagement
+import NotchCore
 
 /// Thin wrapper over `SMAppService.mainApp` so the launch-at-login preference and
 /// the OS registration stay in sync. Reads reflect the real registration state,

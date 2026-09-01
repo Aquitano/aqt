@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 import AppKit
 import ApplicationServices
 

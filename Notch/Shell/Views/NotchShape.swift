@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// The black "blob": a downward-opening rounded rectangle whose top corners are
 /// square (they meet the bezel) and whose bottom corners are animatably rounded.

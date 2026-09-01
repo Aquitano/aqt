@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 import CoreLocation
 import EventKit
 

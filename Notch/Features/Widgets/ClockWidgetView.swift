@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// Wall-clock tile, optionally with a second time zone. The scoped
 /// `TimelineView(.everyMinute)` only ticks while the expanded surface is

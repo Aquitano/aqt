@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// Shared visual tokens. Reach for these instead of scattering magic numbers so
 /// every surface uses the same spacing rhythm and corner radii.

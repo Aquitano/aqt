@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 
 /// A source of Now Playing data + transport control. The `MediaManager` picks a
 /// concrete controller at runtime (system-wide adapter when available, else

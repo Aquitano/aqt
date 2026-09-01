@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 import SwiftUI
 
 /// One display-local panel and SwiftUI tree. Feature data is shared through the

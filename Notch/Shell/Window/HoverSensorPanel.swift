@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 
 /// Invisible hover target that sits one level below a `NotchPanel`, covering only
 /// the compact pill's hit rect. While the notch panel ignores mouse events (so

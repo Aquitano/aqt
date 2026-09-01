@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// One activity rendered as a horizontal glass card: symbol + title + subtitle.
 /// Used inside the expanded home surface and the activity cycle, so it sits on

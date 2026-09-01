@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 import Foundation
 
 /// Watches Claude Code sessions. Every session is announced by its own hooks:

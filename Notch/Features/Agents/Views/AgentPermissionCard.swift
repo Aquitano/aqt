@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 struct AgentPermissionCard: View {
     let pending: PendingAgentPermission

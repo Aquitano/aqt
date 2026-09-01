@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 import CoreLocation
 
 /// At-a-glance weather: current conditions plus a short daily outlook. Owns its

@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 
 /// Runs user-pinned Shortcuts via `/usr/bin/shortcuts`. Listing and running both
 /// shell out off-main; run failures surface through the activity peek channel.

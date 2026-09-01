@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// Ordered priority queue of live activities. The top entry renders in the
 /// compact pill; the rest cycle (swipe-down / middle-click). TTLs are one-shot

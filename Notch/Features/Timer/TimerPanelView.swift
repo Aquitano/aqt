@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 import AppKit
 
 /// The timer tab: a Focus/Break selector, a scrubbable tick dial, and the

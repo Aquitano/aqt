@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 
 /// Best-effort detection of which agent CLIs are installed, so the Agents tab
 /// only offers Enable for tools you actually have. Checks common binary

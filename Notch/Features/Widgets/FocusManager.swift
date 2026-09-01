@@ -1,4 +1,5 @@
 import Intents
+import NotchCore
 import AppKit
 
 /// Focus on/off via INFocusStatusCenter. v1 shows the badge only; the *named*

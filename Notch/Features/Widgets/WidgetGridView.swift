@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// The expanded home dashboard: a compact row of status tiles above a wider row
 /// of info panels, both driven by the ordered `Settings.widgetLayout`. Hovering

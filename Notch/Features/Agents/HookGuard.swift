@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 
 /// Puts our Claude hooks back when another tool (a dotfiles sync, a config
 /// manager, a hand edit) removes or overwrites them, and tells the user it

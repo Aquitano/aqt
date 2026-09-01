@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 
 /// One persistent scratch note backing the quick-note widget. Loads synchronously
 /// at init (tiny file); saves are debounced per keystroke and written off-main.

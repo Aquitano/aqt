@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 import SwiftUI
 import UniformTypeIdentifiers
 

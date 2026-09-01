@@ -1,4 +1,5 @@
 import CoreServices
+import NotchCore
 import Foundation
 
 /// Recursive file-level directory watcher built on FSEvents. Push-based: the

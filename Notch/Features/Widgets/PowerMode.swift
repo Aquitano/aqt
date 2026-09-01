@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 
 /// One-tap Low Power Mode via the Shortcuts bridge: macOS has no public API to
 /// write Low Power Mode, so the app runs a user-installed shortcut wrapping the

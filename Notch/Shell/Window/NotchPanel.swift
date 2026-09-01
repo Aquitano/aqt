@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 
 /// Borderless, clear, non-activating panel that floats just above the menu bar.
 /// Passive overlay: it never steals focus except while presenting the AirDrop

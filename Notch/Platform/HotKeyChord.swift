@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 import Carbon.HIToolbox
 
 /// A keyCode + Carbon-modifier pair as stored in Settings, with the conversion

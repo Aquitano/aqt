@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 import AppKit
 
 /// The expanded panel's tab switcher plus the gear, rendered either inside the

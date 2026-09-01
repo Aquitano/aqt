@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// Auto-dismissing volume/brightness capsule that sits just below the notch:
 /// glyph, a quiet name, the level bar, and the percentage. Visibility and the

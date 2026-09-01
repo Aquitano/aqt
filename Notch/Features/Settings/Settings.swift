@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 import Observation
 
 /// Live, observable preferences. Each group is its own tracked property so a

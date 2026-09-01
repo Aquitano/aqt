@@ -1,4 +1,5 @@
 import Observation
+import NotchCore
 
 /// Runs `handler` with the value of `read` and again whenever any observable
 /// property `read` touched changes. Changes are coalesced per main-actor turn,

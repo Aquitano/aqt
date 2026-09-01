@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 import CoreGraphics
 
 /// Converts the current AppKit display topology into stable, value-only

@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 
 /// Turns the session bindings hooks gave us into the current picture: drops the
 /// ones whose process is gone, reads each survivor's own transcript, and fills

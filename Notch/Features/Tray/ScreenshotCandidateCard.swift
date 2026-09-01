@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 struct ScreenshotCandidateCard: View {
     @Environment(AppEnvironment.self) private var env

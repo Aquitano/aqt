@@ -1,4 +1,5 @@
 import Darwin
+import NotchCore
 import Foundation
 
 /// Listens on `~/.notch/agents.sock` for line-delimited `HookEnvelope` JSON from

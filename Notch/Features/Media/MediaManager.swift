@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// Owns the active `MediaController`, publishes Now Playing state, and decodes
 /// artwork off-main. Selects the system-wide adapter when available, otherwise

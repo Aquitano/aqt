@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// Glass card listing connected Bluetooth devices and whatever battery info we
 /// could resolve. Lives inside the expanded panel, so glass on the card is fine.

@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 import SwiftUI
 
 /// App-wide retro icon renderer. Existing semantic/SF-symbol names remain the

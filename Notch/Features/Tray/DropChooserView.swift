@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// Shown inside the expanded notch while a file drag is in progress: two side-by-side
 /// drop fields. The left one stages the files on the shelf; the right one shares the

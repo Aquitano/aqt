@@ -1,4 +1,5 @@
 import Darwin
+import NotchCore
 import Foundation
 
 /// System-wide Now Playing via the pinned `mediaremote-adapter` Perl bridge.

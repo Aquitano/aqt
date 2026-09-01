@@ -1,4 +1,5 @@
 import IOBluetooth
+import NotchCore
 import AppKit
 import Foundation
 import Darwin

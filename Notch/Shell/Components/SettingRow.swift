@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// A single full-width settings line: title on the left, control on the right.
 /// Used by the in-notch settings tab so its rows read like a real settings list

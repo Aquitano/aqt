@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 
 /// Countdown engine behind the timer tab and the status-menu timers, surfaced
 /// as a `.timer` activity. The activity is sticky (no TTL) until it fires or is

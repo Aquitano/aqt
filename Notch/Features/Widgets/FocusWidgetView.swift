@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// At-a-glance Focus badge for the expanded home surface. Owns its own glass
 /// chrome and tints up when a Focus is active. Lives inside the expanded panel,

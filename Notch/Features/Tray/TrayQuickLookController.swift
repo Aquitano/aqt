@@ -1,4 +1,5 @@
 import QuickLookUI
+import NotchCore
 import SwiftUI
 
 @MainActor

@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// Pinned Shortcuts as one-tap run buttons. The pin list lives in Settings; run
 /// failures surface via the activity peek channel (see ShortcutsManager).

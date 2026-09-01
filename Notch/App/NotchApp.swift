@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// Real entry point. Branches on argv *before* AppKit loads so the same binary
 /// can serve as a Claude hook / Codex notify client (write one line to the agent

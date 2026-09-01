@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 
 /// A source of agent sessions + notify-worthy events. `AgentManager` picks the
 /// concrete providers at runtime and treats them uniformly — the agent-side twin

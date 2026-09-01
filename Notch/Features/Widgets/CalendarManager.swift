@@ -1,4 +1,5 @@
 import EventKit
+import NotchCore
 import AppKit
 
 /// Upcoming events from a single EKEventStore. Reloads on `.EKEventStoreChanged`

@@ -1,4 +1,5 @@
 import CoreGraphics
+import NotchCore
 import Foundation
 
 /// Reads and writes built-in display brightness via the private DisplayServices

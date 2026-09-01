@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 import AppKit
 
 /// The "Apple feel" lives here: one asymmetric spring set, ~0.4s each.

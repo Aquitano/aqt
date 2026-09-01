@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// Battery status tile: a drawn level indicator, a one-tap Low Power Mode leaf,
 /// the percentage, and a status line (charging / time remaining). Static by

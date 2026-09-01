@@ -1,4 +1,5 @@
 import Carbon.HIToolbox
+import NotchCore
 import Foundation
 
 /// One global hotkey via Carbon `RegisterEventHotKey`. Unlike an event tap this

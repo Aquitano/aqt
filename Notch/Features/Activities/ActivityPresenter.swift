@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// All per-`Kind` presentation for an `Activity` in one place: the compact pill's
 /// symbol and trailing label, plus the expanded card's title/subtitle/tint. Kept

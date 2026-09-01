@@ -1,4 +1,5 @@
 import AudioToolbox
+import NotchCore
 import CoreGraphics
 import CoreMedia
 import ScreenCaptureKit

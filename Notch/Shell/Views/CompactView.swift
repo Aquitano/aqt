@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 import AppKit
 
 /// The compact pill content hugging the bezel: a leading slot, the physical

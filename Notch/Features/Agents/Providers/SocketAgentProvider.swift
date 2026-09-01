@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 import Darwin
 import Foundation
 

@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 
 /// Watches T3 Code servers (Theo's agent harness) as a read-only client. In
 /// t3's model every server is its own "execution environment" — the desktop

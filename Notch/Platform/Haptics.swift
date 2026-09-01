@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 
 /// Small wrapper over the trackpad haptic engine. `Settings` mirrors the user's
 /// "Haptic feedback" preference into `isEnabled`, so call sites stay one line.

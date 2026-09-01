@@ -1,4 +1,5 @@
 import XCTest
+import NotchCore
 
 @MainActor
 final class NotchCoordinatorTests: XCTestCase {

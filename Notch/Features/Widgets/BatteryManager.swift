@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 import IOKit.ps
 
 /// Battery + power state from IOKit, updated by a run-loop source (no polling).

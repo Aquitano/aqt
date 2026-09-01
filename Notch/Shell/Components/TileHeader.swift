@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// Small uppercase-weight section label used at the top of info tiles. Keeps the
 /// "quiet header, loud content" rhythm consistent across the widget grid.

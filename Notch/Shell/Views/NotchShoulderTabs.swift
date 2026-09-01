@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 import AppKit
 
 /// The expanded panel's section switcher, dissolved into the frame. Instead of a

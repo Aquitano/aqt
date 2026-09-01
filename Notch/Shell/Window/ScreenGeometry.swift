@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 
 /// Resolves the physical notch rectangle and the larger panel rectangle that
 /// surrounds it. Recomputed on every display-parameter change.

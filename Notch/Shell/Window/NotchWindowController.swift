@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 import SwiftUI
 
 /// Coordinates one display-local panel host per selected screen. Feature data

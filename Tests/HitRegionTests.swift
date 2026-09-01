@@ -1,4 +1,5 @@
 import XCTest
+import NotchCore
 
 /// `HitRegion.rect` is a pure function of a `LayoutSnapshot`, so the sizing and
 /// the centered-and-pinned-to-top positioning are table-tested here without a

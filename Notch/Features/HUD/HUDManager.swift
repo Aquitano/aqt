@@ -1,4 +1,5 @@
 import ApplicationServices
+import NotchCore
 import SwiftUI
 
 /// Volume/brightness HUD in two tiers. Listen-only observes media keys and

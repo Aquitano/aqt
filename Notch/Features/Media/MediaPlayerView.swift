@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 import AppKit
 
 /// Expanded now-playing surface: large album art that glides in from the compact

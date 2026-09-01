@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// One agent session as a rich card: agent glyph, "project · prompt" title,
 /// status dot, agent/terminal badges, branch + uptime, and a preview of the

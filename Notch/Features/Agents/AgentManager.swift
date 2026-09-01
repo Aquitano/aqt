@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 import AppKit
 
 /// Aggregates the per-agent providers, owns the shared socket + process lookup +

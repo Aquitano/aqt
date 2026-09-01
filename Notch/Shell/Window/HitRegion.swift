@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 
 /// The inputs that determine the notch's visible content rect, captured as one
 /// value so the geometry can be computed away from the live `AppEnvironment`.

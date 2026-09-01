@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// The Agents tab: live sessions (tap to jump to the terminal) plus Claude usage
 /// limits. Sessions quiet for a while collapse to one-line rows under an "idle"

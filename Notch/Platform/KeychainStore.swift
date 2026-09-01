@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 import Security
 
 /// Minimal generic-password store for the few secrets the app holds (currently

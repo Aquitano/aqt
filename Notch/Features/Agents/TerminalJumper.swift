@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 import Foundation
 
 /// Brings the terminal hosting an agent to the front. Walks the agent's parent

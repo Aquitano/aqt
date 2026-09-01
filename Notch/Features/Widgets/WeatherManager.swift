@@ -1,4 +1,5 @@
 import CoreLocation
+import NotchCore
 import MapKit
 import AppKit
 

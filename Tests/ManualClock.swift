@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 
 /// A clock that only moves when a test says so. Sleepers wake in deadline
 /// order when `advance(by:)` passes them, and the call yields until the woken

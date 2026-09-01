@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// A drawn battery glyph: outline, terminal nub, a proportional fill, and a bolt
 /// when charging. SF Symbols only ships fixed quarter-step battery glyphs and has

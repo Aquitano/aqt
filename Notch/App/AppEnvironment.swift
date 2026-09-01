@@ -1,4 +1,5 @@
 import AppKit
+import NotchCore
 import SwiftUI
 
 /// Composition root. Creates every manager, wires their dependencies, and owns
