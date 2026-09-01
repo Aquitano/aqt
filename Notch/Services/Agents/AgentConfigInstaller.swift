@@ -110,7 +110,7 @@ struct AgentConfigInstaller {
         )
         try bridgeScript.write(to: bridgeURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bridgeURL.path)
-        try? Bundle.main.bundlePath.write(to: appPathCacheURL, atomically: true, encoding: .utf8)
+        try? (Bundle.main.bundlePath + "\n").write(to: appPathCacheURL, atomically: true, encoding: .utf8)
     }
 
     private var bridgeScript: String {
@@ -124,10 +124,15 @@ struct AgentConfigInstaller {
           [ -x "$app/Contents/MacOS/Notch" ] && exec "$app/Contents/MacOS/Notch" --agent-hook "$@"
         }
         C="$HOME/.notch/bin/.app-path"
-        [ -f "$C" ] && read -r P < "$C" && run "$P" "$@"
+        # read reports EOF (status 1) on a cache with no trailing newline even
+        # though it assigned P, so its status must not gate the run: gating it
+        # sent every single hook through the mdfind fallback below, which is a
+        # Spotlight query per event that then execs whichever indexed copy of the
+        # app it happens to find, stale build included.
+        [ -f "$C" ] && { read -r P < "$C"; [ -n "$P" ] && run "$P" "$@"; }
         run "/Applications/Notch.app" "$@"
         P="$(/usr/bin/mdfind 'kMDItemCFBundleIdentifier == "com.aquitano.notch"' 2>/dev/null | /usr/bin/head -1)"
-        [ -n "$P" ] && { printf '%s' "$P" > "$C"; run "$P" "$@"; }
+        [ -n "$P" ] && { printf '%s\\n' "$P" > "$C"; run "$P" "$@"; }
         exit 0
         """
     }
