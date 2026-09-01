@@ -46,6 +46,9 @@ struct NotchRootView: View {
                 NotchTabStrip(floating: true)
                     .padding(.top, expandedSize.height + NotchLayout.floatingDockGap)
                     .opacity(state.isExpanded ? 1 : 0)
+                    .animation(NotchAnimation.contentReveal(expanded: state.isExpanded,
+                                                            reduceMotion: state.reduceMotion),
+                               value: state.isExpanded)
                     .zIndex(3)
             }
         }
