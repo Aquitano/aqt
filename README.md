@@ -5,7 +5,7 @@ activities + HUDs, a file tray with AirDrop, coding-agent watching (Claude Code,
 friends, including in-notch approval of permission prompts), and widgets (battery, calendar,
 weather, Bluetooth battery, focus, clock, Shortcuts runner, quick note). First launch opens
 a welcome tour; an opt-in global hotkey (⌃⌥N) toggles the notch. Built per
-[`BUILD_PLAN.md`](BUILD_PLAN.md).
+[`docs/archive/BUILD_PLAN.md`](docs/archive/BUILD_PLAN.md).
 
 Agent app (no Dock icon), Developer-ID signed, **not sandboxed**. Direct distribution only.
 

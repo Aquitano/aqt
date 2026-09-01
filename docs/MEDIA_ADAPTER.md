@@ -48,7 +48,7 @@ Validated on macOS 26.5.2 arm64 on 2026-07-10:
 | Playing, paused, artwork, and partial payload variants | Covered by wire-format tests |
 
 Before distributing a macOS point release, perform the live-source/control matrix in
-`POLISH_PLAN.md`; those checks require installed apps, user media, and audible transport
+`docs/archive/POLISH_PLAN.md`; those checks require installed apps, user media, and audible transport
 changes and are intentionally not automated.
 
 ## Rollback
