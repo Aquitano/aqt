@@ -14,7 +14,7 @@ final class NotchPanelHost {
     let hoverSensor: HoverSensorPanel
 
     private let env: AppEnvironment
-    private let contentView = NotchContentView()
+    private let contentView: NotchContentView
     private let hostingView: NSHostingView<AnyView>
     private(set) var geometry: ScreenGeometry
     private var showsHUD = false
@@ -34,9 +34,14 @@ final class NotchPanelHost {
         self.panel = NotchPanel(contentRect: geometry.panelFrame)
         self.hoverSensor = HoverSensorPanel()
         self.hostingView = NSHostingView(rootView: AnyView(EmptyView()))
+        // Sized up front: autoresizing a subview out of a zero-sized superview
+        // produces garbage frames, and the panel only resizes the content view
+        // when it is attached.
+        let contentFrame = NSRect(origin: .zero, size: geometry.panelFrame.size)
+        self.contentView = NotchContentView(frame: contentFrame)
         hoverSensor.onEnter = { [weak self] in self?.onHoverSensorEntered?() }
 
-        hostingView.frame = NSRect(origin: .zero, size: geometry.panelFrame.size)
+        hostingView.frame = contentFrame
         hostingView.autoresizingMask = [.width, .height]
         hostingView.sizingOptions = []
         contentView.addSubview(hostingView)
@@ -61,7 +66,8 @@ final class NotchPanelHost {
 
         if geometryChanged {
             panel.setFrame(geometry.panelFrame, display: true)
-            hostingView.frame = NSRect(origin: .zero, size: geometry.panelFrame.size)
+            contentView.frame = NSRect(origin: .zero, size: geometry.panelFrame.size)
+            hostingView.frame = contentView.bounds
         }
         if geometryChanged || roleChanged { rebuildRoot() }
     }

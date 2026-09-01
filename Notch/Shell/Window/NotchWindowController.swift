@@ -62,6 +62,9 @@ final class NotchWindowController {
     }
 
     func stop() {
+        // Observation callbacks must not run into a half-torn-down AppKit.
+        for observer in observers { observer.cancel() }
+        observers.removeAll()
         activeDisplayTask?.cancel()
         pointerDisplayTask?.cancel()
         removeDragUpMonitor()
