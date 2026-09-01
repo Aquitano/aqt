@@ -87,7 +87,10 @@ struct NotchRootView: View {
                 notchWidth: notchSize.width
             )
                 .fill(.black)
-                .shadow(color: .black.opacity(expanded ? 0.45 : 0), radius: 18, y: 8)
+                // The swollen pill casts a soft shadow so it reads as lifted
+                // off the bezel, not merely a slightly larger notch.
+                .shadow(color: .black.opacity(expanded ? 0.45 : (hoverGrow ? 0.4 : 0)),
+                        radius: expanded ? 18 : 10, y: expanded ? 8 : 4)
 
             ZStack(alignment: .top) {
                 // Expanded body kept mounted (fading via opacity) through the whole
@@ -128,7 +131,7 @@ struct NotchRootView: View {
             ))
         }
         .frame(width: size.width, height: size.height)
-        .scaleEffect(hoverGrow ? 1.06 : 1.0, anchor: .top)
+        .scaleEffect(hoverGrow ? 1.09 : 1.0, anchor: .top)
         .animation(NotchAnimation.hoverGrow(reduceMotion: state.reduceMotion), value: hoverGrow)
         .contentShape(NotchShape(
             topRadius: NotchMetrics.compactCornerRadius,

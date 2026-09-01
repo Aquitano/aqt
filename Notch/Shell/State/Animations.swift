@@ -28,7 +28,7 @@ enum NotchAnimation {
 
     /// Gentle swell while the cursor rests on the compact pill, before it opens.
     static func hoverGrow(reduceMotion: Bool) -> Animation {
-        reduceMotion ? .smooth(duration: 0.2) : .spring(response: 0.28, dampingFraction: 0.72)
+        reduceMotion ? .smooth(duration: 0.18) : .spring(response: 0.22, dampingFraction: 0.7)
     }
 
     /// Widget-grid editing: tiles sliding aside during a reorder drag, and

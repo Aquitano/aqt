@@ -49,7 +49,7 @@ struct NotchStateTests {
         state.showCompact()
 
         state.hoverChanged(true)
-        await clock.advance(by: .milliseconds(100))
+        await clock.advance(by: .milliseconds(200))
         #expect(state.presentation == .compact, "a skim across the pill must not open it")
 
         await clock.advance(by: .milliseconds(150))
