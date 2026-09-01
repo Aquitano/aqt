@@ -150,17 +150,76 @@ struct TerminalJumper {
     }
 
     /// Ghostty 1.3+ ships an AppleScript dictionary: each terminal surface
-    /// exposes its shell-integration working directory and a `focus` command
-    /// that selects the surface and raises its window. Ghostty stamps no
-    /// per-surface ID into child environments, so the agent's cwd is the
-    /// matching key; the first surface in that directory wins.
+    /// exposes its title, its shell-integration working directory, and a `focus`
+    /// command that selects the surface and raises its window.
+    ///
+    /// Ghostty stamps no per-surface id into child environments, so the working
+    /// directory is the only free key — and it is ambiguous the moment two
+    /// surfaces are opened in the same project, which is exactly when jumping to
+    /// the wrong one is most confusing. When it can't decide, ask the surface
+    /// itself (see `probeSurfaceID`).
     nonisolated private static func focusGhostty(agentPID: pid_t, lookup: ProcessLookup) -> Bool {
-        guard let cwd = lookup.cwd(of: agentPID) else { return false }
-        // libproc reports the directory's real name while Ghostty echoes whatever
-        // the shell was cd'd to, which on a case-insensitive volume need not match
-        // ("/Users/x/Brain" vs "/Users/x/brain"). Fold case so they compare equal.
-        let target = lookup.normalize(cwd).lowercased()
+        let surfaces = ghosttySurfaces()
+        guard !surfaces.isEmpty else { return false }
 
+        let matches = ghosttyWorkingDirectoryMatches(surfaces, agentPID: agentPID, lookup: lookup)
+        // One surface in that directory is already unambiguous — no need to
+        // touch anybody's title.
+        let surfaceID = matches.count == 1
+            ? matches[0].id
+            : probeSurfaceID(agentPID: agentPID, among: surfaces, lookup: lookup) ?? matches.first?.id
+        guard let surfaceID else { return false }
+        return focusGhostty(surfaceID: surfaceID)
+    }
+
+    private struct GhosttySurface {
+        let id: String
+        let title: String
+        let workingDirectory: String
+    }
+
+    /// Identify the exact surface by giving it a title only we know, for a
+    /// moment: write an OSC 2 sequence to the session's own tty, ask Ghostty
+    /// which surface now carries it, then put the previous title back.
+    ///
+    /// Ghostty doesn't enumerate every surface it is drawing (a background split
+    /// answers to no listing), so the marker can land somewhere we then can't
+    /// see. Clearing the title on that path matters: leaving it would park
+    /// "notch-focus-1647716234" on one of the user's tabs. Empty makes Ghostty
+    /// fall back to its own default until the shell writes the next one.
+    nonisolated private static func probeSurfaceID(
+        agentPID: pid_t,
+        among before: [GhosttySurface],
+        lookup: ProcessLookup
+    ) -> String? {
+        guard let tty = lookup.controllingTTY(of: agentPID) else { return nil }
+        let marker = "notch-focus-\(UInt32.random(in: 0..<UInt32.max))"
+        guard writeTitle(marker, toTTY: tty) else { return nil }
+        // The terminal parses the sequence on its own run loop; a beat before
+        // asking keeps us from reading the listing back before the title lands.
+        usleep(80_000)
+
+        guard let match = ghosttySurfaces().first(where: { $0.title == marker }) else {
+            _ = writeTitle("", toTTY: tty)
+            return nil
+        }
+        _ = writeTitle(before.first { $0.id == match.id }?.title ?? "", toTTY: tty)
+        return match.id
+    }
+
+    /// OSC 2 (set window title), written straight to the device. A process
+    /// spawned from a hook cannot open `/dev/tty` — Claude hands its children no
+    /// controlling terminal — so the session's tty is resolved from its pid and
+    /// opened by path instead. `O_NOCTTY` keeps us from adopting it as our own.
+    nonisolated private static func writeTitle(_ title: String, toTTY tty: String) -> Bool {
+        let descriptor = open(tty, O_WRONLY | O_NOCTTY | O_NONBLOCK)
+        guard descriptor >= 0 else { return false }
+        defer { close(descriptor) }
+        let sequence = Array("\u{1B}]2;\(title)\u{07}".utf8)
+        return sequence.withUnsafeBytes { write(descriptor, $0.baseAddress, $0.count) } == sequence.count
+    }
+
+    nonisolated private static func ghosttySurfaces() -> [GhosttySurface] {
         // `tab` must be hoisted: Ghostty's sdef defines a `tab` class that
         // shadows AppleScript's tab-character constant inside the tell block.
         let listScript = """
@@ -168,26 +227,45 @@ struct TerminalJumper {
         tell application "Ghostty"
           set out to ""
           repeat with t in terminals
+            set n to name of t
+            if n is missing value then set n to ""
             set wd to working directory of t
             if wd is missing value then set wd to ""
-            set out to out & (id of t) & d & wd & linefeed
+            set out to out & (id of t) & d & n & d & wd & linefeed
           end repeat
           return out
         end tell
         """
-        guard let listing = run("/usr/bin/osascript", ["-e", listScript]) else { return false }
+        guard let listing = run("/usr/bin/osascript", ["-e", listScript]) else { return [] }
+        return listing.split(separator: "\n").compactMap { line in
+            // A title may itself contain tabs, so only the first and last fields
+            // are fixed.
+            let fields = line.components(separatedBy: "\t")
+            guard fields.count >= 3 else { return nil }
+            return GhosttySurface(
+                id: fields[0],
+                title: fields[1..<(fields.count - 1)].joined(separator: "\t"),
+                workingDirectory: fields[fields.count - 1]
+            )
+        }
+    }
 
-        let surfaceID = listing.split(separator: "\n").lazy
-            .compactMap { line -> String? in
-                let parts = line.split(separator: "\t", maxSplits: 1)
-                guard parts.count == 2,
-                      normalizedGhosttyPath(String(parts[1]), lookup: lookup).lowercased() == target
-                else { return nil }
-                return String(parts[0])
-            }
-            .first
-        guard let surfaceID else { return false }
+    nonisolated private static func ghosttyWorkingDirectoryMatches(
+        _ surfaces: [GhosttySurface],
+        agentPID: pid_t,
+        lookup: ProcessLookup
+    ) -> [GhosttySurface] {
+        guard let cwd = lookup.cwd(of: agentPID) else { return [] }
+        // libproc reports the directory's real name while Ghostty echoes whatever
+        // the shell was cd'd to, which on a case-insensitive volume need not match
+        // ("/Users/x/Brain" vs "/Users/x/brain"). Fold case so they compare equal.
+        let target = lookup.normalize(cwd).lowercased()
+        return surfaces.filter {
+            normalizedGhosttyPath($0.workingDirectory, lookup: lookup).lowercased() == target
+        }
+    }
 
+    nonisolated private static func focusGhostty(surfaceID: String) -> Bool {
         let escaped = surfaceID
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
