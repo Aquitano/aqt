@@ -45,7 +45,7 @@ final class MediaManager {
     func start() {
         settingsObserver = watch({ [settings] in settings.media.compactNowPlaying }) { [weak self] enabled in
             guard let self else { return }
-            self.activities.setNowPlaying(active: enabled && !self.track.isEmpty)
+            self.syncNowPlayingActivity(active: enabled && !self.track.isEmpty)
         }
 
         // Start on the always-available scripting controller so launch never blocks
@@ -132,12 +132,24 @@ final class MediaManager {
 
     // MARK: - State updates
 
+    /// Media owns whether a now-playing activity exists. Publishing (rather than
+    /// a silent insert) surfaces the compact pill when playback starts while the
+    /// notch is hidden.
+    private func syncNowPlayingActivity(active: Bool) {
+        if active {
+            guard !activities.contains(channel: .nowPlaying) else { return }
+            activities.publish(Activity(kind: .nowPlaying, priority: .ambient, createdAt: Date()))
+        } else {
+            activities.remove(channel: .nowPlaying)
+        }
+    }
+
     private func apply(_ newTrack: NowPlayingTrack) {
         let identityChanged = newTrack.identity != track.identity
         track = newTrack
         lastUpdate = Date()
         isAvailable = true
-        activities.setNowPlaying(active: settings.media.compactNowPlaying && !newTrack.isEmpty)
+        syncNowPlayingActivity(active: settings.media.compactNowPlaying && !newTrack.isEmpty)
         if newTrack.isEmpty || identityChanged {
             artwork = nil
         }

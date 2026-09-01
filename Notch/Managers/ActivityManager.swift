@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Ordered priority queue of live activities. The top entry renders in the
 /// compact pill; the rest cycle (swipe-down / middle-click). TTLs are one-shot
-/// `Task.sleep`s — never repeating timers.
+/// `Task.sleep`s — never repeating timers. Knows nothing about any feature:
+/// producers publish `Activity` values and address them by id or channel.
 @MainActor
 @Observable
 final class ActivityManager {
@@ -12,8 +13,8 @@ final class ActivityManager {
     private(set) var lastEventID = UUID()
 
     private var cycleOffset = 0
-    private unowned let state: NotchState
-    private var ttlTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private unowned let state: NotchState
+    @ObservationIgnored private var ttlTasks: [UUID: Task<Void, Never>] = [:]
 
     init(state: NotchState) {
         self.state = state
@@ -26,20 +27,21 @@ final class ActivityManager {
         }
     }
 
-    /// Now Playing owns a dedicated compact presentation (artwork + meter), so
-    /// its bookkeeping activity must never reappear as a generic music-note pill
-    /// when that presentation is disabled.
-    private var compactOrdered: [Activity] {
-        ordered.filter { !isNowPlaying($0) }
+    private var pillCandidates: [Activity] {
+        ordered.filter(\.showsInPill)
     }
 
     var compactActivity: Activity? {
-        let list = compactOrdered
+        let list = pillCandidates
         guard !list.isEmpty else { return nil }
         return list[cycleOffset % list.count]
     }
 
-    var compactActivityCount: Int { compactOrdered.count }
+    var compactActivityCount: Int { pillCandidates.count }
+
+    func contains(channel: Activity.Channel) -> Bool {
+        activities.contains { $0.channel == channel }
+    }
 
     // MARK: - Mutation
 
@@ -57,8 +59,8 @@ final class ActivityManager {
         state.showCompact()
     }
 
-    /// Push a generic Quick Peek from any internal source. Peeks have no channel
-    /// key, so they stack rather than replace, and always auto-expire.
+    /// Push a generic Quick Peek from any internal source. Peeks have no channel,
+    /// so they stack rather than replace, and always auto-expire.
     func peek(title: String,
               message: String = "",
               symbol: String,
@@ -68,48 +70,6 @@ final class ActivityManager {
                          priority: .urgent, createdAt: Date(), ttl: ttl))
     }
 
-    /// Mirror the active agents into the pill as one aggregate entry (count +
-    /// representative status). Sticky (no TTL); `AgentManager` removes it when no
-    /// agent is busy / needs attention.
-    func publishAgentSummary(count: Int, kind: AgentKind, project: String, status: AgentStatus) {
-        let priority: Activity.Priority = status == .needsAttention ? .urgent : .normal
-        publish(Activity(
-            kind: .agent(count: count, kind: kind, project: project, status: status),
-            priority: priority,
-            createdAt: Date()
-        ))
-    }
-
-    func removeAgentSummary() {
-        let ids = activities.compactMap { activity -> UUID? in
-            if case .agent = activity.kind { return activity.id }
-            return nil
-        }
-        ids.forEach { remove(id: $0) }
-    }
-
-    func publishScreenshotCandidates(_ candidates: [ScreenshotCandidate]) {
-        publish(Activity(
-            kind: .screenshotCandidates(candidates), priority: .high,
-            createdAt: Date(), ttl: 30
-        ))
-    }
-
-    func removeScreenshotCandidates() {
-        let ids = activities.compactMap { activity -> UUID? in
-            if case .screenshotCandidates = activity.kind { return activity.id }
-            return nil
-        }
-        ids.forEach { remove(id: $0) }
-    }
-
-    /// Open the panel on the Agents tab — used when a session needs attention and
-    /// the user opted into auto-expand.
-    func requestAutoExpand() {
-        state.expand()
-        state.select(tab: .agents)
-    }
-
     func remove(id: UUID) {
         ttlTasks[id]?.cancel()
         ttlTasks[id] = nil
@@ -117,62 +77,38 @@ final class ActivityManager {
         if cycleOffset >= max(activities.count, 1) { cycleOffset = 0 }
     }
 
+    func remove(channel: Activity.Channel) {
+        activities.filter { $0.channel == channel }.forEach { remove(id: $0.id) }
+    }
+
     /// Rotate which queued activity the compact pill shows.
     func cycle(forward: Bool = true) {
-        let count = compactOrdered.count
+        let count = pillCandidates.count
         guard count > 1 else { return }
         cycleOffset = ((cycleOffset + (forward ? 1 : -1)) % count + count) % count
     }
 
-    /// Media owns whether a now-playing activity exists.
-    func setNowPlaying(active: Bool) {
-        if active {
-            // Go through publish() (not a bare replaceOrInsert) so starting playback
-            // while the notch is hidden surfaces the compact pill and keeps the
-            // lastEventID/TTL bookkeeping this class is built around.
-            guard !activities.contains(where: { isNowPlaying($0) }) else { return }
-            publish(Activity(kind: .nowPlaying, priority: .ambient, createdAt: Date()))
-        } else {
-            activities.removeAll { isNowPlaying($0) }
-        }
+    /// Open the panel on a tab on a producer's behalf (for example when an agent
+    /// needs attention and the user opted into auto-expand).
+    func requestExpand(tab: NotchState.ExpandedTab) {
+        state.expand()
+        state.select(tab: tab)
     }
 
     // MARK: - Helpers
 
-    private func isNowPlaying(_ activity: Activity) -> Bool {
-        if case .nowPlaying = activity.kind { return true }
-        return false
-    }
-
-    /// Singleton channels (charging, focus, ...) replace the previous entry;
-    /// everything else is appended.
     /// Returns true when it replaced an existing entry on the same channel (vs.
     /// inserting a brand-new activity).
     @discardableResult
     private func replaceOrInsert(_ activity: Activity) -> Bool {
         var replaced = false
-        if let key = channelKey(activity.kind) {
+        if let channel = activity.channel {
             let before = activities.count
-            activities.removeAll { channelKey($0.kind) == key }
+            activities.removeAll { $0.channel == channel }
             replaced = activities.count != before
         }
         activities.append(activity)
         return replaced
-    }
-
-    private func channelKey(_ kind: Activity.Kind) -> String? {
-        switch kind {
-        case .nowPlaying: return "nowPlaying"
-        case .charging: return "power"
-        case .lowBattery: return "lowBattery"
-        case .lowPowerMode: return "lowPowerMode"
-        case .focus: return "focus"
-        case let .deviceConnected(name, _, _): return "device.\(name)"
-        case let .audioRoute(name, _): return "route.\(name)"
-        case .agent: return "agents"
-        case .screenshotCandidates: return "screenshots"
-        case .peek, .timer: return nil
-        }
     }
 
     private func scheduleTTL(_ activity: Activity) {

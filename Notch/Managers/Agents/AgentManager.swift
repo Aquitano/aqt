@@ -479,7 +479,7 @@ final class AgentManager {
         let active = pillSessions
         guard let representative = active.first(where: { $0.status == .needsAttention })
             ?? active.max(by: { $0.lastActivity < $1.lastActivity }) else {
-            if pillSignature != nil { activities.removeAgentSummary(); pillSignature = nil }
+            if pillSignature != nil { activities.remove(channel: .agents); pillSignature = nil }
             return
         }
 
@@ -488,9 +488,12 @@ final class AgentManager {
         let signature = "\(active.count)|\(status.rawValue)|\(representative.project)"
         guard signature != pillSignature else { return }
         pillSignature = signature
-        activities.publishAgentSummary(
-            count: active.count, kind: representative.kind,
-            project: representative.project, status: status
-        )
+        // Sticky (no TTL): removed above once no agent is busy or waiting.
+        activities.publish(Activity(
+            kind: .agent(count: active.count, kind: representative.kind,
+                         project: representative.project, status: status),
+            priority: needsAttention ? .urgent : .normal,
+            createdAt: Date()
+        ))
     }
 }

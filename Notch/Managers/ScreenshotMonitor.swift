@@ -41,7 +41,7 @@ final class ScreenshotMonitor {
         pendingTasks.values.forEach { $0.cancel() }
         pendingTasks.removeAll()
         candidates.removeAll()
-        activities.removeScreenshotCandidates()
+        activities.remove(channel: .screenshots)
     }
 
     func addAllToShelf() {
@@ -121,9 +121,12 @@ final class ScreenshotMonitor {
 
     private func publishActivity() {
         if candidates.isEmpty {
-            activities.removeScreenshotCandidates()
+            activities.remove(channel: .screenshots)
         } else {
-            activities.publishScreenshotCandidates(candidates)
+            activities.publish(Activity(
+                kind: .screenshotCandidates(candidates), priority: .high,
+                createdAt: Date(), ttl: 30
+            ))
         }
     }
 

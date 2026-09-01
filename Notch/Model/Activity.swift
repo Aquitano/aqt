@@ -51,6 +51,36 @@ struct Activity: Identifiable, Equatable {
         case neutral, accent, warning, success
     }
 
+    /// Singleton channels: publishing on an occupied channel replaces the
+    /// previous entry in place. Kinds without a channel stack.
+    enum Channel: Hashable {
+        case nowPlaying, power, lowBattery, lowPowerMode, focus, agents, screenshots
+        case device(String)
+        case route(String)
+    }
+
+    var channel: Channel? {
+        switch kind {
+        case .nowPlaying: .nowPlaying
+        case .charging: .power
+        case .lowBattery: .lowBattery
+        case .lowPowerMode: .lowPowerMode
+        case .focus: .focus
+        case let .deviceConnected(name, _, _): .device(name)
+        case let .audioRoute(name, _): .route(name)
+        case .agent: .agents
+        case .screenshotCandidates: .screenshots
+        case .peek, .timer: nil
+        }
+    }
+
+    /// Now Playing owns a dedicated compact presentation (artwork + meter), so
+    /// its bookkeeping entry never appears as a generic pill.
+    var showsInPill: Bool {
+        if case .nowPlaying = kind { return false }
+        return true
+    }
+
     /// Active session count when this is the aggregate agent entry, else nil.
     var agentCount: Int? {
         if case let .agent(count, _, _, _) = kind { return count }

@@ -54,7 +54,7 @@ final class AgentNotifier {
                  title: "\(agent) needs you", message: event.message ?? event.session.project,
                  symbol: "exclamationmark.bubble.fill", tint: .warning)
             if settings.agents.autoExpandOnAttention {
-                activities.requestAutoExpand()
+                activities.requestExpand(tab: .agents)
             }
         case .finished:
             guard settings.agents.notifyFinished else { return }
