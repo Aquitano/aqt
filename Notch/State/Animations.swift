@@ -206,11 +206,17 @@ enum NotchLayout {
     static let dropChooserHeight: CGFloat = 188
 
     /// Vertical room the in-blob tab strip occupies (strip + the stack spacing
-    /// under it). With the floating tab bar the blob gives this back, and the
-    /// bar renders in its own capsule below the blob instead.
+    /// under it). Every other tab bar style renders outside the body — a capsule
+    /// below the blob, or icons in the notch band — so the blob gives this back.
     static let tabStripAllowance: CGFloat = 52
     static let floatingDockGap: CGFloat = 8
     static let floatingDockHeight: CGFloat = 44
+
+    /// How far the shoulder tab row sits below the top of the blob. Zero keeps the
+    /// icons level with the physical cutout, which is the point of the design; the
+    /// menu-bar band can be unreliable about clicks that close to the bezel, so
+    /// this is the one number to nudge if they turn out flaky.
+    static let shoulderRowTopInset: CGFloat = 0
 
     static func contentSize(presentation: NotchState.Presentation,
                             notch: CGSize,
@@ -220,7 +226,7 @@ enum NotchLayout {
                             trayEmpty: Bool,
                             compact: CompactContent,
                             dropActive: Bool = false,
-                            floatingTabBar: Bool = false) -> CGSize {
+                            tabBarStyle: TabBarStyle = .inside) -> CGSize {
         switch presentation {
         case .hidden:
             return notch
@@ -231,7 +237,7 @@ enum NotchLayout {
             let body = dropActive
                 ? dropChooserHeight
                 : expandedBodyHeight(tab: tab, hasInfoRow: hasInfoRow, trayEmpty: trayEmpty)
-                    - (floatingTabBar ? tabStripAllowance : 0)
+                    - (tabBarStyle == .inside ? 0 : tabStripAllowance)
             return CGSize(width: expandedWidth, height: body + notch.height)
         }
     }

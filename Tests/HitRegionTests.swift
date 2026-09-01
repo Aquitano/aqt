@@ -92,7 +92,7 @@ final class HitRegionTests: XCTestCase {
     func testFloatingTabBarShrinksBlobButCoversTheDock() {
         let inside = HitRegion.rect(snapshot(.expanded, tab: .home))
         var floatingSnapshot = snapshot(.expanded, tab: .home)
-        floatingSnapshot.floatingTabBar = true
+        floatingSnapshot.tabBarStyle = .floating
         let floating = HitRegion.rect(floatingSnapshot)
 
         // Blob gives back the in-blob strip; the region extends past the blob to
@@ -106,9 +106,21 @@ final class HitRegionTests: XCTestCase {
     func testFloatingTabBarAddsNothingDuringDropChooser() {
         // The chooser replaces the tabs, so the dock (and its region) is absent.
         var floatingSnapshot = snapshot(.expanded, tab: .tray, dropActive: true)
-        floatingSnapshot.floatingTabBar = true
+        floatingSnapshot.tabBarStyle = .floating
         XCTAssertEqual(HitRegion.rect(floatingSnapshot),
                        HitRegion.rect(snapshot(.expanded, tab: .tray, dropActive: true)))
+    }
+
+    func testShoulderTabsShrinkTheBlobWithNoDock() {
+        let inside = HitRegion.rect(snapshot(.expanded, tab: .home))
+        var shoulderSnapshot = snapshot(.expanded, tab: .home)
+        shoulderSnapshot.tabBarStyle = .shoulders
+        let shoulders = HitRegion.rect(shoulderSnapshot)
+
+        // The icons live in the notch band the blob already spends, so the body
+        // gives the strip's row back and nothing hangs below the blob.
+        XCTAssertEqual(shoulders.height, inside.height - NotchLayout.tabStripAllowance, accuracy: 0.001)
+        XCTAssertEqual(shoulders.maxY, inside.maxY, accuracy: 0.001)
     }
 
     // MARK: - Structural (font-dependent) properties

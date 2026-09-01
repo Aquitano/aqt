@@ -92,6 +92,29 @@ enum ShareMethod: String, CaseIterable, Identifiable, Codable {
     var serviceMatch: String { "blip" }
 }
 
+/// Where the expanded panel's section switcher renders. Only `.inside` spends a
+/// row of the body on itself; the other two draw outside it, so the blob gives
+/// that row back to the content.
+enum TabBarStyle: String, CaseIterable, Identifiable {
+    /// Detached capsule below the blob, Dynamic-Island style.
+    case floating
+    /// Glass strip inside the blob, above the body.
+    case inside
+    /// Icons straight on the black band flanking the physical cutout.
+    case shoulders
+
+    var id: String { rawValue }
+
+    /// Name shown in Settings.
+    var title: String {
+        switch self {
+        case .floating: return "Floating below the notch"
+        case .inside: return "Inside the panel"
+        case .shoulders: return "On the notch shoulders"
+        }
+    }
+}
+
 /// What a HUD overlay is currently reporting.
 enum HUDKind: Equatable {
     case volume

@@ -4,7 +4,8 @@ import AppKit
 /// The full expanded panel body. Lives inside the black notch blob, so every
 /// chrome surface here is glass-on-black (never glass on the pill itself). A
 /// single `GlassEffectContainer` lets the tab strip and the cards below it
-/// blend as one liquid-glass system.
+/// blend as one liquid-glass system; the shoulder tabs stay outside it, drawn
+/// straight on the black frame.
 struct ExpandedView: View {
     let namespace: Namespace.ID
 
@@ -18,7 +19,7 @@ struct ExpandedView: View {
     var body: some View {
         GlassEffectContainer(spacing: 10) {
             VStack(spacing: 12) {
-                if !state.isDropActive, !settings.floatingTabBar {
+                if !state.isDropActive, settings.tabBarStyle == .inside {
                     NotchTabStrip()
                 }
                 content
@@ -32,11 +33,19 @@ struct ExpandedView: View {
             .padding(.bottom, 12)
             // Keep the tap targets well clear of the physical notch / menu-bar band,
             // which otherwise crowds the top tab row and eats clicks near the notch.
+            // With the shoulder style that band is the tab row, and this is the
+            // clearance between it and the first card.
             .padding(.top, notchSize.height + 14)
         }
         .foregroundStyle(.white)
         .tint(.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .overlay(alignment: .top) {
+            if settings.tabBarStyle == .shoulders, !state.isDropActive {
+                NotchShoulderTabs()
+                    .padding(.top, NotchLayout.shoulderRowTopInset)
+            }
+        }
     }
 
     // MARK: - Body

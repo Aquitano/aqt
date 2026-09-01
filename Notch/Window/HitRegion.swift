@@ -16,9 +16,10 @@ struct LayoutSnapshot: Equatable {
     var trayEmpty: Bool
     var compact: NotchLayout.CompactContent
     var dropActive: Bool
-    /// Tab bar renders as a detached capsule below the blob; the clickable
-    /// region must extend down to cover it or the tabs are click-through.
-    var floatingTabBar: Bool = false
+    /// Where the tab bar renders. The floating capsule sits below the blob, so
+    /// the clickable region must extend down to cover it or the tabs are
+    /// click-through; the other styles stay inside the blob's own rect.
+    var tabBarStyle: TabBarStyle = .inside
 }
 
 /// Pure geometry: the visible content's rect in screen coordinates for a given
@@ -36,12 +37,12 @@ enum HitRegion {
             trayEmpty: snapshot.trayEmpty,
             compact: snapshot.compact,
             dropActive: snapshot.dropActive,
-            floatingTabBar: snapshot.floatingTabBar
+            tabBarStyle: snapshot.tabBarStyle
         )
         // The drop chooser replaces the tabs, so the dock (and its region) is
         // only present outside a drag.
         let dockAllowance: CGFloat =
-            snapshot.presentation == .expanded && snapshot.floatingTabBar && !snapshot.dropActive
+            snapshot.presentation == .expanded && snapshot.tabBarStyle == .floating && !snapshot.dropActive
                 ? NotchLayout.floatingDockGap + NotchLayout.floatingDockHeight
                 : 0
         return CGRect(

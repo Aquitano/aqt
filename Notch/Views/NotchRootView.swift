@@ -41,7 +41,7 @@ struct NotchRootView: View {
             // close (fading with `isCollapsing`, like the expanded body) and
             // hover-tracked so crossing the gap from the blob doesn't collapse
             // the panel out from under a click.
-            if settings.floatingTabBar, state.isExpanded || state.isCollapsing, !state.isDropActive {
+            if settings.tabBarStyle == .floating, state.isExpanded || state.isCollapsing, !state.isDropActive {
                 NotchTabStrip(floating: true)
                     .padding(.top, expandedSize.height + NotchLayout.floatingDockGap)
                     .opacity(state.isExpanded ? 1 : 0)
@@ -159,7 +159,7 @@ struct NotchRootView: View {
             trayEmpty: tray.items.isEmpty,
             compact: compactContent,
             dropActive: state.isDropActive,
-            floatingTabBar: settings.floatingTabBar
+            tabBarStyle: settings.tabBarStyle
         )
     }
 
@@ -173,7 +173,7 @@ struct NotchRootView: View {
             trayEmpty: tray.items.isEmpty,
             compact: .media,
             dropActive: state.isDropActive,
-            floatingTabBar: settings.floatingTabBar
+            tabBarStyle: settings.tabBarStyle
         )
     }
 

@@ -81,14 +81,15 @@ struct SettingsView: View {
 
     private var notchLayoutSection: some View {
         Section {
-            Picker("Tab bar", selection: $settings.floatingTabBar) {
-                Text("Floating below the notch").tag(true)
-                Text("Inside the panel").tag(false)
+            Picker("Tab bar", selection: $settings.tabBarStyle) {
+                ForEach(TabBarStyle.allCases) { style in
+                    Text(style.title).tag(style)
+                }
             }
         } header: {
             Text("Layout")
         } footer: {
-            Text("Floating detaches the tab icons from the black panel into their own capsule under it.")
+            Text("Floating detaches the tab icons from the black panel into their own capsule under it. Shoulders draws them on the black band beside the cutout, in tab order, and gives the row back to the content.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
