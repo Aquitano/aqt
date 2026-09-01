@@ -11,7 +11,7 @@ import NotchCore
 @Observable
 final class PowerModeController {
 
-    static let shortcutName = "Toggle Low Power Mode"
+    nonisolated static let shortcutName = "Toggle Low Power Mode"
 
     /// nil until the first `shortcuts list` check completes.
     private(set) var shortcutInstalled: Bool?

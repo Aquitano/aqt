@@ -23,12 +23,16 @@ package struct ProcessLookup: Sendable {
         return pids.prefix(count).filter { $0 > 0 }
     }
 
+    private static func string(fromNullTerminated buffer: [CChar]) -> String {
+        String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+    }
+
     /// Executable base name, or nil if the pid is gone / not inspectable.
     package func name(of pid: pid_t) -> String? {
         var buffer = [CChar](repeating: 0, count: 2 * Int(MAXCOMLEN) + 1)
         let result = proc_name(pid, &buffer, UInt32(buffer.count))
         guard result > 0 else { return nil }
-        return String(cString: buffer)
+        return Self.string(fromNullTerminated: buffer)
     }
 
     /// Full executable path.
@@ -36,7 +40,7 @@ package struct ProcessLookup: Sendable {
         var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
         let result = proc_pidpath(pid, &buffer, UInt32(buffer.count))
         guard result > 0 else { return nil }
-        return String(cString: buffer)
+        return Self.string(fromNullTerminated: buffer)
     }
 
     /// Launch arguments via `KERN_PROCARGS2`. Used to recognize a CLI hosted by

@@ -319,7 +319,7 @@ private struct TimerDial: View {
 /// SwiftUI interpolates it frame by frame; emphasis (tick height, label color)
 /// derives from continuous distance to the centerline and rolls across the
 /// tape as it moves.
-private struct DialScale: View, Animatable {
+private struct DialScale: View, @MainActor Animatable {
     var offsetMinutes: CGFloat
     let range: ClosedRange<Int>
     let tint: Color
