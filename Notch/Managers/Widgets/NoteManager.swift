@@ -14,9 +14,14 @@ final class NoteManager {
     private var saveTask: Task<Void, Never>?
     private let fileName = "quick-note.json"
 
-    init(persistence: Persistence) {
+    init(persistence: Persistence, diagnostics: Diagnostics) {
         self.persistence = persistence
-        self.text = persistence.load(String.self, from: fileName) ?? ""
+        do {
+            self.text = try persistence.load(String.self, from: fileName) ?? ""
+        } catch {
+            diagnostics.report(source: "Quick note", error)
+            self.text = ""
+        }
     }
 
     private func scheduleSave() {

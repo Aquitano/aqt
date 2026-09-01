@@ -13,6 +13,7 @@ final class AppEnvironment {
 
     let imageCache: ImageCache
     let persistence: Persistence
+    let diagnostics: Diagnostics
 
     /// Shared CoreAudio service: drives the volume/mute HUD and the output-route
     /// activity. Owned here (not by the HUD) so route changes are detected even
@@ -47,8 +48,9 @@ final class AppEnvironment {
     private var shareCoordinator: ShareCoordinator?
 
     init() {
-        let persistence = Persistence()
-        let settings = Settings(store: PreferencesStore(persistence: persistence))
+        let diagnostics = Diagnostics()
+        let persistence = Persistence(onFailure: { diagnostics.report(source: "Storage", $0) })
+        let settings = Settings(store: PreferencesStore(persistence: persistence, diagnostics: diagnostics))
         let state = NotchState()
         state.defaultTab = { settings.resolvedDefaultTab }
         state.expandedTab = settings.resolvedDefaultTab
@@ -60,6 +62,7 @@ final class AppEnvironment {
         self.state = state
         self.imageCache = imageCache
         self.persistence = persistence
+        self.diagnostics = diagnostics
         self.audio = audio
         self.activities = activities
 
@@ -70,7 +73,8 @@ final class AppEnvironment {
         self.tray = tray
         self.screenshots = ScreenshotMonitor(settings: settings, activities: activities, tray: tray)
         self.timer = TimerManager(activities: activities)
-        self.agents = AgentManager(activities: activities, settings: settings)
+        self.agents = AgentManager(activities: activities, settings: settings,
+                                   persistence: persistence, diagnostics: diagnostics)
         self.battery = BatteryManager(activities: activities, settings: settings)
         self.powerMode = PowerModeController(activities: activities)
         self.calendar = CalendarManager(activities: activities)
@@ -78,7 +82,7 @@ final class AppEnvironment {
         self.bluetooth = BluetoothBatteryManager(activities: activities)
         self.focus = FocusManager(activities: activities)
         self.shortcuts = ShortcutsManager(activities: activities)
-        self.note = NoteManager(persistence: persistence)
+        self.note = NoteManager(persistence: persistence, diagnostics: diagnostics)
     }
 
     /// Start all event-driven subscriptions. Called after the window is up.
@@ -237,6 +241,7 @@ extension View {
         self
             .environment(env)
             .environment(env.settings)
+            .environment(env.diagnostics)
             .environment(state ?? env.state)
             .environment(env.activities)
             .environment(env.media)

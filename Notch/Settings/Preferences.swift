@@ -271,25 +271,38 @@ struct PreferencesStore {
 
     let persistence: Persistence
     let legacyDefaults: UserDefaults?
+    let diagnostics: Diagnostics?
 
-    init(persistence: Persistence, legacyDefaults: UserDefaults? = .standard) {
+    init(persistence: Persistence, legacyDefaults: UserDefaults? = .standard, diagnostics: Diagnostics? = nil) {
         self.persistence = persistence
         self.legacyDefaults = legacyDefaults
+        self.diagnostics = diagnostics
     }
 
     /// The stored document, the legacy import when there is none yet, or the
     /// defaults when the document is unreadable (the broken file is kept aside).
     func load() -> Preferences {
-        guard let data = persistence.loadData(from: Self.fileName) else {
+        let data: Data?
+        do {
+            data = try persistence.loadData(from: Self.fileName)
+        } catch {
+            diagnostics?.report(source: "Preferences", error)
+            return Preferences()
+        }
+        guard let data else {
             let imported = legacyDefaults.map(Preferences.importingLegacyDefaults) ?? Preferences()
-            _ = persistence.saveSynchronously(imported, to: Self.fileName)
+            do {
+                try persistence.saveSynchronously(imported, to: Self.fileName)
+            } catch {
+                diagnostics?.report(source: "Preferences", error)
+            }
             return imported
         }
         do {
             return try Preferences.decode(data)
         } catch {
-            Log.app.error("preferences.json unreadable, keeping it as .broken and using defaults: \(String(describing: error))")
-            _ = persistence.writeBackupIfMissing(data, to: Self.fileName + ".broken")
+            diagnostics?.report(source: "Preferences", message: "preferences.json is unreadable; using defaults and keeping the file as preferences.json.broken (\(error.localizedDescription))")
+            try? persistence.writeBackupIfMissing(data, to: Self.fileName + ".broken")
             return Preferences()
         }
     }

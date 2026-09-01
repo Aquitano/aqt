@@ -206,11 +206,11 @@ final class TrayStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let persistence = Persistence(rootDirectory: root)
         let first = Data("legacy".utf8)
-        XCTAssertTrue(persistence.writeBackupIfMissing(first, to: "tray.v1.backup.json"))
-        XCTAssertTrue(persistence.writeBackupIfMissing(Data("new".utf8), to: "tray.v1.backup.json"))
-        XCTAssertEqual(persistence.loadData(from: "tray.v1.backup.json"), first)
+        XCTAssertNoThrow(try persistence.writeBackupIfMissing(first, to: "tray.v1.backup.json"))
+        XCTAssertNoThrow(try persistence.writeBackupIfMissing(Data("new".utf8), to: "tray.v1.backup.json"))
+        XCTAssertEqual(try persistence.loadData(from: "tray.v1.backup.json"), first)
         persistence.removeFile(named: "tray.v1.backup.json")
-        XCTAssertNil(persistence.loadData(from: "tray.v1.backup.json"))
+        XCTAssertNil(try persistence.loadData(from: "tray.v1.backup.json"))
     }
 
     func testCollectionDeletionCanReassignOrDeleteItems() {

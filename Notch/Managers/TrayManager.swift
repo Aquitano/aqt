@@ -51,8 +51,8 @@ final class TrayManager {
         self.ingestionPipeline = TrayIngestionPipeline(storageRoot: self.storageRoot)
         let storageRoot = self.storageRoot
 
-        if let data = persistence.loadData(from: storeFile) {
-            if let store = persistence.decode(TrayStore.self, from: data),
+        if let data = try? persistence.loadData(from: storeFile) {
+            if let store = try? persistence.decode(TrayStore.self, from: data, file: storeFile),
                store.schemaVersion == TrayStore.currentSchemaVersion {
                 let result = TrayStoreValidation.visibleStore(
                     store, fileExists: { relativePath in
@@ -73,7 +73,7 @@ final class TrayManager {
                 if result.quarantinedItemCount == 0 {
                     persistence.removeFile(named: legacyBackupFile)
                 }
-            } else if let legacy = persistence.decode([LegacyDropItem].self, from: data) {
+            } else if let legacy = try? persistence.decode([LegacyDropItem].self, from: data, file: storeFile) {
                 let result = TrayStoreMigration.migrate(
                     legacy, ttlDays: settings.tray.ttlDays,
                     fileExists: { relativePath in
@@ -84,18 +84,19 @@ final class TrayManager {
                         )
                     }
                 )
-                if persistence.writeBackupIfMissing(data, to: legacyBackupFile),
-                   persistence.saveSynchronously(result.store, to: storeFile) {
+                do {
+                    try persistence.writeBackupIfMissing(data, to: legacyBackupFile)
+                    try persistence.saveSynchronously(result.store, to: storeFile)
                     self.collections = result.store.collections
                     self.items = result.store.items
                     if result.quarantinedItemCount > 0 {
                         self.loadIssue = "\(result.quarantinedItemCount) missing tray item(s) were hidden."
                     }
-                } else {
-                    self.loadIssue = "The existing tray could not be migrated safely."
+                } catch {
+                    self.loadIssue = "The existing tray could not be migrated safely: \(error.localizedDescription)"
                 }
             } else {
-                _ = persistence.writeBackupIfMissing(data, to: corruptBackupFile)
+                try? persistence.writeBackupIfMissing(data, to: corruptBackupFile)
                 self.loadIssue = "The tray index is unreadable; stored files were left untouched."
             }
         }

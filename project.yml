@@ -133,6 +133,7 @@ targets:
       - path: Notch/Model/ScreenshotCandidate.swift
       - path: Notch/Services/TrayIngestionPipeline.swift
       - path: Notch/Services/Persistence.swift
+      - path: Notch/Services/Diagnostics.swift
       - path: Notch/Managers/Media/MediaAdapterPayload.swift
       - path: Notch/Managers/Audio/AudioLevelAnalysis.swift
       - path: Notch/Window/HitRegion.swift

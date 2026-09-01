@@ -14,6 +14,7 @@ struct SettingsView: View {
     @Environment(ShortcutsManager.self) private var shortcuts
     @Environment(PowerModeController.self) private var powerMode
     @Environment(TrayManager.self) private var tray
+    @Environment(Diagnostics.self) private var diagnostics
 
     @State private var shortcutToPin = ""
     @State private var t3PairingLink = ""
@@ -61,6 +62,9 @@ struct SettingsView: View {
             }
             Tab("Permissions", systemImage: "lock.shield") {
                 pane { permissionsSection }
+            }
+            Tab("Diagnostics", systemImage: "stethoscope") {
+                pane { diagnosticsSection }
             }
         }
         .frame(width: 580, height: 540)
@@ -817,6 +821,40 @@ struct SettingsView: View {
             Text("Permissions")
         } footer: {
             Text("Opens the matching pane in System Settings so you can grant access. Input Monitoring (or Accessibility for HUD replacement) is what lets the volume and brightness keys reach Notch; a grant may need an app relaunch to take effect.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var diagnosticsSection: some View {
+        Section {
+            if diagnostics.issues.isEmpty {
+                Text("Nothing has gone wrong since launch.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(diagnostics.issues) { issue in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(issue.source).font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Text(issue.date, style: .time)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(issue.message)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    .padding(.vertical, 2)
+                }
+                Button("Clear") { diagnostics.clear() }
+                    .controlSize(.small)
+            }
+        } header: {
+            Text("Recent problems")
+        } footer: {
+            Text("Failures Notch recovered from on its own: files that would not read or write, agent hooks it could not install. Each one is also in Console under the com.aquitano.notch subsystem.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

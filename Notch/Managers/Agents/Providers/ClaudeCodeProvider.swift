@@ -29,7 +29,8 @@ final class ClaudeCodeProvider: AgentProviding {
     private let installer = AgentConfigInstaller()
     private let processLookup: ProcessLookup
     private let watcher = DirectoryWatcher(path: SessionProbe.projectsRoot.path)
-    private let persistence = Persistence()
+    private let persistence: Persistence
+    private let diagnostics: Diagnostics
     private static let bindingsFile = "claude-sessions.json"
 
     private var sessionsByID: [String: AgentSession] = [:]
@@ -56,9 +57,11 @@ final class ClaudeCodeProvider: AgentProviding {
     /// promptly. Busy-vs-idle itself is structural, so this never flaps the status.
     private static let livenessRecheck: TimeInterval = 8
 
-    init(processLookup: ProcessLookup, settings: Settings) {
+    init(processLookup: ProcessLookup, settings: Settings, persistence: Persistence, diagnostics: Diagnostics) {
         self.processLookup = processLookup
         self.settings = settings
+        self.persistence = persistence
+        self.diagnostics = diagnostics
     }
 
     var isEnabled: Bool { settings.agents.claudeEnabled }
@@ -67,17 +70,26 @@ final class ClaudeCodeProvider: AgentProviding {
 
     func start() {
         guard isEnabled else { return }
-        // Keep the stable-path launcher current (cheap, local). The config points
-        // at that launcher, so it only needs rewriting if it went missing.
-        try? installer.writeBridge()
-        // Install if missing, or upgrade a legacy app-path hook to the launcher.
-        if !installer.claudeBridgeInstalled() {
-            try? installer.installClaudeHooks()
+        do {
+            // Keep the stable-path launcher current (cheap, local). The config points
+            // at that launcher, so it only needs rewriting if it went missing.
+            try installer.writeBridge()
+            // Install if missing, or upgrade a legacy app-path hook to the launcher.
+            if !installer.claudeBridgeInstalled() {
+                try installer.installClaudeHooks()
+            }
+        } catch {
+            diagnostics.report(source: "Claude Code hooks", error)
         }
         // Sessions announced while we were not running are still out there; the
         // first reconcile drops whichever of them have since exited.
-        bindings = (persistence.load([AgentSessionBinding].self, from: Self.bindingsFile) ?? [])
-            .reduce(into: [:]) { $0[$1.sessionId] = $1 }
+        do {
+            bindings = (try persistence.load([AgentSessionBinding].self, from: Self.bindingsFile) ?? [])
+                .reduce(into: [:]) { $0[$1.sessionId] = $1 }
+        } catch {
+            diagnostics.report(source: "Claude Code sessions", error)
+            bindings = [:]
+        }
         beginWatching()
     }
 

@@ -24,6 +24,8 @@ final class AgentManager {
 
     private let activities: ActivityManager
     private let settings: Settings
+    private let persistence: Persistence
+    private let diagnostics: Diagnostics
     let notifier: AgentNotifier
     private let hookGuard: HookGuard
 
@@ -45,9 +47,11 @@ final class AgentManager {
     /// master switch without uninstalling any per-agent integration.
     private var isRunning = false
 
-    init(activities: ActivityManager, settings: Settings) {
+    init(activities: ActivityManager, settings: Settings, persistence: Persistence, diagnostics: Diagnostics) {
         self.activities = activities
         self.settings = settings
+        self.persistence = persistence
+        self.diagnostics = diagnostics
         let notifier = AgentNotifier(activities: activities, settings: settings)
         self.notifier = notifier
         self.hookGuard = HookGuard(notifier: notifier)
@@ -87,8 +91,13 @@ final class AgentManager {
             }
         }
 
-        let installer = AgentConfigInstaller()
-        if settings.agents.usageLimits { try? installer.installClaudeUsage() }
+        if settings.agents.usageLimits {
+            do {
+                try AgentConfigInstaller().installClaudeUsage()
+            } catch {
+                diagnostics.report(source: "Claude usage limits", error)
+            }
+        }
     }
 
     /// Pause every provider and the shared socket while preserving the user's
@@ -125,7 +134,8 @@ final class AgentManager {
         guard providers.isEmpty else { return }
         let installer = AgentConfigInstaller()
         providers = [
-            ClaudeCodeProvider(processLookup: processLookup, settings: settings),
+            ClaudeCodeProvider(processLookup: processLookup, settings: settings,
+                               persistence: persistence, diagnostics: diagnostics),
             // Codex hooks are short-lived subprocesses (pid unreliable) -> age out by staleness.
             SocketAgentProvider(
                 kind: .codex, liveness: .staleness,
