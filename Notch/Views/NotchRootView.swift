@@ -7,13 +7,13 @@ import UniformTypeIdentifiers
 /// is scoped to the actual content so the rest of the panel stays click-through.
 struct NotchRootView: View {
     var showsHUD = true
-    @EnvironmentObject private var env: AppEnvironment
-    @EnvironmentObject private var state: NotchState
-    @EnvironmentObject private var hud: HUDManager
-    @EnvironmentObject private var media: MediaManager
-    @EnvironmentObject private var activities: ActivityManager
-    @EnvironmentObject private var tray: TrayManager
-    @EnvironmentObject private var settings: Settings
+    @Environment(AppEnvironment.self) private var env
+    @Environment(NotchState.self) private var state
+    @Environment(HUDManager.self) private var hud
+    @Environment(MediaManager.self) private var media
+    @Environment(ActivityManager.self) private var activities
+    @Environment(TrayManager.self) private var tray
+    @Environment(Settings.self) private var settings
 
     @Environment(\.notchGeometry) private var notchSize
     @Environment(\.notchExpandedWidth) private var expandedWidth

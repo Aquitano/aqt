@@ -1,6 +1,5 @@
 import ApplicationServices
 import SwiftUI
-import Combine
 
 /// Volume/brightness HUD in two tiers. Listen-only observes media keys and
 /// shows the overlay alongside the system HUD. With "Replace the system HUD"
@@ -9,14 +8,15 @@ import Combine
 /// hardware can't honour (external-display brightness, an unwritable device)
 /// is passed back to the system — never swallowed into a no-op.
 @MainActor
-final class HUDManager: ObservableObject {
+@Observable
+final class HUDManager {
 
-    @Published private(set) var isVisible = false
-    @Published private(set) var kind: HUDKind = .volume
-    @Published private(set) var value: Double = 0
-    @Published private(set) var muted = false
+    private(set) var isVisible = false
+    private(set) var kind: HUDKind = .volume
+    private(set) var value: Double = 0
+    private(set) var muted = false
     /// True while the consuming tap is active (we own the keys and the HUD).
-    @Published private(set) var replacingSystemHUD = false
+    private(set) var replacingSystemHUD = false
 
     private let settings: Settings
     private let tap = SystemDefinedTap()
@@ -24,7 +24,7 @@ final class HUDManager: ObservableObject {
     private let brightness = Brightness()
     private var dismissTask: Task<Void, Never>?
     private var trustRetryTask: Task<Void, Never>?
-    private var cancellables = Set<AnyCancellable>()
+    private var settingsObserver: Task<Void, Never>?
     private var hardwareStarted = false
 
     private let visibleDuration: TimeInterval = 1.6
@@ -43,10 +43,9 @@ final class HUDManager: ObservableObject {
             // is safe and keeps the swallow decision synchronous.
             MainActor.assumeIsolated { self?.handle(key, fine: fine) ?? false }
         }
-        settings.$showHUD
-            .combineLatest(settings.$hudReplacesSystem)
-            .sink { [weak self] show, replace in self?.configure(show: show, replace: replace) }
-            .store(in: &cancellables)
+        settingsObserver = watch({ [settings] in (settings.showHUD, settings.hudReplacesSystem) }) { [weak self] show, replace in
+            self?.configure(show: show, replace: replace)
+        }
     }
 
     private func configure(show: Bool, replace: Bool) {

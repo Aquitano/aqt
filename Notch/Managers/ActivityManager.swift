@@ -1,15 +1,15 @@
 import SwiftUI
-import Combine
 
 /// Ordered priority queue of live activities. The top entry renders in the
 /// compact pill; the rest cycle (swipe-down / middle-click). TTLs are one-shot
 /// `Task.sleep`s — never repeating timers.
 @MainActor
-final class ActivityManager: ObservableObject {
+@Observable
+final class ActivityManager {
 
-    @Published private(set) var activities: [Activity] = []
+    private(set) var activities: [Activity] = []
     /// Bumps on every new activity so views can fire a one-shot "pop".
-    @Published private(set) var lastEventID = UUID()
+    private(set) var lastEventID = UUID()
 
     private var cycleOffset = 0
     private unowned let state: NotchState
@@ -117,12 +117,10 @@ final class ActivityManager: ObservableObject {
         if cycleOffset >= max(activities.count, 1) { cycleOffset = 0 }
     }
 
-    /// Rotate which queued activity the compact pill shows. `cycleOffset` is not a
-    /// `@Published` property, so notify observers explicitly.
+    /// Rotate which queued activity the compact pill shows.
     func cycle(forward: Bool = true) {
         let count = compactOrdered.count
         guard count > 1 else { return }
-        objectWillChange.send()
         cycleOffset = ((cycleOffset + (forward ? 1 : -1)) % count + count) % count
     }
 

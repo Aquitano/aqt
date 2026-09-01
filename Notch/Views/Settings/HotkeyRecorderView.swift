@@ -7,7 +7,7 @@ import Carbon.HIToolbox
 /// registration (via `Settings.isRecordingHotkey`) so the current chord can be
 /// re-typed without toggling the notch out from under the recorder.
 struct HotkeyRecorderView: View {
-    @EnvironmentObject private var settings: Settings
+    @Environment(Settings.self) private var settings
 
     @State private var monitor: Any?
     @State private var heldModifiers = ""

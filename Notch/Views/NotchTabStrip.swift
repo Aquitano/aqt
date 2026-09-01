@@ -9,8 +9,8 @@ struct NotchTabStrip: View {
     /// because it sits over the desktop, not over the black pill.
     var floating = false
 
-    @EnvironmentObject private var state: NotchState
-    @EnvironmentObject private var settings: Settings
+    @Environment(NotchState.self) private var state
+    @Environment(Settings.self) private var settings
 
     @Environment(\.openSettings) private var openSettings
 

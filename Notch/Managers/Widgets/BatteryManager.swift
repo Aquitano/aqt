@@ -1,21 +1,21 @@
 import Foundation
 import IOKit.ps
-import Combine
 
 /// Battery + power state from IOKit, updated by a run-loop source (no polling).
 /// Emits charging / low-battery / low-power activities on state transitions.
 @MainActor
-final class BatteryManager: ObservableObject {
+@Observable
+final class BatteryManager {
 
-    @Published private(set) var percent: Int = 100
-    @Published private(set) var isCharging = false
-    @Published private(set) var isPluggedIn = false
-    @Published private(set) var isFullyCharged = false
-    @Published private(set) var timeToEmpty: Int?     // minutes, nil if calculating
-    @Published private(set) var lowPowerMode = false
+    private(set) var percent: Int = 100
+    private(set) var isCharging = false
+    private(set) var isPluggedIn = false
+    private(set) var isFullyCharged = false
+    private(set) var timeToEmpty: Int?     // minutes, nil if calculating
+    private(set) var lowPowerMode = false
     /// False on a desktop Mac (or when only a UPS is attached), so the tile can hide
     /// instead of showing a fake permanent 100%.
-    @Published private(set) var hasBattery = true
+    private(set) var hasBattery = true
 
     private unowned let activities: ActivityManager
     private let settings: Settings

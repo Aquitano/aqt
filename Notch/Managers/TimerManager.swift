@@ -1,26 +1,26 @@
 import AppKit
-import Combine
 
 /// Countdown engine behind the timer tab and the status-menu timers, surfaced
 /// as a `.timer` activity. The activity is sticky (no TTL) until it fires or is
 /// cancelled; completion emits a Quick Peek. A single `Task.sleep` backs the
 /// running timer — never a repeating timer.
 @MainActor
-final class TimerManager: ObservableObject {
+@Observable
+final class TimerManager {
 
     enum RunState: Equatable { case idle, running, paused }
 
-    @Published private(set) var runState: RunState = .idle
+    private(set) var runState: RunState = .idle
     /// Phase of the running/paused timer; nil for a plain countdown.
-    @Published private(set) var activePhase: PomodoroPhase?
-    @Published private(set) var endsAt: Date?
-    @Published private(set) var pausedRemaining: TimeInterval?
-    @Published private(set) var totalDuration: TimeInterval = 0
+    private(set) var activePhase: PomodoroPhase?
+    private(set) var endsAt: Date?
+    private(set) var pausedRemaining: TimeInterval?
+    private(set) var totalDuration: TimeInterval = 0
     /// Focus sessions completed since launch; the timer tab renders these as dots.
-    @Published private(set) var completedFocusSessions = 0
+    private(set) var completedFocusSessions = 0
     /// The timer tab's pre-selected phase; a finished phase flips it to the other
     /// one (see `PomodoroPolicy.next`) so the natural next session is one tap away.
-    @Published var selectedPhase: PomodoroPhase = .focus
+    var selectedPhase: PomodoroPhase = .focus
 
     var isRunning: Bool { runState != .idle }
 

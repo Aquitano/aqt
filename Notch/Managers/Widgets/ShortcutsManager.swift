@@ -3,10 +3,11 @@ import Foundation
 /// Runs user-pinned Shortcuts via `/usr/bin/shortcuts`. Listing and running both
 /// shell out off-main; run failures surface through the activity peek channel.
 @MainActor
-final class ShortcutsManager: ObservableObject {
+@Observable
+final class ShortcutsManager {
 
     /// Names from `shortcuts list`, for the Settings picker.
-    @Published private(set) var available: [String] = []
+    private(set) var available: [String] = []
 
     private let activities: ActivityManager
 

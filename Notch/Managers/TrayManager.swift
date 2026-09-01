@@ -1,6 +1,5 @@
 import AppKit
 import SwiftUI
-import Combine
 import UniformTypeIdentifiers
 import QuickLookThumbnailing
 
@@ -8,12 +7,13 @@ import QuickLookThumbnailing
 /// URLs are short-lived), snapshots a Quick Look thumbnail, and persists the list
 /// across launches. Not sandboxed, so plain file URLs — no security-scoped bookmarks.
 @MainActor
-final class TrayManager: ObservableObject {
+@Observable
+final class TrayManager {
 
-    @Published private(set) var items: [DropItem] = []
-    @Published private(set) var collections: [TrayCollection] = [.shelf]
-    @Published private(set) var activeCollectionID = TrayCollection.shelfID
-    @Published private(set) var loadIssue: String?
+    private(set) var items: [DropItem] = []
+    private(set) var collections: [TrayCollection] = [.shelf]
+    private(set) var activeCollectionID = TrayCollection.shelfID
+    private(set) var loadIssue: String?
     let quickLook = TrayQuickLookController()
 
     let storageRoot: URL
@@ -27,7 +27,10 @@ final class TrayManager: ObservableObject {
     private let legacyBackupFile = "tray.v1.backup.json"
     private let corruptBackupFile = "tray.corrupt.backup.json"
     private let ingestionPipeline: TrayIngestionPipeline
-    private var cancellables = Set<AnyCancellable>()
+    private var pruneTasks: [Task<Void, Never>] = []
+    /// Bumped when a thumbnail finishes decoding so views reading `thumbnail(for:)`
+    /// re-render; the image cache itself is not observable.
+    private var thumbnailGeneration = 0
     private var expiryTask: Task<Void, Never>?
 
     var activeItems: [TrayItem] {
@@ -113,12 +116,13 @@ final class TrayManager: ObservableObject {
             )
         }
 
-        Publishers.Merge(
-            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification),
-            NotificationCenter.default.publisher(for: .NSCalendarDayChanged)
-        )
-        .sink { [weak self] _ in self?.pruneExpired() }
-        .store(in: &cancellables)
+        for name in [NSApplication.didBecomeActiveNotification, .NSCalendarDayChanged] {
+            pruneTasks.append(Task { @MainActor [weak self] in
+                for await _ in NotificationCenter.default.notifications(named: name) {
+                    self?.pruneExpired()
+                }
+            })
+        }
         scheduleNearestExpiry()
     }
 
@@ -339,7 +343,7 @@ final class TrayManager: ObservableObject {
                     if let image {
                         self.imageCache.store(image, forKey: self.thumbnailKey(for: item))
                     }
-                    self.objectWillChange.send()
+                    self.thumbnailGeneration += 1
                 }
             }
         }
@@ -539,7 +543,8 @@ final class TrayManager: ObservableObject {
     }
 
     func thumbnail(for item: DropItem) -> NSImage? {
-        imageCache.image(forKey: thumbnailKey(for: item))
+        _ = thumbnailGeneration
+        return imageCache.image(forKey: thumbnailKey(for: item))
     }
 
     func items(withIDs ids: Set<UUID>) -> [TrayItem] {
@@ -663,7 +668,6 @@ final class TrayManager: ObservableObject {
                     self.items[index].displayName = name
                     self.items[index].relativePath = relativePath
                     self.persist()
-                    self.objectWillChange.send()
                 case .failure:
                     self.activities.peek(
                         title: "Rename Failed", message: "The original item is unchanged",
@@ -910,7 +914,7 @@ final class TrayManager: ObservableObject {
                 loaded = true
             }
             guard loaded else { return }
-            Task { @MainActor in self?.objectWillChange.send() }
+            Task { @MainActor in self?.thumbnailGeneration += 1 }
         }
     }
 

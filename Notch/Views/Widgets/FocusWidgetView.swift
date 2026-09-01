@@ -4,7 +4,7 @@ import SwiftUI
 /// chrome and tints up when a Focus is active. Lives inside the expanded panel,
 /// so it never renders while the notch is idle.
 struct FocusWidgetView: View {
-    @EnvironmentObject private var focus: FocusManager
+    @Environment(FocusManager.self) private var focus
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

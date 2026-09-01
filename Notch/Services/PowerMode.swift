@@ -7,13 +7,14 @@ import AppKit
 /// through `NSProcessInfoPowerStateDidChange` into `BatteryManager`, so the UI
 /// reflects reality, not the button press.
 @MainActor
-final class PowerModeController: ObservableObject {
+@Observable
+final class PowerModeController {
 
     static let shortcutName = "Toggle Low Power Mode"
 
     /// nil until the first `shortcuts list` check completes.
-    @Published private(set) var shortcutInstalled: Bool?
-    @Published private(set) var isToggling = false
+    private(set) var shortcutInstalled: Bool?
+    private(set) var isToggling = false
 
     private unowned let activities: ActivityManager
     private var refreshTask: Task<Void, Never>?

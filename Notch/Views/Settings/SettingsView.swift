@@ -7,13 +7,13 @@ import ApplicationServices
 /// login-item toggle additionally syncs the real `SMAppService` registration so
 /// the preference and the OS agree.
 struct SettingsView: View {
-    @EnvironmentObject private var settings: Settings
-    @EnvironmentObject private var agents: AgentManager
-    @EnvironmentObject private var media: MediaManager
-    @EnvironmentObject private var visualizer: AudioVisualizerManager
-    @EnvironmentObject private var shortcuts: ShortcutsManager
-    @EnvironmentObject private var powerMode: PowerModeController
-    @EnvironmentObject private var tray: TrayManager
+    @Bindable var settings: Settings
+    @Environment(AgentManager.self) private var agents
+    @Environment(MediaManager.self) private var media
+    @Environment(AudioVisualizerManager.self) private var visualizer
+    @Environment(ShortcutsManager.self) private var shortcuts
+    @Environment(PowerModeController.self) private var powerMode
+    @Environment(TrayManager.self) private var tray
 
     @State private var shortcutToPin = ""
     @State private var t3PairingLink = ""

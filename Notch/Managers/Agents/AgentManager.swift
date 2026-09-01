@@ -1,4 +1,3 @@
-import Combine
 import SwiftUI
 import AppKit
 
@@ -7,20 +6,21 @@ import AppKit
 /// noteworthy ones into the compact pill. Mirrors `MediaManager`'s role for the
 /// agent feature.
 @MainActor
-final class AgentManager: ObservableObject {
+@Observable
+final class AgentManager {
 
-    @Published private(set) var sessions: [AgentSession] = []
+    private(set) var sessions: [AgentSession] = []
     /// Sessions the compact pill represents: busy or waiting on the user. Shared
     /// by `syncPill` and the pill's per-session glyph strip so they can't disagree.
     var pillSessions: [AgentSession] {
         sessions.filter { $0.status.isBusy || $0.status == .needsAttention }
     }
     /// Account-wide Claude usage limits (when enabled), from the statusLine.
-    @Published private(set) var usage: AgentUsage?
+    private(set) var usage: AgentUsage?
     /// Last enable/install failure, for the Settings UI. Cleared on the next
     /// successful toggle so stale errors don't linger.
-    @Published private(set) var integrationError: String?
-    @Published private(set) var permissionRequests: [String: PendingAgentPermission] = [:]
+    private(set) var integrationError: String?
+    private(set) var permissionRequests: [String: PendingAgentPermission] = [:]
 
     private let activities: ActivityManager
     private let settings: Settings
@@ -33,7 +33,7 @@ final class AgentManager: ObservableObject {
     private var sessionsByKind: [AgentKind: [AgentSession]] = [:]
     private var permissionDeadlineTasks: [String: Task<Void, Never>] = [:]
     private var permissionCleanupTasks: [String: Task<Void, Never>] = [:]
-    private var permissionApprovalCancellable: AnyCancellable?
+    private var permissionApprovalObserver: Task<Void, Never>?
     private var streamTask: Task<Void, Never>?
     private var streamGeneration = 0
 
@@ -51,11 +51,9 @@ final class AgentManager: ObservableObject {
         let notifier = AgentNotifier(activities: activities, settings: settings)
         self.notifier = notifier
         self.hookGuard = HookGuard(notifier: notifier)
-        self.permissionApprovalCancellable = settings.$agentPermissionApproval
-            .dropFirst()
-            .sink { [weak self] enabled in
-                if !enabled { self?.disablePermissionResponses() }
-            }
+        self.permissionApprovalObserver = watch(initial: false, { settings.agentPermissionApproval }) { [weak self] enabled in
+            if !enabled { self?.disablePermissionResponses() }
+        }
     }
 
     func start() {
@@ -261,7 +259,6 @@ final class AgentManager: ObservableObject {
 
     func setEnabled(_ enabled: Bool, for kind: AgentKind) {
         guard let provider = provider(for: kind) else { return }
-        objectWillChange.send()
         integrationError = nil
         if enabled {
             do {
@@ -286,7 +283,6 @@ final class AgentManager: ObservableObject {
         integrationError = nil
         do {
             try await provider.pair(link: link)
-            objectWillChange.send()
         } catch {
             integrationError = "Couldn't connect to T3 Code: \(error.localizedDescription)"
         }
@@ -298,7 +294,6 @@ final class AgentManager: ObservableObject {
     }
 
     func removeT3Environment(id: String) {
-        objectWillChange.send()
         (provider(for: .t3code) as? T3CodeProvider)?.removeEnvironment(id: id)
     }
 

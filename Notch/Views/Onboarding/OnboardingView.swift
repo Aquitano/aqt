@@ -6,11 +6,11 @@ import EventKit
 /// two most consequential toggles. Everything here is skippable — each feature
 /// keeps its own lazy in-place prompt, so this is a shortcut, not a gate.
 struct OnboardingView: View {
-    @EnvironmentObject private var settings: Settings
-    @EnvironmentObject private var calendar: CalendarManager
-    @EnvironmentObject private var weather: WeatherManager
-    @EnvironmentObject private var focus: FocusManager
-    @EnvironmentObject private var agents: AgentManager
+    @Environment(Settings.self) private var settings
+    @Environment(CalendarManager.self) private var calendar
+    @Environment(WeatherManager.self) private var weather
+    @Environment(FocusManager.self) private var focus
+    @Environment(AgentManager.self) private var agents
 
     let onFinish: () -> Void
 
@@ -46,7 +46,7 @@ struct OnboardingView: View {
                 .padding(.vertical, 16)
 
             VStack(spacing: 10) {
-                Toggle(isOn: $settings.launchAtLogin) {
+                Toggle(isOn: Bindable(settings).launchAtLogin) {
                     toggleLabel(symbol: "power", title: "Launch at login",
                                 subtitle: "Start the notch when you log in.")
                 }

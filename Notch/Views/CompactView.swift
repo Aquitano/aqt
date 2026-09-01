@@ -11,11 +11,11 @@ import AppKit
 struct CompactView: View {
     let namespace: Namespace.ID
 
-    @EnvironmentObject private var media: MediaManager
-    @EnvironmentObject private var activities: ActivityManager
-    @EnvironmentObject private var settings: Settings
-    @EnvironmentObject private var env: AppEnvironment
-    @EnvironmentObject private var tray: TrayManager
+    @Environment(MediaManager.self) private var media
+    @Environment(ActivityManager.self) private var activities
+    @Environment(Settings.self) private var settings
+    @Environment(AppEnvironment.self) private var env
+    @Environment(TrayManager.self) private var tray
 
     @Environment(\.notchGeometry) private var notchSize
     @Environment(\.notchControlsSharedRendering) private var controlsSharedRendering
@@ -239,7 +239,7 @@ struct CompactView: View {
 /// Capture ownership still follows the primary display, but a 30 fps meter no
 /// longer invalidates and rebuilds the full compact media layout.
 private struct CompactAudioVisualizer: View {
-    @EnvironmentObject private var visualizer: AudioVisualizerManager
+    @Environment(AudioVisualizerManager.self) private var visualizer
 
     let requested: Bool
     let controlsCapture: Bool

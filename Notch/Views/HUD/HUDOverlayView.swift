@@ -7,7 +7,7 @@ import SwiftUI
 struct HUDOverlayView: View {
     let namespace: Namespace.ID
 
-    @EnvironmentObject private var hud: HUDManager
+    @Environment(HUDManager.self) private var hud
 
     var body: some View {
         HStack(spacing: 10) {

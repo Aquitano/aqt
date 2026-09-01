@@ -5,7 +5,8 @@ import SwiftUI
 /// the strong references for the app's lifetime. Injected into the SwiftUI tree
 /// as a set of environment objects so views observe each manager granularly.
 @MainActor
-final class AppEnvironment: ObservableObject {
+@Observable
+final class AppEnvironment {
 
     let settings: Settings
     let state: NotchState
@@ -38,9 +39,9 @@ final class AppEnvironment: ObservableObject {
 
     /// Set by the AppDelegate once the window exists; used to anchor the AirDrop
     /// share sheet to a key-capable window. Weak to avoid a retain cycle.
-    weak var windowController: NotchWindowController?
+    @ObservationIgnored weak var windowController: NotchWindowController?
 
-    @Published private(set) var renderingActive = true
+    private(set) var renderingActive = true
 
     /// Retains the AirDrop sharing delegate for the lifetime of one interaction.
     private var shareCoordinator: ShareCoordinator?
@@ -230,28 +231,28 @@ private final class ShareCoordinator: NSObject, NSSharingServiceDelegate, @preco
 }
 
 extension View {
-    /// Inject every manager so views can `@EnvironmentObject` exactly what they need.
+    /// Inject every manager so views can pull exactly what they need from the environment.
     @MainActor
     func injectNotchEnvironment(_ env: AppEnvironment, state: NotchState? = nil) -> some View {
         self
-            .environmentObject(env)
-            .environmentObject(env.settings)
-            .environmentObject(state ?? env.state)
-            .environmentObject(env.activities)
-            .environmentObject(env.media)
-            .environmentObject(env.audioVisualizer)
-            .environmentObject(env.hud)
-            .environmentObject(env.tray)
-            .environmentObject(env.screenshots)
-            .environmentObject(env.timer)
-            .environmentObject(env.agents)
-            .environmentObject(env.battery)
-            .environmentObject(env.powerMode)
-            .environmentObject(env.calendar)
-            .environmentObject(env.weather)
-            .environmentObject(env.bluetooth)
-            .environmentObject(env.focus)
-            .environmentObject(env.shortcuts)
-            .environmentObject(env.note)
+            .environment(env)
+            .environment(env.settings)
+            .environment(state ?? env.state)
+            .environment(env.activities)
+            .environment(env.media)
+            .environment(env.audioVisualizer)
+            .environment(env.hud)
+            .environment(env.tray)
+            .environment(env.screenshots)
+            .environment(env.timer)
+            .environment(env.agents)
+            .environment(env.battery)
+            .environment(env.powerMode)
+            .environment(env.calendar)
+            .environment(env.weather)
+            .environment(env.bluetooth)
+            .environment(env.focus)
+            .environment(env.shortcuts)
+            .environment(env.note)
     }
 }

@@ -1,10 +1,10 @@
 import AppKit
-import Combine
 import UniformTypeIdentifiers
 
 @MainActor
-final class ScreenshotMonitor: ObservableObject {
-    @Published private(set) var candidates: [ScreenshotCandidate] = []
+@Observable
+final class ScreenshotMonitor {
+    private(set) var candidates: [ScreenshotCandidate] = []
 
     private let settings: Settings
     private let activities: ActivityManager
@@ -14,7 +14,7 @@ final class ScreenshotMonitor: ObservableObject {
     private var knownPaths = Set<String>()
     private var dismissedIDs = Set<String>()
     private var pendingTasks: [String: Task<Void, Never>] = [:]
-    private var cancellable: AnyCancellable?
+    private var settingsObserver: Task<Void, Never>?
     private var monitoringStartedAt = Date()
 
     init(settings: Settings, activities: ActivityManager, tray: TrayManager) {
@@ -24,11 +24,9 @@ final class ScreenshotMonitor: ObservableObject {
     }
 
     func start() {
-        cancellable = settings.$offerScreenshots
-            .removeDuplicates()
-            .sink { [weak self] enabled in
-                enabled ? self?.beginMonitoring() : self?.stop()
-            }
+        settingsObserver = watch({ [settings] in settings.offerScreenshots }) { [weak self] enabled in
+            enabled ? self?.beginMonitoring() : self?.stop()
+        }
     }
 
     func stop() {

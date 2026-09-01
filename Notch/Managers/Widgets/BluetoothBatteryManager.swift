@@ -1,21 +1,21 @@
 import IOBluetooth
 import AppKit
 import Foundation
-import Combine
 import Darwin
 
 /// Bluetooth device battery via `system_profiler SPBluetoothDataType -json`
 /// (off-main, cached). Connect events come from IOBluetooth notifications and
 /// emit a "device connected" activity, then trigger a rescan for battery levels.
 @MainActor
-final class BluetoothBatteryManager: NSObject, ObservableObject {
+@Observable
+final class BluetoothBatteryManager: NSObject {
 
-    @Published private(set) var devices: [BluetoothDevice] = []
+    private(set) var devices: [BluetoothDevice] = []
 
     private unowned let activities: ActivityManager
     private var connectNotification: IOBluetoothUserNotification?
     private var scanning = false
-    private var cancellables = Set<AnyCancellable>()
+    private var activationTask: Task<Void, Never>?
 
     init(activities: ActivityManager) {
         self.activities = activities
@@ -28,11 +28,11 @@ final class BluetoothBatteryManager: NSObject, ObservableObject {
             forConnectNotifications: self,
             selector: #selector(deviceConnected(_:fromDevice:))
         )
-        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-            .sink { [weak self] _ in
-                Task { @MainActor in self?.refresh() }
+        activationTask = Task { @MainActor [weak self] in
+            for await _ in NotificationCenter.default.notifications(named: NSApplication.didBecomeActiveNotification) {
+                self?.refresh()
             }
-            .store(in: &cancellables)
+        }
     }
 
     /// View-driven (e.g. on expand) so battery is fresh without polling.

@@ -2,11 +2,12 @@ import QuickLookUI
 import SwiftUI
 
 @MainActor
-final class TrayQuickLookController: NSObject, ObservableObject,
+@Observable
+final class TrayQuickLookController: NSObject,
     @preconcurrency QLPreviewPanelDataSource,
     QLPreviewPanelDelegate {
 
-    @Published private(set) var isVisible = false
+    private(set) var isVisible = false
 
     private var itemIDs: Set<UUID> = []
     private var previewURLs: [URL] = []

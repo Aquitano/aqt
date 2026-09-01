@@ -5,8 +5,8 @@ import AppKit
 /// running countdown. Phase decisions live in `PomodoroPolicy`; the view only
 /// renders `TimerManager`'s published state.
 struct TimerPanelView: View {
-    @EnvironmentObject private var timer: TimerManager
-    @EnvironmentObject private var settings: Settings
+    @Environment(TimerManager.self) private var timer
+    @Environment(Settings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Namespace private var chipNamespace
@@ -51,9 +51,10 @@ struct TimerPanelView: View {
     /// The dial edits the phase's saved duration directly, so the last choice
     /// per phase survives relaunches.
     private var minutesBinding: Binding<Int> {
+        let settings = Bindable(settings)
         switch timer.selectedPhase {
-        case .focus: return $settings.pomodoroFocusMinutes
-        case .rest: return $settings.pomodoroBreakMinutes
+        case .focus: return settings.pomodoroFocusMinutes
+        case .rest: return settings.pomodoroBreakMinutes
         }
     }
 

@@ -6,7 +6,7 @@ import EventKit
 /// calendar permission hasn't been granted. Lives inside the expanded panel,
 /// so glass on the card is fine.
 struct CalendarWidgetView: View {
-    @EnvironmentObject private var calendar: CalendarManager
+    @Environment(CalendarManager.self) private var calendar
 
     private let maxEvents = 3
 

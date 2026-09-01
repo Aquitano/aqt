@@ -1,14 +1,14 @@
 import EventKit
 import AppKit
-import Combine
 
 /// Upcoming events from a single EKEventStore. Reloads on `.EKEventStoreChanged`
 /// (no polling). Flattens EKEvent into our value type so views never see EventKit.
 @MainActor
-final class CalendarManager: ObservableObject {
+@Observable
+final class CalendarManager {
 
-    @Published private(set) var events: [CalendarEvent] = []
-    @Published private(set) var authorization: EKAuthorizationStatus = .notDetermined
+    private(set) var events: [CalendarEvent] = []
+    private(set) var authorization: EKAuthorizationStatus = .notDetermined
 
     private let store = EKEventStore()
     private let horizonDays = 7
@@ -16,7 +16,7 @@ final class CalendarManager: ObservableObject {
     private unowned let activities: ActivityManager
     private var reminderTasks: [Task<Void, Never>] = []
     private let reminderLead: TimeInterval = 5 * 60
-    private var cancellables = Set<AnyCancellable>()
+    private var cadenceTask: Task<Void, Never>?
 
     init(activities: ActivityManager) {
         self.activities = activities
@@ -33,10 +33,12 @@ final class CalendarManager: ObservableObject {
         // Without a time axis, ended events linger, isInProgress styling goes stale,
         // and the horizon freezes at launch. Coarse timer; .common so it fires during
         // tracking too.
-        Timer.publish(every: 5 * 60, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in self?.reload() }
-            .store(in: &cancellables)
+        cadenceTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5 * 60))
+                self?.reload()
+            }
+        }
         // Don't trigger the TCC prompt at launch; that stacks dialogs on top of the
         // location prompt and feels like a freeze. The widget's "Enable" button asks.
         if authorization == .fullAccess { reload() }

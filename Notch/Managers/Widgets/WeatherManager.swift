@@ -1,24 +1,25 @@
 import CoreLocation
 import MapKit
 import AppKit
-import Combine
 
 /// Weather from Open-Meteo (no key, no account). Location via CoreLocation;
 /// fetched on location update and when the unit preference changes.
 @MainActor
-final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+@Observable
+final class WeatherManager: NSObject, CLLocationManagerDelegate {
 
-    @Published private(set) var snapshot: WeatherSnapshot?
-    @Published private(set) var authorization: CLAuthorizationStatus = .notDetermined
+    private(set) var snapshot: WeatherSnapshot?
+    private(set) var authorization: CLAuthorizationStatus = .notDetermined
     /// The last fetch failed and there is no snapshot to show — distinguishes
     /// "couldn't load" (offer Retry) from "still loading" in the widget.
-    @Published private(set) var fetchFailed = false
+    private(set) var fetchFailed = false
 
     private let settings: Settings
     private let manager = CLLocationManager()
     private let session = URLSession(configuration: .default)
     private var lastLocation: CLLocation?
-    private var cancellables = Set<AnyCancellable>()
+    private var unitObserver: Task<Void, Never>?
+    private var cadenceTask: Task<Void, Never>?
     private var fetchGeneration = 0
 
     init(settings: Settings) {
@@ -38,21 +39,20 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
             manager.requestLocation()
         }
 
-        settings.$temperatureUnit
-            .dropFirst()
-            .sink { [weak self] _ in
-                guard let self, let location = self.lastLocation else { return }
-                Task { await self.fetch(for: location) }
-            }
-            .store(in: &cancellables)
+        unitObserver = watch(initial: false, { [settings] in settings.temperatureUnit }) { [weak self] _ in
+            guard let self, let location = self.lastLocation else { return }
+            Task { await self.fetch(for: location) }
+        }
 
         // Weather is otherwise a one-shot at launch: without a cadence the widget
         // presents the launch-time temperature as current forever. Coarse (15 min);
         // .common so it also fires while the run loop is tracking.
-        Timer.publish(every: 15 * 60, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in self?.refresh() }
-            .store(in: &cancellables)
+        cadenceTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15 * 60))
+                self?.refresh()
+            }
+        }
     }
 
     /// Re-fetch for the last known location, or retry the location request if an

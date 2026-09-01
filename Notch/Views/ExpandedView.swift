@@ -9,9 +9,9 @@ import AppKit
 struct ExpandedView: View {
     let namespace: Namespace.ID
 
-    @EnvironmentObject private var state: NotchState
-    @EnvironmentObject private var settings: Settings
-    @EnvironmentObject private var screenshots: ScreenshotMonitor
+    @Environment(NotchState.self) private var state
+    @Environment(Settings.self) private var settings
+    @Environment(ScreenshotMonitor.self) private var screenshots
 
     @Environment(\.notchGeometry) private var notchSize
     @Environment(\.notchExpandedWidth) private var expandedWidth

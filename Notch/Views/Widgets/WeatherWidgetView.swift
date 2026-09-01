@@ -5,7 +5,7 @@ import CoreLocation
 /// own glass chrome and only renders inside the expanded home surface, so it
 /// never animates while the notch is idle.
 struct WeatherWidgetView: View {
-    @EnvironmentObject private var weather: WeatherManager
+    @Environment(WeatherManager.self) private var weather
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {

@@ -3,7 +3,7 @@ import SwiftUI
 /// Glass card listing connected Bluetooth devices and whatever battery info we
 /// could resolve. Lives inside the expanded panel, so glass on the card is fine.
 struct BluetoothWidgetView: View {
-    @EnvironmentObject private var bluetooth: BluetoothBatteryManager
+    @Environment(BluetoothBatteryManager.self) private var bluetooth
 
     private let maxDevices = 3
 

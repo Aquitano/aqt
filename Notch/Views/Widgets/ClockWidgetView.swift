@@ -5,7 +5,7 @@ import SwiftUI
 /// rendered (hidden panels are ordered out), so idle costs nothing — the same
 /// pattern as the timer pill.
 struct ClockWidgetView: View {
-    @EnvironmentObject private var settings: Settings
+    @Environment(Settings.self) private var settings
 
     var body: some View {
         TimelineView(.everyMinute) { context in

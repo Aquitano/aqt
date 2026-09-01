@@ -7,12 +7,12 @@ import SwiftUI
 /// a plain drag gesture (never a system drag session) because the panel is a
 /// registered tray drop target and a real drag would flip it into drop mode.
 struct WidgetGridView: View {
-    @EnvironmentObject private var settings: Settings
-    @EnvironmentObject private var bluetooth: BluetoothBatteryManager
-    @EnvironmentObject private var focus: FocusManager
-    @EnvironmentObject private var weather: WeatherManager
-    @EnvironmentObject private var calendar: CalendarManager
-    @EnvironmentObject private var battery: BatteryManager
+    @Environment(Settings.self) private var settings
+    @Environment(BluetoothBatteryManager.self) private var bluetooth
+    @Environment(FocusManager.self) private var focus
+    @Environment(WeatherManager.self) private var weather
+    @Environment(CalendarManager.self) private var calendar
+    @Environment(BatteryManager.self) private var battery
 
     @Environment(\.notchDisplayKey) private var displayKey
 

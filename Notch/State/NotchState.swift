@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 
 /// The two fields shown while a file is dragged onto the notch.
 enum DropZone: Hashable {
@@ -11,7 +10,8 @@ enum DropZone: Hashable {
 /// Owns the presentation phase and the active-activity selection; the feature
 /// managers own their own data and publish into the SwiftUI environment.
 @MainActor
-final class NotchState: ObservableObject {
+@Observable
+final class NotchState {
 
     enum Presentation: Equatable {
         case hidden     // panel ordered out, fully click-through
@@ -34,9 +34,9 @@ final class NotchState: ObservableObject {
         }
     }
 
-    @Published var presentation: Presentation = .hidden
-    @Published var isHovering: Bool = false
-    @Published var expandedTab: ExpandedTab = .home
+    var presentation: Presentation = .hidden
+    var isHovering: Bool = false
+    var expandedTab: ExpandedTab = .home
 
     /// Injected reset target so the panel can reopen on a user-chosen tab
     /// without NotchState depending on Settings (this file also compiles into
@@ -46,22 +46,22 @@ final class NotchState: ObservableObject {
     /// True while a file drag is hovering the notch. Pins the panel open on the
     /// tray and suppresses the hover-out collapse so a flickering hover can't pull
     /// the drop target out from under the drag.
-    @Published var isDropActive: Bool = false
+    var isDropActive: Bool = false
 
     /// Which drop field the pointer is currently over during a file drag, for the
     /// chooser's highlight. Set by the root drop delegate.
-    @Published var activeDropZone: DropZone?
-    @Published var activeDropRepresentation: TrayRepresentationKind?
-    @Published var isOptionMoveActive = false
+    var activeDropZone: DropZone?
+    var activeDropRepresentation: TrayRepresentationKind?
+    var isOptionMoveActive = false
 
     /// True from the start of a collapse until the close animation ends. Keeps the
     /// expanded body mounted (fading, clipped by the shrinking blob) for the whole
     /// close, then lets it drop so the idle compact pill carries no expanded content.
-    @Published var isCollapsing: Bool = false
+    var isCollapsing: Bool = false
 
     /// Mirrors `accessibilityReduceMotion`; the root view keeps it in sync so the
     /// transition helpers (which run outside the SwiftUI environment) can react.
-    @Published var reduceMotion: Bool = false
+    var reduceMotion: Bool = false
 
     var isExpanded: Bool { presentation == .expanded }
     var isVisible: Bool { presentation != .hidden }

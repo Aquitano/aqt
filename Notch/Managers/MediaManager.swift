@@ -1,16 +1,16 @@
 import SwiftUI
-import Combine
 
 /// Owns the active `MediaController`, publishes Now Playing state, and decodes
 /// artwork off-main. Selects the system-wide adapter when available, otherwise
 /// per-app scripting (Music / Spotify).
 @MainActor
-final class MediaManager: ObservableObject {
+@Observable
+final class MediaManager {
 
-    @Published private(set) var track: NowPlayingTrack = .empty
-    @Published private(set) var artwork: NSImage?
-    @Published private(set) var capabilities: MediaCapabilities = []
-    @Published private(set) var isAvailable = false
+    private(set) var track: NowPlayingTrack = .empty
+    private(set) var artwork: NSImage?
+    private(set) var capabilities: MediaCapabilities = []
+    private(set) var isAvailable = false
 
     /// Where the system-wide adapter ended up, for the Settings UI — the toggle
     /// alone can't show that the adapter was requested but silently fell back.
@@ -23,7 +23,7 @@ final class MediaManager: ObservableObject {
         case missing
         case unavailable(String)
     }
-    @Published private(set) var adapterState: AdapterState = .notRequested
+    private(set) var adapterState: AdapterState = .notRequested
 
     /// Wall-clock of the last snapshot, so views can interpolate the seek bar.
     private(set) var lastUpdate = Date()
@@ -34,7 +34,7 @@ final class MediaManager: ObservableObject {
 
     private var controller: MediaControlling?
     private var renderingActive = true
-    private var cancellables = Set<AnyCancellable>()
+    private var settingsObserver: Task<Void, Never>?
 
     init(activities: ActivityManager, imageCache: ImageCache, settings: Settings) {
         self.activities = activities
@@ -43,13 +43,10 @@ final class MediaManager: ObservableObject {
     }
 
     func start() {
-        settings.$showCompactNowPlaying
-            .removeDuplicates()
-            .sink { [weak self] enabled in
-                guard let self else { return }
-                self.activities.setNowPlaying(active: enabled && !self.track.isEmpty)
-            }
-            .store(in: &cancellables)
+        settingsObserver = watch({ [settings] in settings.showCompactNowPlaying }) { [weak self] enabled in
+            guard let self else { return }
+            self.activities.setNowPlaying(active: enabled && !self.track.isEmpty)
+        }
 
         // Start on the always-available scripting controller so launch never blocks
         // on the adapter's synchronous perl probe (hundreds of ms). If the adapter is

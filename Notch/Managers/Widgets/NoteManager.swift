@@ -3,9 +3,10 @@ import Foundation
 /// One persistent scratch note backing the quick-note widget. Loads synchronously
 /// at init (tiny file); saves are debounced per keystroke and written off-main.
 @MainActor
-final class NoteManager: ObservableObject {
+@Observable
+final class NoteManager {
 
-    @Published var text: String {
+    var text: String {
         didSet { scheduleSave() }
     }
 

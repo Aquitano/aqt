@@ -4,8 +4,8 @@ import SwiftUI
 /// the percentage, and a status line (charging / time remaining). Static by
 /// design, so it adds no animation cost while the panel is open.
 struct BatteryWidgetView: View {
-    @EnvironmentObject var battery: BatteryManager
-    @EnvironmentObject var powerMode: PowerModeController
+    @Environment(BatteryManager.self) var battery
+    @Environment(PowerModeController.self) var powerMode
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

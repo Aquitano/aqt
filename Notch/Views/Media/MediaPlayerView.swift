@@ -8,7 +8,7 @@ import AppKit
 struct MediaPlayerView: View {
     let namespace: Namespace.ID
 
-    @EnvironmentObject private var media: MediaManager
+    @Environment(MediaManager.self) private var media
 
     var body: some View {
         HStack(spacing: 16) {

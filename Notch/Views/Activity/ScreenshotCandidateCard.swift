@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct ScreenshotCandidateCard: View {
-    @EnvironmentObject private var env: AppEnvironment
-    @EnvironmentObject private var screenshots: ScreenshotMonitor
+    @Environment(AppEnvironment.self) private var env
+    @Environment(ScreenshotMonitor.self) private var screenshots
 
     var body: some View {
         HStack(spacing: 10) {

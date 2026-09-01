@@ -6,10 +6,10 @@ import UniformTypeIdentifiers
 /// instant: arrows, Command-click, Space, and Command-V are frequent actions and
 /// should never wait for decorative motion.
 struct TrayView: View {
-    @EnvironmentObject private var tray: TrayManager
-    @EnvironmentObject private var env: AppEnvironment
-    @EnvironmentObject private var state: NotchState
-    @EnvironmentObject private var settings: Settings
+    @Environment(TrayManager.self) private var tray
+    @Environment(AppEnvironment.self) private var env
+    @Environment(NotchState.self) private var state
+    @Environment(Settings.self) private var settings
 
     @State private var selection = Set<UUID>()
     @State private var renameItem: TrayItem?

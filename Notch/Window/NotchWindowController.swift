@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import SwiftUI
 
 /// Coordinates one display-local panel host per selected screen. Feature data
@@ -15,7 +14,7 @@ final class NotchWindowController {
     private var activeDisplayTask: Task<Void, Never>?
     private var displayInventory: [DisplayDescriptor]
     private var compactHitRegions: [String: NSRect] = [:]
-    private var cancellables = Set<AnyCancellable>()
+    private var observers: [Task<Void, Never>] = []
     private var mouseMonitors: [Any] = []
     /// Global left-mouse-up monitor, installed only for the duration of a drag session.
     private var dragUpMonitor: Any?
@@ -50,7 +49,7 @@ final class NotchWindowController {
             in: inventory
         )
         reconcileHosts()
-        observe()
+        wire()
         setupMouseTracking()
     }
 
@@ -274,45 +273,36 @@ final class NotchWindowController {
 
     // MARK: - Wiring
 
-    private func observe() {
-        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
-            .debounce(for: .milliseconds(180), scheduler: RunLoop.main)
-            .sink { [weak self] _ in self?.topologyChanged() }
-            .store(in: &cancellables)
-
-        env.settings.$displayPlacement
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.reconcileHosts() }
-            .store(in: &cancellables)
-
-        env.settings.$followActiveDisplay
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] enabled in
+    private func wire() {
+        let env = self.env
+        observers = [
+            Task { @MainActor [weak self] in
+                // Debounced: a topology change fires several notifications in a row.
+                var pending: Task<Void, Never>?
+                for await _ in NotificationCenter.default.notifications(
+                    named: NSApplication.didChangeScreenParametersNotification
+                ) {
+                    pending?.cancel()
+                    pending = Task { @MainActor [weak self] in
+                        try? await Task.sleep(for: .milliseconds(180))
+                        guard !Task.isCancelled else { return }
+                        self?.topologyChanged()
+                    }
+                }
+            },
+            watch(initial: false, {
+                _ = env.settings.displayPlacement
+                _ = env.settings.displayProfiles
+                _ = env.settings.virtualNotchMode
+            }) { [weak self] in self?.reconcileHosts() },
+            watch(initial: false, { env.settings.followActiveDisplay }) { [weak self] enabled in
                 guard let self else { return }
                 if enabled {
                     self.activeDisplayKey = self.displayKeyAtPointer()
                 }
                 self.reconcileHosts()
-            }
-            .store(in: &cancellables)
-
-        env.settings.$displayProfiles
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.reconcileHosts() }
-            .store(in: &cancellables)
-
-        env.settings.$virtualNotchMode
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.reconcileHosts() }
-            .store(in: &cancellables)
-
-        Publishers.CombineLatest(env.state.$presentation, env.hud.$isVisible)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] presentation, hudVisible in
+            },
+            watch({ (env.state.presentation, env.hud.isVisible) }) { [weak self] presentation, hudVisible in
                 guard let self else { return }
                 // With a notch on every display the HUD belongs on the pointer's
                 // display; resolve that now rather than tracking the pointer.
@@ -321,34 +311,28 @@ final class NotchWindowController {
                     self.activateDisplay(key)
                 }
                 self.syncGlobalPresentation(presentation)
-            }
-            .store(in: &cancellables)
-
-        env.state.$expandedTab
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] tab in
+            },
+            watch(initial: false, { env.state.expandedTab }) { [weak self] tab in
                 guard let self, let host = self.interactionHost,
                       host.state.expandedTab != tab else { return }
                 self.handlingHostChange = true
                 host.state.expandedTab = tab
                 self.handlingHostChange = false
-            }
-            .store(in: &cancellables)
-
-        NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)
-            .sink { [weak self] _ in self?.renderingVisibilityChanged() }
-            .store(in: &cancellables)
-
-        Publishers.Merge4(
-            env.media.$track.map { _ in () },
-            env.activities.$activities.map { _ in () },
-            env.tray.$items.map { _ in () },
-            env.settings.$showCompactNowPlaying.map { _ in () }
-        )
-        .receive(on: DispatchQueue.main)
-        .sink { [weak self] in self?.updatePassthrough() }
-        .store(in: &cancellables)
+            },
+            Task { @MainActor [weak self] in
+                for await _ in NotificationCenter.default.notifications(
+                    named: NSWindow.didChangeOcclusionStateNotification
+                ) {
+                    self?.renderingVisibilityChanged()
+                }
+            },
+            watch({
+                _ = env.media.track
+                _ = env.activities.activities
+                _ = env.tray.items
+                _ = env.settings.showCompactNowPlaying
+            }) { [weak self] in self?.updatePassthrough() },
+        ]
     }
 
     private func topologyChanged() {

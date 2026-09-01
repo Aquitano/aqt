@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import SwiftUI
 
 /// One display-local panel and SwiftUI tree. Feature data is shared through the
@@ -18,7 +17,7 @@ final class NotchPanelHost {
     private(set) var geometry: ScreenGeometry
     private var showsHUD = false
     private var controlsSharedRendering = false
-    private var cancellables = Set<AnyCancellable>()
+    private var observers: [Task<Void, Never>] = []
 
     var onPresentationChange: ((NotchState.Presentation) -> Void)?
     var onTabChange: ((NotchState.ExpandedTab) -> Void)?
@@ -44,19 +43,12 @@ final class NotchPanelHost {
         panel.contentView = hostingView
         panel.ignoresMouseEvents = true
 
-        state.$presentation
-            .dropFirst()
-            .sink { [weak self] in self?.onPresentationChange?($0) }
-            .store(in: &cancellables)
-        state.$expandedTab
-            .dropFirst()
-            .sink { [weak self] in self?.onTabChange?($0) }
-            .store(in: &cancellables)
-        state.$isHovering
-            .dropFirst()
-            .removeDuplicates()
-            .sink { [weak self] in self?.onHoverChange?($0) }
-            .store(in: &cancellables)
+        let state = self.state
+        observers = [
+            watch(initial: false, { state.presentation }) { [weak self] in self?.onPresentationChange?($0) },
+            watch(initial: false, { state.expandedTab }) { [weak self] in self?.onTabChange?($0) },
+            watch(initial: false, { state.isHovering }) { [weak self] in self?.onHoverChange?($0) },
+        ]
 
         rebuildRoot()
     }

@@ -6,8 +6,8 @@ import SwiftUI
 /// pure visuals — `state.activeDropZone` drives the highlight and the root
 /// `NotchDropDelegate` routes the actual drop by cursor position.
 struct DropChooserView: View {
-    @EnvironmentObject private var state: NotchState
-    @EnvironmentObject private var settings: Settings
+    @Environment(NotchState.self) private var state
+    @Environment(Settings.self) private var settings
 
     var body: some View {
         HStack(spacing: 12) {

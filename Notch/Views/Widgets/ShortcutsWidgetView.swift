@@ -3,8 +3,8 @@ import SwiftUI
 /// Pinned Shortcuts as one-tap run buttons. The pin list lives in Settings; run
 /// failures surface via the activity peek channel (see ShortcutsManager).
 struct ShortcutsWidgetView: View {
-    @EnvironmentObject private var settings: Settings
-    @EnvironmentObject private var shortcuts: ShortcutsManager
+    @Environment(Settings.self) private var settings
+    @Environment(ShortcutsManager.self) private var shortcuts
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

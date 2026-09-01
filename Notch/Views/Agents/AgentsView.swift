@@ -6,7 +6,7 @@ import SwiftUI
 /// clipped. Per-agent enable/install lives in the Settings window, so this view
 /// stays focused on what's actually running.
 struct AgentsView: View {
-    @EnvironmentObject private var agents: AgentManager
+    @Environment(AgentManager.self) private var agents
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedPermissionId: String?
     @State private var scrollEdges = ScrollEdges()

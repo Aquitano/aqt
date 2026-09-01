@@ -1,19 +1,19 @@
 import Intents
 import AppKit
-import Combine
 
 /// Focus on/off via INFocusStatusCenter. v1 shows the badge only; the *named*
 /// Focus needs Full Disk Access (deferred). Re-reads when the app activates or a
 /// view requests it (no public change notification for Focus).
 @MainActor
-final class FocusManager: ObservableObject {
+@Observable
+final class FocusManager {
 
-    @Published private(set) var isOn = false
-    @Published private(set) var name: String?
-    @Published private(set) var authorized = false
+    private(set) var isOn = false
+    private(set) var name: String?
+    private(set) var authorized = false
 
     private unowned let activities: ActivityManager
-    private var cancellables = Set<AnyCancellable>()
+    private var activationTask: Task<Void, Never>?
     /// The first read seeds `isOn` from the current Focus; suppress its transition
     /// so launching during an active Focus doesn't publish a spurious "On" toast.
     private var didInitialRead = false
@@ -28,9 +28,11 @@ final class FocusManager: ObservableObject {
         // affordance requests access on demand (mirrors CalendarManager).
         refresh()
 
-        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-            .sink { [weak self] _ in self?.refresh() }
-            .store(in: &cancellables)
+        activationTask = Task { @MainActor [weak self] in
+            for await _ in NotificationCenter.default.notifications(named: NSApplication.didBecomeActiveNotification) {
+                self?.refresh()
+            }
+        }
     }
 
     /// Surface the Focus prompt on demand (the tile's "Enable" button), or open the

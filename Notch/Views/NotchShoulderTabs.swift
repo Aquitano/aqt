@@ -7,8 +7,8 @@ import AppKit
 /// the notch — so they read as status items living in the frame rather than as
 /// chrome stacked on top of the content.
 struct NotchShoulderTabs: View {
-    @EnvironmentObject private var state: NotchState
-    @EnvironmentObject private var settings: Settings
+    @Environment(NotchState.self) private var state
+    @Environment(Settings.self) private var settings
 
     @Environment(\.notchGeometry) private var notchSize
     @Environment(\.notchExpandedWidth) private var expandedWidth

@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import SwiftUI
 
 @MainActor
@@ -11,8 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var onboardingWindow: NSWindow?
     private let hotKey = HotKey()
-    private var hotkeyCancellable: AnyCancellable?
-    private var trayMenuCancellable: AnyCancellable?
+    private var hotkeyObserver: Task<Void, Never>?
+    private var trayMenuObserver: Task<Void, Never>?
     private var clearTrayMenuItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -52,13 +51,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Re-register whenever the chord changes, and suspend while the Settings
         // recorder is capturing so the current chord can be re-typed without
         // toggling the notch mid-recording.
-        hotkeyCancellable = Publishers.CombineLatest4(
-            env.settings.$hotkeyEnabled,
-            env.settings.$hotkeyKeyCode,
-            env.settings.$hotkeyModifiers,
-            env.settings.$isRecordingHotkey
-        )
-        .sink { [weak self] enabled, keyCode, modifiers, recording in
+        let settings = env.settings
+        hotkeyObserver = watch({
+            (settings.hotkeyEnabled, settings.hotkeyKeyCode, settings.hotkeyModifiers, settings.isRecordingHotkey)
+        }) { [weak self] enabled, keyCode, modifiers, recording in
             guard let self else { return }
             if enabled, !recording {
                 self.hotKey.register(keyCode: UInt32(keyCode), modifiers: UInt32(modifiers))
@@ -106,11 +102,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         clearTrayItem.target = self
         menu.addItem(clearTrayItem)
         clearTrayMenuItem = clearTrayItem
-        trayMenuCancellable = env.tray.$items
-            .sink { [weak self] items in
-                self?.clearTrayMenuItem?.title = "Clear Tray (\(items.count))"
-                self?.clearTrayMenuItem?.isEnabled = !items.isEmpty
-            }
+        let tray = env.tray
+        trayMenuObserver = watch({ tray.items.count }) { [weak self] count in
+            self?.clearTrayMenuItem?.title = "Clear Tray (\(count))"
+            self?.clearTrayMenuItem?.isEnabled = count > 0
+        }
 
         let timerItem = NSMenuItem(title: "Start Timer", action: nil, keyEquivalent: "")
         let timerMenu = NSMenu()

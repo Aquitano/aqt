@@ -8,7 +8,8 @@ import SwiftUI
 /// ScreenCaptureKit supplies mono PCM buffers; `AudioSampleProcessor` reduces each
 /// buffer to three numbers off-main and this object publishes at most 30 fps.
 @MainActor
-final class AudioVisualizerManager: ObservableObject {
+@Observable
+final class AudioVisualizerManager {
     enum CaptureState: Equatable {
         case idle
         case permissionRequired
@@ -17,14 +18,14 @@ final class AudioVisualizerManager: ObservableObject {
         case failed(String)
     }
 
-    @Published private(set) var levels = AudioLevels.zero
-    @Published private(set) var captureState: CaptureState = .idle
+    private(set) var levels = AudioLevels.zero
+    private(set) var captureState: CaptureState = .idle
 
     private var desiredActive = false
     private var generation = 0
     private var transitionTask: Task<Void, Never>?
     private var stream: SCStream?
-    private lazy var processor = AudioSampleProcessor(
+    @ObservationIgnored private lazy var processor = AudioSampleProcessor(
         onLevels: { [weak self] levels in
             Task { @MainActor in
                 guard let self, self.desiredActive else { return }

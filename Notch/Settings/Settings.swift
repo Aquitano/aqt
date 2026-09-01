@@ -1,10 +1,10 @@
 import SwiftUI
-import Combine
 
 /// User-facing preferences. Backed by UserDefaults; each property publishes so
 /// the UI and managers react live. Kept deliberately small for v1.
 @MainActor
-final class Settings: ObservableObject {
+@Observable
+final class Settings {
 
     static let shared = Settings()
 
@@ -63,31 +63,31 @@ final class Settings: ObservableObject {
         static let displayProfiles = "displayProfiles"
     }
 
-    @Published var showHUD: Bool { didSet { defaults.set(showHUD, forKey: Key.showHUD) } }
+    var showHUD: Bool { didSet { defaults.set(showHUD, forKey: Key.showHUD) } }
     /// Consume media keys and suppress the native HUD (needs Accessibility).
-    @Published var hudReplacesSystem: Bool { didSet { defaults.set(hudReplacesSystem, forKey: Key.hudReplacesSystem) } }
-    @Published var temperatureUnit: WeatherSnapshot.TemperatureUnit {
+    var hudReplacesSystem: Bool { didSet { defaults.set(hudReplacesSystem, forKey: Key.hudReplacesSystem) } }
+    var temperatureUnit: WeatherSnapshot.TemperatureUnit {
         didSet { defaults.set(temperatureUnit.rawValue, forKey: Key.temperatureUnit) }
     }
-    @Published var launchAtLogin: Bool {
+    var launchAtLogin: Bool {
         didSet {
             defaults.set(launchAtLogin, forKey: Key.launchAtLogin)
             LoginItem.setEnabled(launchAtLogin)
         }
     }
-    @Published var enableMediaAdapter: Bool { didSet { defaults.set(enableMediaAdapter, forKey: Key.enableMediaAdapter) } }
-    @Published var showCompactNowPlaying: Bool {
+    var enableMediaAdapter: Bool { didSet { defaults.set(enableMediaAdapter, forKey: Key.enableMediaAdapter) } }
+    var showCompactNowPlaying: Bool {
         didSet { defaults.set(showCompactNowPlaying, forKey: Key.showCompactNowPlaying) }
     }
-    @Published var showAudioVisualizer: Bool {
+    var showAudioVisualizer: Bool {
         didSet { defaults.set(showAudioVisualizer, forKey: Key.showAudioVisualizer) }
     }
-    @Published var hapticFeedback: Bool { didSet { defaults.set(hapticFeedback, forKey: Key.hapticFeedback) } }
-    @Published var trayTTLDays: Int { didSet { defaults.set(trayTTLDays, forKey: Key.trayTTLDays) } }
-    @Published var trayMoveEnabled: Bool {
+    var hapticFeedback: Bool { didSet { defaults.set(hapticFeedback, forKey: Key.hapticFeedback) } }
+    var trayTTLDays: Int { didSet { defaults.set(trayTTLDays, forKey: Key.trayTTLDays) } }
+    var trayMoveEnabled: Bool {
         didSet { defaults.set(trayMoveEnabled, forKey: Key.trayMoveEnabled) }
     }
-    @Published var offerScreenshots: Bool {
+    var offerScreenshots: Bool {
         didSet { defaults.set(offerScreenshots, forKey: Key.offerScreenshots) }
     }
     var trayLastCollectionID: String {
@@ -95,79 +95,79 @@ final class Settings: ObservableObject {
     }
     /// Ordered home-tab widgets. Membership means enabled; order is the render
     /// order within each grid row (rows are carved out by `WidgetKind.row`).
-    @Published var widgetLayout: [WidgetKind] {
+    var widgetLayout: [WidgetKind] {
         didSet { defaults.set(widgetLayout.map(\.rawValue), forKey: Key.widgetLayout) }
     }
     /// Ordered visible tabs in the expanded panel. Home is always a member — it
     /// is the reset target the panel falls back to.
-    @Published var tabLayout: [NotchState.ExpandedTab] {
+    var tabLayout: [NotchState.ExpandedTab] {
         didSet { defaults.set(tabLayout.map(\.rawValue), forKey: Key.tabLayout) }
     }
     /// The tab the panel opens on. Read through `resolvedDefaultTab`, which
     /// falls back to home when this tab is hidden or its feature is off.
-    @Published var defaultExpandedTab: NotchState.ExpandedTab {
+    var defaultExpandedTab: NotchState.ExpandedTab {
         didSet { defaults.set(defaultExpandedTab.rawValue, forKey: Key.defaultExpandedTab) }
     }
-    @Published var shareMethod: ShareMethod { didSet { defaults.set(shareMethod.rawValue, forKey: Key.shareMethod) } }
-    @Published var agentsEnabled: Bool { didSet { defaults.set(agentsEnabled, forKey: Key.agentsEnabled) } }
-    @Published var agentClaudeEnabled: Bool { didSet { defaults.set(agentClaudeEnabled, forKey: Key.agentClaudeEnabled) } }
-    @Published var agentCodexEnabled: Bool { didSet { defaults.set(agentCodexEnabled, forKey: Key.agentCodexEnabled) } }
-    @Published var agentOpenCodeEnabled: Bool { didSet { defaults.set(agentOpenCodeEnabled, forKey: Key.agentOpenCodeEnabled) } }
-    @Published var agentOhMyPiEnabled: Bool { didSet { defaults.set(agentOhMyPiEnabled, forKey: Key.agentOhMyPiEnabled) } }
-    @Published var agentT3Enabled: Bool { didSet { defaults.set(agentT3Enabled, forKey: Key.agentT3Enabled) } }
+    var shareMethod: ShareMethod { didSet { defaults.set(shareMethod.rawValue, forKey: Key.shareMethod) } }
+    var agentsEnabled: Bool { didSet { defaults.set(agentsEnabled, forKey: Key.agentsEnabled) } }
+    var agentClaudeEnabled: Bool { didSet { defaults.set(agentClaudeEnabled, forKey: Key.agentClaudeEnabled) } }
+    var agentCodexEnabled: Bool { didSet { defaults.set(agentCodexEnabled, forKey: Key.agentCodexEnabled) } }
+    var agentOpenCodeEnabled: Bool { didSet { defaults.set(agentOpenCodeEnabled, forKey: Key.agentOpenCodeEnabled) } }
+    var agentOhMyPiEnabled: Bool { didSet { defaults.set(agentOhMyPiEnabled, forKey: Key.agentOhMyPiEnabled) } }
+    var agentT3Enabled: Bool { didSet { defaults.set(agentT3Enabled, forKey: Key.agentT3Enabled) } }
     /// Paired t3 servers (label + base URL); each pairing's bearer token lives
     /// in the Keychain under the environment's `tokenAccount`.
-    @Published var agentT3Environments: [T3Environment] {
+    var agentT3Environments: [T3Environment] {
         didSet {
             defaults.set(try? JSONEncoder().encode(agentT3Environments), forKey: Key.agentT3Environments)
         }
     }
-    @Published var agentNotifyStarted: Bool { didSet { defaults.set(agentNotifyStarted, forKey: Key.agentNotifyStarted) } }
-    @Published var agentNotifyAttention: Bool { didSet { defaults.set(agentNotifyAttention, forKey: Key.agentNotifyAttention) } }
-    @Published var agentNotifyFinished: Bool { didSet { defaults.set(agentNotifyFinished, forKey: Key.agentNotifyFinished) } }
-    @Published var agentAutoExpandOnAttention: Bool { didSet { defaults.set(agentAutoExpandOnAttention, forKey: Key.agentAutoExpandOnAttention) } }
-    @Published var agentSystemNotifications: Bool { didSet { defaults.set(agentSystemNotifications, forKey: Key.agentSystemNotifications) } }
+    var agentNotifyStarted: Bool { didSet { defaults.set(agentNotifyStarted, forKey: Key.agentNotifyStarted) } }
+    var agentNotifyAttention: Bool { didSet { defaults.set(agentNotifyAttention, forKey: Key.agentNotifyAttention) } }
+    var agentNotifyFinished: Bool { didSet { defaults.set(agentNotifyFinished, forKey: Key.agentNotifyFinished) } }
+    var agentAutoExpandOnAttention: Bool { didSet { defaults.set(agentAutoExpandOnAttention, forKey: Key.agentAutoExpandOnAttention) } }
+    var agentSystemNotifications: Bool { didSet { defaults.set(agentSystemNotifications, forKey: Key.agentSystemNotifications) } }
     /// Skip the peek, sound and banner while the session's own terminal is the
     /// frontmost window — you are already looking at what they would announce.
-    @Published var agentQuietWhenFocused: Bool { didSet { defaults.set(agentQuietWhenFocused, forKey: Key.agentQuietWhenFocused) } }
-    @Published var agentNotifySound: Bool { didSet { defaults.set(agentNotifySound, forKey: Key.agentNotifySound) } }
-    @Published var agentSoundStarted: String { didSet { defaults.set(agentSoundStarted, forKey: Key.agentSoundStarted) } }
-    @Published var agentSoundAttention: String { didSet { defaults.set(agentSoundAttention, forKey: Key.agentSoundAttention) } }
-    @Published var agentSoundFinished: String { didSet { defaults.set(agentSoundFinished, forKey: Key.agentSoundFinished) } }
-    @Published var agentUsageLimits: Bool { didSet { defaults.set(agentUsageLimits, forKey: Key.agentUsageLimits) } }
-    @Published var agentPermissionApproval: Bool { didSet { defaults.set(agentPermissionApproval, forKey: Key.agentPermissionApproval) } }
-    @Published var hasCompletedOnboarding: Bool { didSet { defaults.set(hasCompletedOnboarding, forKey: Key.hasCompletedOnboarding) } }
-    @Published var hotkeyEnabled: Bool { didSet { defaults.set(hotkeyEnabled, forKey: Key.hotkeyEnabled) } }
+    var agentQuietWhenFocused: Bool { didSet { defaults.set(agentQuietWhenFocused, forKey: Key.agentQuietWhenFocused) } }
+    var agentNotifySound: Bool { didSet { defaults.set(agentNotifySound, forKey: Key.agentNotifySound) } }
+    var agentSoundStarted: String { didSet { defaults.set(agentSoundStarted, forKey: Key.agentSoundStarted) } }
+    var agentSoundAttention: String { didSet { defaults.set(agentSoundAttention, forKey: Key.agentSoundAttention) } }
+    var agentSoundFinished: String { didSet { defaults.set(agentSoundFinished, forKey: Key.agentSoundFinished) } }
+    var agentUsageLimits: Bool { didSet { defaults.set(agentUsageLimits, forKey: Key.agentUsageLimits) } }
+    var agentPermissionApproval: Bool { didSet { defaults.set(agentPermissionApproval, forKey: Key.agentPermissionApproval) } }
+    var hasCompletedOnboarding: Bool { didSet { defaults.set(hasCompletedOnboarding, forKey: Key.hasCompletedOnboarding) } }
+    var hotkeyEnabled: Bool { didSet { defaults.set(hotkeyEnabled, forKey: Key.hotkeyEnabled) } }
     /// Carbon virtual key code + modifier mask for the toggle-notch hotkey,
     /// recorded via the Settings shortcut control.
-    @Published var hotkeyKeyCode: Int { didSet { defaults.set(hotkeyKeyCode, forKey: Key.hotkeyKeyCode) } }
-    @Published var hotkeyModifiers: Int { didSet { defaults.set(hotkeyModifiers, forKey: Key.hotkeyModifiers) } }
+    var hotkeyKeyCode: Int { didSet { defaults.set(hotkeyKeyCode, forKey: Key.hotkeyKeyCode) } }
+    var hotkeyModifiers: Int { didSet { defaults.set(hotkeyModifiers, forKey: Key.hotkeyModifiers) } }
     /// True while the Settings recorder is capturing a chord. Not persisted;
     /// the AppDelegate suspends the live registration so the current chord can
     /// be re-typed without toggling the notch.
-    @Published var isRecordingHotkey = false
+    var isRecordingHotkey = false
     /// Where the expanded panel's section switcher renders: its own capsule below
     /// the blob, a strip inside it, or straight on the notch shoulders.
-    @Published var tabBarStyle: TabBarStyle { didSet { defaults.set(tabBarStyle.rawValue, forKey: Key.tabBarStyle) } }
+    var tabBarStyle: TabBarStyle { didSet { defaults.set(tabBarStyle.rawValue, forKey: Key.tabBarStyle) } }
     /// Battery percentage that fires the low-battery alert; re-arms 5 above it.
-    @Published var lowBatteryThreshold: Int { didSet { defaults.set(lowBatteryThreshold, forKey: Key.lowBatteryThreshold) } }
+    var lowBatteryThreshold: Int { didSet { defaults.set(lowBatteryThreshold, forKey: Key.lowBatteryThreshold) } }
     /// Last dial position per pomodoro phase, so the timer tab reopens on the
     /// durations the user actually uses.
-    @Published var pomodoroFocusMinutes: Int { didSet { defaults.set(pomodoroFocusMinutes, forKey: Key.pomodoroFocusMinutes) } }
-    @Published var pomodoroBreakMinutes: Int { didSet { defaults.set(pomodoroBreakMinutes, forKey: Key.pomodoroBreakMinutes) } }
+    var pomodoroFocusMinutes: Int { didSet { defaults.set(pomodoroFocusMinutes, forKey: Key.pomodoroFocusMinutes) } }
+    var pomodoroBreakMinutes: Int { didSet { defaults.set(pomodoroBreakMinutes, forKey: Key.pomodoroBreakMinutes) } }
     /// Time-zone identifier for the clock tile's second line; empty = none.
-    @Published var clockSecondaryTimeZone: String { didSet { defaults.set(clockSecondaryTimeZone, forKey: Key.clockSecondaryTimeZone) } }
-    @Published var pinnedShortcuts: [String] { didSet { defaults.set(pinnedShortcuts, forKey: Key.pinnedShortcuts) } }
-    @Published var displayPlacement: DisplayPlacement {
+    var clockSecondaryTimeZone: String { didSet { defaults.set(clockSecondaryTimeZone, forKey: Key.clockSecondaryTimeZone) } }
+    var pinnedShortcuts: [String] { didSet { defaults.set(pinnedShortcuts, forKey: Key.pinnedShortcuts) } }
+    var displayPlacement: DisplayPlacement {
         didSet { defaults.set(displayPlacement.rawValue, forKey: Key.displayPlacement) }
     }
-    @Published var followActiveDisplay: Bool {
+    var followActiveDisplay: Bool {
         didSet { defaults.set(followActiveDisplay, forKey: Key.followActiveDisplay) }
     }
-    @Published var virtualNotchMode: VirtualNotchMode {
+    var virtualNotchMode: VirtualNotchMode {
         didSet { defaults.set(virtualNotchMode.rawValue, forKey: Key.virtualNotchMode) }
     }
-    @Published var displayProfiles: [DisplayProfile] {
+    var displayProfiles: [DisplayProfile] {
         didSet {
             if let data = try? JSONEncoder().encode(displayProfiles) {
                 defaults.set(data, forKey: Key.displayProfiles)

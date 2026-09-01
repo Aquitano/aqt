@@ -4,8 +4,8 @@ import SwiftUI
 /// key-capable on demand, so the editor latches the panel key while focused
 /// (mirroring the share-sheet latch) — without that, keystrokes never arrive.
 struct NoteWidgetView: View {
-    @EnvironmentObject private var env: AppEnvironment
-    @EnvironmentObject private var note: NoteManager
+    @Environment(AppEnvironment.self) private var env
+    @Environment(NoteManager.self) private var note
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -19,7 +19,7 @@ struct NoteWidgetView: View {
                 Spacer(minLength: 0)
             }
 
-            TextEditor(text: $note.text)
+            TextEditor(text: Bindable(note).text)
                 .font(.callout)
                 .foregroundStyle(.white)
                 .scrollContentBackground(.hidden)
