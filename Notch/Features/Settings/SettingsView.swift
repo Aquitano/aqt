@@ -645,21 +645,10 @@ struct SettingsView: View {
 
     private var widgetsPane: some View {
         Form {
-            Section {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-                          spacing: 10) {
-                    ForEach(WidgetKind.allCases) { kind in
-                        widgetCard(kind, isOn: widgetBinding(kind))
-                    }
-                }
-                .padding(.vertical, 2)
-            } header: {
-                Text("Home tab widgets")
-            } footer: {
-                Text("Battery and Bluetooth tiles only appear when the hardware calls for them. Reorder widgets on the home tab itself via its Edit button.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            widgetRowSection(.status, title: "Status tiles",
+                             footer: "Compact tiles along the top of the home tab. Battery and Bluetooth only appear when the hardware calls for them.")
+            widgetRowSection(.info, title: "Info panels",
+                             footer: "Taller panels below the tiles. Order here is the order on the home tab.")
 
             if settings.isWidgetEnabled(.weather) {
                 Section("Weather") {
@@ -686,6 +675,28 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
+    /// One grid row of the home tab: enabled widgets in their layout order,
+    /// then the row's disabled ones. Arrows move a widget within its row.
+    private func widgetRowSection(_ row: WidgetKind.Row, title: String, footer: String) -> some View {
+        let enabled = settings.notch.widgetLayout.filter { $0.row == row }
+        let disabled = WidgetKind.allCases.filter { $0.row == row && !enabled.contains($0) }
+        return Section {
+            ForEach(Array(enabled.enumerated()), id: \.element) { index, kind in
+                widgetRow(kind, isOn: widgetBinding(kind),
+                          canMoveUp: index > 0, canMoveDown: index < enabled.count - 1)
+            }
+            ForEach(disabled) { kind in
+                widgetRow(kind, isOn: widgetBinding(kind), canMoveUp: false, canMoveDown: false)
+            }
+        } header: {
+            Text(title)
+        } footer: {
+            Text(footer)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private func widgetBinding(_ kind: WidgetKind) -> Binding<Bool> {
         Binding(
             get: { settings.isWidgetEnabled(kind) },
@@ -693,13 +704,14 @@ struct SettingsView: View {
         )
     }
 
-    private func widgetCard(_ kind: WidgetKind, isOn: Binding<Bool>) -> some View {
+    private func widgetRow(_ kind: WidgetKind, isOn: Binding<Bool>,
+                           canMoveUp: Bool, canMoveDown: Bool) -> some View {
         HStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(kind.tint.gradient)
-                .frame(width: 34, height: 34)
+                .frame(width: 30, height: 30)
                 .overlay {
-                    PixelIcon(systemName: kind.symbol, size: 18, tint: .white)
+                    PixelIcon(systemName: kind.symbol, size: 16, tint: .white)
                 }
             VStack(alignment: .leading, spacing: 1) {
                 Text(kind.title)
@@ -710,13 +722,31 @@ struct SettingsView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
+            HStack(spacing: 2) {
+                Button {
+                    withAnimation { settings.moveWidget(kind, by: -1) }
+                } label: {
+                    Image(systemName: "chevron.up")
+                }
+                .disabled(!canMoveUp)
+                .accessibilityLabel("Move \(kind.title) earlier")
+                Button {
+                    withAnimation { settings.moveWidget(kind, by: 1) }
+                } label: {
+                    Image(systemName: "chevron.down")
+                }
+                .disabled(!canMoveDown)
+                .accessibilityLabel("Move \(kind.title) later")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .opacity(isOn.wrappedValue ? 1 : 0.35)
             Toggle(kind.title, isOn: isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)
         }
-        .padding(10)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.vertical, 2)
     }
 
     private var pinnedShortcutsEditor: some View {
