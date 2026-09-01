@@ -25,6 +25,7 @@ final class AgentManager: ObservableObject {
     private let activities: ActivityManager
     private let settings: Settings
     let notifier: AgentNotifier
+    private let hookGuard: HookGuard
 
     private let socketServer = AgentSocketServer()
     private let processLookup = ProcessLookup()
@@ -47,7 +48,9 @@ final class AgentManager: ObservableObject {
     init(activities: ActivityManager, settings: Settings) {
         self.activities = activities
         self.settings = settings
-        self.notifier = AgentNotifier(activities: activities, settings: settings)
+        let notifier = AgentNotifier(activities: activities, settings: settings)
+        self.notifier = notifier
+        self.hookGuard = HookGuard(notifier: notifier)
         self.permissionApprovalCancellable = settings.$agentPermissionApproval
             .dropFirst()
             .sink { [weak self] enabled in
@@ -61,6 +64,7 @@ final class AgentManager: ObservableObject {
         isRunning = true
 
         providers.forEach { $0.start() }
+        if settings.agentClaudeEnabled { hookGuard.start() }
 
         // Deliver envelopes through one serial stream instead of an independent
         // Task per envelope. Independent tasks have no ordering guarantee, so two
@@ -99,6 +103,7 @@ final class AgentManager: ObservableObject {
         streamTask = nil
         socketServer.stop()
         providers.forEach { $0.stop() }
+        hookGuard.stop()
 
         permissionDeadlineTasks.values.forEach { $0.cancel() }
         permissionDeadlineTasks = [:]
@@ -200,10 +205,19 @@ final class AgentManager: ObservableObject {
     func isInstalled(_ kind: AgentKind) -> Bool { CLIDetector().isInstalled(kind) }
 
     func jumpToTerminal(_ session: AgentSession) {
+        // A t3 row is a thread on a (possibly remote) server: there is no local
+        // process to walk, and its cwd is a path on that machine, so matching it
+        // locally would raise some unrelated terminal.
+        if session.kind == .t3code {
+            guard let deepLink = session.t3Thread?.deepLink else { return }
+            NSWorkspace.shared.open(deepLink)
+            return
+        }
         TerminalJumper(processLookup: processLookup)
             .jump(
                 toPID: session.pid, cwd: session.cwd,
-                focusURL: session.terminalFocusURL, herdrPaneID: session.herdrPaneID
+                focusURL: session.terminalFocusURL, herdrPaneID: session.herdrPaneID,
+                t3Thread: session.t3Thread
             )
     }
 
@@ -257,6 +271,11 @@ final class AgentManager: ObservableObject {
             }
         } else {
             provider.disable()
+        }
+        // The guard follows the integration's real state, so a failed enable
+        // leaves it off rather than watching hooks that were never installed.
+        if kind == .claudeCode {
+            if provider.isEnabled { hookGuard.start() } else { hookGuard.stop() }
         }
     }
 

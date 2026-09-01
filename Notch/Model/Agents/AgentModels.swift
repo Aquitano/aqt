@@ -83,6 +83,45 @@ enum AgentStatus: String, Codable, Sendable {
     }
 }
 
+/// One thread on a paired t3 server, as the T3 Code desktop app addresses it.
+/// Carried by the rows `T3CodeProvider` publishes and by hook-announced sessions
+/// running inside T3 Code's embedded terminal: neither has a terminal tab a jump
+/// could select, so both land on the app through `deepLink`.
+struct T3ThreadRef: Codable, Equatable, Sendable {
+    let environmentID: String
+    let threadID: String
+
+    /// Injected by T3 Code's embedded terminal into every process it hosts.
+    static let environmentIDKey = "T3CODE_ENVIRONMENT_ID"
+    static let threadIDKey = "T3CODE_THREAD_ID"
+
+    init(environmentID: String, threadID: String) {
+        self.environmentID = environmentID
+        self.threadID = threadID
+    }
+
+    init?(processEnvironment env: [String: String]) {
+        guard let environmentID = env[Self.environmentIDKey], !environmentID.isEmpty,
+              let threadID = env[Self.threadIDKey], !threadID.isEmpty else { return nil }
+        self.init(environmentID: environmentID, threadID: threadID)
+    }
+
+    /// T3 Code 0.0.36 registers the t3code:// scheme but doesn't navigate on this
+    /// URL yet — opening it only launches or raises the app (verified live). The
+    /// path shape matches t3's own `buildAgentAwarenessDeepLink`, so focusing the
+    /// exact thread should start working once they ship their handler.
+    var deepLink: URL? {
+        guard let environment = environmentID.addingPercentEncoding(withAllowedCharacters: Self.pathSegment),
+              let thread = threadID.addingPercentEncoding(withAllowedCharacters: Self.pathSegment) else {
+            return nil
+        }
+        return URL(string: "t3code://threads/\(environment)/\(thread)")
+    }
+
+    private static let pathSegment = CharacterSet.alphanumerics
+        .union(CharacterSet(charactersIn: "-._~"))
+}
+
 /// One watched agent session, reconciled from provider events + liveness.
 struct AgentSession: Identifiable, Equatable, Sendable {
     let id: String
@@ -108,6 +147,9 @@ struct AgentSession: Identifiable, Equatable, Sendable {
     /// captured from the agent process's environment. Jumping needs it because
     /// the pane's owner is a detached daemon, not the window on screen.
     var herdrPaneID: String?
+    /// The T3 Code thread behind this session — a t3-provided row, or a session
+    /// whose terminal is T3 Code's. Jumping opens its deep link.
+    var t3Thread: T3ThreadRef?
     /// Bundle id of the app drawing this session's terminal. Lets a notification
     /// stay quiet while that window is the one you're already looking at.
     var terminalBundleID: String?

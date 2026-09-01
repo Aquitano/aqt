@@ -16,6 +16,7 @@ struct ScannedSession: Sendable {
     let focusURL: String?
     let terminalName: String?
     let herdrPaneID: String?
+    let t3Thread: T3ThreadRef?
     /// The app drawing this session's terminal, for the "don't shout at me about
     /// the window I'm looking at" check.
     let terminalBundleID: String?

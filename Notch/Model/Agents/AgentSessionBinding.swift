@@ -23,10 +23,12 @@ struct AgentSessionBinding: Codable, Sendable, Equatable {
     var transcriptPath: String
 
     /// Terminal locators, read once from the agent's environment: Warp's
-    /// per-tab focus URL and the herdr pane that hosts the session.
+    /// per-tab focus URL, the herdr pane, and the T3 Code thread hosting the
+    /// session.
     var focusURL: String?
     var terminalName: String?
     var herdrPaneID: String?
+    var t3Thread: T3ThreadRef?
     /// The app drawing this session's terminal, so a notification can stay quiet
     /// while you're looking straight at it. Resolved once — `terminalResolved`
     /// records that we tried, since a detached session legitimately has none and

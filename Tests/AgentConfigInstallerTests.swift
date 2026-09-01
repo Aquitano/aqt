@@ -146,6 +146,70 @@ final class AgentConfigInstallerTests: XCTestCase {
                       "the real target must receive the hooks")
     }
 
+    // MARK: - Generated plugin ownership
+
+    private var openCodePluginURL: URL { home.appendingPathComponent(".config/opencode/plugins/notch.js") }
+
+    private func writeFile(_ contents: String, to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    func testStalePluginIsRewrittenToTheCurrentRevision() throws {
+        // What the shipped builds installed: our marker, but no revision.
+        try writeFile("// notch agent watcher — auto-generated, do not edit\nold body\n", to: openCodePluginURL)
+        XCTAssertTrue(installer.openCodePluginInstalled(), "a revisionless marker is still ours")
+
+        try installer.installOpenCodePlugin()
+
+        let rewritten = try String(contentsOf: openCodePluginURL, encoding: .utf8)
+        XCTAssertTrue(rewritten.hasPrefix("// notch agent watcher r\(AgentConfigInstaller.pluginRevision) —"),
+                      "the stale file must be upgraded to the current revision")
+        XCTAssertFalse(rewritten.contains("old body"))
+    }
+
+    func testForeignPluginIsNeitherOverwrittenNorRemoved() throws {
+        let mine = "// my own opencode plugin\nexport default () => ({});\n"
+        try writeFile(mine, to: openCodePluginURL)
+
+        XCTAssertFalse(installer.openCodePluginInstalled(), "an unmarked file is not our install")
+        XCTAssertThrowsError(try installer.installOpenCodePlugin()) { error in
+            XCTAssertEqual(error as? AgentConfigInstaller.InstallerError,
+                           .pluginNotOurs(path: openCodePluginURL.path))
+        }
+        XCTAssertEqual(try String(contentsOf: openCodePluginURL, encoding: .utf8), mine)
+
+        try installer.removeOpenCodePlugin()
+        XCTAssertEqual(try String(contentsOf: openCodePluginURL, encoding: .utf8), mine,
+                       "uninstall must not delete a file we never wrote")
+    }
+
+    func testOhMyPiFansOutToExistingProfileAgentRoots() throws {
+        let profiles = home.appendingPathComponent(".omp/profiles")
+        let workAgent = profiles.appendingPathComponent("work/agent")
+        try FileManager.default.createDirectory(at: workAgent, withIntermediateDirectories: true)
+        // A profile that has no agent root of its own: we never create one.
+        let bare = profiles.appendingPathComponent("bare")
+        try FileManager.default.createDirectory(at: bare, withIntermediateDirectories: true)
+
+        try installer.installOhMyPi()
+
+        let mainIndex = home.appendingPathComponent(".omp/agent/extensions/notch/index.js")
+        let workIndex = workAgent.appendingPathComponent("extensions/notch/index.js")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mainIndex.path))
+        XCTAssertTrue(try String(contentsOf: workIndex, encoding: .utf8)
+            .hasPrefix("// notch agent watcher r\(AgentConfigInstaller.pluginRevision) —"),
+            "the profile root must get the current extension")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: bare.appendingPathComponent("agent").path),
+                       "a missing profile agent root must not be created")
+        XCTAssertTrue(installer.ohMyPiInstalled())
+
+        try installer.removeOhMyPi()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: mainIndex.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: workIndex.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: workAgent.path), "the profile itself must survive")
+    }
+
     func testConcurrentEditIsMergedInsteadOfOverwritten() throws {
         try writeSettings(#"{"theme":"dark"}"#)
         var intervened = false

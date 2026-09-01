@@ -213,6 +213,7 @@ enum T3Wire {
         session.lastPrompt = agentClip(thread.title, max: 80)
         session.terminalName = environment.label
         session.detail = thread.providerName
+        session.t3Thread = T3ThreadRef(environmentID: environment.id, threadID: thread.id)
         return session
     }
 

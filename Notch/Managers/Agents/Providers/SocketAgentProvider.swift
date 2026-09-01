@@ -50,7 +50,9 @@ final class SocketAgentProvider: AgentProviding {
 
     func start() {
         guard isEnabled else { return }
-        try? install() // keep installed files current
+        // Upgrades a plugin an older build installed; a hand-edited one is refused
+        // (and the failure ignored here — the user's file stays as they left it).
+        try? install()
     }
 
     func stop() {

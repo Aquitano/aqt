@@ -16,7 +16,17 @@ struct TerminalJumper {
         "/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"
     ]
 
-    func jump(toPID pid: pid_t?, cwd: String?, focusURL: String? = nil, herdrPaneID: String? = nil) {
+    func jump(toPID pid: pid_t?, cwd: String?, focusURL: String? = nil,
+              herdrPaneID: String? = nil, t3Thread: T3ThreadRef? = nil) {
+        // T3 Code draws its terminal inside an Electron window with no scriptable
+        // surface, so its deep link is the only handle on a session it hosts. A
+        // herdr pane still outranks it: focusing the pane raises the window
+        // drawing it anyway, and it selects the pane as well.
+        if herdrPaneID == nil, let deepLink = t3Thread?.deepLink {
+            NSWorkspace.shared.open(deepLink)
+            return
+        }
+
         // Precise path: the tab exports a focus deep link (e.g. Warp's
         // warp://session/<uuid>); opening it selects the exact tab. The terminal
         // gets activated as a side effect of handling the URL. A known herdr pane

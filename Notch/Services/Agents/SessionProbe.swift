@@ -54,7 +54,8 @@ struct SessionProbe: Sendable {
             lastActivity: state.lastEntryAt ?? Self.mtime(url),
             gitBranch: state.branch, busyStatus: state.busy,
             focusURL: binding.focusURL, terminalName: binding.terminalName,
-            herdrPaneID: binding.herdrPaneID, terminalBundleID: binding.terminalBundleID,
+            herdrPaneID: binding.herdrPaneID, t3Thread: binding.t3Thread,
+            terminalBundleID: binding.terminalBundleID,
             isDetached: !TerminalAttachment.isAttached(
                 pid: binding.pid, herdrPane: binding.herdrPaneID, lookup: lookup
             ),
@@ -71,6 +72,7 @@ struct SessionProbe: Sendable {
 
         let env = lookup.environment(of: binding.pid)
         resolved.focusURL = Self.focusURL(env)
+        resolved.t3Thread = T3ThreadRef(processEnvironment: env)
         if let pane = env[HerdrBridge.paneIDKey] {
             // A herdr pane inherits its client's TERM_PROGRAM, so the raw value
             // names whichever window herdr is attached to rather than what hosts

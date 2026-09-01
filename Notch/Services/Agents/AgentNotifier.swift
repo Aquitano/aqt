@@ -66,6 +66,16 @@ final class AgentNotifier {
         }
     }
 
+    /// A notice about the integration itself rather than a session (e.g. the
+    /// hook guard repairing a config another tool overwrote). Not gated by the
+    /// per-event toggles — those are about agent activity — and never rate
+    /// limited here, because its callers already are.
+    func notice(title: String, message: String) {
+        activities.peek(title: title, message: message, symbol: "wrench.and.screwdriver.fill",
+                        tint: .warning, ttl: 6)
+        if settings.agentSystemNotifications { postSystemNotification(title: title, body: message) }
+    }
+
     /// Cohesive synthesized sound pack; names are persisted in Settings.
     static let availableSounds = AgentSound.availableNames
 

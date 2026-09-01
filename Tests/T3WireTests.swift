@@ -191,6 +191,15 @@ final class T3WireTests: XCTestCase {
         XCTAssertEqual(session?.terminalName, "ubuntu")
         XCTAssertEqual(session?.detail, "claude-code")
         XCTAssertEqual(session?.lastPrompt, "Fix the tests")
+        XCTAssertEqual(session?.t3Thread, T3ThreadRef(environmentID: "env1", threadID: "t1"))
+    }
+
+    func testThreadRefReadsTheTerminalEnvironmentAndBuildsADeepLink() {
+        let ref = T3ThreadRef(processEnvironment: [
+            T3ThreadRef.environmentIDKey: "env 1", T3ThreadRef.threadIDKey: "t/1",
+        ])
+        XCTAssertEqual(ref?.deepLink?.absoluteString, "t3code://threads/env%201/t%2F1")
+        XCTAssertNil(T3ThreadRef(processEnvironment: [T3ThreadRef.environmentIDKey: "env1"]))
     }
 
     func testStartedAtSurvivesUpdates() {
