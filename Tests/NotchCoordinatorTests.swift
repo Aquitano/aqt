@@ -29,7 +29,7 @@ struct NotchCoordinatorTests {
         b.expand()
 
         a.hoverChanged(true)
-        await clock.advance(by: .milliseconds(350))
+        await clock.advance(by: .milliseconds(250))
 
         #expect(a.presentation == .expanded)
         #expect(b.presentation == .compact)

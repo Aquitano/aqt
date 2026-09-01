@@ -46,9 +46,6 @@ struct NotchRootView: View {
                 NotchTabStrip(floating: true)
                     .padding(.top, expandedSize.height + NotchLayout.floatingDockGap)
                     .opacity(state.isExpanded ? 1 : 0)
-                    .animation(NotchAnimation.contentReveal(expanded: state.isExpanded,
-                                                            reduceMotion: state.reduceMotion),
-                               value: state.isExpanded)
                     .zIndex(3)
             }
         }
@@ -77,10 +74,10 @@ struct NotchRootView: View {
     private var notchContent: some View {
         let expanded = state.presentation == .expanded
         let size = currentSize
-        let bottomRadius = expanded
-            ? NotchMetrics.expandedCornerRadius
-            : (isHoverSwollen ? NotchMetrics.compactCornerRadius + 4 : NotchMetrics.compactCornerRadius)
-        let hoverGrow = isHoverSwollen
+        let bottomRadius = expanded ? NotchMetrics.expandedCornerRadius : NotchMetrics.compactCornerRadius
+        // Hover the compact pill and it swells slightly first (an intent preview),
+        // then opens after a brief delay — a softer, more deliberate reveal.
+        let hoverGrow = state.presentation == .compact && state.isHovering && !state.isDropActive
 
         return ZStack {
             NotchShape(
@@ -90,10 +87,7 @@ struct NotchRootView: View {
                 notchWidth: notchSize.width
             )
                 .fill(.black)
-                // The swollen pill casts a soft shadow so it reads as lifted
-                // off the bezel, not merely a slightly larger notch.
-                .shadow(color: .black.opacity(expanded ? 0.45 : (hoverGrow ? 0.4 : 0)),
-                        radius: expanded ? 18 : 10, y: expanded ? 8 : 4)
+                .shadow(color: .black.opacity(expanded ? 0.45 : 0), radius: 18, y: 8)
 
             ZStack(alignment: .top) {
                 // Expanded body kept mounted (fading via opacity) through the whole
@@ -107,9 +101,6 @@ struct NotchRootView: View {
                     ExpandedView(namespace: morph)
                         .frame(width: expandedSize.width, height: expandedSize.height, alignment: .top)
                         .opacity(state.isExpanded ? 1 : 0)
-                        .animation(NotchAnimation.contentReveal(expanded: state.isExpanded,
-                                                                reduceMotion: state.reduceMotion),
-                                   value: state.isExpanded)
                         .accessibilityAction(named: "Collapse notch") {
                             state.collapse()
                         }
@@ -137,6 +128,7 @@ struct NotchRootView: View {
             ))
         }
         .frame(width: size.width, height: size.height)
+        .scaleEffect(hoverGrow ? 1.06 : 1.0, anchor: .top)
         .animation(NotchAnimation.hoverGrow(reduceMotion: state.reduceMotion), value: hoverGrow)
         .contentShape(NotchShape(
             topRadius: NotchMetrics.compactCornerRadius,
@@ -156,16 +148,8 @@ struct NotchRootView: View {
         )
     }
 
-    /// Hover the compact pill and it swells first (an intent preview), then
-    /// opens after a short delay. The swell is a layout change, not a scale
-    /// transform, so the top stays matched to the physical notch and the open
-    /// continues from the swollen size as one morph.
-    private var isHoverSwollen: Bool {
-        state.presentation == .compact && state.isHovering && !state.isDropActive
-    }
-
     private var currentSize: CGSize {
-        let size = NotchLayout.contentSize(
+        NotchLayout.contentSize(
             presentation: state.presentation,
             notch: notchSize,
             expandedWidth: expandedWidth,
@@ -176,7 +160,6 @@ struct NotchRootView: View {
             dropActive: state.isDropActive,
             tabBarStyle: settings.notch.tabBarStyle
         )
-        return isHoverSwollen ? NotchLayout.hoverInflated(size) : size
     }
 
     private var expandedSize: CGSize {

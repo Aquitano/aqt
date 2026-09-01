@@ -3,21 +3,12 @@ import NotchCore
 import AppKit
 
 /// The "Apple feel" lives here: one asymmetric spring set, ~0.4s each.
-/// Open and close both settle without overshoot, compact<->expanded snaps. Reduce Motion
+/// Open bounces, close settles, compact<->expanded snaps. Reduce Motion
 /// swaps every curve for a non-bouncy `.smooth`.
 enum NotchAnimation {
 
-    /// A critically damped spring: fast out of the gate, decelerating into
-    /// place with no overshoot, so the body never rebounds after it lands.
     static func open(reduceMotion: Bool) -> Animation {
-        .smooth(duration: reduceMotion ? 0.35 : 0.4)
-    }
-
-    /// The expanded content fades in once the blob has mostly landed, and
-    /// drops out quickly on close so nothing lingers inside a shrinking body.
-    static func contentReveal(expanded: Bool, reduceMotion: Bool) -> Animation {
-        if reduceMotion { return .smooth(duration: 0.2) }
-        return expanded ? .easeOut(duration: 0.2).delay(0.14) : .easeIn(duration: 0.12)
+        reduceMotion ? .smooth(duration: 0.35) : .bouncy(duration: 0.4)
     }
 
     /// Duration of the close/collapse. Also gates how long the expanded content
@@ -37,7 +28,7 @@ enum NotchAnimation {
 
     /// Gentle swell while the cursor rests on the compact pill, before it opens.
     static func hoverGrow(reduceMotion: Bool) -> Animation {
-        .smooth(duration: reduceMotion ? 0.18 : 0.22)
+        reduceMotion ? .smooth(duration: 0.2) : .spring(response: 0.28, dampingFraction: 0.72)
     }
 
     /// Widget-grid editing: tiles sliding aside during a reorder drag, and
@@ -227,16 +218,6 @@ enum NotchLayout {
     /// menu-bar band can be unreliable about clicks that close to the bezel, so
     /// this is the one number to nudge if they turn out flaky.
     static let shoulderRowTopInset: CGFloat = 0
-
-    /// How much the compact pill grows while hovered: the body widens past the
-    /// notch on both sides and drops a little, so the swell reads as the island
-    /// lifting off the bezel rather than a scaled bitmap whose top edge sticks
-    /// out beside the physical cutout.
-    static let hoverInflation = CGSize(width: 18, height: 8)
-
-    static func hoverInflated(_ size: CGSize) -> CGSize {
-        CGSize(width: size.width + hoverInflation.width, height: size.height + hoverInflation.height)
-    }
 
     static func contentSize(presentation: NotchState.Presentation,
                             notch: CGSize,

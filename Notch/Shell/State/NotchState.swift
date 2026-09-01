@@ -117,10 +117,8 @@ final class NotchState {
         guard presentation != .expanded else { return }
         expandTask?.cancel()
         expandTask = Task { @MainActor [weak self] in
-            // Intent delay long enough for the pill's hover-swell (a 0.22s
-            // spring) to land before the open starts, so the swell is a
-            // distinct beat rather than the first frames of the open.
-            try? await self?.clock.sleep(for: .milliseconds(300))
+            // Brief intent delay so the pill's hover-swell reads before it opens.
+            try? await self?.clock.sleep(for: .milliseconds(210))
             guard let self, !Task.isCancelled else { return }
             self.expandTask = nil
             self.endCollapsing()

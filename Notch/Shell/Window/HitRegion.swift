@@ -21,8 +21,6 @@ struct LayoutSnapshot: Equatable {
     /// the clickable region must extend down to cover it or the tabs are
     /// click-through; the other styles stay inside the blob's own rect.
     var tabBarStyle: TabBarStyle = .inside
-    /// The compact pill is swollen while hovered; the region follows it.
-    var hovering: Bool = false
 }
 
 /// Pure geometry: the visible content's rect in screen coordinates for a given
@@ -31,7 +29,7 @@ struct LayoutSnapshot: Equatable {
 /// table-test instead of something only observable through a fully-wired window.
 enum HitRegion {
     static func rect(_ snapshot: LayoutSnapshot) -> CGRect {
-        var size = NotchLayout.contentSize(
+        let size = NotchLayout.contentSize(
             presentation: snapshot.presentation,
             notch: snapshot.notch,
             expandedWidth: snapshot.expandedWidth,
@@ -42,9 +40,6 @@ enum HitRegion {
             dropActive: snapshot.dropActive,
             tabBarStyle: snapshot.tabBarStyle
         )
-        if snapshot.presentation == .compact, snapshot.hovering, !snapshot.dropActive {
-            size = NotchLayout.hoverInflated(size)
-        }
         // The drop chooser replaces the tabs, so the dock (and its region) is
         // only present outside a drag.
         let dockAllowance: CGFloat =

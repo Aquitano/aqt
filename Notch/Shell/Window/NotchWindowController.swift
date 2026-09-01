@@ -558,8 +558,6 @@ final class NotchWindowController {
     private func setHovering(_ hovering: Bool, on host: NotchPanelHost) {
         guard host.state.isHovering != hovering else { return }
         host.state.hoverChanged(hovering)
-        // The swollen pill is larger; keep the cached region in step with it.
-        compactHitRegions[host.displayKey] = hoverRect(for: host)
     }
 
     private func setIgnoresMouseEvents(_ ignores: Bool, on host: NotchPanelHost) {
@@ -601,8 +599,7 @@ final class NotchWindowController {
                 trayItemCount: env.tray.items.count
             ),
             dropActive: host.state.isDropActive,
-            tabBarStyle: env.settings.notch.tabBarStyle,
-            hovering: host.state.isHovering
+            tabBarStyle: env.settings.notch.tabBarStyle
         )
     }
 
