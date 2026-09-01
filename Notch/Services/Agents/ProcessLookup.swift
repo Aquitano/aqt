@@ -89,13 +89,17 @@ struct ProcessLookup: Sendable {
         return (args, env)
     }
 
-    /// Parent pid via `PROC_PIDTBSDINFO`.
+    /// Parent pid via `sysctl(KERN_PROC_PID)` — the same source `ps` reads.
+    /// `proc_pidinfo` refuses a process owned by another user, and every
+    /// Ghostty/Terminal window has a setuid-root `login` between the shell and
+    /// the app: a walk built on it stops one step short of the window, so the
+    /// terminal is never raised and a live session looks detached.
     func ppid(of pid: pid_t) -> pid_t? {
-        var info = proc_bsdinfo()
-        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
-        let result = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size)
-        guard result == size else { return nil }
-        return pid_t(info.pbi_ppid)
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        guard sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0) == 0, size > 0 else { return nil }
+        return info.kp_eproc.e_ppid
     }
 
     func startDate(of pid: pid_t) -> Date? {

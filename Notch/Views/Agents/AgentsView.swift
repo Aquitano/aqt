@@ -36,7 +36,9 @@ struct AgentsView: View {
                     permissionCard(pending)
                 }
                 ForEach(rows.active) { row in
-                    AgentRowView(session: row.session, onJump: { jump(row.session) })
+                    AgentRowView(session: row.session,
+                                 onJump: { jump(row.session) },
+                                 onQuit: { agents.terminate(row.session) })
                         .padding(.leading, CGFloat(row.depth) * 22)
                         .opacity(row.depth > 0 ? 0.92 : 1)
                 }
@@ -45,7 +47,9 @@ struct AgentsView: View {
                         idleDivider
                     }
                     ForEach(rows.collapsed) { session in
-                        AgentRowView(session: session, collapsed: true, onJump: { jump(session) })
+                        AgentRowView(session: session, collapsed: true,
+                                     onJump: { jump(session) },
+                                     onQuit: { agents.terminate(session) })
                     }
                 }
                 if agents.sessions.isEmpty {

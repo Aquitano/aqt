@@ -52,6 +52,9 @@ struct ProcessScanner: Sendable {
                 busyStatus: transcript.state.busy,
                 focusURL: process.terminal.focusURL, terminalName: process.terminal.name,
                 herdrPaneID: process.terminal.herdrPane,
+                isDetached: !TerminalAttachment.isAttached(
+                    pid: process.pid, herdrPane: process.terminal.herdrPane, lookup: lookup
+                ),
                 prompt: transcript.state.prompt, response: transcript.state.response,
                 verb: transcript.state.verb
             )

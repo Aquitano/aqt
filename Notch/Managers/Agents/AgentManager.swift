@@ -207,6 +207,30 @@ final class AgentManager: ObservableObject {
             )
     }
 
+    /// Quit a detached session: its window is gone, so a signal is the only way
+    /// left to stop an agent that may still be working (and spending) unseen.
+    /// TERM alone does not land — the graceful-exit path wants the tty that died
+    /// under it, so the agent sits there ignoring it — hence the escalation to
+    /// KILL. The transcript is written as it goes, so it survives either way.
+    func terminate(_ session: AgentSession) {
+        guard let pid = session.pid, pid > 0 else { return }
+        let startedAt = processLookup.startDate(of: pid)
+        kill(pid, SIGTERM)
+        Log.agents.notice("quit detached session \(session.id, privacy: .public) (pid \(pid))")
+        refresh()
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard let self else { return }
+            // Matching start date, not just a live pid: a recycled number must
+            // never take the kill meant for the agent.
+            guard let startedAt, self.processLookup.startDate(of: pid) == startedAt else { return }
+            kill(pid, SIGKILL)
+            Log.agents.notice("pid \(pid) ignored SIGTERM, sent SIGKILL")
+            self.refresh()
+        }
+    }
+
     func jumpToTerminal(_ pending: PendingAgentPermission) {
         TerminalJumper(processLookup: processLookup)
             .jump(toPID: pending.pid, cwd: pending.cwd)

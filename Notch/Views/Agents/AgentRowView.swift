@@ -5,18 +5,38 @@ import SwiftUI
 /// latest exchange. Tapping jumps to the hosting terminal tab. Long-idle
 /// sessions render `collapsed`: a single quiet line so a day's worth of
 /// finished sessions doesn't drown the ones still working.
+///
+/// A detached session (window gone, process still running) keeps its row but
+/// loses the tap: there is no tab to land on, so the row offers to quit it.
 struct AgentRowView: View {
     let session: AgentSession
     var collapsed = false
     let onJump: () -> Void
+    var onQuit: () -> Void = {}
+
+    /// Quit is a one-way action on a session nothing else can reach, so the
+    /// button asks once before it fires.
+    @State private var quitArmed = false
 
     var body: some View {
-        Button(action: onJump) {
-            if collapsed { compactBody } else { fullBody }
+        card
+            .glassEffect(.regular, in: .rect(cornerRadius: collapsed ? 12 : 16))
+            .accessibilityLabel(accessibilityText)
+    }
+
+    @ViewBuilder
+    private var card: some View {
+        if session.isDetached {
+            layout
+        } else {
+            Button(action: onJump) { layout }
+                .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
-        .glassEffect(.regular, in: .rect(cornerRadius: collapsed ? 12 : 16))
-        .accessibilityLabel(accessibilityText)
+    }
+
+    @ViewBuilder
+    private var layout: some View {
+        if collapsed { compactBody } else { fullBody }
     }
 
     private var fullBody: some View {
@@ -65,7 +85,9 @@ struct AgentRowView: View {
                 .foregroundStyle(.white.opacity(0.4))
                 .lineLimit(1)
             Spacer(minLength: 6)
-            if let terminal = session.terminalName {
+            if session.isDetached {
+                quitButton
+            } else if let terminal = session.terminalName {
                 Text(terminal)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.35))
@@ -109,13 +131,40 @@ struct AgentRowView: View {
             Spacer(minLength: 6)
 
             badge(session.kind.shortName, tint: kindTint)
-            if let terminal = session.terminalName {
+            if session.isDetached {
+                badge("Detached", tint: .orange)
+                quitButton
+            } else if let terminal = session.terminalName {
                 badge(terminal, tint: .white.opacity(0.5))
             }
             Text(uptime)
                 .font(.subheadline)
                 .monospacedDigit()
                 .foregroundStyle(.white.opacity(0.45))
+        }
+    }
+
+    private var quitButton: some View {
+        Button {
+            Haptics.tap(.levelChange)
+            if quitArmed { onQuit() } else { quitArmed = true }
+        } label: {
+            Text(quitArmed ? "Quit?" : "Quit")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.red.opacity(quitArmed ? 0.4 : 0.18), in: .capsule)
+                .foregroundStyle(quitArmed ? Color.white : Color.red)
+                .fixedSize()
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(quitArmed ? "Confirm quitting this session" : "Quit this session")
+        // Disarm on its own so a half-pressed row can't fire on a later stray tap.
+        .task(id: quitArmed) {
+            guard quitArmed else { return }
+            try? await Task.sleep(for: .seconds(4))
+            quitArmed = false
         }
     }
 
@@ -161,7 +210,7 @@ struct AgentRowView: View {
     private var accessibilityText: String {
         var parts = ["\(session.kind.displayName) in \(session.project)", session.status.label]
         if let prompt = session.lastPrompt { parts.append("prompt: \(prompt)") }
-        parts.append("jump to terminal")
+        parts.append(session.isDetached ? "detached, no terminal to jump to" : "jump to terminal")
         return parts.joined(separator: ", ")
     }
 }

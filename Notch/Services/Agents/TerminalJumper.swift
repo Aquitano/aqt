@@ -44,7 +44,7 @@ struct TerminalJumper {
                 let client = await Task.detached { () -> pid_t? in
                     HerdrBridge.focus(pane: herdrPane)
                     guard let client = HerdrBridge.clientPIDs(lookup: lookup)
-                        .first(where: { Self.guiAncestor(of: $0, lookup: lookup) != nil })
+                        .first(where: { TerminalAttachment.guiAncestor(of: $0, lookup: lookup) != nil })
                     else { return nil }
                     _ = Self.focusPrecise(pid: client, lookup: lookup)
                     return client
@@ -55,7 +55,7 @@ struct TerminalJumper {
                     )
                     return
                 }
-                Self.activateTerminal(forPID: client, lookup: lookup)
+                await Task.detached { Self.activateTerminal(forPID: client, lookup: lookup) }.value
                 return
             }
 
@@ -70,7 +70,7 @@ struct TerminalJumper {
             }
             // Always raise the hosting GUI app (iTerm/Terminal AppleScript already
             // does, but this covers wezterm/kitty/tmux and the plain fallback).
-            Self.activateTerminal(forPID: pid, lookup: lookup)
+            await Task.detached { Self.activateTerminal(forPID: pid, lookup: lookup) }.value
         }
     }
 
@@ -231,29 +231,19 @@ struct TerminalJumper {
         return lookup.allPIDs().first { lookup.cwd(of: $0) == target }
     }
 
-    private static func activateTerminal(forPID pid: pid_t, lookup: ProcessLookup) {
-        guard let app = guiAncestor(of: pid, lookup: lookup) else {
+    /// Under cooperative activation only the frontmost app may hand focus on,
+    /// and the notch panel never becomes frontmost — so `activate()` returns
+    /// true and does nothing (`NSWorkspace.openApplication` likewise reports
+    /// success), leaving the tab selected behind whatever you were looking at.
+    /// An Apple Event instead asks the terminal to activate *itself*, which
+    /// macOS does allow.
+    nonisolated private static func activateTerminal(forPID pid: pid_t, lookup: ProcessLookup) {
+        guard let app = TerminalAttachment.guiAncestor(of: pid, lookup: lookup),
+              let bundleID = app.bundleIdentifier else {
             Log.agents.notice("terminal jump: no GUI ancestor for pid \(pid)")
             return
         }
-        app.activate()
-    }
-
-    /// Nearest ancestor that is a regular, Dock-visible app: the window hosting a
-    /// terminal process. Also how a live herdr client is told from a stale one,
-    /// whose chain dead-ends at launchd once its window is gone.
-    nonisolated private static func guiAncestor(of pid: pid_t, lookup: ProcessLookup) -> NSRunningApplication? {
-        var current: pid_t? = pid
-        var depth = 0
-        while let c = current, depth < 12 {
-            if let app = NSRunningApplication(processIdentifier: c),
-               app.bundleIdentifier != nil, app.activationPolicy == .regular {
-                return app
-            }
-            current = lookup.ppid(of: c)
-            depth += 1
-        }
-        return nil
+        _ = run("/usr/bin/osascript", ["-e", "tell application id \"\(bundleID)\" to activate"])
     }
 
     nonisolated private static func selectTmuxPane(forAgent pid: pid_t, lookup: ProcessLookup) {

@@ -108,6 +108,10 @@ struct AgentSession: Identifiable, Equatable, Sendable {
     /// captured from the agent process's environment. Jumping needs it because
     /// the pane's owner is a detached daemon, not the window on screen.
     var herdrPaneID: String?
+    /// The session outlived its window: still running, but on a pty nothing draws
+    /// any more. The row stays (an orphan can still be burning tokens), the jump
+    /// goes away, and quitting it is offered instead.
+    var isDetached: Bool = false
     /// Human verb for what it's doing now ("Reading", "Editing", "Running",
     /// "Thinking"), shown in the row instead of the bare status when present.
     var activityVerb: String?

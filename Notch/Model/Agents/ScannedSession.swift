@@ -16,6 +16,9 @@ struct ScannedSession: Sendable {
     let focusURL: String?
     let terminalName: String?
     let herdrPaneID: String?
+    /// The hosting window is gone but the process kept running (see
+    /// `TerminalAttachment`), so there is nothing for a jump to land on.
+    let isDetached: Bool
     let prompt: String?
     let response: String?
     let verb: String?
