@@ -1,17 +1,20 @@
 import AppKit
+import NotchCore
 import SwiftUI
 
 /// Composition root. Creates every manager, wires their dependencies, and owns
 /// the strong references for the app's lifetime. Injected into the SwiftUI tree
 /// as a set of environment objects so views observe each manager granularly.
 @MainActor
-final class AppEnvironment: ObservableObject {
+@Observable
+final class AppEnvironment {
 
     let settings: Settings
-    let state: NotchState
+    let notch: NotchCoordinator
 
     let imageCache: ImageCache
     let persistence: Persistence
+    let diagnostics: Diagnostics
 
     /// Shared CoreAudio service: drives the volume/mute HUD and the output-route
     /// activity. Owned here (not by the HUD) so route changes are detected even
@@ -38,27 +41,28 @@ final class AppEnvironment: ObservableObject {
 
     /// Set by the AppDelegate once the window exists; used to anchor the AirDrop
     /// share sheet to a key-capable window. Weak to avoid a retain cycle.
-    weak var windowController: NotchWindowController?
+    @ObservationIgnored weak var windowController: NotchWindowController?
 
-    @Published private(set) var renderingActive = true
+    private(set) var renderingActive = true
 
     /// Retains the AirDrop sharing delegate for the lifetime of one interaction.
     private var shareCoordinator: ShareCoordinator?
 
     init() {
-        let settings = Settings.shared
-        let state = NotchState()
-        state.defaultTab = { settings.resolvedDefaultTab }
-        state.expandedTab = settings.resolvedDefaultTab
+        let diagnostics = Diagnostics()
+        let persistence = Persistence(onFailure: { diagnostics.report(source: "Storage", $0) })
+        let settings = Settings(store: PreferencesStore(persistence: persistence, diagnostics: diagnostics))
+        let notch = NotchCoordinator()
+        notch.defaultTab = { settings.resolvedDefaultTab(for: $0) }
         let imageCache = ImageCache()
-        let persistence = Persistence()
-        let activities = ActivityManager(state: state)
+        let activities = ActivityManager(notch: notch)
         let audio = AudioHardware()
 
         self.settings = settings
-        self.state = state
+        self.notch = notch
         self.imageCache = imageCache
         self.persistence = persistence
+        self.diagnostics = diagnostics
         self.audio = audio
         self.activities = activities
 
@@ -69,7 +73,8 @@ final class AppEnvironment: ObservableObject {
         self.tray = tray
         self.screenshots = ScreenshotMonitor(settings: settings, activities: activities, tray: tray)
         self.timer = TimerManager(activities: activities)
-        self.agents = AgentManager(activities: activities, settings: settings)
+        self.agents = AgentManager(activities: activities, settings: settings,
+                                   persistence: persistence, diagnostics: diagnostics)
         self.battery = BatteryManager(activities: activities, settings: settings)
         self.powerMode = PowerModeController(activities: activities)
         self.calendar = CalendarManager(activities: activities)
@@ -77,7 +82,7 @@ final class AppEnvironment: ObservableObject {
         self.bluetooth = BluetoothBatteryManager(activities: activities)
         self.focus = FocusManager(activities: activities)
         self.shortcuts = ShortcutsManager(activities: activities)
-        self.note = NoteManager(persistence: persistence)
+        self.note = NoteManager(persistence: persistence, diagnostics: diagnostics)
     }
 
     /// Start all event-driven subscriptions. Called after the window is up.
@@ -121,7 +126,7 @@ final class AppEnvironment: ObservableObject {
     @discardableResult
     func shareDrop(_ providers: [NSItemProvider]) -> Bool {
         guard !providers.isEmpty else { return false }
-        let method = settings.shareMethod
+        let method = settings.tray.shareMethod
         tray.stageForShare(providers) { [weak self] items in
             self?.share(items: items, via: method)
         }
@@ -230,28 +235,31 @@ private final class ShareCoordinator: NSObject, NSSharingServiceDelegate, @preco
 }
 
 extension View {
-    /// Inject every manager so views can `@EnvironmentObject` exactly what they need.
+    /// Inject every manager so views can pull exactly what they need from the
+    /// environment. Panel trees also get their display's `NotchState`; the
+    /// Settings and onboarding windows have none.
     @MainActor
     func injectNotchEnvironment(_ env: AppEnvironment, state: NotchState? = nil) -> some View {
         self
-            .environmentObject(env)
-            .environmentObject(env.settings)
-            .environmentObject(state ?? env.state)
-            .environmentObject(env.activities)
-            .environmentObject(env.media)
-            .environmentObject(env.audioVisualizer)
-            .environmentObject(env.hud)
-            .environmentObject(env.tray)
-            .environmentObject(env.screenshots)
-            .environmentObject(env.timer)
-            .environmentObject(env.agents)
-            .environmentObject(env.battery)
-            .environmentObject(env.powerMode)
-            .environmentObject(env.calendar)
-            .environmentObject(env.weather)
-            .environmentObject(env.bluetooth)
-            .environmentObject(env.focus)
-            .environmentObject(env.shortcuts)
-            .environmentObject(env.note)
+            .environment(env)
+            .environment(env.settings)
+            .environment(env.diagnostics)
+            .environment(state)
+            .environment(env.activities)
+            .environment(env.media)
+            .environment(env.audioVisualizer)
+            .environment(env.hud)
+            .environment(env.tray)
+            .environment(env.screenshots)
+            .environment(env.timer)
+            .environment(env.agents)
+            .environment(env.battery)
+            .environment(env.powerMode)
+            .environment(env.calendar)
+            .environment(env.weather)
+            .environment(env.bluetooth)
+            .environment(env.focus)
+            .environment(env.shortcuts)
+            .environment(env.note)
     }
 }

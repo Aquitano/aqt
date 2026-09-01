@@ -1,4 +1,5 @@
 import Foundation
+import NotchCore
 
 // notch-hook: a tiny standalone hook client. The launcher in ~/.notch/bin execs
 // this instead of the full app, so a hook costs a few ms (no AppKit/SwiftUI

@@ -5,7 +5,7 @@ activities + HUDs, a file tray with AirDrop, coding-agent watching (Claude Code,
 friends, including in-notch approval of permission prompts), and widgets (battery, calendar,
 weather, Bluetooth battery, focus, clock, Shortcuts runner, quick note). First launch opens
 a welcome tour; an opt-in global hotkey (⌃⌥N) toggles the notch. Built per
-[`BUILD_PLAN.md`](BUILD_PLAN.md).
+[`docs/archive/BUILD_PLAN.md`](docs/archive/BUILD_PLAN.md).
 
 Agent app (no Dock icon), Developer-ID signed, **not sandboxed**. Direct distribution only.
 
@@ -46,6 +46,17 @@ and leaves `DEVELOPMENT_TEAM` empty. For local runs either:
 
 Use a **stable** signing identity during development: TCC grants (Input Monitoring,
 Calendars, Automation) are keyed to the identity, so ad-hoc re-signing makes macOS forget them.
+
+## Releases and updates
+
+Updates ship through [Sparkle](https://sparkle-project.org). Local builds leave `SUFeedURL`
+empty, so they never check; `.github/workflows/release.yml` builds, signs, notarizes and
+publishes a tagged release together with a signed `appcast.xml` served from the latest
+release's assets. One-time setup:
+
+1. `generate_keys` (from Sparkle's `bin/`) once; keep the private key out of the repo.
+2. Add the secrets listed at the top of the workflow to the GitHub repository.
+3. Tag a commit `vX.Y.Z` and push the tag.
 
 ## Permissions
 
@@ -90,28 +101,37 @@ pin, validation matrix, diagnostics, and rollback procedure.
 
 ## Architecture
 
-Single background agent process; one SwiftUI tree hosted in an AppKit overlay panel.
+Single background agent process; one SwiftUI tree per display hosted in an AppKit
+overlay panel. Sources are grouped by feature, not by layer.
 
 ```
 App/            NotchApp (@main), AppDelegate (status item, lifecycle), AppEnvironment (DI root)
-Window/         NotchPanel (borderless non-activating), NotchWindowController, ScreenGeometry
-State/          NotchState (presentation machine), Animations (the asymmetric springs)
-Model/          Activity, MediaModels, SystemModels, DropItem
-Managers/       MediaManager (+ Media/ controllers), AudioVisualizerManager, HUDManager,
-                ActivityManager, TrayManager,
-                Widgets/ (Battery, Calendar, Weather, BluetoothBattery, Focus)
-Services/       ImageCache (ImageIO downsample), Persistence, AudioHardware (CoreAudio),
-                Brightness (DisplayServices dlopen), SystemDefinedTap (listen-only event tap)
-Views/          NotchRootView + NotchShape, Compact/Expanded, Media/, HUD/, Activity/, Tray/,
-                Widgets/, Components/ (GlassButton, MarqueeText)
-Settings/       Settings (UserDefaults model), SettingsView
+Shell/          The notch itself
+  Window/         NotchPanel (borderless non-activating), NotchWindowController, ScreenGeometry,
+                  DisplayInventory + display policies, HitRegion
+  State/          NotchCoordinator (one NotchState per display), NotchState (presentation machine),
+                  Animations (the asymmetric springs)
+  Views/          NotchRootView + NotchShape, Compact/Expanded, tab strips, Theme
+  Components/     GlassButton, MarqueeText, PixelIcon, ...
+Features/       One folder per feature: model, manager, services and views together
+  Activities/     ActivityManager (generic priority queue), Activity, ActivityPresenter
+  Agents/         AgentManager, providers, socket server, transcript/status parsers, hook client
+  HUD/            HUDManager, CoreAudio, DisplayServices brightness, the media-key event tap
+  Media/          MediaManager + controllers, audio visualizer
+  Tray/           TrayManager, ingestion pipeline, Quick Look, screenshot candidates, views
+  Timer/          Pomodoro timer
+  Widgets/        Battery, Calendar, Weather, Bluetooth, Focus, Shortcuts, Note, Clock
+  Settings/       Preferences document, Settings (live), SettingsView
+  Onboarding/
+Platform/       Shared adapters and utilities: Persistence, Diagnostics, ImageCache, HotKey,
+                LoginItem, Haptics, Keychain, Logging, watch()
 ```
 
 **Iconography:** custom controls and status glyphs use one crisp 7×7 pixel system,
 matching the agent working indicator. Semantic color remains feature-driven; album artwork
 and file thumbnails remain native content rather than being stylized.
 
-**Concurrency:** managers are `@MainActor ObservableObject`s; heavy work (image decode,
+**Concurrency:** managers are `@MainActor @Observable` classes; heavy work (image decode,
 `system_profiler`, perl I/O, system-audio analysis, file copies) runs off-main and hops back
 only to publish.
 
@@ -125,7 +145,6 @@ fully hidden and pauses work on occlusion.
 
 - System-wide Now Playing uses a private MediaRemote bridge that Apple can change in a macOS
   update; the runtime self-test automatically falls back to Music/Spotify if that happens.
-- Direct distribution still needs a Developer ID signing/notarization/update pipeline.
 - No fullscreen / lock-screen presence (decided): `collectionBehavior` only, no CGS/SkyLight.
 - Third-party notification mirroring is out of scope; Quick Peeks are self-generated
   (battery / device connect / focus / timer).

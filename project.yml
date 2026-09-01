@@ -9,10 +9,12 @@ options:
 
 settings:
   base:
-    SWIFT_VERSION: "5.0"
+    SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "26.0"
     DEVELOPMENT_TEAM: "" # set your Developer-ID team for local signing
     SWIFT_STRICT_CONCURRENCY: complete
+    # Lets app targets use NotchCore's `package` declarations (same package group).
+    SWIFT_PACKAGE_NAME: notchcore
     CLANG_ENABLE_MODULES: YES
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
@@ -44,6 +46,8 @@ targets:
         embed: true
         link: false
         codeSign: true
+      - package: NotchCore
+      - package: Sparkle
     settings:
       base:
         PRODUCT_NAME: Notch
@@ -63,6 +67,10 @@ targets:
           - "@executable_path/../Frameworks"
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
+        # Sparkle reads these through Info.plist. Empty in local builds, which
+        # keeps the updater off; the release workflow passes the real values.
+        SPARKLE_FEED_URL: ""
+        SPARKLE_PUBLIC_ED_KEY: ""
       # Debug signs with a personal-team Apple Development cert so Xcode's Run works
       # without a Developer-ID cert, and TCC grants (Location, Calendar, Focus)
       # persist across rebuilds (stable identity); Release keeps Developer ID above.
@@ -82,12 +90,9 @@ targets:
     type: tool
     platform: macOS
     sources:
-      - path: Notch/Model/Agents/AgentModels.swift
-      - path: Notch/Model/Agents/AgentPermission.swift
-      - path: Notch/Services/Agents/AgentSocketPath.swift
-      - path: Notch/Services/Agents/ProcessLookup.swift
-      - path: Notch/App/HookClient.swift
       - path: HookTool
+    dependencies:
+      - package: NotchCore
     settings:
       base:
         PRODUCT_NAME: notch-hook
@@ -110,34 +115,12 @@ targets:
     platform: macOS
     sources:
       - path: Tests
-      - path: Notch/Model/Agents/AgentModels.swift
-      - path: Notch/Model/Agents/AgentPermission.swift
-      - path: Notch/Model/Agents/ScannedSession.swift
-      - path: Notch/Services/Agents/StatusReducer.swift
-      - path: Notch/Services/Agents/TranscriptParser.swift
-      - path: Notch/Services/Agents/SessionReconciler.swift
-      - path: Notch/Services/Agents/T3Wire.swift
-      - path: Notch/Services/Agents/AgentConfigInstaller.swift
-      - path: Notch/Services/Agents/HookRestorePolicy.swift
-      - path: Notch/Services/Agents/AgentSoundPlayer.swift
-      - path: Notch/Managers/Widgets/BatteryPolicy.swift
-      - path: Notch/Managers/TimerPolicy.swift
-      - path: Notch/Managers/Widgets/CalendarReminders.swift
-      - path: Notch/Model/Activity.swift
-      - path: Notch/Model/MediaModels.swift
-      - path: Notch/Model/SystemModels.swift
-      - path: Notch/Model/DisplayModels.swift
-      - path: Notch/Model/DropItem.swift
-      - path: Notch/Model/TrayTransfer.swift
-      - path: Notch/Model/TrayLifecycle.swift
-      - path: Notch/Model/ScreenshotCandidate.swift
-      - path: Notch/Services/TrayIngestionPipeline.swift
-      - path: Notch/Services/Persistence.swift
-      - path: Notch/Managers/Media/MediaAdapterPayload.swift
-      - path: Notch/Managers/Audio/AudioLevelAnalysis.swift
-      - path: Notch/Window/HitRegion.swift
-      - path: Notch/State/Animations.swift
-      - path: Notch/State/NotchState.swift
+      - path: Notch/Shell/Window/HitRegion.swift
+      - path: Notch/Shell/State/Animations.swift
+      - path: Notch/Shell/State/NotchState.swift
+      - path: Notch/Shell/State/NotchCoordinator.swift
+    dependencies:
+      - package: NotchCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aquitano.notch.tests
@@ -161,6 +144,11 @@ schemes:
         - NotchTests
 
 packages:
+  NotchCore:
+    path: Packages/NotchCore
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.9.6"
   mediaremote-adapter:
     url: https://github.com/ejbills/mediaremote-adapter
     revision: cf30c4f1af29b5829d859f088f8dbdf12611a046

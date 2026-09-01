@@ -1,4 +1,5 @@
 import SwiftUI
+import NotchCore
 
 /// Real entry point. Branches on argv *before* AppKit loads so the same binary
 /// can serve as a Claude hook / Codex notify client (write one line to the agent
@@ -20,7 +21,7 @@ struct NotchApp: App {
         // The notch itself lives in an AppKit panel (see AppDelegate). This scene
         // is only the standard Settings window.
         SwiftUI.Settings {
-            SettingsView()
+            SettingsView(settings: appDelegate.env.settings)
                 .injectNotchEnvironment(appDelegate.env)
         }
     }
