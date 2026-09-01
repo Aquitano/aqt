@@ -1,26 +1,26 @@
-import XCTest
+import Testing
 import NotchCore
 
 @MainActor
-final class NotchCoordinatorTests: XCTestCase {
-    func testOnlyOneDisplayExpandsAtATime() {
+struct NotchCoordinatorTests {
+    @Test func onlyOneDisplayExpandsAtATime() {
         let notch = NotchCoordinator()
         let a = notch.register(displayKey: "a")
         let b = notch.register(displayKey: "b")
         notch.showCompact()
 
         a.expand()
-        XCTAssertEqual(a.presentation, .expanded)
-        XCTAssertEqual(b.presentation, .compact)
-        XCTAssertEqual(notch.expandedKey, "a")
+        #expect(a.presentation == .expanded)
+        #expect(b.presentation == .compact)
+        #expect(notch.expandedKey == "a")
 
         b.expand()
-        XCTAssertEqual(b.presentation, .expanded)
-        XCTAssertEqual(a.presentation, .compact, "the previously expanded display collapses immediately")
-        XCTAssertEqual(notch.expandedKey, "b")
+        #expect(b.presentation == .expanded)
+        #expect(a.presentation == .compact, "the previously expanded display collapses immediately")
+        #expect(notch.expandedKey == "b")
     }
 
-    func testHoverExpandAlsoCompactsTheOtherDisplays() async {
+    @Test func hoverExpandAlsoCompactsTheOtherDisplays() async {
         let clock = ManualClock()
         let notch = NotchCoordinator(clock: clock)
         let a = notch.register(displayKey: "a")
@@ -31,27 +31,27 @@ final class NotchCoordinatorTests: XCTestCase {
         a.hoverChanged(true)
         await clock.advance(by: .milliseconds(250))
 
-        XCTAssertEqual(a.presentation, .expanded)
-        XCTAssertEqual(b.presentation, .compact)
+        #expect(a.presentation == .expanded)
+        #expect(b.presentation == .compact)
     }
 
-    func testProgrammaticExpandTargetsThePointerDisplayThenTheExpandedOne() {
+    @Test func programmaticExpandTargetsThePointerDisplayThenTheExpandedOne() {
         let notch = NotchCoordinator()
         let a = notch.register(displayKey: "a")
         let b = notch.register(displayKey: "b")
         notch.expansionTarget = { "b" }
 
         notch.expand()
-        XCTAssertEqual(b.presentation, .expanded)
-        XCTAssertEqual(a.presentation, .compact, "a hidden sibling comes up compact")
+        #expect(b.presentation == .expanded)
+        #expect(a.presentation == .compact, "a hidden sibling comes up compact")
 
         notch.expansionTarget = { "a" }
         notch.select(tab: .media)
-        XCTAssertEqual(b.expandedTab, .media, "commands go to the expanded display while one is open")
-        XCTAssertEqual(a.presentation, .compact)
+        #expect(b.expandedTab == .media, "commands go to the expanded display while one is open")
+        #expect(a.presentation == .compact)
     }
 
-    func testToggleHidesEveryDisplayAndReopens() {
+    @Test func toggleHidesEveryDisplayAndReopens() {
         let notch = NotchCoordinator()
         let a = notch.register(displayKey: "a")
         let b = notch.register(displayKey: "b")
@@ -59,25 +59,25 @@ final class NotchCoordinatorTests: XCTestCase {
         a.expand()
 
         notch.toggle()
-        XCTAssertFalse(notch.isVisible)
-        XCTAssertEqual(a.presentation, .hidden)
-        XCTAssertEqual(b.presentation, .hidden)
+        #expect(!notch.isVisible)
+        #expect(a.presentation == .hidden)
+        #expect(b.presentation == .hidden)
 
         notch.toggle()
-        XCTAssertTrue(notch.isVisible)
-        XCTAssertNotNil(notch.expandedKey)
+        #expect(notch.isVisible)
+        #expect(notch.expandedKey != nil)
     }
 
-    func testDisplayAppearingWhileVisibleStartsCompact() {
+    @Test func displayAppearingWhileVisibleStartsCompact() {
         let notch = NotchCoordinator()
         notch.register(displayKey: "a")
         notch.showCompact()
 
         let late = notch.register(displayKey: "b")
-        XCTAssertEqual(late.presentation, .compact)
+        #expect(late.presentation == .compact)
 
         notch.hide()
         let hidden = notch.register(displayKey: "c")
-        XCTAssertEqual(hidden.presentation, .hidden)
+        #expect(hidden.presentation == .hidden)
     }
 }

@@ -1,10 +1,11 @@
-import XCTest
+import Foundation
+import Testing
 @testable import NotchCore
 
 /// `T3Wire` is the pure byte-level layer of the t3 integration, so the frame
 /// decode, the thread -> session mapping, and the event diff are table-tested
 /// here against hand-written wire fixtures (shapes taken from t3's contracts).
-final class T3WireTests: XCTestCase {
+struct T3WireTests {
 
     // MARK: - Frame decoding
 
@@ -34,7 +35,7 @@ final class T3WireTests: XCTestCase {
         return dict
     }
 
-    func testDecodesSnapshotChunkAndNumericRequestId() {
+    @Test func decodesSnapshotChunkAndNumericRequestId() {
         let data = chunkData(items: [[
             "kind": "snapshot",
             "snapshot": [
@@ -47,43 +48,47 @@ final class T3WireTests: XCTestCase {
 
         let messages = T3Wire.decodeFrames(data)
         guard case let .chunk(requestId, items, drift) = messages.first else {
-            return XCTFail("expected chunk, got \(messages)")
+            Issue.record("expected chunk, got \(messages)")
+            return
         }
-        XCTAssertEqual(requestId, .number(4))
-        XCTAssertFalse(drift)
+        #expect(requestId == .number(4))
+        #expect(!drift)
         guard case let .snapshot(projects, threads) = items.first else {
-            return XCTFail("expected snapshot, got \(items)")
+            Issue.record("expected snapshot, got \(items)")
+            return
         }
-        XCTAssertEqual(projects.first?.title, "Demo")
-        XCTAssertEqual(threads.first?.sessionStatus, "running")
-        XCTAssertEqual(threads.first?.providerName, "claude-code")
+        #expect(projects.first?.title == "Demo")
+        #expect(threads.first?.sessionStatus == "running")
+        #expect(threads.first?.providerName == "claude-code")
     }
 
-    func testUnknownTagsAndItemKindsAreSkippedNotFatal() {
+    @Test func unknownTagsAndItemKindsAreSkippedNotFatal() {
         let data = chunkData(items: [
             ["kind": "brand-new-kind", "whatever": 1],
             ["kind": "thread-removed", "threadId": "t9"],
         ])
         let frames = T3Wire.decodeFrames(Data("{\"_tag\":\"SomethingNew\"}".utf8))
-        XCTAssertTrue(frames.isEmpty)
+        #expect(frames.isEmpty)
         guard case let .chunk(_, items, drift) = T3Wire.decodeFrames(data).first else {
-            return XCTFail("expected chunk")
+            Issue.record("expected chunk")
+            return
         }
-        XCTAssertEqual(items, [.threadRemoved("t9")])
+        #expect(items == [.threadRemoved("t9")])
         // A new benign kind next to a decodable item is not drift.
-        XCTAssertFalse(drift)
+        #expect(!drift)
     }
 
-    func testDriftFlagsWhenNothingInAChunkDecodes() {
+    @Test func driftFlagsWhenNothingInAChunkDecodes() {
         let data = chunkData(items: [["kind": "thread-upserted", "thread": ["renamed": true]]])
         guard case let .chunk(_, items, drift) = T3Wire.decodeFrames(data).first else {
-            return XCTFail("expected chunk")
+            Issue.record("expected chunk")
+            return
         }
-        XCTAssertTrue(items.isEmpty)
-        XCTAssertTrue(drift)
+        #expect(items.isEmpty)
+        #expect(drift)
     }
 
-    func testDriftFlagsWhenSnapshotThreadsNoLongerDecode() {
+    @Test func driftFlagsWhenSnapshotThreadsNoLongerDecode() {
         let data = chunkData(items: [[
             "kind": "snapshot",
             "snapshot": [
@@ -92,24 +97,26 @@ final class T3WireTests: XCTestCase {
             ],
         ]])
         guard case let .chunk(_, items, drift) = T3Wire.decodeFrames(data).first else {
-            return XCTFail("expected chunk")
+            Issue.record("expected chunk")
+            return
         }
-        XCTAssertEqual(items, [.snapshot(projects: [], threads: [])])
-        XCTAssertTrue(drift)
+        #expect(items == [.snapshot(projects: [], threads: [])])
+        #expect(drift)
     }
 
-    func testEmptySnapshotIsNotDrift() {
+    @Test func emptySnapshotIsNotDrift() {
         let data = chunkData(items: [[
             "kind": "snapshot",
             "snapshot": ["projects": [[String: Any]](), "threads": [[String: Any]]()],
         ]])
         guard case let .chunk(_, _, drift) = T3Wire.decodeFrames(data).first else {
-            return XCTFail("expected chunk")
+            Issue.record("expected chunk")
+            return
         }
-        XCTAssertFalse(drift)
+        #expect(!drift)
     }
 
-    func testShellSnapshotResponseDecodesBareSnapshotShape() throws {
+    @Test func shellSnapshotResponseDecodesBareSnapshotShape() throws {
         // GET /api/orchestration/shell returns the snapshot struct directly.
         let data = try JSONSerialization.data(withJSONObject: [
             "snapshotSequence": 12,
@@ -118,66 +125,67 @@ final class T3WireTests: XCTestCase {
             "updatedAt": "2026-08-27T10:00:00.000Z",
         ])
         let decoded = T3Wire.shellSnapshotResponse(data)
-        XCTAssertFalse(decoded.drift)
+        #expect(!decoded.drift)
         guard case let .snapshot(projects, threads) = decoded.item else {
-            return XCTFail("expected snapshot, got \(String(describing: decoded.item))")
+            Issue.record("expected snapshot, got \(String(describing: decoded.item))")
+            return
         }
-        XCTAssertEqual(projects.first?.title, "Demo")
-        XCTAssertEqual(threads.first?.id, "t1")
+        #expect(projects.first?.title == "Demo")
+        #expect(threads.first?.id == "t1")
     }
 
-    func testShellSnapshotResponseFlagsDriftOnForeignOrUndecodableShape() throws {
+    @Test func shellSnapshotResponseFlagsDriftOnForeignOrUndecodableShape() throws {
         let foreign = T3Wire.shellSnapshotResponse(Data("{\"error\":\"nope\"}".utf8))
-        XCTAssertNil(foreign.item)
-        XCTAssertTrue(foreign.drift)
+        #expect(foreign.item == nil)
+        #expect(foreign.drift)
 
         let undecodableThreads = try JSONSerialization.data(withJSONObject: [
             "projects": [[String: Any]](),
             "threads": [["threadIdentifier": "renamed"]],
         ])
         let decoded = T3Wire.shellSnapshotResponse(undecodableThreads)
-        XCTAssertEqual(decoded.item, .snapshot(projects: [], threads: []))
-        XCTAssertTrue(decoded.drift)
+        #expect(decoded.item == .snapshot(projects: [], threads: []))
+        #expect(decoded.drift)
     }
 
-    func testVersionComparison() {
-        XCTAssertTrue(T3Wire.isVersion("0.0.40", newerThan: "0.0.35"))
-        XCTAssertTrue(T3Wire.isVersion("0.1.0", newerThan: "0.0.35"))
-        XCTAssertTrue(T3Wire.isVersion("1.0", newerThan: "0.9.9"))
-        XCTAssertFalse(T3Wire.isVersion("0.0.35", newerThan: "0.0.35"))
-        XCTAssertFalse(T3Wire.isVersion("0.0.30", newerThan: "0.0.35"))
-        XCTAssertFalse(T3Wire.isVersion("0.0", newerThan: "0.0.35"))
+    @Test func versionComparison() {
+        #expect(T3Wire.isVersion("0.0.40", newerThan: "0.0.35"))
+        #expect(T3Wire.isVersion("0.1.0", newerThan: "0.0.35"))
+        #expect(T3Wire.isVersion("1.0", newerThan: "0.9.9"))
+        #expect(!T3Wire.isVersion("0.0.35", newerThan: "0.0.35"))
+        #expect(!T3Wire.isVersion("0.0.30", newerThan: "0.0.35"))
+        #expect(!T3Wire.isVersion("0.0", newerThan: "0.0.35"))
     }
 
-    func testAckEchoesRequestIdType() throws {
-        let ack = try XCTUnwrap(
+    @Test func ackEchoesRequestIdType() throws {
+        let ack = try #require(
             JSONSerialization.jsonObject(with: T3Wire.ack(.number(4))) as? [String: Any]
         )
-        XCTAssertEqual(ack["_tag"] as? String, "Ack")
-        XCTAssertEqual(ack["requestId"] as? Int, 4)
+        #expect(ack["_tag"] as? String == "Ack")
+        #expect(ack["requestId"] as? Int == 4)
     }
 
     // MARK: - Status mapping
 
-    func testStatusMapping() {
+    @Test func statusMapping() {
         func status(_ dict: [String: Any]) -> AgentStatus? {
             T3Wire.status(of: T3Thread(dict)!)
         }
-        XCTAssertEqual(status(thread(id: "a", status: "running")), .running)
-        XCTAssertEqual(status(thread(id: "b", status: "starting")), .running)
-        XCTAssertEqual(status(thread(id: "c", status: "ready")), .finished)
-        XCTAssertEqual(status(thread(id: "d", status: "running", approvals: true)), .needsAttention)
-        XCTAssertEqual(status(thread(id: "e", status: "ready", userInput: true)), .needsAttention)
+        #expect(status(thread(id: "a", status: "running")) == .running)
+        #expect(status(thread(id: "b", status: "starting")) == .running)
+        #expect(status(thread(id: "c", status: "ready")) == .finished)
+        #expect(status(thread(id: "d", status: "running", approvals: true)) == .needsAttention)
+        #expect(status(thread(id: "e", status: "ready", userInput: true)) == .needsAttention)
         // Dormant or dead threads are hidden entirely.
-        XCTAssertNil(status(thread(id: "f", status: "idle")))
-        XCTAssertNil(status(thread(id: "g", status: "stopped")))
-        XCTAssertNil(status(thread(id: "h", status: nil)))
-        XCTAssertNil(status(thread(id: "i", status: "running", archived: true)))
+        #expect(status(thread(id: "f", status: "idle")) == nil)
+        #expect(status(thread(id: "g", status: "stopped")) == nil)
+        #expect(status(thread(id: "h", status: nil)) == nil)
+        #expect(status(thread(id: "i", status: "running", archived: true)) == nil)
     }
 
     private let environment = T3Environment(id: "env1", label: "ubuntu", baseURL: "https://ubuntu.example")
 
-    func testSessionMappingCarriesProjectBranchAndHostBadge() {
+    @Test func sessionMappingCarriesProjectBranchAndHostBadge() {
         var state = T3ShellState()
         state.apply(.snapshot(
             projects: [T3Project(["id": "p1", "title": "Demo", "workspaceRoot": "/tmp/demo"])!],
@@ -185,38 +193,38 @@ final class T3WireTests: XCTestCase {
         ))
         let sessions = state.sessions(environment: environment, previous: [:], now: Date())
         let session = sessions["t3-env1-t1"]
-        XCTAssertEqual(session?.kind, .t3code)
-        XCTAssertEqual(session?.project, "Demo")
-        XCTAssertEqual(session?.gitBranch, "main")
+        #expect(session?.kind == .t3code)
+        #expect(session?.project == "Demo")
+        #expect(session?.gitBranch == "main")
         // The badge names the machine; the underlying agent rides in detail.
-        XCTAssertEqual(session?.terminalName, "ubuntu")
-        XCTAssertEqual(session?.detail, "claude-code")
-        XCTAssertEqual(session?.lastPrompt, "Fix the tests")
-        XCTAssertEqual(session?.t3Thread, T3ThreadRef(environmentID: "env1", threadID: "t1"))
+        #expect(session?.terminalName == "ubuntu")
+        #expect(session?.detail == "claude-code")
+        #expect(session?.lastPrompt == "Fix the tests")
+        #expect(session?.t3Thread == T3ThreadRef(environmentID: "env1", threadID: "t1"))
     }
 
-    func testThreadRefReadsTheTerminalEnvironmentAndBuildsADeepLink() {
+    @Test func threadRefReadsTheTerminalEnvironmentAndBuildsADeepLink() {
         let ref = T3ThreadRef(processEnvironment: [
             T3ThreadRef.environmentIDKey: "env 1", T3ThreadRef.threadIDKey: "t/1",
         ])
-        XCTAssertEqual(ref?.deepLink?.absoluteString, "t3code://threads/env%201/t%2F1")
-        XCTAssertNil(T3ThreadRef(processEnvironment: [T3ThreadRef.environmentIDKey: "env1"]))
+        #expect(ref?.deepLink?.absoluteString == "t3code://threads/env%201/t%2F1")
+        #expect(T3ThreadRef(processEnvironment: [T3ThreadRef.environmentIDKey: "env1"]) == nil)
     }
 
-    func testStartedAtSurvivesUpdates() {
+    @Test func startedAtSurvivesUpdates() {
         var state = T3ShellState()
         state.apply(.threadUpserted(T3Thread(thread(id: "t1"))!))
         let early = Date(timeIntervalSinceNow: -100)
         let first = state.sessions(environment: environment, previous: [:], now: early)
         state.apply(.threadUpserted(T3Thread(thread(id: "t1", status: "ready"))!))
         let second = state.sessions(environment: environment, previous: first, now: Date())
-        XCTAssertEqual(second["t3-env1-t1"]?.startedAt, early)
-        XCTAssertEqual(second["t3-env1-t1"]?.status, .finished)
+        #expect(second["t3-env1-t1"]?.startedAt == early)
+        #expect(second["t3-env1-t1"]?.status == .finished)
     }
 
     // MARK: - Event diff
 
-    func testEventDiffEmitsStartedFinishedAttentionAndEnded() {
+    @Test func eventDiffEmitsStartedFinishedAttentionAndEnded() {
         var state = T3ShellState()
         state.apply(.snapshot(projects: [], threads: [
             T3Thread(thread(id: "run"))!,
@@ -231,38 +239,38 @@ final class T3WireTests: XCTestCase {
 
         let events = T3Wire.events(previous: before, current: after)
         let kinds = Dictionary(grouping: events, by: { $0.session.id }).mapValues { $0.map(\.kind) }
-        XCTAssertEqual(kinds["t3-env1-run"], [.finished])
-        XCTAssertEqual(kinds["t3-env1-ask"], [.started])
-        XCTAssertEqual(kinds["t3-env1-gone"], [.ended])
+        #expect(kinds["t3-env1-run"] == [.finished])
+        #expect(kinds["t3-env1-ask"] == [.started])
+        #expect(kinds["t3-env1-gone"] == [.ended])
     }
 
-    func testNoEventsWhenNothingChanged() {
+    @Test func noEventsWhenNothingChanged() {
         var state = T3ShellState()
         state.apply(.threadUpserted(T3Thread(thread(id: "t1"))!))
         let sessions = state.sessions(environment: environment, previous: [:], now: Date())
-        XCTAssertTrue(T3Wire.events(previous: sessions, current: sessions).isEmpty)
+        #expect(T3Wire.events(previous: sessions, current: sessions).isEmpty)
     }
 
     // MARK: - Pairing links
 
-    func testPairingLinkParsesUrlWithFragmentToken() throws {
-        let parsed = try XCTUnwrap(T3Wire.pairingLink("http://127.0.0.1:3773/pair#token=abc123"))
-        XCTAssertEqual(parsed.credential, "abc123")
-        XCTAssertEqual(parsed.baseURL?.absoluteString, "http://127.0.0.1:3773")
+    @Test func pairingLinkParsesUrlWithFragmentToken() throws {
+        let parsed = try #require(T3Wire.pairingLink("http://127.0.0.1:3773/pair#token=abc123"))
+        #expect(parsed.credential == "abc123")
+        #expect(parsed.baseURL?.absoluteString == "http://127.0.0.1:3773")
     }
 
-    func testPairingLinkAcceptsBareCredential() throws {
-        let parsed = try XCTUnwrap(T3Wire.pairingLink("  abc123  "))
-        XCTAssertEqual(parsed.credential, "abc123")
-        XCTAssertNil(parsed.baseURL)
-        XCTAssertNil(T3Wire.pairingLink("http://127.0.0.1:3773/pair"))
-        XCTAssertNil(T3Wire.pairingLink("   "))
+    @Test func pairingLinkAcceptsBareCredential() throws {
+        let parsed = try #require(T3Wire.pairingLink("  abc123  "))
+        #expect(parsed.credential == "abc123")
+        #expect(parsed.baseURL == nil)
+        #expect(T3Wire.pairingLink("http://127.0.0.1:3773/pair") == nil)
+        #expect(T3Wire.pairingLink("   ") == nil)
     }
 
-    func testTokenExchangeBodyRequestsReadOnlyScope() {
+    @Test func tokenExchangeBodyRequestsReadOnlyScope() {
         let body = String(data: T3Wire.tokenExchangeBody(credential: "abc"), encoding: .utf8)!
-        XCTAssertTrue(body.contains("scope=orchestration:read"))
-        XCTAssertTrue(body.contains("subject_token=abc"))
-        XCTAssertFalse(body.contains("operate"))
+        #expect(body.contains("scope=orchestration:read"))
+        #expect(body.contains("subject_token=abc"))
+        #expect(!body.contains("operate"))
     }
 }

@@ -1,24 +1,27 @@
-import XCTest
+import Foundation
+import Testing
 @testable import NotchCore
 
 /// With the filesystem root injected, `AgentConfigInstaller`'s install/uninstall
 /// round-trip runs against a temp dir — so the subtle correctness bits (leaving a
 /// user's own hooks intact, refusing to clobber an unreadable file, writing
 /// through a symlinked config) are exercised without touching real dotfiles.
-final class AgentConfigInstallerTests: XCTestCase {
+///
+/// A class, not a struct: the temp dir is torn down in `deinit`.
+final class AgentConfigInstallerTests {
 
-    private var home: URL!
-    private var installer: AgentConfigInstaller!
+    private let home: URL
+    private var installer: AgentConfigInstaller
 
     private var settingsURL: URL { home.appendingPathComponent(".claude/settings.json") }
 
-    override func setUpWithError() throws {
+    init() throws {
         home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         installer = AgentConfigInstaller(home: home)
     }
 
-    override func tearDownWithError() throws {
+    deinit {
         try? FileManager.default.removeItem(at: home)
     }
 
@@ -29,9 +32,9 @@ final class AgentConfigInstallerTests: XCTestCase {
         try raw.write(to: settingsURL, atomically: true, encoding: .utf8)
     }
 
-    private func settingsObject(file: StaticString = #filePath, line: UInt = #line) throws -> [String: Any] {
+    private func settingsObject(sourceLocation: SourceLocation = #_sourceLocation) throws -> [String: Any] {
         let data = try Data(contentsOf: settingsURL)
-        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any], file: file, line: line)
+        return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any], sourceLocation: sourceLocation)
     }
 
     private func settingsText() throws -> String {
@@ -40,36 +43,37 @@ final class AgentConfigInstallerTests: XCTestCase {
 
     // MARK: - Round-trip
 
-    func testFreshInstallThenUninstallLeavesNoHooks() throws {
-        XCTAssertFalse(installer.claudeHooksInstalled())
+    @Test func freshInstallThenUninstallLeavesNoHooks() throws {
+        #expect(!installer.claudeHooksInstalled())
 
         try installer.installClaudeHooks()
-        XCTAssertTrue(installer.claudeHooksInstalled())
-        XCTAssertTrue(try settingsText().contains("agent-hook"))
+        #expect(installer.claudeHooksInstalled())
+        #expect(try settingsText().contains("agent-hook"))
 
         try installer.removeClaudeHooks()
-        XCTAssertFalse(installer.claudeHooksInstalled())
+        #expect(!installer.claudeHooksInstalled())
         // Every event we added pruned back to empty, so the whole hooks key is gone.
-        XCTAssertNil(try settingsObject()["hooks"])
+        let hooks = try settingsObject()["hooks"]
+        #expect(hooks == nil)
     }
 
-    func testInstallPreservesAnExistingUserHook() throws {
+    @Test func installPreservesAnExistingUserHook() throws {
         try writeSettings(#"""
         { "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "my-own-thing" } ] } ] } }
         """#)
 
         try installer.installClaudeHooks()
         let afterInstall = try settingsText()
-        XCTAssertTrue(afterInstall.contains("my-own-thing"), "user hook must survive install")
-        XCTAssertTrue(afterInstall.contains("agent-hook"), "our hook must be added")
+        #expect(afterInstall.contains("my-own-thing"), "user hook must survive install")
+        #expect(afterInstall.contains("agent-hook"), "our hook must be added")
 
         try installer.removeClaudeHooks()
         let afterRemove = try settingsText()
-        XCTAssertTrue(afterRemove.contains("my-own-thing"), "user hook must survive uninstall")
-        XCTAssertFalse(afterRemove.contains("agent-hook"), "our hook must be fully pruned")
+        #expect(afterRemove.contains("my-own-thing"), "user hook must survive uninstall")
+        #expect(!afterRemove.contains("agent-hook"), "our hook must be fully pruned")
     }
 
-    func testPreservesUserHookWhoseCommandContainsAgentHook() throws {
+    @Test func preservesUserHookWhoseCommandContainsAgentHook() throws {
         // A user hook named like ~/bin/my-agent-hook.sh contains the substring
         // "agent-hook" but is not ours; a substring marker would silently delete it.
         try writeSettings(#"""
@@ -79,20 +83,20 @@ final class AgentConfigInstallerTests: XCTestCase {
         try installer.installClaudeHooks()
         try installer.removeClaudeHooks()
 
-        XCTAssertTrue(try settingsText().contains("my-agent-hook.sh"),
-                      "a user hook merely containing \"agent-hook\" must survive our uninstall")
-        XCTAssertFalse(installer.claudeHooksInstalled())
+        #expect(try settingsText().contains("my-agent-hook.sh"),
+                "a user hook merely containing \"agent-hook\" must survive our uninstall")
+        #expect(!installer.claudeHooksInstalled())
     }
 
     // MARK: - statusLine usage wrapper
 
-    func testUsageUninstallRestoresOriginalStatusLineWhenSnapshotFileIsGone() throws {
+    @Test func usageUninstallRestoresOriginalStatusLineWhenSnapshotFileIsGone() throws {
         try writeSettings(#"""
         { "statusLine": { "type": "command", "command": "ccstatusline" } }
         """#)
 
         try installer.installClaudeUsage()
-        XCTAssertTrue(installer.claudeUsageInstalled())
+        #expect(installer.claudeUsageInstalled())
 
         // Simulate the user deleting ~/.notch while cleaning up, taking the on-disk
         // snapshot with it.
@@ -100,36 +104,38 @@ final class AgentConfigInstallerTests: XCTestCase {
 
         try installer.removeClaudeUsage()
 
-        let line = try XCTUnwrap(settingsObject()["statusLine"] as? [String: Any])
-        XCTAssertEqual(line["command"] as? String, "ccstatusline",
-                       "the user's original statusLine must be restored from the in-settings backup")
+        let line = try #require(settingsObject()["statusLine"] as? [String: Any])
+        #expect(line["command"] as? String == "ccstatusline",
+                "the user's original statusLine must be restored from the in-settings backup")
     }
 
-    func testUsageUninstallRemovesWrapperWhenUserHadNoStatusLine() throws {
+    @Test func usageUninstallRemovesWrapperWhenUserHadNoStatusLine() throws {
         try writeSettings("{}")
 
         try installer.installClaudeUsage()
-        XCTAssertTrue(installer.claudeUsageInstalled())
+        #expect(installer.claudeUsageInstalled())
 
         try FileManager.default.removeItem(at: home.appendingPathComponent(".notch"))
         try installer.removeClaudeUsage()
 
-        XCTAssertNil(try settingsObject()["statusLine"], "no original -> our wrapper is removed")
-        XCTAssertFalse(try settingsText().contains("notchStatusLineBackup"),
-                       "our private backup key must not linger after uninstall")
+        let statusLine = try settingsObject()["statusLine"]
+        #expect(statusLine == nil, "no original -> our wrapper is removed")
+        #expect(!(try settingsText().contains("notchStatusLineBackup")),
+                "our private backup key must not linger after uninstall")
     }
 
-    func testRefusesToClobberUnreadableSettings() throws {
+    @Test func refusesToClobberUnreadableSettings() throws {
         let garbage = "{ not valid json"
         try writeSettings(garbage)
 
-        XCTAssertThrowsError(try installer.installClaudeHooks()) { error in
-            XCTAssertEqual(error as? AgentConfigInstaller.InstallerError, .settingsUnreadable)
+        let error = #expect(throws: AgentConfigInstaller.InstallerError.self) {
+            try self.installer.installClaudeHooks()
         }
-        XCTAssertEqual(try settingsText(), garbage, "the unreadable file must be left byte-for-byte untouched")
+        #expect(error == .settingsUnreadable)
+        #expect(try settingsText() == garbage, "the unreadable file must be left byte-for-byte untouched")
     }
 
-    func testWritesThroughASymlinkedConfig() throws {
+    @Test func writesThroughASymlinkedConfig() throws {
         // Config is often a dotfiles-managed symlink; the write must replace the
         // real target's contents, not clobber the link with a plain file.
         let real = home.appendingPathComponent("dotfiles/claude-settings.json")
@@ -142,9 +148,9 @@ final class AgentConfigInstallerTests: XCTestCase {
         try installer.installClaudeHooks()
 
         let dest = try FileManager.default.destinationOfSymbolicLink(atPath: settingsURL.path)
-        XCTAssertEqual(dest, real.path, "settings.json must remain a symlink to the real file")
-        XCTAssertTrue(try String(contentsOf: real, encoding: .utf8).contains("agent-hook"),
-                      "the real target must receive the hooks")
+        #expect(dest == real.path, "settings.json must remain a symlink to the real file")
+        #expect(try String(contentsOf: real, encoding: .utf8).contains("agent-hook"),
+                "the real target must receive the hooks")
     }
 
     // MARK: - Generated plugin ownership
@@ -156,36 +162,36 @@ final class AgentConfigInstallerTests: XCTestCase {
         try contents.write(to: url, atomically: true, encoding: .utf8)
     }
 
-    func testStalePluginIsRewrittenToTheCurrentRevision() throws {
+    @Test func stalePluginIsRewrittenToTheCurrentRevision() throws {
         // What the shipped builds installed: our marker, but no revision.
         try writeFile("// notch agent watcher — auto-generated, do not edit\nold body\n", to: openCodePluginURL)
-        XCTAssertTrue(installer.openCodePluginInstalled(), "a revisionless marker is still ours")
+        #expect(installer.openCodePluginInstalled(), "a revisionless marker is still ours")
 
         try installer.installOpenCodePlugin()
 
         let rewritten = try String(contentsOf: openCodePluginURL, encoding: .utf8)
-        XCTAssertTrue(rewritten.hasPrefix("// notch agent watcher r\(AgentConfigInstaller.pluginRevision) —"),
-                      "the stale file must be upgraded to the current revision")
-        XCTAssertFalse(rewritten.contains("old body"))
+        #expect(rewritten.hasPrefix("// notch agent watcher r\(AgentConfigInstaller.pluginRevision) —"),
+                "the stale file must be upgraded to the current revision")
+        #expect(!rewritten.contains("old body"))
     }
 
-    func testForeignPluginIsNeitherOverwrittenNorRemoved() throws {
+    @Test func foreignPluginIsNeitherOverwrittenNorRemoved() throws {
         let mine = "// my own opencode plugin\nexport default () => ({});\n"
         try writeFile(mine, to: openCodePluginURL)
 
-        XCTAssertFalse(installer.openCodePluginInstalled(), "an unmarked file is not our install")
-        XCTAssertThrowsError(try installer.installOpenCodePlugin()) { error in
-            XCTAssertEqual(error as? AgentConfigInstaller.InstallerError,
-                           .pluginNotOurs(path: openCodePluginURL.path))
+        #expect(!installer.openCodePluginInstalled(), "an unmarked file is not our install")
+        let error = #expect(throws: AgentConfigInstaller.InstallerError.self) {
+            try self.installer.installOpenCodePlugin()
         }
-        XCTAssertEqual(try String(contentsOf: openCodePluginURL, encoding: .utf8), mine)
+        #expect(error == .pluginNotOurs(path: openCodePluginURL.path))
+        #expect(try String(contentsOf: openCodePluginURL, encoding: .utf8) == mine)
 
         try installer.removeOpenCodePlugin()
-        XCTAssertEqual(try String(contentsOf: openCodePluginURL, encoding: .utf8), mine,
-                       "uninstall must not delete a file we never wrote")
+        #expect(try String(contentsOf: openCodePluginURL, encoding: .utf8) == mine,
+                "uninstall must not delete a file we never wrote")
     }
 
-    func testOhMyPiFansOutToExistingProfileAgentRoots() throws {
+    @Test func ohMyPiFansOutToExistingProfileAgentRoots() throws {
         let profiles = home.appendingPathComponent(".omp/profiles")
         let workAgent = profiles.appendingPathComponent("work/agent")
         try FileManager.default.createDirectory(at: workAgent, withIntermediateDirectories: true)
@@ -197,21 +203,21 @@ final class AgentConfigInstallerTests: XCTestCase {
 
         let mainIndex = home.appendingPathComponent(".omp/agent/extensions/notch/index.js")
         let workIndex = workAgent.appendingPathComponent("extensions/notch/index.js")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: mainIndex.path))
-        XCTAssertTrue(try String(contentsOf: workIndex, encoding: .utf8)
+        #expect(FileManager.default.fileExists(atPath: mainIndex.path))
+        #expect(try String(contentsOf: workIndex, encoding: .utf8)
             .hasPrefix("// notch agent watcher r\(AgentConfigInstaller.pluginRevision) —"),
             "the profile root must get the current extension")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: bare.appendingPathComponent("agent").path),
-                       "a missing profile agent root must not be created")
-        XCTAssertTrue(installer.ohMyPiInstalled())
+        #expect(!FileManager.default.fileExists(atPath: bare.appendingPathComponent("agent").path),
+                "a missing profile agent root must not be created")
+        #expect(installer.ohMyPiInstalled())
 
         try installer.removeOhMyPi()
-        XCTAssertFalse(FileManager.default.fileExists(atPath: mainIndex.path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: workIndex.path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: workAgent.path), "the profile itself must survive")
+        #expect(!FileManager.default.fileExists(atPath: mainIndex.path))
+        #expect(!FileManager.default.fileExists(atPath: workIndex.path))
+        #expect(FileManager.default.fileExists(atPath: workAgent.path), "the profile itself must survive")
     }
 
-    func testConcurrentEditIsMergedInsteadOfOverwritten() throws {
+    @Test func concurrentEditIsMergedInsteadOfOverwritten() throws {
         try writeSettings(#"{"theme":"dark"}"#)
         var intervened = false
         installer = AgentConfigInstaller(home: home) { url in
@@ -227,7 +233,7 @@ final class AgentConfigInstallerTests: XCTestCase {
         try installer.installClaudeHooks()
 
         let result = try settingsObject()
-        XCTAssertEqual(result["concurrentEdit"] as? String, "preserve me")
-        XCTAssertNotNil(result["hooks"], "Notch's hook merge should retry against the new file")
+        #expect(result["concurrentEdit"] as? String == "preserve me")
+        #expect(result["hooks"] != nil, "Notch's hook merge should retry against the new file")
     }
 }

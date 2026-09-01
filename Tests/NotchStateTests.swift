@@ -1,22 +1,22 @@
-import XCTest
+import Testing
 import NotchCore
 
 @MainActor
-final class NotchStateTests: XCTestCase {
-    func testHoverExitCollapsesAfterGrace() async {
+struct NotchStateTests {
+    @Test func hoverExitCollapsesAfterGrace() async {
         let clock = ManualClock()
         let state = NotchState(clock: clock)
         state.expand()
 
         state.hoverChanged(false)
         await clock.advance(by: .milliseconds(100))
-        XCTAssertEqual(state.presentation, .expanded, "still inside the hover-out grace")
+        #expect(state.presentation == .expanded, "still inside the hover-out grace")
 
         await clock.advance(by: .milliseconds(100))
-        XCTAssertEqual(state.presentation, .compact)
+        #expect(state.presentation == .compact)
     }
 
-    func testPointerReturningDuringGraceCancelsCollapse() async {
+    @Test func pointerReturningDuringGraceCancelsCollapse() async {
         let clock = ManualClock()
         let state = NotchState(clock: clock)
         state.expand()
@@ -26,10 +26,10 @@ final class NotchStateTests: XCTestCase {
         state.hoverChanged(true)
         await clock.advance(by: .seconds(1))
 
-        XCTAssertEqual(state.presentation, .expanded)
+        #expect(state.presentation == .expanded)
     }
 
-    func testTabSwitchHoldsOffHoverExitCollapse() async {
+    @Test func tabSwitchHoldsOffHoverExitCollapse() async {
         let clock = ManualClock()
         let state = NotchState(clock: clock)
         state.expand()
@@ -37,44 +37,44 @@ final class NotchStateTests: XCTestCase {
 
         state.hoverChanged(false)
         await clock.advance(by: .milliseconds(500))
-        XCTAssertEqual(state.presentation, .expanded, "the resize hold absorbs the hover exit")
+        #expect(state.presentation == .expanded, "the resize hold absorbs the hover exit")
 
         await clock.advance(by: .milliseconds(400))
-        XCTAssertEqual(state.presentation, .compact)
+        #expect(state.presentation == .compact)
     }
 
-    func testHoverEntryExpandsAfterIntentDelay() async {
+    @Test func hoverEntryExpandsAfterIntentDelay() async {
         let clock = ManualClock()
         let state = NotchState(clock: clock)
         state.showCompact()
 
         state.hoverChanged(true)
         await clock.advance(by: .milliseconds(100))
-        XCTAssertEqual(state.presentation, .compact, "a skim across the pill must not open it")
+        #expect(state.presentation == .compact, "a skim across the pill must not open it")
 
         await clock.advance(by: .milliseconds(150))
-        XCTAssertEqual(state.presentation, .expanded)
+        #expect(state.presentation == .expanded)
     }
 
-    func testExplicitHideStillOrdersTheNotchOut() {
+    @Test func explicitHideStillOrdersTheNotchOut() {
         let state = NotchState()
         state.showCompact()
 
         state.hide()
 
-        XCTAssertEqual(state.presentation, .hidden)
+        #expect(state.presentation == .hidden)
     }
 
-    func testImmediateCollapseSkipsHoverExitGracePeriod() {
+    @Test func immediateCollapseSkipsHoverExitGracePeriod() {
         let state = NotchState()
         state.expand()
         state.select(tab: .media)
 
         state.collapseImmediately()
 
-        XCTAssertEqual(state.presentation, .compact)
-        XCTAssertTrue(state.isCollapsing)
-        XCTAssertEqual(state.expandedTab, .media,
-                       "the active body stays mounted until the close animation finishes")
+        #expect(state.presentation == .compact)
+        #expect(state.isCollapsing)
+        #expect(state.expandedTab == .media,
+                "the active body stays mounted until the close animation finishes")
     }
 }

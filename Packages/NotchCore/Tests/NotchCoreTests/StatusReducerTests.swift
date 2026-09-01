@@ -1,16 +1,24 @@
-import XCTest
+import Foundation
+import Testing
 @testable import NotchCore
 
 /// The `StatusReducer` source is compiled directly into this logic-test target
 /// (see `project.yml`), so its `internal` API is reachable without hosting the
 /// app — these fixtures run without a live Claude process.
-final class StatusReducerTests: XCTestCase {
+struct StatusReducerTests {
 
     /// Both fixtures sit well inside `busyEvidenceTimeout`, so a test only meets
     /// the staleness backstop when it asks for it by passing its own `now`.
-    private let now = Date()
-    private lazy var t0 = now.addingTimeInterval(-120)
-    private lazy var later = now.addingTimeInterval(-10)
+    private let now: Date
+    private let t0: Date
+    private let later: Date
+
+    init() {
+        let now = Date()
+        self.now = now
+        t0 = now.addingTimeInterval(-120)
+        later = now.addingTimeInterval(-10)
+    }
 
     private func hook(
         _ name: String, at time: Date, message: String? = nil, tool: String? = nil,
@@ -26,76 +34,76 @@ final class StatusReducerTests: XCTestCase {
 
     // MARK: - Hook vs. file timing
 
-    func testFreshHookOverridesTranscript() {
+    @Test func freshHookOverridesTranscript() {
         // Hook newer than the last transcript write wins.
         let resolved = StatusReducer.reduce(
             hook: hook("UserPromptSubmit", at: later),
             scan: scan(at: t0, busy: .idle)
         )
-        XCTAssertEqual(resolved, .init(status: .running, verb: "Thinking"))
+        #expect(resolved == .init(status: .running, verb: "Thinking"))
     }
 
-    func testStaleHookYieldsToTranscript() {
+    @Test func staleHookYieldsToTranscript() {
         // Hook older than the last transcript write is ignored; trust the scan.
         let resolved = StatusReducer.reduce(
             hook: hook("UserPromptSubmit", at: t0),
             scan: scan(at: later, busy: .editing, verb: "Editing")
         )
-        XCTAssertEqual(resolved, .init(status: .editing, verb: "Editing"))
+        #expect(resolved == .init(status: .editing, verb: "Editing"))
     }
 
-    func testHookEqualToFileTimeStillWins() {
+    @Test func hookEqualToFileTimeStillWins() {
         // The boundary is inclusive (>=): a hook stamped at the file mtime wins.
         let resolved = StatusReducer.reduce(
             hook: hook("Stop", at: t0),
             scan: scan(at: t0, busy: .running)
         )
-        XCTAssertEqual(resolved.status, .finished)
+        #expect(resolved.status == .finished)
     }
 
     // MARK: - PreToolUse: running -> editing -> tool
 
-    func testPreToolUseEditToolIsEditing() {
+    @Test func preToolUseEditToolIsEditing() {
         let resolved = StatusReducer.reduce(hook: hook("PreToolUse", at: later, tool: "Write"), scan: nil)
-        XCTAssertEqual(resolved, .init(status: .editing, verb: "Editing"))
+        #expect(resolved == .init(status: .editing, verb: "Editing"))
     }
 
-    func testPreToolUseNonEditToolIsTool() {
+    @Test func preToolUseNonEditToolIsTool() {
         let resolved = StatusReducer.reduce(hook: hook("PreToolUse", at: later, tool: "Bash"), scan: nil)
-        XCTAssertEqual(resolved, .init(status: .tool, verb: "Running"))
+        #expect(resolved == .init(status: .tool, verb: "Running"))
     }
 
-    func testPreToolUseWithoutToolNameIsRunning() {
+    @Test func preToolUseWithoutToolNameIsRunning() {
         let resolved = StatusReducer.reduce(hook: hook("PreToolUse", at: later, tool: nil), scan: nil)
-        XCTAssertEqual(resolved, .init(status: .running, verb: "Thinking"))
+        #expect(resolved == .init(status: .running, verb: "Thinking"))
     }
 
-    func testPostToolUseIsRunning() {
+    @Test func postToolUseIsRunning() {
         let resolved = StatusReducer.reduce(hook: hook("PostToolUse", at: later), scan: nil)
-        XCTAssertEqual(resolved, .init(status: .running, verb: "Thinking"))
+        #expect(resolved == .init(status: .running, verb: "Thinking"))
     }
 
-    func testPostToolUseFailureIsRunning() {
+    @Test func postToolUseFailureIsRunning() {
         // A failed tool fires only PostToolUseFailure; without it the row keeps the
         // tool's verb ("Editing") until something else happens.
         let resolved = StatusReducer.reduce(
             hook: hook("PostToolUseFailure", at: later),
             scan: scan(at: t0, busy: .editing, verb: "Editing")
         )
-        XCTAssertEqual(resolved, .init(status: .running, verb: "Thinking"))
+        #expect(resolved == .init(status: .running, verb: "Thinking"))
     }
 
     // MARK: - Notification: permission prompt vs. idle nudge
 
-    func testPermissionPromptNeedsAttention() {
+    @Test func permissionPromptNeedsAttention() {
         let resolved = StatusReducer.reduce(
             hook: hook("Notification", at: later, message: "Claude needs your permission to run rm -rf"),
             scan: nil
         )
-        XCTAssertEqual(resolved.status, .needsAttention)
+        #expect(resolved.status == .needsAttention)
     }
 
-    func testIdleNotificationIsIdleNotBusy() {
+    @Test func idleNotificationIsIdleNotBusy() {
         // An idle nudge is positive evidence the session is waiting. Falling back to
         // the transcript here re-inferred "running" from an unanswered prompt and
         // left the row working forever.
@@ -103,47 +111,47 @@ final class StatusReducerTests: XCTestCase {
             hook: hook("Notification", at: later, message: "Claude is waiting for your input"),
             scan: scan(at: t0, busy: .running, verb: "Thinking")
         )
-        XCTAssertEqual(resolved, .init(status: .idle, verb: nil))
+        #expect(resolved == .init(status: .idle, verb: nil))
     }
 
     // MARK: - Notification types (Claude's own classification)
 
-    func testIdleNotificationTypeIsIdle() {
+    @Test func idleNotificationTypeIsIdle() {
         let resolved = StatusReducer.reduce(
             hook: hook("Notification", at: later, message: "Claude is waiting", notificationType: "idle_prompt"),
             scan: scan(at: t0, busy: .running)
         )
-        XCTAssertEqual(resolved.status, .idle)
+        #expect(resolved.status == .idle)
     }
 
-    func testPermissionNotificationTypeNeedsAttention() {
+    @Test func permissionNotificationTypeNeedsAttention() {
         // The type decides even when the message reads like an idle nudge.
         let resolved = StatusReducer.reduce(
             hook: hook("Notification", at: later, message: "waiting for your input",
                        notificationType: "permission_prompt"),
             scan: nil
         )
-        XCTAssertEqual(resolved.status, .needsAttention)
+        #expect(resolved.status == .needsAttention)
     }
 
-    func testInformationalNotificationTypeDefersToTranscript() {
+    @Test func informationalNotificationTypeDefersToTranscript() {
         // auth confirmations and quota auto-resume say nothing about the turn.
         let resolved = StatusReducer.reduce(
             hook: hook("Notification", at: later, notificationType: "quota_auto_resume_fired"),
             scan: scan(at: t0, busy: .tool, verb: "Running")
         )
-        XCTAssertEqual(resolved, .init(status: .tool, verb: "Running"))
+        #expect(resolved == .init(status: .tool, verb: "Running"))
     }
 
-    func testIdleNotificationWithoutScanIsIdle() {
+    @Test func idleNotificationWithoutScanIsIdle() {
         let resolved = StatusReducer.reduce(
             hook: hook("Notification", at: later, message: "Claude is waiting for your input"),
             scan: nil
         )
-        XCTAssertEqual(resolved, .init(status: .idle, verb: nil))
+        #expect(resolved == .init(status: .idle, verb: nil))
     }
 
-    func testPermissionPromptMentioningWaitingStillNeedsAttention() {
+    @Test func permissionPromptMentioningWaitingStillNeedsAttention() {
         // A permission prompt whose tool name/description contains "waiting" must not
         // be demoted to an idle nudge by a bare-substring match.
         let resolved = StatusReducer.reduce(
@@ -151,123 +159,123 @@ final class StatusReducerTests: XCTestCase {
                        message: "Claude needs your permission to use waiting-room-cli"),
             scan: nil
         )
-        XCTAssertEqual(resolved.status, .needsAttention)
+        #expect(resolved.status == .needsAttention)
     }
 
-    func testNotificationWithNilMessageNeedsAttention() {
+    @Test func notificationWithNilMessageNeedsAttention() {
         // No message is not an idle nudge; a permission prompt can arrive without one.
         let resolved = StatusReducer.reduce(
             hook: hook("Notification", at: later, message: nil),
             scan: nil
         )
-        XCTAssertEqual(resolved.status, .needsAttention)
+        #expect(resolved.status == .needsAttention)
     }
 
     // MARK: - Permission requests
 
-    func testPermissionRequestNeedsAttention() {
+    @Test func permissionRequestNeedsAttention() {
         // The blocking hook means the session is waiting on the user, whatever the
         // transcript structure says.
         let resolved = StatusReducer.reduce(
             hook: hook("PermissionRequest", at: later, message: "Bash: rm -rf build"),
             scan: scan(at: t0, busy: .tool)
         )
-        XCTAssertEqual(resolved.status, .needsAttention)
+        #expect(resolved.status == .needsAttention)
     }
 
-    func testPermissionResolvedIsRunning() {
+    @Test func permissionResolvedIsRunning() {
         let resolved = StatusReducer.reduce(hook: hook("PermissionResolved", at: later), scan: nil)
-        XCTAssertEqual(resolved.status, .running)
-        XCTAssertEqual(resolved.verb, "Thinking")
+        #expect(resolved.status == .running)
+        #expect(resolved.verb == "Thinking")
     }
 
-    func testPermissionTimedOutStillNeedsAttention() {
+    @Test func permissionTimedOutStillNeedsAttention() {
         let resolved = StatusReducer.reduce(
             hook: hook("PermissionTimedOut", at: later),
             scan: scan(at: t0, busy: .tool)
         )
-        XCTAssertEqual(resolved.status, .needsAttention)
-        XCTAssertNil(resolved.verb)
+        #expect(resolved.status == .needsAttention)
+        #expect(resolved.verb == nil)
     }
 
     // MARK: - Stop / SessionStart
 
-    func testStopIsFinished() {
-        XCTAssertEqual(StatusReducer.reduce(hook: hook("Stop", at: later), scan: nil).status, .finished)
+    @Test func stopIsFinished() {
+        #expect(StatusReducer.reduce(hook: hook("Stop", at: later), scan: nil).status == .finished)
     }
 
-    func testSessionEndIsFinished() {
-        XCTAssertEqual(StatusReducer.reduce(hook: hook("SessionEnd", at: later), scan: nil).status, .finished)
+    @Test func sessionEndIsFinished() {
+        #expect(StatusReducer.reduce(hook: hook("SessionEnd", at: later), scan: nil).status == .finished)
     }
 
-    func testSessionStartAdoptsScanStatus() {
+    @Test func sessionStartAdoptsScanStatus() {
         let resolved = StatusReducer.reduce(
             hook: hook("SessionStart", at: later),
             scan: scan(at: t0, busy: .tool, verb: "Running")
         )
-        XCTAssertEqual(resolved, .init(status: .tool, verb: "Running"))
+        #expect(resolved == .init(status: .tool, verb: "Running"))
     }
 
-    func testSessionStartWithoutScanIsIdle() {
+    @Test func sessionStartWithoutScanIsIdle() {
         // A session that just started is waiting for its first prompt, not working.
         let resolved = StatusReducer.reduce(hook: hook("SessionStart", at: later), scan: nil)
-        XCTAssertEqual(resolved, .init(status: .idle, verb: nil))
+        #expect(resolved == .init(status: .idle, verb: nil))
     }
 
-    func testStopFailureNeedsAttention() {
+    @Test func stopFailureNeedsAttention() {
         // The turn died on an API error: no Stop hook ever comes, and what the user
         // asked for did not happen.
         let resolved = StatusReducer.reduce(
             hook: hook("StopFailure", at: later, message: "rate_limit"),
             scan: scan(at: t0, busy: .running, verb: "Thinking")
         )
-        XCTAssertEqual(resolved, .init(status: .needsAttention, verb: nil))
+        #expect(resolved == .init(status: .needsAttention, verb: nil))
     }
 
     // MARK: - Stale evidence
 
-    func testBusyTranscriptGoesIdleOnceEvidenceIsStale() {
+    @Test func busyTranscriptGoesIdleOnceEvidenceIsStale() {
         // The backstop for a turn that ended without any terminal hook: an agent
         // killed mid-run, a crash, a transcript that just stopped growing.
         let stale = now.addingTimeInterval(-StatusReducer.busyEvidenceTimeout - 1)
         let resolved = StatusReducer.reduce(
             hook: nil, scan: scan(at: stale, busy: .running, verb: "Thinking"), now: now
         )
-        XCTAssertEqual(resolved, .init(status: .idle, verb: nil))
+        #expect(resolved == .init(status: .idle, verb: nil))
     }
 
-    func testStaleBusyHookIsAlsoDemoted() {
+    @Test func staleBusyHookIsAlsoDemoted() {
         let stale = now.addingTimeInterval(-StatusReducer.busyEvidenceTimeout - 1)
         let resolved = StatusReducer.reduce(hook: hook("UserPromptSubmit", at: stale), scan: nil, now: now)
-        XCTAssertEqual(resolved.status, .idle)
+        #expect(resolved.status == .idle)
     }
 
-    func testStaleNeedsAttentionIsNotDemoted() {
+    @Test func staleNeedsAttentionIsNotDemoted() {
         // A permission prompt is answered when the user gets to it, however long
         // that takes; only claims of *work* expire.
         let stale = now.addingTimeInterval(-StatusReducer.busyEvidenceTimeout * 10)
         let resolved = StatusReducer.reduce(
             hook: hook("PermissionRequest", at: stale), scan: nil, now: now
         )
-        XCTAssertEqual(resolved.status, .needsAttention)
+        #expect(resolved.status == .needsAttention)
     }
 
-    func testUnknownHookFallsThroughToTranscript() {
+    @Test func unknownHookFallsThroughToTranscript() {
         let resolved = StatusReducer.reduce(
             hook: hook("WeirdFutureHook", at: later),
             scan: scan(at: t0, busy: .editing, verb: "Editing")
         )
-        XCTAssertEqual(resolved, .init(status: .editing, verb: "Editing"))
+        #expect(resolved == .init(status: .editing, verb: "Editing"))
     }
 
     // MARK: - No hook
 
-    func testNoHookNoScanIsIdle() {
-        XCTAssertEqual(StatusReducer.reduce(hook: nil, scan: nil), .init(status: .idle, verb: nil))
+    @Test func noHookNoScanIsIdle() {
+        #expect(StatusReducer.reduce(hook: nil, scan: nil) == .init(status: .idle, verb: nil))
     }
 
-    func testNoHookUsesTranscript() {
+    @Test func noHookUsesTranscript() {
         let resolved = StatusReducer.reduce(hook: nil, scan: scan(at: t0, busy: .tool, verb: "Reading"))
-        XCTAssertEqual(resolved, .init(status: .tool, verb: "Reading"))
+        #expect(resolved == .init(status: .tool, verb: "Reading"))
     }
 }

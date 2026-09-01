@@ -1,42 +1,41 @@
 import Foundation
 @testable import NotchCore
+import Testing
 import UniformTypeIdentifiers
-import XCTest
 
-final class TrayStoreTests: XCTestCase {
-    func testRepresentationPriorityIsFileImageURLThenText() {
-        XCTAssertEqual(TrayDropCapabilities.preferredKind(for: [
+struct TrayStoreTests {
+    @Test func representationPriorityIsFileImageURLThenText() {
+        #expect(TrayDropCapabilities.preferredKind(for: [
             UTType.plainText.identifier, UTType.url.identifier,
             UTType.png.identifier, UTType.fileURL.identifier
-        ]), .fileURLs)
-        XCTAssertEqual(TrayDropCapabilities.preferredKind(for: [
+        ]) == .fileURLs)
+        #expect(TrayDropCapabilities.preferredKind(for: [
             UTType.plainText.identifier, UTType.url.identifier, UTType.png.identifier
-        ]), .image)
-        XCTAssertEqual(TrayDropCapabilities.preferredKind(for: [
+        ]) == .image)
+        #expect(TrayDropCapabilities.preferredKind(for: [
             UTType.plainText.identifier, UTType.url.identifier
-        ]), .webURL)
-        XCTAssertEqual(TrayDropCapabilities.preferredKind(for: [
+        ]) == .webURL)
+        #expect(TrayDropCapabilities.preferredKind(for: [
             UTType.utf8PlainText.identifier
-        ]), .plainText)
+        ]) == .plainText)
     }
 
-    func testDropCapabilitiesRejectUnrelatedData() {
-        XCTAssertNil(TrayDropCapabilities.preferredKind(for: [UTType.audio.identifier]))
+    @Test func dropCapabilitiesRejectUnrelatedData() {
+        #expect(TrayDropCapabilities.preferredKind(for: [UTType.audio.identifier]) == nil)
     }
 
-    func testFileNameValidationAndCollisionResolution() {
-        XCTAssertNil(TrayFileNamePolicy.validated("../escape"))
-        XCTAssertNil(TrayFileNamePolicy.validated("a/b"))
-        XCTAssertEqual(TrayFileNamePolicy.validated(" résumé.txt "), "résumé.txt")
-        XCTAssertEqual(
+    @Test func fileNameValidationAndCollisionResolution() {
+        #expect(TrayFileNamePolicy.validated("../escape") == nil)
+        #expect(TrayFileNamePolicy.validated("a/b") == nil)
+        #expect(TrayFileNamePolicy.validated(" résumé.txt ") == "résumé.txt")
+        #expect(
             TrayFileNamePolicy.availableName(
                 "Report.txt", existing: ["report.txt", "Report 2.txt"]
-            ),
-            "Report 3.txt"
+            ) == "Report 3.txt"
         )
     }
 
-    func testStoreRoundTripPreservesRichMetadata() throws {
+    @Test func storeRoundTripPreservesRichMetadata() throws {
         let item = TrayItem(
             id: UUID(), kind: .text, displayName: "note.txt",
             relativePath: "item/note.txt", text: "hello", sourceURL: nil,
@@ -55,10 +54,10 @@ final class TrayStoreTests: XCTestCase {
         let decoded = try decoder.decode(
             TrayStore.self, from: encoder.encode(store)
         )
-        XCTAssertEqual(decoded, store)
+        #expect(decoded == store)
     }
 
-    func testMigrationPreservesIdentityMetadataAndEffectiveTTL() {
+    @Test func migrationPreservesIdentityMetadataAndEffectiveTTL() {
         let id = UUID()
         let added = Date(timeIntervalSince1970: 1_000)
         let result = TrayStoreMigration.migrate([
@@ -69,19 +68,16 @@ final class TrayStoreTests: XCTestCase {
             )
         ], ttlDays: 7, fileExists: { _ in true })
 
-        XCTAssertEqual(result.quarantinedItemCount, 0)
-        XCTAssertEqual(result.store.collections, [.shelf])
-        XCTAssertEqual(result.store.items.first?.id, id)
-        XCTAssertEqual(result.store.items.first?.kind, .image)
-        XCTAssertEqual(result.store.items.first?.relativePath, "id/photo.png")
-        XCTAssertEqual(result.store.items.first?.byteSize, 42)
-        XCTAssertEqual(
-            result.store.items.first?.expiresAt,
-            added.addingTimeInterval(7 * 86_400)
-        )
+        #expect(result.quarantinedItemCount == 0)
+        #expect(result.store.collections == [.shelf])
+        #expect(result.store.items.first?.id == id)
+        #expect(result.store.items.first?.kind == .image)
+        #expect(result.store.items.first?.relativePath == "id/photo.png")
+        #expect(result.store.items.first?.byteSize == 42)
+        #expect(result.store.items.first?.expiresAt == added.addingTimeInterval(7 * 86_400))
     }
 
-    func testMigrationQuarantinesMissingPayloadWithoutTouchingOthers() {
+    @Test func migrationQuarantinesMissingPayloadWithoutTouchingOthers() {
         let present = LegacyDropItem(
             id: UUID(), fileName: "present.txt", relativePath: "a/present.txt",
             byteSize: 1, addedAt: .distantPast,
@@ -96,24 +92,24 @@ final class TrayStoreTests: XCTestCase {
             [present, missing], ttlDays: 0,
             fileExists: { $0 == present.relativePath }
         )
-        XCTAssertEqual(result.store.items.map { $0.id }, [present.id])
-        XCTAssertEqual(result.quarantinedItemCount, 1)
-        XCTAssertTrue(result.store.items[0].isPinned)
-        XCTAssertNil(result.store.items[0].expiresAt)
+        #expect(result.store.items.map { $0.id } == [present.id])
+        #expect(result.quarantinedItemCount == 1)
+        #expect(result.store.items[0].isPinned)
+        #expect(result.store.items[0].expiresAt == nil)
     }
 
-    func testNormalizationRestoresShelfAndRepairsOrphanedCollection() {
+    @Test func normalizationRestoresShelfAndRepairsOrphanedCollection() {
         var item = fixtureItem()
         item.collectionID = UUID()
         let normalized = TrayStore(
             schemaVersion: 1, collections: [], items: [item]
         ).normalized
-        XCTAssertEqual(normalized.schemaVersion, 2)
-        XCTAssertEqual(normalized.collections, [.shelf])
-        XCTAssertEqual(normalized.items[0].collectionID, TrayCollection.shelfID)
+        #expect(normalized.schemaVersion == 2)
+        #expect(normalized.collections == [.shelf])
+        #expect(normalized.items[0].collectionID == TrayCollection.shelfID)
     }
 
-    func testV2ValidationQuarantinesMissingMaterializedPayload() {
+    @Test func v2ValidationQuarantinesMissingMaterializedPayload() {
         let present = fixtureItem()
         var missing = fixtureItem()
         missing.relativePath = "missing/file"
@@ -121,11 +117,11 @@ final class TrayStoreTests: XCTestCase {
             TrayStore(schemaVersion: 2, collections: [.shelf], items: [present, missing]),
             fileExists: { $0 == present.relativePath }
         )
-        XCTAssertEqual(result.store.items.map(\.id), [present.id])
-        XCTAssertEqual(result.quarantinedItemCount, 1)
+        #expect(result.store.items.map(\.id) == [present.id])
+        #expect(result.quarantinedItemCount == 1)
     }
 
-    func testPipelineMaterializesFileAndBytesThroughSameFolderContract() throws {
+    @Test func pipelineMaterializesFileAndBytesThroughSameFolderContract() throws {
         let root = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let source = root.appendingPathComponent("source.bin")
@@ -149,15 +145,15 @@ final class TrayStoreTests: XCTestCase {
             context: context
         )
 
-        XCTAssertEqual(file.byteSize, 3)
-        XCTAssertEqual(text.text, "hello")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: file.url(relativeTo: storage).path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: text.url(relativeTo: storage).path))
-        XCTAssertEqual(file.collectionID, text.collectionID)
-        XCTAssertEqual(file.expiresAt, text.expiresAt)
+        #expect(file.byteSize == 3)
+        #expect(text.text == "hello")
+        #expect(FileManager.default.fileExists(atPath: file.url(relativeTo: storage).path))
+        #expect(FileManager.default.fileExists(atPath: text.url(relativeTo: storage).path))
+        #expect(file.collectionID == text.collectionID)
+        #expect(file.expiresAt == text.expiresAt)
     }
 
-    func testPipelineRollsBackFolderWhenMaterializationFails() {
+    @Test func pipelineRollsBackFolderWhenMaterializationFails() {
         let root = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let storage = root.appendingPathComponent("storage", isDirectory: true)
@@ -168,20 +164,22 @@ final class TrayStoreTests: XCTestCase {
             addedAt: Date(timeIntervalSince1970: 100)
         )
 
-        XCTAssertThrowsError(try pipeline.materialize(
-            .bytes(
-                Data(), kind: .text, displayName: "../escape.txt",
-                typeIdentifier: UTType.plainText.identifier
-            ),
-            context: context
-        ))
+        #expect(throws: (any Error).self) {
+            try pipeline.materialize(
+                .bytes(
+                    Data(), kind: .text, displayName: "../escape.txt",
+                    typeIdentifier: UTType.plainText.identifier
+                ),
+                context: context
+            )
+        }
         let entries = try? FileManager.default.contentsOfDirectory(
             at: storage, includingPropertiesForKeys: nil
         )
-        XCTAssertEqual(entries ?? [], [])
+        #expect((entries ?? []) == [])
     }
 
-    func testPipelineSameVolumeMovePublishesManagedPayloadAndRemovesSource() throws {
+    @Test func pipelineSameVolumeMovePublishesManagedPayloadAndRemovesSource() throws {
         let root = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let source = root.appendingPathComponent("move-me.txt")
@@ -195,26 +193,26 @@ final class TrayStoreTests: XCTestCase {
                 addedAt: Date(timeIntervalSince1970: 100)
             )
         )
-        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
-        XCTAssertTrue(FileManager.default.isReadableFile(
+        #expect(!FileManager.default.fileExists(atPath: source.path))
+        #expect(FileManager.default.isReadableFile(
             atPath: item.url(relativeTo: storage).path
         ))
-        XCTAssertEqual(item.byteSize, 4)
+        #expect(item.byteSize == 4)
     }
 
-    func testBackupIsCreatedOnceAndCanBeRetiredAfterCleanLaunch() throws {
+    @Test func backupIsCreatedOnceAndCanBeRetiredAfterCleanLaunch() throws {
         let root = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let persistence = Persistence(rootDirectory: root)
         let first = Data("legacy".utf8)
-        XCTAssertNoThrow(try persistence.writeBackupIfMissing(first, to: "tray.v1.backup.json"))
-        XCTAssertNoThrow(try persistence.writeBackupIfMissing(Data("new".utf8), to: "tray.v1.backup.json"))
-        XCTAssertEqual(try persistence.loadData(from: "tray.v1.backup.json"), first)
+        try persistence.writeBackupIfMissing(first, to: "tray.v1.backup.json")
+        try persistence.writeBackupIfMissing(Data("new".utf8), to: "tray.v1.backup.json")
+        #expect(try persistence.loadData(from: "tray.v1.backup.json") == first)
         persistence.removeFile(named: "tray.v1.backup.json")
-        XCTAssertNil(try persistence.loadData(from: "tray.v1.backup.json"))
+        #expect(try persistence.loadData(from: "tray.v1.backup.json") == nil)
     }
 
-    func testCollectionDeletionCanReassignOrDeleteItems() {
+    @Test func collectionDeletionCanReassignOrDeleteItems() {
         let collection = TrayCollection(
             id: UUID(), name: "Sprint", createdAt: .distantPast,
             expiryDaysOverride: 2, sortOrder: 1
@@ -227,22 +225,22 @@ final class TrayStoreTests: XCTestCase {
             collectionID: collection.id, policy: .moveItemsToShelf,
             collections: collections, items: [item]
         )
-        XCTAssertEqual(reassigned?.items.first?.collectionID, TrayCollection.shelfID)
-        XCTAssertEqual(reassigned?.itemIDsToDelete, [])
+        #expect(reassigned?.items.first?.collectionID == TrayCollection.shelfID)
+        #expect(reassigned?.itemIDsToDelete == [])
 
         let deleted = TrayCollectionPolicy.deleting(
             collectionID: collection.id, policy: .deleteItems,
             collections: collections, items: [item]
         )
-        XCTAssertEqual(deleted?.items, [])
-        XCTAssertEqual(deleted?.itemIDsToDelete, [item.id])
-        XCTAssertNil(TrayCollectionPolicy.deleting(
+        #expect(deleted?.items == [])
+        #expect(deleted?.itemIDsToDelete == [item.id])
+        #expect(TrayCollectionPolicy.deleting(
             collectionID: TrayCollection.shelfID, policy: .deleteItems,
             collections: collections, items: [item]
-        ))
+        ) == nil)
     }
 
-    func testExpiryInheritanceExtensionAndNearestDeadline() {
+    @Test func expiryInheritanceExtensionAndNearestDeadline() {
         let now = Date(timeIntervalSince1970: 1_000_000)
         var first = fixtureItem()
         first.isPinned = false
@@ -252,34 +250,28 @@ final class TrayStoreTests: XCTestCase {
         second.isPinned = false
         second.addedAt = now
         second.expiresAt = TrayExpiryPolicy.deadline(addedAt: now, days: 4)
-        XCTAssertEqual(
-            TrayExpiryPolicy.nearestDeadline(in: [second, first], after: now),
-            first.expiresAt
-        )
+        #expect(TrayExpiryPolicy.nearestDeadline(in: [second, first], after: now) == first.expiresAt)
         let updated = TrayExpiryPolicy.applying(days: 7, to: [first, second])
-        XCTAssertEqual(updated[0].expiresAt, now.addingTimeInterval(7 * 86_400))
-        XCTAssertEqual(
-            TrayExpiryPresentation.make(for: first, now: now, lifetimeDays: 2)?.label,
-            "2d left"
-        )
+        #expect(updated[0].expiresAt == now.addingTimeInterval(7 * 86_400))
+        #expect(TrayExpiryPresentation.make(for: first, now: now, lifetimeDays: 2)?.label == "2d left")
     }
 
-    func testMoveEligibilityAndVerifiedOutcome() {
-        XCTAssertEqual(TrayMoveEligibility.evaluate(.init(
+    @Test func moveEligibilityAndVerifiedOutcome() {
+        #expect(TrayMoveEligibility.evaluate(.init(
             isFileURL: true, isWritable: true, volumeIsReadOnly: false,
             isUbiquitous: false, isDownloaded: true
-        )), .eligible)
-        XCTAssertEqual(TrayMoveEligibility.evaluate(.init(
+        )) == .eligible)
+        #expect(TrayMoveEligibility.evaluate(.init(
             isFileURL: true, isWritable: true, volumeIsReadOnly: false,
             isUbiquitous: true, isDownloaded: false
-        )), .copyOnly)
-        XCTAssertEqual(
-            TrayMoveOutcome.resolve(destinationVerified: true, sourceRemoved: false),
-            .copiedOriginalRetained
+        )) == .copyOnly)
+        #expect(
+            TrayMoveOutcome.resolve(destinationVerified: true, sourceRemoved: false)
+                == .copiedOriginalRetained
         )
-        XCTAssertEqual(
-            TrayMoveOutcome.resolve(destinationVerified: false, sourceRemoved: true),
-            .failed
+        #expect(
+            TrayMoveOutcome.resolve(destinationVerified: false, sourceRemoved: true)
+                == .failed
         )
     }
 

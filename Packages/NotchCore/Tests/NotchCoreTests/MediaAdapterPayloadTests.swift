@@ -1,9 +1,10 @@
-import XCTest
+import Foundation
+import Testing
 @testable import NotchCore
 
-final class MediaAdapterPayloadTests: XCTestCase {
+struct MediaAdapterPayloadTests {
 
-    func testDecodesPinnedBridgeFrameAndConvertsMicroseconds() throws {
+    @Test func decodesPinnedBridgeFrameAndConvertsMicroseconds() throws {
         let json = #"""
         {
           "type": "data",
@@ -25,20 +26,20 @@ final class MediaAdapterPayloadTests: XCTestCase {
         """#
 
         let envelope = try JSONDecoder().decode(MediaAdapterEnvelope.self, from: Data(json.utf8))
-        let payload = try XCTUnwrap(envelope.payload)
+        let payload = try #require(envelope.payload)
         let track = payload.track(at: Date(timeIntervalSince1970: 102))
 
-        XCTAssertEqual(envelope.type, "data")
-        XCTAssertEqual(track.title, "A Song")
-        XCTAssertEqual(track.duration, 240)
-        XCTAssertEqual(track.elapsed, 14.5, accuracy: 0.001)
-        XCTAssertTrue(track.isPlaying)
-        XCTAssertEqual(track.bundleIdentifier, "com.apple.Safari")
-        XCTAssertEqual(track.appName, "Safari")
-        XCTAssertEqual(payload.artworkData, Data("hello".utf8))
+        #expect(envelope.type == "data")
+        #expect(track.title == "A Song")
+        #expect(track.duration == 240)
+        #expect(abs(track.elapsed - 14.5) < 0.001)
+        #expect(track.isPlaying)
+        #expect(track.bundleIdentifier == "com.apple.Safari")
+        #expect(track.appName == "Safari")
+        #expect(payload.artworkData == Data("hello".utf8))
     }
 
-    func testPausedFrameDoesNotExtrapolateElapsedTime() throws {
+    @Test func pausedFrameDoesNotExtrapolateElapsedTime() throws {
         let json = #"""
         {"type":"data","payload":{
           "title":"Paused","isPlaying":false,"elapsedTimeMicros":7000000,
@@ -46,18 +47,18 @@ final class MediaAdapterPayloadTests: XCTestCase {
         }}
         """#
         let envelope = try JSONDecoder().decode(MediaAdapterEnvelope.self, from: Data(json.utf8))
-        let track = try XCTUnwrap(envelope.payload).track(at: Date(timeIntervalSince1970: 500))
-        XCTAssertEqual(track.elapsed, 7)
-        XCTAssertFalse(track.isPlaying)
+        let track = try #require(envelope.payload).track(at: Date(timeIntervalSince1970: 500))
+        #expect(track.elapsed == 7)
+        #expect(!track.isPlaying)
     }
 
-    func testPartialPayloadDegradesWithoutDroppingFrame() throws {
+    @Test func partialPayloadDegradesWithoutDroppingFrame() throws {
         let json = #"{"type":"data","payload":{"title":"Live Stream"}}"#
         let envelope = try JSONDecoder().decode(MediaAdapterEnvelope.self, from: Data(json.utf8))
-        let track = try XCTUnwrap(envelope.payload).track()
-        XCTAssertEqual(track.title, "Live Stream")
-        XCTAssertEqual(track.duration, 0)
-        XCTAssertEqual(track.elapsed, 0)
-        XCTAssertFalse(track.isPlaying)
+        let track = try #require(envelope.payload).track()
+        #expect(track.title == "Live Stream")
+        #expect(track.duration == 0)
+        #expect(track.elapsed == 0)
+        #expect(!track.isPlaying)
     }
 }

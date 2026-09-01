@@ -1,8 +1,8 @@
 import CoreGraphics
 @testable import NotchCore
-import XCTest
+import Testing
 
-final class DisplaySelectionPolicyTests: XCTestCase {
+struct DisplaySelectionPolicyTests {
     private func display(
         _ key: String,
         x: CGFloat = 0,
@@ -22,7 +22,7 @@ final class DisplaySelectionPolicyTests: XCTestCase {
         )
     }
 
-    func testBuiltInPlacementIgnoresInputOrdering() {
+    @Test func builtInPlacementIgnoresInputOrdering() {
         let external = display("external", main: true)
         let builtIn = display("built-in", x: -1_512, builtIn: true)
 
@@ -30,11 +30,11 @@ final class DisplaySelectionPolicyTests: XCTestCase {
             displays: [external, builtIn], placement: .builtIn
         )
 
-        XCTAssertEqual(result.targets.map(\.key), ["built-in"])
-        XCTAssertEqual(result.reason, .requested)
+        #expect(result.targets.map(\.key) == ["built-in"])
+        #expect(result.reason == .requested)
     }
 
-    func testBuiltInPlacementFallsBackToMainWhenLidIsClosed() {
+    @Test func builtInPlacementFallsBackToMainWhenLidIsClosed() {
         let secondary = display("secondary", x: -1_920)
         let main = display("main", main: true)
 
@@ -42,11 +42,11 @@ final class DisplaySelectionPolicyTests: XCTestCase {
             displays: [secondary, main], placement: .builtIn
         )
 
-        XCTAssertEqual(result.targets.map(\.key), ["main"])
-        XCTAssertEqual(result.reason, .builtInUnavailable)
+        #expect(result.targets.map(\.key) == ["main"])
+        #expect(result.reason == .builtInUnavailable)
     }
 
-    func testMainPlacementFallsBackToBuiltInWhenMainFlagIsMissing() {
+    @Test func mainPlacementFallsBackToBuiltInWhenMainFlagIsMissing() {
         let external = display("external", x: 1_512)
         let builtIn = display("built-in", builtIn: true)
 
@@ -54,11 +54,11 @@ final class DisplaySelectionPolicyTests: XCTestCase {
             displays: [external, builtIn], placement: .main
         )
 
-        XCTAssertEqual(result.targets.map(\.key), ["built-in"])
-        XCTAssertEqual(result.reason, .mainUnavailable)
+        #expect(result.targets.map(\.key) == ["built-in"])
+        #expect(result.reason == .mainUnavailable)
     }
 
-    func testAllPlacementIsDeterministicAndPutsMainFirst() {
+    @Test func allPlacementIsDeterministicAndPutsMainFirst() {
         let right = display("right", x: 1_920)
         let builtInMain = display("built-in", builtIn: true, main: true)
         let left = display("left", x: -1_920)
@@ -67,78 +67,78 @@ final class DisplaySelectionPolicyTests: XCTestCase {
             displays: [right, builtInMain, left], placement: .all
         )
 
-        XCTAssertEqual(result.targets.map(\.key), ["built-in", "left", "right"])
+        #expect(result.targets.map(\.key) == ["built-in", "left", "right"])
     }
 
-    func testNoDisplaysReturnsExplicitEmptySelection() {
+    @Test func noDisplaysReturnsExplicitEmptySelection() {
         let result = DisplaySelectionPolicy.resolve(displays: [], placement: .main)
-        XCTAssertTrue(result.targets.isEmpty)
-        XCTAssertEqual(result.reason, .noDisplays)
+        #expect(result.targets.isEmpty)
+        #expect(result.reason == .noDisplays)
     }
 
-    func testFollowActiveDisplayOverridesSinglePlacement() {
+    @Test func followActiveDisplayOverridesSinglePlacement() {
         let builtIn = display("built-in", builtIn: true, main: true)
         let external = display("external", x: 1_512)
         let result = DisplaySelectionPolicy.resolve(
             displays: [builtIn, external], placement: .builtIn,
             followActiveDisplay: true, activeDisplayKey: "external"
         )
-        XCTAssertEqual(result.targets.map(\.key), ["external"])
-        XCTAssertEqual(result.reason, .activeDisplay)
+        #expect(result.targets.map(\.key) == ["external"])
+        #expect(result.reason == .activeDisplay)
     }
 
-    func testFollowActiveFallsBackWhenPointerTargetDisappears() {
+    @Test func followActiveFallsBackWhenPointerTargetDisappears() {
         let builtIn = display("built-in", builtIn: true, main: true)
         let result = DisplaySelectionPolicy.resolve(
             displays: [builtIn], placement: .builtIn,
             followActiveDisplay: true, activeDisplayKey: "disconnected"
         )
-        XCTAssertEqual(result.targets.map(\.key), ["built-in"])
-        XCTAssertEqual(result.reason, .activeDisplayUnavailable)
+        #expect(result.targets.map(\.key) == ["built-in"])
+        #expect(result.reason == .activeDisplayUnavailable)
     }
 
-    func testAllPlacementIgnoresFollowActiveDisplay() {
+    @Test func allPlacementIgnoresFollowActiveDisplay() {
         let main = display("main", main: true)
         let other = display("other", x: 1_920)
         let result = DisplaySelectionPolicy.resolve(
             displays: [main, other], placement: .all,
             followActiveDisplay: true, activeDisplayKey: "other"
         )
-        XCTAssertEqual(result.targets.map(\.key), ["main", "other"])
+        #expect(result.targets.map(\.key) == ["main", "other"])
     }
 
-    func testDisplayProfileClampsEveryAdjustment() {
+    @Test func displayProfileClampsEveryAdjustment() {
         let profile = DisplayProfile(
             displayKey: "display", compactWidthAdjustment: 999,
             compactHeightAdjustment: -999, horizontalOffset: 999,
             verticalOffset: -999, expandedWidthAdjustment: 999
         ).normalized
-        XCTAssertEqual(profile.compactWidthAdjustment, 160)
-        XCTAssertEqual(profile.compactHeightAdjustment, -6)
-        XCTAssertEqual(profile.horizontalOffset, 240)
-        XCTAssertEqual(profile.verticalOffset, 0)
-        XCTAssertEqual(profile.expandedWidthAdjustment, 180)
+        #expect(profile.compactWidthAdjustment == 160)
+        #expect(profile.compactHeightAdjustment == -6)
+        #expect(profile.horizontalOffset == 240)
+        #expect(profile.verticalOffset == 0)
+        #expect(profile.expandedWidthAdjustment == 180)
     }
 
-    func testAutomaticVirtualChromeOnlyTargetsNotchlessDisplays() {
-        XCTAssertFalse(VirtualNotchMode.automatic.usesVirtualChrome(
+    @Test func automaticVirtualChromeOnlyTargetsNotchlessDisplays() {
+        #expect(!VirtualNotchMode.automatic.usesVirtualChrome(
             for: display("built-in", builtIn: true)
         ))
-        XCTAssertTrue(VirtualNotchMode.automatic.usesVirtualChrome(
+        #expect(VirtualNotchMode.automatic.usesVirtualChrome(
             for: display("external")
         ))
     }
 
-    func testExplicitVirtualModesIgnoreDisplayHardware() {
+    @Test func explicitVirtualModesIgnoreDisplayHardware() {
         let physical = display("built-in", builtIn: true)
         let notchless = display("external")
-        XCTAssertTrue(VirtualNotchMode.always.usesVirtualChrome(for: physical))
-        XCTAssertTrue(VirtualNotchMode.always.usesVirtualChrome(for: notchless))
-        XCTAssertFalse(VirtualNotchMode.never.usesVirtualChrome(for: physical))
-        XCTAssertFalse(VirtualNotchMode.never.usesVirtualChrome(for: notchless))
+        #expect(VirtualNotchMode.always.usesVirtualChrome(for: physical))
+        #expect(VirtualNotchMode.always.usesVirtualChrome(for: notchless))
+        #expect(!VirtualNotchMode.never.usesVirtualChrome(for: physical))
+        #expect(!VirtualNotchMode.never.usesVirtualChrome(for: notchless))
     }
 
-    func testStableKeySurvivesReconnectWhenSerialExists() {
+    @Test func stableKeySurvivesReconnectWhenSerialExists() {
         let before = DisplayDescriptor.stableKey(
             unitNumber: 7, vendor: 10, model: 20, serial: 30,
             name: "Studio Display", isBuiltIn: false
@@ -147,10 +147,10 @@ final class DisplaySelectionPolicyTests: XCTestCase {
             unitNumber: 99, vendor: 10, model: 20, serial: 30,
             name: "Studio Display", isBuiltIn: false
         )
-        XCTAssertEqual(before, after)
+        #expect(before == after)
     }
 
-    func testSeriallessIdenticalDisplaysRemainDistinctWhileOnline() {
+    @Test func seriallessIdenticalDisplaysRemainDistinctWhileOnline() {
         let first = DisplayDescriptor.stableKey(
             unitNumber: 7, vendor: 10, model: 20, serial: 0,
             name: "Generic Panel", isBuiltIn: false
@@ -159,59 +159,59 @@ final class DisplaySelectionPolicyTests: XCTestCase {
             unitNumber: 8, vendor: 10, model: 20, serial: 0,
             name: "Generic Panel", isBuiltIn: false
         )
-        XCTAssertNotEqual(first, second)
+        #expect(first != second)
     }
 
-    func testHostInteractionOwnerSurvivesActiveDisplayChanges() {
+    @Test func hostInteractionOwnerSurvivesActiveDisplayChanges() {
         let key = DisplayHostPolicy.interactionKey(
             availableKeys: ["left", "right"], current: "left", active: "right"
         )
-        XCTAssertEqual(key, "left")
+        #expect(key == "left")
     }
 
-    func testHostInteractionFallsBackWhenOwnerDisconnects() {
+    @Test func hostInteractionFallsBackWhenOwnerDisconnects() {
         let key = DisplayHostPolicy.interactionKey(
             availableKeys: ["right"], current: "left", active: "right"
         )
-        XCTAssertEqual(key, "right")
+        #expect(key == "right")
     }
 
-    func testSharedRenderingPrimaryFollowsActiveDisplay() {
+    @Test func sharedRenderingPrimaryFollowsActiveDisplay() {
         let key = DisplayHostPolicy.primaryKey(
             availableKeys: ["left", "right"], active: "right", interaction: "left"
         )
-        XCTAssertEqual(key, "right")
+        #expect(key == "right")
     }
 
-    func testMigrationKeepsPresentationWhenInteractionDisplayRemains() {
+    @Test func migrationKeepsPresentationWhenInteractionDisplayRemains() {
         let instruction = DisplayHostMigrationPolicy.instruction(
             targetStillAvailable: true, wasExpanded: true,
             wasHovering: true, hasTransientInteraction: true
         )
-        XCTAssertEqual(instruction, .keepPresentation)
+        #expect(instruction == .keepPresentation)
     }
 
-    func testMigrationCollapsesHoverExpansionWhenDisplayDisappears() {
+    @Test func migrationCollapsesHoverExpansionWhenDisplayDisappears() {
         let instruction = DisplayHostMigrationPolicy.instruction(
             targetStillAvailable: false, wasExpanded: true,
             wasHovering: true, hasTransientInteraction: false
         )
-        XCTAssertEqual(instruction, .collapse)
+        #expect(instruction == .collapse)
     }
 
-    func testMigrationRestoresProgrammaticExpansionOnReplacement() {
+    @Test func migrationRestoresProgrammaticExpansionOnReplacement() {
         let instruction = DisplayHostMigrationPolicy.instruction(
             targetStillAvailable: false, wasExpanded: true,
             wasHovering: false, hasTransientInteraction: false
         )
-        XCTAssertEqual(instruction, .restoreProgrammaticExpansion)
+        #expect(instruction == .restoreProgrammaticExpansion)
     }
 
-    func testMigrationEndsTransientInteractionBeforeRemovingHost() {
+    @Test func migrationEndsTransientInteractionBeforeRemovingHost() {
         let instruction = DisplayHostMigrationPolicy.instruction(
             targetStillAvailable: false, wasExpanded: true,
             wasHovering: false, hasTransientInteraction: true
         )
-        XCTAssertEqual(instruction, .endTransientInteractionAndCollapse)
+        #expect(instruction == .endTransientInteractionAndCollapse)
     }
 }

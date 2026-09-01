@@ -1,9 +1,10 @@
-import XCTest
+import Foundation
+import Testing
 @testable import NotchCore
 
 /// `SessionReconciler` is pure, so the grace-window / carry-forward / event rules
 /// are exercised here without the provider's actor, timers, or sockets.
-final class SessionReconcilerTests: XCTestCase {
+struct SessionReconcilerTests {
 
     private let t0 = Date(timeIntervalSince1970: 1_000)
     /// Inside `StatusReducer.busyEvidenceTimeout` of `t0`, so these fixtures
@@ -34,58 +35,58 @@ final class SessionReconcilerTests: XCTestCase {
         return SessionReconciler.reconcile(inputs)
     }
 
-    func testEmptyInputsProduceNothing() {
+    @Test func emptyInputsProduceNothing() {
         let out = run { _ in }
-        XCTAssertTrue(out.sessions.isEmpty)
-        XCTAssertTrue(out.events.isEmpty)
-        XCTAssertTrue(out.expiredHookIDs.isEmpty)
+        #expect(out.sessions.isEmpty)
+        #expect(out.events.isEmpty)
+        #expect(out.expiredHookIDs.isEmpty)
     }
 
-    func testScannedSessionPublishedWithTranscriptStatus() {
+    @Test func scannedSessionPublishedWithTranscriptStatus() {
         let out = run { $0.scan = [scanned("s1", busy: .tool, verb: "Running")] }
         let session = out.sessions["s1"]
-        XCTAssertEqual(session?.status, .tool)
-        XCTAssertEqual(session?.activityVerb, "Running")
-        XCTAssertEqual(session?.project, "proj")
+        #expect(session?.status == .tool)
+        #expect(session?.activityVerb == "Running")
+        #expect(session?.project == "proj")
     }
 
-    func testIdleStatusClearsActivityVerb() {
+    @Test func idleStatusClearsActivityVerb() {
         // A non-busy status must not carry a stale verb into the row.
         let out = run { $0.scan = [scanned("s1", busy: .idle, verb: "Running")] }
-        XCTAssertNil(out.sessions["s1"]?.activityVerb)
+        #expect(out.sessions["s1"]?.activityVerb == nil)
     }
 
-    func testTombstonedSessionIsExcluded() {
+    @Test func tombstonedSessionIsExcluded() {
         let out = run {
             $0.scan = [scanned("s1")]
             $0.endedSessionIDs = ["s1"]
         }
-        XCTAssertNil(out.sessions["s1"])
+        #expect(out.sessions["s1"] == nil)
     }
 
     // MARK: - Hook-only grace window
 
-    func testHookOnlySessionKeptWithinGrace() {
+    @Test func hookOnlySessionKeptWithinGrace() {
         let out = run {
             $0.hookState = ["h1": hook("Notification", at: later, message: "needs you")]
             $0.hookCwd = ["h1": "/Users/x/proj"]
             $0.now = later.addingTimeInterval(10) // within 30s window
         }
-        XCTAssertNotNil(out.sessions["h1"])
-        XCTAssertTrue(out.expiredHookIDs.isEmpty)
+        #expect(out.sessions["h1"] != nil)
+        #expect(out.expiredHookIDs.isEmpty)
     }
 
-    func testHookOnlySessionExpiredPastGrace() {
+    @Test func hookOnlySessionExpiredPastGrace() {
         let out = run {
             $0.hookState = ["h1": hook("Notification", at: t0, message: "needs you")]
             $0.hookCwd = ["h1": "/Users/x/proj"]
             $0.now = t0.addingTimeInterval(60) // past 30s window
         }
-        XCTAssertNil(out.sessions["h1"])
-        XCTAssertEqual(out.expiredHookIDs, ["h1"])
+        #expect(out.sessions["h1"] == nil)
+        #expect(out.expiredHookIDs == ["h1"])
     }
 
-    func testHookStateWithoutCwdExpiresPastGraceInsteadOfLeaking() {
+    @Test func hookStateWithoutCwdExpiresPastGraceInsteadOfLeaking() {
         // A hookState entry with no matching cwd can't be surfaced; past the grace
         // window it must be reported as expired so the caller can drop it, rather
         // than lingering as a permanent entry.
@@ -94,46 +95,46 @@ final class SessionReconcilerTests: XCTestCase {
             $0.hookCwd = [:]
             $0.now = t0.addingTimeInterval(60)
         }
-        XCTAssertNil(out.sessions["h1"])
-        XCTAssertEqual(out.expiredHookIDs, ["h1"])
+        #expect(out.sessions["h1"] == nil)
+        #expect(out.expiredHookIDs == ["h1"])
     }
 
-    func testHookStateWithoutCwdIsKeptWithinGrace() {
+    @Test func hookStateWithoutCwdIsKeptWithinGrace() {
         // Within grace it may just be a cwd-bearing hook that hasn't arrived yet.
         let out = run {
             $0.hookState = ["h1": hook("Notification", at: later, message: "needs you")]
             $0.hookCwd = [:]
             $0.now = later.addingTimeInterval(10)
         }
-        XCTAssertNil(out.sessions["h1"])
-        XCTAssertTrue(out.expiredHookIDs.isEmpty)
+        #expect(out.sessions["h1"] == nil)
+        #expect(out.expiredHookIDs.isEmpty)
     }
 
     // MARK: - Events
 
-    func testSessionStartHookEmitsStarted() {
+    @Test func sessionStartHookEmitsStarted() {
         let out = run {
             $0.scan = [scanned("s1", at: t0)]
             $0.hookState = ["s1": hook("SessionStart", at: later)]
         }
-        XCTAssertEqual(out.events.map(\.kind), [.started])
+        #expect(out.events.map(\.kind) == [.started])
     }
 
-    func testScanDiscoveryWithoutHookIsSilent() {
+    @Test func scanDiscoveryWithoutHookIsSilent() {
         // A session that predates the app is discovered by the scan, not announced.
         let out = run { $0.scan = [scanned("s1")] }
-        XCTAssertTrue(out.events.isEmpty)
+        #expect(out.events.isEmpty)
     }
 
-    func testDisappearedSessionEmitsEnded() {
+    @Test func disappearedSessionEmitsEnded() {
         let prior = AgentSession(id: "s1", kind: .claudeCode, project: "proj", cwd: "/x",
                                  status: .running, startedAt: t0, lastActivity: t0)
         let out = run { $0.previous = ["s1": prior] }
-        XCTAssertEqual(out.events.map(\.kind), [.ended])
-        XCTAssertNil(out.sessions["s1"])
+        #expect(out.events.map(\.kind) == [.ended])
+        #expect(out.sessions["s1"] == nil)
     }
 
-    func testTransitionToFinishedEmitsFinished() {
+    @Test func transitionToFinishedEmitsFinished() {
         let prior = AgentSession(id: "s1", kind: .claudeCode, project: "proj", cwd: "/Users/x/proj",
                                  status: .running, startedAt: t0, lastActivity: t0)
         let out = run {
@@ -141,18 +142,18 @@ final class SessionReconcilerTests: XCTestCase {
             $0.hookState = ["s1": hook("Stop", at: later)]
             $0.previous = ["s1": prior]
         }
-        XCTAssertEqual(out.sessions["s1"]?.status, .finished)
-        XCTAssertEqual(out.events.map(\.kind), [.finished])
+        #expect(out.sessions["s1"]?.status == .finished)
+        #expect(out.events.map(\.kind) == [.finished])
     }
 
-    func testRepeatPermissionPromptFiresOncePerDistinctHookTime() {
+    @Test func repeatPermissionPromptFiresOncePerDistinctHookTime() {
         let promptHook = hook("Notification", at: later, message: "allow rm?")
         // First reconcile surfaces the prompt.
         let first = run {
             $0.scan = [scanned("s1", at: t0)]
             $0.hookState = ["s1": promptHook]
         }
-        XCTAssertEqual(first.events.map(\.kind), [.needsAttention])
+        #expect(first.events.map(\.kind) == [.needsAttention])
 
         // Same hook time again (a plain re-reconcile) must not re-fire.
         let second = run {
@@ -161,7 +162,7 @@ final class SessionReconcilerTests: XCTestCase {
             $0.previous = first.sessions
             $0.emittedAttentionAt = first.emittedAttentionAt
         }
-        XCTAssertTrue(second.events.isEmpty)
+        #expect(second.events.isEmpty)
 
         // A second, distinct prompt (newer hook time) re-fires even though the
         // status was already needsAttention.
@@ -171,32 +172,32 @@ final class SessionReconcilerTests: XCTestCase {
             $0.previous = second.sessions
             $0.emittedAttentionAt = second.emittedAttentionAt
         }
-        XCTAssertEqual(third.events.map(\.kind), [.needsAttention])
+        #expect(third.events.map(\.kind) == [.needsAttention])
     }
 
-    func testPermissionRequestStampsIdAndFiresAttention() {
+    @Test func permissionRequestStampsIdAndFiresAttention() {
         let out = run {
             $0.scan = [scanned("s1", at: t0)]
             $0.hookState = ["s1": hook("PermissionRequest", at: later, message: "Bash: rm -rf build", requestId: "r1")]
         }
-        XCTAssertEqual(out.sessions["s1"]?.status, .needsAttention)
-        XCTAssertEqual(out.sessions["s1"]?.permissionRequestId, "r1")
-        XCTAssertEqual(out.sessions["s1"]?.detail, "Bash: rm -rf build")
-        XCTAssertEqual(out.events.map(\.kind), [.needsAttention])
+        #expect(out.sessions["s1"]?.status == .needsAttention)
+        #expect(out.sessions["s1"]?.permissionRequestId == "r1")
+        #expect(out.sessions["s1"]?.detail == "Bash: rm -rf build")
+        #expect(out.events.map(\.kind) == [.needsAttention])
     }
 
-    func testStopFailureFiresAttentionWithItsReason() {
+    @Test func stopFailureFiresAttentionWithItsReason() {
         // A turn killed by an API error used to leave the row "Thinking" silently.
         let out = run {
             $0.scan = [scanned("s1", busy: .running, at: t0, verb: "Thinking")]
             $0.hookState = ["s1": hook("StopFailure", at: later, message: "rate_limit — too many requests")]
         }
-        XCTAssertEqual(out.sessions["s1"]?.status, .needsAttention)
-        XCTAssertEqual(out.sessions["s1"]?.detail, "rate_limit — too many requests")
-        XCTAssertEqual(out.events.map(\.kind), [.needsAttention])
+        #expect(out.sessions["s1"]?.status == .needsAttention)
+        #expect(out.sessions["s1"]?.detail == "rate_limit — too many requests")
+        #expect(out.events.map(\.kind) == [.needsAttention])
     }
 
-    func testPermissionRequestIdClearsOnNewerHook() {
+    @Test func permissionRequestIdClearsOnNewerHook() {
         // Once any newer hook lands (answered, or timed out into the terminal
         // prompt and the turn moved on), the Approve/Deny affordance must go away.
         let out = run {
@@ -207,11 +208,11 @@ final class SessionReconcilerTests: XCTestCase {
                 status: .needsAttention, startedAt: t0, lastActivity: t0, permissionRequestId: "r1"
             )]
         }
-        XCTAssertNil(out.sessions["s1"]?.permissionRequestId)
-        XCTAssertEqual(out.sessions["s1"]?.status, .running)
+        #expect(out.sessions["s1"]?.permissionRequestId == nil)
+        #expect(out.sessions["s1"]?.status == .running)
     }
 
-    func testPermissionRequestIdClearsOnTimeoutButNeedsAttentionRemains() {
+    @Test func permissionRequestIdClearsOnTimeoutButNeedsAttentionRemains() {
         let out = run {
             $0.scan = [scanned("s1", busy: .tool, at: t0)]
             $0.hookState = ["s1": hook("PermissionTimedOut", at: later)]
@@ -221,18 +222,18 @@ final class SessionReconcilerTests: XCTestCase {
                 detail: "Bash: rm -rf build", permissionRequestId: "r1"
             )]
         }
-        XCTAssertNil(out.sessions["s1"]?.permissionRequestId)
-        XCTAssertEqual(out.sessions["s1"]?.status, .needsAttention)
-        XCTAssertEqual(out.sessions["s1"]?.detail, "Bash: rm -rf build")
+        #expect(out.sessions["s1"]?.permissionRequestId == nil)
+        #expect(out.sessions["s1"]?.status == .needsAttention)
+        #expect(out.sessions["s1"]?.detail == "Bash: rm -rf build")
     }
 
-    func testStartedAtCarriesForwardFromPrevious() {
+    @Test func startedAtCarriesForwardFromPrevious() {
         let prior = AgentSession(id: "s1", kind: .claudeCode, project: "proj", cwd: "/Users/x/proj",
                                  status: .running, startedAt: t0, lastActivity: t0)
         let out = run {
             $0.scan = [scanned("s1", at: later)] // newer mtime, but startedAt should stick to t0
             $0.previous = ["s1": prior]
         }
-        XCTAssertEqual(out.sessions["s1"]?.startedAt, t0)
+        #expect(out.sessions["s1"]?.startedAt == t0)
     }
 }

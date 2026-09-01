@@ -1,15 +1,16 @@
-import XCTest
+import Foundation
+import Testing
 @testable import NotchCore
 
 /// The throttle that decides whether a hook removal is repaired now. Table-driven
 /// over the two rules: one repair per minute, and a hard stop after three in an hour.
-final class HookRestorePolicyTests: XCTestCase {
+struct HookRestorePolicyTests {
 
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     private func ago(_ seconds: TimeInterval) -> Date { now.addingTimeInterval(-seconds) }
 
-    func testDecision() {
+    @Test func decision() {
         let cases: [(name: String, restores: [Date], expected: HookRestorePolicy.Decision)] = [
             ("first ever removal restores", [], .restore),
             ("within a minute of the last repair holds off", [ago(30)], .holdOff),
@@ -24,21 +25,21 @@ final class HookRestorePolicyTests: XCTestCase {
         ]
 
         for (name, restores, expected) in cases {
-            XCTAssertEqual(HookRestorePolicy.decide(now: now, restores: restores), expected, name)
+            #expect(HookRestorePolicy.decide(now: now, restores: restores) == expected, "\(name)")
         }
     }
 
     /// Only the newest three timestamps can change either answer, so history stays bounded.
-    func testRecordKeepsOnlyTheDecisiveTimestamps() {
+    @Test func recordKeepsOnlyTheDecisiveTimestamps() {
         var restores: [Date] = []
         for offset in stride(from: 600, through: 0, by: -100) {
             restores = HookRestorePolicy.record(ago(TimeInterval(offset)), in: restores)
         }
-        XCTAssertEqual(restores, [ago(200), ago(100), ago(0)])
+        #expect(restores == [ago(200), ago(100), ago(0)])
     }
 
     /// A tool rewriting the file every few seconds gets exactly three repairs.
-    func testSustainedRewritesStopAfterThreeRepairs() {
+    @Test func sustainedRewritesStopAfterThreeRepairs() {
         var restores: [Date] = []
         var repairs = 0
         for tick in stride(from: 0, through: 3600, by: 5) {
@@ -50,10 +51,10 @@ final class HookRestorePolicyTests: XCTestCase {
             case .holdOff:
                 continue
             case .stopAutoRestoring:
-                XCTAssertEqual(repairs, 3)
+                #expect(repairs == 3)
                 return
             }
         }
-        XCTFail("auto-restore never paused")
+        Issue.record("auto-restore never paused")
     }
 }

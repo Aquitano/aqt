@@ -1,21 +1,22 @@
-import XCTest
+import Foundation
+import Testing
 @testable import NotchCore
 
-final class PreferencesTests: XCTestCase {
-    func testPartialDocumentKeepsDefaultsForMissingKeys() throws {
+struct PreferencesTests {
+    @Test func partialDocumentKeepsDefaultsForMissingKeys() throws {
         let json = """
         {"version": 1, "hud": {"enabled": false}, "agents": {"claudeEnabled": true, "unknownKey": 3}}
         """
         let decoded = try Preferences.decode(Data(json.utf8))
 
-        XCTAssertFalse(decoded.hud.enabled)
-        XCTAssertTrue(decoded.hud.replacesSystem == Preferences().hud.replacesSystem)
-        XCTAssertTrue(decoded.agents.claudeEnabled)
-        XCTAssertTrue(decoded.agents.notifyAttention, "untouched sibling keeps its default")
-        XCTAssertEqual(decoded.tray.ttlDays, 7)
+        #expect(!decoded.hud.enabled)
+        #expect(decoded.hud.replacesSystem == Preferences().hud.replacesSystem)
+        #expect(decoded.agents.claudeEnabled)
+        #expect(decoded.agents.notifyAttention, "untouched sibling keeps its default")
+        #expect(decoded.tray.ttlDays == 7)
     }
 
-    func testLegacyDefaultsImportMapsEveryGroup() {
+    @Test func legacyDefaultsImportMapsEveryGroup() {
         let defaults = UserDefaults(suiteName: "PreferencesTests.\(UUID().uuidString)")!
         defaults.set(false, forKey: "showHUD")
         defaults.set("inside", forKey: "tabBarStyle")
@@ -28,23 +29,23 @@ final class PreferencesTests: XCTestCase {
 
         let imported = Preferences.importingLegacyDefaults(defaults)
 
-        XCTAssertFalse(imported.hud.enabled)
-        XCTAssertEqual(imported.notch.tabBarStyle, .inside)
-        XCTAssertEqual(imported.notch.widgetLayout, [.battery, .note])
-        XCTAssertEqual(imported.display.placement, .all)
-        XCTAssertEqual(imported.tray.ttlDays, 3)
-        XCTAssertEqual(imported.widgets.temperatureUnit, .fahrenheit)
-        XCTAssertTrue(imported.agents.claudeEnabled)
-        XCTAssertEqual(imported.agents.soundStarted, "Complete", "legacy system sound names map to the palette")
-        XCTAssertTrue(imported.notch.tabLayout.contains(.home))
+        #expect(!imported.hud.enabled)
+        #expect(imported.notch.tabBarStyle == .inside)
+        #expect(imported.notch.widgetLayout == [.battery, .note])
+        #expect(imported.display.placement == .all)
+        #expect(imported.tray.ttlDays == 3)
+        #expect(imported.widgets.temperatureUnit == .fahrenheit)
+        #expect(imported.agents.claudeEnabled)
+        #expect(imported.agents.soundStarted == "Complete", "legacy system sound names map to the palette")
+        #expect(imported.notch.tabLayout.contains(.home))
     }
 
-    func testRoundTripThroughEncoder() throws {
+    @Test func roundTripThroughEncoder() throws {
         var prefs = Preferences()
         prefs.display.placement = .all
         prefs.agents.t3Environments = [T3Environment(id: "e1", label: "Laptop", baseURL: "http://localhost:1")]
 
         let data = try JSONEncoder().encode(prefs)
-        XCTAssertEqual(try Preferences.decode(data), prefs)
+        #expect(try Preferences.decode(data) == prefs)
     }
 }

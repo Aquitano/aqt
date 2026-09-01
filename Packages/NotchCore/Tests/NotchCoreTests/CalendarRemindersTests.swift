@@ -1,10 +1,11 @@
-import XCTest
+import Foundation
+import Testing
 @testable import NotchCore
 
 /// `CalendarReminders.pending` is a pure filter over events + clock, so the
 /// all-day exclusion, the lead-time window, and per-occurrence fan-out are
 /// table-tested here without EventKit.
-final class CalendarRemindersTests: XCTestCase {
+struct CalendarRemindersTests {
 
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
     private let lead: TimeInterval = 5 * 60
@@ -21,31 +22,31 @@ final class CalendarRemindersTests: XCTestCase {
         )
     }
 
-    func testTimedEventBeyondLeadReminds() {
+    @Test func timedEventBeyondLeadReminds() {
         let out = CalendarReminders.pending(events: [event("Standup", startsInMinutes: 10)], now: now, lead: lead)
-        XCTAssertEqual(out, [CalendarReminder(fireAt: now.addingTimeInterval(5 * 60), title: "Standup")])
+        #expect(out == [CalendarReminder(fireAt: now.addingTimeInterval(5 * 60), title: "Standup")])
     }
 
-    func testEventInsideLeadWindowIsDropped() {
+    @Test func eventInsideLeadWindowIsDropped() {
         // Starts in 4 min, so its 5-min-before mark is already in the past.
         let out = CalendarReminders.pending(events: [event("Soon", startsInMinutes: 4)], now: now, lead: lead)
-        XCTAssertTrue(out.isEmpty)
+        #expect(out.isEmpty)
     }
 
-    func testPastEventIsDropped() {
+    @Test func pastEventIsDropped() {
         let out = CalendarReminders.pending(events: [event("Earlier", startsInMinutes: -30)], now: now, lead: lead)
-        XCTAssertTrue(out.isEmpty)
+        #expect(out.isEmpty)
     }
 
-    func testAllDayEventNeverReminds() {
+    @Test func allDayEventNeverReminds() {
         let out = CalendarReminders.pending(events: [event("Holiday", startsInMinutes: 120, isAllDay: true)], now: now, lead: lead)
-        XCTAssertTrue(out.isEmpty)
+        #expect(out.isEmpty)
     }
 
-    func testEachOccurrenceGetsItsOwnReminder() {
+    @Test func eachOccurrenceGetsItsOwnReminder() {
         // Recurring occurrences share an id; the filter must keep them distinct.
         let events = [event("Sync", startsInMinutes: 10), event("Sync", startsInMinutes: 70)]
         let out = CalendarReminders.pending(events: events, now: now, lead: lead)
-        XCTAssertEqual(out.map(\.fireAt), [now.addingTimeInterval(5 * 60), now.addingTimeInterval(65 * 60)])
+        #expect(out.map(\.fireAt) == [now.addingTimeInterval(5 * 60), now.addingTimeInterval(65 * 60)])
     }
 }

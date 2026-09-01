@@ -1,56 +1,56 @@
 import Foundation
 @testable import NotchCore
-import XCTest
+import Testing
 
-final class AudioLevelAnalysisTests: XCTestCase {
+struct AudioLevelAnalysisTests {
     private let sampleRate = 48_000.0
 
-    func testSilenceSettlesAtZero() {
+    @Test func silenceSettlesAtZero() {
         var analyzer = AudioBandAnalyzer()
         let levels = analyzer.process(Array(repeating: 0, count: 4_800), sampleRate: sampleRate)
-        XCTAssertEqual(levels, .zero)
+        #expect(levels == .zero)
     }
 
-    func testBassToneDominatesLowBand() {
+    @Test func bassToneDominatesLowBand() {
         let levels = analyzeTone(frequency: 100)
-        XCTAssertGreaterThan(levels.low, levels.mid)
-        XCTAssertGreaterThan(levels.low, levels.high)
+        #expect(levels.low > levels.mid)
+        #expect(levels.low > levels.high)
     }
 
-    func testMidToneDominatesMidBand() {
+    @Test func midToneDominatesMidBand() {
         let levels = analyzeTone(frequency: 1_000)
-        XCTAssertGreaterThan(levels.mid, levels.low)
-        XCTAssertGreaterThan(levels.mid, levels.high)
+        #expect(levels.mid > levels.low)
+        #expect(levels.mid > levels.high)
     }
 
-    func testTrebleToneDominatesHighBand() {
+    @Test func trebleToneDominatesHighBand() {
         let levels = analyzeTone(frequency: 6_000)
-        XCTAssertGreaterThan(levels.high, levels.low)
-        XCTAssertGreaterThan(levels.high, levels.mid)
+        #expect(levels.high > levels.low)
+        #expect(levels.high > levels.mid)
     }
 
-    func testOutputIsAlwaysNormalized() {
+    @Test func outputIsAlwaysNormalized() {
         var analyzer = AudioBandAnalyzer()
         let malformed: [Float] = [.infinity, -.infinity, .nan, 50, -50]
         let levels = analyzer.process(malformed, sampleRate: sampleRate)
         for level in levels.values {
-            XCTAssertTrue(level.isFinite)
-            XCTAssertTrue((0...1).contains(level))
+            #expect(level.isFinite)
+            #expect((0...1).contains(level))
         }
     }
 
-    func testMeterQuantizationSuppressesInvisibleChanges() {
+    @Test func meterQuantizationSuppressesInvisibleChanges() {
         let first = AudioLevels(low: 0.22, mid: 0.57, high: 0.94).quantizedForMeter()
         let second = AudioLevels(low: 0.27, mid: 0.62, high: 0.99).quantizedForMeter()
 
-        XCTAssertEqual(first, second)
-        XCTAssertEqual(first, AudioLevels(low: 0.2, mid: 0.6, high: 1.0))
+        #expect(first == second)
+        #expect(first == AudioLevels(low: 0.2, mid: 0.6, high: 1.0))
     }
 
-    func testMeterQuantizationClampsMalformedRange() {
+    @Test func meterQuantizationClampsMalformedRange() {
         let levels = AudioLevels(low: -1, mid: 0.5, high: 2).quantizedForMeter()
 
-        XCTAssertEqual(levels, AudioLevels(low: 0, mid: 0.6, high: 1))
+        #expect(levels == AudioLevels(low: 0, mid: 0.6, high: 1))
     }
 
     private func analyzeTone(frequency: Double) -> AudioLevels {
