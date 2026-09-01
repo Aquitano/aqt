@@ -189,6 +189,10 @@ struct HookEnvelope: Codable, Sendable {
     /// "started" | "busy" | "tool" | "editing" | "idle" | "finished" | "waiting" | "ended"
     var status: String?
     var tool: String?
+    /// `notification_type` on Claude's Notification hook (`idle_prompt`,
+    /// `permission_prompt`, `agent_needs_input`, …), which classifies the
+    /// notification precisely instead of leaving us to read its message text.
+    var notificationType: String?
     var prompt: String?
     var response: String?
     var model: String?

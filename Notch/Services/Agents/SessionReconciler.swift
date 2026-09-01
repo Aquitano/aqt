@@ -85,7 +85,9 @@ enum SessionReconciler {
         for sid in sessions.keys {
             var session = sessions[sid]!
             let scanned = input.scan.first { $0.sessionId == sid }
-            let resolved = StatusReducer.reduce(hook: input.hookState[sid], scan: scanned.map(scanInput))
+            let resolved = StatusReducer.reduce(
+                hook: input.hookState[sid], scan: scanned.map(scanInput), now: input.now
+            )
             session.status = resolved.status
             session.activityVerb = resolved.status.isBusy ? resolved.verb : nil
             session.detail = input.hookState[sid]?.message ?? session.detail
@@ -119,6 +121,11 @@ enum SessionReconciler {
         )
     }
 
+    /// Hooks that announce a *new* reason to look at a session, so each one earns
+    /// its own notification. `PermissionTimedOut` is deliberately absent: it
+    /// follows a prompt we already announced.
+    private static let attentionHooks: Set<String> = ["Notification", "PermissionRequest", "StopFailure"]
+
     private static func deriveEvents(
         sessions: [String: AgentSession],
         previous: [String: AgentSession],
@@ -132,7 +139,7 @@ enum SessionReconciler {
             // attention hook's time so each distinct prompt fires exactly once.
             if session.status == .needsAttention,
                let attentionTime = hookState[sid].flatMap({
-                   $0.name == "Notification" || $0.name == "PermissionRequest" ? $0.time : nil
+                   attentionHooks.contains($0.name) ? $0.time : nil
                }) {
                 if emittedAttentionAt[sid] != attentionTime {
                     emittedAttentionAt[sid] = attentionTime

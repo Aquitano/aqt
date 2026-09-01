@@ -5,7 +5,9 @@ import XCTest
 final class SessionReconcilerTests: XCTestCase {
 
     private let t0 = Date(timeIntervalSince1970: 1_000)
-    private let later = Date(timeIntervalSince1970: 2_000)
+    /// Inside `StatusReducer.busyEvidenceTimeout` of `t0`, so these fixtures
+    /// exercise the reconciler's own rules rather than the staleness backstop.
+    private let later = Date(timeIntervalSince1970: 1_300)
 
     private func scanned(
         _ id: String, cwd: String = "/Users/x/proj", busy: AgentStatus = .idle,
@@ -179,6 +181,17 @@ final class SessionReconcilerTests: XCTestCase {
         XCTAssertEqual(out.sessions["s1"]?.status, .needsAttention)
         XCTAssertEqual(out.sessions["s1"]?.permissionRequestId, "r1")
         XCTAssertEqual(out.sessions["s1"]?.detail, "Bash: rm -rf build")
+        XCTAssertEqual(out.events.map(\.kind), [.needsAttention])
+    }
+
+    func testStopFailureFiresAttentionWithItsReason() {
+        // A turn killed by an API error used to leave the row "Thinking" silently.
+        let out = run {
+            $0.scan = [scanned("s1", busy: .running, at: t0, verb: "Thinking")]
+            $0.hookState = ["s1": hook("StopFailure", at: later, message: "rate_limit — too many requests")]
+        }
+        XCTAssertEqual(out.sessions["s1"]?.status, .needsAttention)
+        XCTAssertEqual(out.sessions["s1"]?.detail, "rate_limit — too many requests")
         XCTAssertEqual(out.events.map(\.kind), [.needsAttention])
     }
 

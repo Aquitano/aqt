@@ -69,8 +69,14 @@ struct AgentConfigInstaller {
     // has to be inferred from transcript timing. Notification/Stop/SessionStart/
     // SessionEnd cover attention, turn-end, and lifecycle. Tool events need no matcher
     // (Claude runs a matcher-less group for every tool).
-    private static let claudeHookEvents = ["Notification", "Stop", "SessionStart", "SessionEnd",
-                                           "UserPromptSubmit", "PreToolUse", "PostToolUse"]
+    //
+    // The two failure events matter as much as their happy paths: a turn killed by
+    // an API error fires StopFailure and never Stop, and a failed tool fires
+    // PostToolUseFailure and never PostToolUse. Without them a dead turn leaves the
+    // last transition we saw standing, and the session reads as working forever.
+    private static let claudeHookEvents = ["Notification", "Stop", "StopFailure",
+                                           "SessionStart", "SessionEnd", "UserPromptSubmit",
+                                           "PreToolUse", "PostToolUse", "PostToolUseFailure"]
     /// Installed separately: PermissionRequest blocks on the user's in-notch
     /// decision, so it carries a long timeout instead of the 5s bound above.
     private static let claudePermissionEvent = "PermissionRequest"

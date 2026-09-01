@@ -25,13 +25,27 @@ enum HookClient {
             sessionId: json["session_id"] as? String,
             cwd: json["cwd"] as? String,
             transcriptPath: json["transcript_path"] as? String,
-            message: json["message"] as? String,
+            message: claudeMessage(json),
             pid: getppid(),
             // Present on PreToolUse/PostToolUse; lets the provider name the live verb
             // ("Running Bash", "Editing") straight from the event.
-            tool: json["tool_name"] as? String
+            tool: json["tool_name"] as? String,
+            // Present on Notification: Claude's own classification of what it wants
+            // (permission prompt, idle nudge, information).
+            notificationType: json["notification_type"] as? String
         ))
         exit(0)
+    }
+
+    /// The line the notch shows for an event. `StopFailure` carries no `message`
+    /// of its own — name the error instead, so a turn that died on a rate limit
+    /// says so rather than just going quiet.
+    private static func claudeMessage(_ json: [String: Any]) -> String? {
+        if let message = json["message"] as? String { return message }
+        let error = [json["error_type"] as? String, json["error_message"] as? String]
+            .compactMap { $0 }
+            .joined(separator: " — ")
+        return error.isEmpty ? nil : agentClip(error)
     }
 
     /// Blocking PermissionRequest: send the request, wait (bounded) for the app's
