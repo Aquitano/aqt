@@ -108,6 +108,9 @@ struct AgentSession: Identifiable, Equatable, Sendable {
     /// captured from the agent process's environment. Jumping needs it because
     /// the pane's owner is a detached daemon, not the window on screen.
     var herdrPaneID: String?
+    /// Bundle id of the app drawing this session's terminal. Lets a notification
+    /// stay quiet while that window is the one you're already looking at.
+    var terminalBundleID: String?
     /// The session outlived its window: still running, but on a pty nothing draws
     /// any more. The row stays (an orphan can still be burning tokens), the jump
     /// goes away, and quitting it is offered instead.

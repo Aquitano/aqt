@@ -26,7 +26,7 @@ enum HookClient {
             cwd: json["cwd"] as? String,
             transcriptPath: json["transcript_path"] as? String,
             message: claudeMessage(json),
-            pid: getppid(),
+            pid: agentPID(),
             // Present on PreToolUse/PostToolUse; lets the provider name the live verb
             // ("Running Bash", "Editing") straight from the event.
             tool: json["tool_name"] as? String,
@@ -69,7 +69,7 @@ enum HookClient {
             cwd: json["cwd"] as? String,
             transcriptPath: json["transcript_path"] as? String,
             message: permissionSummary(tool: tool, input: json["tool_input"] as? [String: Any]),
-            pid: getppid(),
+            pid: agentPID(),
             tool: tool,
             requestId: requestId,
             permission: permission
@@ -129,7 +129,7 @@ enum HookClient {
 
         send(HookEnvelope(
             agent: "usage", hook: "statusline", sessionId: json["session_id"] as? String,
-            pid: getppid(), status: "usage",
+            pid: agentPID(), status: "usage",
             fiveHourUsed: fiveHour?["used_percentage"] as? Double,
             sevenDayUsed: sevenDay?["used_percentage"] as? Double,
             fiveHourResetsAt: (fiveHour?["resets_at"] as? NSNumber)?.doubleValue,
@@ -174,7 +174,7 @@ enum HookClient {
             cwd: json["cwd"] as? String,
             transcriptPath: json["transcript_path"] as? String,
             message: message,
-            pid: getppid(),
+            pid: agentPID(),
             status: status,
             tool: toolName,
             prompt: prompt,
@@ -187,6 +187,40 @@ enum HookClient {
     }
 
     // MARK: - Plumbing
+
+    /// The agent process this hook belongs to. Claude runs hook commands through
+    /// a `/bin/sh -c` wrapper, so `getppid()` is a shell that has already exited
+    /// by the time the app reads the envelope — useless as a session's identity.
+    /// Walking up to the process actually running the CLI gives the app an exact
+    /// session-to-process binding, which is what lets it stop guessing which
+    /// transcript belongs to which agent.
+    private static func agentPID() -> pid_t {
+        let lookup = ProcessLookup()
+        var current = getppid()
+        for _ in 0..<6 {
+            if let path = lookup.path(of: current), isAgent(path, pid: current, lookup: lookup) {
+                return current
+            }
+            guard let parent = lookup.ppid(of: current), parent > 1, parent != current else { break }
+            current = parent
+        }
+        return getppid()
+    }
+
+    /// The `claude` CLI's executable is the versioned binary
+    /// (`…/claude/versions/X.Y.Z`), so its process name is a version string
+    /// rather than "claude" — match on the path, and fall back to argv for a
+    /// runtime-hosted CLI (`node …/claude-code/cli.js`).
+    private static func isAgent(_ path: String, pid: pid_t, lookup: ProcessLookup) -> Bool {
+        let lower = path.lowercased()
+        if lower.contains("/claude/") || lower.contains("/claude-code") { return true }
+        let base = (path as NSString).lastPathComponent
+        if base == "claude" || base == "codex" { return true }
+        if base == "node" || base == "bun" || base == "deno" {
+            return lookup.arguments(of: pid).contains { $0.lowercased().contains("claude") }
+        }
+        return false
+    }
 
     private static func readStdin() -> Data {
         var data = Data()

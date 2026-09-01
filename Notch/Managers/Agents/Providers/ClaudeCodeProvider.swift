@@ -1,17 +1,22 @@
 import AppKit
 import Foundation
 
-/// Watches Claude Code sessions. Lifecycle/attention come from opt-in
-/// fire-and-forget hooks (Notification / Stop / SessionStart / SessionEnd) over
-/// the socket; fine-grained activity (editing / tool / running), the working
-/// dir, git branch, and liveness come from tailing `~/.claude/projects/**/*.jsonl`
-/// and matching live `claude` pids by cwd. No timers — every refresh is triggered
-/// by a socket event, an FSEvents change, or app activation.
+/// Watches Claude Code sessions. Every session is announced by its own hooks:
+/// the envelope carries the session id, the agent's pid and the transcript it
+/// writes, which is recorded as an `AgentSessionBinding`. From then on a session
+/// exists exactly as long as that process does, and its status comes from its
+/// own transcript plus the latest hook — nothing is matched by directory or file
+/// timing. No timers either: every refresh is triggered by a socket event, an
+/// FSEvents change, or app activation.
+///
+/// Bindings are persisted, because hooks announce a session once rather than on
+/// a schedule: without that, restarting the app would empty the list until every
+/// session happened to act again.
 ///
 /// This type only orchestrates: it owns the watch/reconcile lifecycle and the
-/// hook-state bookkeeping, then delegates the work to three focused modules —
-/// `ProcessScanner` (libproc), `TranscriptParser` (bytes → state), and the pure
-/// `StatusReducer` ((hook, scan) → status).
+/// hook/binding bookkeeping, then delegates the work to three focused modules —
+/// `SessionProbe` (liveness + transcript read), `TranscriptParser` (bytes →
+/// state), and the pure `StatusReducer` ((hook, scan) → status).
 @MainActor
 final class ClaudeCodeProvider: AgentProviding {
 
@@ -23,9 +28,12 @@ final class ClaudeCodeProvider: AgentProviding {
     private let settings: Settings
     private let installer = AgentConfigInstaller()
     private let processLookup: ProcessLookup
-    private let watcher = DirectoryWatcher(path: ProcessScanner.projectsRoot.path)
+    private let watcher = DirectoryWatcher(path: SessionProbe.projectsRoot.path)
+    private let persistence = Persistence()
+    private static let bindingsFile = "claude-sessions.json"
 
     private var sessionsByID: [String: AgentSession] = [:]
+    private var bindings: [String: AgentSessionBinding] = [:]
     private var hookState: [String: HookSnapshot] = [:]
     private var hookCwd: [String: String] = [:]
     private var endedSessionIDs: Set<String> = []
@@ -66,6 +74,10 @@ final class ClaudeCodeProvider: AgentProviding {
         if !installer.claudeBridgeInstalled() {
             try? installer.installClaudeHooks()
         }
+        // Sessions announced while we were not running are still out there; the
+        // first reconcile drops whichever of them have since exited.
+        bindings = (persistence.load([AgentSessionBinding].self, from: Self.bindingsFile) ?? [])
+            .reduce(into: [:]) { $0[$1.sessionId] = $1 }
         beginWatching()
     }
 
@@ -90,6 +102,9 @@ final class ClaudeCodeProvider: AgentProviding {
         endedSessionIDs = []
         emittedAttentionAt = [:]
         lastScan = []
+        // Bindings survive a stop: pausing the watch (or quitting the app) must
+        // not forget sessions that are still running. `disable()` clears them.
+        bindings = [:]
         onSessions?([])
     }
 
@@ -110,6 +125,7 @@ final class ClaudeCodeProvider: AgentProviding {
 
     func disable() {
         settings.agentClaudeEnabled = false
+        persistence.removeFile(named: Self.bindingsFile)
         do {
             try installer.removeClaudeHooks()
             Log.agents.info("Claude hooks removed")
@@ -149,6 +165,7 @@ final class ClaudeCodeProvider: AgentProviding {
         guard isEnabled else { return }
         guard let sid = envelope.sessionId else { scheduleReconcile(); return }
         if let cwd = envelope.cwd { hookCwd[sid] = cwd }
+        bind(envelope, to: sid)
         if envelope.hook == "SessionEnd" {
             // Tombstone the session for removal, and drop its hook state so it
             // can't be resurrected on a later rebuild. Also drop hookCwd: the
@@ -158,15 +175,69 @@ final class ClaudeCodeProvider: AgentProviding {
             endedSessionIDs.insert(sid)
             hookState[sid] = nil
             hookCwd[sid] = nil
+            if bindings.removeValue(forKey: sid) != nil { persistBindings() }
         } else {
             endedSessionIDs.remove(sid)
             hookState[sid] = HookSnapshot(
                 name: envelope.hook, time: Date(), message: envelope.message,
-                tool: envelope.tool, requestId: envelope.requestId
+                tool: envelope.tool, requestId: envelope.requestId,
+                notificationType: envelope.notificationType
             )
         }
         rebuild()
         scheduleReconcile() // fill pid / branch / liveness
+    }
+
+    // MARK: - Bindings
+
+    /// Record what this hook says the session is. Only the identity is taken
+    /// here — the terminal details need the agent's environment and, for a herdr
+    /// pane, the `herdr` CLI, so `SessionProbe` fills those in off the main actor
+    /// the first time it sees the binding.
+    ///
+    /// The pid is re-read on every hook rather than trusted once: `/clear` and
+    /// `--continue` reuse a process across session ids, and a session id can
+    /// outlive the process that first announced it.
+    private func bind(_ envelope: HookEnvelope, to sid: String) {
+        guard let pid = envelope.pid, pid > 0, let cwd = envelope.cwd else { return }
+        // Notification payloads don't always carry the transcript path; keep the
+        // one an earlier hook gave us rather than dropping the binding.
+        guard let transcript = envelope.transcriptPath ?? bindings[sid]?.transcriptPath else { return }
+
+        if var existing = bindings[sid], existing.pid == pid {
+            guard existing.cwd != cwd || existing.transcriptPath != transcript else { return }
+            // A session can move (`/add-dir`, a compaction writing on): keep the
+            // identity, take the newer facts.
+            existing.cwd = cwd
+            existing.transcriptPath = transcript
+            bindings[sid] = existing
+            persistBindings()
+            return
+        }
+        guard let startedAt = processLookup.startDate(of: pid) else { return }
+        bindings[sid] = AgentSessionBinding(
+            sessionId: sid, pid: pid, startedAt: startedAt.timeIntervalSince1970,
+            cwd: cwd, transcriptPath: transcript
+        )
+        persistBindings()
+    }
+
+    /// Adopt what the probe found: it drops the bindings whose process is gone
+    /// and fills in terminal details, but it worked from a snapshot, so a hook
+    /// that landed while it ran keeps its (newer) binding.
+    private func adopt(_ probed: [AgentSessionBinding], from snapshot: [AgentSessionBinding]) {
+        let survivors = Set(probed.map(\.sessionId))
+        for binding in snapshot where !survivors.contains(binding.sessionId) {
+            if bindings[binding.sessionId]?.pid == binding.pid { bindings[binding.sessionId] = nil }
+        }
+        for binding in probed where bindings[binding.sessionId]?.pid == binding.pid {
+            bindings[binding.sessionId] = binding
+        }
+        persistBindings()
+    }
+
+    private func persistBindings() {
+        persistence.save(Array(bindings.values), to: Self.bindingsFile)
     }
 
     // MARK: - Reconcile
@@ -191,15 +262,17 @@ final class ClaudeCodeProvider: AgentProviding {
         guard isEnabled else { return }
         reconcileGeneration += 1
         let generation = reconcileGeneration
-        let scanner = ProcessScanner(lookup: processLookup)
-        let scan = await Task.detached(priority: .utility) {
-            scanner.scan()
+        let probe = SessionProbe(lookup: processLookup)
+        let snapshot = Array(bindings.values)
+        let result = await Task.detached(priority: .utility) {
+            probe.probe(snapshot)
         }.value
-        // A newer reconcile started while this scan ran, or the feature was disabled
+        // A newer reconcile started while this probe ran, or the feature was disabled
         // (Task.detached doesn't inherit cancellation): drop this stale result so it
         // can't clobber the current state or re-publish after disable().
         guard isEnabled, generation == reconcileGeneration else { return }
-        lastScan = scan
+        adopt(result.bindings, from: snapshot)
+        lastScan = result.sessions
         rebuild()
     }
 

@@ -16,7 +16,7 @@ final class SessionReconcilerTests: XCTestCase {
         ScannedSession(
             sessionId: id, cwd: cwd, pid: 42, lastActivity: at ?? t0, gitBranch: "main",
             busyStatus: busy, focusURL: nil, terminalName: "Warp", herdrPaneID: nil,
-            isDetached: false,
+            terminalBundleID: nil, isDetached: false,
             prompt: "p", response: "r", verb: verb
         )
     }

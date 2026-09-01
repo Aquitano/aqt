@@ -85,6 +85,7 @@ targets:
       - path: Notch/Model/Agents/AgentModels.swift
       - path: Notch/Model/Agents/AgentPermission.swift
       - path: Notch/Services/Agents/AgentSocketPath.swift
+      - path: Notch/Services/Agents/ProcessLookup.swift
       - path: Notch/App/HookClient.swift
       - path: HookTool
     settings:
