@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import UserNotifications
 
@@ -18,7 +19,28 @@ final class AgentNotifier {
         self.settings = settings
     }
 
+    /// A peek, a sound and a banner all exist to tell you about a window you
+    /// can't see. When the session's own terminal is the thing in front of you,
+    /// they're noise — so check that first, and deliver only if it isn't.
     func notify(_ event: AgentEvent) {
+        guard settings.agentQuietWhenFocused,
+              let bundleID = event.session.terminalBundleID,
+              NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleID
+        else { return deliver(event) }
+
+        // A multiplexer client draws one pane at a time, so its app being in
+        // front only counts when this session is the pane on screen. Asking
+        // costs a process spawn, hence only on this path — a real notification
+        // for a session whose terminal is already frontmost.
+        guard let pane = event.session.herdrPaneID else { return }
+        Task { @MainActor [weak self] in
+            let focused = await Task.detached { HerdrBridge.focusedPaneID() }.value
+            guard focused != pane else { return }
+            self?.deliver(event)
+        }
+    }
+
+    private func deliver(_ event: AgentEvent) {
         let agent = event.session.kind.shortName
         switch event.kind {
         case .started:

@@ -307,6 +307,7 @@ struct SettingsView: View {
                 Toggle("Notify when an agent finishes", isOn: $settings.agentNotifyFinished)
                 Toggle("Notify when an agent starts", isOn: $settings.agentNotifyStarted)
                 Toggle("Auto-expand on needs-you", isOn: $settings.agentAutoExpandOnAttention)
+                Toggle("Stay quiet while its terminal is in front", isOn: $settings.agentQuietWhenFocused)
                 // Approve/deny from the notch is switched off build-wide for now
                 // (see AgentFeatures); the round-trip code stays in place.
                 if AgentFeatures.permissionApproval {

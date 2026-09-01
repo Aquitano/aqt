@@ -38,6 +38,7 @@ final class Settings: ObservableObject {
         static let agentNotifyFinished = "agentNotifyFinished"
         static let agentAutoExpandOnAttention = "agentAutoExpandOnAttention"
         static let agentSystemNotifications = "agentSystemNotifications"
+        static let agentQuietWhenFocused = "agentQuietWhenFocused"
         static let agentNotifySound = "agentNotifySound"
         static let agentSoundStarted = "agentSoundStarted"
         static let agentSoundAttention = "agentSoundAttention"
@@ -126,6 +127,9 @@ final class Settings: ObservableObject {
     @Published var agentNotifyFinished: Bool { didSet { defaults.set(agentNotifyFinished, forKey: Key.agentNotifyFinished) } }
     @Published var agentAutoExpandOnAttention: Bool { didSet { defaults.set(agentAutoExpandOnAttention, forKey: Key.agentAutoExpandOnAttention) } }
     @Published var agentSystemNotifications: Bool { didSet { defaults.set(agentSystemNotifications, forKey: Key.agentSystemNotifications) } }
+    /// Skip the peek, sound and banner while the session's own terminal is the
+    /// frontmost window — you are already looking at what they would announce.
+    @Published var agentQuietWhenFocused: Bool { didSet { defaults.set(agentQuietWhenFocused, forKey: Key.agentQuietWhenFocused) } }
     @Published var agentNotifySound: Bool { didSet { defaults.set(agentNotifySound, forKey: Key.agentNotifySound) } }
     @Published var agentSoundStarted: String { didSet { defaults.set(agentSoundStarted, forKey: Key.agentSoundStarted) } }
     @Published var agentSoundAttention: String { didSet { defaults.set(agentSoundAttention, forKey: Key.agentSoundAttention) } }
@@ -206,6 +210,7 @@ final class Settings: ObservableObject {
             Key.agentNotifyFinished: true,
             Key.agentAutoExpandOnAttention: false,
             Key.agentSystemNotifications: false,
+            Key.agentQuietWhenFocused: true,
             Key.agentNotifySound: false,
             Key.agentSoundStarted: AgentSound.boot.rawValue,
             Key.agentSoundAttention: AgentSound.alert.rawValue,
@@ -262,6 +267,7 @@ final class Settings: ObservableObject {
         self.agentNotifyFinished = defaults.bool(forKey: Key.agentNotifyFinished)
         self.agentAutoExpandOnAttention = defaults.bool(forKey: Key.agentAutoExpandOnAttention)
         self.agentSystemNotifications = defaults.bool(forKey: Key.agentSystemNotifications)
+        self.agentQuietWhenFocused = defaults.bool(forKey: Key.agentQuietWhenFocused)
         self.agentNotifySound = defaults.bool(forKey: Key.agentNotifySound)
         self.agentSoundStarted = AgentSound.normalizedName(
             defaults.string(forKey: Key.agentSoundStarted), fallback: .boot

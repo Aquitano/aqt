@@ -21,7 +21,11 @@ enum HerdrBridge {
     /// short-lived cache keeps the process spawn off the reconcile loop. Also
     /// caches "herdr isn't running", which is the common case.
     private static let labelTTL: TimeInterval = 10
-    private static let labelCache = LabelCache()
+    private static let labelCache = TTLCache<[String: String]>()
+    /// Which pane is focused changes with every keystroke on a pane switch, so
+    /// this one is cached only long enough to absorb a burst of events.
+    private static let focusTTL: TimeInterval = 2
+    private static let focusCache = TTLCache<String?>()
 
     static func binary() -> String? {
         ["/opt/homebrew/bin/herdr", "/usr/local/bin/herdr", "/usr/bin/herdr"]
@@ -43,6 +47,22 @@ enum HerdrBridge {
 
     static func workspaceLabels() -> [String: String] {
         labelCache.value(ttl: labelTTL, fetch: fetchWorkspaceLabels)
+    }
+
+    /// The pane herdr is currently showing. A client draws one pane at a time,
+    /// so this is what tells "the terminal is in front" apart from "this session
+    /// is what you're actually looking at".
+    static func focusedPaneID() -> String? {
+        focusCache.value(ttl: focusTTL, fetch: fetchFocusedPane)
+    }
+
+    private static func fetchFocusedPane() -> String? {
+        guard let binary = binary(), let data = run(binary, ["agent", "list"]),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let result = root["result"] as? [String: Any],
+              let agents = result["agents"] as? [[String: Any]]
+        else { return nil }
+        return agents.first { $0["focused"] as? Bool == true }?["pane_id"] as? String
     }
 
     /// Live herdr clients — the terminal-side UI processes — newest first.
@@ -97,18 +117,22 @@ enum HerdrBridge {
         }
     }
 
-    private final class LabelCache: @unchecked Sendable {
+    /// Every answer here costs a process spawn, so each is held for a beat.
+    /// Caching the "herdr isn't running" answer matters just as much — that's
+    /// the common case on a machine that doesn't use it.
+    private final class TTLCache<Value: Sendable>: @unchecked Sendable {
         private let lock = NSLock()
-        private var labels: [String: String] = [:]
+        private var cached: Value?
         private var fetchedAt = Date.distantPast
 
-        func value(ttl: TimeInterval, fetch: () -> [String: String]) -> [String: String] {
+        func value(ttl: TimeInterval, fetch: () -> Value) -> Value {
             lock.lock()
             defer { lock.unlock() }
-            guard Date().timeIntervalSince(fetchedAt) >= ttl else { return labels }
-            labels = fetch()
+            if let cached, Date().timeIntervalSince(fetchedAt) < ttl { return cached }
+            let fresh = fetch()
+            cached = fresh
             fetchedAt = Date()
-            return labels
+            return fresh
         }
     }
 }
