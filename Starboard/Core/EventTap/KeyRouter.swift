@@ -11,6 +11,7 @@ import QuartzCore
 ///   windows-only search.
 /// The opt-in features that extend routing beyond the rcmd hold.
 struct RouterOptions {
+    var primaryModifier = PrimaryModifier.rightCommand
     /// ralt+letter steps through that app's windows.
     var windowJumpEnabled = false
     /// ralt+digit moves the focused window to a Space (direct strategy only).
@@ -57,11 +58,12 @@ final class KeyRouter {
     ) -> (intents: [Intent], consume: Bool) {
         lastKeyDownTime = time
 
+        let primaryHeld = modifiers.isHeld(options.primaryModifier)
         if time < stagesArmedUntil {
             // One key ends the leader window either way — including a key
-            // modified by rcmd, which routes as a normal hold instead.
+            // modified by the primary modifier, which routes as a normal hold instead.
             stagesArmedUntil = -.infinity
-            if !modifiers.rightCommandHeld {
+            if !primaryHeld {
                 guard let command = stageCommand(for: keyCode) else {
                     return ([], false) // no Stage on that key: passes through
                 }
@@ -70,8 +72,8 @@ final class KeyRouter {
             }
         }
 
-        guard modifiers.rightCommandHeld else {
-            guard modifiers.rightOptionHeld else { return ([], false) }
+        guard primaryHeld else {
+            guard options.primaryModifier.secondaryIsHeld(in: modifiers) else { return ([], false) }
             if options.windowJumpEnabled, let letter = resolveLetter(keyCode) {
                 consumedKeys.insert(keyCode)
                 return ([.jumpAppWindows(letter)], true)
@@ -85,6 +87,7 @@ final class KeyRouter {
         let intents = session.keyDown(
             keyCode,
             modifiers: modifiers,
+            primaryModifier: options.primaryModifier,
             letter: resolveLetter(keyCode),
             digit: resolveDigit(keyCode),
             keyWasResolved: true
@@ -105,8 +108,13 @@ final class KeyRouter {
         consumedKeys.contains(keyCode)
     }
 
-    /// rcmd pressed: detects the double-tap-and-hold windows-search gesture.
+    /// Convenience alias for tests and default configuration.
     func rightCommandDown(at time: Double = CACurrentMediaTime()) -> [Intent] {
+        primaryModifierDown(at: time)
+    }
+
+    /// Primary modifier pressed: detects the double-tap-and-hold windows-search gesture.
+    func primaryModifierDown(at time: Double = CACurrentMediaTime()) -> [Intent] {
         // A keyUp the tap never saw (app-modal grab, tap disabled mid-press)
         // would otherwise leave an entry that eats an unrelated keyUp later.
         // Clearing here and not on release keeps late keyUps of this hold's
@@ -117,11 +125,16 @@ final class KeyRouter {
         return session.beginWindowSearch()
     }
 
-    /// rcmd released: commits a pending search, records bare-tap state.
+    /// Convenience alias for tests and default configuration.
     func rightCommandUp(at time: Double = CACurrentMediaTime()) -> [Intent] {
+        primaryModifierUp(at: time)
+    }
+
+    /// Primary modifier released: commits a pending search, records bare-tap state.
+    func primaryModifierUp(at time: Double = CACurrentMediaTime()) -> [Intent] {
         lastReleaseWasBareTap = session.isBareHold
         lastReleaseTime = time
-        return session.rightCommandUp()
+        return session.primaryModifierUp()
     }
 
     /// Drops all in-flight state. The tap was off, so the presses and releases

@@ -52,6 +52,37 @@ final class SettingsStoreTests: XCTestCase {
         store.flush()
         XCTAssertNotNil(defaults.data(forKey: "starboard.settings"))
     }
+
+    func testNewSettingsFieldsRoundTripAndDefault() throws {
+        let (store, defaults) = makeStore()
+        XCTAssertEqual(store.model.primaryModifier, .rightCommand)
+        XCTAssertEqual(store.model.holdOverlayDelayMs, 300)
+        XCTAssertEqual(store.model.excludedBundleIDs, [])
+
+        store.model.primaryModifier = .rightOption
+        store.model.holdOverlayDelayMs = 200
+        store.model.excludedBundleIDs = ["com.docker.docker", "com.tinyspeck.slackmacgap"]
+        store.flush()
+
+        let reloaded = SettingsStore(defaults: defaults)
+        XCTAssertEqual(reloaded.model.primaryModifier, .rightOption)
+        XCTAssertEqual(reloaded.model.holdOverlayDelayMs, 200)
+        XCTAssertEqual(reloaded.model.excludedBundleIDs, ["com.docker.docker", "com.tinyspeck.slackmacgap"])
+    }
+
+    func testHoldOverlayDelayMsIsClamped() throws {
+        let (store, defaults) = makeStore()
+        store.model.holdOverlayDelayMs = -50
+        XCTAssertEqual(store.model.holdOverlayDelayMs, 50)
+
+        store.model.holdOverlayDelayMs = 50_000
+        XCTAssertEqual(store.model.holdOverlayDelayMs, 2000)
+
+        let badJSON = #"{"holdOverlayDelayMs": -999}"#
+        defaults.set(Data(badJSON.utf8), forKey: "starboard.settings")
+        let reloaded = SettingsStore(defaults: defaults)
+        XCTAssertEqual(reloaded.model.holdOverlayDelayMs, 50)
+    }
 }
 
 final class SettingsStoreFileTests: XCTestCase {

@@ -20,6 +20,9 @@ final class SearchModel {
         /// Secondary label: "Launch" for installed apps, app name for windows.
         let subtitle: String?
         let letter: Character?
+        var matchedIndices: Set<Int> = []
+        var attributedTitle: AttributedString? = nil
+        var attributedSubtitle: AttributedString? = nil
 
         var id: String {
             switch kind {
@@ -58,17 +61,20 @@ final class SearchModel {
     /// one is still findable by name.
     private let ringWindows: () -> [WindowInfo]
     private let searchWindows: () -> [WindowInfo]
+    private let excludedBundleIDs: () -> Set<String>
     /// The current hold's letter map, restored when the query is emptied.
     private var letterItems: [Item] = []
 
     init(
         registry: AppRegistry,
         ringWindows: @escaping () -> [WindowInfo] = WindowEnumerator.visibleWindows,
-        searchWindows: @escaping () -> [WindowInfo] = WindowEnumerator.allWindows
+        searchWindows: @escaping () -> [WindowInfo] = WindowEnumerator.allWindows,
+        excludedBundleIDs: @escaping () -> Set<String> = { [] }
     ) {
         self.registry = registry
         self.ringWindows = ringWindows
         self.searchWindows = searchWindows
+        self.excludedBundleIDs = excludedBundleIDs
     }
 
     var selectedItem: Item? {
@@ -132,7 +138,11 @@ final class SearchModel {
     func beginWindowCycle() {
         scope = .windows
         query = ""
-        items = ringWindows().map(windowItem)
+        let excluded = excludedBundleIDs()
+        items = ringWindows().filter {
+            guard let id = $0.bundleID else { return true }
+            return !excluded.contains(id)
+        }.map(windowItem)
         selectedIndex = items.count > 1 ? 1 : 0
         isRing = true
         cancelled = false
@@ -143,7 +153,11 @@ final class SearchModel {
     func beginWindowSearch() {
         scope = .windows
         query = ""
-        items = searchWindows().map(windowItem)
+        let excluded = excludedBundleIDs()
+        items = searchWindows().filter {
+            guard let id = $0.bundleID else { return true }
+            return !excluded.contains(id)
+        }.map(windowItem)
         selectedIndex = 0
         cancelled = false
         isVisible = true
@@ -216,7 +230,11 @@ final class SearchModel {
     /// Ranked rows for a query without touching the live overlay state.
     func results(query: String, scope: Scope) -> [Item] {
         if query.isEmpty {
-            return scope == .windows ? searchWindows().map(windowItem) : []
+            let excluded = excludedBundleIDs()
+            return scope == .windows ? searchWindows().filter {
+                guard let id = $0.bundleID else { return true }
+                return !excluded.contains(id)
+            }.map(windowItem) : []
         }
         return scope == .windows ? windowMatches(query) : appMatches(query)
     }
@@ -252,9 +270,11 @@ final class SearchModel {
 
     private func appMatches(_ query: String) -> [Item] {
         registry.ensureInstalledScan()
+        let excluded = excludedBundleIDs()
 
         let running: [Candidate] = registry.runningApps.enumerated().compactMap { index, app in
-            guard let id = app.bundleIdentifier, let name = app.localizedName else { return nil }
+            guard let id = app.bundleIdentifier, let name = app.localizedName,
+                  !excluded.contains(id) else { return nil }
             return Candidate(
                 item: Item(
                     kind: .runningApp(bundleID: id),
@@ -269,7 +289,7 @@ final class SearchModel {
         }
         let runningIDs = Set(registry.runningApps.compactMap(\.bundleIdentifier))
         let installed: [Candidate] = registry.cachedInstalledApps
-            .filter { !runningIDs.contains($0.bundleID) }
+            .filter { !runningIDs.contains($0.bundleID) && !excluded.contains($0.bundleID) }
             .map { candidate in
                 Candidate(
                     item: Item(
@@ -288,7 +308,11 @@ final class SearchModel {
     }
 
     private func windowMatches(_ query: String) -> [Item] {
-        let candidates = searchWindows().enumerated().map { index, window in
+        let excluded = excludedBundleIDs()
+        let candidates = searchWindows().filter {
+            guard let id = $0.bundleID else { return true }
+            return !excluded.contains(id)
+        }.enumerated().map { index, window in
             Candidate(
                 item: windowItem(window),
                 target: "\(window.displayTitle) \(window.appName)",
@@ -320,7 +344,15 @@ final class SearchModel {
         let interval = Perf.beginSearchRanking()
         defer { Perf.endSearchRanking(interval) }
         return candidates.compactMap { candidate in
-            FuzzyMatcher.score(query: query, target: candidate.target).map { (candidate, $0) }
+            FuzzyMatcher.match(query: query, target: candidate.target).map { match in
+                var item = candidate.item
+                item.matchedIndices = Set(match.matchedIndices.filter { $0 < item.title.count })
+                item.attributedTitle = highlight(text: item.title, query: query)
+                if let subtitle = item.subtitle {
+                    item.attributedSubtitle = highlight(text: subtitle, query: query)
+                }
+                return (candidate, match.score, item)
+            }
         }
         .sorted { lhs, rhs in
             if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
@@ -330,7 +362,25 @@ final class SearchModel {
             if a.count != b.count { return a.count < b.count }
             return a < b
         }
-        .map(\.0.item)
+        .map(\.2)
+    }
+
+    static func highlight(text: String, query: String) -> AttributedString {
+        guard !query.isEmpty,
+              let match = FuzzyMatcher.match(query: query, target: text),
+              !match.matchedIndices.isEmpty else {
+            return AttributedString(text)
+        }
+        var attributed = AttributedString(text)
+        let charsCount = attributed.characters.count
+        for idxVal in match.matchedIndices {
+            guard idxVal < charsCount else { continue }
+            let idx = attributed.index(attributed.startIndex, offsetByCharacters: idxVal)
+            let next = attributed.index(afterCharacter: idx)
+            attributed[idx..<next].swiftUI.foregroundColor = Theme.Colors.accent
+            attributed[idx..<next].inlinePresentationIntent = .stronglyEmphasized
+        }
+        return attributed
     }
 
     private func windowItem(_ window: WindowInfo) -> Item {

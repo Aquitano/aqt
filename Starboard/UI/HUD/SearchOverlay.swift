@@ -192,10 +192,19 @@ struct SearchResultRow: View {
             }
             .frame(width: Theme.Metrics.rowIcon, height: Theme.Metrics.rowIcon)
             HStack(spacing: Theme.Metrics.grid) {
-                Text(item.title)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                if let subtitle = item.subtitle {
+                if let attributed = item.attributedTitle {
+                    Text(attributed)
+                        .lineLimit(1)
+                } else {
+                    Text(item.title)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+                if let attributedSub = item.attributedSubtitle {
+                    Text(attributedSub)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else if let subtitle = item.subtitle {
                     Text(subtitle)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

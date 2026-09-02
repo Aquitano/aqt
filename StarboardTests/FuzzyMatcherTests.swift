@@ -42,4 +42,14 @@ final class FuzzyMatcherTests: XCTestCase {
     func testDiacriticsFold() {
         XCTAssertNotNil(FuzzyMatcher.score(query: "ub", target: "Übersicht"))
     }
+
+    func testMatchReturnsCorrectCharacterIndices() {
+        let matchXcode = FuzzyMatcher.match(query: "xco", target: "Xcode")
+        XCTAssertNotNil(matchXcode)
+        XCTAssertEqual(matchXcode?.matchedIndices, [0, 1, 2])
+
+        let matchSafari = FuzzyMatcher.match(query: "sfr", target: "Safari")
+        XCTAssertNotNil(matchSafari)
+        XCTAssertEqual(matchSafari?.matchedIndices, [0, 2, 4])
+    }
 }

@@ -49,6 +49,7 @@ struct StarboardApp: App {
 /// there copies the whole struct (retaining its arrays) inside the hot path;
 /// this snapshot is refreshed only when the settings actually change.
 private final class TapSettings {
+    var primaryModifier = PrimaryModifier.rightCommand
     var stagesTrigger = StagesTrigger.capsLock
     var windowJumpEnabled = false
     var spacesMoveWindowEnabled = false
@@ -74,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindow: NSWindow?
     private var aboutWindow: NSWindow?
     private var tapFailureObserver: NSObjectProtocol?
+    private var workspaceObservers: [NSObjectProtocol] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         terminateOlderInstances()
@@ -96,20 +98,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showOnboarding()
         }
 
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.activeSpaceDidChangeNotification,
-            object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                WindowEnumerator.invalidateCache()
-                // Refill off-main: the next read is often a helper request or
-                // a hold, both of which would otherwise block the run loop the
-                // event tap runs on for a full cold enumeration.
-                WindowEnumerator.prime()
-                self?.refreshSpaceNumber()
+        workspaceObservers.append(
+            NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.activeSpaceDidChangeNotification,
+                object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    WindowEnumerator.invalidateCache()
+                    // Refill off-main: the next read is often a helper request or
+                    // a hold, both of which would otherwise block the run loop the
+                    // event tap runs on for a full cold enumeration.
+                    WindowEnumerator.prime()
+                    self?.refreshSpaceNumber()
+                }
             }
-        }
+        )
         refreshSpaceNumber()
+
+        // Immediate recovery on wake-from-sleep or screen wake
+        workspaceObservers.append(
+            NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didWakeNotification,
+                object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.state.starboardEnabled, let tap = self.eventTap else { return }
+                    NSLog("Starboard: system woke from sleep, resetting state and recovering event tap")
+                    WindowEnumerator.invalidateCache()
+                    WindowEnumerator.prime()
+                    self.modifiers.reset()
+                    self.router.reset()
+                    tap.recoverIfNeeded()
+                }
+            }
+        )
+        workspaceObservers.append(
+            NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.screensDidWakeNotification,
+                object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.state.starboardEnabled, let tap = self.eventTap else { return }
+                    NSLog("Starboard: screens woke from sleep, resetting state and recovering event tap")
+                    WindowEnumerator.invalidateCache()
+                    WindowEnumerator.prime()
+                    self.modifiers.reset()
+                    self.router.reset()
+                    tap.recoverIfNeeded()
+                }
+            }
+        )
 
         // Watchdog: the tap can be silently disabled by the OS (timeout / user
         // input) — re-enable it (BATTLEPLAN §7).
@@ -124,6 +162,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if let tapFailureObserver {
+            NotificationCenter.default.removeObserver(tapFailureObserver)
+        }
+        workspaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
+        workspaceObservers.removeAll()
+        watchdog?.invalidate()
+        watchdog = nil
         // Persistence is coalesced to the next run-loop turn; a quit in the
         // same turn as a change must not lose it.
         settings.flush()
@@ -251,7 +296,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     Self.dispatch(router.armStages(), to: switcher)
                     return true
                 }
-                let (was, now) = Self.syncModifiers(modifiers, event, router: router, switcher: switcher)
+                let (was, now) = Self.syncModifiers(
+                    modifiers,
+                    event,
+                    primaryModifier: tapSettings.primaryModifier,
+                    router: router,
+                    switcher: switcher
+                )
                 if tapSettings.stagesTrigger == .rightShift {
                     if !was.rightShiftHeld && now.rightShiftHeld {
                         router.rightShiftDown()
@@ -261,7 +312,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 return false
             case .keyDown:
-                Self.syncModifiers(modifiers, event, router: router, switcher: switcher)
+                Self.syncModifiers(
+                    modifiers,
+                    event,
+                    primaryModifier: tapSettings.primaryModifier,
+                    router: router,
+                    switcher: switcher
+                )
                 // Auto-repeat never reaches the session: a held letter would
                 // re-fire the switch (cycling or hiding the app) and duplicate
                 // characters in the search query.
@@ -272,6 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     keyCode,
                     modifiers: modifiers.state,
                     options: RouterOptions(
+                        primaryModifier: tapSettings.primaryModifier,
                         windowJumpEnabled: tapSettings.windowJumpEnabled,
                         spacesMoveWindowEnabled: tapSettings.spacesMoveWindowEnabled
                             && switcher.spaces.canMoveWindows
@@ -280,7 +338,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Self.dispatch(intents, to: switcher)
                 return consume
             case .keyUp:
-                Self.syncModifiers(modifiers, event, router: router, switcher: switcher)
+                Self.syncModifiers(
+                    modifiers,
+                    event,
+                    primaryModifier: tapSettings.primaryModifier,
+                    router: router,
+                    switcher: switcher
+                )
                 return router.shouldConsumeKeyUp(keyCode)
             default:
                 return false
@@ -296,25 +360,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Reconciles the tracked modifiers with the event's flags and drives the
     /// hold lifecycle across the transition. Every event carries the full
-    /// modifier picture, so an rcmd release the tap never saw (secure input,
+    /// modifier picture, so a modifier release the tap never saw (secure input,
     /// screen lock, an OS disable) heals on the next keystroke instead of
     /// swallowing every letter.
     @discardableResult
     private static func syncModifiers(
         _ modifiers: ModifierTracker,
         _ event: CGEvent,
+        primaryModifier: PrimaryModifier,
         router: KeyRouter,
         switcher: AppSwitcher
     ) -> (was: ModifierState, now: ModifierState) {
         let was = modifiers.state
         let now = modifiers.update(flags: event.flags)
-        if !was.rightCommandHeld && now.rightCommandHeld {
-            dispatch(router.rightCommandDown(), to: switcher)
+        let wasHeld = was.isHeld(primaryModifier)
+        let nowHeld = now.isHeld(primaryModifier)
+        if !wasHeld && nowHeld {
+            dispatch(router.primaryModifierDown(), to: switcher)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { switcher.holdBegan() }
             }
-        } else if was.rightCommandHeld && !now.rightCommandHeld {
-            dispatch(router.rightCommandUp(), to: switcher)
+        } else if wasHeld && !nowHeld {
+            dispatch(router.primaryModifierUp(), to: switcher)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { switcher.endHold() }
             }
@@ -328,6 +395,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func trackTapSettings() {
         withObservationTracking {
             let model = settings.model
+            tapSettings.primaryModifier = model.primaryModifier
             tapSettings.stagesTrigger = model.stagesTrigger
             tapSettings.windowJumpEnabled = model.windowJumpEnabled
             tapSettings.spacesMoveWindowEnabled = model.spacesMoveWindowEnabled

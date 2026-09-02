@@ -133,4 +133,66 @@ final class SearchModelTests: XCTestCase {
         XCTAssertTrue(model.items.isEmpty)
         XCTAssertEqual(model.scope, .apps)
     }
+
+    func testExcludedAppsAreFilteredFromWindowsAndSearch() {
+        let model = SearchModel(
+            registry: AppRegistry(),
+            ringWindows: { self.windows },
+            searchWindows: { self.windows },
+            excludedBundleIDs: { ["com.apple.Notes"] }
+        )
+        model.beginWindowSearch()
+        XCTAssertFalse(model.items.contains { $0.title == "Roadmap" })
+        XCTAssertTrue(model.items.contains { $0.title == "Release notes" })
+    }
+
+    func testMatchedIndicesArePopulatedOnRank() {
+        let candidates = [
+            SearchModel.Candidate(
+                item: SearchModel.Item(
+                    kind: .runningApp(bundleID: "com.apple.Safari"),
+                    title: "Safari",
+                    subtitle: nil,
+                    letter: "s"
+                ),
+                target: "Safari",
+                isRunning: true,
+                order: 0
+            )
+        ]
+        let ranked = SearchModel.rank("saf", candidates: candidates)
+        XCTAssertEqual(ranked.first?.matchedIndices, [0, 1, 2])
+        XCTAssertNotNil(ranked.first?.attributedTitle)
+    }
+
+    func testAttributedTitleHandlesCompoundTargetsWithoutTitleMatch() {
+        let window = WindowInfo(
+            id: 10,
+            pid: 101,
+            appName: "Safari",
+            bundleID: "com.apple.Safari",
+            title: "Roadmap",
+            isOnScreen: true
+        )
+        let candidate = SearchModel.Candidate(
+            item: SearchModel.Item(
+                kind: .window(window),
+                title: "Roadmap",
+                subtitle: "Safari",
+                letter: nil
+            ),
+            target: "Roadmap Safari",
+            isRunning: true,
+            order: 0
+        )
+        // Query matches "safari" in target (from appName), but NOT in "Roadmap"
+        let ranked = SearchModel.rank("saf", candidates: [candidate])
+        XCTAssertEqual(ranked.count, 1)
+        // Attributed title should be plain "Roadmap", never crash or misalign
+        XCTAssertNotNil(ranked.first?.attributedTitle)
+        XCTAssertEqual(String(ranked.first!.attributedTitle!.characters), "Roadmap")
+        // Attributed subtitle matches "saf" in "Safari"
+        XCTAssertNotNil(ranked.first?.attributedSubtitle)
+        XCTAssertEqual(String(ranked.first!.attributedSubtitle!.characters), "Safari")
+    }
 }

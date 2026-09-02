@@ -45,9 +45,71 @@ enum SpacesStrategy: String, Codable {
     case direct
 }
 
+/// The modifier key held down to trigger Starboard switching.
+enum PrimaryModifier: String, Codable, CaseIterable, Identifiable {
+    case rightCommand
+    case rightOption
+    case rightControl
+    case leftOption
+    case fn
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .rightCommand: return "Right ⌘ (Command)"
+        case .rightOption: return "Right ⌥ (Option)"
+        case .rightControl: return "Right ⌃ (Control)"
+        case .leftOption: return "Left ⌥ (Option)"
+        case .fn: return "fn / Globe"
+        }
+    }
+
+    var shortName: String {
+        switch self {
+        case .rightCommand: return "Right ⌘"
+        case .rightOption: return "Right ⌥"
+        case .rightControl: return "Right ⌃"
+        case .leftOption: return "Left ⌥"
+        case .fn: return "fn"
+        }
+    }
+
+    var secondaryShortName: String {
+        switch self {
+        case .rightCommand, .rightControl, .fn:
+            return "Right ⌥"
+        case .rightOption:
+            return "Right ⌘"
+        case .leftOption:
+            return "Right ⌥"
+        }
+    }
+
+    func secondaryIsHeld(in state: ModifierState) -> Bool {
+        switch self {
+        case .rightCommand, .rightControl, .fn:
+            return state.rightOptionHeld
+        case .rightOption:
+            return state.rightCommandHeld
+        case .leftOption:
+            return state.rightOptionHeld || state.rightCommandHeld
+        }
+    }
+}
+
 @Observable
 final class SettingsStore {
     struct Model: Codable, Equatable {
+        var primaryModifier = PrimaryModifier.rightCommand
+        var holdOverlayDelayMs = 300 {
+            didSet {
+                let clamped = min(max(50, holdOverlayDelayMs), 2000)
+                if holdOverlayDelayMs != clamped {
+                    holdOverlayDelayMs = clamped
+                }
+            }
+        }
         var repeatPress = RepeatPressAction.cycleWindows
         var launchIfNotRunning = true
         var customAssignments: [String: String] = [:] // letter → bundleID
@@ -62,6 +124,13 @@ final class SettingsStore {
         var stages: [Stage] = []
         /// Warp the pointer to the focused window's center after a switch.
         var mouseFollowsFocus = false
+        /// Bundle IDs of apps excluded from dynamic assignments and search.
+        var excludedBundleIDs: [String] = []
+
+        /// Set of excluded bundle IDs for O(1) membership checks.
+        var excludedBundleIDSet: Set<String> {
+            Set(excludedBundleIDs)
+        }
 
         // Every field decodes with decodeIfPresent + default so settings
         // persisted by older (or newer) versions never fail to load — a plain
@@ -70,22 +139,34 @@ final class SettingsStore {
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
+            primaryModifier =
+                (try? container.decodeIfPresent(PrimaryModifier.self, forKey: .primaryModifier))
+                .flatMap { $0 } ?? .rightCommand
+            let decodedDelay =
+                (try? container.decodeIfPresent(Int.self, forKey: .holdOverlayDelayMs))
+                .flatMap { $0 } ?? 300
+            holdOverlayDelayMs = min(max(50, decodedDelay), 2000)
             repeatPress =
                 (try? container.decodeIfPresent(RepeatPressAction.self, forKey: .repeatPress))
                 .flatMap { $0 } ?? .cycleWindows
             launchIfNotRunning =
-                try container.decodeIfPresent(Bool.self, forKey: .launchIfNotRunning) ?? true
+                (try? container.decodeIfPresent(Bool.self, forKey: .launchIfNotRunning))
+                .flatMap { $0 } ?? true
             customAssignments =
-                try container.decodeIfPresent([String: String].self, forKey: .customAssignments) ?? [:]
+                (try? container.decodeIfPresent([String: String].self, forKey: .customAssignments))
+                .flatMap { $0 } ?? [:]
             windowJumpEnabled =
-                try container.decodeIfPresent(Bool.self, forKey: .windowJumpEnabled) ?? false
+                (try? container.decodeIfPresent(Bool.self, forKey: .windowJumpEnabled))
+                .flatMap { $0 } ?? false
             spacesStrategy =
                 (try? container.decodeIfPresent(SpacesStrategy.self, forKey: .spacesStrategy))
                 .flatMap { $0 } ?? .synthetic
             spacesMoveWindowEnabled =
-                try container.decodeIfPresent(Bool.self, forKey: .spacesMoveWindowEnabled) ?? false
+                (try? container.decodeIfPresent(Bool.self, forKey: .spacesMoveWindowEnabled))
+                .flatMap { $0 } ?? false
             showSpaceNumber =
-                try container.decodeIfPresent(Bool.self, forKey: .showSpaceNumber) ?? false
+                (try? container.decodeIfPresent(Bool.self, forKey: .showSpaceNumber))
+                .flatMap { $0 } ?? false
             stagesTrigger =
                 (try? container.decodeIfPresent(StagesTrigger.self, forKey: .stagesTrigger))
                 .flatMap { $0 } ?? .capsLock
@@ -93,7 +174,11 @@ final class SettingsStore {
                 (try? container.decodeIfPresent([Stage].self, forKey: .stages))
                 .flatMap { $0 } ?? []
             mouseFollowsFocus =
-                try container.decodeIfPresent(Bool.self, forKey: .mouseFollowsFocus) ?? false
+                (try? container.decodeIfPresent(Bool.self, forKey: .mouseFollowsFocus))
+                .flatMap { $0 } ?? false
+            excludedBundleIDs =
+                (try? container.decodeIfPresent([String].self, forKey: .excludedBundleIDs))
+                .flatMap { $0 } ?? []
         }
     }
 

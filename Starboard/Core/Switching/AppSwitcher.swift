@@ -49,7 +49,10 @@ final class AppSwitcher {
     init(registry: AppRegistry, settings: SettingsStore) {
         self.registry = registry
         self.settings = settings
-        self.searchModel = SearchModel(registry: registry)
+        self.searchModel = SearchModel(
+            registry: registry,
+            excludedBundleIDs: { [weak settings] in settings?.model.excludedBundleIDSet ?? [] }
+        )
         self.spaces = SpacesController(settings: settings)
         self.stages = StagesController(settings: settings)
     }
@@ -201,8 +204,9 @@ final class AppSwitcher {
         WindowEnumerator.prime()
         holdTask?.cancel()
         holdOverlayDue = false
+        let delayMs = max(50, settings.model.holdOverlayDelayMs)
         holdTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(300))
+            try? await Task.sleep(for: .milliseconds(delayMs))
             guard !Task.isCancelled else { return }
             self?.showHoldOverlay()
         }
@@ -275,12 +279,15 @@ final class AppSwitcher {
         }
 
         guard settings.model.launchIfNotRunning else { return }
+        let excluded = settings.model.excludedBundleIDSet
         if let pinnedID = assigner.customAssignments[letter] {
-            launch(bundleID: pinnedID)
+            if !excluded.contains(pinnedID) {
+                launch(bundleID: pinnedID)
+            }
         } else {
             registry.installedApps { installed in
                 guard let match = installed.first(where: {
-                    LetterAssigner.dynamicLetter(for: $0.name) == letter
+                    !excluded.contains($0.bundleID) && LetterAssigner.dynamicLetter(for: $0.name) == letter
                 }) else { return }
                 self.launch(bundleID: match.bundleID)
             }
@@ -306,8 +313,10 @@ final class AppSwitcher {
     }
 
     private func runningPairs() -> [(app: NSRunningApplication, candidate: AppCandidate)] {
-        registry.runningApps.compactMap { app in
-            guard let bundleID = app.bundleIdentifier, let name = app.localizedName else {
+        let excluded = settings.model.excludedBundleIDSet
+        return registry.runningApps.compactMap { app in
+            guard let bundleID = app.bundleIdentifier, let name = app.localizedName,
+                  !excluded.contains(bundleID) else {
                 return nil
             }
             return (app, AppCandidate(bundleID: bundleID, name: name, launchedAt: app.launchDate))

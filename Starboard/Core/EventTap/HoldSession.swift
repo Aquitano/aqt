@@ -91,6 +91,10 @@ struct HoldSession {
     /// rcmd released: commit a pending overlay selection (or dismiss the
     /// single-letter preview overlay), reset everything.
     mutating func rightCommandUp() -> [Intent] {
+        primaryModifierUp()
+    }
+
+    mutating func primaryModifierUp() -> [Intent] {
         let intents: [Intent]
         switch mode {
         case .search, .windowCycle:
@@ -107,6 +111,7 @@ struct HoldSession {
     mutating func keyDown(
         _ keyCode: Int64,
         modifiers: ModifierState,
+        primaryModifier: PrimaryModifier = .rightCommand,
         letter: Character? = nil,
         digit: Int? = nil,
         keyWasResolved: Bool = false
@@ -118,7 +123,7 @@ struct HoldSession {
             return controlKeyDown(keyCode, digit: digit, keyWasResolved: keyWasResolved)
         }
 
-        if modifiers.rightOptionHeld {
+        if primaryModifier.secondaryIsHeld(in: modifiers) {
             return [.assignLetter(letter)]
         }
 

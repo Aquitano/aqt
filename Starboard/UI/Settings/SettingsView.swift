@@ -36,12 +36,13 @@ struct SettingsView: View {
                     spacesSection
                     stagesSection
                     assignmentsSection
+                    excludedAppsSection
                 }
                 .padding(Theme.Metrics.grid * 3)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .frame(width: 560, height: 480)
+        .frame(width: 560, height: 500)
         .background(Theme.Colors.surface)
         .themeAccessibility()
     }
@@ -53,6 +54,47 @@ struct SettingsView: View {
             Text("General")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
+
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Trigger key").font(.system(size: 13))
+                    Text("The modifier key held to switch apps, cycle, and search.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Picker("", selection: setting(\.primaryModifier)) {
+                    ForEach(PrimaryModifier.allCases) { modifier in
+                        Text(modifier.displayName).tag(modifier)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 175)
+            }
+            .padding(.vertical, 2)
+
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Hold overlay delay").font(.system(size: 13))
+                    Text("How long to hold the trigger key before the overlay appears.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Picker("", selection: setting(\.holdOverlayDelayMs)) {
+                    Text("150 ms (Fast)").tag(150)
+                    Text("200 ms").tag(200)
+                    Text("250 ms").tag(250)
+                    Text("300 ms (Default)").tag(300)
+                    Text("400 ms").tag(400)
+                    Text("500 ms (Relaxed)").tag(500)
+                }
+                .labelsHidden()
+                .frame(width: 175)
+            }
+            .padding(.vertical, 2)
 
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -69,7 +111,7 @@ struct SettingsView: View {
                     Text("Cycle apps").tag(RepeatPressAction.cycleApps)
                 }
                 .labelsHidden()
-                .frame(width: 150)
+                .frame(width: 175)
             }
             .padding(.vertical, 2)
 
@@ -80,8 +122,8 @@ struct SettingsView: View {
             )
 
             ToggleRow(
-                title: "Window jump with Right ⌥",
-                detail: "ralt+letter steps through that app's windows. Consumes Right Option — leave off if you type special characters with it.",
+                title: "Window jump with \(model.primaryModifier.secondaryShortName)",
+                detail: "\(model.primaryModifier.secondaryShortName) + letter steps through that app's windows. Consumes \(model.primaryModifier.secondaryShortName) — leave off if you type special characters with it.",
                 isOn: setting(\.windowJumpEnabled)
             )
 
@@ -215,7 +257,7 @@ struct SettingsView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            Text("Hold Right ⌘ + Right ⌥ and press a letter to pin the frontmost app to it.")
+            Text("Hold \(model.primaryModifier.shortName) + \(model.primaryModifier.secondaryShortName) and press a letter to pin the frontmost app to it.")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
 
@@ -226,8 +268,12 @@ struct SettingsView: View {
                     .padding(.vertical, Theme.Metrics.grid * 2)
             } else {
                 ForEach(rows) { row in
-                    AssignmentRow(row: row) { clear(row: row) }
-                        .padding(.vertical, 4)
+                    AssignmentRow(
+                        row: row,
+                        onClear: { clear(row: row) },
+                        onExclude: { exclude(row: row) }
+                    )
+                    .padding(.vertical, 4)
                     Divider().overlay(Theme.Colors.stroke)
                 }
             }
@@ -238,9 +284,17 @@ struct SettingsView: View {
         SettingsStore.shared.model.customAssignments[row.letter.lowercased()] = nil
     }
 
+    private func exclude(row: AssignmentRowModel) {
+        if !SettingsStore.shared.model.excludedBundleIDs.contains(row.bundleID) {
+            SettingsStore.shared.model.excludedBundleIDs.append(row.bundleID)
+        }
+        SettingsStore.shared.model.customAssignments[String(row.letter).lowercased()] = nil
+    }
+
     private var rows: [AssignmentRowModel] {
         var seen = Set<Character>()
         var result: [AssignmentRowModel] = []
+        let excludedIDs = model.excludedBundleIDSet
 
         for (key, bundleID) in model.customAssignments.sorted(by: { $0.key < $1.key }) {
             guard let letter = key.lowercased().first else { continue }
@@ -257,6 +311,7 @@ struct SettingsView: View {
             guard let id = app.bundleIdentifier,
                   let name = app.localizedName,
                   !pinnedIDs.contains(id),
+                  !excludedIDs.contains(id),
                   let letter = LetterAssigner.dynamicLetter(for: name),
                   seen.insert(letter).inserted else { continue }
             result.append(AssignmentRowModel(letter: letter, name: name, bundleID: id, custom: false))
@@ -268,6 +323,80 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Excluded Apps
+
+    private var excludedAppsSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Metrics.grid * 1.5) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Excluded Apps")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Text("Excluded apps will not be assigned letters or appear in search and window cycling.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                Button("Exclude App…", action: pickAppToExclude)
+                    .controlSize(.small)
+            }
+
+            if model.excludedBundleIDs.isEmpty {
+                Text("No apps excluded.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, Theme.Metrics.grid)
+            } else {
+                ForEach(model.excludedBundleIDs, id: \.self) { bundleID in
+                    HStack(spacing: Theme.Metrics.grid * 1.5) {
+                        if let icon = AppIcons.icon(for: bundleID) {
+                            Image(nsImage: icon)
+                                .resizable()
+                                .frame(width: 20, height: 20)
+                        } else {
+                            Image(systemName: "app.dashed")
+                                .frame(width: 20, height: 20)
+                                .foregroundStyle(.secondary)
+                        }
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(AppIcons.name(for: bundleID) ?? bundleID)
+                                .font(.system(size: 13))
+                                .lineLimit(1)
+                            Text(bundleID)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Button("Remove") {
+                            SettingsStore.shared.model.excludedBundleIDs.removeAll { $0 == bundleID }
+                        }
+                        .controlSize(.small)
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(Theme.Colors.destructive)
+                    }
+                    .padding(.vertical, 4)
+                    Divider().overlay(Theme.Colors.stroke)
+                }
+            }
+        }
+    }
+
+    private func pickAppToExclude() {
+        let panel = NSOpenPanel()
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowedContentTypes = [.application]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls {
+            guard let bundle = Bundle(url: url), let bundleID = bundle.bundleIdentifier else { continue }
+            if !SettingsStore.shared.model.excludedBundleIDs.contains(bundleID) {
+                SettingsStore.shared.model.excludedBundleIDs.append(bundleID)
+            }
+        }
+    }
 }
 
 // MARK: - Row models & views
@@ -382,6 +511,7 @@ struct AssignmentRowModel: Identifiable {
 struct AssignmentRow: View {
     let row: AssignmentRowModel
     let onClear: () -> Void
+    var onExclude: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: Theme.Metrics.grid * 1.5) {
@@ -408,6 +538,12 @@ struct AssignmentRow: View {
                 Button("Clear", action: onClear)
                     .controlSize(.small)
                     .buttonStyle(.borderless)
+            }
+            if let onExclude {
+                Button("Exclude", action: onExclude)
+                    .controlSize(.small)
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
             }
         }
         .contentShape(Rectangle())

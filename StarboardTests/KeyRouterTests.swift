@@ -385,4 +385,20 @@ final class KeyRouterTests: XCTestCase {
         XCTAssertEqual(result.intents, [.moveWindowToSpace(7)])
         XCTAssertTrue(result.consume)
     }
+
+    func testAlternativePrimaryModifierRouting() {
+        let router = KeyRouter()
+        let options = RouterOptions(primaryModifier: .rightOption)
+        let raltHeld = ModifierState(rightOptionHeld: true)
+
+        // Without Right Option held, "s" passes through
+        let unheld = router.keyDown(0x01, modifiers: ModifierState(), options: options)
+        XCTAssertTrue(unheld.intents.isEmpty)
+        XCTAssertFalse(unheld.consume)
+
+        // With Right Option held, "s" routes
+        let held = router.keyDown(0x01, modifiers: raltHeld, options: options)
+        XCTAssertEqual(held.intents, [.switchToLetter("s"), .searchQuery("s")])
+        XCTAssertTrue(held.consume)
+    }
 }
