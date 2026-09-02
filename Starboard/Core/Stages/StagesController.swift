@@ -80,7 +80,7 @@ final class StagesController {
     }
 
     /// Unique visible apps on the current Space, front-to-back.
-    private func capturedApps() -> [AppCandidate] {
+    func capturedApps() -> [AppCandidate] {
         var seen = Set<String>()
         return WindowEnumerator.visibleWindows().compactMap { window in
             guard let bundleID = window.bundleID, seen.insert(bundleID).inserted else {

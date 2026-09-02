@@ -53,3 +53,33 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertNotNil(defaults.data(forKey: "starboard.settings"))
     }
 }
+
+final class SettingsStoreFileTests: XCTestCase {
+    private func temporaryURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("starboard-\(UUID().uuidString)")
+            .appendingPathComponent("settings.json")
+    }
+
+    func testFileBackedStoreWritesAndReloadsExternalEdits() throws {
+        let url = temporaryURL()
+        let store = SettingsStore(storage: .file(url))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+
+        store.model.customAssignments["k"] = "com.tinyspeck.slackmacgap"
+        store.flush()
+        let persisted = try JSONDecoder().decode(SettingsStore.Model.self, from: Data(contentsOf: url))
+        XCTAssertEqual(persisted.customAssignments["k"], "com.tinyspeck.slackmacgap")
+
+        // The Raycast extension edits the file in place; the running helper
+        // must pick that up without being told.
+        var external = persisted
+        external.repeatPress = .hide
+        try JSONEncoder().encode(external).write(to: url)
+
+        let reloaded = expectation(description: "reload")
+        _ = withObservationTracking { store.model.repeatPress } onChange: { reloaded.fulfill() }
+        wait(for: [reloaded], timeout: 2)
+        XCTAssertEqual(store.model.repeatPress, .hide)
+    }
+}

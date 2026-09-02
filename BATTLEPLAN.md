@@ -148,13 +148,13 @@ Single `SettingsStore` (`@Observable`), Codable structs in UserDefaults under na
 
 All tokens live in `DesignSystem/Theme.swift`. No hardcoded colors/fonts/durations anywhere else.
 
-**Surfaces.** Overlays are `NSVisualEffectView` (`.hudWindow` material) with a dark tint overlay `black.opacity(0.25)`; 16 pt corner radius on panels, 10 pt on rows; 1 px inner stroke `white.opacity(0.08)`; shadow radius 40, y 16, `black.opacity(0.35)`. Settings window: solid `#1E1F22` dark / `#F5F5F7` light (follow system appearance, dark-first in all mock decisions).
+**Surfaces.** Overlays are `NSVisualEffectView` (`.hudWindow` material) with a near-opaque dark tint overlay `black.opacity(0.72)` (Raycast's window look); 16 pt corner radius on panels, 10 pt on rows; 1 px inner stroke `white.opacity(0.08)`; shadow radius 40, y 16, `black.opacity(0.35)`. Settings window: solid `#1E1F22` dark / `#F5F5F7` light (follow system appearance, dark-first in all mock decisions).
 
-**Type.** System font (SF Pro) only. Rows 13 pt regular, titles 15 pt semibold, captions 11 pt medium at 60 % opacity. Shortcut keys render as **key-cap chips**: SF Mono 11 pt, 4 pt padding, 6 pt radius, `white.opacity(0.1)` fill.
+**Type.** System font (SF Pro) only. Rows 13 pt regular, titles 15 pt semibold, captions 11 pt medium at 60 % opacity. Shortcut keys render as **key tags**: 12 pt medium secondary text in a 28 pt rounded square, 8 pt radius, `white.opacity(0.08)` fill (Raycast list accessories).
 
-**Color.** One accent: `#FF7A59` (coral — distinct from Raycast's red, warm against the dark surface). Semantic tokens: `accent`, `surface`, `surfaceRaised`, `textPrimary/secondary/tertiary`, `separator`, `destructive` (`#FF5F57`). Selection state: `accent.opacity(0.16)` fill + accent 2 pt left bar, never a full-saturation row.
+**Color.** One accent: `#FF7A59` (coral — distinct from Raycast's red, warm against the dark surface). Semantic tokens: `accent`, `surface`, `surfaceRaised`, `textPrimary/secondary/tertiary`, `separator`, `destructive` (`#FF5F57`). Selection state: a quiet `white.opacity(0.08)` raised row, no accent wash and no bar (Raycast list selection); the accent is reserved for the caret and confirmations.
 
-**Layout.** 8 pt grid. Search overlay: 640 × up-to-420 pt, centered horizontally, top at 28 % of screen height. Row height 44 pt with 28 pt app icon. Hint HUD: bottom-center pill grid of letter→icon pairs.
+**Layout.** 8 pt grid. Search overlay: 760 × ~454 pt (64 pt header, eight 40 pt rows, 52 pt footer), centered horizontally, top at 28 % of screen height. Rows carry a 24 pt app icon, 15 pt title with the subtitle inline in secondary, and the letter tag trailing. Hint HUD: bottom-center pill grid of letter→icon pairs.
 
 **Motion.** 140 ms ease-out for all state changes; overlay entrance: opacity 0→1 + scale 0.98→1, 160 ms; exit 100 ms fade only. No springs, no bounces. Cycling selection moves instantly (0 ms) — latency is the feature.
 

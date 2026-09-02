@@ -97,11 +97,22 @@ final class SettingsStore {
         }
     }
 
-    static let shared = SettingsStore()
+    /// Where the model lives. The standalone app keeps UserDefaults; the
+    /// Raycast helper is pointed at a JSON file the extension also edits, so
+    /// that backend watches for external writes and reloads (HelperMode).
+    enum Storage {
+        case defaults(UserDefaults)
+        case file(URL)
+    }
+
+    static let shared = SettingsStore(
+        storage: HelperMode.current.map { .file($0.configURL) } ?? .defaults(.standard)
+    )
 
     private static let key = "starboard.settings"
 
-    private let defaults: UserDefaults
+    private let storage: Storage
+    @ObservationIgnored private var fileWatcher: FileWatcher?
 
     var model: Model {
         didSet { schedulePersist() }
@@ -111,13 +122,19 @@ final class SettingsStore {
     /// mid-hold, typing in the Stage items editor) coalesce into one write.
     @ObservationIgnored private var persistPending = false
 
-    init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-        if let data = defaults.data(forKey: Self.key),
-           let decoded = try? JSONDecoder().decode(Model.self, from: data) {
-            model = decoded
-        } else {
-            model = Model()
+    convenience init(defaults: UserDefaults = .standard) {
+        self.init(storage: .defaults(defaults))
+    }
+
+    init(storage: Storage) {
+        self.storage = storage
+        model = Self.load(from: storage) ?? Model()
+        if case .file(let url) = storage {
+            if !FileManager.default.fileExists(atPath: url.path) {
+                persistPending = true
+                flush()
+            }
+            fileWatcher = FileWatcher(url: url) { [weak self] in self?.reloadFromFile() }
         }
     }
 
@@ -126,14 +143,42 @@ final class SettingsStore {
     func flush() {
         guard persistPending else { return }
         persistPending = false
-        guard let data = try? JSONEncoder().encode(model) else { return }
-        defaults.set(data, forKey: Self.key)
+        switch storage {
+        case .defaults(let defaults):
+            guard let data = try? JSONEncoder().encode(model) else { return }
+            defaults.set(data, forKey: Self.key)
+        case .file(let url):
+            guard let data = try? exportJSON() else { return }
+            try? FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
+            // In place, not atomic: an atomic write replaces the inode the
+            // watcher holds and the extension's own watcher would see a delete.
+            try? data.write(to: url)
+        }
     }
 
     private func schedulePersist() {
         guard !persistPending else { return }
         persistPending = true
         DispatchQueue.main.async { [weak self] in self?.flush() }
+    }
+
+    private static func load(from storage: Storage) -> Model? {
+        let data: Data?
+        switch storage {
+        case .defaults(let defaults): data = defaults.data(forKey: key)
+        case .file(let url): data = try? Data(contentsOf: url)
+        }
+        return data.flatMap { try? JSONDecoder().decode(Model.self, from: $0) }
+    }
+
+    /// An external edit (the Raycast extension) replaces the model without
+    /// echoing a write back; the file already holds what was just read.
+    private func reloadFromFile() {
+        guard let loaded = Self.load(from: storage), loaded != model else { return }
+        model = loaded
+        persistPending = false
     }
 
     // MARK: - Export / import

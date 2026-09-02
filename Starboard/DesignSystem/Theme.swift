@@ -17,15 +17,24 @@ enum Theme {
         })
         static let destructive = Color(red: 1.00, green: 0.373, blue: 0.341) // #FF5F57
         static let stroke = Color.primary.opacity(0.10)
-        static let selection = accent.opacity(0.16)
+        /// Raycast-style selection: a quiet raised fill, no accent wash.
+        static let selection = Color.primary.opacity(0.08)
+        static let hover = Color.primary.opacity(0.04)
+        /// Fill for key tags and the scope chip.
+        static let tag = Color.primary.opacity(0.08)
     }
 
     enum Metrics {
         static let grid: CGFloat = 8
         static let panelRadius: CGFloat = 16
-        static let rowRadius: CGFloat = 10
-        static let rowHeight: CGFloat = 44
-        static let searchWidth: CGFloat = 640
+        static let rowRadius: CGFloat = 8
+        static let rowHeight: CGFloat = 40
+        static let rowIcon: CGFloat = 24
+        static let tagSize: CGFloat = 28
+        static let searchWidth: CGFloat = 760
+        static let searchHeader: CGFloat = 64
+        static let searchFooter: CGFloat = 52
+        static let searchRows = 8
     }
 
     enum Motion {

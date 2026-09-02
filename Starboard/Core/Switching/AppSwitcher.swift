@@ -17,6 +17,10 @@ final class AppSwitcher {
     let spaces: SpacesController
     let stages: StagesController
 
+    /// Set when the Raycast extension runs Starboard: the hold overlay is
+    /// mirrored into a Raycast list instead of the native panel.
+    private let raycastSearch = HelperMode.current?.searchDeeplink.map(RaycastSearch.init)
+
     private lazy var searchPanel: SearchPanelController = {
         let hosting = NSHostingView(rootView: SearchOverlayContent(model: searchModel))
         // The controller owns the panel frame; auto-sizing would collapse the
@@ -110,6 +114,7 @@ final class AppSwitcher {
     private func syncSearchPanel() {
         guard searchModel.isVisible else {
             searchPanel.hide()
+            raycastSearch?.dismiss()
             return
         }
         // A quick rcmd+letter switch shouldn't flash the overlay, so a
@@ -119,7 +124,31 @@ final class AppSwitcher {
         guard holdOverlayDue || searchModel.scope == .windows || searchModel.query.count > 1 else {
             return
         }
-        searchPanel.present()
+        // The ring stays native, and a hold that started native (typing into
+        // the ring pivots to search) finishes native.
+        if let raycastSearch, !searchModel.isRing, !searchPanel.shown {
+            raycastSearch.present()
+        } else {
+            searchPanel.present()
+        }
+    }
+
+    /// Raycast: Enter or click on a row. During a hold release still commits
+    /// the helper's own selection; this is the mouse path and the
+    /// opened-by-hand path.
+    func focusSearchItem(id: String) -> Bool {
+        let found = searchModel.focus(itemID: id)
+        syncSearchPanel()
+        return found
+    }
+
+    /// Raycast search opened by hand: the empty apps query shows the letter
+    /// map, as the hold overlay does.
+    func searchResults(query: String, scope: SearchModel.Scope) -> [SearchModel.Item] {
+        if query.isEmpty, scope == .apps {
+            return SearchModel.letterMap(candidates: runningPairs().map(\.candidate), assigner: assigner)
+        }
+        return searchModel.results(query: query, scope: scope)
     }
 
     /// Repeat press: step through the frontmost app's windows, second-most

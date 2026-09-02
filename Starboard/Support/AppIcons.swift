@@ -9,6 +9,7 @@ import AppKit
 enum AppIcons {
     private static var icons: [String: NSImage?] = [:]
     private static var names: [String: String?] = [:]
+    private static var paths: [String: String?] = [:]
 
     static func icon(for bundleID: String) -> NSImage? {
         if let cached = icons[bundleID] { return cached }
@@ -23,6 +24,15 @@ enum AppIcons {
         let name = lookupName(bundleID)
         names[bundleID] = name
         return name
+    }
+
+    /// Bundle path, nil when the app isn't installed. Raycast renders icons
+    /// from paths, and the mirror asks for every row on every poll.
+    static func path(for bundleID: String) -> String? {
+        if let cached = paths[bundleID] { return cached }
+        let path = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)?.path
+        paths[bundleID] = path
+        return path
     }
 
     private static func lookupIcon(_ bundleID: String) -> NSImage? {

@@ -45,6 +45,12 @@ final class SearchModel {
     private(set) var scope: Scope = .apps
     /// The typed query, displayed in the overlay's search field.
     private(set) var query = ""
+    /// True for the rcmd+Tab ring, which stays a native overlay even where
+    /// search is mirrored into Raycast: a Cmd-Tab replacement must be instant.
+    private(set) var isRing = false
+    /// The last overlay ended with Escape rather than a release or a commit.
+    /// The Raycast mirror closes on cancel and otherwise stays as a search.
+    private(set) var cancelled = false
 
     private let registry: AppRegistry
     /// The rcmd+Tab ring stays a Cmd-Tab replacement (current Space, not
@@ -88,6 +94,8 @@ final class SearchModel {
         }
         items = scope == .windows ? windowMatches(query) : appMatches(query)
         selectedIndex = 0
+        isRing = false
+        cancelled = false
         isVisible = true
     }
 
@@ -99,10 +107,11 @@ final class SearchModel {
         letterItems = Self.letterMap(candidates: candidates, assigner: assigner)
         items = letterItems
         selectedIndex = nil
+        cancelled = false
         isVisible = !items.isEmpty
     }
 
-    private static func letterMap(
+    static func letterMap(
         candidates: [AppCandidate],
         assigner: LetterAssigner
     ) -> [Item] {
@@ -125,6 +134,8 @@ final class SearchModel {
         query = ""
         items = ringWindows().map(windowItem)
         selectedIndex = items.count > 1 ? 1 : 0
+        isRing = true
+        cancelled = false
         isVisible = !items.isEmpty
     }
 
@@ -134,6 +145,7 @@ final class SearchModel {
         query = ""
         items = searchWindows().map(windowItem)
         selectedIndex = 0
+        cancelled = false
         isVisible = true
     }
 
@@ -147,11 +159,17 @@ final class SearchModel {
 
     func cancel() {
         hide()
+        cancelled = true
     }
 
     /// Focus (or launch) the selection and dismiss.
     func commit() {
-        switch selectedItem?.kind {
+        selectedItem.map { focus($0.kind) }
+        hide()
+    }
+
+    func focus(_ kind: Item.Kind) {
+        switch kind {
         case .runningApp(let bundleID):
             runningApp(bundleID)?.activateReliably()
         case .installedApp(let bundleID):
@@ -160,10 +178,44 @@ final class SearchModel {
             }
         case .window(let window):
             WindowFocuser.focus(window)
-        case nil:
-            break
         }
-        hide()
+    }
+
+    /// Raycast hands back an item id. A live overlay row commits (and
+    /// dismisses) as a click would; otherwise the id is resolved on its own so
+    /// the Raycast search works outside a hold too.
+    @discardableResult
+    func focus(itemID: String) -> Bool {
+        if let item = items.first(where: { $0.id == itemID }) {
+            commit(item)
+            return true
+        }
+        if itemID.hasPrefix("app.") {
+            focus(.runningApp(bundleID: String(itemID.dropFirst("app.".count))))
+        } else if itemID.hasPrefix("installed.") {
+            focus(.installedApp(bundleID: String(itemID.dropFirst("installed.".count))))
+        } else if itemID.hasPrefix("window."),
+                  let id = CGWindowID(itemID.dropFirst("window.".count)),
+                  let window = searchWindows().first(where: { $0.id == id }) {
+            focus(.window(window))
+        } else {
+            return false
+        }
+        return true
+    }
+
+    /// Ranked rows for a query without touching the live overlay state.
+    func results(query: String, scope: Scope) -> [Item] {
+        if query.isEmpty, scope == .apps {
+            // The Raycast search opened by hand: warm the window list so
+            // switching the scope or typing a window title isn't a cold
+            // 100 ms enumeration.
+            WindowEnumerator.prime()
+        }
+        if query.isEmpty {
+            return scope == .windows ? searchWindows().map(windowItem) : []
+        }
+        return scope == .windows ? windowMatches(query) : appMatches(query)
     }
 
     /// Mouse click on a row: make it the selection, then commit it.
@@ -313,6 +365,7 @@ final class SearchModel {
 
     private func hide() {
         isVisible = false
+        isRing = false
         items = []
         letterItems = []
         selectedIndex = nil

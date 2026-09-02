@@ -8,11 +8,8 @@ import SwiftUI
 /// "squished pill" bug), and a height that tracked the result count would make
 /// the window jump on every keystroke.
 final class SearchPanelController {
-    /// The panel is always sized for a full page of results.
-    private static let visibleRows = 8
-
     private let panel: HudPanel
-    private var shown = false
+    private(set) var shown = false
 
     init(content: NSView) {
         panel = HudPanel(contentRect: Self.frame())
@@ -40,8 +37,8 @@ final class SearchPanelController {
     /// of its height, tall enough for a full page of results.
     private static func frame() -> NSRect {
         let width = Theme.Metrics.searchWidth
-        let rowsHeight = CGFloat(visibleRows) * (Theme.Metrics.rowHeight + 2) + Theme.Metrics.grid * 2
-        let height = 52 + rowsHeight
+        let rowsHeight = CGFloat(Theme.Metrics.searchRows) * Theme.Metrics.rowHeight + Theme.Metrics.grid * 2
+        let height = Theme.Metrics.searchHeader + rowsHeight + Theme.Metrics.searchFooter + 2
         let screen = HudPanel.mainScreenBounds
         return NSRect(
             x: screen.midX - width / 2,
@@ -60,6 +57,9 @@ struct SearchOverlayContent: View {
             header
             Divider().overlay(Theme.Colors.stroke)
             results
+                .frame(maxHeight: .infinity, alignment: .top)
+            Divider().overlay(Theme.Colors.stroke)
+            footer
         }
         .frame(width: Theme.Metrics.searchWidth)
         .frame(maxHeight: .infinity, alignment: .top)
@@ -68,60 +68,64 @@ struct SearchOverlayContent: View {
         .themeAccessibility()
     }
 
-    /// Raycast-style search field: the typed query is the hero, with the scope
-    /// and the release hint as quiet trailing details.
+    /// Raycast's command header: back chevron, the query as large plain text
+    /// with a static caret, the scope as a trailing dropdown-looking label.
     private var header: some View {
         HStack(spacing: Theme.Metrics.grid * 1.5) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 14, weight: .medium))
+            Image(systemName: "chevron.left")
+                .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(.secondary)
-            HStack(spacing: 3) {
-                Text(model.query.isEmpty ? placeholder : model.query)
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(model.query.isEmpty ? .secondary : .primary)
-                    .lineLimit(1)
-                // Static caret: the field is a real input, but it is driven by
-                // the event tap, so a blink would only be noise.
-                if !model.query.isEmpty {
-                    RoundedRectangle(cornerRadius: 0.75)
-                        .fill(Theme.Colors.accent)
-                        .frame(width: 1.5, height: 18)
+                .frame(width: 20)
+            HStack(spacing: 2) {
+                if model.query.isEmpty {
+                    caret
+                    Text(placeholder)
+                        .foregroundStyle(.tertiary)
+                } else {
+                    Text(model.query)
+                        .foregroundStyle(.primary)
+                    caret
                 }
             }
-            Spacer()
-            Text(model.scope == .windows ? "WINDOWS" : "APPS")
-                .font(.system(size: 9, weight: .semibold))
-                .tracking(0.6)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.white.opacity(0.08)))
-                .foregroundStyle(.secondary)
-            if model.selectedItem != nil {
-                Text("release ⌘ to open")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.tertiary)
+            .font(.system(size: 22, weight: .regular))
+            .lineLimit(1)
+            Spacer(minLength: Theme.Metrics.grid)
+            HStack(spacing: 6) {
+                Text(model.scope == .windows ? "Windows" : "Apps")
+                    .font(.system(size: 14, weight: .regular))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
             }
+            .foregroundStyle(.secondary)
         }
         .padding(.horizontal, Theme.Metrics.grid * 2.5)
-        .frame(height: 52)
+        .frame(height: Theme.Metrics.searchHeader)
+    }
+
+    /// Static: the field is a real input, but it is driven by the event tap,
+    /// so a blink would only be noise.
+    private var caret: some View {
+        RoundedRectangle(cornerRadius: 1)
+            .fill(Color.primary)
+            .frame(width: 1.5, height: 24)
     }
 
     private var placeholder: String {
-        model.scope == .windows ? "Type to filter windows…" : "Type to search, or press a letter"
+        model.scope == .windows ? "Search windows…" : "Search apps and windows…"
     }
 
     @ViewBuilder
     private var results: some View {
         if model.items.isEmpty {
             Text("No matches")
-                .font(.system(size: 13))
+                .font(.system(size: 15))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 64)
         } else {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 2) {
+                    LazyVStack(spacing: 0) {
                         ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
                             SearchResultRow(item: item, isSelected: index == model.selectedIndex) {
                                 model.commit(item)
@@ -140,6 +144,32 @@ struct SearchOverlayContent: View {
             }
         }
     }
+
+    /// Raycast's action bar: the command identity leading, the primary action
+    /// with its key trailing.
+    private var footer: some View {
+        HStack(spacing: Theme.Metrics.grid) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 18, height: 18)
+            Text("Starboard")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+            Spacer()
+            if model.selectedItem != nil {
+                Text("Focus")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                KeyTag(label: "release ⌘")
+            } else if model.query.isEmpty, model.scope == .apps {
+                Text("Press a letter, or type to search")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, Theme.Metrics.grid * 2)
+        .frame(height: Theme.Metrics.searchFooter)
+    }
 }
 
 struct SearchResultRow: View {
@@ -156,28 +186,23 @@ struct SearchResultRow: View {
                     Image(nsImage: icon).resizable()
                 } else {
                     Image(systemName: "macwindow")
-                        .font(.system(size: 20))
+                        .font(.system(size: 16))
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 28, height: 28)
-            VStack(alignment: .leading, spacing: 1) {
+            .frame(width: Theme.Metrics.rowIcon, height: Theme.Metrics.rowIcon)
+            HStack(spacing: Theme.Metrics.grid) {
                 Text(item.title)
-                    .font(.system(size: 13))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                 if let subtitle = item.subtitle {
                     Text(subtitle)
-                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
-            Spacer()
-            if isSelected {
-                Text("⏎")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.tertiary)
-            }
+            .font(.system(size: 15))
+            Spacer(minLength: Theme.Metrics.grid)
             if let letter = item.letter {
                 KeyCap(character: letter)
             }
@@ -188,14 +213,6 @@ struct SearchResultRow: View {
             RoundedRectangle(cornerRadius: Theme.Metrics.rowRadius)
                 .fill(rowBackground)
         )
-        .overlay(alignment: .leading) {
-            if isSelected {
-                Capsule()
-                    .fill(Theme.Colors.accent)
-                    .frame(width: 2)
-                    .padding(.vertical, 8)
-            }
-        }
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
         .onTapGesture(perform: onSelect)
@@ -203,7 +220,7 @@ struct SearchResultRow: View {
 
     private var rowBackground: Color {
         if isSelected { return Theme.Colors.selection }
-        return isHovered ? Color.primary.opacity(0.06) : .clear
+        return isHovered ? Theme.Colors.hover : .clear
     }
 
     @MainActor

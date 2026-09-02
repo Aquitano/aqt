@@ -19,7 +19,8 @@ struct StarboardApp: App {
     @ObservedObject private var state = AppState.shared
 
     var body: some Scene {
-        MenuBarExtra {
+        // Under Raycast the extension's menu-bar command owns the status item.
+        MenuBarExtra(isInserted: .constant(!HelperMode.isActive)) {
             Button(state.starboardEnabled ? "Disable Starboard" : "Enable Starboard") {
                 appDelegate.setEnabled(!state.starboardEnabled)
             }
@@ -68,11 +69,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     })
     private var eventTap: EventTap?
     private var watchdog: Timer?
+    private var helperServer: HelperServer?
+    private var terminationSignal: DispatchSourceSignal?
     private var onboardingWindow: NSWindow?
     private var aboutWindow: NSWindow?
     private var tapFailureObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        terminateOlderInstances()
         tapFailureObserver = NotificationCenter.default.addObserver(
             forName: EventTap.failedNotification,
             object: nil,
@@ -82,6 +86,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         trackTapSettings()
+        if let helperMode = HelperMode.current {
+            startHelperMode(helperMode)
+        }
 
         if Permissions.hasAccessibility {
             startTapIfWanted()
@@ -131,6 +138,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func syncTap() {
         guard let tap = eventTap else { return }
         state.starboardEnabled ? tap.enable() : tap.disable()
+    }
+
+    /// Two Starboards mean two event taps fighting over every rcmd key. The
+    /// newest launch wins; the older ones (a standalone build, a helper the
+    /// extension spawned twice, the pre-update helper) are asked to quit.
+    private func terminateOlderInstances() {
+        // The unit-test host is this app too; a test run must not quit the
+        // copy being used.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil,
+              let bundleID = Bundle.main.bundleIdentifier else { return }
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        where app.processIdentifier != ownPID && app.processIdentifier < ownPID {
+            NSLog("Starboard: taking over from instance \(app.processIdentifier)")
+            app.terminate()
+        }
+    }
+
+    // MARK: - Raycast helper
+
+    /// Raycast owns the process: it stops the helper with SIGTERM, which
+    /// AppKit would otherwise turn into an abrupt exit without the flush.
+    private func startHelperMode(_ mode: HelperMode) {
+        signal(SIGTERM, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        source.setEventHandler { NSApp.terminate(nil) }
+        source.resume()
+        terminationSignal = source
+
+        do {
+            helperServer = try HelperServer(socketPath: mode.socketPath) { [weak self] request in
+                self?.handle(request) ?? .error("shutting down")
+            }
+        } catch {
+            NSLog("Starboard: failed to open helper socket: \(error)")
+        }
+    }
+
+    private func handle(_ request: HelperRequest) -> HelperResponse {
+        switch request {
+        case .status:
+            return .status(helperStatus())
+        case .setEnabled(let enabled):
+            setEnabled(enabled)
+            return .status(helperStatus())
+        case .visibleApps:
+            return .apps(switcher.stages.capturedApps().map { HelperApp(bundleID: $0.bundleID, name: $0.name) })
+        case .restoreStage(let letter):
+            switcher.stages.restore(letter: letter)
+            return .done
+        case .overlay:
+            return .overlay(OverlaySnapshot(switcher.searchModel))
+        case .focus(let itemID):
+            return switcher.focusSearchItem(id: itemID) ? .done : .error("no such item")
+        case .search(let query, let scope):
+            return .items(OverlaySnapshot.rows(switcher.searchResults(query: query, scope: scope)))
+        }
+    }
+
+    private func helperStatus() -> HelperStatus {
+        HelperStatus(
+            enabled: state.starboardEnabled,
+            spaceNumber: switcher.spaces.currentSpaceNumber,
+            accessibility: Permissions.hasAccessibility,
+            screenRecording: Permissions.hasScreenRecording,
+            version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev",
+            pid: ProcessInfo.processInfo.processIdentifier
+        )
     }
 
     private func tapRecoveryFailed() {

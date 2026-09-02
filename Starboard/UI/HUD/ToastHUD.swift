@@ -39,8 +39,10 @@ struct SurfaceBackground: View {
     var body: some View {
         VisualEffectSurface()
             .overlay {
+                // Near-opaque like Raycast's window; the blur only softens
+                // what little shows through.
                 Rectangle()
-                    .fill(Color.black.opacity(contrastBoost ? 0.4 : 0.25))
+                    .fill(Color.black.opacity(contrastBoost ? 0.85 : 0.72))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius)
@@ -65,24 +67,30 @@ struct SurfaceBackground: View {
     }
 }
 
-/// Key-cap chip for shortcut letters (BATTLEPLAN §4 type spec).
+/// Key tag for shortcut letters (BATTLEPLAN §4 type spec): a rounded square
+/// the way Raycast renders list accessories.
 struct KeyCap: View {
     let character: Character
+
+    var body: some View {
+        KeyTag(label: String(character).uppercased())
+    }
+}
+
+struct KeyTag: View {
+    let label: String
     @Environment(\.themeContrastBoost) private var contrastBoost
 
     var body: some View {
-        Text(String(character).uppercased())
-            .font(.system(size: 11, weight: .medium).monospaced())
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(Color.primary.opacity(contrastBoost ? 0.20 : 0.10)))
-            .overlay(
-                Capsule().strokeBorder(
-                    Color.primary.opacity(contrastBoost ? 0.30 : 0.10),
-                    lineWidth: contrastBoost ? 1.5 : 1
-                )
+        Text(label)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .frame(minWidth: Theme.Metrics.tagSize, minHeight: Theme.Metrics.tagSize)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Metrics.rowRadius)
+                    .fill(Color.primary.opacity(contrastBoost ? 0.16 : 0.08))
             )
-            .foregroundStyle(.primary)
     }
 }
 
