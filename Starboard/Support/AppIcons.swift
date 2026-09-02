@@ -30,9 +30,17 @@ enum AppIcons {
     /// from paths, and the mirror asks for every row on every poll.
     static func path(for bundleID: String) -> String? {
         if let cached = paths[bundleID] { return cached }
-        let path = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)?.path
+        let path = lookupPath(bundleID)
         paths[bundleID] = path
         return path
+    }
+
+    /// A running app already carries its bundle URL, so the whole letter map
+    /// and every running row resolve without a LaunchServices round trip.
+    private static func lookupPath(_ bundleID: String) -> String? {
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        if let url = running.first?.bundleURL { return url.path }
+        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)?.path
     }
 
     private static func lookupIcon(_ bundleID: String) -> NSImage? {

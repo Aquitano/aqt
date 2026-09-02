@@ -89,7 +89,7 @@ struct KeyTag: View {
             .frame(minWidth: Theme.Metrics.tagSize, minHeight: Theme.Metrics.tagSize)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Metrics.rowRadius)
-                    .fill(Color.primary.opacity(contrastBoost ? 0.16 : 0.08))
+                    .fill(contrastBoost ? Theme.Colors.tagContrast : Theme.Colors.tag)
             )
     }
 }

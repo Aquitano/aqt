@@ -129,6 +129,9 @@ final class AppSwitcher {
         if let raycastSearch, !searchModel.isRing, !searchPanel.shown {
             raycastSearch.present()
         } else {
+            // The ring can take over mid-hold (rcmd, wait, then Tab). The
+            // mirror has to come down or both surfaces stay on screen.
+            raycastSearch?.dismiss()
             searchPanel.present()
         }
     }
@@ -146,6 +149,9 @@ final class AppSwitcher {
     /// map, as the hold overlay does.
     func searchResults(query: String, scope: SearchModel.Scope) -> [SearchModel.Item] {
         if query.isEmpty, scope == .apps {
+            // No hold primed the window list here, so switching scope or
+            // typing a window title next would pay for a cold enumeration.
+            WindowEnumerator.prime()
             return SearchModel.letterMap(candidates: runningPairs().map(\.candidate), assigner: assigner)
         }
         return searchModel.results(query: query, scope: scope)
@@ -174,8 +180,9 @@ final class AppSwitcher {
         holdWindowRing = nil
         cancelHoldTimer()
         // Releasing on the letter map (nothing selected) produces no intent of
-        // its own, so the overlay is dismissed here.
-        searchModel.cancel()
+        // its own, so the overlay is dismissed here. Not a cancel: that flag
+        // means Escape, and the mirror reads it to tell the two apart.
+        searchModel.hide()
         syncSearchPanel()
         if settings.model.mouseFollowsFocus {
             MouseFollower.warpToFocusedWindow()

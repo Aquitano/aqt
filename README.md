@@ -27,13 +27,16 @@ make profile-build # instrumentable Release build
 The repeatable performance workflow and signpost budgets are documented in
 [docs/PROFILING.md](docs/PROFILING.md).
 
-## Raycast extension
+## Raycast helper mode
 
-`raycast/` holds a Raycast extension that runs Starboard as a helper process: the
-engine is unchanged, the settings window is replaced by Raycast commands, and
-the config is a JSON file the extension edits and the helper watches. `make helper`
-drops a universal Release build into `raycast/assets/`; see [raycast/README.md](raycast/README.md)
-for running and distributing it. Launching the app with `--config <file> --socket <path>`
-is what puts it in helper mode.
+Launching the app with `--config <file> --socket <path>` runs it as a helper for a
+Raycast extension: the engine is unchanged, the menu bar item steps aside, settings
+come from the JSON config instead of UserDefaults and reload when it changes on
+disk, and an owner-only unix socket takes live commands (status, enable, visible
+apps, stage restore, search, focus, overlay). Adding `--search-deeplink <url>`
+mirrors the hold overlay into a Raycast command instead of the native panel.
+
+`make helper` builds a universal Release app into `raycast/assets/` for the
+extension to ship as its helper binary. The extension itself is not in this repo yet.
 
 The app needs the **Accessibility** permission (event tap) and optionally **Screen Recording** (window titles). With ad-hoc signing, Accessibility grants reset on each rebuild — set `CODE_SIGN_IDENTITY` in `project.yml` to a real development certificate for a stable grant.

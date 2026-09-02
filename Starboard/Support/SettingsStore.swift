@@ -121,6 +121,7 @@ final class SettingsStore {
     /// Persisting encodes the whole model, so bursts of mutations (pinning
     /// mid-hold, typing in the Stage items editor) coalesce into one write.
     @ObservationIgnored private var persistPending = false
+    @ObservationIgnored private var reloadAttempts = 0
 
     convenience init(defaults: UserDefaults = .standard) {
         self.init(storage: .defaults(defaults))
@@ -143,12 +144,11 @@ final class SettingsStore {
     func flush() {
         guard persistPending else { return }
         persistPending = false
+        guard let data = try? exportJSON() else { return }
         switch storage {
         case .defaults(let defaults):
-            guard let data = try? JSONEncoder().encode(model) else { return }
             defaults.set(data, forKey: Self.key)
         case .file(let url):
-            guard let data = try? exportJSON() else { return }
             try? FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true
             )
@@ -175,8 +175,21 @@ final class SettingsStore {
 
     /// An external edit (the Raycast extension) replaces the model without
     /// echoing a write back; the file already holds what was just read.
+    ///
+    /// Writes are in place, so an event can land on a half-written file. That
+    /// decodes to nil and is a torn read, not a bad file — reading again once
+    /// the write settles is what keeps the edit from being dropped for good.
     private func reloadFromFile() {
-        guard let loaded = Self.load(from: storage), loaded != model else { return }
+        guard let loaded = Self.load(from: storage) else {
+            guard reloadAttempts < 3 else { return }
+            reloadAttempts += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                self?.reloadFromFile()
+            }
+            return
+        }
+        reloadAttempts = 0
+        guard loaded != model else { return }
         model = loaded
         persistPending = false
     }

@@ -7,6 +7,12 @@ final class FileWatcher {
     private let url: URL
     private let onChange: () -> Void
     private var source: DispatchSourceFileSystemObject?
+    /// A path that isn't there yet — or was deleted and never recreated —
+    /// would otherwise wake the main queue five times a second forever.
+    private var retryDelay = FileWatcher.minimumRetryDelay
+
+    private static let minimumRetryDelay: TimeInterval = 0.2
+    private static let maximumRetryDelay: TimeInterval = 5
 
     init(url: URL, onChange: @escaping () -> Void) {
         self.url = url
@@ -19,11 +25,13 @@ final class FileWatcher {
     }
 
     private func open() {
+        guard source == nil else { return }
         let descriptor = Darwin.open(url.path, O_EVTONLY)
         guard descriptor >= 0 else {
             retryOpen()
             return
         }
+        retryDelay = Self.minimumRetryDelay
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: descriptor,
             eventMask: [.write, .extend, .delete, .rename],
@@ -45,6 +53,8 @@ final class FileWatcher {
     }
 
     private func retryOpen() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.open() }
+        let delay = retryDelay
+        retryDelay = min(retryDelay * 2, Self.maximumRetryDelay)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.open() }
     }
 }

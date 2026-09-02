@@ -20,8 +20,9 @@ enum Theme {
         /// Raycast-style selection: a quiet raised fill, no accent wash.
         static let selection = Color.primary.opacity(0.08)
         static let hover = Color.primary.opacity(0.04)
-        /// Fill for key tags and the scope chip.
+        /// Fill for key tags, and its increased-contrast variant.
         static let tag = Color.primary.opacity(0.08)
+        static let tagContrast = Color.primary.opacity(0.16)
     }
 
     enum Metrics {

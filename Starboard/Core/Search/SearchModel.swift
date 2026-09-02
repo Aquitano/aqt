@@ -162,56 +162,59 @@ final class SearchModel {
         cancelled = true
     }
 
-    /// Focus (or launch) the selection and dismiss.
-    func commit() {
-        selectedItem.map { focus($0.kind) }
+    /// Focus (or launch) the selection and dismiss. False when the selection
+    /// no longer resolves to anything — a quit app, a closed window.
+    @discardableResult
+    func commit() -> Bool {
+        let focused = selectedItem.map { focus($0.kind) } ?? false
         hide()
+        return focused
     }
 
-    func focus(_ kind: Item.Kind) {
+    @discardableResult
+    func focus(_ kind: Item.Kind) -> Bool {
         switch kind {
         case .runningApp(let bundleID):
-            runningApp(bundleID)?.activateReliably()
+            guard let app = runningApp(bundleID) else { return false }
+            app.activateReliably()
+            return true
         case .installedApp(let bundleID):
-            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
-                NSWorkspace.shared.openApplication(at: url, configuration: .init())
+            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+                return false
             }
+            NSWorkspace.shared.openApplication(at: url, configuration: .init())
+            return true
         case .window(let window):
             WindowFocuser.focus(window)
+            return true
         }
     }
 
     /// Raycast hands back an item id. A live overlay row commits (and
     /// dismisses) as a click would; otherwise the id is resolved on its own so
-    /// the Raycast search works outside a hold too.
+    /// the Raycast search works outside a hold too. False means nothing was
+    /// focused — the extension must not report the switch as done.
     @discardableResult
     func focus(itemID: String) -> Bool {
         if let item = items.first(where: { $0.id == itemID }) {
-            commit(item)
-            return true
+            return commit(item)
         }
         if itemID.hasPrefix("app.") {
-            focus(.runningApp(bundleID: String(itemID.dropFirst("app.".count))))
-        } else if itemID.hasPrefix("installed.") {
-            focus(.installedApp(bundleID: String(itemID.dropFirst("installed.".count))))
-        } else if itemID.hasPrefix("window."),
-                  let id = CGWindowID(itemID.dropFirst("window.".count)),
-                  let window = searchWindows().first(where: { $0.id == id }) {
-            focus(.window(window))
-        } else {
-            return false
+            return focus(.runningApp(bundleID: String(itemID.dropFirst("app.".count))))
         }
-        return true
+        if itemID.hasPrefix("installed.") {
+            return focus(.installedApp(bundleID: String(itemID.dropFirst("installed.".count))))
+        }
+        if itemID.hasPrefix("window."),
+           let id = CGWindowID(itemID.dropFirst("window.".count)),
+           let window = searchWindows().first(where: { $0.id == id }) {
+            return focus(.window(window))
+        }
+        return false
     }
 
     /// Ranked rows for a query without touching the live overlay state.
     func results(query: String, scope: Scope) -> [Item] {
-        if query.isEmpty, scope == .apps {
-            // The Raycast search opened by hand: warm the window list so
-            // switching the scope or typing a window title isn't a cold
-            // 100 ms enumeration.
-            WindowEnumerator.prime()
-        }
         if query.isEmpty {
             return scope == .windows ? searchWindows().map(windowItem) : []
         }
@@ -219,10 +222,11 @@ final class SearchModel {
     }
 
     /// Mouse click on a row: make it the selection, then commit it.
-    func commit(_ item: Item) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+    @discardableResult
+    func commit(_ item: Item) -> Bool {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return false }
         selectedIndex = index
-        commit()
+        return commit()
     }
 
     /// Acts on the selection but keeps the overlay open — the user is still
@@ -363,7 +367,9 @@ final class SearchModel {
         }
     }
 
-    private func hide() {
+    /// Dismiss without the intent Escape carries: a release on the letter map
+    /// ends the overlay but is not a cancel.
+    func hide() {
         isVisible = false
         isRing = false
         items = []

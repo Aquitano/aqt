@@ -102,6 +102,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 WindowEnumerator.invalidateCache()
+                // Refill off-main: the next read is often a helper request or
+                // a hold, both of which would otherwise block the run loop the
+                // event tap runs on for a full cold enumeration.
+                WindowEnumerator.prime()
                 self?.refreshSpaceNumber()
             }
         }
@@ -145,12 +149,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// extension spawned twice, the pre-update helper) are asked to quit.
     private func terminateOlderInstances() {
         // The unit-test host is this app too; a test run must not quit the
-        // copy being used.
+        // copy being used. And without our own launch date there is nothing to
+        // order against — PIDs wrap, so they never say which started first.
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil,
-              let bundleID = Bundle.main.bundleIdentifier else { return }
+              let bundleID = Bundle.main.bundleIdentifier,
+              let ownLaunch = NSRunningApplication.current.launchDate else { return }
         let ownPID = ProcessInfo.processInfo.processIdentifier
         for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        where app.processIdentifier != ownPID && app.processIdentifier < ownPID {
+        where app.processIdentifier != ownPID && (app.launchDate ?? .distantPast) < ownLaunch {
             NSLog("Starboard: taking over from instance \(app.processIdentifier)")
             app.terminate()
         }

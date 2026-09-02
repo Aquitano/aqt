@@ -33,6 +33,7 @@ helper: gen
 	xcodebuild -project $(APP).xcodeproj -scheme $(APP) -configuration Release \
 		-derivedDataPath $(BUILD_DIR) ONLY_ACTIVE_ARCH=NO ARCHS="arm64 x86_64" build
 	rm -rf raycast/assets/$(APP).app
+	mkdir -p raycast/assets
 	cp -R $(BUILD_DIR)/Build/Products/Release/$(APP).app raycast/assets/
 
 format:

@@ -148,7 +148,7 @@ Single `SettingsStore` (`@Observable`), Codable structs in UserDefaults under na
 
 All tokens live in `DesignSystem/Theme.swift`. No hardcoded colors/fonts/durations anywhere else.
 
-**Surfaces.** Overlays are `NSVisualEffectView` (`.hudWindow` material) with a near-opaque dark tint overlay `black.opacity(0.72)` (Raycast's window look); 16 pt corner radius on panels, 10 pt on rows; 1 px inner stroke `white.opacity(0.08)`; shadow radius 40, y 16, `black.opacity(0.35)`. Settings window: solid `#1E1F22` dark / `#F5F5F7` light (follow system appearance, dark-first in all mock decisions).
+**Surfaces.** Overlays are `NSVisualEffectView` (`.hudWindow` material) with a near-opaque dark tint overlay `black.opacity(0.72)` (Raycast's window look); 16 pt corner radius on panels, 8 pt on rows; 1 px inner stroke `white.opacity(0.08)`; shadow radius 40, y 16, `black.opacity(0.35)`. Settings window: solid `#1E1F22` dark / `#F5F5F7` light (follow system appearance, dark-first in all mock decisions).
 
 **Type.** System font (SF Pro) only. Rows 13 pt regular, titles 15 pt semibold, captions 11 pt medium at 60 % opacity. Shortcut keys render as **key tags**: 12 pt medium secondary text in a 28 pt rounded square, 8 pt radius, `white.opacity(0.08)` fill (Raycast list accessories).
 
