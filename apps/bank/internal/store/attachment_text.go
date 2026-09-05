@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -167,7 +168,7 @@ func (s *Store) GetBlobText(ctx context.Context, sha256 string) (BlobText, error
 		select sha256, text, extractor, status, length(text), extracted_at
 		from blob_text where sha256 = $1`, sha256,
 	).Scan(&bt.SHA256, &bt.Text, &bt.Extractor, &bt.Status, &bt.Chars, &bt.ExtractedAt)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return bt, ErrNotFound
 	}
 	return bt, err

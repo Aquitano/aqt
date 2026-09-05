@@ -216,7 +216,7 @@ func TestRemovingAnAliasFullyReversesTheAttribution(t *testing.T) {
 	if err := st.DeleteContact(ctx, "bjoern"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.GetContact(ctx, "bjoern"); err != store.ErrNotFound {
+	if _, err := st.GetContact(ctx, "bjoern"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 	msgs, err := st.Search(ctx, "invoice", store.SearchOpts{Limit: 20, Fuzzy: 0})

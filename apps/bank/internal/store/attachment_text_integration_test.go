@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -47,7 +48,7 @@ func TestBlobTextRoundTrip(t *testing.T) {
 	st := storetest.New(t)
 	seedMessage(t, st, "m1", "see attached", "invoice.pdf", digestA)
 
-	if _, err := st.GetBlobText(ctx, digestA); err != store.ErrNotFound {
+	if _, err := st.GetBlobText(ctx, digestA); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound before extraction", err)
 	}
 	if err := st.PutBlobText(ctx, store.BlobText{
@@ -74,7 +75,7 @@ func TestBlobTextRoundTrip(t *testing.T) {
 	if err := st.DeleteBlobText(ctx, digestA); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.DeleteBlobText(ctx, digestA); err != store.ErrNotFound {
+	if err := st.DeleteBlobText(ctx, digestA); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound on a second delete", err)
 	}
 }

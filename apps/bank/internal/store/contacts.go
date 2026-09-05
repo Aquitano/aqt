@@ -92,7 +92,7 @@ func (s *Store) CreateContact(ctx context.Context, name, note string) (Contact, 
 		`insert into contacts (name, note) values ($1, $2)
 		 on conflict (name) do nothing
 		 returning id, created_at`, name, c.Note).Scan(&c.ID, &c.CreatedAt)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return Contact{}, fmt.Errorf("contact %q already exists", name)
 	}
 	return c, err
@@ -176,7 +176,7 @@ func (s *Store) GetContact(ctx context.Context, name string) (Contact, error) {
 	err := s.pool.QueryRow(ctx,
 		`select id, name, note, created_at from contacts where name = $1`,
 		strings.TrimSpace(cleanText(name))).Scan(&c.ID, &c.Name, &c.Note, &c.CreatedAt)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrNotFound
 	}
 	if err != nil {
@@ -302,7 +302,7 @@ func (s *Store) aliasOwner(ctx context.Context, contactID int64, source, norm st
 		where a.value_norm = $1 and a.contact_id <> $2
 		  and ($3 = '' or a.source = '' or a.source = $3)
 		limit 1`, norm, contactID, source).Scan(&owner)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
 	}
 	return owner, err
