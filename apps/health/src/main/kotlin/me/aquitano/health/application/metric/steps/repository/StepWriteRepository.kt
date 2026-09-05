@@ -21,11 +21,14 @@ class StepWriteRepository {
         record: StepIntervalRecord,
         now: Instant,
     ): Boolean {
-        if (provider == GOOGLE_HEALTH_PROVIDER_CODE && stepSampleOverlaps(
+        if (provider == GOOGLE_HEALTH_PROVIDER_CODE &&
+            stepSampleOverlaps(
                 sourceInstanceId,
                 record,
             )
-        ) return false
+        ) {
+            return false
+        }
 
         return StepSamplesTable.insertIgnoreAndGetId {
             it[this.sourceInstanceId] = sourceInstanceId
@@ -44,13 +47,13 @@ class StepWriteRepository {
     ): Boolean {
         val candidateStartBefore = record.endAt.plusSeconds(1).toDbTimestamp()
         val candidateEndAfter = record.startAt.minusSeconds(1).toDbTimestamp()
-        return StepSamplesTable.selectAll()
+        return StepSamplesTable
+            .selectAll()
             .where {
                 (StepSamplesTable.sourceInstanceId eq sourceInstanceId) and
                     (StepSamplesTable.startAt less candidateStartBefore) and
                     (StepSamplesTable.endAt greater candidateEndAfter)
-            }
-            .any {
+            }.any {
                 val existingStart = it[StepSamplesTable.startAt].toInstant()
                 val existingEnd = it[StepSamplesTable.endAt].toInstant()
                 existingStart.isBefore(record.endAt) &&

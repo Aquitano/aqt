@@ -15,5 +15,4 @@ internal fun idempotencyRequestHash(vararg parts: String?): String {
     return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
 
-internal fun Iterable<String>.idempotencyListPart(): String =
-    joinToString("\n")
+internal fun Iterable<String>.idempotencyListPart(): String = joinToString("\n")

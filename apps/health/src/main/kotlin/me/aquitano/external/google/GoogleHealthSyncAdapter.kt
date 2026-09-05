@@ -36,15 +36,17 @@ class GoogleHealthSyncAdapter(
 
     override fun validate(request: ProviderSyncRequest): ProviderSyncPlan {
         val issues = mutableListOf<ValidationIssue>()
-        val dataTypes = request.dataTypes?.takeIf { it.isNotEmpty() }
-            ?: GOOGLE_HEALTH_DEFAULT_DATA_TYPES
+        val dataTypes =
+            request.dataTypes?.takeIf { it.isNotEmpty() }
+                ?: GOOGLE_HEALTH_DEFAULT_DATA_TYPES
         dataTypes.forEachIndexed { index, dataType ->
             if (dataType !in GOOGLE_HEALTH_DEFAULT_DATA_TYPES) {
-                issues += ValidationIssue(
-                    field = "dataTypes[$index]",
-                    code = ValidationIssueCodes.UnsupportedValue,
-                    message = "unsupported Google Health data type",
-                )
+                issues +=
+                    ValidationIssue(
+                        field = "dataTypes[$index]",
+                        code = ValidationIssueCodes.UnsupportedValue,
+                        message = "unsupported Google Health data type",
+                    )
             }
         }
         if (issues.isNotEmpty()) throw RequestValidationException(issues)
@@ -54,16 +56,17 @@ class GoogleHealthSyncAdapter(
             providerInstanceId = request.providerInstanceId,
             requestedFrom = request.from,
             requestedTo = request.to,
-            items = dataTypes.distinct().flatMap { dataType ->
-                syncWindows(dataType, request.from, request.to).map { window ->
-                    ProviderSyncItem(
-                        dataType = dataType,
-                        from = window.from,
-                        to = window.to,
-                        pageSize = pageSizeFor(dataType, requestedPageSize),
-                    )
-                }
-            },
+            items =
+                dataTypes.distinct().flatMap { dataType ->
+                    syncWindows(dataType, request.from, request.to).map { window ->
+                        ProviderSyncItem(
+                            dataType = dataType,
+                            from = window.from,
+                            to = window.to,
+                            pageSize = pageSizeFor(dataType, requestedPageSize),
+                        )
+                    }
+                },
         )
     }
 
@@ -108,13 +111,14 @@ class GoogleHealthSyncAdapter(
         item: ProviderSyncItem,
         now: Instant,
     ): ProviderFetchedBatch {
-        val result = client.fetchDataPoints(
-            accessToken,
-            item.dataType,
-            item.from,
-            item.to,
-            item.pageSize ?: 10000,
-        )
+        val result =
+            client.fetchDataPoints(
+                accessToken,
+                item.dataType,
+                item.from,
+                item.to,
+                item.pageSize ?: 10000,
+            )
         val normalized = normalizer.normalize(result)
         return ProviderFetchedBatch(
             dataType = result.dataType,
@@ -140,12 +144,12 @@ class GoogleHealthSyncAdapter(
         item: ProviderSyncItem,
     ): String = batchExternalId(providerInstanceId, item.dataType, item.from, item.to)
 
-    override fun isUnauthorized(error: Throwable): Boolean =
-        error is GoogleHealthUnauthorizedException
+    override fun isUnauthorized(error: Throwable): Boolean = error is GoogleHealthUnauthorizedException
 
     override fun isInvalidRefreshToken(error: Throwable): Boolean =
         error is GoogleHealthUnauthorizedException ||
-                error is GoogleHealthHttpException && error.oauthError == "invalid_grant"
+            error is GoogleHealthHttpException &&
+            error.oauthError == "invalid_grant"
 
     override fun errorCode(error: Throwable): String =
         when (error) {
@@ -154,8 +158,10 @@ class GoogleHealthSyncAdapter(
             else -> "google_health_sync_failed"
         }
 
-    private fun pageSizeFor(dataType: String, pageSize: Int): Int =
-        if (dataType == "sleep") pageSize.coerceAtMost(25) else pageSize.coerceAtMost(10000)
+    private fun pageSizeFor(
+        dataType: String,
+        pageSize: Int,
+    ): Int = if (dataType == "sleep") pageSize.coerceAtMost(25) else pageSize.coerceAtMost(10000)
 
     private fun syncWindows(
         dataType: String,

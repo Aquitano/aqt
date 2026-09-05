@@ -1,7 +1,7 @@
 package me.aquitano.health.application.metric.common
 
-import org.jetbrains.exposed.v1.jdbc.Database
 import me.aquitano.health.infrastructure.database.suspendDbTransaction
+import org.jetbrains.exposed.v1.jdbc.Database
 
 /**
  * Base class for metric read services.
@@ -9,7 +9,6 @@ import me.aquitano.health.infrastructure.database.suspendDbTransaction
 abstract class BaseReadService(
     protected val database: Database,
 ) {
-
     /**
      * Runs [block] inside a suspending transaction on [database].
      *

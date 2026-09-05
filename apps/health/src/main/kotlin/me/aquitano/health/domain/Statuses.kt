@@ -9,7 +9,9 @@ import kotlinx.serialization.Serializable
  * or corrupted DB value surfaces as a 500 instead of silently leaking through the API.
  */
 @Serializable
-enum class BatchStatus(val stored: String) {
+enum class BatchStatus(
+    val stored: String,
+) {
     @SerialName("received")
     Received("received"),
 
@@ -17,11 +19,11 @@ enum class BatchStatus(val stored: String) {
     Processed("processed"),
 
     @SerialName("failed")
-    Failed("failed");
+    Failed("failed"),
+    ;
 
     companion object {
-        fun fromStoredOrNull(value: String): BatchStatus? =
-            entries.firstOrNull { it.stored == value }
+        fun fromStoredOrNull(value: String): BatchStatus? = entries.firstOrNull { it.stored == value }
 
         fun fromStored(value: String): BatchStatus =
             fromStoredOrNull(value)
@@ -30,7 +32,9 @@ enum class BatchStatus(val stored: String) {
 }
 
 @Serializable
-enum class SyncStatus(val stored: String) {
+enum class SyncStatus(
+    val stored: String,
+) {
     @SerialName("processed")
     Processed("processed"),
 
@@ -38,7 +42,8 @@ enum class SyncStatus(val stored: String) {
     PartialFailed("partial_failed"),
 
     @SerialName("failed")
-    Failed("failed");
+    Failed("failed"),
+    ;
 
     companion object {
         fun fromStored(value: String): SyncStatus =
@@ -48,7 +53,9 @@ enum class SyncStatus(val stored: String) {
 }
 
 @Serializable
-enum class SyncJobStatus(val stored: String) {
+enum class SyncJobStatus(
+    val stored: String,
+) {
     @SerialName("queued")
     Queued("queued"),
 
@@ -62,7 +69,8 @@ enum class SyncJobStatus(val stored: String) {
     PartialFailed("partial_failed"),
 
     @SerialName("failed")
-    Failed("failed");
+    Failed("failed"),
+    ;
 
     val terminal: Boolean
         get() = this != Queued && this != Running
@@ -75,7 +83,9 @@ enum class SyncJobStatus(val stored: String) {
 }
 
 @Serializable
-enum class ReplayJobStatus(val stored: String) {
+enum class ReplayJobStatus(
+    val stored: String,
+) {
     @SerialName("queued")
     Queued("queued"),
 
@@ -86,7 +96,8 @@ enum class ReplayJobStatus(val stored: String) {
     Completed("completed"),
 
     @SerialName("failed")
-    Failed("failed");
+    Failed("failed"),
+    ;
 
     val terminal: Boolean
         get() = this == Completed || this == Failed

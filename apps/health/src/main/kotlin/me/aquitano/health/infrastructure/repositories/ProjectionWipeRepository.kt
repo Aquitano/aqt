@@ -25,30 +25,40 @@ import java.time.LocalDate
  * Must run inside the replay day transaction.
  */
 class ProjectionWipeRepository {
-    fun wipeDay(day: LocalDate, dayStart: Instant, dayEnd: Instant, recordTypes: Set<String>) {
+    fun wipeDay(
+        day: LocalDate,
+        dayStart: Instant,
+        dayEnd: Instant,
+        recordTypes: Set<String>,
+    ) {
         val start = dayStart.toDbTimestamp()
         val end = dayEnd.toDbTimestamp()
         recordTypes.forEach { recordType ->
             when (recordType) {
-                RecordTypes.STEP_INTERVAL -> StepSamplesTable.deleteWhere {
-                    (startAt greaterEq start) and (startAt less end)
-                }
+                RecordTypes.STEP_INTERVAL ->
+                    StepSamplesTable.deleteWhere {
+                        (startAt greaterEq start) and (startAt less end)
+                    }
 
-                RecordTypes.SLEEP_SESSION -> SleepSessionsTable.deleteWhere {
-                    (startAt greaterEq start) and (startAt less end)
-                }
+                RecordTypes.SLEEP_SESSION ->
+                    SleepSessionsTable.deleteWhere {
+                        (startAt greaterEq start) and (startAt less end)
+                    }
 
-                RecordTypes.ACTIVITY_SUMMARY -> ActivitySummariesTable.deleteWhere {
-                    date eq day
-                }
+                RecordTypes.ACTIVITY_SUMMARY ->
+                    ActivitySummariesTable.deleteWhere {
+                        date eq day
+                    }
 
-                RecordTypes.SLEEP_SUMMARY -> SleepSummariesTable.deleteWhere {
-                    (startAt greaterEq start) and (startAt less end)
-                }
+                RecordTypes.SLEEP_SUMMARY ->
+                    SleepSummariesTable.deleteWhere {
+                        (startAt greaterEq start) and (startAt less end)
+                    }
 
-                RecordTypes.BLOOD_PRESSURE -> BloodPressureMeasurementsTable.deleteWhere {
-                    (measuredAt greaterEq start) and (measuredAt less end)
-                }
+                RecordTypes.BLOOD_PRESSURE ->
+                    BloodPressureMeasurementsTable.deleteWhere {
+                        (measuredAt greaterEq start) and (measuredAt less end)
+                    }
 
                 else -> {
                     val metricTypes = ScalarMetricRegistry.metricTypesForRecordType(recordType)

@@ -19,7 +19,7 @@ fun derivedRebuildRegistry(): DerivedRebuildModuleRegistry =
             stepSummaryService = StepSummaryService(StepDailySummaryDerivationRepository()),
             canonicalStepService = CanonicalStepDerivationService(CanonicalStepDerivationRepository()),
             sleepNightService = SleepNightService(SleepNightDerivationRepository()),
-        )
+        ),
     )
 
 /** The production rebuild wiring with default-constructed services, for tests that assert derived tables. */

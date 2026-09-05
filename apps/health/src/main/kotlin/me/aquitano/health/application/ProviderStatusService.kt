@@ -1,7 +1,7 @@
 package me.aquitano.health.application
 
-import me.aquitano.health.api.dto.ProviderAccountStatusResponse
 import me.aquitano.health.api.dto.ProviderAccountLifecycleStatus
+import me.aquitano.health.api.dto.ProviderAccountStatusResponse
 import me.aquitano.health.api.dto.ProviderNextAction
 import me.aquitano.health.api.dto.ProviderStatusCatalogResponse
 import me.aquitano.health.api.dto.ProviderStatusResponse
@@ -21,15 +21,18 @@ class ProviderStatusService(
 ) {
     suspend fun listProviderStatuses(now: Instant): ProviderStatusCatalogResponse =
         ProviderStatusCatalogResponse(
-            items = providerRegistry.listProviders()
-                .map { it.toStatusDto(now) },
+            items =
+                providerRegistry
+                    .listProviders()
+                    .map { it.toStatusDto(now) },
         )
 
     suspend fun getProviderStatus(
         providerCode: String,
-        now: Instant
+        now: Instant,
     ): ProviderStatusResponse =
-        providerRegistry.getProvider(providerCode)
+        providerRegistry
+            .getProvider(providerCode)
             ?.toStatusDto(now)
             ?: throw NotFoundException("Provider '$providerCode' not found")
 
@@ -37,10 +40,12 @@ class ProviderStatusService(
         providerCode: String,
         now: Instant,
     ): List<ProviderAccountStatusResponse> {
-        val provider = providerRegistry.getProvider(providerCode)
-            ?: throw NotFoundException("Provider '$providerCode' not found")
+        val provider =
+            providerRegistry.getProvider(providerCode)
+                ?: throw NotFoundException("Provider '$providerCode' not found")
         val normalizedCode = providerRegistry.normalize(providerCode)
-        return providerOAuthRepository.accountsByProvider(normalizedCode)
+        return providerOAuthRepository
+            .accountsByProvider(normalizedCode)
             .map { it.toStatusDto(now, configured = provider.isConfigured()) }
     }
 
@@ -49,13 +54,15 @@ class ProviderStatusService(
         providerInstanceId: String,
         now: Instant,
     ): ProviderAccountStatusResponse {
-        val provider = providerRegistry.getProvider(providerCode)
-            ?: throw NotFoundException("Provider '$providerCode' not found")
+        val provider =
+            providerRegistry.getProvider(providerCode)
+                ?: throw NotFoundException("Provider '$providerCode' not found")
         val normalizedCode = providerRegistry.normalize(providerCode)
-        val account = providerOAuthRepository.accountByProviderInstanceForStatus(
-            providerCode = normalizedCode,
-            providerInstanceId = providerInstanceId,
-        ) ?: throw NotFoundException("Provider account '$providerInstanceId' not found")
+        val account =
+            providerOAuthRepository.accountByProviderInstanceForStatus(
+                providerCode = normalizedCode,
+                providerInstanceId = providerInstanceId,
+            ) ?: throw NotFoundException("Provider account '$providerInstanceId' not found")
         return account.toStatusDto(now, configured = provider.isConfigured())
     }
 
@@ -63,21 +70,25 @@ class ProviderStatusService(
         val configured = isConfigured()
         val accounts = providerOAuthRepository.accountsByProvider(providerCode)
         val accountStatuses = accounts.map { it.toStatusDto(now, configured) }
-        val connected = configured && accountStatuses.any {
-            it.status == ProviderAccountLifecycleStatus.Connected
-        }
+        val connected =
+            configured &&
+                accountStatuses.any {
+                    it.status == ProviderAccountLifecycleStatus.Connected
+                }
         val canSync = configured && accounts.any { it.canSync() }
-        val needsReauth = accountStatuses.any {
-            it.status == ProviderAccountLifecycleStatus.NeedsReauth
-        }
+        val needsReauth =
+            accountStatuses.any {
+                it.status == ProviderAccountLifecycleStatus.NeedsReauth
+            }
         val needsAuthentication = configured && !canSync
-        val nextAction = when {
-            !configured -> ProviderNextAction.Configure
-            !canSync && needsReauth -> ProviderNextAction.Reconnect
-            !connected -> ProviderNextAction.Connect
-            !canSync -> ProviderNextAction.Reconnect
-            else -> ProviderNextAction.Sync
-        }
+        val nextAction =
+            when {
+                !configured -> ProviderNextAction.Configure
+                !canSync && needsReauth -> ProviderNextAction.Reconnect
+                !connected -> ProviderNextAction.Connect
+                !canSync -> ProviderNextAction.Reconnect
+                else -> ProviderNextAction.Sync
+            }
 
         return ProviderStatusResponse(
             providerCode = descriptor.providerCode,
@@ -106,10 +117,12 @@ class ProviderStatusService(
             status = lifecycleStatus(configured),
             connectedAt = (connectedAt ?: createdAt).toString(),
             disconnectedAt = disconnectedAt?.toString(),
-            lastSyncAt = providerOAuthRepository.latestFinishedSyncAt(
-                providerCode = providerCode,
-                providerInstanceId = providerInstanceId,
-            )?.toString(),
+            lastSyncAt =
+                providerOAuthRepository
+                    .latestFinishedSyncAt(
+                        providerCode = providerCode,
+                        providerInstanceId = providerInstanceId,
+                    )?.toString(),
             tokenStatus = tokenStatus(now),
             expiresAt = expiresAt.toString(),
             lastTokenRefreshAt = lastTokenRefreshAt?.toString(),
@@ -134,9 +147,7 @@ class ProviderStatusService(
             else -> ProviderTokenStatus.Valid
         }
 
-    private fun ProviderOAuthAccount.hasStoredTokens(): Boolean =
-        accessTokenCiphertext.isNotBlank() && refreshTokenCiphertext.isNotBlank()
+    private fun ProviderOAuthAccount.hasStoredTokens(): Boolean = accessTokenCiphertext.isNotBlank() && refreshTokenCiphertext.isNotBlank()
 
-    private fun ProviderOAuthAccount.canSync(): Boolean =
-        accountStatus == ACCOUNT_STATUS_CONNECTED && hasStoredTokens()
+    private fun ProviderOAuthAccount.canSync(): Boolean = accountStatus == ACCOUNT_STATUS_CONNECTED && hasStoredTokens()
 }

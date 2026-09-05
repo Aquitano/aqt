@@ -36,15 +36,17 @@ class WithingsSyncAdapter(
 
     override fun validate(request: ProviderSyncRequest): ProviderSyncPlan {
         val issues = mutableListOf<ValidationIssue>()
-        val dataTypes = request.dataTypes?.takeIf { it.isNotEmpty() }
-            ?: WITHINGS_DEFAULT_DATA_TYPES
+        val dataTypes =
+            request.dataTypes?.takeIf { it.isNotEmpty() }
+                ?: WITHINGS_DEFAULT_DATA_TYPES
         dataTypes.forEachIndexed { index, dataType ->
             if (dataType !in WITHINGS_DEFAULT_DATA_TYPES) {
-                issues += ValidationIssue(
-                    field = "dataTypes[$index]",
-                    code = ValidationIssueCodes.UnsupportedValue,
-                    message = "unsupported Withings data type",
-                )
+                issues +=
+                    ValidationIssue(
+                        field = "dataTypes[$index]",
+                        code = ValidationIssueCodes.UnsupportedValue,
+                        message = "unsupported Withings data type",
+                    )
             }
         }
         if (issues.isNotEmpty()) throw RequestValidationException(issues)
@@ -53,15 +55,16 @@ class WithingsSyncAdapter(
             providerInstanceId = request.providerInstanceId,
             requestedFrom = request.from,
             requestedTo = request.to,
-            items = dataTypes.distinct().flatMap { dataType ->
-                syncWindows(request.from, request.to).map { window ->
-                    ProviderSyncItem(
-                        dataType = dataType,
-                        from = window.from,
-                        to = window.to,
-                    )
-                }
-            },
+            items =
+                dataTypes.distinct().flatMap { dataType ->
+                    syncWindows(request.from, request.to).map { window ->
+                        ProviderSyncItem(
+                            dataType = dataType,
+                            from = window.from,
+                            to = window.to,
+                        )
+                    }
+                },
         )
     }
 
@@ -132,13 +135,13 @@ class WithingsSyncAdapter(
 
     override fun isUnauthorized(error: Throwable): Boolean =
         error is WithingsHttpException &&
-                error.code == "withings_data_request_failed" &&
-                error.providerStatus == 401
+            error.code == "withings_data_request_failed" &&
+            error.providerStatus == 401
 
     override fun isInvalidRefreshToken(error: Throwable): Boolean =
         error is WithingsHttpException &&
-                error.code == "withings_token_request_failed" &&
-                error.providerStatus == 401
+            error.code == "withings_token_request_failed" &&
+            error.providerStatus == 401
 
     override fun errorCode(error: Throwable): String =
         when (error) {
@@ -149,11 +152,12 @@ class WithingsSyncAdapter(
 
     override fun errorAttributes(error: Throwable): Map<String, String> =
         when (error) {
-            is WithingsHttpException -> buildMap {
-                error.providerStatus?.let { put("providerStatus", it.toString()) }
-                error.providerAction?.let { put("providerAction", it) }
-                error.providerEndpoint?.let { put("providerEndpoint", it) }
-            }
+            is WithingsHttpException ->
+                buildMap {
+                    error.providerStatus?.let { put("providerStatus", it.toString()) }
+                    error.providerAction?.let { put("providerAction", it) }
+                    error.providerEndpoint?.let { put("providerEndpoint", it) }
+                }
 
             else -> emptyMap()
         }
@@ -165,34 +169,38 @@ class WithingsSyncAdapter(
         to: Instant,
     ): WithingsFetchResult =
         when (dataType) {
-            "activity" -> client.fetchActivity(
-                accessToken,
-                from,
-                to,
-                WITHINGS_ACTIVITY_FIELDS_ALL_LISTED,
-            )
+            "activity" ->
+                client.fetchActivity(
+                    accessToken,
+                    from,
+                    to,
+                    WITHINGS_ACTIVITY_FIELDS_ALL_LISTED,
+                )
 
-            "measures" -> client.fetchMeasures(
-                accessToken,
-                from,
-                to,
-                WITHINGS_MEASURE_TYPES_ALL_LISTED,
-                1,
-            )
+            "measures" ->
+                client.fetchMeasures(
+                    accessToken,
+                    from,
+                    to,
+                    WITHINGS_MEASURE_TYPES_ALL_LISTED,
+                    1,
+                )
 
-            "sleep-summary" -> client.fetchSleepSummary(
-                accessToken,
-                from,
-                to,
-                WITHINGS_SLEEP_SUMMARY_FIELDS_ALL_LISTED,
-            )
+            "sleep-summary" ->
+                client.fetchSleepSummary(
+                    accessToken,
+                    from,
+                    to,
+                    WITHINGS_SLEEP_SUMMARY_FIELDS_ALL_LISTED,
+                )
 
-            "sleep" -> client.fetchSleep(
-                accessToken,
-                from,
-                to,
-                WITHINGS_SLEEP_FIELDS_ALL_LISTED,
-            )
+            "sleep" ->
+                client.fetchSleep(
+                    accessToken,
+                    from,
+                    to,
+                    WITHINGS_SLEEP_FIELDS_ALL_LISTED,
+                )
 
             else -> throw WithingsHttpException(
                 "withings_unsupported_data_type",

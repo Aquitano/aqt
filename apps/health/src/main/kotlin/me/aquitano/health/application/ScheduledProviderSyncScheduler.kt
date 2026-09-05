@@ -1,9 +1,9 @@
 package me.aquitano.health.application
 
-import kotlinx.coroutines.*
-import me.aquitano.health.infrastructure.time.UtcClock
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.*
 import me.aquitano.health.infrastructure.logging.*
+import me.aquitano.health.infrastructure.time.UtcClock
 import java.time.Duration
 
 private val schedulerLogger = KotlinLogging.logger {}
@@ -18,24 +18,25 @@ class ScheduledProviderSyncScheduler(
 
     fun start() {
         if (job != null) return
-        job = scope.launch {
-            while (isActive) {
-                try {
-                    val processed = service.runDue(clock.now())
-                    if (processed > 0) {
-                        schedulerLogger.infoWithContext(
-                            "scheduled_provider_sync_due_processed",
-                            "count" to processed,
-                        )
+        job =
+            scope.launch {
+                while (isActive) {
+                    try {
+                        val processed = service.runDue(clock.now())
+                        if (processed > 0) {
+                            schedulerLogger.infoWithContext(
+                                "scheduled_provider_sync_due_processed",
+                                "count" to processed,
+                            )
+                        }
+                    } catch (exception: CancellationException) {
+                        throw exception
+                    } catch (exception: Exception) {
+                        schedulerLogger.error(exception) { "scheduled_provider_sync_tick_failed" }
                     }
-                } catch (exception: CancellationException) {
-                    throw exception
-                } catch (exception: Exception) {
-                    schedulerLogger.error(exception) { "scheduled_provider_sync_tick_failed" }
+                    delay(pollInterval.toMillis())
                 }
-                delay(pollInterval.toMillis())
             }
-        }
     }
 
     fun stop() {

@@ -20,8 +20,13 @@ data class ProviderSyncItem(
 )
 
 interface ProviderSyncProgressSink {
-    suspend fun started(totalItems: Int, providerInstanceId: String) {}
+    suspend fun started(
+        totalItems: Int,
+        providerInstanceId: String,
+    ) {}
+
     suspend fun itemStarted(item: ProviderSyncItem) {}
+
     suspend fun itemCompleted(item: ProviderSyncItem) {}
 
     companion object {

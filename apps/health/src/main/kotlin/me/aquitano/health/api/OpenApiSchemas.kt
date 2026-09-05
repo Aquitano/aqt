@@ -8,6 +8,7 @@ import kotlinx.serialization.builtins.serializer
 
 internal const val JsonFormatDate = "date"
 internal const val JsonFormatDateTime = "date-time"
+
 internal fun stringSchema(
     format: String? = null,
     enumValues: List<String> = emptyList(),
@@ -30,40 +31,44 @@ internal fun integerSchema(
 ): JsonSchema =
     JsonSchema(
         type = JsonType.INTEGER,
-        default = default?.let {
-            GenericElement.encodeToElement(
-                Int.serializer(),
-                it
-            )
-        },
+        default =
+            default?.let {
+                GenericElement.encodeToElement(
+                    Int.serializer(),
+                    it,
+                )
+            },
         minimum = minimum,
         maximum = maximum,
-        example = example?.let {
-            GenericElement.encodeToElement(
-                Int.serializer(),
-                it
-            )
-        },
+        example =
+            example?.let {
+                GenericElement.encodeToElement(
+                    Int.serializer(),
+                    it,
+                )
+            },
     )
 
 internal fun booleanSchema(
     default: Boolean? = null,
-    example: Boolean? = null
+    example: Boolean? = null,
 ): JsonSchema =
     JsonSchema(
         type = JsonType.BOOLEAN,
-        default = default?.let {
-            GenericElement.encodeToElement(
-                Boolean.serializer(),
-                it
-            )
-        },
-        example = example?.let {
-            GenericElement.encodeToElement(
-                Boolean.serializer(),
-                it
-            )
-        },
+        default =
+            default?.let {
+                GenericElement.encodeToElement(
+                    Boolean.serializer(),
+                    it,
+                )
+            },
+        example =
+            example?.let {
+                GenericElement.encodeToElement(
+                    Boolean.serializer(),
+                    it,
+                )
+            },
     )
-private fun stringElement(value: String): GenericElement =
-    GenericElement.encodeToElement(String.serializer(), value)
+
+private fun stringElement(value: String): GenericElement = GenericElement.encodeToElement(String.serializer(), value)

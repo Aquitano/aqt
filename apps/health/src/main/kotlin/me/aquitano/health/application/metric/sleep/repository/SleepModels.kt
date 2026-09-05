@@ -5,7 +5,7 @@ data class SleepSessionRow(
     val sourceInstanceId: Int,
     val startAt: String,
     val endAt: String,
-    val durationSeconds: Long
+    val durationSeconds: Long,
 )
 
 data class SleepNightRow(
@@ -19,7 +19,7 @@ data class SleepStageRow(
     val stage: String,
     val startAt: String,
     val endAt: String,
-    val durationSeconds: Long
+    val durationSeconds: Long,
 )
 
 data class SleepSummaryRow(
@@ -56,4 +56,3 @@ data class SleepSummaryRow(
     val rrMin: Double?,
     val rrMax: Double?,
 )
-

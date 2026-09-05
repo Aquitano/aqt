@@ -26,5 +26,4 @@ data class MetricLatestResult<T>(
 /**
  * Extracts a set of source instance IDs from a list of rows.
  */
-fun <T> List<T>.sourceInstanceIds(selector: (T) -> Int): Set<Int> =
-    mapTo(linkedSetOf(), selector)
+fun <T> List<T>.sourceInstanceIds(selector: (T) -> Int): Set<Int> = mapTo(linkedSetOf(), selector)

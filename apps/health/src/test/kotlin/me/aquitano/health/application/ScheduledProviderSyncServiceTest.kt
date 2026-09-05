@@ -26,91 +26,97 @@ import kotlin.test.assertNull
 
 class ScheduledProviderSyncServiceTest {
     @Test
-    fun manualRunConflictsWhileScheduledRunIsActiveForSameAccount() = runBlocking {
-        val database = DatabaseFactory().initialize(PostgresTestDatabase.config())
-        val repository = ScheduledSyncRepository(database)
-        val provider = BlockingProvider()
-        val service = ScheduledProviderSyncService(
-            providerRegistry = HealthProviderRegistry(listOf(provider)),
-            providerOAuthRepository = ProviderOAuthRepository(database),
-            repository = repository,
-            runGuard = ScheduledSyncRunGuard(),
-        )
-        val now = Instant.parse("2026-05-31T10:00:00Z")
+    fun manualRunConflictsWhileScheduledRunIsActiveForSameAccount() =
+        runBlocking {
+            val database = DatabaseFactory().initialize(PostgresTestDatabase.config())
+            val repository = ScheduledSyncRepository(database)
+            val provider = BlockingProvider()
+            val service =
+                ScheduledProviderSyncService(
+                    providerRegistry = HealthProviderRegistry(listOf(provider)),
+                    providerOAuthRepository = ProviderOAuthRepository(database),
+                    repository = repository,
+                    runGuard = ScheduledSyncRunGuard(),
+                )
+            val now = Instant.parse("2026-05-31T10:00:00Z")
 
-        repository.upsertConfig(
-            providerCode = provider.providerCode,
-            providerInstanceId = provider.defaultProviderInstanceId,
-            enabled = true,
-            dataTypes = listOf("steps"),
-            cadenceMinutes = 1_440,
-            lookbackDays = 7,
-            nextRunAt = now,
-            now = now,
-        )
+            repository.upsertConfig(
+                providerCode = provider.providerCode,
+                providerInstanceId = provider.defaultProviderInstanceId,
+                enabled = true,
+                dataTypes = listOf("steps"),
+                cadenceMinutes = 1_440,
+                lookbackDays = 7,
+                nextRunAt = now,
+                now = now,
+            )
 
-        coroutineScope {
-            val scheduledRun = async { service.runDue(now) }
-            provider.started.await()
+            coroutineScope {
+                val scheduledRun = async { service.runDue(now) }
+                provider.started.await()
 
-            val conflict = assertFailsWith<ConflictException> {
-                service.runNow(provider.providerCode, provider.defaultProviderInstanceId, now)
+                val conflict =
+                    assertFailsWith<ConflictException> {
+                        service.runNow(provider.providerCode, provider.defaultProviderInstanceId, now)
+                    }
+
+                provider.release.complete(Unit)
+                assertEquals("scheduled_sync_already_running", conflict.code)
+                assertEquals(1, scheduledRun.await())
+                assertEquals(1, provider.syncCalls.get())
             }
-
-            provider.release.complete(Unit)
-            assertEquals("scheduled_sync_already_running", conflict.code)
-            assertEquals(1, scheduledRun.await())
-            assertEquals(1, provider.syncCalls.get())
         }
-    }
 
     @Test
-    fun nonRetryableFailureParksConfigEvenWhenMessageIsReworded() = runBlocking {
-        // The ConflictException message deliberately avoids the old magic substrings;
-        // classification must come from the exception type, not the wording.
-        val provider = ThrowingProvider(
-            ConflictException("withings_needs_reauth", "token expired, reauthorize the account")
-        )
-        val (service, repository) = serviceWith(provider)
-        val now = Instant.parse("2026-05-31T10:00:00Z")
-        configureEnabled(repository, provider, now)
+    fun nonRetryableFailureParksConfigEvenWhenMessageIsReworded() =
+        runBlocking {
+            // The ConflictException message deliberately avoids the old magic substrings;
+            // classification must come from the exception type, not the wording.
+            val provider =
+                ThrowingProvider(
+                    ConflictException("withings_needs_reauth", "token expired, reauthorize the account"),
+                )
+            val (service, repository) = serviceWith(provider)
+            val now = Instant.parse("2026-05-31T10:00:00Z")
+            configureEnabled(repository, provider, now)
 
-        assertEquals(1, service.runDue(now))
+            assertEquals(1, service.runDue(now))
 
-        val config = repository.getConfig(provider.providerCode, provider.defaultProviderInstanceId)
-        assertNotNull(config)
-        assertNull(config.nextRunAt)
-        assertEquals(1, config.failureCount)
-    }
+            val config = repository.getConfig(provider.providerCode, provider.defaultProviderInstanceId)
+            assertNotNull(config)
+            assertNull(config.nextRunAt)
+            assertEquals(1, config.failureCount)
+        }
 
     @Test
-    fun transientFailureKeepsRetryingEvenWhenMessageMentionsValidation() = runBlocking {
-        val provider = ThrowingProvider(
-            IllegalStateException("upstream response failed schema validation, not connected to peer")
-        )
-        val (service, repository) = serviceWith(provider)
-        val now = Instant.parse("2026-05-31T10:00:00Z")
-        configureEnabled(repository, provider, now)
+    fun transientFailureKeepsRetryingEvenWhenMessageMentionsValidation() =
+        runBlocking {
+            val provider =
+                ThrowingProvider(
+                    IllegalStateException("upstream response failed schema validation, not connected to peer"),
+                )
+            val (service, repository) = serviceWith(provider)
+            val now = Instant.parse("2026-05-31T10:00:00Z")
+            configureEnabled(repository, provider, now)
 
-        assertEquals(1, service.runDue(now))
+            assertEquals(1, service.runDue(now))
 
-        val config = repository.getConfig(provider.providerCode, provider.defaultProviderInstanceId)
-        assertNotNull(config)
-        assertEquals(ScheduledSyncPolicy.nextRunAfterFailure(now, 1), config.nextRunAt)
-        assertEquals(1, config.failureCount)
-    }
+            val config = repository.getConfig(provider.providerCode, provider.defaultProviderInstanceId)
+            assertNotNull(config)
+            assertEquals(ScheduledSyncPolicy.nextRunAfterFailure(now, 1), config.nextRunAt)
+            assertEquals(1, config.failureCount)
+        }
 
-    private fun serviceWith(
-        provider: HealthProvider,
-    ): Pair<ScheduledProviderSyncService, ScheduledSyncRepository> {
+    private fun serviceWith(provider: HealthProvider): Pair<ScheduledProviderSyncService, ScheduledSyncRepository> {
         val database = DatabaseFactory().initialize(PostgresTestDatabase.config())
         val repository = ScheduledSyncRepository(database)
-        val service = ScheduledProviderSyncService(
-            providerRegistry = HealthProviderRegistry(listOf(provider)),
-            providerOAuthRepository = ProviderOAuthRepository(database),
-            repository = repository,
-            runGuard = ScheduledSyncRunGuard(),
-        )
+        val service =
+            ScheduledProviderSyncService(
+                providerRegistry = HealthProviderRegistry(listOf(provider)),
+                providerOAuthRepository = ProviderOAuthRepository(database),
+                repository = repository,
+                runGuard = ScheduledSyncRunGuard(),
+            )
         return service to repository
     }
 
@@ -131,27 +137,32 @@ class ScheduledProviderSyncServiceTest {
         )
     }
 
-    private class ThrowingProvider(private val failure: Exception) : HealthProvider {
+    private class ThrowingProvider(
+        private val failure: Exception,
+    ) : HealthProvider {
         override val providerCode = "throwing_provider"
         override val defaultProviderInstanceId = "throwing-provider-me"
-        override val descriptor = HealthProviderDescriptor(
-            providerCode = providerCode,
-            displayName = "Throwing Provider",
-            authType = ProviderAuthType.NONE,
-            requiresAuthentication = false,
-            supportedDataTypes = listOf("steps"),
-            defaultDataTypes = listOf("steps"),
-            maxSyncRangeDays = 31,
-            supportsPageSize = false,
-            workflowEndpoints = ProviderWorkflowEndpoints(sync = "/sync"),
-        )
+        override val descriptor =
+            HealthProviderDescriptor(
+                providerCode = providerCode,
+                displayName = "Throwing Provider",
+                authType = ProviderAuthType.NONE,
+                requiresAuthentication = false,
+                supportedDataTypes = listOf("steps"),
+                defaultDataTypes = listOf("steps"),
+                maxSyncRangeDays = 31,
+                supportsPageSize = false,
+                workflowEndpoints = ProviderWorkflowEndpoints(sync = "/sync"),
+            )
 
         override fun isConfigured(): Boolean = true
 
         override fun getAuthUrl(state: String): String = error("OAuth is not supported")
 
-        override suspend fun connect(code: String, now: Instant): ProviderConnection =
-            error("OAuth is not supported")
+        override suspend fun connect(
+            code: String,
+            now: Instant,
+        ): ProviderConnection = error("OAuth is not supported")
 
         override suspend fun sync(
             request: ProviderSyncRequest,
@@ -166,24 +177,27 @@ class ScheduledProviderSyncServiceTest {
 
         override val providerCode = "blocking_provider"
         override val defaultProviderInstanceId = "blocking-provider-me"
-        override val descriptor = HealthProviderDescriptor(
-            providerCode = providerCode,
-            displayName = "Blocking Provider",
-            authType = ProviderAuthType.NONE,
-            requiresAuthentication = false,
-            supportedDataTypes = listOf("steps"),
-            defaultDataTypes = listOf("steps"),
-            maxSyncRangeDays = 31,
-            supportsPageSize = false,
-            workflowEndpoints = ProviderWorkflowEndpoints(sync = "/sync"),
-        )
+        override val descriptor =
+            HealthProviderDescriptor(
+                providerCode = providerCode,
+                displayName = "Blocking Provider",
+                authType = ProviderAuthType.NONE,
+                requiresAuthentication = false,
+                supportedDataTypes = listOf("steps"),
+                defaultDataTypes = listOf("steps"),
+                maxSyncRangeDays = 31,
+                supportsPageSize = false,
+                workflowEndpoints = ProviderWorkflowEndpoints(sync = "/sync"),
+            )
 
         override fun isConfigured(): Boolean = true
 
         override fun getAuthUrl(state: String): String = error("OAuth is not supported")
 
-        override suspend fun connect(code: String, now: Instant): ProviderConnection =
-            error("OAuth is not supported")
+        override suspend fun connect(
+            code: String,
+            now: Instant,
+        ): ProviderConnection = error("OAuth is not supported")
 
         override suspend fun sync(
             request: ProviderSyncRequest,

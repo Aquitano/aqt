@@ -7,7 +7,9 @@ import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-class TokenCipher(secret: String) {
+class TokenCipher(
+    secret: String,
+) {
     private val key = SecretKeySpec(deriveKey(secret), "AES")
     private val random = SecureRandom()
 
@@ -20,7 +22,7 @@ class TokenCipher(secret: String) {
         return listOf(
             "v1",
             nonce.encodeBase64(),
-            encrypted.encodeBase64()
+            encrypted.encodeBase64(),
         ).joinToString(":")
     }
 
@@ -38,13 +40,12 @@ class TokenCipher(secret: String) {
         require(secret.isNotBlank()) {
             "AQT_HEALTH_GOOGLE_TOKEN_ENCRYPTION_KEY is required for Google Health OAuth"
         }
-        return MessageDigest.getInstance("SHA-256")
+        return MessageDigest
+            .getInstance("SHA-256")
             .digest(secret.toByteArray(Charsets.UTF_8))
     }
 
-    private fun ByteArray.encodeBase64(): String =
-        Base64.getEncoder().encodeToString(this)
+    private fun ByteArray.encodeBase64(): String = Base64.getEncoder().encodeToString(this)
 
-    private fun String.decodeBase64(): ByteArray =
-        Base64.getDecoder().decode(this)
+    private fun String.decodeBase64(): ByteArray = Base64.getDecoder().decode(this)
 }

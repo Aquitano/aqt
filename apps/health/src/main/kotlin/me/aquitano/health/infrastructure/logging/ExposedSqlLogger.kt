@@ -9,7 +9,10 @@ import org.jetbrains.exposed.v1.core.statements.expandArgs
 object Slf4jSqlLogger : SqlLogger {
     private val logger = KotlinLogging.logger("me.aquitano.health.database.Sql")
 
-    override fun log(context: StatementContext, transaction: Transaction) {
+    override fun log(
+        context: StatementContext,
+        transaction: Transaction,
+    ) {
         if (logger.isDebugEnabled()) {
             logger.debug { "SQL: ${context.expandArgs(transaction)}" }
         }

@@ -1,15 +1,15 @@
 package me.aquitano.health.application
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.domain.*
 import me.aquitano.health.domain.ProviderSyncRequest
+import me.aquitano.health.infrastructure.logging.*
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncCheckpointRecord
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncConfigRecord
 import me.aquitano.health.infrastructure.repositories.ScheduledSyncRepository
-import kotlinx.coroutines.sync.Mutex
-import io.github.oshai.kotlinlogging.KotlinLogging
-import me.aquitano.health.infrastructure.logging.*
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -22,7 +22,10 @@ class ScheduledSyncRunGuard {
     // This is intentionally process-local. Multiple scheduler processes sharing one DB need a DB-backed claim.
     private val running = ConcurrentHashMap<String, Mutex>()
 
-    suspend fun <T> tryRun(key: String, block: suspend () -> T): T? {
+    suspend fun <T> tryRun(
+        key: String,
+        block: suspend () -> T,
+    ): T? {
         val mutex = running.computeIfAbsent(key) { Mutex() }
         if (!mutex.tryLock()) return null
         return try {
@@ -44,16 +47,22 @@ class ScheduledProviderSyncService(
         providerCode: String,
         providerInstanceId: String,
     ): ScheduledSyncConfigResponse {
-        val provider = providerRegistry.getProvider(providerCode)
-            ?: throw NotFoundException("Provider '$providerCode' not found")
+        val provider =
+            providerRegistry.getProvider(providerCode)
+                ?: throw NotFoundException("Provider '$providerCode' not found")
         val normalizedCode = provider.providerCode
         providerOAuthRepository.accountByProviderInstanceForStatus(
             normalizedCode,
             providerInstanceId,
         ) ?: throw NotFoundException("Provider account '$providerInstanceId' not found")
-        val config = repository.getConfig(normalizedCode, providerInstanceId)
-            ?: defaultConfig(provider, providerInstanceId)
-        val checkpoints = config.id.takeIf { it > 0 }?.let { repository.checkpoints(it) }.orEmpty()
+        val config =
+            repository.getConfig(normalizedCode, providerInstanceId)
+                ?: defaultConfig(provider, providerInstanceId)
+        val checkpoints =
+            config.id
+                .takeIf { it > 0 }
+                ?.let { repository.checkpoints(it) }
+                .orEmpty()
         return config.toDto(checkpoints)
     }
 
@@ -63,8 +72,9 @@ class ScheduledProviderSyncService(
         request: ScheduledSyncConfigUpdateRequest,
         now: Instant,
     ): ScheduledSyncConfigResponse {
-        val provider = providerRegistry.getProvider(providerCode)
-            ?: throw NotFoundException("Provider '$providerCode' not found")
+        val provider =
+            providerRegistry.getProvider(providerCode)
+                ?: throw NotFoundException("Provider '$providerCode' not found")
         val normalizedCode = provider.providerCode
         providerOAuthRepository.accountByProviderInstanceForStatus(
             normalizedCode,
@@ -73,33 +83,37 @@ class ScheduledProviderSyncService(
 
         val existing = repository.getConfig(normalizedCode, providerInstanceId)
         val enabled = request.enabled ?: existing?.enabled ?: false
-        val dataTypes = validateDataTypes(
-            provider,
-            request.dataTypes ?: existing?.dataTypes ?: provider.descriptor.defaultDataTypes,
-        )
-        val cadenceMinutes = validateRange(
-            field = "cadenceMinutes",
-            value = request.cadenceMinutes ?: existing?.cadenceMinutes ?: DEFAULT_CADENCE_MINUTES,
-            min = 15,
-            max = 43_200,
-        )
-        val lookbackDays = validateRange(
-            field = "lookbackDays",
-            value = request.lookbackDays ?: existing?.lookbackDays ?: DEFAULT_LOOKBACK_DAYS,
-            min = 1,
-            max = provider.descriptor.maxSyncRangeDays,
-        )
+        val dataTypes =
+            validateDataTypes(
+                provider,
+                request.dataTypes ?: existing?.dataTypes ?: provider.descriptor.defaultDataTypes,
+            )
+        val cadenceMinutes =
+            validateRange(
+                field = "cadenceMinutes",
+                value = request.cadenceMinutes ?: existing?.cadenceMinutes ?: DEFAULT_CADENCE_MINUTES,
+                min = 15,
+                max = 43_200,
+            )
+        val lookbackDays =
+            validateRange(
+                field = "lookbackDays",
+                value = request.lookbackDays ?: existing?.lookbackDays ?: DEFAULT_LOOKBACK_DAYS,
+                min = 1,
+                max = provider.descriptor.maxSyncRangeDays,
+            )
         val nextRunAt = if (enabled) existing?.nextRunAt ?: now else null
-        val config = repository.upsertConfig(
-            providerCode = normalizedCode,
-            providerInstanceId = providerInstanceId,
-            enabled = enabled,
-            dataTypes = dataTypes,
-            cadenceMinutes = cadenceMinutes,
-            lookbackDays = lookbackDays,
-            nextRunAt = nextRunAt,
-            now = now,
-        )
+        val config =
+            repository.upsertConfig(
+                providerCode = normalizedCode,
+                providerInstanceId = providerInstanceId,
+                enabled = enabled,
+                dataTypes = dataTypes,
+                cadenceMinutes = cadenceMinutes,
+                lookbackDays = lookbackDays,
+                nextRunAt = nextRunAt,
+                now = now,
+            )
         return config.toDto(repository.checkpoints(config.id))
     }
 
@@ -108,19 +122,22 @@ class ScheduledProviderSyncService(
         providerInstanceId: String,
         now: Instant,
     ): ScheduledSyncRunResponse {
-        val provider = providerRegistry.getProvider(providerCode)
-            ?: throw NotFoundException("Provider '$providerCode' not found")
-        val config = repository.getConfig(provider.providerCode, providerInstanceId)
-            ?: throw ConflictException(
-                code = "scheduled_sync_not_configured",
-                message = "Scheduled sync is not configured for this provider account",
+        val provider =
+            providerRegistry.getProvider(providerCode)
+                ?: throw NotFoundException("Provider '$providerCode' not found")
+        val config =
+            repository.getConfig(provider.providerCode, providerInstanceId)
+                ?: throw ConflictException(
+                    code = "scheduled_sync_not_configured",
+                    message = "Scheduled sync is not configured for this provider account",
+                )
+        val result =
+            runGuard.tryRun(runKey(config)) {
+                executeConfig(provider, config, now)
+            } ?: throw ConflictException(
+                code = "scheduled_sync_already_running",
+                message = "A scheduled sync is already running for this provider account",
             )
-        val result = runGuard.tryRun(runKey(config)) {
-            executeConfig(provider, config, now)
-        } ?: throw ConflictException(
-            code = "scheduled_sync_already_running",
-            message = "A scheduled sync is already running for this provider account",
-        )
         return ScheduledSyncRunResponse(
             providerCode = provider.providerCode,
             providerInstanceId = providerInstanceId,
@@ -132,7 +149,10 @@ class ScheduledProviderSyncService(
         )
     }
 
-    suspend fun runDue(now: Instant, limit: Int = 10): Int {
+    suspend fun runDue(
+        now: Instant,
+        limit: Int = 10,
+    ): Int {
         var count = 0
         repository.dueConfigs(now, limit).forEach { config ->
             val provider = providerRegistry.getProvider(config.providerCode)
@@ -146,9 +166,10 @@ class ScheduledProviderSyncService(
                 )
                 return@forEach
             }
-            val result = runGuard.tryRun(runKey(config)) {
-                executeConfig(provider, config, now)
-            }
+            val result =
+                runGuard.tryRun(runKey(config)) {
+                    executeConfig(provider, config, now)
+                }
             if (result != null) {
                 count += 1
             }
@@ -174,15 +195,16 @@ class ScheduledProviderSyncService(
             earliestFrom = listOfNotNull(earliestFrom, from).minOrNull()
             latestTo = listOfNotNull(latestTo, to).maxOrNull()
             try {
-                val summary = provider.sync(
-                    ProviderSyncRequest(
-                        providerInstanceId = config.providerInstanceId,
-                        from = from,
-                        to = to,
-                        dataTypes = listOf(dataType),
-                    ),
-                    now,
-                )
+                val summary =
+                    provider.sync(
+                        ProviderSyncRequest(
+                            providerInstanceId = config.providerInstanceId,
+                            from = from,
+                            to = to,
+                            dataTypes = listOf(dataType),
+                        ),
+                        now,
+                    )
                 summaries += summary
                 if (summary.errors.isEmpty()) {
                     repository.markDataTypeSuccess(config.id, dataType, from, to, now)
@@ -192,7 +214,7 @@ class ScheduledProviderSyncService(
                 }
             } catch (exception: Exception) {
                 if (exception is CancellationException) throw exception
-                errors += "${dataType}: ${exception.message ?: "Scheduled sync failed"}"
+                errors += "$dataType: ${exception.message ?: "Scheduled sync failed"}"
                 if (!isRetryableSyncFailure(exception)) hasNonRetryableError = true
             }
         }
@@ -238,8 +260,7 @@ class ScheduledProviderSyncService(
         return candidateFrom to to
     }
 
-    private fun runKey(config: ScheduledSyncConfigRecord): String =
-        "${config.providerCode}:${config.providerInstanceId}"
+    private fun runKey(config: ScheduledSyncConfigRecord): String = "${config.providerCode}:${config.providerInstanceId}"
 
     private fun defaultConfig(
         provider: HealthProvider,
@@ -264,7 +285,10 @@ class ScheduledProviderSyncService(
             updatedAt = Instant.EPOCH,
         )
 
-    private fun validateDataTypes(provider: HealthProvider, dataTypes: List<String>): List<String> {
+    private fun validateDataTypes(
+        provider: HealthProvider,
+        dataTypes: List<String>,
+    ): List<String> {
         val selected = dataTypes.map { it.trim() }.filter { it.isNotBlank() }.distinct()
         val unsupported = selected.filterNot { provider.descriptor.supportedDataTypes.contains(it) }
         val issues = mutableListOf<ValidationIssue>()
@@ -278,10 +302,15 @@ class ScheduledProviderSyncService(
         return selected
     }
 
-    private fun validateRange(field: String, value: Int, min: Int, max: Int): Int {
+    private fun validateRange(
+        field: String,
+        value: Int,
+        min: Int,
+        max: Int,
+    ): Int {
         if (value < min || value > max) {
             throw RequestValidationException(
-                listOf(ValidationIssue(field, ValidationIssueCodes.OutOfRange, "must be between $min and $max"))
+                listOf(ValidationIssue(field, ValidationIssueCodes.OutOfRange, "must be between $min and $max")),
             )
         }
         return value
@@ -321,10 +350,15 @@ class ScheduledProviderSyncService(
 }
 
 object ScheduledSyncPolicy {
-    fun nextRunAfterSuccess(now: Instant, cadenceMinutes: Int): Instant =
-        now.plus(Duration.ofMinutes(cadenceMinutes.toLong()))
+    fun nextRunAfterSuccess(
+        now: Instant,
+        cadenceMinutes: Int,
+    ): Instant = now.plus(Duration.ofMinutes(cadenceMinutes.toLong()))
 
-    fun nextRunAfterFailure(now: Instant, failureCount: Int): Instant {
+    fun nextRunAfterFailure(
+        now: Instant,
+        failureCount: Int,
+    ): Instant {
         val exponent = (failureCount - 1).coerceAtLeast(0)
         val minutes = min(1_440.0, 2.0.pow(exponent).coerceAtLeast(1.0)).toLong()
         return now.plus(Duration.ofMinutes(minutes))
@@ -342,9 +376,7 @@ private data class ScheduledSyncExecutionResult(
 private const val DEFAULT_CADENCE_MINUTES = 1_440
 private const val DEFAULT_LOOKBACK_DAYS = 7
 
-private fun ScheduledSyncConfigRecord.toDto(
-    checkpoints: List<ScheduledSyncCheckpointRecord>,
-): ScheduledSyncConfigResponse =
+private fun ScheduledSyncConfigRecord.toDto(checkpoints: List<ScheduledSyncCheckpointRecord>): ScheduledSyncConfigResponse =
     ScheduledSyncConfigResponse(
         providerCode = providerCode,
         providerInstanceId = providerInstanceId,

@@ -9,13 +9,13 @@ class StepSummaryService(
     private val derivation: StepDailySummaryDerivation,
 ) {
     constructor(repository: StepDailySummaryDerivationRepository) : this(
-        StepDailySummaryDerivation(repository)
+        StepDailySummaryDerivation(repository),
     )
 
     suspend fun recompute(
         sourceInstanceId: Int,
         dates: Set<LocalDate>,
-        computedAt: Instant
+        computedAt: Instant,
     ) {
         derivation.recompute(sourceInstanceId, dates, computedAt)
     }

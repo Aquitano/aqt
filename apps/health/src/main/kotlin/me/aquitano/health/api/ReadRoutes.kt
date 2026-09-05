@@ -8,9 +8,9 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.routing.openapi.*
 import me.aquitano.health.api.dto.*
+import me.aquitano.health.application.HealthDayQueryService
 import me.aquitano.health.application.SleepSummaryReadService
 import me.aquitano.health.application.TrendQueryService
-import me.aquitano.health.application.HealthDayQueryService
 import me.aquitano.health.application.metric.activity.ActivityQueryService
 import me.aquitano.health.application.metric.cardiovascular.CardiovascularQueryService
 import me.aquitano.health.application.metric.common.QueryParamSpecs
@@ -18,7 +18,6 @@ import me.aquitano.health.application.metric.dashboard.DashboardQueryService
 import me.aquitano.health.application.metric.scalar.ScalarMetricQueryService
 import me.aquitano.health.application.metric.sleep.SleepQueryService
 import me.aquitano.health.application.metric.steps.StepQueryService
-import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.infrastructure.time.UtcClock
 import org.koin.ktor.ext.inject
 import kotlin.reflect.typeOf
@@ -52,7 +51,7 @@ internal fun Route.readRoutes() {
             scalarMetricQueryService.list(
                 call.metricTypePath(),
                 call.queryParams(),
-            )
+            ),
         )
     }.describe {
         operationId = "listScalarSamples"
@@ -69,7 +68,7 @@ internal fun Route.readRoutes() {
             scalarMetricQueryService.summary(
                 call.metricTypePath(),
                 call.queryParams(),
-            )
+            ),
         )
     }.describe {
         operationId = "summarizeScalarSamples"
@@ -86,7 +85,7 @@ internal fun Route.readRoutes() {
             scalarMetricQueryService.summaryDaily(
                 call.metricTypePath(),
                 call.queryParams(),
-            )
+            ),
         )
     }.describe {
         operationId = "summarizeScalarSamplesDaily"
@@ -104,7 +103,7 @@ internal fun Route.readRoutes() {
             healthDayQueryService.getHealthDay(
                 call.queryParams(),
                 clock.now(),
-            )
+            ),
         )
     }.describe {
         operationId = "getHealthDay"
@@ -128,8 +127,8 @@ internal fun Route.readRoutes() {
     get("/api/v2/steps") {
         call.respond<StepSamplesResponse>(
             stepQueryService.listStepSamples(
-                call.queryParams()
-            )
+                call.queryParams(),
+            ),
         )
     }.describeReadOperation(
         operationId = "listStepSamples",
@@ -143,8 +142,8 @@ internal fun Route.readRoutes() {
             HttpStatusCode.OK,
             stepQueryService.listStepDailySummaries(
                 call.queryParams(),
-                clock.now()
-            )
+                clock.now(),
+            ),
         )
     }.describeDailyStepReadOperation()
     get("/api/v2/activity/summaries") {
@@ -152,15 +151,15 @@ internal fun Route.readRoutes() {
             HttpStatusCode.OK,
             activityQueryService.listActivitySummaries(
                 call.queryParams(),
-                clock.now()
-            )
+                clock.now(),
+            ),
         )
     }.describeActivitySummaryReadOperation()
     get("/api/v2/sleep/sessions") {
         call.respond<SleepSessionsResponse>(
             sleepQueryService.listSleepSessions(
-                call.queryParams()
-            )
+                call.queryParams(),
+            ),
         )
     }.describeReadOperation(
         operationId = "listSleepSessions",
@@ -174,15 +173,15 @@ internal fun Route.readRoutes() {
             HttpStatusCode.OK,
             sleepQueryService.listSleepNights(
                 call.queryParams(),
-                clock.now()
-            )
+                clock.now(),
+            ),
         )
     }.describeSleepNightReadOperation()
     get("/api/v2/sleep/summaries") {
         call.respond<SleepSummariesResponse>(
             sleepSummaryReadService.list(
-                call.queryParams()
-            )
+                call.queryParams(),
+            ),
         )
     }.describeReadOperation(
         operationId = "listSleepSummaries",
@@ -193,7 +192,7 @@ internal fun Route.readRoutes() {
     )
     get("/api/v2/blood-pressure") {
         call.respond<BloodPressureMeasurementsResponse>(
-            cardiovascularQueryService.listBloodPressure(call.queryParams())
+            cardiovascularQueryService.listBloodPressure(call.queryParams()),
         )
     }.describeReadOperation(
         operationId = "listBloodPressureMeasurements",
@@ -208,8 +207,8 @@ internal fun Route.readRoutes() {
             HttpStatusCode.OK,
             dashboardQueryService.dashboardSummary(
                 call.queryParams(),
-                clock.now()
-            )
+                clock.now(),
+            ),
         )
     }.describe {
         operationId = "getDashboardSummary"
@@ -227,7 +226,7 @@ internal fun Route.readRoutes() {
             trendQueryService.dashboardTrends(
                 call.queryParams(),
                 clock.now(),
-            )
+            ),
         )
     }.describe {
         operationId = "getDashboardTrends"

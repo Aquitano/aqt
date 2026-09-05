@@ -19,132 +19,163 @@ class GeneratedGoogleHealthClientTest {
     @Test
     fun dataPointsServiceSettingsUseProvidedOAuthAccessToken() {
         val settings = dataPointsServiceSettings("oauth-access-token")
-        val metadata = settings.credentialsProvider
-            .credentials
-            .getRequestMetadata(URI("https://health.googleapis.com"))
+        val metadata =
+            settings.credentialsProvider
+                .credentials
+                .getRequestMetadata(URI("https://health.googleapis.com"))
 
         assertEquals(listOf("Bearer oauth-access-token"), metadata["Authorization"])
     }
 
     @Test
-    fun fetchDataPointsConvertsSupportedDataTypesToNormalizerShape() = runBlocking {
-        val fixture = Fixture()
-        val pointsByDataType = mapOf(
-            "steps" to stepsPoint(),
-            "sleep" to sleepPoint(),
-            "heart-rate" to heartRatePoint(),
-            "weight" to weightPoint(),
-            "body-fat" to bodyFatPoint(),
-        )
+    fun fetchDataPointsConvertsSupportedDataTypesToNormalizerShape() =
+        runBlocking {
+            val fixture = Fixture()
+            val pointsByDataType =
+                mapOf(
+                    "steps" to stepsPoint(),
+                    "sleep" to sleepPoint(),
+                    "heart-rate" to heartRatePoint(),
+                    "weight" to weightPoint(),
+                    "body-fat" to bodyFatPoint(),
+                )
 
-        pointsByDataType.forEach { (dataType, point) ->
-            fixture.service.responses += ListDataPointsResponse.newBuilder()
-                .addDataPoints(point)
-                .build()
+            pointsByDataType.forEach { (dataType, point) ->
+                fixture.service.responses +=
+                    ListDataPointsResponse
+                        .newBuilder()
+                        .addDataPoints(point)
+                        .build()
 
-            val result = fixture.client.fetchDataPoints(
-                accessToken = "access-token",
-                dataType = dataType,
-                from = fixture.from,
-                to = fixture.to,
-                pageSize = 1000,
-            )
+                val result =
+                    fixture.client.fetchDataPoints(
+                        accessToken = "access-token",
+                        dataType = dataType,
+                        from = fixture.from,
+                        to = fixture.to,
+                        pageSize = 1000,
+                    )
 
-            val normalized = GoogleHealthNormalizer().normalize(result)
-            assertEquals(1, normalized.records.size, dataType)
-            assertEquals(point.name, result.dataPoints.single()["name"]?.jsonPrimitive?.content, dataType)
-        }
-    }
-
-    @Test
-    fun fetchDataPointsCollectsPaginatedResponsesAndRecordsPageIndexes() = runBlocking {
-        val fixture = Fixture()
-        fixture.service.responses += ListDataPointsResponse.newBuilder()
-            .addDataPoints(stepsPoint("steps-1"))
-            .setNextPageToken("next-page")
-            .build()
-        fixture.service.responses += ListDataPointsResponse.newBuilder()
-            .addDataPoints(stepsPoint("steps-2"))
-            .build()
-
-        val result = fixture.client.fetchDataPoints("access-token", "steps", fixture.from, fixture.to, 1000)
-
-        assertEquals(listOf(0, 1), result.pages.map { it.pageIndex })
-        assertEquals(listOf("steps-1", "steps-2"), result.dataPoints.map { it["name"]?.jsonPrimitive?.content })
-        assertEquals("next-page", fixture.service.requests[1].pageToken)
-    }
-
-    @Test
-    fun fetchDataPointsRejectsRepeatedPageToken() = runBlocking {
-        val fixture = Fixture()
-        fixture.service.responses += ListDataPointsResponse.newBuilder().setNextPageToken("same-token").build()
-        fixture.service.responses += ListDataPointsResponse.newBuilder().setNextPageToken("same-token").build()
-
-        val error = assertFailsWith<GoogleHealthHttpException> {
-            fixture.client.fetchDataPoints("access-token", "steps", fixture.from, fixture.to, 1000)
+                val normalized = GoogleHealthNormalizer().normalize(result)
+                assertEquals(1, normalized.records.size, dataType)
+                assertEquals(
+                    point.name,
+                    result.dataPoints
+                        .single()["name"]
+                        ?.jsonPrimitive
+                        ?.content,
+                    dataType,
+                )
+            }
         }
 
-        assertEquals("google_health_pagination_loop", error.code)
-    }
-
     @Test
-    fun fetchDataPointsEnforcesPageLimit() = runBlocking {
-        val fixture = Fixture(maxPages = 1)
-        fixture.service.responses += ListDataPointsResponse.newBuilder().setNextPageToken("next").build()
+    fun fetchDataPointsCollectsPaginatedResponsesAndRecordsPageIndexes() =
+        runBlocking {
+            val fixture = Fixture()
+            fixture.service.responses +=
+                ListDataPointsResponse
+                    .newBuilder()
+                    .addDataPoints(stepsPoint("steps-1"))
+                    .setNextPageToken("next-page")
+                    .build()
+            fixture.service.responses +=
+                ListDataPointsResponse
+                    .newBuilder()
+                    .addDataPoints(stepsPoint("steps-2"))
+                    .build()
 
-        val error = assertFailsWith<GoogleHealthHttpException> {
-            fixture.client.fetchDataPoints("access-token", "steps", fixture.from, fixture.to, 1000)
+            val result = fixture.client.fetchDataPoints("access-token", "steps", fixture.from, fixture.to, 1000)
+
+            assertEquals(listOf(0, 1), result.pages.map { it.pageIndex })
+            assertEquals(listOf("steps-1", "steps-2"), result.dataPoints.map { it["name"]?.jsonPrimitive?.content })
+            assertEquals("next-page", fixture.service.requests[1].pageToken)
         }
 
-        assertEquals("google_health_page_limit_exceeded", error.code)
-    }
-
     @Test
-    fun fetchDataPointsMapsUnauthenticatedToUnauthorizedException() = runBlocking {
-        val fixture = Fixture()
-        fixture.service.nextFailure = apiException(StatusCode.Code.UNAUTHENTICATED)
+    fun fetchDataPointsRejectsRepeatedPageToken() =
+        runBlocking {
+            val fixture = Fixture()
+            fixture.service.responses += ListDataPointsResponse.newBuilder().setNextPageToken("same-token").build()
+            fixture.service.responses += ListDataPointsResponse.newBuilder().setNextPageToken("same-token").build()
 
-        assertFailsWith<GoogleHealthUnauthorizedException> {
-            fixture.client.fetchDataPoints("access-token", "steps", fixture.from, fixture.to, 1000)
-        }
-        Unit
-    }
+            val error =
+                assertFailsWith<GoogleHealthHttpException> {
+                    fixture.client.fetchDataPoints("access-token", "steps", fixture.from, fixture.to, 1000)
+                }
 
-    @Test
-    fun fetchDataPointsMapsResourceExhaustedToUpstreamFailure() = runBlocking {
-        val fixture = Fixture()
-        fixture.service.nextFailure = apiException(StatusCode.Code.RESOURCE_EXHAUSTED)
-
-        val error = assertFailsWith<GoogleHealthHttpException> {
-            fixture.client.fetchDataPoints("access-token", "steps", fixture.from, fixture.to, 1000)
+            assertEquals("google_health_pagination_loop", error.code)
         }
 
-        assertEquals("google_health_upstream_failed", error.code)
-    }
-
     @Test
-    fun fetchDataPointsRejectsUnsupportedDataType() = runBlocking {
-        val fixture = Fixture()
+    fun fetchDataPointsEnforcesPageLimit() =
+        runBlocking {
+            val fixture = Fixture(maxPages = 1)
+            fixture.service.responses += ListDataPointsResponse.newBuilder().setNextPageToken("next").build()
 
-        val error = assertFailsWith<GoogleHealthHttpException> {
-            fixture.client.fetchDataPoints("access-token", "oxygen", fixture.from, fixture.to, 1000)
+            val error =
+                assertFailsWith<GoogleHealthHttpException> {
+                    fixture.client.fetchDataPoints("access-token", "steps", fixture.from, fixture.to, 1000)
+                }
+
+            assertEquals("google_health_page_limit_exceeded", error.code)
         }
 
-        assertEquals("google_health_unsupported_data_type", error.code)
-        assertTrue(fixture.service.requests.isEmpty())
-    }
+    @Test
+    fun fetchDataPointsMapsUnauthenticatedToUnauthorizedException() =
+        runBlocking {
+            val fixture = Fixture()
+            fixture.service.nextFailure = apiException(StatusCode.Code.UNAUTHENTICATED)
 
-    private class Fixture(maxPages: Int = MAX_GOOGLE_HEALTH_PAGES) {
+            assertFailsWith<GoogleHealthUnauthorizedException> {
+                fixture.client.fetchDataPoints("access-token", "steps", fixture.from, fixture.to, 1000)
+            }
+            Unit
+        }
+
+    @Test
+    fun fetchDataPointsMapsResourceExhaustedToUpstreamFailure() =
+        runBlocking {
+            val fixture = Fixture()
+            fixture.service.nextFailure = apiException(StatusCode.Code.RESOURCE_EXHAUSTED)
+
+            val error =
+                assertFailsWith<GoogleHealthHttpException> {
+                    fixture.client.fetchDataPoints("access-token", "steps", fixture.from, fixture.to, 1000)
+                }
+
+            assertEquals("google_health_upstream_failed", error.code)
+        }
+
+    @Test
+    fun fetchDataPointsRejectsUnsupportedDataType() =
+        runBlocking {
+            val fixture = Fixture()
+
+            val error =
+                assertFailsWith<GoogleHealthHttpException> {
+                    fixture.client.fetchDataPoints("access-token", "oxygen", fixture.from, fixture.to, 1000)
+                }
+
+            assertEquals("google_health_unsupported_data_type", error.code)
+            assertTrue(fixture.service.requests.isEmpty())
+        }
+
+    private class Fixture(
+        maxPages: Int = MAX_GOOGLE_HEALTH_PAGES,
+    ) {
         val from: Instant = Instant.parse("2026-04-01T00:00:00Z")
         val to: Instant = Instant.parse("2026-04-02T00:00:00Z")
         val service = FakeDataPointsService()
-        val client = GeneratedGoogleHealthClient(
-            oauthClient = FakeOAuthClient(),
-            dataPointsServiceFactory = object : GoogleHealthDataPointsServiceFactory() {
-                override fun create(accessToken: String): GoogleHealthDataPointsService = service
-            },
-            maxPages = maxPages,
-        )
+        val client =
+            GeneratedGoogleHealthClient(
+                oauthClient = FakeOAuthClient(),
+                dataPointsServiceFactory =
+                    object : GoogleHealthDataPointsServiceFactory() {
+                        override fun create(accessToken: String): GoogleHealthDataPointsService = service
+                    },
+                maxPages = maxPages,
+            )
     }
 
     private class FakeDataPointsService : GoogleHealthDataPointsService {
@@ -165,8 +196,16 @@ class GeneratedGoogleHealthClientTest {
     }
 
     private class FakeOAuthClient : GoogleHealthClient {
-        override suspend fun exchangeCode(code: String, now: Instant): GoogleHealthTokenSet = error("not used")
-        override suspend fun refreshToken(refreshToken: String, now: Instant): GoogleHealthTokenSet = error("not used")
+        override suspend fun exchangeCode(
+            code: String,
+            now: Instant,
+        ): GoogleHealthTokenSet = error("not used")
+
+        override suspend fun refreshToken(
+            refreshToken: String,
+            now: Instant,
+        ): GoogleHealthTokenSet = error("not used")
+
         override suspend fun fetchDataPoints(
             accessToken: String,
             dataType: String,
@@ -177,13 +216,20 @@ class GeneratedGoogleHealthClientTest {
     }
 
     private fun apiException(code: StatusCode.Code): ApiException =
-        ApiException("failure", null, object : StatusCode {
-            override fun getCode(): StatusCode.Code = code
-            override fun getTransportCode(): Any = code
-        }, false)
+        ApiException(
+            "failure",
+            null,
+            object : StatusCode {
+                override fun getCode(): StatusCode.Code = code
 
-    private fun stepsPoint(name: String = "google-steps-1"): DataPoint = dataPoint(
-        """
+                override fun getTransportCode(): Any = code
+            },
+            false,
+        )
+
+    private fun stepsPoint(name: String = "google-steps-1"): DataPoint =
+        dataPoint(
+            """
         {
           "name": "$name",
           "steps": {
@@ -194,11 +240,12 @@ class GeneratedGoogleHealthClientTest {
             "count": "1200"
           }
         }
-        """
-    )
+        """,
+        )
 
-    private fun sleepPoint(): DataPoint = dataPoint(
-        """
+    private fun sleepPoint(): DataPoint =
+        dataPoint(
+            """
         {
           "name": "google-sleep-1",
           "sleep": {
@@ -215,11 +262,12 @@ class GeneratedGoogleHealthClientTest {
             ]
           }
         }
-        """
-    )
+        """,
+        )
 
-    private fun heartRatePoint(): DataPoint = dataPoint(
-        """
+    private fun heartRatePoint(): DataPoint =
+        dataPoint(
+            """
         {
           "name": "google-hr-1",
           "heartRate": {
@@ -229,11 +277,12 @@ class GeneratedGoogleHealthClientTest {
             "beatsPerMinute": "62"
           }
         }
-        """
-    )
+        """,
+        )
 
-    private fun weightPoint(): DataPoint = dataPoint(
-        """
+    private fun weightPoint(): DataPoint =
+        dataPoint(
+            """
         {
           "name": "google-weight-1",
           "weight": {
@@ -243,11 +292,12 @@ class GeneratedGoogleHealthClientTest {
             "weightGrams": 82400.0
           }
         }
-        """
-    )
+        """,
+        )
 
-    private fun bodyFatPoint(): DataPoint = dataPoint(
-        """
+    private fun bodyFatPoint(): DataPoint =
+        dataPoint(
+            """
         {
           "name": "google-body-fat-1",
           "bodyFat": {
@@ -257,8 +307,8 @@ class GeneratedGoogleHealthClientTest {
             "percentage": 18.2
           }
         }
-        """
-    )
+        """,
+        )
 
     private fun dataPoint(json: String): DataPoint {
         val builder = DataPoint.newBuilder()

@@ -7,18 +7,19 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import me.aquitano.health.api.dto.IngestionRecord
-import me.aquitano.health.domain.ReplayJobStatus
 import me.aquitano.health.api.dto.ReplayJobStartResponse
 import me.aquitano.health.api.dto.ReplayJobStatusResponse
 import me.aquitano.health.api.dto.ReplayRequest
 import me.aquitano.health.application.metric.common.MetricWriteService
-import me.aquitano.health.domain.DerivedKind
 import me.aquitano.health.domain.ConflictException
+import me.aquitano.health.domain.DerivedKind
 import me.aquitano.health.domain.NotFoundException
 import me.aquitano.health.domain.RecordTypes
+import me.aquitano.health.domain.ReplayJobStatus
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ValidationIssue
 import me.aquitano.health.domain.ValidationIssueCodes
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import me.aquitano.health.infrastructure.logging.infoWithContext
 import me.aquitano.health.infrastructure.logging.warnWithContext
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
@@ -30,7 +31,6 @@ import me.aquitano.health.infrastructure.time.UtcClock
 import me.aquitano.health.shared.AppJson
 import me.aquitano.health.shared.utcDate
 import org.jetbrains.exposed.v1.jdbc.Database
-import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -47,20 +47,21 @@ object ReplayScopes {
     val supported = setOf(PROJECTIONS, DERIVED, ALL)
 }
 
-private val replayableRecordTypes = setOf(
-    RecordTypes.STEP_INTERVAL,
-    RecordTypes.SLEEP_SESSION,
-    RecordTypes.BODY_MEASUREMENT,
-    RecordTypes.HEART_RATE,
-    RecordTypes.ACTIVITY_SUMMARY,
-    RecordTypes.SLEEP_SUMMARY,
-    RecordTypes.RESPIRATORY_RATE,
-    RecordTypes.HRV,
-    RecordTypes.BLOOD_PRESSURE,
-    RecordTypes.CARDIOVASCULAR,
-    RecordTypes.EXTENDED_BODY_MEASUREMENT,
-    RecordTypes.SCALAR,
-)
+private val replayableRecordTypes =
+    setOf(
+        RecordTypes.STEP_INTERVAL,
+        RecordTypes.SLEEP_SESSION,
+        RecordTypes.BODY_MEASUREMENT,
+        RecordTypes.HEART_RATE,
+        RecordTypes.ACTIVITY_SUMMARY,
+        RecordTypes.SLEEP_SUMMARY,
+        RecordTypes.RESPIRATORY_RATE,
+        RecordTypes.HRV,
+        RecordTypes.BLOOD_PRESSURE,
+        RecordTypes.CARDIOVASCULAR,
+        RecordTypes.EXTENDED_BODY_MEASUREMENT,
+        RecordTypes.SCALAR,
+    )
 
 /**
  * Rebuilds metric projections from the raw event log (ingestion_records) for any date range.
@@ -106,17 +107,18 @@ class ReplayService(
                 return existing.toStartDto()
             }
         }
-        val result = replayJobRepository.create(
-            id = UUID.randomUUID().toString(),
-            scope = plan.scope,
-            metricTypes = plan.recordTypes?.toList(),
-            fromDate = plan.fromDate,
-            toDate = plan.toDate,
-            wipe = plan.wipe,
-            now = now,
-            idempotencyKey = idempotencyKey,
-            idempotencyRequestHash = idempotencyKey?.let { requestHash },
-        )
+        val result =
+            replayJobRepository.create(
+                id = UUID.randomUUID().toString(),
+                scope = plan.scope,
+                metricTypes = plan.recordTypes?.toList(),
+                fromDate = plan.fromDate,
+                toDate = plan.toDate,
+                wipe = plan.wipe,
+                now = now,
+                idempotencyKey = idempotencyKey,
+                idempotencyRequestHash = idempotencyKey?.let { requestHash },
+            )
         val job = result.record
         if (idempotencyKey != null) {
             job.requireMatchingIdempotencyRequest(requestHash)
@@ -154,10 +156,12 @@ class ReplayService(
         replayJobRepository.get(jobId)?.toDto()
             ?: throw NotFoundException("Replay job '$jobId' not found")
 
-    suspend fun latest(): ReplayJobStatusResponse? =
-        replayJobRepository.latest()?.toDto()
+    suspend fun latest(): ReplayJobStatusResponse? = replayJobRepository.latest()?.toDto()
 
-    private suspend fun runJob(jobId: String, plan: ReplayPlan) {
+    private suspend fun runJob(
+        jobId: String,
+        plan: ReplayPlan,
+    ) {
         try {
             val days = planDays(plan)
             replayJobRepository.markRunning(jobId, days.size, clock.now())
@@ -205,9 +209,10 @@ class ReplayService(
     }
 
     private suspend fun planDays(plan: ReplayPlan): List<LocalDate> {
-        val bounds = suspendDbTransaction(db = database) {
-            ingestionRepository.replayDateBounds(plan.recordTypes)
-        } ?: return emptyList()
+        val bounds =
+            suspendDbTransaction(db = database) {
+                ingestionRepository.replayDateBounds(plan.recordTypes)
+            } ?: return emptyList()
         val firstDay = maxOf(bounds.first.utcDate(), plan.fromDate ?: bounds.first.utcDate())
         val lastDay = minOf(bounds.second.utcDate(), plan.toDate ?: bounds.second.utcDate())
         if (firstDay.isAfter(lastDay)) return emptyList()
@@ -216,70 +221,79 @@ class ReplayService(
             .toList()
     }
 
-    private suspend fun replayDay(day: LocalDate, plan: ReplayPlan): DayReplayResult {
+    private suspend fun replayDay(
+        day: LocalDate,
+        plan: ReplayPlan,
+    ): DayReplayResult {
         val dayStart = day.atStartOfDay(ZoneOffset.UTC).toInstant()
         val dayEnd = day.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant()
         val now = clock.now()
         val affectedBySource =
             mutableMapOf<Int, MutableMap<DerivedKind, MutableSet<LocalDate>>>()
 
-        val result = suspendDbTransaction(db = database) {
-            val rows = ingestionRepository.listRecordsForReplay(
-                dayStart = dayStart,
-                dayEnd = dayEnd,
-                recordTypes = plan.recordTypes,
-            )
-
-            var recordsReplayed = 0
-            var metricsWritten = 0
-            var duplicatesSkipped = 0
-            var mappingFailures = 0
-
-            if (plan.includesProjections) {
-                if (plan.wipe) {
-                    projectionWipeRepository.wipeDay(
-                        day = day,
+        val result =
+            suspendDbTransaction(db = database) {
+                val rows =
+                    ingestionRepository.listRecordsForReplay(
                         dayStart = dayStart,
                         dayEnd = dayEnd,
-                        recordTypes = plan.recordTypes ?: replayableRecordTypes,
+                        recordTypes = plan.recordTypes,
                     )
-                }
-                rows.forEach { row ->
-                    val record = decodeAndMap(row)
-                    if (record == null) {
-                        mappingFailures += 1
-                        return@forEach
-                    }
-                    val writeResult = metricWriteService.write(
-                        provider = row.provider,
-                        sourceInstanceId = row.sourceInstanceId,
-                        ingestionRecordId = row.id,
-                        record = record,
-                        now = now,
-                    )
-                    recordsReplayed += 1
-                    metricsWritten += writeResult.created.counts.values.sum()
-                    duplicatesSkipped += writeResult.duplicateSkipped
-                }
-            }
 
-            if (plan.includesDerived) {
-                rows.forEach { row ->
-                    derivedRebuildRegistry.affectedDatesFor(
-                        row.recordType,
-                        row.recordStartAt,
-                        row.recordEndAt,
-                    ).forEach { (kind, dates) ->
-                        affectedBySource
-                            .getOrPut(row.sourceInstanceId) { mutableMapOf() }
-                            .getOrPut(kind) { linkedSetOf() }
-                            .addAll(dates)
+                var recordsReplayed = 0
+                var metricsWritten = 0
+                var duplicatesSkipped = 0
+                var mappingFailures = 0
+
+                if (plan.includesProjections) {
+                    if (plan.wipe) {
+                        projectionWipeRepository.wipeDay(
+                            day = day,
+                            dayStart = dayStart,
+                            dayEnd = dayEnd,
+                            recordTypes = plan.recordTypes ?: replayableRecordTypes,
+                        )
+                    }
+                    rows.forEach { row ->
+                        val record = decodeAndMap(row)
+                        if (record == null) {
+                            mappingFailures += 1
+                            return@forEach
+                        }
+                        val writeResult =
+                            metricWriteService.write(
+                                provider = row.provider,
+                                sourceInstanceId = row.sourceInstanceId,
+                                ingestionRecordId = row.id,
+                                record = record,
+                                now = now,
+                            )
+                        recordsReplayed += 1
+                        metricsWritten +=
+                            writeResult.created.counts.values
+                                .sum()
+                        duplicatesSkipped += writeResult.duplicateSkipped
                     }
                 }
-            }
 
-            DayReplayResult(recordsReplayed, metricsWritten, duplicatesSkipped, mappingFailures)
-        }
+                if (plan.includesDerived) {
+                    rows.forEach { row ->
+                        derivedRebuildRegistry
+                            .affectedDatesFor(
+                                row.recordType,
+                                row.recordStartAt,
+                                row.recordEndAt,
+                            ).forEach { (kind, dates) ->
+                                affectedBySource
+                                    .getOrPut(row.sourceInstanceId) { mutableMapOf() }
+                                    .getOrPut(kind) { linkedSetOf() }
+                                    .addAll(dates)
+                            }
+                    }
+                }
+
+                DayReplayResult(recordsReplayed, metricsWritten, duplicatesSkipped, mappingFailures)
+            }
 
         affectedBySource.forEach { (sourceInstanceId, affectedDates) ->
             derivedRebuildExecutor.rebuild(
@@ -326,7 +340,7 @@ class ReplayService(
                     field = "scope",
                     code = ValidationIssueCodes.UnsupportedValue,
                     message = "must be one of ${ReplayScopes.supported.sorted()}",
-                )
+                ),
             )
         }
 
@@ -337,7 +351,7 @@ class ReplayService(
                     field = "metricTypes",
                     code = ValidationIssueCodes.UnsupportedValue,
                     message = "unsupported record type '$unknown'",
-                )
+                ),
             )
         }
 
@@ -349,7 +363,7 @@ class ReplayService(
                     field = "fromDate",
                     code = ValidationIssueCodes.InvalidRange,
                     message = "must not be after toDate",
-                )
+                ),
             )
         }
         if (request.wipe && request.scope == ReplayScopes.DERIVED) {
@@ -358,7 +372,7 @@ class ReplayService(
                     field = "wipe",
                     code = ValidationIssueCodes.InvalidState,
                     message = "wipe requires the projections stage",
-                )
+                ),
             )
         }
 
@@ -384,7 +398,7 @@ class ReplayService(
                     field = field,
                     code = ValidationIssueCodes.InvalidFormat,
                     message = "must be an ISO-8601 date",
-                )
+                ),
             )
             null
         }

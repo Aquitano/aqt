@@ -22,7 +22,7 @@ import java.time.Instant
 internal fun mapStepInterval(
     field: String,
     dto: StepInterval,
-    issues: MutableList<ValidationIssue>
+    issues: MutableList<ValidationIssue>,
 ): StepIntervalRecord? {
     val startAt = parseInstant(dto.startAt, "$field.startAt", issues)
     val endAt = parseInstant(dto.endAt, "$field.endAt", issues)
@@ -34,7 +34,7 @@ internal fun mapStepInterval(
                 field = "$field.startAt",
                 code = ValidationIssueCodes.InvalidRange,
                 message = "must be before endAt",
-            )
+            ),
         )
     }
     if (steps <= 0) {
@@ -43,12 +43,15 @@ internal fun mapStepInterval(
                 field = "$field.steps",
                 code = ValidationIssueCodes.OutOfRange,
                 message = "must be greater than 0",
-            )
+            ),
         )
     }
 
-    return if (startAt != null && endAt != null && steps > 0 && startAt.isBefore(
-            endAt
+    return if (startAt != null &&
+        endAt != null &&
+        steps > 0 &&
+        startAt.isBefore(
+            endAt,
         )
     ) {
         StepIntervalRecord(
@@ -56,7 +59,7 @@ internal fun mapStepInterval(
             normalizedRecordJson = dto.toNormalizedJsonObject(),
             startAt = startAt,
             endAt = endAt,
-            steps = steps
+            steps = steps,
         )
     } else {
         null
@@ -66,7 +69,7 @@ internal fun mapStepInterval(
 internal fun mapSleepSession(
     field: String,
     dto: SleepSession,
-    issues: MutableList<ValidationIssue>
+    issues: MutableList<ValidationIssue>,
 ): SleepSessionRecord? {
     val startAt = parseInstant(dto.startAt, "$field.startAt", issues)
     val endAt = parseInstant(dto.endAt, "$field.endAt", issues)
@@ -77,19 +80,20 @@ internal fun mapSleepSession(
                 field = "$field.startAt",
                 code = ValidationIssueCodes.InvalidRange,
                 message = "must be before endAt",
-            )
+            ),
         )
     }
 
-    val stages = dto.stages.mapIndexedNotNull { stageIndex, stageDto ->
-        mapSleepStage(
-            "$field.stages[$stageIndex]",
-            stageDto,
-            startAt,
-            endAt,
-            issues
-        )
-    }
+    val stages =
+        dto.stages.mapIndexedNotNull { stageIndex, stageDto ->
+            mapSleepStage(
+                "$field.stages[$stageIndex]",
+                stageDto,
+                startAt,
+                endAt,
+                issues,
+            )
+        }
 
     return if (startAt != null && endAt != null && startAt.isBefore(endAt)) {
         SleepSessionRecord(
@@ -97,7 +101,7 @@ internal fun mapSleepSession(
             normalizedRecordJson = dto.toNormalizedJsonObject(),
             startAt = startAt,
             endAt = endAt,
-            stages = stages
+            stages = stages,
         )
     } else {
         null
@@ -121,7 +125,7 @@ private fun mapSleepStage(
                 field = "$field.stage",
                 code = ValidationIssueCodes.UnsupportedValue,
                 message = "unsupported sleep stage",
-            )
+            ),
         )
     }
     if (startAt != null && endAt != null && !startAt.isBefore(endAt)) {
@@ -130,7 +134,7 @@ private fun mapSleepStage(
                 field = "$field.startAt",
                 code = ValidationIssueCodes.InvalidRange,
                 message = "must be before endAt",
-            )
+            ),
         )
     }
     if (startAt != null && endAt != null && sessionStart != null && sessionEnd != null) {
@@ -140,13 +144,16 @@ private fun mapSleepStage(
                     field = field,
                     code = ValidationIssueCodes.InvalidRange,
                     message = "must be within the sleep session",
-                )
+                ),
             )
         }
     }
 
-    return if (stage in SleepStages.supported && startAt != null && endAt != null && startAt.isBefore(
-            endAt
+    return if (stage in SleepStages.supported &&
+        startAt != null &&
+        endAt != null &&
+        startAt.isBefore(
+            endAt,
         )
     ) {
         SleepStageRecord(stage, startAt, endAt)
@@ -158,55 +165,55 @@ private fun mapSleepStage(
 internal fun mapActivitySummary(
     field: String,
     dto: ActivitySummary,
-    issues: MutableList<ValidationIssue>
+    issues: MutableList<ValidationIssue>,
 ): ActivitySummaryRecord? {
     val date = parseDate(dto.date, "$field.date", issues)
     validateNonNegativeDouble(
         dto.distanceMeters,
         "$field.distanceMeters",
-        issues
+        issues,
     )
     validateNonNegativeDouble(
         dto.activeEnergyKcal,
         "$field.activeEnergyKcal",
-        issues
+        issues,
     )
     validateNonNegativeDouble(
         dto.totalEnergyKcal,
         "$field.totalEnergyKcal",
-        issues
+        issues,
     )
     validateNonNegativeDouble(
         dto.elevationMeters,
         "$field.elevationMeters",
-        issues
+        issues,
     )
     validateNonNegativeInt(dto.softMinutes, "$field.softMinutes", issues)
     validateNonNegativeInt(
         dto.moderateMinutes,
         "$field.moderateMinutes",
-        issues
+        issues,
     )
     validateNonNegativeInt(
         dto.intenseMinutes,
         "$field.intenseMinutes",
-        issues
+        issues,
     )
     validateNonNegativeInt(dto.activeMinutes, "$field.activeMinutes", issues)
     validateOptionalHeartRate(
         dto.averageHeartRateBpm,
         "$field.averageHeartRateBpm",
-        issues
+        issues,
     )
     validateOptionalHeartRate(
         dto.minHeartRateBpm,
         "$field.minHeartRateBpm",
-        issues
+        issues,
     )
     validateOptionalHeartRate(
         dto.maxHeartRateBpm,
         "$field.maxHeartRateBpm",
-        issues
+        issues,
     )
     if (dto.minHeartRateBpm != null && dto.averageHeartRateBpm != null && dto.minHeartRateBpm > dto.averageHeartRateBpm) {
         issues.add(
@@ -214,7 +221,7 @@ internal fun mapActivitySummary(
                 field = "$field.minHeartRateBpm",
                 code = ValidationIssueCodes.InvalidRange,
                 message = "must be less than or equal to averageHeartRateBpm",
-            )
+            ),
         )
     }
     if (dto.averageHeartRateBpm != null && dto.maxHeartRateBpm != null && dto.averageHeartRateBpm > dto.maxHeartRateBpm) {
@@ -223,30 +230,31 @@ internal fun mapActivitySummary(
                 field = "$field.averageHeartRateBpm",
                 code = ValidationIssueCodes.InvalidRange,
                 message = "must be less than or equal to maxHeartRateBpm",
-            )
+            ),
         )
     }
 
-    val hasAnyMetric = listOfNotNull(
-        dto.distanceMeters,
-        dto.activeEnergyKcal,
-        dto.totalEnergyKcal,
-        dto.elevationMeters,
-        dto.softMinutes,
-        dto.moderateMinutes,
-        dto.intenseMinutes,
-        dto.activeMinutes,
-        dto.averageHeartRateBpm,
-        dto.minHeartRateBpm,
-        dto.maxHeartRateBpm,
-    ).isNotEmpty()
+    val hasAnyMetric =
+        listOfNotNull(
+            dto.distanceMeters,
+            dto.activeEnergyKcal,
+            dto.totalEnergyKcal,
+            dto.elevationMeters,
+            dto.softMinutes,
+            dto.moderateMinutes,
+            dto.intenseMinutes,
+            dto.activeMinutes,
+            dto.averageHeartRateBpm,
+            dto.minHeartRateBpm,
+            dto.maxHeartRateBpm,
+        ).isNotEmpty()
     if (!hasAnyMetric) {
         issues.add(
             ValidationIssue(
                 field = field,
                 code = ValidationIssueCodes.Required,
                 message = "at least one activity summary metric is required",
-            )
+            ),
         )
     }
 
@@ -275,7 +283,7 @@ internal fun mapActivitySummary(
 internal fun mapSleepSummary(
     field: String,
     dto: SleepSummary,
-    issues: MutableList<ValidationIssue>
+    issues: MutableList<ValidationIssue>,
 ): SleepSummaryRecord? {
     val startAt = parseInstant(dto.startAt, "$field.startAt", issues)
     val endAt = parseInstant(dto.endAt, "$field.endAt", issues)
@@ -285,48 +293,48 @@ internal fun mapSleepSummary(
                 field = "$field.startAt",
                 code = ValidationIssueCodes.InvalidRange,
                 message = "must be before endAt",
-            )
+            ),
         )
     }
     validateNonNegativeLong(
         dto.timeInBedSeconds,
         "$field.timeInBedSeconds",
-        issues
+        issues,
     )
     validateNonNegativeLong(
         dto.totalSleepSeconds,
         "$field.totalSleepSeconds",
-        issues
+        issues,
     )
     validateNonNegativeLong(
         dto.lightSleepSeconds,
         "$field.lightSleepSeconds",
-        issues
+        issues,
     )
     validateNonNegativeLong(
         dto.deepSleepSeconds,
         "$field.deepSleepSeconds",
-        issues
+        issues,
     )
     validateNonNegativeLong(
         dto.remSleepSeconds,
         "$field.remSleepSeconds",
-        issues
+        issues,
     )
     validateNonNegativeLong(
         dto.sleepLatencySeconds,
         "$field.sleepLatencySeconds",
-        issues
+        issues,
     )
     validateNonNegativeLong(
         dto.wakeupLatencySeconds,
         "$field.wakeupLatencySeconds",
-        issues
+        issues,
     )
     validateNonNegativeLong(
         dto.wakeupDurationSeconds,
         "$field.wakeupDurationSeconds",
-        issues
+        issues,
     )
     validateNonNegativeInt(dto.wakeupCount, "$field.wakeupCount", issues)
     validateNonNegativeLong(dto.wasoSeconds, "$field.wasoSeconds", issues)
@@ -336,7 +344,7 @@ internal fun mapSleepSummary(
                 field = "$field.sleepEfficiencyPercent",
                 code = ValidationIssueCodes.OutOfRange,
                 message = "must be between 0 and 100",
-            )
+            ),
         )
     }
     if (dto.sleepScore != null && dto.sleepScore !in 0..100) {
@@ -345,7 +353,7 @@ internal fun mapSleepSummary(
                 field = "$field.sleepScore",
                 code = ValidationIssueCodes.OutOfRange,
                 message = "must be between 0 and 100",
-            )
+            ),
         )
     }
     validateNonNegativeInt(dto.remEpisodesCount, "$field.remEpisodesCount", issues)
@@ -356,7 +364,9 @@ internal fun mapSleepSummary(
     }
     validateNonNegativeDouble(dto.respiratoryRhythm, "$field.respiratoryRhythm", issues)
     if (dto.breathingQuality != null && dto.breathingQuality !in 0..100) {
-        issues.add(ValidationIssue("$field.breathingQuality", code = ValidationIssueCodes.OutOfRange, message = "must be between 0 and 100"))
+        issues.add(
+            ValidationIssue("$field.breathingQuality", code = ValidationIssueCodes.OutOfRange, message = "must be between 0 and 100"),
+        )
     }
     validateNonNegativeLong(dto.snoringDurationSeconds, "$field.snoringDurationSeconds", issues)
     validateNonNegativeDouble(dto.apneaHypopneaIndex, "$field.apneaHypopneaIndex", issues)
@@ -375,43 +385,44 @@ internal fun mapSleepSummary(
         issues.add(ValidationIssue("$field.rrMax", code = ValidationIssueCodes.OutOfRange, message = "must be between 5 and 40"))
     }
 
-    val hasAnyMetric = listOfNotNull(
-        dto.timeInBedSeconds,
-        dto.totalSleepSeconds,
-        dto.lightSleepSeconds,
-        dto.deepSleepSeconds,
-        dto.remSleepSeconds,
-        dto.sleepEfficiencyPercent,
-        dto.sleepLatencySeconds,
-        dto.wakeupLatencySeconds,
-        dto.wakeupDurationSeconds,
-        dto.wakeupCount,
-        dto.wasoSeconds,
-        dto.sleepScore,
-        dto.remEpisodesCount,
-        dto.outOfBedCount,
-        dto.awakeDurationSeconds,
-        dto.overnightHrvRmssd,
-        dto.respiratoryRhythm,
-        dto.breathingQuality,
-        dto.snoringDurationSeconds,
-        dto.apneaHypopneaIndex,
-        dto.movementScore,
-        dto.snoringEpisodeCount,
-        dto.hrAverageBpm,
-        dto.hrMinBpm,
-        dto.hrMaxBpm,
-        dto.rrAverage,
-        dto.rrMin,
-        dto.rrMax,
-    ).isNotEmpty()
+    val hasAnyMetric =
+        listOfNotNull(
+            dto.timeInBedSeconds,
+            dto.totalSleepSeconds,
+            dto.lightSleepSeconds,
+            dto.deepSleepSeconds,
+            dto.remSleepSeconds,
+            dto.sleepEfficiencyPercent,
+            dto.sleepLatencySeconds,
+            dto.wakeupLatencySeconds,
+            dto.wakeupDurationSeconds,
+            dto.wakeupCount,
+            dto.wasoSeconds,
+            dto.sleepScore,
+            dto.remEpisodesCount,
+            dto.outOfBedCount,
+            dto.awakeDurationSeconds,
+            dto.overnightHrvRmssd,
+            dto.respiratoryRhythm,
+            dto.breathingQuality,
+            dto.snoringDurationSeconds,
+            dto.apneaHypopneaIndex,
+            dto.movementScore,
+            dto.snoringEpisodeCount,
+            dto.hrAverageBpm,
+            dto.hrMinBpm,
+            dto.hrMaxBpm,
+            dto.rrAverage,
+            dto.rrMin,
+            dto.rrMax,
+        ).isNotEmpty()
     if (!hasAnyMetric) {
         issues.add(
             ValidationIssue(
                 field = field,
                 code = ValidationIssueCodes.Required,
                 message = "at least one sleep summary metric is required",
-            )
+            ),
         )
     }
 
@@ -458,7 +469,7 @@ internal fun mapSleepSummary(
 internal fun mapBloodPressure(
     field: String,
     dto: BloodPressure,
-    issues: MutableList<ValidationIssue>
+    issues: MutableList<ValidationIssue>,
 ): BloodPressureRecord? {
     val measuredAt =
         parseInstant(dto.measuredAt, "$field.measuredAt", issues)
@@ -468,7 +479,7 @@ internal fun mapBloodPressure(
                 field = "$field.systolicMmhg",
                 code = ValidationIssueCodes.OutOfRange,
                 message = "must be between 60 and 300",
-            )
+            ),
         )
     }
     if (dto.diastolicMmhg !in 30..200) {
@@ -477,7 +488,7 @@ internal fun mapBloodPressure(
                 field = "$field.diastolicMmhg",
                 code = ValidationIssueCodes.OutOfRange,
                 message = "must be between 30 and 200",
-            )
+            ),
         )
     }
     if (dto.systolicMmhg <= dto.diastolicMmhg) {
@@ -486,7 +497,7 @@ internal fun mapBloodPressure(
                 field = "$field.systolicMmhg",
                 code = ValidationIssueCodes.InvalidRange,
                 message = "must be greater than diastolicMmhg",
-            )
+            ),
         )
     }
     validateOptionalHeartRate(dto.heartRateBpm, "$field.heartRateBpm", issues)

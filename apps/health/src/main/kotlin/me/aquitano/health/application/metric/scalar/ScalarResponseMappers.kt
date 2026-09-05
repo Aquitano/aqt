@@ -12,9 +12,7 @@ private fun Map<Int, SourceMetadata>.responseFor(sourceInstanceId: Int): SourceM
         )
     }
 
-internal fun ScalarSampleRow.toScalarResponse(
-    sourceMetadata: Map<Int, SourceMetadata>,
-): ScalarSampleResponse =
+internal fun ScalarSampleRow.toScalarResponse(sourceMetadata: Map<Int, SourceMetadata>): ScalarSampleResponse =
     ScalarSampleResponse(
         id = id,
         measuredAt = measuredAt.toString(),

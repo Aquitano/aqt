@@ -33,14 +33,13 @@ class StepDailySummaryDerivation(
         }
     }
 
-    private fun builder(
-        sourceInstanceId: Int,
-    ): MetricDerivedBuilder<StepDailySummaryInput, StepDailySummaryOutput> =
+    private fun builder(sourceInstanceId: Int): MetricDerivedBuilder<StepDailySummaryInput, StepDailySummaryOutput> =
         MetricDerivedBuilder(
-            inputLoader = StepDailySummaryInputLoader(
-                sourceInstanceId = sourceInstanceId,
-                repository = repository,
-            ),
+            inputLoader =
+                StepDailySummaryInputLoader(
+                    sourceInstanceId = sourceInstanceId,
+                    repository = repository,
+                ),
             calculator = StepDailySummaryCalculator(),
             outputWriter = StepDailySummaryOutputWriter(repository),
         )
@@ -63,11 +62,12 @@ private class StepDailySummaryInputLoader(
             computedAt = computedAt,
             dayStart = range.start,
             dayEnd = range.endInclusive,
-            samples = repository.listStepSamplesOverlapping(
-                sourceInstanceId = sourceInstanceId,
-                dayStart = range.start,
-                dayEnd = range.endInclusive,
-            ),
+            samples =
+                repository.listStepSamplesOverlapping(
+                    sourceInstanceId = sourceInstanceId,
+                    dayStart = range.start,
+                    dayEnd = range.endInclusive,
+                ),
         )
     }
 }
@@ -88,8 +88,7 @@ data class StepDailySummaryRawSample(
     val steps: Int,
 )
 
-private class StepDailySummaryCalculator :
-    MetricDerivationCalculator<StepDailySummaryInput, StepDailySummaryOutput> {
+private class StepDailySummaryCalculator : MetricDerivationCalculator<StepDailySummaryInput, StepDailySummaryOutput> {
     override fun derive(input: StepDailySummaryInput): StepDailySummaryOutput =
         StepDailySummaryOutput(
             sourceInstanceId = input.sourceInstanceId,
@@ -97,9 +96,10 @@ private class StepDailySummaryCalculator :
             timezone = input.timezone,
             algorithmVersion = STEP_DAILY_SUMMARY_ALGORITHM_VERSION,
             computedAt = input.computedAt,
-            steps = input.samples.sumOf {
-                allocatedStepsForDay(it, input.dayStart, input.dayEnd)
-            },
+            steps =
+                input.samples.sumOf {
+                    allocatedStepsForDay(it, input.dayStart, input.dayEnd)
+                },
             sampleCount = input.samples.size,
         )
 
@@ -133,6 +133,5 @@ data class StepDailySummaryOutput(
 private class StepDailySummaryOutputWriter(
     private val repository: StepDailySummaryDerivationRepository,
 ) : MetricDerivedOutputWriter<StepDailySummaryOutput> {
-    override suspend fun persistOutput(output: StepDailySummaryOutput): Int =
-        repository.upsertStepDailySummary(output)
+    override suspend fun persistOutput(output: StepDailySummaryOutput): Int = repository.upsertStepDailySummary(output)
 }

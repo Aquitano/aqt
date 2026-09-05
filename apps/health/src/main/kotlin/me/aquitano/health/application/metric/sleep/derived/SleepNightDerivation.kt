@@ -25,11 +25,12 @@ class SleepNightDerivation(
     ) {
         dates.forEach { date ->
             MetricDerivedBuilder(
-                inputLoader = SleepNightInputLoader(
-                    sourceInstanceIds = sourceInstanceIds,
-                    date = date,
-                    repository = repository,
-                ),
+                inputLoader =
+                    SleepNightInputLoader(
+                        sourceInstanceIds = sourceInstanceIds,
+                        date = date,
+                        repository = repository,
+                    ),
                 calculator = SleepNightCalculator(),
                 outputWriter = SleepNightOutputWriter(repository),
             ).processJob(
@@ -55,11 +56,12 @@ private class SleepNightInputLoader(
             timezone = timezone,
             computedAt = computedAt,
             sourceInstanceIds = sourceInstanceIds,
-            sessions = repository.listSleepSessionsEndingInWindow(
-                sourceInstanceIds = sourceInstanceIds,
-                windowStart = range.start,
-                windowEnd = range.endInclusive,
-            ),
+            sessions =
+                repository.listSleepSessionsEndingInWindow(
+                    sourceInstanceIds = sourceInstanceIds,
+                    windowStart = range.start,
+                    windowEnd = range.endInclusive,
+                ),
         )
 }
 
@@ -77,8 +79,7 @@ data class SleepNightRawSession(
     val endAt: Instant,
 )
 
-private class SleepNightCalculator :
-    MetricDerivationCalculator<SleepNightInput, SleepNightOutput> {
+private class SleepNightCalculator : MetricDerivationCalculator<SleepNightInput, SleepNightOutput> {
     override fun derive(input: SleepNightInput): SleepNightOutput =
         SleepNightOutput(
             date = input.date,
@@ -86,12 +87,13 @@ private class SleepNightCalculator :
             algorithmVersion = SLEEP_NIGHT_ALGORITHM_VERSION,
             computedAt = input.computedAt,
             sourceInstanceIds = input.sourceInstanceIds,
-            nights = input.sessions.map {
-                SleepNightDerivedRow(
-                    sourceInstanceId = it.sourceInstanceId,
-                    sleepSessionId = it.id,
-                )
-            },
+            nights =
+                input.sessions.map {
+                    SleepNightDerivedRow(
+                        sourceInstanceId = it.sourceInstanceId,
+                        sleepSessionId = it.id,
+                    )
+                },
         )
 }
 
@@ -112,6 +114,5 @@ data class SleepNightDerivedRow(
 private class SleepNightOutputWriter(
     private val repository: SleepNightDerivationRepository,
 ) : MetricDerivedOutputWriter<SleepNightOutput> {
-    override suspend fun persistOutput(output: SleepNightOutput): Int =
-        repository.replaceSleepNights(output)
+    override suspend fun persistOutput(output: SleepNightOutput): Int = repository.replaceSleepNights(output)
 }

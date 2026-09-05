@@ -15,7 +15,8 @@ data class AppConfig(
 
 enum class RuntimeEnvironment {
     LOCAL,
-    PRODUCTION;
+    PRODUCTION,
+    ;
 
     val isProduction: Boolean
         get() = this == PRODUCTION
@@ -81,125 +82,141 @@ data class ConfigValidationIssue(
 class AppConfigValidationException(
     val issues: List<ConfigValidationIssue>,
 ) : IllegalStateException(
-    "Invalid production configuration: " +
+        "Invalid production configuration: " +
             issues.joinToString("; ") { "${it.path}: ${it.message}" },
-)
+    )
 
 fun ApplicationConfig.toAppConfig(): AppConfig =
     AppConfig(
         environment = RuntimeEnvironment.from(optional("aqtHealth.environment", "local")),
-        database = DatabaseConfig(
-            jdbcUrl = property("aqtHealth.database.jdbcUrl").getString(),
-            driver = property("aqtHealth.database.driver").getString(),
-            user = property("aqtHealth.database.user").getString(),
-            password = property("aqtHealth.database.password").getString(),
-            maxPoolSize = property("aqtHealth.database.maxPoolSize").getString()
-                .toInt(),
-        ),
-        auth = AuthConfig(
-            bootstrapClientName = property("aqtHealth.auth.bootstrapClientName").getString(),
-            bootstrapApiKey = property("aqtHealth.auth.bootstrapApiKey").getString(),
-        ),
-        googleHealth = GoogleHealthConfig(
-            clientId = optional("aqtHealth.googleHealth.clientId"),
-            clientSecret = optional("aqtHealth.googleHealth.clientSecret"),
-            redirectUri = optional(
-                "aqtHealth.googleHealth.redirectUri",
-                "http://localhost:8080/api/v2/providers/google-health/oauth/callback",
+        database =
+            DatabaseConfig(
+                jdbcUrl = property("aqtHealth.database.jdbcUrl").getString(),
+                driver = property("aqtHealth.database.driver").getString(),
+                user = property("aqtHealth.database.user").getString(),
+                password = property("aqtHealth.database.password").getString(),
+                maxPoolSize =
+                    property("aqtHealth.database.maxPoolSize")
+                        .getString()
+                        .toInt(),
             ),
-            tokenEncryptionKey = optional("aqtHealth.googleHealth.tokenEncryptionKey"),
-            apiBaseUrl = optional(
-                "aqtHealth.googleHealth.apiBaseUrl",
-                "https://health.googleapis.com",
+        auth =
+            AuthConfig(
+                bootstrapClientName = property("aqtHealth.auth.bootstrapClientName").getString(),
+                bootstrapApiKey = property("aqtHealth.auth.bootstrapApiKey").getString(),
             ),
-            oauthTokenUrl = optional(
-                "aqtHealth.googleHealth.oauthTokenUrl",
-                "https://oauth2.googleapis.com/token",
+        googleHealth =
+            GoogleHealthConfig(
+                clientId = optional("aqtHealth.googleHealth.clientId"),
+                clientSecret = optional("aqtHealth.googleHealth.clientSecret"),
+                redirectUri =
+                    optional(
+                        "aqtHealth.googleHealth.redirectUri",
+                        "http://localhost:8080/api/v2/providers/google-health/oauth/callback",
+                    ),
+                tokenEncryptionKey = optional("aqtHealth.googleHealth.tokenEncryptionKey"),
+                apiBaseUrl =
+                    optional(
+                        "aqtHealth.googleHealth.apiBaseUrl",
+                        "https://health.googleapis.com",
+                    ),
+                oauthTokenUrl =
+                    optional(
+                        "aqtHealth.googleHealth.oauthTokenUrl",
+                        "https://oauth2.googleapis.com/token",
+                    ),
+                oauthAuthUrl =
+                    optional(
+                        "aqtHealth.googleHealth.oauthAuthUrl",
+                        "https://accounts.google.com/o/oauth2/v2/auth",
+                    ),
             ),
-            oauthAuthUrl = optional(
-                "aqtHealth.googleHealth.oauthAuthUrl",
-                "https://accounts.google.com/o/oauth2/v2/auth",
+        withings =
+            WithingsConfig(
+                clientId = optional("aqtHealth.withings.clientId"),
+                clientSecret = optional("aqtHealth.withings.clientSecret"),
+                redirectUri =
+                    optional(
+                        "aqtHealth.withings.redirectUri",
+                        "http://localhost:8080/api/v2/providers/withings/oauth/callback",
+                    ),
+                tokenEncryptionKey = optional("aqtHealth.withings.tokenEncryptionKey"),
+                apiBaseUrl =
+                    optional(
+                        "aqtHealth.withings.apiBaseUrl",
+                        "https://wbsapi.withings.net",
+                    ),
+                oauthTokenUrl =
+                    optional(
+                        "aqtHealth.withings.oauthTokenUrl",
+                        "https://wbsapi.withings.net/v2/oauth2",
+                    ),
+                oauthAuthUrl =
+                    optional(
+                        "aqtHealth.withings.oauthAuthUrl",
+                        "https://account.withings.com/oauth2_user/authorize2",
+                    ),
             ),
-        ),
-        withings = WithingsConfig(
-            clientId = optional("aqtHealth.withings.clientId"),
-            clientSecret = optional("aqtHealth.withings.clientSecret"),
-            redirectUri = optional(
-                "aqtHealth.withings.redirectUri",
-                "http://localhost:8080/api/v2/providers/withings/oauth/callback",
+        cors =
+            CorsConfig(
+                origins =
+                    optional("aqtHealth.cors.origins", "http://localhost:3000")
+                        .split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() },
             ),
-            tokenEncryptionKey = optional("aqtHealth.withings.tokenEncryptionKey"),
-            apiBaseUrl = optional(
-                "aqtHealth.withings.apiBaseUrl",
-                "https://wbsapi.withings.net",
+        openObserve =
+            OpenObserveConfig(
+                url = optional("aqtHealth.openObserve.url"),
+                org = optional("aqtHealth.openObserve.org"),
+                user = optional("aqtHealth.openObserve.user"),
+                password = optional("aqtHealth.openObserve.password"),
             ),
-            oauthTokenUrl = optional(
-                "aqtHealth.withings.oauthTokenUrl",
-                "https://wbsapi.withings.net/v2/oauth2",
-            ),
-            oauthAuthUrl = optional(
-                "aqtHealth.withings.oauthAuthUrl",
-                "https://account.withings.com/oauth2_user/authorize2",
-            ),
-        ),
-        cors = CorsConfig(
-            origins = optional("aqtHealth.cors.origins", "http://localhost:3000")
-                .split(",")
-                .map { it.trim() }
-                .filter { it.isNotBlank() },
-        ),
-        openObserve = OpenObserveConfig(
-            url = optional("aqtHealth.openObserve.url"),
-            org = optional("aqtHealth.openObserve.org"),
-            user = optional("aqtHealth.openObserve.user"),
-            password = optional("aqtHealth.openObserve.password"),
-        ),
     ).also { it.validateForStartup() }
 
 fun AppConfig.validateForStartup() {
-    val issues = buildList {
-        if (environment.isProduction) {
-            requireSecret("aqtHealth.auth.bootstrapApiKey", auth.bootstrapApiKey)
-            requireValue("aqtHealth.auth.bootstrapClientName", auth.bootstrapClientName)
-            if (auth.bootstrapClientName.trim() == "local-admin") {
-                add(ConfigValidationIssue("aqtHealth.auth.bootstrapClientName", "must not use the local default"))
-            }
+    val issues =
+        buildList {
+            if (environment.isProduction) {
+                requireSecret("aqtHealth.auth.bootstrapApiKey", auth.bootstrapApiKey)
+                requireValue("aqtHealth.auth.bootstrapClientName", auth.bootstrapClientName)
+                if (auth.bootstrapClientName.trim() == "local-admin") {
+                    add(ConfigValidationIssue("aqtHealth.auth.bootstrapClientName", "must not use the local default"))
+                }
 
-            requireValue("aqtHealth.database.jdbcUrl", database.jdbcUrl)
-            requireValue("aqtHealth.database.user", database.user)
-            requireSecret("aqtHealth.database.password", database.password)
-            rejectLocalUrl("aqtHealth.database.jdbcUrl", database.jdbcUrl)
-            if (database.user == "aqt_health" || database.password == "aqt_health") {
-                add(ConfigValidationIssue("aqtHealth.database", "must not use default compose credentials"))
-            }
+                requireValue("aqtHealth.database.jdbcUrl", database.jdbcUrl)
+                requireValue("aqtHealth.database.user", database.user)
+                requireSecret("aqtHealth.database.password", database.password)
+                rejectLocalUrl("aqtHealth.database.jdbcUrl", database.jdbcUrl)
+                if (database.user == "aqt_health" || database.password == "aqt_health") {
+                    add(ConfigValidationIssue("aqtHealth.database", "must not use default compose credentials"))
+                }
 
-            validateGoogleHealth(googleHealth)
-            validateWithings(withings)
-            validateCors(cors)
-        } else {
-            // Outside production, only fail fast for a provider the operator has started wiring up
-            // (any client credential set). Require its token-encryption key so OAuth/sync fails at
-            // boot with a clear message instead of cryptically at the first TokenCipher use. A fully
-            // unconfigured provider (the local default) still boots untouched.
-            if (googleHealth.isProviderConfigured()) {
-                requireTokenKey("aqtHealth.googleHealth.tokenEncryptionKey", googleHealth.tokenEncryptionKey)
-            }
-            if (withings.isProviderConfigured()) {
-                requireTokenKey("aqtHealth.withings.tokenEncryptionKey", withings.tokenEncryptionKey)
+                validateGoogleHealth(googleHealth)
+                validateWithings(withings)
+                validateCors(cors)
+            } else {
+                // Outside production, only fail fast for a provider the operator has started wiring up
+                // (any client credential set). Require its token-encryption key so OAuth/sync fails at
+                // boot with a clear message instead of cryptically at the first TokenCipher use. A fully
+                // unconfigured provider (the local default) still boots untouched.
+                if (googleHealth.isProviderConfigured()) {
+                    requireTokenKey("aqtHealth.googleHealth.tokenEncryptionKey", googleHealth.tokenEncryptionKey)
+                }
+                if (withings.isProviderConfigured()) {
+                    requireTokenKey("aqtHealth.withings.tokenEncryptionKey", withings.tokenEncryptionKey)
+                }
             }
         }
-    }
 
     if (issues.isNotEmpty()) {
         throw AppConfigValidationException(issues)
     }
 }
 
-private fun GoogleHealthConfig.isProviderConfigured(): Boolean =
-    clientId.isNotBlank() || clientSecret.isNotBlank()
+private fun GoogleHealthConfig.isProviderConfigured(): Boolean = clientId.isNotBlank() || clientSecret.isNotBlank()
 
-private fun WithingsConfig.isProviderConfigured(): Boolean =
-    clientId.isNotBlank() || clientSecret.isNotBlank()
+private fun WithingsConfig.isProviderConfigured(): Boolean = clientId.isNotBlank() || clientSecret.isNotBlank()
 
 private fun MutableList<ConfigValidationIssue>.validateGoogleHealth(config: GoogleHealthConfig) {
     requireValue("aqtHealth.googleHealth.clientId", config.clientId)
@@ -236,7 +253,10 @@ private fun MutableList<ConfigValidationIssue>.validateCors(cors: CorsConfig) {
     }
 }
 
-private fun MutableList<ConfigValidationIssue>.requireValue(path: String, value: String) {
+private fun MutableList<ConfigValidationIssue>.requireValue(
+    path: String,
+    value: String,
+) {
     val trimmed = value.trim()
     if (trimmed.isBlank()) {
         add(ConfigValidationIssue(path, "must not be blank in production"))
@@ -245,18 +265,27 @@ private fun MutableList<ConfigValidationIssue>.requireValue(path: String, value:
     }
 }
 
-private fun MutableList<ConfigValidationIssue>.requireSecret(path: String, value: String) {
+private fun MutableList<ConfigValidationIssue>.requireSecret(
+    path: String,
+    value: String,
+) {
     requireValue(path, value)
 }
 
-private fun MutableList<ConfigValidationIssue>.requireTokenKey(path: String, value: String) {
+private fun MutableList<ConfigValidationIssue>.requireTokenKey(
+    path: String,
+    value: String,
+) {
     requireSecret(path, value)
     if (value.toByteArray(Charsets.UTF_8).size < 32) {
         add(ConfigValidationIssue(path, "must be at least 32 bytes"))
     }
 }
 
-private fun MutableList<ConfigValidationIssue>.requireHttpsUrl(path: String, value: String) {
+private fun MutableList<ConfigValidationIssue>.requireHttpsUrl(
+    path: String,
+    value: String,
+) {
     requireValue(path, value)
     val uri = value.toUriOrNull()
     if (uri == null || uri.scheme != "https" || uri.host.isNullOrBlank()) {
@@ -264,7 +293,10 @@ private fun MutableList<ConfigValidationIssue>.requireHttpsUrl(path: String, val
     }
 }
 
-private fun MutableList<ConfigValidationIssue>.requirePublicHttpsUrl(path: String, value: String) {
+private fun MutableList<ConfigValidationIssue>.requirePublicHttpsUrl(
+    path: String,
+    value: String,
+) {
     requireHttpsUrl(path, value)
     val host = value.toUriOrNull()?.host ?: return
     if (host.isLocalOrPrivateHost()) {
@@ -272,7 +304,10 @@ private fun MutableList<ConfigValidationIssue>.requirePublicHttpsUrl(path: Strin
     }
 }
 
-private fun MutableList<ConfigValidationIssue>.rejectLocalUrl(path: String, value: String) {
+private fun MutableList<ConfigValidationIssue>.rejectLocalUrl(
+    path: String,
+    value: String,
+) {
     val host = jdbcHost(value) ?: value.toUriOrNull()?.host ?: return
     if (host.isLocalHost()) {
         add(ConfigValidationIssue(path, "must not point at localhost in production"))
@@ -292,8 +327,7 @@ private fun isPlaceholder(value: String): Boolean {
     ).any { it in normalized }
 }
 
-private fun String.toUriOrNull(): URI? =
-    runCatching { URI(this) }.getOrNull()
+private fun String.toUriOrNull(): URI? = runCatching { URI(this) }.getOrNull()
 
 private fun jdbcHost(jdbcUrl: String): String? =
     Regex("""^jdbc:[a-z0-9]+://([^/:?]+)""", RegexOption.IGNORE_CASE)
@@ -309,10 +343,10 @@ private fun String.isLocalOrPrivateHost(): Boolean {
     val first = parts[0]
     val second = parts[1]
     return first == 10 ||
-            first == 127 ||
-            (first == 172 && second in 16..31) ||
-            (first == 192 && second == 168) ||
-            (first == 169 && second == 254)
+        first == 127 ||
+        (first == 172 && second in 16..31) ||
+        (first == 192 && second == 168) ||
+        (first == 169 && second == 254)
 }
 
 private fun String.isLocalHost(): Boolean {
@@ -325,6 +359,5 @@ private fun String.isLocalHost(): Boolean {
 
 private fun ApplicationConfig.optional(
     path: String,
-    default: String = ""
-): String =
-    propertyOrNull(path)?.getString() ?: default
+    default: String = "",
+): String = propertyOrNull(path)?.getString() ?: default

@@ -1,13 +1,13 @@
 package me.aquitano.health.application.metric.sleep.repository
 
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.application.metric.sleep.derived.SleepNightOutput
 import me.aquitano.health.application.metric.sleep.derived.SleepNightRawSession
-import me.aquitano.health.infrastructure.database.tables.SleepStagesTable
 import me.aquitano.health.infrastructure.database.tables.SleepNightsTable
 import me.aquitano.health.infrastructure.database.tables.SleepSessionsTable
+import me.aquitano.health.infrastructure.database.tables.SleepStagesTable
 import me.aquitano.health.infrastructure.database.tables.SourceInstancesTable
 import me.aquitano.health.infrastructure.database.tables.SourcesTable
-import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.infrastructure.database.toApiString
 import me.aquitano.health.infrastructure.database.toDbTimestamp
 import org.jetbrains.exposed.v1.core.*
@@ -43,8 +43,7 @@ class SleepNightDerivationRepository {
                     conditions.add(SourceInstancesTable.providerInstanceId eq it)
                 }
                 conditions.reduceOrNull { left, right -> left and right } ?: Op.TRUE
-            }
-            .map { it[SourceInstancesTable.id].value }
+            }.map { it[SourceInstancesTable.id].value }
             .toSet()
     }
 
@@ -55,10 +54,11 @@ class SleepNightDerivationRepository {
     ): List<SleepNightRawSession> {
         if (sourceInstanceIds != null && sourceInstanceIds.isEmpty()) return emptyList()
 
-        val conditions = mutableListOf<Op<Boolean>>(
-            SleepSessionsTable.endAt greaterEq windowStart.toDbTimestamp(),
-            SleepSessionsTable.endAt less windowEnd.toDbTimestamp(),
-        )
+        val conditions =
+            mutableListOf<Op<Boolean>>(
+                SleepSessionsTable.endAt greaterEq windowStart.toDbTimestamp(),
+                SleepSessionsTable.endAt less windowEnd.toDbTimestamp(),
+            )
         sourceInstanceIds?.let {
             conditions.add(SleepSessionsTable.sourceInstanceId inList it)
         }
@@ -96,25 +96,26 @@ class SleepNightDerivationRepository {
         val storedNights = listSleepNightsForTimezoneAndDates(sourceInstanceIds, timezone.id, dates)
         val storedNightsByDate = storedNights.groupBy { it.date }
 
-        return dates.filter { date ->
-            val dateSessions = sessionsByDate[date] ?: emptyList()
-            val dateNights = storedNightsByDate[date] ?: emptyList()
+        return dates
+            .filter { date ->
+                val dateSessions = sessionsByDate[date] ?: emptyList()
+                val dateNights = storedNightsByDate[date] ?: emptyList()
 
-            val sessionsBySource = dateSessions.groupBy { it.sourceInstanceId }
-            val nightsBySource = dateNights.groupBy { it.sourceInstanceId }
+                val sessionsBySource = dateSessions.groupBy { it.sourceInstanceId }
+                val nightsBySource = dateNights.groupBy { it.sourceInstanceId }
 
-            val allSourceIds = sessionsBySource.keys + nightsBySource.keys
-            allSourceIds.any { sourceId ->
-                val sourceSessions = sessionsBySource[sourceId]?.map { it.id }?.toSet() ?: emptySet()
-                val sourceNightsList = nightsBySource[sourceId] ?: emptyList()
+                val allSourceIds = sessionsBySource.keys + nightsBySource.keys
+                allSourceIds.any { sourceId ->
+                    val sourceSessions = sessionsBySource[sourceId]?.map { it.id }?.toSet() ?: emptySet()
+                    val sourceNightsList = nightsBySource[sourceId] ?: emptyList()
 
-                val hasWrongVersion = sourceNightsList.any { it.algorithmVersion != algorithmVersion }
-                if (hasWrongVersion) return@any true
+                    val hasWrongVersion = sourceNightsList.any { it.algorithmVersion != algorithmVersion }
+                    if (hasWrongVersion) return@any true
 
-                val sourceNights = sourceNightsList.map { it.sleepSessionId }.toSet()
-                sourceSessions != sourceNights
-            }
-        }.toSet()
+                    val sourceNights = sourceNightsList.map { it.sleepSessionId }.toSet()
+                    sourceSessions != sourceNights
+                }
+            }.toSet()
     }
 
     private fun listSleepNightsForTimezoneAndDates(
@@ -125,10 +126,11 @@ class SleepNightDerivationRepository {
         if (sourceInstanceIds != null && sourceInstanceIds.isEmpty()) return emptyList()
         if (dates.isEmpty()) return emptyList()
 
-        val conditions = mutableListOf<Op<Boolean>>(
-            SleepNightsTable.timezone eq timezone,
-            SleepNightsTable.date inList dates,
-        )
+        val conditions =
+            mutableListOf<Op<Boolean>>(
+                SleepNightsTable.timezone eq timezone,
+                SleepNightsTable.date inList dates,
+            )
         sourceInstanceIds?.let {
             conditions.add(SleepNightsTable.sourceInstanceId inList it)
         }
@@ -155,19 +157,20 @@ class SleepNightDerivationRepository {
                 SourceInstancesTable.id,
                 SourcesTable.code,
                 SourceInstancesTable.providerInstanceId,
-            )
-            .where { SourceInstancesTable.id inList sourceIds }
+            ).where { SourceInstancesTable.id inList sourceIds }
             .associate {
-                it[SourceInstancesTable.id].value to SourceMetadata(
-                    provider = it[SourcesTable.code],
-                    providerInstanceId = it[SourceInstancesTable.providerInstanceId],
-                )
+                it[SourceInstancesTable.id].value to
+                    SourceMetadata(
+                        provider = it[SourcesTable.code],
+                        providerInstanceId = it[SourceInstancesTable.providerInstanceId],
+                    )
             }
     }
 
     private fun sleepStagesBySession(sessionIds: List<Int>): Map<Int, List<SleepStageRow>> {
         if (sessionIds.isEmpty()) return emptyMap()
-        return SleepStagesTable.selectAll()
+        return SleepStagesTable
+            .selectAll()
             .where { SleepStagesTable.sleepSessionId inList sessionIds }
             .orderBy(SleepStagesTable.startAt to SortOrder.ASC)
             .groupBy(
@@ -195,15 +198,19 @@ class SleepNightDerivationRepository {
             val dateScope =
                 (SleepNightsTable.timezone eq timezone) and
                     (SleepNightsTable.date eq output.date)
-            val scoped = output.sourceInstanceIds?.let {
-                dateScope and (SleepNightsTable.sourceInstanceId inList it)
-            } ?: dateScope
+            val scoped =
+                output.sourceInstanceIds?.let {
+                    dateScope and (SleepNightsTable.sourceInstanceId inList it)
+                } ?: dateScope
             // Also drop any existing row for the exact sessions being rewritten, even when its
             // stored night-date or timezone differs. The upsert key is (timezone, sleepSessionId),
             // so a session whose computed night-date changed (endAt/tz correction) would otherwise
             // leave a stale row the date-scoped delete misses -> duplicate/drifted nights.
-            if (rewrittenSessionIds.isEmpty()) scoped
-            else scoped or (SleepNightsTable.sleepSessionId inList rewrittenSessionIds)
+            if (rewrittenSessionIds.isEmpty()) {
+                scoped
+            } else {
+                scoped or (SleepNightsTable.sleepSessionId inList rewrittenSessionIds)
+            }
         }
 
         output.nights.forEach { night ->

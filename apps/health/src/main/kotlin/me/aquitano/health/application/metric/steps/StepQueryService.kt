@@ -11,12 +11,10 @@ import me.aquitano.health.application.metric.common.dailyReadFilters
 import me.aquitano.health.application.metric.common.keysetPage
 import me.aquitano.health.application.metric.common.meta
 import me.aquitano.health.application.metric.common.readFilters
-import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.application.metric.common.toResponse
 import me.aquitano.health.application.metric.steps.derived.CANONICAL_STEP_ALGORITHM_VERSION
 import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
 import me.aquitano.health.application.metric.steps.repository.StepRepository
-import me.aquitano.health.application.metric.steps.repository.StepDailySummaryRow
 import org.jetbrains.exposed.v1.jdbc.Database
 import java.time.Instant
 
@@ -27,29 +25,32 @@ class StepQueryService(
 ) : BaseReadService(database) {
     suspend fun listStepSamples(params: QueryParams): StepSamplesResponse =
         dbQuery {
-            val filters = params.readFilters(
-                sortSpec = QueryParamSpecs.sortByStartAt,
-                latestSupported = true,
-            )
+            val filters =
+                params.readFilters(
+                    sortSpec = QueryParamSpecs.sortByStartAt,
+                    latestSupported = true,
+                )
             val (rows, sourceMetadata) =
                 canonicalRepository.listCanonicalStepSamples(filters, CANONICAL_STEP_ALGORITHM_VERSION)
-            val page = rows.keysetPage(
-                limit = filters.limit,
-                sort = filters.sort,
-                order = filters.order,
-                sortValue = { it.startAt },
-                id = { it.id.toLong() },
-            )
+            val page =
+                rows.keysetPage(
+                    limit = filters.limit,
+                    sort = filters.sort,
+                    order = filters.order,
+                    sortValue = { it.startAt },
+                    id = { it.id.toLong() },
+                )
             StepSamplesResponse(
-                items = page.items.map {
-                    StepSampleResponse(
-                        id = it.id,
-                        startAt = it.startAt,
-                        endAt = it.endAt,
-                        steps = it.steps,
-                        source = sourceMetadata[it.sourceInstanceId].toResponse(),
-                    )
-                },
+                items =
+                    page.items.map {
+                        StepSampleResponse(
+                            id = it.id,
+                            startAt = it.startAt,
+                            endAt = it.endAt,
+                            steps = it.steps,
+                            source = sourceMetadata[it.sourceInstanceId].toResponse(),
+                        )
+                    },
                 meta = page.items.meta(filters, page.nextCursor),
             )
         }
@@ -62,24 +63,25 @@ class StepQueryService(
             params.rejectLatest()
             val filters = params.dailyReadFilters(now)
             val (rows, sourceMetadata) = canonicalRepository.listCanonicalStepDailySummaries(filters)
-            val page = rows.keysetPage(
-                limit = filters.limit,
-                sort = filters.sort,
-                order = filters.order,
-                sortValue = { it.date },
-                id = { it.id.toLong() },
-            )
+            val page =
+                rows.keysetPage(
+                    limit = filters.limit,
+                    sort = filters.sort,
+                    order = filters.order,
+                    sortValue = { it.date },
+                    id = { it.id.toLong() },
+                )
             StepDailySummariesResponse(
-                items = page.items.map {
-                    StepDailySummaryResponse(
-                        date = it.date,
-                        steps = it.steps,
-                        sampleCount = it.sampleCount,
-                        source = sourceMetadata[it.sourceInstanceId].toResponse(),
-                    )
-                },
+                items =
+                    page.items.map {
+                        StepDailySummaryResponse(
+                            date = it.date,
+                            steps = it.steps,
+                            sampleCount = it.sampleCount,
+                            source = sourceMetadata[it.sourceInstanceId].toResponse(),
+                        )
+                    },
                 meta = page.items.meta(filters, page.nextCursor),
             )
         }
 }
-

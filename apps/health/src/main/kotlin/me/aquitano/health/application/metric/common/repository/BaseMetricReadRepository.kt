@@ -26,7 +26,6 @@ import java.time.ZoneOffset
  * query logic.
  */
 abstract class BaseMetricReadRepository : MetricReadRepository {
-
     override fun sourceMetadataFor(sourceIds: Set<Int>): Map<Int, SourceMetadata> {
         if (sourceIds.isEmpty()) return emptyMap()
         return SourceInstancesTable
@@ -35,13 +34,13 @@ abstract class BaseMetricReadRepository : MetricReadRepository {
                 SourceInstancesTable.id,
                 SourcesTable.code,
                 SourceInstancesTable.providerInstanceId,
-            )
-            .where { SourceInstancesTable.id inList sourceIds }
+            ).where { SourceInstancesTable.id inList sourceIds }
             .associate {
-                it[SourceInstancesTable.id].value to SourceMetadata(
-                    provider = it[SourcesTable.code],
-                    providerInstanceId = it[SourceInstancesTable.providerInstanceId],
-                )
+                it[SourceInstancesTable.id].value to
+                    SourceMetadata(
+                        provider = it[SourcesTable.code],
+                        providerInstanceId = it[SourceInstancesTable.providerInstanceId],
+                    )
             }
     }
 
@@ -54,7 +53,7 @@ abstract class BaseMetricReadRepository : MetricReadRepository {
      */
     protected fun sourceInstanceIds(
         provider: String?,
-        providerInstanceId: String?
+        providerInstanceId: String?,
     ): List<Int>? {
         if (provider == null && providerInstanceId == null) return null
         return SourceInstancesTable
@@ -67,27 +66,20 @@ abstract class BaseMetricReadRepository : MetricReadRepository {
                     conditions.add(SourceInstancesTable.providerInstanceId eq it)
                 }
                 combineConditions(conditions)
-            }
-            .map { it[SourceInstancesTable.id].value }
+            }.map { it[SourceInstancesTable.id].value }
     }
 
-    protected fun ReadFilters.sourceInstanceIds(): List<Int>? =
-        sourceInstanceIds(provider, providerInstanceId)
+    protected fun ReadFilters.sourceInstanceIds(): List<Int>? = sourceInstanceIds(provider, providerInstanceId)
 
-    protected fun DailyReadFilters.sourceInstanceIds(): List<Int>? =
-        sourceInstanceIds(provider, providerInstanceId)
+    protected fun DailyReadFilters.sourceInstanceIds(): List<Int>? = sourceInstanceIds(provider, providerInstanceId)
 
-    protected fun SleepNightReadFilters.sourceInstanceIds(): List<Int>? =
-        sourceInstanceIds(provider, providerInstanceId)
+    protected fun SleepNightReadFilters.sourceInstanceIds(): List<Int>? = sourceInstanceIds(provider, providerInstanceId)
 
-    protected fun List<Int>?.hasNoMatchingSources(): Boolean =
-        this != null && isEmpty()
+    protected fun List<Int>?.hasNoMatchingSources(): Boolean = this != null && isEmpty()
 
-    protected fun <T> emptyReadResult(): Pair<List<T>, Map<Int, SourceMetadata>> =
-        emptyList<T>() to emptyMap()
+    protected fun <T> emptyReadResult(): Pair<List<T>, Map<Int, SourceMetadata>> = emptyList<T>() to emptyMap()
 
-    protected fun <T> emptyLatestResult(): Pair<T?, Map<Int, SourceMetadata>> =
-        null to emptyMap()
+    protected fun <T> emptyLatestResult(): Pair<T?, Map<Int, SourceMetadata>> = null to emptyMap()
 
     protected fun <T, S> emptyTripleReadResult(): Triple<List<T>, Map<Int, List<S>>, Map<Int, SourceMetadata>> =
         Triple(emptyList(), emptyMap(), emptyMap())
@@ -196,10 +188,12 @@ abstract class BaseMetricReadRepository : MetricReadRepository {
         }
         filters.toDate?.let {
             conditions.add(
-                timestampColumn less it.plusDays(1)
-                    .atStartOfDay(filters.timezone)
-                    .toInstant()
-                    .toDbTimestamp()
+                timestampColumn less
+                    it
+                        .plusDays(1)
+                        .atStartOfDay(filters.timezone)
+                        .toInstant()
+                        .toDbTimestamp(),
             )
         }
         sourceIds?.let { conditions.add(sourceInstanceIdColumn inList it) }
@@ -216,8 +210,7 @@ abstract class BaseMetricReadRepository : MetricReadRepository {
     protected fun sourceMetadata(
         sourceInstanceIds: Set<Int>,
         includeSource: Boolean,
-    ): Map<Int, SourceMetadata> =
-        if (includeSource) sourceMetadataFor(sourceInstanceIds) else emptyMap()
+    ): Map<Int, SourceMetadata> = if (includeSource) sourceMetadataFor(sourceInstanceIds) else emptyMap()
 
     /**
      * Combines a list of Exposed boolean conditions with `AND`.
@@ -238,9 +231,10 @@ abstract class BaseMetricReadRepository : MetricReadRepository {
         idExpression: Expression<*>,
     ): Op<Boolean>? {
         if (cursor == null) return null
-        val sortValue = runCatching {
-            Instant.parse(cursor.sortValue).atOffset(ZoneOffset.UTC)
-        }.getOrElse { throw invalidCursor() }
+        val sortValue =
+            runCatching {
+                Instant.parse(cursor.sortValue).atOffset(ZoneOffset.UTC)
+            }.getOrElse { throw invalidCursor() }
         return keyset(order, sortColumn, LiteralOp(sortColumn.columnType, sortValue), idExpression, cursor.lastId)
     }
 
@@ -252,8 +246,9 @@ abstract class BaseMetricReadRepository : MetricReadRepository {
         idExpression: Expression<*>,
     ): Op<Boolean>? {
         if (cursor == null) return null
-        val sortValue = runCatching { LocalDate.parse(cursor.sortValue) }
-            .getOrElse { throw invalidCursor() }
+        val sortValue =
+            runCatching { LocalDate.parse(cursor.sortValue) }
+                .getOrElse { throw invalidCursor() }
         return keyset(order, sortColumn, LiteralOp(sortColumn.columnType, sortValue), idExpression, cursor.lastId)
     }
 
@@ -281,8 +276,8 @@ abstract class BaseMetricReadRepository : MetricReadRepository {
                     field = "cursor",
                     code = ValidationIssueCodes.InvalidFormat,
                     message = "is not a valid cursor",
-                )
-            )
+                ),
+            ),
         )
 
     /**
@@ -291,18 +286,19 @@ abstract class BaseMetricReadRepository : MetricReadRepository {
     protected fun sortOrder(order: String): SortOrder =
         if (order.equals(
                 "desc",
-                ignoreCase = true
+                ignoreCase = true,
             )
-        ) SortOrder.DESC else SortOrder.ASC
+        ) {
+            SortOrder.DESC
+        } else {
+            SortOrder.ASC
+        }
 
-    protected fun ReadFilters.sortOrder(): SortOrder =
-        sortOrder(order)
+    protected fun ReadFilters.sortOrder(): SortOrder = sortOrder(order)
 
-    protected fun DailyReadFilters.sortOrder(): SortOrder =
-        sortOrder(order)
+    protected fun DailyReadFilters.sortOrder(): SortOrder = sortOrder(order)
 
-    protected fun SleepNightReadFilters.sortOrder(): SortOrder =
-        sortOrder(order)
+    protected fun SleepNightReadFilters.sortOrder(): SortOrder = sortOrder(order)
 }
 
 enum class TimeFilterMode {

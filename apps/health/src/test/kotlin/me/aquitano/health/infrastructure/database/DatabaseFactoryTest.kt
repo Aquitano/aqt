@@ -20,15 +20,16 @@ class DatabaseFactoryTest {
     fun migrationsCreateExpectedTables() {
         val database = DatabaseFactory().initialize(tempDatabaseConfig())
 
-        val tableNames = transaction(database) {
-            val names = mutableSetOf<String>()
-            exec("SELECT tablename FROM pg_tables WHERE schemaname = current_schema()") { resultSet ->
-                while (resultSet.next()) {
-                    names.add(resultSet.getString("tablename"))
+        val tableNames =
+            transaction(database) {
+                val names = mutableSetOf<String>()
+                exec("SELECT tablename FROM pg_tables WHERE schemaname = current_schema()") { resultSet ->
+                    while (resultSet.next()) {
+                        names.add(resultSet.getString("tablename"))
+                    }
                 }
+                names
             }
-            names
-        }
 
         assertContains(tableNames, "sources")
         assertContains(tableNames, "source_instances")
@@ -46,15 +47,16 @@ class DatabaseFactoryTest {
         assertContains(tableNames, "provider_oauth_states")
         assertContains(tableNames, "provider_sync_runs")
 
-        val viewNames = transaction(database) {
-            val names = mutableSetOf<String>()
-            exec("SELECT viewname FROM pg_views WHERE schemaname = current_schema()") { resultSet ->
-                while (resultSet.next()) {
-                    names.add(resultSet.getString("viewname"))
+        val viewNames =
+            transaction(database) {
+                val names = mutableSetOf<String>()
+                exec("SELECT viewname FROM pg_views WHERE schemaname = current_schema()") { resultSet ->
+                    while (resultSet.next()) {
+                        names.add(resultSet.getString("viewname"))
+                    }
                 }
+                names
             }
-            names
-        }
 
         assertContains(viewNames, "canonical_scalar_samples")
         assertContains(viewNames, "canonical_activity_summaries")
@@ -69,22 +71,24 @@ class DatabaseFactoryTest {
         val database = DatabaseFactory().initialize(tempDatabaseConfig())
         val hasher = ApiKeyHasher()
         ApiClientBootstrapService(
-            authConfig = AuthConfig(
-                bootstrapClientName = "test-client",
-                bootstrapApiKey = "plain-test-key"
-            ),
+            authConfig =
+                AuthConfig(
+                    bootstrapClientName = "test-client",
+                    bootstrapApiKey = "plain-test-key",
+                ),
             supportRepository = SupportRepository(database),
             apiKeyHasher = hasher,
             clock = UtcClock.fixed(Instant.parse("2026-04-19T10:00:00Z")),
         ).bootstrap()
 
-        val stored = transaction(database) {
-            var hash: String? = null
-            exec("SELECT api_key_hash FROM api_clients WHERE name = 'test-client'") { resultSet ->
-                if (resultSet.next()) hash = resultSet.getString("api_key_hash")
+        val stored =
+            transaction(database) {
+                var hash: String? = null
+                exec("SELECT api_key_hash FROM api_clients WHERE name = 'test-client'") { resultSet ->
+                    if (resultSet.next()) hash = resultSet.getString("api_key_hash")
+                }
+                hash
             }
-            hash
-        }
 
         assertEquals(hasher.hash("plain-test-key"), stored)
     }
@@ -111,7 +115,7 @@ class DatabaseFactoryTest {
                         '2026-04-19T10:00:00Z',
                         '2026-04-19T10:00:00Z'
                     )
-                    """.trimIndent()
+                    """.trimIndent(),
                 )
             }
         }
@@ -154,7 +158,7 @@ class DatabaseFactoryTest {
                     28800,
                     '2026-04-19T10:00:00Z'
                 )
-                """.trimIndent()
+                """.trimIndent(),
             )
             exec(
                 """
@@ -172,7 +176,7 @@ class DatabaseFactoryTest {
                     '2026-04-19T06:00:00Z',
                     28800
                 )
-                """.trimIndent()
+                """.trimIndent(),
             )
 
             exec("DELETE FROM sleep_sessions WHERE id = 1")
@@ -217,7 +221,7 @@ class DatabaseFactoryTest {
                         '2026-04-19T10:00:00Z',
                         '2026-04-19T10:00:00Z'
                     )
-                    """.trimIndent()
+                    """.trimIndent(),
                 )
             }
 
@@ -242,7 +246,7 @@ class DatabaseFactoryTest {
                         1200,
                         '2026-04-19T10:00:00Z'
                     )
-                    """.trimIndent()
+                    """.trimIndent(),
                 )
             }
 
@@ -274,7 +278,7 @@ class DatabaseFactoryTest {
                         NULL,
                         '2026-04-19T10:00:00Z'
                     )
-                    """.trimIndent()
+                    """.trimIndent(),
                 )
             }
         }
@@ -305,7 +309,7 @@ class DatabaseFactoryTest {
             """
             INSERT INTO sources (id, code, display_name, created_at)
             VALUES (1, 'health_connect', NULL, '2026-04-19T10:00:00Z')
-            """.trimIndent()
+            """.trimIndent(),
         )
         TransactionManager.current().exec(
             """
@@ -325,7 +329,7 @@ class DatabaseFactoryTest {
                 '2026-04-19T10:00:00Z',
                 '2026-04-19T10:00:00Z'
             )
-            """.trimIndent()
+            """.trimIndent(),
         )
     }
 }

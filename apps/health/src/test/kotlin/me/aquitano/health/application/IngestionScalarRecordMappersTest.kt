@@ -151,7 +151,7 @@ class IngestionScalarRecordMappersTest {
                 "records[0]",
                 BodyMeasurement(measuredAt = measuredAt, weightKg = 0.0),
                 issues,
-            )
+            ),
         )
     }
 
@@ -181,7 +181,10 @@ class IngestionScalarRecordMappersTest {
 
     @Test
     fun extendedBodyMeasurementBoundariesMatchScalarRecord() {
-        fun legacy(metricType: String, value: Double): ScalarSampleRecord? {
+        fun legacy(
+            metricType: String,
+            value: Double,
+        ): ScalarSampleRecord? {
             val issues = mutableListOf<ValidationIssue>()
             return mapExtendedBodyMeasurement(
                 "records[0]",
@@ -222,7 +225,7 @@ class IngestionScalarRecordMappersTest {
                     unit = "kg",
                 ),
                 issues,
-            )
+            ),
         )
         assertTrue(issues.any { it.field == "records[0].metricType" })
     }

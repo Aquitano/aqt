@@ -3,7 +3,7 @@ package me.aquitano.health.domain
 data class ValidationIssue(
     val field: String,
     val code: String = ValidationIssueCodes.Required,
-    val message: String = "is required"
+    val message: String = "is required",
 )
 
 object ValidationIssueCodes {

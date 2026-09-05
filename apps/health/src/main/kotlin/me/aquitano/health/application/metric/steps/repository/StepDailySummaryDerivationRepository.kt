@@ -23,8 +23,7 @@ class StepDailySummaryDerivationRepository {
                 (StepSamplesTable.sourceInstanceId eq sourceInstanceId) and
                     (StepSamplesTable.startAt less dayEnd.toDbTimestamp()) and
                     (StepSamplesTable.endAt greater dayStart.toDbTimestamp())
-            }
-            .map {
+            }.map {
                 StepDailySummaryRawSample(
                     startAt = it[StepSamplesTable.startAt].toInstant(),
                     endAt = it[StepSamplesTable.endAt].toInstant(),

@@ -1,5 +1,6 @@
 package me.aquitano.health.api
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.server.application.*
 import me.aquitano.health.application.*
 import me.aquitano.health.di.adminReplayModule
@@ -9,19 +10,19 @@ import me.aquitano.health.di.metricsReadModule
 import me.aquitano.health.di.providersModule
 import me.aquitano.health.infrastructure.config.toAppConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
+import me.aquitano.health.infrastructure.logging.*
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.security.ApiKeyHasher
 import me.aquitano.health.infrastructure.time.UtcClock
 import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
-import io.github.oshai.kotlinlogging.KotlinLogging
-import me.aquitano.health.infrastructure.logging.*
 
 private val logger = KotlinLogging.logger("me.aquitano.health.api.Application")
 
 fun main(args: Array<String>) {
-    io.ktor.server.netty.EngineMain.main(args)
+    io.ktor.server.netty.EngineMain
+        .main(args)
 }
 
 fun Application.module() {
@@ -39,13 +40,13 @@ fun Application.module() {
         "app_configured",
         "googleHealthConfigured" to (
             appConfig.googleHealth.clientId.isNotBlank() &&
-            appConfig.googleHealth.clientSecret.isNotBlank() &&
-            appConfig.googleHealth.tokenEncryptionKey.isNotBlank()
+                appConfig.googleHealth.clientSecret.isNotBlank() &&
+                appConfig.googleHealth.tokenEncryptionKey.isNotBlank()
         ),
         "withingsConfigured" to (
             appConfig.withings.clientId.isNotBlank() &&
-            appConfig.withings.clientSecret.isNotBlank() &&
-            appConfig.withings.tokenEncryptionKey.isNotBlank()
+                appConfig.withings.clientSecret.isNotBlank() &&
+                appConfig.withings.tokenEncryptionKey.isNotBlank()
         ),
     )
 

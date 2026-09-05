@@ -4,19 +4,27 @@ import java.security.MessageDigest
 
 class ApiKeyHasher {
     fun hash(apiKey: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(apiKey.toByteArray(Charsets.UTF_8))
-        return "sha256:" + digest.joinToString(separator = "") {
-            "%02x".format(
-                it
-            )
-        }
+        val digest =
+            MessageDigest
+                .getInstance("SHA-256")
+                .digest(apiKey.toByteArray(Charsets.UTF_8))
+        return "sha256:" +
+            digest.joinToString(separator = "") {
+                "%02x".format(
+                    it,
+                )
+            }
     }
 
-    fun matches(apiKey: String, expectedHash: String): Boolean =
-        constantTimeEquals(hash(apiKey), expectedHash)
+    fun matches(
+        apiKey: String,
+        expectedHash: String,
+    ): Boolean = constantTimeEquals(hash(apiKey), expectedHash)
 
-    private fun constantTimeEquals(left: String, right: String): Boolean {
+    private fun constantTimeEquals(
+        left: String,
+        right: String,
+    ): Boolean {
         val leftBytes = left.toByteArray(Charsets.UTF_8)
         val rightBytes = right.toByteArray(Charsets.UTF_8)
         var result = leftBytes.size xor rightBytes.size

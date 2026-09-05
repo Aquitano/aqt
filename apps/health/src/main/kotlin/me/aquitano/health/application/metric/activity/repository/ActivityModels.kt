@@ -16,4 +16,3 @@ data class ActivitySummaryRow(
     val minHeartRateBpm: Int?,
     val maxHeartRateBpm: Int?,
 )
-

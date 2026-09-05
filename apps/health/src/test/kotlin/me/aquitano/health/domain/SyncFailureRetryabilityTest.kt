@@ -15,8 +15,8 @@ class SyncFailureRetryabilityTest {
         assertFalse(isRetryableSyncFailure(ConflictException("withings_needs_reauth", "token expired, reauthorize")))
         assertFalse(
             isRetryableSyncFailure(
-                ServerConfigurationException("google_health_not_configured", "Provider is misconfigured")
-            )
+                ServerConfigurationException("google_health_not_configured", "Provider is misconfigured"),
+            ),
         )
     }
 
@@ -30,8 +30,8 @@ class SyncFailureRetryabilityTest {
     fun upstreamProviderExceptionCarriesItsOwnRetryability() {
         assertFalse(
             isRetryableSyncFailure(
-                UpstreamProviderException("withings_needs_reauth", "reauthorize", 502, retryable = false)
-            )
+                UpstreamProviderException("withings_needs_reauth", "reauthorize", 502, retryable = false),
+            ),
         )
     }
 }

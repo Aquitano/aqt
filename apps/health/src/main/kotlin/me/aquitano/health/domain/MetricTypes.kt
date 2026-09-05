@@ -38,12 +38,23 @@ object BodyMetricTypes {
     const val SEGMENTAL_MUSCLE_MASS = "segmental_muscle_mass"
     const val SEGMENTAL_FAT_FREE_MASS = "segmental_fat_free_mass"
 
-    val supported = setOf(
-        WEIGHT, BODY_FAT, MUSCLE, WATER, VISCERAL_FAT,
-        FAT_MASS, FAT_FREE_MASS, BONE_MASS,
-        INTRACELLULAR_WATER, EXTRACELLULAR_WATER, BASAL_METABOLIC_RATE,
-        SEGMENTAL_FAT_MASS, SEGMENTAL_MUSCLE_MASS, SEGMENTAL_FAT_FREE_MASS,
-    )
+    val supported =
+        setOf(
+            WEIGHT,
+            BODY_FAT,
+            MUSCLE,
+            WATER,
+            VISCERAL_FAT,
+            FAT_MASS,
+            FAT_FREE_MASS,
+            BONE_MASS,
+            INTRACELLULAR_WATER,
+            EXTRACELLULAR_WATER,
+            BASAL_METABOLIC_RATE,
+            SEGMENTAL_FAT_MASS,
+            SEGMENTAL_MUSCLE_MASS,
+            SEGMENTAL_FAT_FREE_MASS,
+        )
 }
 
 object BodySegments {

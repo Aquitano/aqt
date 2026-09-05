@@ -62,8 +62,7 @@ object PostgresTestDatabase {
         )
     }
 
-    fun connection(config: DatabaseConfig): Connection =
-        DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
+    fun connection(config: DatabaseConfig): Connection = DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
 
     fun ktorConfigEntries(config: DatabaseConfig): Array<Pair<String, String>> =
         arrayOf(
@@ -89,7 +88,8 @@ object PostgresTestDatabase {
     ): DatabaseConfig? {
         val schema = "aqt_health_test_${UUID.randomUUID().toString().replace("-", "")}"
         try {
-            DriverManager.getConnection(jdbcUrl.withJdbcParameter("connectTimeout", "1"), user, password)
+            DriverManager
+                .getConnection(jdbcUrl.withJdbcParameter("connectTimeout", "1"), user, password)
                 .use { connection ->
                     connection.createStatement().use { statement ->
                         statement.execute("CREATE SCHEMA $schema")
@@ -131,7 +131,10 @@ object PostgresTestDatabase {
             }
         }
 
-    private fun String.withJdbcParameter(name: String, value: String): String {
+    private fun String.withJdbcParameter(
+        name: String,
+        value: String,
+    ): String {
         val separator = if (contains("?")) "&" else "?"
         return "$this$separator$name=$value"
     }
@@ -140,19 +143,20 @@ object PostgresTestDatabase {
         Runtime.getRuntime().addShutdownHook(
             Thread {
                 externalSchemas.toList().forEach { externalSchema ->
-                    DriverManager.getConnection(
-                        externalSchema.jdbcUrl,
-                        externalSchema.user,
-                        externalSchema.password,
-                    ).use { connection ->
-                        connection.createStatement().use { statement ->
-                            statement.execute(
-                                "DROP SCHEMA IF EXISTS ${externalSchema.schema} CASCADE"
-                            )
+                    DriverManager
+                        .getConnection(
+                            externalSchema.jdbcUrl,
+                            externalSchema.user,
+                            externalSchema.password,
+                        ).use { connection ->
+                            connection.createStatement().use { statement ->
+                                statement.execute(
+                                    "DROP SCHEMA IF EXISTS ${externalSchema.schema} CASCADE",
+                                )
+                            }
                         }
-                    }
                 }
-            }
+            },
         )
     }
 
@@ -161,5 +165,5 @@ object PostgresTestDatabase {
 
     private const val MISSING_DATABASE_MESSAGE =
         "PostgreSQL integration tests require Docker or a reachable " +
-                "AQT_HEALTH_TEST_JDBC_URL/local PostgreSQL database."
+            "AQT_HEALTH_TEST_JDBC_URL/local PostgreSQL database."
 }

@@ -7,7 +7,9 @@ import org.jetbrains.exposed.v1.core.dao.id.EntityID
 import org.jetbrains.exposed.v1.dao.IntEntity
 import org.jetbrains.exposed.v1.dao.IntEntityClass
 
-class SourceDao(id: EntityID<Int>) : IntEntity(id) {
+class SourceDao(
+    id: EntityID<Int>,
+) : IntEntity(id) {
     companion object : IntEntityClass<SourceDao>(SourcesTable)
 
     var code by SourcesTable.code
@@ -15,7 +17,9 @@ class SourceDao(id: EntityID<Int>) : IntEntity(id) {
     var createdAt by SourcesTable.createdAt
 }
 
-class SourceInstanceDao(id: EntityID<Int>) : IntEntity(id) {
+class SourceInstanceDao(
+    id: EntityID<Int>,
+) : IntEntity(id) {
     companion object : IntEntityClass<SourceInstanceDao>(SourceInstancesTable)
 
     var source by SourceDao referencedOn SourceInstancesTable.sourceId
@@ -25,7 +29,9 @@ class SourceInstanceDao(id: EntityID<Int>) : IntEntity(id) {
     var updatedAt by SourceInstancesTable.updatedAt
 }
 
-class ApiClientDao(id: EntityID<Int>) : IntEntity(id) {
+class ApiClientDao(
+    id: EntityID<Int>,
+) : IntEntity(id) {
     companion object : IntEntityClass<ApiClientDao>(ApiClientsTable)
 
     var name by ApiClientsTable.name

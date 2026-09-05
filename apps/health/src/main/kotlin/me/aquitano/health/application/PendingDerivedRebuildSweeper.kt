@@ -22,7 +22,10 @@ private val sweeperLogger = KotlinLogging.logger {}
 
 object PendingDerivedRebuildPolicy {
     /** Exponential backoff in minutes (1, 2, 4, ...) capped at one hour. */
-    fun nextAttemptAfterFailure(now: Instant, attempts: Int): Instant {
+    fun nextAttemptAfterFailure(
+        now: Instant,
+        attempts: Int,
+    ): Instant {
         val exponent = (attempts - 1).coerceAtLeast(0)
         val minutes = min(60.0, 2.0.pow(exponent)).toLong()
         return now.plus(Duration.ofMinutes(minutes))
@@ -45,18 +48,19 @@ class PendingDerivedRebuildSweeper(
 
     fun start() {
         if (job != null) return
-        job = scope.launch {
-            while (isActive) {
-                try {
-                    sweep(clock.now())
-                } catch (exception: CancellationException) {
-                    throw exception
-                } catch (exception: Exception) {
-                    sweeperLogger.error(exception) { "pending_derived_rebuild_sweep_failed" }
+        job =
+            scope.launch {
+                while (isActive) {
+                    try {
+                        sweep(clock.now())
+                    } catch (exception: CancellationException) {
+                        throw exception
+                    } catch (exception: Exception) {
+                        sweeperLogger.error(exception) { "pending_derived_rebuild_sweep_failed" }
+                    }
+                    delay(pollInterval.toMillis())
                 }
-                delay(pollInterval.toMillis())
             }
-        }
     }
 
     fun stop() {
@@ -66,17 +70,22 @@ class PendingDerivedRebuildSweeper(
     }
 
     /** Returns the number of queued rows successfully rebuilt in this pass. */
-    suspend fun sweep(now: Instant, limit: Int = DEFAULT_SWEEP_LIMIT): Int {
+    suspend fun sweep(
+        now: Instant,
+        limit: Int = DEFAULT_SWEEP_LIMIT,
+    ): Int {
         val due = repository.due(now, limit)
         if (due.isEmpty()) return 0
         var rebuilt = 0
         due.groupBy { it.sourceInstanceId }.forEach { (sourceInstanceId, rows) ->
-            val request = DerivedRebuildRequest(
-                sourceInstanceId = sourceInstanceId,
-                affectedDates = rows
-                    .groupBy({ it.derivedKind }, { it.affectedDate })
-                    .mapValues { it.value.toSet() },
-            )
+            val request =
+                DerivedRebuildRequest(
+                    sourceInstanceId = sourceInstanceId,
+                    affectedDates =
+                        rows
+                            .groupBy({ it.derivedKind }, { it.affectedDate })
+                            .mapValues { it.value.toSet() },
+                )
             try {
                 derivedRebuildExecutor.rebuild(request, clock.now())
                 repository.deleteCompleted(rows.map { it.id })

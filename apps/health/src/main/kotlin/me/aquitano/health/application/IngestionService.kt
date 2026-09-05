@@ -1,19 +1,19 @@
 package me.aquitano.health.application
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import me.aquitano.health.api.dto.IngestionBatchRequest
 import me.aquitano.health.api.dto.IngestionSummaryResponse
 import me.aquitano.health.api.dto.MetricSkippedCountsResponse
 import me.aquitano.health.application.metric.common.MetricWrite
 import me.aquitano.health.application.metric.common.MetricWriteService
 import me.aquitano.health.domain.*
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
+import me.aquitano.health.infrastructure.logging.*
 import me.aquitano.health.infrastructure.repositories.IngestionRepository
 import me.aquitano.health.infrastructure.repositories.PendingDerivedRebuildRepository
 import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.shared.AppJson
 import org.jetbrains.exposed.v1.jdbc.Database
-import me.aquitano.health.infrastructure.database.suspendDbTransaction
-import io.github.oshai.kotlinlogging.KotlinLogging
-import me.aquitano.health.infrastructure.logging.*
 import java.time.Instant
 import java.time.LocalDate
 import java.util.concurrent.CancellationException
@@ -34,23 +34,22 @@ class IngestionService(
         providerInstanceId: String,
         batchExternalId: String,
         now: Instant,
-    ) =
-        suspendDbTransaction(db = database) {
-            val sourceInstance =
-                supportRepository.resolveOrCreateSourceInstanceInTransaction(
-                    provider = provider,
-                    providerInstanceId = providerInstanceId,
-                    now = now,
-                )
-            ingestionRepository.findBatchByExternalId(
-                sourceInstance.id,
-                batchExternalId,
+    ) = suspendDbTransaction(db = database) {
+        val sourceInstance =
+            supportRepository.resolveOrCreateSourceInstanceInTransaction(
+                provider = provider,
+                providerInstanceId = providerInstanceId,
+                now = now,
             )
-        }
+        ingestionRepository.findBatchByExternalId(
+            sourceInstance.id,
+            batchExternalId,
+        )
+    }
 
     suspend fun ingestBatch(
         request: IngestionBatchRequest,
-        now: Instant
+        now: Instant,
     ): IngestionSummaryResponse {
         val validated = mappingService.validateAndMap(request)
         logger.infoWithContext(
@@ -69,13 +68,14 @@ class IngestionService(
                         now = now,
                     )
 
-                val existingBatch = validated.batchExternalId
-                    ?.let {
-                        ingestionRepository.findBatchByExternalId(
-                            sourceInstance.id,
-                            it
-                        )
-                    }
+                val existingBatch =
+                    validated.batchExternalId
+                        ?.let {
+                            ingestionRepository.findBatchByExternalId(
+                                sourceInstance.id,
+                                it,
+                            )
+                        }
                 if (existingBatch?.status == BatchStatus.Processed) {
                     logger.infoWithContext(
                         "ingestion_batch_duplicate",
@@ -90,9 +90,10 @@ class IngestionService(
                             recordsReceived = validated.records.size,
                             ingestionRecordsStored = 0,
                             metricsCreated = emptyMap(),
-                            metricsSkipped = MetricSkippedCountsResponse(
-                                duplicates = 0
-                            ),
+                            metricsSkipped =
+                                MetricSkippedCountsResponse(
+                                    duplicates = 0,
+                                ),
                             affectedStepSummaryDates = emptyList(),
                         ),
                         DerivedRebuildRequest(sourceInstanceId = sourceInstance.id),
@@ -100,11 +101,12 @@ class IngestionService(
                     )
                 }
                 if (existingBatch?.status == BatchStatus.Failed) {
-                    val existingBatchExternalId = existingBatch.batchExternalId
-                        ?: throw ConflictException(
-                            "ingestion_batch_invalid_state",
-                            "Failed batch '${existingBatch.id}' does not have an external ID",
-                        )
+                    val existingBatchExternalId =
+                        existingBatch.batchExternalId
+                            ?: throw ConflictException(
+                                "ingestion_batch_invalid_state",
+                                "Failed batch '${existingBatch.id}' does not have an external ID",
+                            )
                     ingestionRepository.releaseFailedBatchExternalId(
                         batchId = existingBatch.id,
                         batchExternalId = existingBatchExternalId,
@@ -122,31 +124,34 @@ class IngestionService(
                     )
                 }
 
-                val batchId = ingestionRepository.insertBatch(
-                    sourceInstanceId = sourceInstance.id,
-                    batchExternalId = validated.batchExternalId,
-                    sourcePayloadJson = AppJson.encodeToString(validated.sourcePayload),
-                    normalizedPayloadJson = validated.normalizedPayloadJson,
-                    ingestedAt = validated.ingestedAt,
-                    receivedAt = now,
-                )
-                val ingestionRecords = ingestionRepository.insertRecords(
-                    batchId,
-                    validated.records,
-                    now
-                )
+                val batchId =
+                    ingestionRepository.insertBatch(
+                        sourceInstanceId = sourceInstance.id,
+                        batchExternalId = validated.batchExternalId,
+                        sourcePayloadJson = AppJson.encodeToString(validated.sourcePayload),
+                        normalizedPayloadJson = validated.normalizedPayloadJson,
+                        ingestedAt = validated.ingestedAt,
+                        receivedAt = now,
+                    )
+                val ingestionRecords =
+                    ingestionRepository.insertRecords(
+                        batchId,
+                        validated.records,
+                        now,
+                    )
 
                 var created = MetricCreatedCounts()
                 var duplicateSkipped = 0
                 var affectedDates = mapOf<DerivedKind, Set<LocalDate>>()
 
                 try {
-                    val writeResult = metricWriteService.writeAll(
-                        provider = validated.provider,
-                        sourceInstanceId = sourceInstance.id,
-                        writes = ingestionRecords.map { MetricWrite(it.id, it.record) },
-                        now = now,
-                    )
+                    val writeResult =
+                        metricWriteService.writeAll(
+                            provider = validated.provider,
+                            sourceInstanceId = sourceInstance.id,
+                            writes = ingestionRecords.map { MetricWrite(it.id, it.record) },
+                            now = now,
+                        )
                     created = writeResult.created
                     duplicateSkipped = writeResult.duplicateSkipped
                     affectedDates = writeResult.affectedDates
@@ -156,7 +161,7 @@ class IngestionService(
                     ingestionRepository.markFailed(
                         batchId,
                         now,
-                        exception.message ?: "Unknown ingestion error"
+                        exception.message ?: "Unknown ingestion error",
                     )
                     logger.errorWithContext(
                         "ingestion_batch_failed",
@@ -164,28 +169,32 @@ class IngestionService(
                         throwable = exception,
                     )
                     return@suspendDbTransaction IngestionTransactionResult.Failure(
-                        exception
+                        exception,
                     )
                 }
 
-                val response = IngestionSummaryResponse(
-                    batchId = batchId,
-                    status = BatchStatus.Processed,
-                    duplicateBatch = false,
-                    recordsReceived = validated.records.size,
-                    ingestionRecordsStored = ingestionRecords.size,
-                    metricsCreated = created.counts,
-                    metricsSkipped = MetricSkippedCountsResponse(
-                        duplicates = duplicateSkipped
-                    ),
-                    affectedStepSummaryDates = affectedDates[DerivedKind.STEP_SUMMARY]
-                        .orEmpty()
-                        .map { it.toString() },
-                )
-                val rebuildRequest = DerivedRebuildRequest(
-                    sourceInstanceId = sourceInstance.id,
-                    affectedDates = affectedDates,
-                )
+                val response =
+                    IngestionSummaryResponse(
+                        batchId = batchId,
+                        status = BatchStatus.Processed,
+                        duplicateBatch = false,
+                        recordsReceived = validated.records.size,
+                        ingestionRecordsStored = ingestionRecords.size,
+                        metricsCreated = created.counts,
+                        metricsSkipped =
+                            MetricSkippedCountsResponse(
+                                duplicates = duplicateSkipped,
+                            ),
+                        affectedStepSummaryDates =
+                            affectedDates[DerivedKind.STEP_SUMMARY]
+                                .orEmpty()
+                                .map { it.toString() },
+                    )
+                val rebuildRequest =
+                    DerivedRebuildRequest(
+                        sourceInstanceId = sourceInstance.id,
+                        affectedDates = affectedDates,
+                    )
                 IngestionTransactionResult.Success(
                     response,
                     rebuildRequest,
@@ -244,8 +253,9 @@ private sealed interface IngestionTransactionResult {
         val response: IngestionSummaryResponse,
         val derivedRebuildRequest: DerivedRebuildRequest,
         val createdCounts: MetricCreatedCounts,
-    ) :
-        IngestionTransactionResult
+    ) : IngestionTransactionResult
 
-    data class Failure(val throwable: Throwable) : IngestionTransactionResult
+    data class Failure(
+        val throwable: Throwable,
+    ) : IngestionTransactionResult
 }

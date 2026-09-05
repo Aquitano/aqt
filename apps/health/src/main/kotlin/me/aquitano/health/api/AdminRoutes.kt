@@ -24,8 +24,8 @@ internal fun Route.adminRoutes() {
     get("/api/v2/admin/ingestion/batches") {
         call.respond<IngestionBatchesResponse>(
             adminService.listBatches(
-                call.queryParams()
-            )
+                call.queryParams(),
+            ),
         )
     }.describe {
         operationId = "listIngestionBatches"
@@ -42,8 +42,8 @@ internal fun Route.adminRoutes() {
             HttpStatusCode.OK,
             adminService.getBatchDetail(
                 call.parameters["id"],
-                call.queryParams()
-            )
+                call.queryParams(),
+            ),
         )
     }.describe {
         operationId = "getIngestionBatch"
@@ -63,8 +63,8 @@ internal fun Route.adminRoutes() {
     get("/api/v2/admin/ingestion/failures") {
         call.respond<IngestionBatchesResponse>(
             adminService.listFailures(
-                call.queryParams()
-            )
+                call.queryParams(),
+            ),
         )
     }.describe {
         operationId = "listIngestionFailures"
@@ -83,7 +83,7 @@ internal fun Route.adminRoutes() {
                 request = call.receive<ReplayRequest>(),
                 now = clock.now(),
                 idempotencyKey = call.idempotencyKey(),
-            )
+            ),
         )
     }.describe {
         operationId = "startReplay"
@@ -108,8 +108,9 @@ internal fun Route.adminRoutes() {
         }
     }
     get("/api/v2/admin/replay/latest") {
-        val job = replayService.latest()
-            ?: throw NotFoundException("Replay job not found")
+        val job =
+            replayService.latest()
+                ?: throw NotFoundException("Replay job not found")
         call.respond(HttpStatusCode.OK, job)
     }.describe {
         operationId = "getLatestReplayJob"

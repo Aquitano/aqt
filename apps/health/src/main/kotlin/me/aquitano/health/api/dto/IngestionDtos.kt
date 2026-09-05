@@ -4,8 +4,8 @@ import io.ktor.openapi.*
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonNames
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNames
 import me.aquitano.health.domain.BatchStatus
 
 @Serializable

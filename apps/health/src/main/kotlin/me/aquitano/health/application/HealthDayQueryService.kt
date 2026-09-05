@@ -2,25 +2,24 @@ package me.aquitano.health.application
 
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.application.metric.common.QueryParams
-import me.aquitano.health.domain.BodyMetricTypes
-import me.aquitano.health.domain.RequestValidationException
-import me.aquitano.health.domain.ValidationIssue
-import me.aquitano.health.domain.ValidationIssueCodes
-import me.aquitano.health.application.metric.steps.derived.CANONICAL_STEP_ALGORITHM_VERSION
-import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
+import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
 import me.aquitano.health.application.metric.scalar.ScalarSampleReadRepository
 import me.aquitano.health.application.metric.scalar.ScalarSampleRow
 import me.aquitano.health.application.metric.scalar.toScalarResponse
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
 import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
 import me.aquitano.health.application.metric.sleep.repository.SleepStageRow
-import me.aquitano.health.application.metric.common.repository.SourceMetadata
+import me.aquitano.health.application.metric.steps.derived.CANONICAL_STEP_ALGORITHM_VERSION
+import me.aquitano.health.application.metric.steps.repository.CanonicalStepDerivationRepository
+import me.aquitano.health.domain.BodyMetricTypes
+import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.domain.ScalarMetricTypes
-import me.aquitano.health.application.metric.common.repository.ReadFilters
-import me.aquitano.health.application.metric.common.sourceInstanceIds
-import org.jetbrains.exposed.v1.jdbc.Database
+import me.aquitano.health.domain.ValidationIssue
+import me.aquitano.health.domain.ValidationIssueCodes
 import me.aquitano.health.infrastructure.database.suspendDbTransaction
+import org.jetbrains.exposed.v1.jdbc.Database
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -40,11 +39,12 @@ data class HealthDayQueryContext(
 
 interface HealthDayModule<T> {
     val name: String
+
     suspend fun read(context: HealthDayQueryContext): T
 }
 
 class HealthDayModuleRegistry(
-    modules: List<HealthDayModule<*>>
+    modules: List<HealthDayModule<*>>,
 ) {
     private val byName = modules.associateBy { it.name }
 
@@ -58,7 +58,7 @@ class HealthDayModuleRegistry(
                         code = ValidationIssueCodes.UnsupportedValue,
                         message = "unsupported module $it",
                     )
-                }
+                },
             )
         }
         return names.map { byName.getValue(it) }
@@ -69,33 +69,38 @@ class HealthDayQueryService(
     private val database: Database,
     private val registry: HealthDayModuleRegistry,
 ) {
-    suspend fun getHealthDay(params: QueryParams, now: Instant): HealthDayResponse {
+    suspend fun getHealthDay(
+        params: QueryParams,
+        now: Instant,
+    ): HealthDayResponse {
         val timezone = params.timezone()
-        val date = params.dateOrToday("date", now, timezone)
-            ?: throw RequestValidationException(
-                listOf(
-                    ValidationIssue(
-                        field = "date",
-                        code = ValidationIssueCodes.Required,
-                        message = "is required",
-                    )
+        val date =
+            params.dateOrToday("date", now, timezone)
+                ?: throw RequestValidationException(
+                    listOf(
+                        ValidationIssue(
+                            field = "date",
+                            code = ValidationIssueCodes.Required,
+                            message = "is required",
+                        ),
+                    ),
                 )
-            )
         val moduleNames = parseModules(params.required("modules"))
         val moduleKeys = moduleNames.map { it.wireName }
         val modules = registry.resolve(moduleKeys)
         val from = date.atStartOfDay(timezone).toInstant()
         val to = date.plusDays(1).atStartOfDay(timezone).toInstant()
-        val context = HealthDayQueryContext(
-            date = date,
-            timezone = timezone,
-            from = from,
-            to = to,
-            provider = params.optional("provider"),
-            providerInstanceId = params.optional("providerInstanceId"),
-            includeSource = params.boolean("includeSource", default = false),
-            computedAt = now,
-        )
+        val context =
+            HealthDayQueryContext(
+                date = date,
+                timezone = timezone,
+                from = from,
+                to = to,
+                provider = params.optional("provider"),
+                providerInstanceId = params.optional("providerInstanceId"),
+                includeSource = params.boolean("includeSource", default = false),
+                computedAt = now,
+            )
 
         return suspendDbTransaction(db = database) {
             val results = modules.associate { it.name to it.read(context) }
@@ -114,8 +119,12 @@ class HealthDayQueryService(
     }
 
     private fun parseModules(value: String): List<HealthDayModuleName> {
-        val modules = value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-            .distinct()
+        val modules =
+            value
+                .split(",")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
         if (modules.isEmpty()) {
             throw RequestValidationException(
                 listOf(
@@ -123,8 +132,8 @@ class HealthDayQueryService(
                         field = "modules",
                         code = ValidationIssueCodes.Required,
                         message = "must contain at least one module",
-                    )
-                )
+                    ),
+                ),
             )
         }
         val unsupported = modules.filter { HealthDayModuleName.fromWireName(it) == null }
@@ -136,7 +145,7 @@ class HealthDayQueryService(
                         code = ValidationIssueCodes.UnsupportedValue,
                         message = "unsupported module $it",
                     )
-                }
+                },
             )
         }
         return modules.map { HealthDayModuleName.fromWireName(it)!! }
@@ -150,17 +159,19 @@ class StepsDayModule(
 
     override suspend fun read(context: HealthDayQueryContext): HealthDayStepsResponse {
         val filters = context.filters()
-        val (rows, sourceMetadata) = canonicalRepository.listCanonicalStepSamples(
-            filters,
-            CANONICAL_STEP_ALGORITHM_VERSION,
-            overlapsWindow = true,
-        )
+        val (rows, sourceMetadata) =
+            canonicalRepository.listCanonicalStepSamples(
+                filters,
+                CANONICAL_STEP_ALGORITHM_VERSION,
+                overlapsWindow = true,
+            )
         val buckets = buckets(context)
         val values = DoubleArray(buckets.size)
         val counts = IntArray(buckets.size)
 
         val byStart = buckets.mapIndexed { index, bucket -> bucket.first to index }.toMap()
-        canonicalRepository.listBucketContributions(filters, CANONICAL_STEP_ALGORITHM_VERSION)
+        canonicalRepository
+            .listBucketContributions(filters, CANONICAL_STEP_ALGORITHM_VERSION)
             .forEach { contribution ->
                 val index = byStart[Instant.parse(contribution.bucketStartAt)]
                 if (index != null) {
@@ -172,14 +183,15 @@ class StepsDayModule(
         return HealthDayStepsResponse(
             total = values.sum().toInt(),
             sampleCount = rows.size,
-            buckets = buckets.mapIndexed { index, (start, end) ->
-                HealthDayBucketResponse(
-                    startAt = start.toString(),
-                    endAt = end.toString(),
-                    value = if (counts[index] == 0) null else values[index],
-                    count = counts[index],
-                )
-            },
+            buckets =
+                buckets.mapIndexed { index, (start, end) ->
+                    HealthDayBucketResponse(
+                        startAt = start.toString(),
+                        endAt = end.toString(),
+                        value = if (counts[index] == 0) null else values[index],
+                        count = counts[index],
+                    )
+                },
             source = rows.singleSource(context.includeSource, sourceMetadata) { it.sourceInstanceId },
         )
     }
@@ -194,11 +206,12 @@ class HeartRateDayModule(
 
     override suspend fun read(context: HealthDayQueryContext): HealthDayHeartRateResponse {
         val filters = context.filters()
-        val (samples, sourceMetadata) = scalarRepository.list(
-            filters.copy(limit = Int.MAX_VALUE, sort = "measuredAt", order = "asc"),
-            metricTypes,
-            canonical = true,
-        )
+        val (samples, sourceMetadata) =
+            scalarRepository.list(
+                filters.copy(limit = Int.MAX_VALUE, sort = "measuredAt", order = "asc"),
+                metricTypes,
+                canonical = true,
+            )
         val summary = scalarRepository.summarize(filters, metricTypes, canonical = true)
         val latest = samples.maxWithOrNull(compareBy<ScalarSampleRow> { it.measuredAt }.thenBy { it.id })
         val buckets = buckets(context)
@@ -219,14 +232,15 @@ class HeartRateDayModule(
             maxBpm = summary.maxValue?.roundToInt(),
             avgBpm = summary.avgValue,
             latest = latest?.toScalarResponse(sourceMetadata),
-            buckets = buckets.mapIndexed { index, (start, end) ->
-                HealthDayBucketResponse(
-                    startAt = start.toString(),
-                    endAt = end.toString(),
-                    value = if (counts[index] == 0) null else totals[index] / counts[index],
-                    count = counts[index],
-                )
-            },
+            buckets =
+                buckets.mapIndexed { index, (start, end) ->
+                    HealthDayBucketResponse(
+                        startAt = start.toString(),
+                        endAt = end.toString(),
+                        value = if (counts[index] == 0) null else totals[index] / counts[index],
+                        count = counts[index],
+                    )
+                },
         )
     }
 }
@@ -262,63 +276,66 @@ class SleepDayModule(
     override val name = "sleep"
 
     override suspend fun read(context: HealthDayQueryContext): HealthDaySleepResponse {
-        val filters = SleepNightReadFilters(
-            fromDate = context.date,
-            toDate = context.date.plusDays(1),
-            timezone = context.timezone,
-            provider = context.provider,
-            providerInstanceId = context.providerInstanceId,
-            includeSource = context.includeSource,
-            limit = Int.MAX_VALUE,
-            sort = "date",
-            order = "asc",
-        )
+        val filters =
+            SleepNightReadFilters(
+                fromDate = context.date,
+                toDate = context.date.plusDays(1),
+                timezone = context.timezone,
+                provider = context.provider,
+                providerInstanceId = context.providerInstanceId,
+                includeSource = context.includeSource,
+                limit = Int.MAX_VALUE,
+                sort = "date",
+                order = "asc",
+            )
         sleepNightService.materialize(filters, context.computedAt)
 
         val (nights, stagesBySession, sourceMetadata) =
             sleepRepository.listCanonicalSleepNights(filters)
-        val sessions = nights
-            .filter { night ->
-                Instant.parse(night.session.startAt).isBefore(context.to) &&
-                    Instant.parse(night.session.endAt).isAfter(context.from)
-            }
-            .groupBy { it.date }
-            .flatMap { (_, nightsForDate) ->
-                // The canonical_sleep_nights view can return >1 row for a night when providers
-                // tie on rank (e.g. two unranked providers both at rank 10000). Keep a single
-                // source per night so two providers' overlapping stage segments aren't summed
-                // twice; multiple sessions from that one source (a fragmented night) still count.
-                val winningSource = nightsForDate.minOf { it.session.sourceInstanceId }
-                nightsForDate.filter { it.session.sourceInstanceId == winningSource }
-            }
-            .map { it.session }
-        val timeline = sessions.flatMap { session ->
-            stagesBySession[session.id].orEmpty().mapNotNull { stage ->
-                val start = maxOf(Instant.parse(stage.startAt), context.from)
-                val end = minOf(Instant.parse(stage.endAt), context.to)
-                if (!start.isBefore(end)) {
-                    null
-                } else {
-                    HealthDaySleepStageSegmentResponse(
-                        stage = stage.stage,
-                        startAt = start.toString(),
-                        endAt = end.toString(),
-                    )
-                }
-            }
-        }.sortedBy { it.startAt }
-        val stageTotals = timeline
-            .groupingBy { it.stage }
-            .fold(0L) { total, segment ->
-                total + Duration.between(
-                    Instant.parse(segment.startAt),
-                    Instant.parse(segment.endAt)
-                ).seconds
-            }
-            .map { (stage, duration) ->
-                HealthDaySleepStageTotalResponse(stage, duration)
-            }
-            .sortedBy { it.stage }
+        val sessions =
+            nights
+                .filter { night ->
+                    Instant.parse(night.session.startAt).isBefore(context.to) &&
+                        Instant.parse(night.session.endAt).isAfter(context.from)
+                }.groupBy { it.date }
+                .flatMap { (_, nightsForDate) ->
+                    // The canonical_sleep_nights view can return >1 row for a night when providers
+                    // tie on rank (e.g. two unranked providers both at rank 10000). Keep a single
+                    // source per night so two providers' overlapping stage segments aren't summed
+                    // twice; multiple sessions from that one source (a fragmented night) still count.
+                    val winningSource = nightsForDate.minOf { it.session.sourceInstanceId }
+                    nightsForDate.filter { it.session.sourceInstanceId == winningSource }
+                }.map { it.session }
+        val timeline =
+            sessions
+                .flatMap { session ->
+                    stagesBySession[session.id].orEmpty().mapNotNull { stage ->
+                        val start = maxOf(Instant.parse(stage.startAt), context.from)
+                        val end = minOf(Instant.parse(stage.endAt), context.to)
+                        if (!start.isBefore(end)) {
+                            null
+                        } else {
+                            HealthDaySleepStageSegmentResponse(
+                                stage = stage.stage,
+                                startAt = start.toString(),
+                                endAt = end.toString(),
+                            )
+                        }
+                    }
+                }.sortedBy { it.startAt }
+        val stageTotals =
+            timeline
+                .groupingBy { it.stage }
+                .fold(0L) { total, segment ->
+                    total +
+                        Duration
+                            .between(
+                                Instant.parse(segment.startAt),
+                                Instant.parse(segment.endAt),
+                            ).seconds
+                }.map { (stage, duration) ->
+                    HealthDaySleepStageTotalResponse(stage, duration)
+                }.sortedBy { it.stage }
 
         return HealthDaySleepResponse(
             totalDurationSeconds = stageTotals.sumOf { it.durationSeconds },
@@ -369,21 +386,22 @@ private fun overlapSeconds(
 
 private fun SleepSessionRow.toResponse(
     stagesBySession: Map<Int, List<SleepStageRow>>,
-    sourceMetadata: Map<Int, SourceMetadata>
+    sourceMetadata: Map<Int, SourceMetadata>,
 ): SleepSessionResponse =
     SleepSessionResponse(
         id = id,
         startAt = startAt,
         endAt = endAt,
         durationSeconds = durationSeconds,
-        stages = stagesBySession[id].orEmpty().map {
-            SleepStageResponse(
-                stage = it.stage,
-                startAt = it.startAt,
-                endAt = it.endAt,
-                durationSeconds = it.durationSeconds,
-            )
-        },
+        stages =
+            stagesBySession[id].orEmpty().map {
+                SleepStageResponse(
+                    stage = it.stage,
+                    startAt = it.startAt,
+                    endAt = it.endAt,
+                    durationSeconds = it.durationSeconds,
+                )
+            },
         source = sourceMetadata[sourceInstanceId].toResponse(),
     )
 
@@ -391,6 +409,6 @@ private fun SourceMetadata?.toResponse(): SourceMetadataResponse? =
     this?.let {
         SourceMetadataResponse(
             provider = it.provider,
-            providerInstanceId = it.providerInstanceId
+            providerInstanceId = it.providerInstanceId,
         )
     }

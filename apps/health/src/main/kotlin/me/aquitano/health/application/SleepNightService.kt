@@ -31,16 +31,18 @@ class SleepNightService(
         computedAt: Instant,
     ) {
         val dates = requestedDates(filters) ?: return
-        val sourceInstanceIds = repository.sourceInstanceIds(
-            provider = filters.provider,
-            providerInstanceId = filters.providerInstanceId,
-        )
-        val datesToRecompute = repository.findDatesNeedingRecompute(
-            sourceInstanceIds = sourceInstanceIds,
-            dates = dates,
-            timezone = filters.timezone,
-            algorithmVersion = SLEEP_NIGHT_ALGORITHM_VERSION,
-        )
+        val sourceInstanceIds =
+            repository.sourceInstanceIds(
+                provider = filters.provider,
+                providerInstanceId = filters.providerInstanceId,
+            )
+        val datesToRecompute =
+            repository.findDatesNeedingRecompute(
+                sourceInstanceIds = sourceInstanceIds,
+                dates = dates,
+                timezone = filters.timezone,
+                algorithmVersion = SLEEP_NIGHT_ALGORITHM_VERSION,
+            )
         if (datesToRecompute.isNotEmpty()) {
             derivation.recompute(
                 sourceInstanceIds = sourceInstanceIds,

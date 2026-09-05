@@ -41,8 +41,8 @@ internal fun Route.providerRoutes() {
     get("/api/v2/providers/status") {
         call.respond<ProviderStatusCatalogResponse>(
             providerStatusService.listProviderStatuses(
-                clock.now()
-            )
+                clock.now(),
+            ),
         )
     }.describe {
         operationId = "listProviderStatuses"
@@ -57,8 +57,8 @@ internal fun Route.providerRoutes() {
         val code = call.providerCode()
         call.respond<ProviderDescriptorResponse>(
             providerDiscoveryService.getProvider(
-                code
-            )
+                code,
+            ),
         )
     }.describe {
         operationId = "getProvider"
@@ -74,8 +74,8 @@ internal fun Route.providerRoutes() {
         call.respond<ProviderStatusResponse>(
             providerStatusService.getProviderStatus(
                 code,
-                clock.now()
-            )
+                clock.now(),
+            ),
         )
     }.describe {
         operationId = "getProviderStatus"
@@ -93,7 +93,7 @@ internal fun Route.providerRoutes() {
             providerWorkflowService.listAccounts(
                 code,
                 clock.now(),
-            )
+            ),
         )
     }.describe {
         operationId = "listProviderAccounts"
@@ -113,7 +113,7 @@ internal fun Route.providerRoutes() {
                 code,
                 providerInstanceId,
                 clock.now(),
-            )
+            ),
         )
     }.describe {
         operationId = "getProviderAccount"
@@ -132,7 +132,7 @@ internal fun Route.providerRoutes() {
             scheduledProviderSyncService.getConfig(
                 providerCode = code,
                 providerInstanceId = providerInstanceId,
-            )
+            ),
         )
     }.describe {
         operationId = "getScheduledProviderSync"
@@ -153,7 +153,7 @@ internal fun Route.providerRoutes() {
                 providerInstanceId = providerInstanceId,
                 request = call.receive<ScheduledSyncConfigUpdateRequest>(),
                 now = clock.now(),
-            )
+            ),
         )
     }.describe {
         operationId = "updateScheduledProviderSync"
@@ -176,7 +176,7 @@ internal fun Route.providerRoutes() {
                 providerCode = code,
                 providerInstanceId = providerInstanceId,
                 now = clock.now(),
-            )
+            ),
         )
     }.describe {
         operationId = "runScheduledProviderSyncNow"
@@ -196,7 +196,7 @@ internal fun Route.providerRoutes() {
                 code,
                 providerInstanceId,
                 clock.now(),
-            )
+            ),
         )
     }.describe {
         operationId = "disconnectProviderAccount"
@@ -216,7 +216,7 @@ internal fun Route.providerRoutes() {
                 code,
                 providerInstanceId,
                 clock.now(),
-            )
+            ),
         )
     }.describe {
         operationId = "reconnectProviderAccount"
@@ -233,8 +233,8 @@ internal fun Route.providerRoutes() {
         call.respond<ProviderOAuthStartResponse>(
             providerWorkflowService.startOAuth(
                 code,
-                clock.now()
-            )
+                clock.now(),
+            ),
         )
     }.describe {
         operationId = "startProviderOAuth"
@@ -255,7 +255,7 @@ internal fun Route.providerRoutes() {
                 request = call.receive<ProviderSyncRequest>(),
                 now = clock.now(),
                 idempotencyKey = call.idempotencyKey(),
-            )
+            ),
         )
     }.describe {
         operationId = "syncProvider"
@@ -269,7 +269,7 @@ internal fun Route.providerRoutes() {
         jsonRequest<ProviderSyncRequest>(
             "Provider sync request. Long historical ranges are accepted for backfill; providers split work into safe internal windows and may enforce page-size constraints advertised by the provider catalog.",
             "syncRequest",
-            providerSyncRequestExample()
+            providerSyncRequestExample(),
         )
         errorResponses(notFound = true, conflict = true, upstream = true)
     }
@@ -282,7 +282,7 @@ internal fun Route.providerRoutes() {
                 request = call.receive<ProviderSyncRequest>(),
                 now = clock.now(),
                 idempotencyKey = call.idempotencyKey(),
-            )
+            ),
         )
     }.describe {
         operationId = "startProviderSyncJob"
@@ -296,7 +296,7 @@ internal fun Route.providerRoutes() {
         jsonRequest<ProviderSyncRequest>(
             "Provider sync request. Long historical ranges are accepted for backfill and processed by the backend job worker.",
             "syncJobRequest",
-            providerSyncRequestExample()
+            providerSyncRequestExample(),
         )
         responses {
             HttpStatusCode.Accepted {
@@ -311,8 +311,9 @@ internal fun Route.providerRoutes() {
     }
     get("/api/v2/providers/{providerCode}/sync-jobs/latest") {
         val code = call.providerCode()
-        val job = providerSyncJobService.latest(code)
-            ?: throw NotFoundException("Provider sync job not found")
+        val job =
+            providerSyncJobService.latest(code)
+                ?: throw NotFoundException("Provider sync job not found")
         call.respond(HttpStatusCode.OK, job)
     }.describe {
         operationId = "getLatestProviderSyncJob"

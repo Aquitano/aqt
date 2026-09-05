@@ -31,18 +31,18 @@ class ProviderOAuthSyncAccountPort(
         providerCode: String,
         providerInstanceId: String?,
     ): SyncAccount? {
-        val account = providerInstanceId
-            ?.let { repository.accountByProviderInstanceForStatus(providerCode, it) }
-            ?: repository.accountsByProvider(providerCode)
-                .firstOrNull { it.accountStatus == ACCOUNT_STATUS_NEEDS_REAUTH }
+        val account =
+            providerInstanceId
+                ?.let { repository.accountByProviderInstanceForStatus(providerCode, it) }
+                ?: repository
+                    .accountsByProvider(providerCode)
+                    .firstOrNull { it.accountStatus == ACCOUNT_STATUS_NEEDS_REAUTH }
         return account?.toSyncAccount()
     }
 
-    override suspend fun decryptAccessToken(account: SyncAccount): String =
-        cipher.decrypt(account.encryptedAccessToken)
+    override suspend fun decryptAccessToken(account: SyncAccount): String = cipher.decrypt(account.encryptedAccessToken)
 
-    override suspend fun decryptRefreshToken(account: SyncAccount): String =
-        cipher.decrypt(account.encryptedRefreshToken)
+    override suspend fun decryptRefreshToken(account: SyncAccount): String = cipher.decrypt(account.encryptedRefreshToken)
 
     override suspend fun saveRefreshedToken(
         accountId: Int,
@@ -117,30 +117,32 @@ class IngestionProviderSyncPort(
         batchExternalId: String,
         now: Instant,
     ): ExistingProviderBatch? =
-        ingestionService.findExistingBatch(
-            provider = providerCode,
-            providerInstanceId = providerInstanceId,
-            batchExternalId = batchExternalId,
-            now = now,
-        )?.let { batch ->
-            batch.status?.let { ExistingProviderBatch(batch.id, it) }
-        }
+        ingestionService
+            .findExistingBatch(
+                provider = providerCode,
+                providerInstanceId = providerInstanceId,
+                batchExternalId = batchExternalId,
+                now = now,
+            )?.let { batch ->
+                batch.status?.let { ExistingProviderBatch(batch.id, it) }
+            }
 
     override suspend fun ingest(
         command: ProviderIngestionCommand,
         now: Instant,
     ): ProviderSyncBatch {
-        val summary = ingestionService.ingestBatch(
-            IngestionBatchRequest(
-                provider = command.providerCode,
-                providerInstanceId = command.providerInstanceId,
-                batchExternalId = command.batchExternalId,
-                ingestedAt = command.ingestedAt.toString(),
-                sourcePayload = command.sourcePayload,
-                records = command.records,
-            ),
-            now = now,
-        )
+        val summary =
+            ingestionService.ingestBatch(
+                IngestionBatchRequest(
+                    provider = command.providerCode,
+                    providerInstanceId = command.providerInstanceId,
+                    batchExternalId = command.batchExternalId,
+                    ingestedAt = command.ingestedAt.toString(),
+                    sourcePayload = command.sourcePayload,
+                    records = command.records,
+                ),
+                now = now,
+            )
         return ProviderSyncBatch(
             dataType = command.dataType,
             batchId = summary.batchId,

@@ -7,14 +7,13 @@ import kotlinx.serialization.json.buildJsonObject
 import me.aquitano.health.api.dto.ActivitySummary
 import me.aquitano.health.api.dto.HeartRate
 import me.aquitano.health.api.dto.IngestionBatchRequest
-import me.aquitano.health.domain.ReplayJobStatus
 import me.aquitano.health.api.dto.ReplayJobStatusResponse
 import me.aquitano.health.api.dto.ReplayRequest
 import me.aquitano.health.api.dto.SleepSession
 import me.aquitano.health.api.dto.StepInterval
-import me.aquitano.health.test.metricWriteService
 import me.aquitano.health.domain.DerivedKind
 import me.aquitano.health.domain.RecordTypes
+import me.aquitano.health.domain.ReplayJobStatus
 import me.aquitano.health.domain.RequestValidationException
 import me.aquitano.health.infrastructure.config.DatabaseConfig
 import me.aquitano.health.infrastructure.database.DatabaseFactory
@@ -26,6 +25,7 @@ import me.aquitano.health.infrastructure.repositories.SupportRepository
 import me.aquitano.health.infrastructure.time.UtcClock
 import me.aquitano.health.test.PostgresTestDatabase
 import me.aquitano.health.test.derivedRebuildRegistry
+import me.aquitano.health.test.metricWriteService
 import me.aquitano.health.test.realDerivedRebuildExecutor
 import org.jetbrains.exposed.v1.jdbc.Database
 import java.time.Instant
@@ -36,124 +36,132 @@ import kotlin.test.assertTrue
 
 class ReplayServiceTest {
     @Test
-    fun replayRestoresWipedProjectionsAndDerivedTables() = runBlocking {
-        val fixture = Fixture()
-        fixture.ingestMixedBatch()
+    fun replayRestoresWipedProjectionsAndDerivedTables() =
+        runBlocking {
+            val fixture = Fixture()
+            fixture.ingestMixedBatch()
 
-        assertEquals(1, fixture.count("scalar_samples"))
-        assertEquals(1, fixture.count("canonical_scalar_samples"))
-        fixture.execute("DELETE FROM scalar_samples")
-        assertEquals(0, fixture.count("scalar_samples"))
-        assertEquals(0, fixture.count("canonical_scalar_samples"))
+            assertEquals(1, fixture.count("scalar_samples"))
+            assertEquals(1, fixture.count("canonical_scalar_samples"))
+            fixture.execute("DELETE FROM scalar_samples")
+            assertEquals(0, fixture.count("scalar_samples"))
+            assertEquals(0, fixture.count("canonical_scalar_samples"))
 
-        val job = fixture.runReplay(ReplayRequest(scope = "all"))
+            val job = fixture.runReplay(ReplayRequest(scope = "all"))
 
-        assertEquals(ReplayJobStatus.Completed, job.status)
-        assertTrue(job.metricsWritten >= 1, "expected restored metrics, got ${job.metricsWritten}")
-        assertEquals(0, job.mappingFailures)
-        assertEquals(1, fixture.count("scalar_samples"))
-        assertEquals(1, fixture.count("canonical_scalar_samples"))
-        assertEquals(1, fixture.count("step_samples"))
-        assertEquals(1, fixture.count("canonical_activity_summaries"))
-    }
-
-    @Test
-    fun verifyModeReportsNoMissingWritesOnIntactData() = runBlocking {
-        val fixture = Fixture()
-        fixture.ingestMixedBatch()
-
-        val job = fixture.runReplay(ReplayRequest(scope = "projections"))
-
-        assertEquals(ReplayJobStatus.Completed, job.status)
-        assertEquals(0, job.metricsWritten)
-        assertTrue(job.duplicatesSkipped >= 4, "expected duplicates, got ${job.duplicatesSkipped}")
-        assertEquals(0, job.mappingFailures)
-    }
+            assertEquals(ReplayJobStatus.Completed, job.status)
+            assertTrue(job.metricsWritten >= 1, "expected restored metrics, got ${job.metricsWritten}")
+            assertEquals(0, job.mappingFailures)
+            assertEquals(1, fixture.count("scalar_samples"))
+            assertEquals(1, fixture.count("canonical_scalar_samples"))
+            assertEquals(1, fixture.count("step_samples"))
+            assertEquals(1, fixture.count("canonical_activity_summaries"))
+        }
 
     @Test
-    fun derivedOnlyReplayRebuildsDerivedTablesWithoutTouchingProjections() = runBlocking {
-        val fixture = Fixture()
-        fixture.ingestMixedBatch()
+    fun verifyModeReportsNoMissingWritesOnIntactData() =
+        runBlocking {
+            val fixture = Fixture()
+            fixture.ingestMixedBatch()
 
-        fixture.execute("DELETE FROM step_daily_summaries")
-        fixture.execute("DELETE FROM sleep_nights")
+            val job = fixture.runReplay(ReplayRequest(scope = "projections"))
 
-        val job = fixture.runReplay(ReplayRequest(scope = "derived"))
-
-        assertEquals(ReplayJobStatus.Completed, job.status)
-        assertEquals(0, job.recordsReplayed)
-        assertEquals(1, fixture.count("step_daily_summaries"))
-        assertEquals(1, fixture.count("sleep_nights"))
-        // canonical views need no rebuild: they reflect the underlying tables directly
-        assertEquals(1, fixture.count("canonical_step_daily_summaries"))
-        assertEquals(1, fixture.count("canonical_activity_summaries"))
-    }
+            assertEquals(ReplayJobStatus.Completed, job.status)
+            assertEquals(0, job.metricsWritten)
+            assertTrue(job.duplicatesSkipped >= 4, "expected duplicates, got ${job.duplicatesSkipped}")
+            assertEquals(0, job.mappingFailures)
+        }
 
     @Test
-    fun wipeReplayRewritesProjectionRowsInRange() = runBlocking {
-        val fixture = Fixture()
-        fixture.ingestMixedBatch()
-        val originalId = fixture.singleInt("SELECT id FROM scalar_samples")
+    fun derivedOnlyReplayRebuildsDerivedTablesWithoutTouchingProjections() =
+        runBlocking {
+            val fixture = Fixture()
+            fixture.ingestMixedBatch()
 
-        val job = fixture.runReplay(
-            ReplayRequest(
-                scope = "all",
-                metricTypes = listOf(RecordTypes.HEART_RATE),
-                fromDate = "2026-04-19",
-                toDate = "2026-04-19",
-                wipe = true,
+            fixture.execute("DELETE FROM step_daily_summaries")
+            fixture.execute("DELETE FROM sleep_nights")
+
+            val job = fixture.runReplay(ReplayRequest(scope = "derived"))
+
+            assertEquals(ReplayJobStatus.Completed, job.status)
+            assertEquals(0, job.recordsReplayed)
+            assertEquals(1, fixture.count("step_daily_summaries"))
+            assertEquals(1, fixture.count("sleep_nights"))
+            // canonical views need no rebuild: they reflect the underlying tables directly
+            assertEquals(1, fixture.count("canonical_step_daily_summaries"))
+            assertEquals(1, fixture.count("canonical_activity_summaries"))
+        }
+
+    @Test
+    fun wipeReplayRewritesProjectionRowsInRange() =
+        runBlocking {
+            val fixture = Fixture()
+            fixture.ingestMixedBatch()
+            val originalId = fixture.singleInt("SELECT id FROM scalar_samples")
+
+            val job =
+                fixture.runReplay(
+                    ReplayRequest(
+                        scope = "all",
+                        metricTypes = listOf(RecordTypes.HEART_RATE),
+                        fromDate = "2026-04-19",
+                        toDate = "2026-04-19",
+                        wipe = true,
+                    ),
+                )
+
+            assertEquals(ReplayJobStatus.Completed, job.status)
+            assertEquals(1, job.recordsReplayed)
+            assertEquals(1, job.metricsWritten)
+            assertEquals(1, fixture.count("scalar_samples"))
+            assertEquals(1, fixture.count("canonical_scalar_samples"))
+            assertTrue(
+                fixture.singleInt("SELECT id FROM scalar_samples") != originalId,
+                "wipe should rewrite the row under a new id",
             )
-        )
-
-        assertEquals(ReplayJobStatus.Completed, job.status)
-        assertEquals(1, job.recordsReplayed)
-        assertEquals(1, job.metricsWritten)
-        assertEquals(1, fixture.count("scalar_samples"))
-        assertEquals(1, fixture.count("canonical_scalar_samples"))
-        assertTrue(
-            fixture.singleInt("SELECT id FROM scalar_samples") != originalId,
-            "wipe should rewrite the row under a new id",
-        )
-        // Untouched record types survive a scoped wipe.
-        assertEquals(1, fixture.count("step_samples"))
-    }
+            // Untouched record types survive a scoped wipe.
+            assertEquals(1, fixture.count("step_samples"))
+        }
 
     @Test
-    fun replayOverDateRangeRebuildsEveryDerivedKind() = runBlocking {
-        val fixture = Fixture()
-        fixture.ingestMixedBatch()
+    fun replayOverDateRangeRebuildsEveryDerivedKind() =
+        runBlocking {
+            val fixture = Fixture()
+            fixture.ingestMixedBatch()
 
-        // The fixture batch contains one record per derived kind; the shared registry mapping
-        // must route each of them to a rebuild, so no kind can drift out of the replay path.
-        fixture.execute("DELETE FROM step_daily_summaries")
-        fixture.execute("DELETE FROM sleep_nights")
+            // The fixture batch contains one record per derived kind; the shared registry mapping
+            // must route each of them to a rebuild, so no kind can drift out of the replay path.
+            fixture.execute("DELETE FROM step_daily_summaries")
+            fixture.execute("DELETE FROM sleep_nights")
 
-        val job = fixture.runReplay(
-            ReplayRequest(scope = "derived", fromDate = "2026-04-18", toDate = "2026-04-19")
-        )
+            val job =
+                fixture.runReplay(
+                    ReplayRequest(scope = "derived", fromDate = "2026-04-18", toDate = "2026-04-19"),
+                )
 
-        assertEquals(ReplayJobStatus.Completed, job.status)
-        assertEquals(1, fixture.count("step_daily_summaries"))
-        assertEquals(1, fixture.count("sleep_nights"))
-    }
+            assertEquals(ReplayJobStatus.Completed, job.status)
+            assertEquals(1, fixture.count("step_daily_summaries"))
+            assertEquals(1, fixture.count("sleep_nights"))
+        }
 
     @Test
     fun sharedAffectedDatesMappingCoversEveryDerivedKind() {
         val registry = derivedRebuildRegistry()
-        val coveredKinds = listOf(
-            Triple(
-                RecordTypes.STEP_INTERVAL,
-                Instant.parse("2026-04-19T08:00:00Z"),
-                Instant.parse("2026-04-19T09:00:00Z"),
-            ),
-            Triple(
-                RecordTypes.SLEEP_SESSION,
-                Instant.parse("2026-04-18T22:00:00Z"),
-                Instant.parse("2026-04-19T06:00:00Z"),
-            ),
-        ).flatMap { (recordType, startAt, endAt) ->
-            registry.affectedDatesFor(recordType, startAt, endAt).keys
-        }.toSet()
+        val coveredKinds =
+            listOf(
+                Triple(
+                    RecordTypes.STEP_INTERVAL,
+                    Instant.parse("2026-04-19T08:00:00Z"),
+                    Instant.parse("2026-04-19T09:00:00Z"),
+                ),
+                Triple(
+                    RecordTypes.SLEEP_SESSION,
+                    Instant.parse("2026-04-18T22:00:00Z"),
+                    Instant.parse("2026-04-19T06:00:00Z"),
+                ),
+            ).flatMap { (recordType, startAt, endAt) ->
+                registry.affectedDatesFor(recordType, startAt, endAt).keys
+            }.toSet()
 
         assertEquals(
             DerivedKind.entries.toSet(),
@@ -164,59 +172,69 @@ class ReplayServiceTest {
     }
 
     @Test
-    fun repositoryCreateFlagsDuplicateIdempotencyKey() = runBlocking {
-        val repository = ReplayJobRepository(Fixture().database)
-        val key = "replay-repo-flag-key"
-        val id1 = java.util.UUID.randomUUID().toString()
-        val id2 = java.util.UUID.randomUUID().toString()
+    fun repositoryCreateFlagsDuplicateIdempotencyKey() =
+        runBlocking {
+            val repository = ReplayJobRepository(Fixture().database)
+            val key = "replay-repo-flag-key"
+            val id1 =
+                java.util.UUID
+                    .randomUUID()
+                    .toString()
+            val id2 =
+                java.util.UUID
+                    .randomUUID()
+                    .toString()
 
-        val first = repository.create(
-            id = id1,
-            scope = "projections",
-            metricTypes = null,
-            fromDate = null,
-            toDate = null,
-            wipe = false,
-            now = Instant.parse("2026-05-01T10:00:00Z"),
-            idempotencyKey = key,
-            idempotencyRequestHash = "hash-a",
-        )
-        val second = repository.create(
-            id = id2,
-            scope = "projections",
-            metricTypes = null,
-            fromDate = null,
-            toDate = null,
-            wipe = false,
-            now = Instant.parse("2026-05-01T10:00:00Z"),
-            idempotencyKey = key,
-            idempotencyRequestHash = "hash-a",
-        )
+            val first =
+                repository.create(
+                    id = id1,
+                    scope = "projections",
+                    metricTypes = null,
+                    fromDate = null,
+                    toDate = null,
+                    wipe = false,
+                    now = Instant.parse("2026-05-01T10:00:00Z"),
+                    idempotencyKey = key,
+                    idempotencyRequestHash = "hash-a",
+                )
+            val second =
+                repository.create(
+                    id = id2,
+                    scope = "projections",
+                    metricTypes = null,
+                    fromDate = null,
+                    toDate = null,
+                    wipe = false,
+                    now = Instant.parse("2026-05-01T10:00:00Z"),
+                    idempotencyKey = key,
+                    idempotencyRequestHash = "hash-a",
+                )
 
-        assertTrue(first.created)
-        assertTrue(!second.created)
-        assertEquals(id1, second.record.id)
-    }
+            assertTrue(first.created)
+            assertTrue(!second.created)
+            assertEquals(id1, second.record.id)
+        }
 
     @Test
-    fun replayRejectsUnknownScopeAndRecordTypes(): Unit = runBlocking {
-        val fixture = Fixture()
-        assertFailsWith<RequestValidationException> {
-            fixture.replayService.create(ReplayRequest(scope = "bogus"), fixture.clock.now())
+    fun replayRejectsUnknownScopeAndRecordTypes(): Unit =
+        runBlocking {
+            val fixture = Fixture()
+            assertFailsWith<RequestValidationException> {
+                fixture.replayService.create(ReplayRequest(scope = "bogus"), fixture.clock.now())
+            }
+            assertFailsWith<RequestValidationException> {
+                fixture.replayService.create(
+                    ReplayRequest(metricTypes = listOf("not_a_record_type")),
+                    fixture.clock.now(),
+                )
+            }
+            assertFailsWith<RequestValidationException> {
+                fixture.replayService.create(
+                    ReplayRequest(scope = "derived", wipe = true),
+                    fixture.clock.now(),
+                )
+            }
         }
-        assertFailsWith<RequestValidationException> {
-            fixture.replayService.create(
-                ReplayRequest(metricTypes = listOf("not_a_record_type")),
-                fixture.clock.now(),
-            )
-        }
-        assertFailsWith<RequestValidationException> {
-            fixture.replayService.create(
-                ReplayRequest(scope = "derived", wipe = true),
-                fixture.clock.now(),
-            )
-        }
-    }
 
     private class Fixture {
         val dbConfig: DatabaseConfig = PostgresTestDatabase.config()
@@ -225,26 +243,28 @@ class ReplayServiceTest {
         private val mappingService = IngestionMappingService()
         private val metricWriteService = metricWriteService()
         private val derivedRebuildExecutor = realDerivedRebuildExecutor(database)
-        private val ingestionService = IngestionService(
-            database = database,
-            mappingService = mappingService,
-            supportRepository = SupportRepository(database),
-            ingestionRepository = IngestionRepository(),
-            metricWriteService = metricWriteService,
-            derivedRebuildExecutor = derivedRebuildExecutor,
-            pendingDerivedRebuildRepository = PendingDerivedRebuildRepository(database),
-        )
-        val replayService = ReplayService(
-            database = database,
-            ingestionRepository = IngestionRepository(),
-            mappingService = mappingService,
-            metricWriteService = metricWriteService,
-            derivedRebuildExecutor = derivedRebuildExecutor,
-            derivedRebuildRegistry = derivedRebuildRegistry(),
-            replayJobRepository = ReplayJobRepository(database),
-            projectionWipeRepository = ProjectionWipeRepository(),
-            clock = clock,
-        )
+        private val ingestionService =
+            IngestionService(
+                database = database,
+                mappingService = mappingService,
+                supportRepository = SupportRepository(database),
+                ingestionRepository = IngestionRepository(),
+                metricWriteService = metricWriteService,
+                derivedRebuildExecutor = derivedRebuildExecutor,
+                pendingDerivedRebuildRepository = PendingDerivedRebuildRepository(database),
+            )
+        val replayService =
+            ReplayService(
+                database = database,
+                ingestionRepository = IngestionRepository(),
+                mappingService = mappingService,
+                metricWriteService = metricWriteService,
+                derivedRebuildExecutor = derivedRebuildExecutor,
+                derivedRebuildRegistry = derivedRebuildRegistry(),
+                replayJobRepository = ReplayJobRepository(database),
+                projectionWipeRepository = ProjectionWipeRepository(),
+                clock = clock,
+            )
 
         suspend fun ingestMixedBatch() {
             ingestionService.ingestBatch(
@@ -254,31 +274,32 @@ class ReplayServiceTest {
                     batchExternalId = "replay-fixture-1",
                     ingestedAt = "2026-04-19T10:00:00Z",
                     sourcePayload = buildJsonObject {},
-                    records = listOf(
-                        StepInterval(
-                            providerRecordId = "steps-1",
-                            startAt = "2026-04-19T08:00:00Z",
-                            endAt = "2026-04-19T09:00:00Z",
-                            steps = 1200,
+                    records =
+                        listOf(
+                            StepInterval(
+                                providerRecordId = "steps-1",
+                                startAt = "2026-04-19T08:00:00Z",
+                                endAt = "2026-04-19T09:00:00Z",
+                                steps = 1200,
+                            ),
+                            HeartRate(
+                                providerRecordId = "hr-1",
+                                measuredAt = "2026-04-19T08:30:00Z",
+                                bpm = 64,
+                                context = "resting",
+                            ),
+                            SleepSession(
+                                providerRecordId = "sleep-1",
+                                startAt = "2026-04-18T22:00:00Z",
+                                endAt = "2026-04-19T06:00:00Z",
+                            ),
+                            ActivitySummary(
+                                providerRecordId = "activity-1",
+                                date = "2026-04-19",
+                                distanceMeters = 4200.0,
+                                activeMinutes = 55,
+                            ),
                         ),
-                        HeartRate(
-                            providerRecordId = "hr-1",
-                            measuredAt = "2026-04-19T08:30:00Z",
-                            bpm = 64,
-                            context = "resting",
-                        ),
-                        SleepSession(
-                            providerRecordId = "sleep-1",
-                            startAt = "2026-04-18T22:00:00Z",
-                            endAt = "2026-04-19T06:00:00Z",
-                        ),
-                        ActivitySummary(
-                            providerRecordId = "activity-1",
-                            date = "2026-04-19",
-                            distanceMeters = 4200.0,
-                            activeMinutes = 55,
-                        ),
-                    ),
                 ),
                 Instant.parse("2026-04-19T10:01:00Z"),
             )

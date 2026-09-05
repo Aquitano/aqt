@@ -13,7 +13,9 @@ import org.jetbrains.exposed.v1.jdbc.upsert
  * once, and this bootstrap re-upserts on every startup so adding a scalar metric or changing
  * a provider rank is a registry/policy edit plus restart — no migration.
  */
-class MetricCatalogBootstrap(private val database: Database) {
+class MetricCatalogBootstrap(
+    private val database: Database,
+) {
     fun run() {
         transaction(db = database) {
             ScalarMetricRegistry.descriptors.forEach { descriptor ->
@@ -43,16 +45,17 @@ class MetricCatalogBootstrap(private val database: Database) {
 
     companion object {
         /** Mirrors CanonicalMetricsPolicy.default(); list order is the rank order (0 wins). */
-        val providerRanks: Map<String, List<String>> = mapOf(
-            MetricFamilies.STEPS to listOf("google_health", "health_connect", "withings"),
-            MetricFamilies.ACTIVITY to listOf("google_health", "health_connect", "withings"),
-            MetricFamilies.SLEEP to listOf("withings", "google_health", "health_connect"),
-            MetricFamilies.SLEEP_SUMMARY to listOf("withings", "google_health", "health_connect"),
-            MetricFamilies.BODY_MEASUREMENT to listOf("withings", "google_health", "health_connect"),
-            MetricFamilies.HEART_RATE to listOf("google_health", "health_connect", "withings"),
-            MetricFamilies.RESPIRATORY_RATE to listOf("withings", "google_health", "health_connect"),
-            MetricFamilies.HRV to listOf("withings", "google_health", "health_connect"),
-            MetricFamilies.CARDIOVASCULAR to listOf("withings", "google_health", "health_connect"),
-        )
+        val providerRanks: Map<String, List<String>> =
+            mapOf(
+                MetricFamilies.STEPS to listOf("google_health", "health_connect", "withings"),
+                MetricFamilies.ACTIVITY to listOf("google_health", "health_connect", "withings"),
+                MetricFamilies.SLEEP to listOf("withings", "google_health", "health_connect"),
+                MetricFamilies.SLEEP_SUMMARY to listOf("withings", "google_health", "health_connect"),
+                MetricFamilies.BODY_MEASUREMENT to listOf("withings", "google_health", "health_connect"),
+                MetricFamilies.HEART_RATE to listOf("google_health", "health_connect", "withings"),
+                MetricFamilies.RESPIRATORY_RATE to listOf("withings", "google_health", "health_connect"),
+                MetricFamilies.HRV to listOf("withings", "google_health", "health_connect"),
+                MetricFamilies.CARDIOVASCULAR to listOf("withings", "google_health", "health_connect"),
+            )
     }
 }

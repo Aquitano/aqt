@@ -37,8 +37,7 @@ interface ProviderSyncAdapter {
         now: Instant,
     ): ProviderFetchedBatch
 
-    fun sourcePayload(context: ProviderSourcePayloadContext): JsonObject =
-        context.fetched.sourcePayload
+    fun sourcePayload(context: ProviderSourcePayloadContext): JsonObject = context.fetched.sourcePayload
 
     fun batchExternalId(
         providerInstanceId: String,

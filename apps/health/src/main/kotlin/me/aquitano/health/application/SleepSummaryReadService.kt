@@ -17,18 +17,20 @@ class SleepSummaryReadService(
 ) : BaseReadService(database) {
     suspend fun list(params: QueryParams): SleepSummariesResponse =
         dbQuery {
-            val filters = params.readFilters(
-                sortSpec = QueryParamSpecs.sortByEndAt,
-                latestSupported = true,
-            )
+            val filters =
+                params.readFilters(
+                    sortSpec = QueryParamSpecs.sortByEndAt,
+                    latestSupported = true,
+                )
             val (rows, sourceMetadata) = canonicalRepository.listCanonicalSleepSummaries(filters)
-            val page = rows.keysetPage(
-                limit = filters.limit,
-                sort = filters.sort,
-                order = filters.order,
-                sortValue = { it.endAt },
-                id = { it.id.toLong() },
-            )
+            val page =
+                rows.keysetPage(
+                    limit = filters.limit,
+                    sort = filters.sort,
+                    order = filters.order,
+                    sortValue = { it.endAt },
+                    id = { it.id.toLong() },
+                )
             SleepSummariesResponse(
                 items = page.items.map { it.toResponse(sourceMetadata) },
                 meta = page.items.meta(filters, page.nextCursor),

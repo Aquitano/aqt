@@ -3,14 +3,17 @@ package me.aquitano.health.application
 import me.aquitano.health.application.metric.steps.derived.CanonicalStepDerivationService
 import me.aquitano.health.domain.DerivedKind
 import me.aquitano.health.domain.RecordTypes
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import me.aquitano.health.shared.utcDate
 import org.jetbrains.exposed.v1.jdbc.Database
-import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import java.time.Instant
 import java.time.LocalDate
 
 interface DerivedRebuildExecutor {
-    suspend fun rebuild(request: DerivedRebuildRequest, computedAt: Instant)
+    suspend fun rebuild(
+        request: DerivedRebuildRequest,
+        computedAt: Instant,
+    )
 }
 
 data class DerivedRebuildRequest(
@@ -23,12 +26,20 @@ data class DerivedRebuildRequest(
 }
 
 fun interface DerivedRebuildAction {
-    suspend fun rebuild(sourceInstanceId: Int, dates: Set<LocalDate>, computedAt: Instant)
+    suspend fun rebuild(
+        sourceInstanceId: Int,
+        dates: Set<LocalDate>,
+        computedAt: Instant,
+    )
 }
 
 /** Maps one raw record's time span to the dates whose derived data it invalidates. */
 fun interface AffectedDatesResolver {
-    fun affectedDates(recordType: String, startAt: Instant, endAt: Instant?): Set<LocalDate>
+    fun affectedDates(
+        recordType: String,
+        startAt: Instant,
+        endAt: Instant?,
+    ): Set<LocalDate>
 }
 
 class DerivedRebuildModule(
@@ -41,7 +52,9 @@ class DerivedRebuildModule(
  * Ordered registry of derived rebuilds, mirroring HealthDayModuleRegistry. Every DerivedKind
  * must be covered so a new kind cannot silently skip its rebuild.
  */
-class DerivedRebuildModuleRegistry(val modules: List<DerivedRebuildModule>) {
+class DerivedRebuildModuleRegistry(
+    val modules: List<DerivedRebuildModule>,
+) {
     init {
         val kinds = modules.map { it.kind }
         require(kinds.size == kinds.toSet().size) {
@@ -55,12 +68,18 @@ class DerivedRebuildModuleRegistry(val modules: List<DerivedRebuildModule>) {
      * The single record-to-rebuild-dates mapping shared by the ingestion write path and replay,
      * so a new derived kind cannot be wired into one and silently skipped by the other.
      */
-    fun affectedDatesFor(recordType: String, startAt: Instant, endAt: Instant?): Map<DerivedKind, Set<LocalDate>> =
-        modules.mapNotNull { module ->
-            module.affectedDates.affectedDates(recordType, startAt, endAt)
-                .takeIf { it.isNotEmpty() }
-                ?.let { module.kind to it }
-        }.toMap()
+    fun affectedDatesFor(
+        recordType: String,
+        startAt: Instant,
+        endAt: Instant?,
+    ): Map<DerivedKind, Set<LocalDate>> =
+        modules
+            .mapNotNull { module ->
+                module.affectedDates
+                    .affectedDates(recordType, startAt, endAt)
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { module.kind to it }
+            }.toMap()
 }
 
 /** The canonical post-ingestion rebuild wiring; order is the execution order. */
@@ -118,7 +137,10 @@ class TransactionalDerivedRebuildExecutor(
     private val database: Database,
     private val registry: DerivedRebuildModuleRegistry,
 ) : DerivedRebuildExecutor {
-    override suspend fun rebuild(request: DerivedRebuildRequest, computedAt: Instant) {
+    override suspend fun rebuild(
+        request: DerivedRebuildRequest,
+        computedAt: Instant,
+    ) {
         registry.modules.forEach { module ->
             val dates = request[module.kind]
             if (dates.isNotEmpty()) {

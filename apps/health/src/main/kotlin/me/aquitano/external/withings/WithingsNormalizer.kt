@@ -12,53 +12,61 @@ class WithingsNormalizer {
     private val sleepSessionGap = Duration.ofHours(2)
 
     fun normalize(fetchResult: WithingsFetchResult): WithingsNormalizedBatch {
-        val records = when (fetchResult.dataType) {
-            "activity" -> normalizeActivity(fetchResult.records)
-            "measures" -> normalizeMeasures(fetchResult.records)
-            "sleep-summary" -> normalizeSleepSummary(fetchResult.records)
-            "sleep" -> normalizeSleep(fetchResult.records)
-            else -> emptyList()
-        }
-        val sourcePayload = buildJsonObject {
-            put("dataType", fetchResult.dataType)
-            put(
-                "pages",
-                JsonArray(
-                    fetchResult.pages.map {
-                        buildJsonObject {
-                            put("endpoint", it.endpoint)
-                            put("action", it.action)
-                            put("pageIndex", it.pageIndex)
-                            put("payload", it.payload)
-                        }
-                    }
+        val records =
+            when (fetchResult.dataType) {
+                "activity" -> normalizeActivity(fetchResult.records)
+                "measures" -> normalizeMeasures(fetchResult.records)
+                "sleep-summary" -> normalizeSleepSummary(fetchResult.records)
+                "sleep" -> normalizeSleep(fetchResult.records)
+                else -> emptyList()
+            }
+        val sourcePayload =
+            buildJsonObject {
+                put("dataType", fetchResult.dataType)
+                put(
+                    "pages",
+                    JsonArray(
+                        fetchResult.pages.map {
+                            buildJsonObject {
+                                put("endpoint", it.endpoint)
+                                put("action", it.action)
+                                put("pageIndex", it.pageIndex)
+                                put("payload", it.payload)
+                            }
+                        },
+                    ),
                 )
-            )
-            put("records", JsonArray(fetchResult.records))
-        }
+                put("records", JsonArray(fetchResult.records))
+            }
         return WithingsNormalizedBatch(sourcePayload, records)
     }
 
     private fun normalizeActivity(records: List<JsonObject>): List<IngestionRecord> =
         buildList {
             records.forEach { record ->
-                val date = record.string("date")
-                    ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-                    ?: return@forEach
+                val date =
+                    record
+                        .string("date")
+                        ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                        ?: return@forEach
                 val steps = record.int("steps")
                 if (steps != null && steps > 0) {
                     add(
                         StepInterval(
                             providerRecordId = "withings:activity:$date",
-                            startAt = date.atStartOfDay()
-                                .toInstant(ZoneOffset.UTC)
-                                .toString(),
-                            endAt = date.plusDays(1)
-                                .atStartOfDay()
-                                .toInstant(ZoneOffset.UTC)
-                                .toString(),
+                            startAt =
+                                date
+                                    .atStartOfDay()
+                                    .toInstant(ZoneOffset.UTC)
+                                    .toString(),
+                            endAt =
+                                date
+                                    .plusDays(1)
+                                    .atStartOfDay()
+                                    .toInstant(ZoneOffset.UTC)
+                                    .toString(),
                             steps = steps,
-                        )
+                        ),
                     )
                 }
 
@@ -70,13 +78,14 @@ class WithingsNormalizer {
     private fun normalizeMeasures(records: List<JsonObject>): List<IngestionRecord> =
         buildList {
             records.forEach { group ->
-                val measuredAt = group.long("date") ?: group.long("created")
-                ?: return@forEach
+                val measuredAt =
+                    group.long("date") ?: group.long("created")
+                        ?: return@forEach
                 val measuredAtString =
                     Instant.ofEpochSecond(measuredAt).toString()
                 val grpid =
                     group.string("grpid") ?: group.long("grpid")?.toString()
-                    ?: "at-$measuredAt"
+                        ?: "at-$measuredAt"
                 val measures = group["measures"] as? JsonArray ?: return@forEach
                 var weightKg: Double? = null
                 var bodyFatPercent: Double? = null
@@ -101,114 +110,166 @@ class WithingsNormalizer {
                     val realValue = value * 10.0.pow(unit)
                     when (type) {
                         1 -> if (realValue > 0.0) weightKg = realValue
-                        5 -> if (realValue > 0.0) extendedMetrics.add(
-                            ExtendedBodyMeasurement(
-                                providerRecordId = providerId(grpid, "fat_free_mass"),
-                                measuredAt = measuredAtString,
-                                metricType = "fat_free_mass",
-                                value = realValue,
-                                unit = "kg",
-                            )
-                        )
+                        5 ->
+                            if (realValue > 0.0) {
+                                extendedMetrics.add(
+                                    ExtendedBodyMeasurement(
+                                        providerRecordId = providerId(grpid, "fat_free_mass"),
+                                        measuredAt = measuredAtString,
+                                        metricType = "fat_free_mass",
+                                        value = realValue,
+                                        unit = "kg",
+                                    ),
+                                )
+                            }
                         6 -> if (realValue in 0.0..100.0) bodyFatPercent = realValue
-                        8 -> if (realValue > 0.0) extendedMetrics.add(
-                            ExtendedBodyMeasurement(
-                                providerRecordId = providerId(grpid, "fat_mass"),
-                                measuredAt = measuredAtString,
-                                metricType = "fat_mass",
-                                value = realValue,
-                                unit = "kg",
-                            )
-                        )
+                        8 ->
+                            if (realValue > 0.0) {
+                                extendedMetrics.add(
+                                    ExtendedBodyMeasurement(
+                                        providerRecordId = providerId(grpid, "fat_mass"),
+                                        measuredAt = measuredAtString,
+                                        metricType = "fat_mass",
+                                        value = realValue,
+                                        unit = "kg",
+                                    ),
+                                )
+                            }
                         9 -> if (realValue.toInt() in 30..200) diastolicMmhg = realValue.toInt()
                         10 -> if (realValue.toInt() in 60..300) systolicMmhg = realValue.toInt()
-                        11 -> if (realValue.toInt() in 25..250) {
-                            // Heart rate from measure group — used for blood pressure HR if BP present,
-                            // otherwise standalone heart rate sample
-                            if (systolicMmhg != null || diastolicMmhg != null) {
-                                bpHeartRate = realValue.toInt()
+                        11 ->
+                            if (realValue.toInt() in 25..250) {
+                                // Heart rate from measure group — used for blood pressure HR if BP present,
+                                // otherwise standalone heart rate sample
+                                if (systolicMmhg != null || diastolicMmhg != null) {
+                                    bpHeartRate = realValue.toInt()
+                                }
+                                heartPulse = realValue.toInt()
                             }
-                            heartPulse = realValue.toInt()
-                        }
                         76 -> if (realValue > 0.0) muscleKg = realValue
                         77 -> if (realValue in 0.0..100.0) waterPercent = realValue
-                        88 -> if (realValue > 0.0) extendedMetrics.add(
-                            ExtendedBodyMeasurement(
-                                providerRecordId = providerId(grpid, "bone_mass"),
-                                measuredAt = measuredAtString,
-                                metricType = "bone_mass",
-                                value = realValue,
-                                unit = "kg",
-                            )
-                        )
-                        91 -> if (realValue > 0.0) cardiovascularMetrics.add(
-                            Cardiovascular(
-                                providerRecordId = providerId(grpid, "pulse_wave_velocity"),
-                                measuredAt = measuredAtString,
-                                metricType = "pulse_wave_velocity",
-                                value = realValue,
-                                unit = "m/s",
-                            )
-                        )
-                        130 -> if (realValue >= 0.0) extendedMetrics.add(
-                            ExtendedBodyMeasurement(
-                                providerRecordId = providerId(grpid, "extracellular_water"),
-                                measuredAt = measuredAtString,
-                                metricType = "extracellular_water",
-                                value = realValue,
-                                unit = "kg",
-                            )
-                        )
-                        135 -> if (realValue >= 0.0) extendedMetrics.add(
-                            ExtendedBodyMeasurement(
-                                providerRecordId = providerId(grpid, "intracellular_water"),
-                                measuredAt = measuredAtString,
-                                metricType = "intracellular_water",
-                                value = realValue,
-                                unit = "kg",
-                            )
-                        )
-                        136 -> if (realValue > 0.0) addSegmentalMetric(
-                            extendedMetrics, grpid, measuredAtString, measure,
-                            "segmental_fat_mass", "kg", realValue
-                        )
-                        137 -> if (realValue > 0.0) addSegmentalMetric(
-                            extendedMetrics, grpid, measuredAtString, measure,
-                            "segmental_muscle_mass", "kg", realValue
-                        )
-                        138 -> if (realValue > 0.0) addSegmentalMetric(
-                            extendedMetrics, grpid, measuredAtString, measure,
-                            "segmental_fat_free_mass", "kg", realValue
-                        )
-                        139 -> if (realValue > 0.0) cardiovascularMetrics.add(
-                            Cardiovascular(
-                                providerRecordId = providerId(grpid, "vascular_age"),
-                                measuredAt = measuredAtString,
-                                metricType = "vascular_age",
-                                value = realValue,
-                                unit = "years",
-                            )
-                        )
-                        155 -> if (realValue.toInt() in 25..250) cardiovascularMetrics.add(
-                            Cardiovascular(
-                                providerRecordId = providerId(grpid, "standing_heart_rate"),
-                                measuredAt = measuredAtString,
-                                metricType = "standing_heart_rate",
-                                value = realValue,
-                                unit = "bpm",
-                            )
-                        )
+                        88 ->
+                            if (realValue > 0.0) {
+                                extendedMetrics.add(
+                                    ExtendedBodyMeasurement(
+                                        providerRecordId = providerId(grpid, "bone_mass"),
+                                        measuredAt = measuredAtString,
+                                        metricType = "bone_mass",
+                                        value = realValue,
+                                        unit = "kg",
+                                    ),
+                                )
+                            }
+                        91 ->
+                            if (realValue > 0.0) {
+                                cardiovascularMetrics.add(
+                                    Cardiovascular(
+                                        providerRecordId = providerId(grpid, "pulse_wave_velocity"),
+                                        measuredAt = measuredAtString,
+                                        metricType = "pulse_wave_velocity",
+                                        value = realValue,
+                                        unit = "m/s",
+                                    ),
+                                )
+                            }
+                        130 ->
+                            if (realValue >= 0.0) {
+                                extendedMetrics.add(
+                                    ExtendedBodyMeasurement(
+                                        providerRecordId = providerId(grpid, "extracellular_water"),
+                                        measuredAt = measuredAtString,
+                                        metricType = "extracellular_water",
+                                        value = realValue,
+                                        unit = "kg",
+                                    ),
+                                )
+                            }
+                        135 ->
+                            if (realValue >= 0.0) {
+                                extendedMetrics.add(
+                                    ExtendedBodyMeasurement(
+                                        providerRecordId = providerId(grpid, "intracellular_water"),
+                                        measuredAt = measuredAtString,
+                                        metricType = "intracellular_water",
+                                        value = realValue,
+                                        unit = "kg",
+                                    ),
+                                )
+                            }
+                        136 ->
+                            if (realValue > 0.0) {
+                                addSegmentalMetric(
+                                    extendedMetrics,
+                                    grpid,
+                                    measuredAtString,
+                                    measure,
+                                    "segmental_fat_mass",
+                                    "kg",
+                                    realValue,
+                                )
+                            }
+                        137 ->
+                            if (realValue > 0.0) {
+                                addSegmentalMetric(
+                                    extendedMetrics,
+                                    grpid,
+                                    measuredAtString,
+                                    measure,
+                                    "segmental_muscle_mass",
+                                    "kg",
+                                    realValue,
+                                )
+                            }
+                        138 ->
+                            if (realValue > 0.0) {
+                                addSegmentalMetric(
+                                    extendedMetrics,
+                                    grpid,
+                                    measuredAtString,
+                                    measure,
+                                    "segmental_fat_free_mass",
+                                    "kg",
+                                    realValue,
+                                )
+                            }
+                        139 ->
+                            if (realValue > 0.0) {
+                                cardiovascularMetrics.add(
+                                    Cardiovascular(
+                                        providerRecordId = providerId(grpid, "vascular_age"),
+                                        measuredAt = measuredAtString,
+                                        metricType = "vascular_age",
+                                        value = realValue,
+                                        unit = "years",
+                                    ),
+                                )
+                            }
+                        155 ->
+                            if (realValue.toInt() in 25..250) {
+                                cardiovascularMetrics.add(
+                                    Cardiovascular(
+                                        providerRecordId = providerId(grpid, "standing_heart_rate"),
+                                        measuredAt = measuredAtString,
+                                        metricType = "standing_heart_rate",
+                                        value = realValue,
+                                        unit = "bpm",
+                                    ),
+                                )
+                            }
                         170 -> if (realValue > 0.0) visceralFatRating = realValue
-                        173 -> if (realValue > 0.0) extendedMetrics.add(
-                            ExtendedBodyMeasurement(
-                                providerRecordId = providerId(grpid, "basal_metabolic_rate"),
-                                measuredAt = measuredAtString,
-                                metricType = "basal_metabolic_rate",
-                                value = realValue,
-                                // Registry unit; ingestion validates against ScalarMetricRegistry.
-                                unit = "kcal",
-                            )
-                        )
+                        173 ->
+                            if (realValue > 0.0) {
+                                extendedMetrics.add(
+                                    ExtendedBodyMeasurement(
+                                        providerRecordId = providerId(grpid, "basal_metabolic_rate"),
+                                        measuredAt = measuredAtString,
+                                        metricType = "basal_metabolic_rate",
+                                        value = realValue,
+                                        // Registry unit; ingestion validates against ScalarMetricRegistry.
+                                        unit = "kcal",
+                                    ),
+                                )
+                            }
                     }
                 }
 
@@ -229,7 +290,7 @@ class WithingsNormalizer {
                             muscleKg = muscleKg,
                             bodyWaterPercent = waterPercent,
                             visceralFatRating = visceralFatRating,
-                        )
+                        ),
                     )
                 }
 
@@ -241,7 +302,7 @@ class WithingsNormalizer {
                             measuredAt = measuredAtString,
                             bpm = it,
                             context = "general",
-                        )
+                        ),
                     )
                 }
 
@@ -254,7 +315,7 @@ class WithingsNormalizer {
                             systolicMmhg = systolicMmhg,
                             diastolicMmhg = diastolicMmhg,
                             heartRateBpm = bpHeartRate,
-                        )
+                        ),
                     )
                 }
 
@@ -264,8 +325,10 @@ class WithingsNormalizer {
             }
         }
 
-    private fun providerId(grpid: String, suffix: String): String =
-        "withings:measure:$grpid:$suffix"
+    private fun providerId(
+        grpid: String,
+        suffix: String,
+    ): String = "withings:measure:$grpid:$suffix"
 
     private fun addSegmentalMetric(
         target: MutableList<ExtendedBodyMeasurement>,
@@ -286,18 +349,19 @@ class WithingsNormalizer {
                 value = value,
                 unit = unit,
                 segment = segment,
-            )
+            ),
         )
     }
 
-    private fun mapSegment(code: String): String? = when (code) {
-        "left_arm" -> "left_arm"
-        "right_arm" -> "right_arm"
-        "left_leg" -> "left_leg"
-        "right_leg" -> "right_leg"
-        "trunk" -> "trunk"
-        else -> null
-    }
+    private fun mapSegment(code: String): String? =
+        when (code) {
+            "left_arm" -> "left_arm"
+            "right_arm" -> "right_arm"
+            "left_leg" -> "left_leg"
+            "right_leg" -> "right_leg"
+            "trunk" -> "trunk"
+            else -> null
+        }
 
     private fun normalizeSleepSummary(records: List<JsonObject>): List<IngestionRecord> =
         buildList {
@@ -311,7 +375,7 @@ class WithingsNormalizer {
                         startAt = Instant.ofEpochSecond(start).toString(),
                         endAt = Instant.ofEpochSecond(end).toString(),
                         stages = emptyList(),
-                    )
+                    ),
                 )
 
                 val data = record["data"] as? JsonObject ?: record
@@ -325,103 +389,124 @@ class WithingsNormalizer {
                     data.nonNegativeLong("wakeup_latency")
                         ?: data.nonNegativeLong("durationtowakeup")
                 val sleepScore = data.int("sleep_score")?.takeIf { it in 0..100 }
-                val summary = SleepSummary(
-                    providerRecordId = "withings:sleep-summary:$start:$end:summary",
-                    startAt = Instant.ofEpochSecond(start).toString(),
-                    endAt = Instant.ofEpochSecond(end).toString(),
-                    timeInBedSeconds = data.nonNegativeLong("total_timeinbed"),
-                    totalSleepSeconds = totalSleepSeconds,
-                    lightSleepSeconds = data.nonNegativeLong("lightsleepduration"),
-                    deepSleepSeconds = data.nonNegativeLong("deepsleepduration"),
-                    remSleepSeconds = data.nonNegativeLong("remsleepduration"),
-                    sleepEfficiencyPercent = data.nonNegativeDouble("sleep_efficiency")
-                        ?.takeIf { it in 0.0..100.0 },
-                    sleepLatencySeconds = sleepLatencySeconds,
-                    wakeupLatencySeconds = wakeupLatencySeconds,
-                    wakeupDurationSeconds = data.nonNegativeLong("wakeupduration"),
-                    wakeupCount = data.nonNegativeInt("wakeupcount"),
-                    wasoSeconds = data.nonNegativeLong("waso"),
-                    sleepScore = sleepScore,
-                    remEpisodesCount = data.nonNegativeInt("nb_rem_episodes"),
-                    outOfBedCount = data.nonNegativeInt("out_of_bed_count"),
-                    awakeDurationSeconds = data.nonNegativeLong("awake_duration"),
-                    overnightHrvRmssd = data.double("rmssd_start_avg"),
-                    respiratoryRhythm = data.double("chest_movement_rate_wellness_average"),
-                    breathingQuality = data.int("breathing_quality_assessment")
-                        ?.takeIf { it in 0..100 },
-                    snoringDurationSeconds = data.nonNegativeLong("snoring"),
-                    apneaHypopneaIndex = data.double("apnea_hypopnea_index")
-                        ?.takeIf { it >= 0.0 },
-                    movementScore = data.double("mvt_score_avg"),
-                    snoringEpisodeCount = data.nonNegativeInt("snoringepisodecount"),
-                    hrAverageBpm = data.validHeartRate("hr_average"),
-                    hrMinBpm = data.validHeartRate("hr_min"),
-                    hrMaxBpm = data.validHeartRate("hr_max"),
-                    rrAverage = data.double("rr_average")
-                        ?.takeIf { it in 5.0..40.0 },
-                    rrMin = data.double("rr_min")
-                        ?.takeIf { it in 5.0..40.0 },
-                    rrMax = data.double("rr_max")
-                        ?.takeIf { it in 5.0..40.0 },
-                )
+                val summary =
+                    SleepSummary(
+                        providerRecordId = "withings:sleep-summary:$start:$end:summary",
+                        startAt = Instant.ofEpochSecond(start).toString(),
+                        endAt = Instant.ofEpochSecond(end).toString(),
+                        timeInBedSeconds = data.nonNegativeLong("total_timeinbed"),
+                        totalSleepSeconds = totalSleepSeconds,
+                        lightSleepSeconds = data.nonNegativeLong("lightsleepduration"),
+                        deepSleepSeconds = data.nonNegativeLong("deepsleepduration"),
+                        remSleepSeconds = data.nonNegativeLong("remsleepduration"),
+                        sleepEfficiencyPercent =
+                            data
+                                .nonNegativeDouble("sleep_efficiency")
+                                ?.takeIf { it in 0.0..100.0 },
+                        sleepLatencySeconds = sleepLatencySeconds,
+                        wakeupLatencySeconds = wakeupLatencySeconds,
+                        wakeupDurationSeconds = data.nonNegativeLong("wakeupduration"),
+                        wakeupCount = data.nonNegativeInt("wakeupcount"),
+                        wasoSeconds = data.nonNegativeLong("waso"),
+                        sleepScore = sleepScore,
+                        remEpisodesCount = data.nonNegativeInt("nb_rem_episodes"),
+                        outOfBedCount = data.nonNegativeInt("out_of_bed_count"),
+                        awakeDurationSeconds = data.nonNegativeLong("awake_duration"),
+                        overnightHrvRmssd = data.double("rmssd_start_avg"),
+                        respiratoryRhythm = data.double("chest_movement_rate_wellness_average"),
+                        breathingQuality =
+                            data
+                                .int("breathing_quality_assessment")
+                                ?.takeIf { it in 0..100 },
+                        snoringDurationSeconds = data.nonNegativeLong("snoring"),
+                        apneaHypopneaIndex =
+                            data
+                                .double("apnea_hypopnea_index")
+                                ?.takeIf { it >= 0.0 },
+                        movementScore = data.double("mvt_score_avg"),
+                        snoringEpisodeCount = data.nonNegativeInt("snoringepisodecount"),
+                        hrAverageBpm = data.validHeartRate("hr_average"),
+                        hrMinBpm = data.validHeartRate("hr_min"),
+                        hrMaxBpm = data.validHeartRate("hr_max"),
+                        rrAverage =
+                            data
+                                .double("rr_average")
+                                ?.takeIf { it in 5.0..40.0 },
+                        rrMin =
+                            data
+                                .double("rr_min")
+                                ?.takeIf { it in 5.0..40.0 },
+                        rrMax =
+                            data
+                                .double("rr_max")
+                                ?.takeIf { it in 5.0..40.0 },
+                    )
                 if (summary.hasAnyMetric()) add(summary)
             }
         }
 
     private fun normalizeSleep(records: List<JsonObject>): List<IngestionRecord> {
-        val segments = records.mapNotNull { record ->
-            val start =
-                record.sleepInstant("startdate") ?: return@mapNotNull null
-            val end = record.sleepInstant("enddate") ?: return@mapNotNull null
-            val stage =
-                mapSleepStage(record.sleepState()) ?: return@mapNotNull null
-            if (!start.isBefore(end)) return@mapNotNull null
-            SleepSegment(start = start, end = end, stage = stage)
-        }.sortedBy { it.start }
+        val segments =
+            records
+                .mapNotNull { record ->
+                    val start =
+                        record.sleepInstant("startdate") ?: return@mapNotNull null
+                    val end = record.sleepInstant("enddate") ?: return@mapNotNull null
+                    val stage =
+                        mapSleepStage(record.sleepState()) ?: return@mapNotNull null
+                    if (!start.isBefore(end)) return@mapNotNull null
+                    SleepSegment(start = start, end = end, stage = stage)
+                }.sortedBy { it.start }
 
-        val heartRates = records.mapNotNull { record ->
-            val bpm = record.sleepHeartRate() ?: return@mapNotNull null
-            if (bpm !in 25..250) return@mapNotNull null
-            val instant = record.sleepInstant("timestamp")
-                ?: record.sleepInstant("startdate")
-                ?: return@mapNotNull null
-            HeartRate(
-                providerRecordId = "withings:sleep:hr:${instant.epochSecond}",
-                measuredAt = instant.toString(),
-                bpm = bpm,
-                context = "sleep",
-            )
-        }
+        val heartRates =
+            records.mapNotNull { record ->
+                val bpm = record.sleepHeartRate() ?: return@mapNotNull null
+                if (bpm !in 25..250) return@mapNotNull null
+                val instant =
+                    record.sleepInstant("timestamp")
+                        ?: record.sleepInstant("startdate")
+                        ?: return@mapNotNull null
+                HeartRate(
+                    providerRecordId = "withings:sleep:hr:${instant.epochSecond}",
+                    measuredAt = instant.toString(),
+                    bpm = bpm,
+                    context = "sleep",
+                )
+            }
 
-        val respiratoryRates = records.mapNotNull { record ->
-            val breathsPerMinute = record.sleepRespiratoryRate() ?: return@mapNotNull null
-            if (breathsPerMinute !in 5..80) return@mapNotNull null
-            val instant = record.sleepInstant("timestamp")
-                ?: record.sleepInstant("startdate")
-                ?: return@mapNotNull null
-            RespiratoryRate(
-                providerRecordId = "withings:sleep:rr:${instant.epochSecond}",
-                measuredAt = instant.toString(),
-                breathsPerMinute = breathsPerMinute,
-                context = "sleep",
-            )
-        }
+        val respiratoryRates =
+            records.mapNotNull { record ->
+                val breathsPerMinute = record.sleepRespiratoryRate() ?: return@mapNotNull null
+                if (breathsPerMinute !in 5..80) return@mapNotNull null
+                val instant =
+                    record.sleepInstant("timestamp")
+                        ?: record.sleepInstant("startdate")
+                        ?: return@mapNotNull null
+                RespiratoryRate(
+                    providerRecordId = "withings:sleep:rr:${instant.epochSecond}",
+                    measuredAt = instant.toString(),
+                    breathsPerMinute = breathsPerMinute,
+                    context = "sleep",
+                )
+            }
 
-        val hrv = records.mapNotNull { record ->
-            val rmssd = record.sleepRmssd() ?: return@mapNotNull null
-            if (rmssd <= 0.0 || rmssd > 500.0) return@mapNotNull null
-            val instant = record.sleepInstant("timestamp")
-                ?: record.sleepInstant("startdate")
-                ?: return@mapNotNull null
-            Hrv(
-                providerRecordId = "withings:sleep:rmssd:${instant.epochSecond}",
-                measuredAt = instant.toString(),
-                metricType = "rmssd",
-                value = rmssd,
-                unit = "ms",
-                context = "sleep",
-            )
-        }
+        val hrv =
+            records.mapNotNull { record ->
+                val rmssd = record.sleepRmssd() ?: return@mapNotNull null
+                if (rmssd <= 0.0 || rmssd > 500.0) return@mapNotNull null
+                val instant =
+                    record.sleepInstant("timestamp")
+                        ?: record.sleepInstant("startdate")
+                        ?: return@mapNotNull null
+                Hrv(
+                    providerRecordId = "withings:sleep:rmssd:${instant.epochSecond}",
+                    measuredAt = instant.toString(),
+                    metricType = "rmssd",
+                    value = rmssd,
+                    unit = "ms",
+                    context = "sleep",
+                )
+            }
 
         if (segments.isNotEmpty()) {
             val sessions =
@@ -433,47 +518,53 @@ class WithingsNormalizer {
                         providerRecordId = "withings:sleep:${start.epochSecond}:${end.epochSecond}",
                         startAt = start.toString(),
                         endAt = end.toString(),
-                        stages = sessionSegments.map { segment ->
-                            SleepStage(
-                                stage = segment.stage,
-                                startAt = segment.start.toString(),
-                                endAt = segment.end.toString(),
-                            )
-                        },
+                        stages =
+                            sessionSegments.map { segment ->
+                                SleepStage(
+                                    stage = segment.stage,
+                                    startAt = segment.start.toString(),
+                                    endAt = segment.end.toString(),
+                                )
+                            },
                     )
                 }
             return sessions + heartRates + respiratoryRates + hrv
         }
 
-        val sorted = records.mapNotNull { record ->
-            val instant = record.sleepInstant("timestamp")
-                ?: record.sleepInstant("startdate")
-                ?: return@mapNotNull null
-            instant to record
-        }.sortedBy { it.first }
-        val sessions = splitSleepSessions(sorted).mapNotNull { sessionRecords ->
-            val stages =
-                sessionRecords.zipWithNext().mapNotNull { (current, next) ->
-                    val stage = mapSleepStage(current.second.sleepState())
-                        ?: return@mapNotNull null
-                    if (!current.first.isBefore(next.first)) return@mapNotNull null
-                    SleepStage(
-                        stage = stage,
-                        startAt = current.first.toString(),
-                        endAt = next.first.toString(),
-                    )
-                }
-            if (stages.isEmpty()) return@mapNotNull null
-            val start = sessionRecords.first().first
-            val end = sessionRecords.last().first
-            if (!start.isBefore(end)) return@mapNotNull null
-            SleepSession(
-                providerRecordId = "withings:sleep:${start.epochSecond}:${end.epochSecond}",
-                startAt = start.toString(),
-                endAt = end.toString(),
-                stages = stages,
-            )
-        }
+        val sorted =
+            records
+                .mapNotNull { record ->
+                    val instant =
+                        record.sleepInstant("timestamp")
+                            ?: record.sleepInstant("startdate")
+                            ?: return@mapNotNull null
+                    instant to record
+                }.sortedBy { it.first }
+        val sessions =
+            splitSleepSessions(sorted).mapNotNull { sessionRecords ->
+                val stages =
+                    sessionRecords.zipWithNext().mapNotNull { (current, next) ->
+                        val stage =
+                            mapSleepStage(current.second.sleepState())
+                                ?: return@mapNotNull null
+                        if (!current.first.isBefore(next.first)) return@mapNotNull null
+                        SleepStage(
+                            stage = stage,
+                            startAt = current.first.toString(),
+                            endAt = next.first.toString(),
+                        )
+                    }
+                if (stages.isEmpty()) return@mapNotNull null
+                val start = sessionRecords.first().first
+                val end = sessionRecords.last().first
+                if (!start.isBefore(end)) return@mapNotNull null
+                SleepSession(
+                    providerRecordId = "withings:sleep:${start.epochSecond}:${end.epochSecond}",
+                    startAt = start.toString(),
+                    endAt = end.toString(),
+                    stages = stages,
+                )
+            }
         return sessions + heartRates + respiratoryRates + hrv
     }
 
@@ -482,9 +573,10 @@ class WithingsNormalizer {
             var current = mutableListOf<SleepSegment>()
             segments.forEach { segment ->
                 val previous = current.lastOrNull()
-                if (previous != null && Duration.between(
+                if (previous != null &&
+                    Duration.between(
                         previous.end,
-                        segment.start
+                        segment.start,
                     ) > sleepSessionGap
                 ) {
                     add(current)
@@ -501,16 +593,15 @@ class WithingsNormalizer {
         val stage: String,
     )
 
-    private fun splitSleepSessions(
-        sorted: List<Pair<Instant, JsonObject>>,
-    ): List<List<Pair<Instant, JsonObject>>> =
+    private fun splitSleepSessions(sorted: List<Pair<Instant, JsonObject>>): List<List<Pair<Instant, JsonObject>>> =
         buildList {
             var current = mutableListOf<Pair<Instant, JsonObject>>()
             sorted.forEach { record ->
                 val previous = current.lastOrNull()
-                if (previous != null && Duration.between(
+                if (previous != null &&
+                    Duration.between(
                         previous.first,
-                        record.first
+                        record.first,
                     ) > sleepSessionGap
                 ) {
                     add(current)
@@ -591,8 +682,7 @@ class WithingsNormalizer {
             rrMin != null ||
             rrMax != null
 
-    private fun JsonObject.string(key: String): String? =
-        this[key]?.primitiveOrNull()?.contentOrNull
+    private fun JsonObject.string(key: String): String? = this[key]?.primitiveOrNull()?.contentOrNull
 
     private fun JsonObject.int(key: String): Int? {
         val primitive = this[key]?.primitiveOrNull() ?: return null
@@ -600,11 +690,9 @@ class WithingsNormalizer {
         return primitive.contentOrNull?.toIntOrNull()
     }
 
-    private fun JsonObject.long(key: String): Long? =
-        this[key]?.primitiveOrNull()?.longOrNull
+    private fun JsonObject.long(key: String): Long? = this[key]?.primitiveOrNull()?.longOrNull
 
-    private fun JsonObject.double(key: String): Double? =
-        this[key]?.primitiveOrNull()?.doubleOrNull
+    private fun JsonObject.double(key: String): Double? = this[key]?.primitiveOrNull()?.doubleOrNull
 
     private fun JsonObject.instant(key: String): Instant? {
         val primitive = this[key]?.primitiveOrNull() ?: return null
@@ -623,30 +711,21 @@ class WithingsNormalizer {
             ?: (this["value"] as? JsonObject)?.int("state")
             ?: (this["value"] as? JsonObject)?.int("value")
 
-    private fun JsonObject.sleepHeartRate(): Int? =
-        int("hr") ?: (this["data"] as? JsonObject)?.int("hr")
+    private fun JsonObject.sleepHeartRate(): Int? = int("hr") ?: (this["data"] as? JsonObject)?.int("hr")
 
-    private fun JsonObject.sleepRespiratoryRate(): Int? =
-        int("rr") ?: (this["data"] as? JsonObject)?.int("rr")
+    private fun JsonObject.sleepRespiratoryRate(): Int? = int("rr") ?: (this["data"] as? JsonObject)?.int("rr")
 
-    private fun JsonObject.sleepRmssd(): Double? =
-        double("rmssd") ?: (this["data"] as? JsonObject)?.double("rmssd")
+    private fun JsonObject.sleepRmssd(): Double? = double("rmssd") ?: (this["data"] as? JsonObject)?.double("rmssd")
 
-    private fun JsonObject.sleepInstant(key: String): Instant? =
-        instant(key) ?: (this["data"] as? JsonObject)?.instant(key)
+    private fun JsonObject.sleepInstant(key: String): Instant? = instant(key) ?: (this["data"] as? JsonObject)?.instant(key)
 
-    private fun JsonObject.nonNegativeInt(key: String): Int? =
-        int(key)?.takeIf { it >= 0 }
+    private fun JsonObject.nonNegativeInt(key: String): Int? = int(key)?.takeIf { it >= 0 }
 
-    private fun JsonObject.nonNegativeLong(key: String): Long? =
-        long(key)?.takeIf { it >= 0 }
+    private fun JsonObject.nonNegativeLong(key: String): Long? = long(key)?.takeIf { it >= 0 }
 
-    private fun JsonObject.nonNegativeDouble(key: String): Double? =
-        double(key)?.takeIf { it >= 0.0 }
+    private fun JsonObject.nonNegativeDouble(key: String): Double? = double(key)?.takeIf { it >= 0.0 }
 
-    private fun JsonObject.validHeartRate(key: String): Int? =
-        int(key)?.takeIf { it in 25..250 }
+    private fun JsonObject.validHeartRate(key: String): Int? = int(key)?.takeIf { it in 25..250 }
 
-    private fun JsonElement.primitiveOrNull(): JsonPrimitive? =
-        this as? JsonPrimitive
+    private fun JsonElement.primitiveOrNull(): JsonPrimitive? = this as? JsonPrimitive
 }

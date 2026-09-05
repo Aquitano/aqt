@@ -16,7 +16,9 @@ data class ProviderSyncIdempotencyRecord(
 )
 
 /** Stores responses of the synchronous provider sync endpoint keyed by Idempotency-Key. */
-class ProviderSyncIdempotencyRepository(private val database: Database) {
+class ProviderSyncIdempotencyRepository(
+    private val database: Database,
+) {
     suspend fun findResponse(
         providerCode: String,
         idempotencyKey: String,
@@ -27,15 +29,13 @@ class ProviderSyncIdempotencyRepository(private val database: Database) {
                 .where {
                     (ProviderSyncIdempotencyTable.providerCode eq providerCode) and
                         (ProviderSyncIdempotencyTable.idempotencyKey eq idempotencyKey)
-                }
-                .limit(1)
+                }.limit(1)
                 .map {
                     ProviderSyncIdempotencyRecord(
                         requestHash = it[ProviderSyncIdempotencyTable.requestHash],
                         responseJson = it[ProviderSyncIdempotencyTable.responseJson],
                     )
-                }
-                .singleOrNull()
+                }.singleOrNull()
         }
 
     suspend fun storeResponse(

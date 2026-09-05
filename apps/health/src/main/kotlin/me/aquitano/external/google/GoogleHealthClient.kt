@@ -13,10 +13,14 @@ import java.time.Instant
 internal const val MAX_GOOGLE_HEALTH_PAGES = 500
 
 interface GoogleHealthOAuthClient {
-    suspend fun exchangeCode(code: String, now: Instant): GoogleHealthTokenSet
+    suspend fun exchangeCode(
+        code: String,
+        now: Instant,
+    ): GoogleHealthTokenSet
+
     suspend fun refreshToken(
         refreshToken: String,
-        now: Instant
+        now: Instant,
     ): GoogleHealthTokenSet
 }
 
@@ -36,44 +40,48 @@ class KtorGoogleHealthOAuthClient(
 ) : GoogleHealthOAuthClient {
     override suspend fun exchangeCode(
         code: String,
-        now: Instant
+        now: Instant,
     ): GoogleHealthTokenSet {
-        val response = httpClient.submitForm(
-            url = config.oauthTokenUrl,
-            formParameters = formParameters(
-                "client_id" to config.clientId,
-                "client_secret" to config.clientSecret,
-                "code" to code,
-                "grant_type" to "authorization_code",
-                "redirect_uri" to config.redirectUri,
-            ),
-        )
+        val response =
+            httpClient.submitForm(
+                url = config.oauthTokenUrl,
+                formParameters =
+                    formParameters(
+                        "client_id" to config.clientId,
+                        "client_secret" to config.clientSecret,
+                        "code" to code,
+                        "grant_type" to "authorization_code",
+                        "redirect_uri" to config.redirectUri,
+                    ),
+            )
         return parseTokenResponse(
             response.status,
             response.body(),
             now,
-            existingRefreshToken = null
+            existingRefreshToken = null,
         )
     }
 
     override suspend fun refreshToken(
         refreshToken: String,
-        now: Instant
+        now: Instant,
     ): GoogleHealthTokenSet {
-        val response = httpClient.submitForm(
-            url = config.oauthTokenUrl,
-            formParameters = formParameters(
-                "client_id" to config.clientId,
-                "client_secret" to config.clientSecret,
-                "refresh_token" to refreshToken,
-                "grant_type" to "refresh_token",
-            ),
-        )
+        val response =
+            httpClient.submitForm(
+                url = config.oauthTokenUrl,
+                formParameters =
+                    formParameters(
+                        "client_id" to config.clientId,
+                        "client_secret" to config.clientSecret,
+                        "refresh_token" to refreshToken,
+                        "grant_type" to "refresh_token",
+                    ),
+            )
         return parseTokenResponse(
             response.status,
             response.body(),
             now,
-            existingRefreshToken = refreshToken
+            existingRefreshToken = refreshToken,
         )
     }
 
@@ -84,14 +92,16 @@ class KtorGoogleHealthOAuthClient(
         existingRefreshToken: String?,
     ): GoogleHealthTokenSet {
         if (!status.isSuccess()) {
-            val code = if (existingRefreshToken == null) {
-                "google_health_token_exchange_failed"
-            } else {
-                "google_health_token_refresh_failed"
-            }
-            val oauthError = runCatching {
-                AppJson.parseToJsonElement(text).jsonObject.stringOrNull("error")
-            }.getOrNull()
+            val code =
+                if (existingRefreshToken == null) {
+                    "google_health_token_exchange_failed"
+                } else {
+                    "google_health_token_refresh_failed"
+                }
+            val oauthError =
+                runCatching {
+                    AppJson.parseToJsonElement(text).jsonObject.stringOrNull("error")
+                }.getOrNull()
             throw GoogleHealthHttpException(
                 code,
                 "Google OAuth token request failed with ${status.value}",
@@ -99,11 +109,12 @@ class KtorGoogleHealthOAuthClient(
             )
         }
         val body = AppJson.parseToJsonElement(text).jsonObject
-        val accessToken = body.stringOrNull("access_token")
-            ?: throw GoogleHealthHttpException(
-                "google_health_token_exchange_failed",
-                "Google OAuth token response did not include access_token"
-            )
+        val accessToken =
+            body.stringOrNull("access_token")
+                ?: throw GoogleHealthHttpException(
+                    "google_health_token_exchange_failed",
+                    "Google OAuth token response did not include access_token",
+                )
         val refreshToken =
             body.stringOrNull("refresh_token") ?: existingRefreshToken
         val tokenType = body.stringOrNull("token_type") ?: "Bearer"
@@ -119,6 +130,5 @@ class KtorGoogleHealthOAuthClient(
         )
     }
 
-    private fun JsonObject.stringOrNull(key: String): String? =
-        this[key]?.jsonPrimitive?.contentOrNull
+    private fun JsonObject.stringOrNull(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
 }

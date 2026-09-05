@@ -16,12 +16,14 @@ import java.util.concurrent.ConcurrentHashMap
 object DatabaseDispatchers {
     private val dispatchers = ConcurrentHashMap<Database, CoroutineDispatcher>()
 
-    fun register(database: Database, poolSize: Int) {
+    fun register(
+        database: Database,
+        poolSize: Int,
+    ) {
         dispatchers[database] = Dispatchers.IO.limitedParallelism(poolSize)
     }
 
-    fun forDatabase(database: Database): CoroutineDispatcher =
-        dispatchers[database] ?: Dispatchers.IO
+    fun forDatabase(database: Database): CoroutineDispatcher = dispatchers[database] ?: Dispatchers.IO
 }
 
 /**

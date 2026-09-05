@@ -19,7 +19,10 @@ data class CanonicalSourceRank(
 class CanonicalMetricsPolicy(
     private val ranksByFamily: Map<CanonicalMetricFamily, List<CanonicalSourceRank>>,
 ) {
-    fun rank(family: CanonicalMetricFamily, provider: String?): Int {
+    fun rank(
+        family: CanonicalMetricFamily,
+        provider: String?,
+    ): Int {
         val normalized = normalizeProvider(provider) ?: return UnknownProviderRank
         return ranksByFamily[family]
             ?.firstOrNull { it.provider == normalized }
@@ -27,12 +30,16 @@ class CanonicalMetricsPolicy(
             ?: UnknownProviderRank
     }
 
-    fun heartRateRank(provider: String?, context: String?): Int {
-        val family = if (context == "sleep") {
-            CanonicalMetricFamily.SLEEP
-        } else {
-            CanonicalMetricFamily.HEART_RATE
-        }
+    fun heartRateRank(
+        provider: String?,
+        context: String?,
+    ): Int {
+        val family =
+            if (context == "sleep") {
+                CanonicalMetricFamily.SLEEP
+            } else {
+                CanonicalMetricFamily.HEART_RATE
+            }
         return rank(family, provider)
     }
 
@@ -48,48 +55,57 @@ class CanonicalMetricsPolicy(
 
         fun default(): CanonicalMetricsPolicy =
             CanonicalMetricsPolicy(
-                ranksByFamily = mapOf(
-                    CanonicalMetricFamily.STEPS to ranks(
-                        "google_health",
-                        "health_connect",
-                        "withings",
+                ranksByFamily =
+                    mapOf(
+                        CanonicalMetricFamily.STEPS to
+                            ranks(
+                                "google_health",
+                                "health_connect",
+                                "withings",
+                            ),
+                        CanonicalMetricFamily.ACTIVITY to
+                            ranks(
+                                "google_health",
+                                "health_connect",
+                                "withings",
+                            ),
+                        CanonicalMetricFamily.SLEEP to
+                            ranks(
+                                "withings",
+                                "google_health",
+                                "health_connect",
+                            ),
+                        CanonicalMetricFamily.SLEEP_SUMMARY to
+                            ranks(
+                                "withings",
+                                "google_health",
+                                "health_connect",
+                            ),
+                        CanonicalMetricFamily.BODY_MEASUREMENT to
+                            ranks(
+                                "withings",
+                                "google_health",
+                                "health_connect",
+                            ),
+                        CanonicalMetricFamily.HEART_RATE to
+                            ranks(
+                                "google_health",
+                                "health_connect",
+                                "withings",
+                            ),
+                        CanonicalMetricFamily.RESPIRATORY_RATE to
+                            ranks(
+                                "withings",
+                                "google_health",
+                                "health_connect",
+                            ),
+                        CanonicalMetricFamily.HRV to
+                            ranks(
+                                "withings",
+                                "google_health",
+                                "health_connect",
+                            ),
                     ),
-                    CanonicalMetricFamily.ACTIVITY to ranks(
-                        "google_health",
-                        "health_connect",
-                        "withings",
-                    ),
-                    CanonicalMetricFamily.SLEEP to ranks(
-                        "withings",
-                        "google_health",
-                        "health_connect",
-                    ),
-                    CanonicalMetricFamily.SLEEP_SUMMARY to ranks(
-                        "withings",
-                        "google_health",
-                        "health_connect",
-                    ),
-                    CanonicalMetricFamily.BODY_MEASUREMENT to ranks(
-                        "withings",
-                        "google_health",
-                        "health_connect",
-                    ),
-                    CanonicalMetricFamily.HEART_RATE to ranks(
-                        "google_health",
-                        "health_connect",
-                        "withings",
-                    ),
-                    CanonicalMetricFamily.RESPIRATORY_RATE to ranks(
-                        "withings",
-                        "google_health",
-                        "health_connect",
-                    ),
-                    CanonicalMetricFamily.HRV to ranks(
-                        "withings",
-                        "google_health",
-                        "health_connect",
-                    ),
-                )
             )
 
         private fun ranks(vararg providers: String): List<CanonicalSourceRank> =

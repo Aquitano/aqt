@@ -12,8 +12,7 @@ fun Instant.toDbTimestamp(): OffsetDateTime = atOffset(ZoneOffset.UTC)
 
 fun OffsetDateTime.toApiString(): String = toInstant().toString()
 
-fun Table.jsonb(name: String): Column<String> =
-    registerColumn(name, JsonbColumnType())
+fun Table.jsonb(name: String): Column<String> = registerColumn(name, JsonbColumnType())
 
 private class JsonbColumnType : ColumnType<String>() {
     override fun sqlType(): String = "JSONB"
@@ -30,8 +29,7 @@ private class JsonbColumnType : ColumnType<String>() {
             this.value = value
         }
 
-    override fun nonNullValueToString(value: String): String =
-        "'${value.replace("'", "''")}'::jsonb"
+    override fun nonNullValueToString(value: String): String = "'${value.replace("'", "''")}'::jsonb"
 
     override fun parameterMarker(value: String?): String = "?::jsonb"
 }

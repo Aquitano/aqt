@@ -5,7 +5,7 @@ data class StepSampleRow(
     val sourceInstanceId: Int,
     val startAt: String,
     val endAt: String,
-    val steps: Int
+    val steps: Int,
 )
 
 data class StepDailySummaryRow(
@@ -13,11 +13,10 @@ data class StepDailySummaryRow(
     val sourceInstanceId: Int,
     val date: String,
     val steps: Int,
-    val sampleCount: Int
+    val sampleCount: Int,
 )
 
 data class DashboardStepsSummaryRow(
     val steps: Int,
     val sampleCount: Int,
 )
-

@@ -30,26 +30,31 @@ import me.aquitano.health.domain.ValidationIssueCodes
 internal fun mapBodyMeasurement(
     field: String,
     dto: BodyMeasurement,
-    issues: MutableList<ValidationIssue>
+    issues: MutableList<ValidationIssue>,
 ): ScalarSampleRecord? {
     val measuredAt =
         parseInstant(dto.measuredAt, "$field.measuredAt", issues)
-    val values = buildList {
-        fun scalar(metricType: String, value: Double?, valueField: String) {
-            if (value == null) return
-            val descriptor = ScalarMetricRegistry.get(metricType)
-            if (descriptor.valueIsValid(value)) {
-                add(ScalarValue(metricType, value, descriptor.unit))
-            } else {
-                issues.add(outOfRangeIssue("$field.$valueField", metricType))
+    val values =
+        buildList {
+            fun scalar(
+                metricType: String,
+                value: Double?,
+                valueField: String,
+            ) {
+                if (value == null) return
+                val descriptor = ScalarMetricRegistry.get(metricType)
+                if (descriptor.valueIsValid(value)) {
+                    add(ScalarValue(metricType, value, descriptor.unit))
+                } else {
+                    issues.add(outOfRangeIssue("$field.$valueField", metricType))
+                }
             }
+            scalar(BodyMetricTypes.WEIGHT, dto.weightKg, "weightKg")
+            scalar(BodyMetricTypes.BODY_FAT, dto.bodyFatPercent, "bodyFatPercent")
+            scalar(BodyMetricTypes.MUSCLE, dto.muscleKg, "muscleKg")
+            scalar(BodyMetricTypes.WATER, dto.bodyWaterPercent, "bodyWaterPercent")
+            scalar(BodyMetricTypes.VISCERAL_FAT, dto.visceralFatRating, "visceralFatRating")
         }
-        scalar(BodyMetricTypes.WEIGHT, dto.weightKg, "weightKg")
-        scalar(BodyMetricTypes.BODY_FAT, dto.bodyFatPercent, "bodyFatPercent")
-        scalar(BodyMetricTypes.MUSCLE, dto.muscleKg, "muscleKg")
-        scalar(BodyMetricTypes.WATER, dto.bodyWaterPercent, "bodyWaterPercent")
-        scalar(BodyMetricTypes.VISCERAL_FAT, dto.visceralFatRating, "visceralFatRating")
-    }
 
     if (values.isEmpty()) {
         issues.add(
@@ -57,7 +62,7 @@ internal fun mapBodyMeasurement(
                 field = field,
                 code = ValidationIssueCodes.Required,
                 message = "at least one body metric value is required",
-            )
+            ),
         )
     }
 
@@ -67,7 +72,7 @@ internal fun mapBodyMeasurement(
             normalizedRecordJson = dto.toNormalizedJsonObject(),
             recordType = RecordTypes.BODY_MEASUREMENT,
             measuredAt = measuredAt,
-            values = values
+            values = values,
         )
     } else {
         null
@@ -77,108 +82,118 @@ internal fun mapBodyMeasurement(
 internal fun mapHeartRate(
     field: String,
     dto: HeartRate,
-    issues: MutableList<ValidationIssue>
-): ScalarSampleRecord? = mapScalarViaRegistry(
-    field = field,
-    dto = ScalarSample(
-        providerRecordId = dto.providerRecordId,
-        measuredAt = dto.measuredAt,
-        metricType = ScalarMetricTypes.HEART_RATE,
-        value = dto.bpm.toDouble(),
-        unit = ScalarMetricRegistry.get(ScalarMetricTypes.HEART_RATE).unit,
-        context = dto.context,
-    ),
-    issues = issues,
-    recordType = RecordTypes.HEART_RATE,
-    normalizedRecordJson = dto.toNormalizedJsonObject(),
-    valueField = "bpm",
-)
+    issues: MutableList<ValidationIssue>,
+): ScalarSampleRecord? =
+    mapScalarViaRegistry(
+        field = field,
+        dto =
+            ScalarSample(
+                providerRecordId = dto.providerRecordId,
+                measuredAt = dto.measuredAt,
+                metricType = ScalarMetricTypes.HEART_RATE,
+                value = dto.bpm.toDouble(),
+                unit = ScalarMetricRegistry.get(ScalarMetricTypes.HEART_RATE).unit,
+                context = dto.context,
+            ),
+        issues = issues,
+        recordType = RecordTypes.HEART_RATE,
+        normalizedRecordJson = dto.toNormalizedJsonObject(),
+        valueField = "bpm",
+    )
 
 internal fun mapRespiratoryRate(
     field: String,
     dto: RespiratoryRate,
-    issues: MutableList<ValidationIssue>
-): ScalarSampleRecord? = mapScalarViaRegistry(
-    field = field,
-    dto = ScalarSample(
-        providerRecordId = dto.providerRecordId,
-        measuredAt = dto.measuredAt,
-        metricType = ScalarMetricTypes.RESPIRATORY_RATE,
-        value = dto.breathsPerMinute.toDouble(),
-        unit = ScalarMetricRegistry.get(ScalarMetricTypes.RESPIRATORY_RATE).unit,
-        context = dto.context,
-    ),
-    issues = issues,
-    recordType = RecordTypes.RESPIRATORY_RATE,
-    normalizedRecordJson = dto.toNormalizedJsonObject(),
-    valueField = "breathsPerMinute",
-)
+    issues: MutableList<ValidationIssue>,
+): ScalarSampleRecord? =
+    mapScalarViaRegistry(
+        field = field,
+        dto =
+            ScalarSample(
+                providerRecordId = dto.providerRecordId,
+                measuredAt = dto.measuredAt,
+                metricType = ScalarMetricTypes.RESPIRATORY_RATE,
+                value = dto.breathsPerMinute.toDouble(),
+                unit = ScalarMetricRegistry.get(ScalarMetricTypes.RESPIRATORY_RATE).unit,
+                context = dto.context,
+            ),
+        issues = issues,
+        recordType = RecordTypes.RESPIRATORY_RATE,
+        normalizedRecordJson = dto.toNormalizedJsonObject(),
+        valueField = "breathsPerMinute",
+    )
 
 internal fun mapHrv(
     field: String,
     dto: Hrv,
-    issues: MutableList<ValidationIssue>
-): ScalarSampleRecord? = mapScalarViaRegistry(
-    field = field,
-    dto = ScalarSample(
-        providerRecordId = dto.providerRecordId,
-        measuredAt = dto.measuredAt,
-        // Legacy hrv records carry the unprefixed metric type ("rmssd"); scalar metric
-        // types are family-prefixed ("hrv_rmssd").
-        metricType = "hrv_${dto.metricType}",
-        value = dto.value,
-        unit = dto.unit,
-        context = dto.context,
-    ),
-    issues = issues,
-    recordType = RecordTypes.HRV,
-    normalizedRecordJson = dto.toNormalizedJsonObject(),
-    unknownMetricTypeMessage = "unsupported hrv metric type",
-)
+    issues: MutableList<ValidationIssue>,
+): ScalarSampleRecord? =
+    mapScalarViaRegistry(
+        field = field,
+        dto =
+            ScalarSample(
+                providerRecordId = dto.providerRecordId,
+                measuredAt = dto.measuredAt,
+                // Legacy hrv records carry the unprefixed metric type ("rmssd"); scalar metric
+                // types are family-prefixed ("hrv_rmssd").
+                metricType = "hrv_${dto.metricType}",
+                value = dto.value,
+                unit = dto.unit,
+                context = dto.context,
+            ),
+        issues = issues,
+        recordType = RecordTypes.HRV,
+        normalizedRecordJson = dto.toNormalizedJsonObject(),
+        unknownMetricTypeMessage = "unsupported hrv metric type",
+    )
 
 internal fun mapCardiovascular(
     field: String,
     dto: Cardiovascular,
-    issues: MutableList<ValidationIssue>
-): ScalarSampleRecord? = mapScalarViaRegistry(
-    field = field,
-    dto = ScalarSample(
-        providerRecordId = dto.providerRecordId,
-        measuredAt = dto.measuredAt,
-        metricType = dto.metricType,
-        value = dto.value,
-        unit = dto.unit,
-    ),
-    issues = issues,
-    recordType = RecordTypes.CARDIOVASCULAR,
-    normalizedRecordJson = dto.toNormalizedJsonObject(),
-    unknownMetricTypeMessage = "unsupported cardiovascular metric type",
-)
+    issues: MutableList<ValidationIssue>,
+): ScalarSampleRecord? =
+    mapScalarViaRegistry(
+        field = field,
+        dto =
+            ScalarSample(
+                providerRecordId = dto.providerRecordId,
+                measuredAt = dto.measuredAt,
+                metricType = dto.metricType,
+                value = dto.value,
+                unit = dto.unit,
+            ),
+        issues = issues,
+        recordType = RecordTypes.CARDIOVASCULAR,
+        normalizedRecordJson = dto.toNormalizedJsonObject(),
+        unknownMetricTypeMessage = "unsupported cardiovascular metric type",
+    )
 
 internal fun mapExtendedBodyMeasurement(
     field: String,
     dto: ExtendedBodyMeasurement,
-    issues: MutableList<ValidationIssue>
-): ScalarSampleRecord? = mapScalarViaRegistry(
-    field = field,
-    dto = ScalarSample(
-        providerRecordId = dto.providerRecordId,
-        measuredAt = dto.measuredAt,
-        metricType = dto.metricType,
-        value = dto.value,
-        unit = dto.unit,
-        segment = dto.segment,
-    ),
-    issues = issues,
-    recordType = RecordTypes.EXTENDED_BODY_MEASUREMENT,
-    normalizedRecordJson = dto.toNormalizedJsonObject(),
-    unknownMetricTypeMessage = "unsupported extended body metric type",
-)
+    issues: MutableList<ValidationIssue>,
+): ScalarSampleRecord? =
+    mapScalarViaRegistry(
+        field = field,
+        dto =
+            ScalarSample(
+                providerRecordId = dto.providerRecordId,
+                measuredAt = dto.measuredAt,
+                metricType = dto.metricType,
+                value = dto.value,
+                unit = dto.unit,
+                segment = dto.segment,
+            ),
+        issues = issues,
+        recordType = RecordTypes.EXTENDED_BODY_MEASUREMENT,
+        normalizedRecordJson = dto.toNormalizedJsonObject(),
+        unknownMetricTypeMessage = "unsupported extended body metric type",
+    )
 
 internal fun mapScalar(
     field: String,
     dto: ScalarSample,
-    issues: MutableList<ValidationIssue>
+    issues: MutableList<ValidationIssue>,
 ): ScalarSampleRecord? = mapScalarViaRegistry(field, dto, issues)
 
 /**
@@ -198,15 +213,17 @@ private fun mapScalarViaRegistry(
 ): ScalarSampleRecord? {
     val measuredAt =
         parseInstant(dto.measuredAt, "$field.measuredAt", issues)
-    val descriptor = ScalarMetricRegistry.find(dto.metricType)
-        ?.takeIf { recordType == RecordTypes.SCALAR || it.recordType == recordType }
+    val descriptor =
+        ScalarMetricRegistry
+            .find(dto.metricType)
+            ?.takeIf { recordType == RecordTypes.SCALAR || it.recordType == recordType }
     if (descriptor == null) {
         issues.add(
             ValidationIssue(
                 field = "$field.metricType",
                 code = ValidationIssueCodes.UnsupportedValue,
                 message = unknownMetricTypeMessage,
-            )
+            ),
         )
         return null
     }
@@ -216,7 +233,7 @@ private fun mapScalarViaRegistry(
                 field = "$field.unit",
                 code = ValidationIssueCodes.UnsupportedValue,
                 message = "must be ${descriptor.unit}",
-            )
+            ),
         )
     }
     if (!descriptor.valueIsValid(dto.value)) {
@@ -230,7 +247,7 @@ private fun mapScalarViaRegistry(
                 field = "$field.context",
                 code = ValidationIssueCodes.UnsupportedValue,
                 message = "unsupported context for ${descriptor.metricType}",
-            )
+            ),
         )
     }
     if (allowedContexts == null && dto.context != null) {
@@ -239,7 +256,7 @@ private fun mapScalarViaRegistry(
                 field = "$field.context",
                 code = ValidationIssueCodes.UnsupportedValue,
                 message = "${descriptor.metricType} does not support a context",
-            )
+            ),
         )
     }
     if (dto.segment != null && !descriptor.supportsSegment) {
@@ -248,7 +265,7 @@ private fun mapScalarViaRegistry(
                 field = "$field.segment",
                 code = ValidationIssueCodes.UnsupportedValue,
                 message = "${descriptor.metricType} does not support a segment",
-            )
+            ),
         )
     }
     if (dto.segment != null && dto.segment !in BodySegments.supported) {
@@ -257,37 +274,42 @@ private fun mapScalarViaRegistry(
                 field = "$field.segment",
                 code = ValidationIssueCodes.UnsupportedValue,
                 message = "unsupported body segment",
-            )
+            ),
         )
     }
 
-    val valid = measuredAt != null &&
-        dto.unit == descriptor.unit &&
-        descriptor.valueIsValid(dto.value) &&
-        (allowedContexts == null && dto.context == null || allowedContexts != null && context in allowedContexts) &&
-        (dto.segment == null || descriptor.supportsSegment && dto.segment in BodySegments.supported)
+    val valid =
+        measuredAt != null &&
+            dto.unit == descriptor.unit &&
+            descriptor.valueIsValid(dto.value) &&
+            (allowedContexts == null && dto.context == null || allowedContexts != null && context in allowedContexts) &&
+            (dto.segment == null || descriptor.supportsSegment && dto.segment in BodySegments.supported)
     return if (valid) {
         ScalarSampleRecord(
             providerRecordId = dto.providerRecordId,
             normalizedRecordJson = normalizedRecordJson,
             recordType = recordType,
             measuredAt = measuredAt,
-            values = listOf(
-                ScalarValue(
-                    metricType = descriptor.metricType,
-                    value = dto.value,
-                    unit = dto.unit,
-                    context = context,
-                    segment = dto.segment,
-                )
-            ),
+            values =
+                listOf(
+                    ScalarValue(
+                        metricType = descriptor.metricType,
+                        value = dto.value,
+                        unit = dto.unit,
+                        context = context,
+                        segment = dto.segment,
+                    ),
+                ),
         )
     } else {
         null
     }
 }
 
-private fun outOfRangeIssue(field: String, metricType: String) = ValidationIssue(
+private fun outOfRangeIssue(
+    field: String,
+    metricType: String,
+) = ValidationIssue(
     field = field,
     code = ValidationIssueCodes.OutOfRange,
     message = "out of range for $metricType",

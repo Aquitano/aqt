@@ -22,38 +22,50 @@ data class Cursor(
     @SerialName("f") val field: String,
 ) {
     fun encode(): String =
-        Base64.getUrlEncoder().withoutPadding()
+        Base64
+            .getUrlEncoder()
+            .withoutPadding()
             .encodeToString(AppJson.encodeToString(serializer(), this).toByteArray(Charsets.UTF_8))
 
     companion object {
-        fun encode(sortValue: String, lastId: Long, order: String, field: String): String =
-            Cursor(sortValue, lastId, order, field).encode()
+        fun encode(
+            sortValue: String,
+            lastId: Long,
+            order: String,
+            field: String,
+        ): String = Cursor(sortValue, lastId, order, field).encode()
 
-        fun decode(value: String, expectedField: String, expectedOrder: String): Cursor {
-            val cursor = runCatching {
-                val json = String(Base64.getUrlDecoder().decode(value), Charsets.UTF_8)
-                AppJson.decodeFromString(serializer(), json)
-            }.getOrElse {
-                throw RequestValidationException(
-                    listOf(
-                        ValidationIssue(
-                            field = "cursor",
-                            code = ValidationIssueCodes.InvalidFormat,
-                            message = "is not a valid cursor",
-                        )
+        fun decode(
+            value: String,
+            expectedField: String,
+            expectedOrder: String,
+        ): Cursor {
+            val cursor =
+                runCatching {
+                    val json = String(Base64.getUrlDecoder().decode(value), Charsets.UTF_8)
+                    AppJson.decodeFromString(serializer(), json)
+                }.getOrElse {
+                    throw RequestValidationException(
+                        listOf(
+                            ValidationIssue(
+                                field = "cursor",
+                                code = ValidationIssueCodes.InvalidFormat,
+                                message = "is not a valid cursor",
+                            ),
+                        ),
                     )
-                )
-            }
+                }
             if (cursor.field != expectedField || cursor.order != expectedOrder) {
                 throw RequestValidationException(
                     listOf(
                         ValidationIssue(
                             field = "cursor",
                             code = ValidationIssueCodes.InvalidState,
-                            message = "was issued for sort=${cursor.field} order=${cursor.order} " +
-                                "and cannot be used with this request",
-                        )
-                    )
+                            message =
+                                "was issued for sort=${cursor.field} order=${cursor.order} " +
+                                    "and cannot be used with this request",
+                        ),
+                    ),
                 )
             }
             return cursor

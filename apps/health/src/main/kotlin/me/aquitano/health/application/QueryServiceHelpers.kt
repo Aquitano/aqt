@@ -2,8 +2,8 @@ package me.aquitano.health.application
 
 import me.aquitano.health.api.dto.SourceMetadataResponse
 import me.aquitano.health.application.metric.common.MetricReadRepository
-import me.aquitano.health.application.metric.common.sourceInstanceIds
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
+import me.aquitano.health.application.metric.common.sourceInstanceIds
 
 internal fun <T> List<T>.singleSource(
     includeSource: Boolean,
@@ -13,7 +13,8 @@ internal fun <T> List<T>.singleSource(
     if (!includeSource) return null
     val ids = sourceInstanceIds(sourceInstanceId)
     if (ids.size != 1) return null
-    return repository.sourceMetadataFor(ids)
+    return repository
+        .sourceMetadataFor(ids)
         .values
         .singleOrNull()
         .toResponse()

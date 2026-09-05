@@ -5,11 +5,11 @@ package me.aquitano.health.api
 import io.ktor.openapi.*
 import io.ktor.utils.io.*
 import me.aquitano.external.withings.WITHINGS_PROVIDER_CODE
-import me.aquitano.health.domain.BatchStatus
 import me.aquitano.health.api.dto.HealthDayModuleName
 import me.aquitano.health.application.metric.common.EnumParamSpec
 import me.aquitano.health.application.metric.common.LimitParamSpec
 import me.aquitano.health.application.metric.common.QueryParamSpecs
+import me.aquitano.health.domain.BatchStatus
 import me.aquitano.health.domain.RecordTypes
 
 private const val ReadCursorExample =
@@ -26,12 +26,15 @@ internal fun Operation.Builder.providerCodePath() {
         path("providerCode") {
             description =
                 "Provider code. Current examples are `google-health` and `withings`."
-            schema = stringSchema(
-                enumValues = listOf(
-                    "google-health",
-                    WITHINGS_PROVIDER_CODE
-                ), example = WITHINGS_PROVIDER_CODE
-            )
+            schema =
+                stringSchema(
+                    enumValues =
+                        listOf(
+                            "google-health",
+                            WITHINGS_PROVIDER_CODE,
+                        ),
+                    example = WITHINGS_PROVIDER_CODE,
+                )
         }
     }
 }
@@ -60,7 +63,7 @@ internal fun Operation.Builder.readQueryParameters(
     providerFilterParameters()
     if (includeLatest) {
         latestParameter(
-            "Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order."
+            "Return the latest matching item when true. Defaults to false. Cannot be combined with limit, sort, or order.",
         )
     }
     sortParameter(
@@ -178,7 +181,7 @@ internal fun Operation.Builder.sleepNightQueryParameters() {
         description = "Sort field. Sleep night reads support `date`.",
     )
     orderParameter(
-        "Sort direction. Defaults to ${QueryParamSpecs.order.default}. Use desc for most recent sleep nights first."
+        "Sort direction. Defaults to ${QueryParamSpecs.order.default}. Use desc for most recent sleep nights first.",
     )
     cursorParameter(CursorDescription, example = DateCursorExample)
 }
@@ -239,10 +242,11 @@ internal fun Operation.Builder.adminQueryParameters() {
     parameters {
         query("status") {
             description = "Batch status filter."
-            schema = stringSchema(
-                enumValues = BatchStatus.entries.map { it.stored },
-                example = BatchStatus.Failed.stored,
-            )
+            schema =
+                stringSchema(
+                    enumValues = BatchStatus.entries.map { it.stored },
+                    example = BatchStatus.Failed.stored,
+                )
         }
     }
     instantRangeParameters(
@@ -299,10 +303,11 @@ private fun Operation.Builder.instantRangeParameters(
     parameters {
         query("from") {
             description = fromDescription
-            schema = stringSchema(
-                format = JsonFormatDateTime,
-                example = ExampleFromAt
-            )
+            schema =
+                stringSchema(
+                    format = JsonFormatDateTime,
+                    example = ExampleFromAt,
+                )
         }
         query("to") {
             description = toDescription
@@ -329,10 +334,11 @@ private fun Operation.Builder.providerFilterParameters(
         }
         query(QueryParamSpecs.includeSource.name) {
             description = includeSourceDescription
-            schema = booleanSchema(
-                default = QueryParamSpecs.includeSource.default,
-                example = false
-            )
+            schema =
+                booleanSchema(
+                    default = QueryParamSpecs.includeSource.default,
+                    example = false,
+                )
         }
     }
 }
@@ -355,11 +361,12 @@ private fun Operation.Builder.sortParameter(
     parameters {
         query(spec.name) {
             this.description = sortDescription
-            schema = stringSchema(
-                enumValues = spec.values,
-                default = spec.default,
-                example = example,
-            )
+            schema =
+                stringSchema(
+                    enumValues = spec.values,
+                    default = spec.default,
+                    example = example,
+                )
         }
     }
 }
@@ -368,11 +375,12 @@ private fun Operation.Builder.orderParameter(orderDescription: String) {
     parameters {
         query(QueryParamSpecs.order.name) {
             description = orderDescription
-            schema = stringSchema(
-                enumValues = QueryParamSpecs.order.values,
-                default = QueryParamSpecs.order.default,
-                example = "desc",
-            )
+            schema =
+                stringSchema(
+                    enumValues = QueryParamSpecs.order.values,
+                    default = QueryParamSpecs.order.default,
+                    example = "desc",
+                )
         }
     }
 }
@@ -386,12 +394,13 @@ private fun Operation.Builder.limitParameter(
     parameters {
         query(spec.name) {
             this.description = limitDescription
-            schema = integerSchema(
-                default = spec.default,
-                minimum = spec.min.toDouble(),
-                maximum = spec.max.toDouble(),
-                example = example,
-            )
+            schema =
+                integerSchema(
+                    default = spec.default,
+                    minimum = spec.min.toDouble(),
+                    maximum = spec.max.toDouble(),
+                    example = example,
+                )
         }
     }
 }

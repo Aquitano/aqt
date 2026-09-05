@@ -14,17 +14,19 @@ class IngestionMappingService {
     fun validateAndMap(request: IngestionBatchRequest): ValidatedIngestionBatch {
         val issues = mutableListOf<ValidationIssue>()
         val provider = normalizeProvider(request.provider, issues)
-        val providerInstanceId = requiredNonBlank(
-            request.providerInstanceId,
-            "providerInstanceId",
-            issues
-        )
+        val providerInstanceId =
+            requiredNonBlank(
+                request.providerInstanceId,
+                "providerInstanceId",
+                issues,
+            )
         val batchExternalId =
             optionalNonBlank(request.batchExternalId, "batchExternalId", issues)
         val ingestedAt = parseInstant(request.ingestedAt, "ingestedAt", issues)
-        val sourcePayload = request.sourcePayload ?: JsonNull.also {
-            issues.add(ValidationIssue("sourcePayload"))
-        }
+        val sourcePayload =
+            request.sourcePayload ?: JsonNull.also {
+                issues.add(ValidationIssue("sourcePayload"))
+            }
         val inputRecords = request.records
         if (inputRecords == null) {
             issues.add(ValidationIssue("records"))
@@ -34,44 +36,48 @@ class IngestionMappingService {
                     field = "records",
                     code = ValidationIssueCodes.InvalidState,
                     message = "must not be empty",
-                )
+                ),
             )
         }
 
-        val records = inputRecords?.mapIndexedNotNull { index, dto ->
-            mapRecord(index, dto, issues)
-        }.orEmpty()
+        val records =
+            inputRecords
+                ?.mapIndexedNotNull { index, dto ->
+                    mapRecord(index, dto, issues)
+                }.orEmpty()
 
-        val duplicateProviderIds = records
-            .mapNotNull { it.providerRecordId }
-            .groupingBy { it }
-            .eachCount()
-            .filterValues { it > 1 }
-            .keys
+        val duplicateProviderIds =
+            records
+                .mapNotNull { it.providerRecordId }
+                .groupingBy { it }
+                .eachCount()
+                .filterValues { it > 1 }
+                .keys
         duplicateProviderIds.forEach {
             issues.add(
                 ValidationIssue(
                     field = "records",
                     code = ValidationIssueCodes.InvalidState,
                     message = "providerRecordId '$it' is duplicated in this batch",
-                )
+                ),
             )
         }
 
         if (issues.isNotEmpty()) throw RequestValidationException(issues)
 
-        val normalizedPayloadJson = AppJson.encodeToString(
-            buildJsonObject {
-                put("provider", provider)
-                put("providerInstanceId", providerInstanceId)
-                batchExternalId?.let { put("batchExternalId", it) }
-                put("ingestedAt", ingestedAt!!.toString())
-                put(
-                    "records",
-                    JsonArray(records.map { it.normalizedRecordJson })
-                )
-            },
-        )
+        val normalizedPayloadJson =
+            AppJson.encodeToString(
+                buildJsonObject {
+                    put("provider", provider)
+                    put("providerInstanceId", providerInstanceId)
+                    batchExternalId?.let { put("batchExternalId", it) }
+                    put("ingestedAt", ingestedAt!!.toString())
+                    put(
+                        "records",
+                        JsonArray(records.map { it.normalizedRecordJson }),
+                    )
+                },
+            )
 
         return ValidatedIngestionBatch(
             provider = provider!!,
@@ -88,13 +94,12 @@ class IngestionMappingService {
      * Maps a single already-stored normalized record back to a HealthRecord, for replay.
      * Returns null when the record no longer passes current validation rules.
      */
-    fun mapRecord(dto: IngestionRecord): HealthRecord? =
-        mapRecord(index = 0, dto = dto, issues = mutableListOf())
+    fun mapRecord(dto: IngestionRecord): HealthRecord? = mapRecord(index = 0, dto = dto, issues = mutableListOf())
 
     private fun mapRecord(
         index: Int,
         dto: IngestionRecord,
-        issues: MutableList<ValidationIssue>
+        issues: MutableList<ValidationIssue>,
     ): HealthRecord? {
         val field = "records[$index]"
         return when (dto) {

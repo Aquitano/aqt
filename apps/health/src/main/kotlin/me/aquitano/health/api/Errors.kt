@@ -2,6 +2,7 @@
 
 package me.aquitano.health.api
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.*
 import io.ktor.openapi.JsonSchema
 import io.ktor.server.application.*
@@ -13,7 +14,6 @@ import io.ktor.utils.io.ExperimentalKtorApi
 import kotlinx.serialization.Serializable
 import me.aquitano.health.domain.*
 import me.aquitano.health.domain.NotFoundException
-import io.github.oshai.kotlinlogging.KotlinLogging
 import me.aquitano.health.infrastructure.logging.*
 
 private val logger = KotlinLogging.logger("me.aquitano.health.api.Errors")
@@ -33,7 +33,7 @@ fun Application.configureErrorHandling() {
                         code = "not_found",
                         message = "Resource not found",
                         requestId = call.requestId(),
-                    )
+                    ),
                 ),
             )
         }
@@ -50,7 +50,7 @@ fun Application.configureErrorHandling() {
                         code = "unauthorized",
                         message = "Missing or invalid API key",
                         requestId = call.requestId(),
-                    )
+                    ),
                 ),
             )
         }
@@ -68,13 +68,14 @@ fun Application.configureErrorHandling() {
                         code = "validation_failed",
                         message = "Request validation failed",
                         requestId = call.requestId(),
-                        details = cause.issues.map {
-                            ErrorDetail(
-                                field = it.field,
-                                code = it.code,
-                                message = it.message,
-                            )
-                        },
+                        details =
+                            cause.issues.map {
+                                ErrorDetail(
+                                    field = it.field,
+                                    code = it.code,
+                                    message = it.message,
+                                )
+                            },
                     ),
                 ),
             )
@@ -92,7 +93,7 @@ fun Application.configureErrorHandling() {
                         code = "not_found",
                         message = cause.message ?: "Resource not found",
                         requestId = call.requestId(),
-                    )
+                    ),
                 ),
             )
         }
@@ -107,10 +108,11 @@ fun Application.configureErrorHandling() {
                 ErrorResponse(
                     ErrorBody(
                         code = cause.code,
-                        message = cause.message
-                            ?: "Request conflicts with current state",
+                        message =
+                            cause.message
+                                ?: "Request conflicts with current state",
                         requestId = call.requestId(),
-                    )
+                    ),
                 ),
             )
         }
@@ -129,7 +131,7 @@ fun Application.configureErrorHandling() {
                         code = cause.code,
                         message = cause.message ?: "Provider request failed",
                         requestId = call.requestId(),
-                    )
+                    ),
                 ),
             )
         }
@@ -146,7 +148,7 @@ fun Application.configureErrorHandling() {
                         code = "validation_failed",
                         message = "Request validation failed",
                         requestId = call.requestId(),
-                    )
+                    ),
                 ),
             )
         }
@@ -165,7 +167,7 @@ fun Application.configureErrorHandling() {
                         code = cause.code,
                         message = cause.publicMessage,
                         requestId = call.requestId(),
-                    )
+                    ),
                 ),
             )
         }
@@ -183,7 +185,7 @@ fun Application.configureErrorHandling() {
                         code = "internal_error",
                         message = "Unexpected server error",
                         requestId = call.requestId(),
-                    )
+                    ),
                 ),
             )
         }
@@ -201,7 +203,7 @@ data class ErrorBody(
         "Stable machine-readable error code. Envelope-level values are `validation_failed`, `unauthorized`, " +
             "`not_found`, and `internal_error`; provider-sync and ingestion endpoints additionally return " +
             "provider-specific conflict and upstream codes (for example `idempotency_key_conflict`, " +
-            "`scheduled_sync_already_running`, or `withings_needs_reauth`)."
+            "`scheduled_sync_already_running`, or `withings_needs_reauth`).",
     )
     val code: String,
     val message: String,
@@ -225,5 +227,4 @@ data class ErrorDetail(
     val message: String,
 )
 
-private fun ApplicationCall.requestId(): String =
-    callId ?: response.headers[HttpHeaders.XRequestId] ?: "unknown"
+private fun ApplicationCall.requestId(): String = callId ?: response.headers[HttpHeaders.XRequestId] ?: "unknown"

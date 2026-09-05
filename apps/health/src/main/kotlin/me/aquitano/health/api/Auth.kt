@@ -25,8 +25,7 @@ fun Application.configureAuthentication(
     }
 }
 
-private class ApiKeyAuthProviderConfig :
-    AuthenticationProvider.Config(ApiKeyAuthProviderName)
+private class ApiKeyAuthProviderConfig : AuthenticationProvider.Config(ApiKeyAuthProviderName)
 
 /**
  * Bearer API-key authentication for `authenticate(ApiKeyAuthProviderName)` route blocks.
@@ -39,11 +38,12 @@ private class ApiKeyAuthenticationProvider(
     private val clock: UtcClock,
 ) : AuthenticationProvider(ApiKeyAuthProviderConfig()) {
     override suspend fun onAuthenticate(context: AuthenticationContext) {
-        val client = context.call.requireApiClient(
-            supportRepository = supportRepository,
-            apiKeyHasher = apiKeyHasher,
-            clock = clock,
-        )
+        val client =
+            context.call.requireApiClient(
+                supportRepository = supportRepository,
+                apiKeyHasher = apiKeyHasher,
+                clock = clock,
+            )
         context.principal(client)
     }
 }
@@ -56,18 +56,20 @@ private suspend fun ApplicationCall.requireApiClient(
     val cached = attributes.getOrNull(ApiClientAttributeKey)
     if (cached != null) return cached
 
-    val header = request.headers[HttpHeaders.Authorization]
-        ?: throw UnauthorizedException()
-    val apiKey = header.removePrefix("Bearer ").takeIf { it != header }?.trim()
-        ?: throw UnauthorizedException()
+    val header =
+        request.headers[HttpHeaders.Authorization]
+            ?: throw UnauthorizedException()
+    val apiKey =
+        header.removePrefix("Bearer ").takeIf { it != header }?.trim()
+            ?: throw UnauthorizedException()
     if (apiKey.isBlank()) throw UnauthorizedException()
 
-    val client = supportRepository.findEnabledApiClientByHash(
-        apiKeyHash = apiKeyHasher.hash(apiKey),
-        now = clock.now(),
-    ) ?: throw UnauthorizedException()
+    val client =
+        supportRepository.findEnabledApiClientByHash(
+            apiKeyHash = apiKeyHasher.hash(apiKey),
+            now = clock.now(),
+        ) ?: throw UnauthorizedException()
 
     attributes.put(ApiClientAttributeKey, client)
     return client
 }
-

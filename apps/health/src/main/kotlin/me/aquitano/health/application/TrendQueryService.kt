@@ -2,18 +2,18 @@ package me.aquitano.health.application
 
 import me.aquitano.health.api.dto.*
 import me.aquitano.health.application.metric.common.QueryParams
-import me.aquitano.health.domain.BodyMetricTypes
-import me.aquitano.health.domain.ScalarMetricTypes
 import me.aquitano.health.application.metric.common.repository.DailyReadFilters
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
-import me.aquitano.health.shared.utcDate
-import me.aquitano.health.application.metric.steps.repository.StepRepository
 import me.aquitano.health.application.metric.scalar.ScalarSampleReadRepository
 import me.aquitano.health.application.metric.scalar.ScalarSampleRow
 import me.aquitano.health.application.metric.sleep.repository.SleepRepository
-import org.jetbrains.exposed.v1.jdbc.Database
+import me.aquitano.health.application.metric.steps.repository.StepRepository
+import me.aquitano.health.domain.BodyMetricTypes
+import me.aquitano.health.domain.ScalarMetricTypes
 import me.aquitano.health.infrastructure.database.suspendDbTransaction
+import me.aquitano.health.shared.utcDate
+import org.jetbrains.exposed.v1.jdbc.Database
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -25,30 +25,30 @@ class TrendQueryService(
     private val sleepRepository: SleepRepository,
     private val scalarRepository: ScalarSampleReadRepository = ScalarSampleReadRepository(),
 ) {
-
     suspend fun dashboardTrends(
         params: QueryParams,
         now: Instant,
-    ): DashboardTrendsResponse = dbQuery {
-        val periodDays = params.optional("periodDays")?.toIntOrNull()?.coerceIn(1, 90) ?: 7
-        val toDate = params.date("toDate") ?: now.utcDate()
-        val fromDate = toDate.minusDays(periodDays.toLong() - 1)
-        val previousToDate = fromDate.minusDays(1)
-        val previousFromDate = previousToDate.minusDays(periodDays.toLong() - 1)
+    ): DashboardTrendsResponse =
+        dbQuery {
+            val periodDays = params.optional("periodDays")?.toIntOrNull()?.coerceIn(1, 90) ?: 7
+            val toDate = params.date("toDate") ?: now.utcDate()
+            val fromDate = toDate.minusDays(periodDays.toLong() - 1)
+            val previousToDate = fromDate.minusDays(1)
+            val previousFromDate = previousToDate.minusDays(periodDays.toLong() - 1)
 
-        val steps = stepsTrend(fromDate, toDate, previousFromDate, previousToDate, periodDays)
-        val heartRate = heartRateTrend(fromDate, toDate, previousFromDate, previousToDate)
-        val sleep = sleepTrend(fromDate, toDate, previousFromDate, previousToDate)
-        val weight = weightTrend(toDate)
+            val steps = stepsTrend(fromDate, toDate, previousFromDate, previousToDate, periodDays)
+            val heartRate = heartRateTrend(fromDate, toDate, previousFromDate, previousToDate)
+            val sleep = sleepTrend(fromDate, toDate, previousFromDate, previousToDate)
+            val weight = weightTrend(toDate)
 
-        DashboardTrendsResponse(
-            periodDays = periodDays,
-            steps = steps,
-            heartRate = heartRate,
-            sleep = sleep,
-            weight = weight,
-        )
-    }
+            DashboardTrendsResponse(
+                periodDays = periodDays,
+                steps = steps,
+                heartRate = heartRate,
+                sleep = sleep,
+                weight = weight,
+            )
+        }
 
     private fun stepsTrend(
         currentFrom: LocalDate,
@@ -57,12 +57,14 @@ class TrendQueryService(
         previousTo: LocalDate,
         periodDays: Int,
     ): StepsTrend? {
-        val current = stepRepository.sumStepDailySummaries(
-            dailyReadFilters(currentFrom, currentTo)
-        )
-        val previous = stepRepository.sumStepDailySummaries(
-            dailyReadFilters(previousFrom, previousTo)
-        )
+        val current =
+            stepRepository.sumStepDailySummaries(
+                dailyReadFilters(currentFrom, currentTo),
+            )
+        val previous =
+            stepRepository.sumStepDailySummaries(
+                dailyReadFilters(previousFrom, previousTo),
+            )
         if (current.sampleCount == 0 && previous.sampleCount == 0) return null
         val dailyAverage = if (current.sampleCount > 0) current.steps / current.sampleCount else 0
         return StepsTrend(
@@ -79,16 +81,18 @@ class TrendQueryService(
         previousFrom: LocalDate,
         previousTo: LocalDate,
     ): HeartRateTrend? {
-        val currentSummary = scalarRepository.summarize(
-            readFilters(currentFrom, currentTo),
-            setOf(ScalarMetricTypes.HEART_RATE),
-            canonical = false,
-        )
-        val previousSummary = scalarRepository.summarize(
-            readFilters(previousFrom, previousTo),
-            setOf(ScalarMetricTypes.HEART_RATE),
-            canonical = false,
-        )
+        val currentSummary =
+            scalarRepository.summarize(
+                readFilters(currentFrom, currentTo),
+                setOf(ScalarMetricTypes.HEART_RATE),
+                canonical = false,
+            )
+        val previousSummary =
+            scalarRepository.summarize(
+                readFilters(previousFrom, previousTo),
+                setOf(ScalarMetricTypes.HEART_RATE),
+                canonical = false,
+            )
         if (currentSummary.count == 0 && previousSummary.count == 0) return null
         val currentAvg = currentSummary.avgValue ?: 0.0
         val previousAvg = previousSummary.avgValue ?: 0.0
@@ -105,12 +109,14 @@ class TrendQueryService(
         previousFrom: LocalDate,
         previousTo: LocalDate,
     ): SleepTrend? {
-        val currentAvg = sleepRepository.avgSleepDuration(
-            readFilters(currentFrom, currentTo)
-        )
-        val previousAvg = sleepRepository.avgSleepDuration(
-            readFilters(previousFrom, previousTo)
-        )
+        val currentAvg =
+            sleepRepository.avgSleepDuration(
+                readFilters(currentFrom, currentTo),
+            )
+        val previousAvg =
+            sleepRepository.avgSleepDuration(
+                readFilters(previousFrom, previousTo),
+            )
         if (currentAvg == null && previousAvg == null) return null
         val current = currentAvg ?: 0L
         val previous = previousAvg ?: 0L
@@ -122,23 +128,29 @@ class TrendQueryService(
     }
 
     private fun weightTrend(toDate: LocalDate): WeightTrend? {
-        val current = scalarRepository.latestBefore(
-            before = toDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant(),
-            metricType = BodyMetricTypes.WEIGHT,
-        )
+        val current =
+            scalarRepository.latestBefore(
+                before = toDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant(),
+                metricType = BodyMetricTypes.WEIGHT,
+            )
         if (current == null) return null
-        val previous = scalarRepository.latestBefore(
-            before = current.measuredAt,
-            metricType = BodyMetricTypes.WEIGHT,
-        )
+        val previous =
+            scalarRepository.latestBefore(
+                before = current.measuredAt,
+                metricType = BodyMetricTypes.WEIGHT,
+            )
         val delta = if (previous != null) roundToOneDecimal(current.value - previous.value) else null
-        val percentChange = if (previous != null && previous.value != 0.0) {
-            percentChange(current.value, previous.value)
-        } else null
+        val percentChange =
+            if (previous != null && previous.value != 0.0) {
+                percentChange(current.value, previous.value)
+            } else {
+                null
+            }
 
-        val sourceMetadata = scalarRepository.sourceMetadataFor(
-            setOf(current.sourceInstanceId)
-        )
+        val sourceMetadata =
+            scalarRepository.sourceMetadataFor(
+                setOf(current.sourceInstanceId),
+            )
         val currentResponse = current.toResponse(sourceMetadata)
         val previousResponse = previous?.toResponse(sourceMetadata)
 
@@ -150,7 +162,10 @@ class TrendQueryService(
         )
     }
 
-    private fun dailyReadFilters(fromDate: LocalDate, toDate: LocalDate): DailyReadFilters =
+    private fun dailyReadFilters(
+        fromDate: LocalDate,
+        toDate: LocalDate,
+    ): DailyReadFilters =
         DailyReadFilters(
             fromDate = fromDate,
             toDate = toDate,
@@ -162,7 +177,10 @@ class TrendQueryService(
             order = "asc",
         )
 
-    private fun readFilters(fromDate: LocalDate, toDate: LocalDate): ReadFilters =
+    private fun readFilters(
+        fromDate: LocalDate,
+        toDate: LocalDate,
+    ): ReadFilters =
         ReadFilters(
             from = fromDate.atStartOfDay(ZoneOffset.UTC).toInstant(),
             to = toDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant(),
@@ -174,17 +192,17 @@ class TrendQueryService(
             order = "asc",
         )
 
-    private fun percentChange(current: Double, previous: Double): Double {
+    private fun percentChange(
+        current: Double,
+        previous: Double,
+    ): Double {
         if (previous == 0.0) return if (current > 0) 100.0 else 0.0
         return roundToOneDecimal(((current - previous) / previous) * 100.0)
     }
 
-    private fun roundToOneDecimal(value: Double): Double =
-        (value * 10.0).roundToInt() / 10.0
+    private fun roundToOneDecimal(value: Double): Double = (value * 10.0).roundToInt() / 10.0
 
-    private fun ScalarSampleRow.toResponse(
-        sourceMetadata: Map<Int, SourceMetadata>
-    ): ScalarSampleResponse =
+    private fun ScalarSampleRow.toResponse(sourceMetadata: Map<Int, SourceMetadata>): ScalarSampleResponse =
         ScalarSampleResponse(
             id = id,
             measuredAt = measuredAt.toString(),
@@ -193,14 +211,14 @@ class TrendQueryService(
             unit = unit,
             context = context,
             segment = segment,
-            source = sourceMetadata[sourceInstanceId]?.let {
-                SourceMetadataResponse(
-                    provider = it.provider,
-                    providerInstanceId = it.providerInstanceId,
-                )
-            },
+            source =
+                sourceMetadata[sourceInstanceId]?.let {
+                    SourceMetadataResponse(
+                        provider = it.provider,
+                        providerInstanceId = it.providerInstanceId,
+                    )
+                },
         )
 
-    private suspend fun <T> dbQuery(block: suspend () -> T): T =
-        suspendDbTransaction(db = database) { block() }
+    private suspend fun <T> dbQuery(block: suspend () -> T): T = suspendDbTransaction(db = database) { block() }
 }

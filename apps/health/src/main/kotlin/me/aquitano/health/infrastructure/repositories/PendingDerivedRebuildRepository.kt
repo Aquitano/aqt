@@ -25,25 +25,31 @@ data class PendingDerivedRebuildRecord(
  * retried by [me.aquitano.health.application.PendingDerivedRebuildSweeper] and deleted
  * once the rebuild succeeds.
  */
-class PendingDerivedRebuildRepository(private val database: Database) {
+class PendingDerivedRebuildRepository(
+    private val database: Database,
+) {
     /**
      * Records every (kind, date) of a failed rebuild request. Must be called inside the
      * transaction that marks the batch failed so the queue and the batch state agree.
      * Dates already queued keep their backoff schedule; only the error message is refreshed.
      */
-    fun enqueueInTransaction(request: DerivedRebuildRequest, error: String, now: Instant) {
+    fun enqueueInTransaction(
+        request: DerivedRebuildRequest,
+        error: String,
+        now: Instant,
+    ) {
         val nowTimestamp = now.toDbTimestamp()
         request.affectedDates.forEach { (kind, dates) ->
             dates.forEach { date ->
-                val existing = PendingDerivedRebuildsTable
-                    .selectAll()
-                    .where {
-                        (PendingDerivedRebuildsTable.sourceInstanceId eq request.sourceInstanceId) and
+                val existing =
+                    PendingDerivedRebuildsTable
+                        .selectAll()
+                        .where {
+                            (PendingDerivedRebuildsTable.sourceInstanceId eq request.sourceInstanceId) and
                                 (PendingDerivedRebuildsTable.derivedKind eq kind.name) and
                                 (PendingDerivedRebuildsTable.affectedDate eq date)
-                    }
-                    .limit(1)
-                    .singleOrNull()
+                        }.limit(1)
+                        .singleOrNull()
                 if (existing == null) {
                     PendingDerivedRebuildsTable.insert {
                         it[sourceInstanceId] = request.sourceInstanceId
@@ -67,7 +73,10 @@ class PendingDerivedRebuildRepository(private val database: Database) {
         }
     }
 
-    suspend fun due(now: Instant, limit: Int): List<PendingDerivedRebuildRecord> =
+    suspend fun due(
+        now: Instant,
+        limit: Int,
+    ): List<PendingDerivedRebuildRecord> =
         suspendDbTransaction(db = database) {
             PendingDerivedRebuildsTable
                 .selectAll()

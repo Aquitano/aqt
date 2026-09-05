@@ -26,13 +26,14 @@ class ActivityQueryService(
                 if (latest) params.dailyLatestReadFilters(now) else params.dailyReadFilters(now)
             val (rows, sourceMetadata) =
                 canonicalRepository.listCanonicalActivitySummaries(filters)
-            val page = rows.keysetPage(
-                limit = filters.limit,
-                sort = filters.sort,
-                order = filters.order,
-                sortValue = { it.date },
-                id = { it.id.toLong() },
-            )
+            val page =
+                rows.keysetPage(
+                    limit = filters.limit,
+                    sort = filters.sort,
+                    order = filters.order,
+                    sortValue = { it.date },
+                    id = { it.id.toLong() },
+                )
             ActivitySummariesResponse(
                 items = page.items.map { it.toResponse(sourceMetadata) },
                 meta = page.items.meta(filters, if (latest) null else page.nextCursor),

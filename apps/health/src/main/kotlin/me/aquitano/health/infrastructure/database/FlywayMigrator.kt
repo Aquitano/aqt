@@ -5,7 +5,8 @@ import org.flywaydb.core.Flyway
 
 class FlywayMigrator {
     fun migrate(config: DatabaseConfig) {
-        Flyway.configure()
+        Flyway
+            .configure()
             .dataSource(config.jdbcUrl, config.user, config.password)
             .locations("classpath:db/migration")
             .load()

@@ -19,16 +19,17 @@ class SleepWriteRepository {
         now: Instant,
     ): Int? {
         val sessionId =
-            SleepSessionsTable.insertIgnoreAndGetId {
-                it[this.sourceInstanceId] = sourceInstanceId
-                it[this.ingestionRecordId] = ingestionRecordId
-                it[providerRecordId] = record.providerRecordId
-                it[startAt] = record.startAt.toDbTimestamp()
-                it[endAt] = record.endAt.toDbTimestamp()
-                it[durationSeconds] =
-                    Duration.between(record.startAt, record.endAt).seconds
-                it[createdAt] = now.toDbTimestamp()
-            }?.value ?: return null
+            SleepSessionsTable
+                .insertIgnoreAndGetId {
+                    it[this.sourceInstanceId] = sourceInstanceId
+                    it[this.ingestionRecordId] = ingestionRecordId
+                    it[providerRecordId] = record.providerRecordId
+                    it[startAt] = record.startAt.toDbTimestamp()
+                    it[endAt] = record.endAt.toDbTimestamp()
+                    it[durationSeconds] =
+                        Duration.between(record.startAt, record.endAt).seconds
+                    it[createdAt] = now.toDbTimestamp()
+                }?.value ?: return null
         record.stages.forEach { stage ->
             // insertIgnore + the sleep_stages_session_start_stage_uq unique index keep replays and
             // any future non-new-session writer from doubling stages and inflating stage totals.

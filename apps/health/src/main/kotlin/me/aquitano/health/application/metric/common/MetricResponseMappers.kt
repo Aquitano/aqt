@@ -1,16 +1,16 @@
 package me.aquitano.health.application.metric.common
 
 import me.aquitano.health.api.dto.*
-import me.aquitano.health.application.metric.common.repository.SourceMetadata
-import me.aquitano.health.application.metric.common.repository.ReadFilters
-import me.aquitano.health.application.metric.common.repository.DailyReadFilters
-import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
 import me.aquitano.health.application.metric.activity.repository.ActivitySummaryRow
-import me.aquitano.health.application.metric.sleep.repository.SleepSummaryRow
 import me.aquitano.health.application.metric.cardiovascular.repository.BloodPressureMeasurementRow
+import me.aquitano.health.application.metric.common.repository.DailyReadFilters
+import me.aquitano.health.application.metric.common.repository.ReadFilters
+import me.aquitano.health.application.metric.common.repository.SleepNightReadFilters
+import me.aquitano.health.application.metric.common.repository.SourceMetadata
+import me.aquitano.health.application.metric.sleep.repository.SleepNightRow
 import me.aquitano.health.application.metric.sleep.repository.SleepSessionRow
 import me.aquitano.health.application.metric.sleep.repository.SleepStageRow
-import me.aquitano.health.application.metric.sleep.repository.SleepNightRow
+import me.aquitano.health.application.metric.sleep.repository.SleepSummaryRow
 import me.aquitano.health.shared.Cursor
 
 internal fun SourceMetadata?.toResponse(): SourceMetadataResponse? =
@@ -21,9 +21,7 @@ internal fun SourceMetadata?.toResponse(): SourceMetadataResponse? =
         )
     }
 
-internal fun ActivitySummaryRow.toResponse(
-    sourceMetadata: Map<Int, SourceMetadata>,
-): ActivitySummaryResponse =
+internal fun ActivitySummaryRow.toResponse(sourceMetadata: Map<Int, SourceMetadata>): ActivitySummaryResponse =
     ActivitySummaryResponse(
         id = id,
         date = date,
@@ -41,9 +39,7 @@ internal fun ActivitySummaryRow.toResponse(
         source = sourceMetadata[sourceInstanceId].toResponse(),
     )
 
-internal fun SleepSummaryRow.toResponse(
-    sourceMetadata: Map<Int, SourceMetadata>,
-): SleepSummaryResponse =
+internal fun SleepSummaryRow.toResponse(sourceMetadata: Map<Int, SourceMetadata>): SleepSummaryResponse =
     SleepSummaryResponse(
         id = id,
         startAt = startAt,
@@ -79,9 +75,7 @@ internal fun SleepSummaryRow.toResponse(
         source = sourceMetadata[sourceInstanceId].toResponse(),
     )
 
-internal fun BloodPressureMeasurementRow.toResponse(
-    sourceMetadata: Map<Int, SourceMetadata>,
-): BloodPressureMeasurementResponse =
+internal fun BloodPressureMeasurementRow.toResponse(sourceMetadata: Map<Int, SourceMetadata>): BloodPressureMeasurementResponse =
     BloodPressureMeasurementResponse(
         id = id,
         measuredAt = measuredAt,
@@ -100,14 +94,15 @@ internal fun SleepSessionRow.toResponse(
         startAt = startAt,
         endAt = endAt,
         durationSeconds = durationSeconds,
-        stages = stagesBySession[id].orEmpty().map {
-            SleepStageResponse(
-                stage = it.stage,
-                startAt = it.startAt,
-                endAt = it.endAt,
-                durationSeconds = it.durationSeconds,
-            )
-        },
+        stages =
+            stagesBySession[id].orEmpty().map {
+                SleepStageResponse(
+                    stage = it.stage,
+                    startAt = it.startAt,
+                    endAt = it.endAt,
+                    durationSeconds = it.durationSeconds,
+                )
+            },
         source = sourceMetadata[sourceInstanceId].toResponse(),
     )
 
@@ -121,7 +116,10 @@ internal fun SleepNightRow.toResponse(
         session = session.toResponse(stagesBySession, sourceMetadata),
     )
 
-internal fun <T> List<T>.meta(filters: ReadFilters, nextCursor: String? = null): ReadResponseMeta =
+internal fun <T> List<T>.meta(
+    filters: ReadFilters,
+    nextCursor: String? = null,
+): ReadResponseMeta =
     ReadResponseMeta(
         count = size,
         limit = filters.limit,
@@ -130,7 +128,10 @@ internal fun <T> List<T>.meta(filters: ReadFilters, nextCursor: String? = null):
         nextCursor = nextCursor,
     )
 
-internal fun <T> List<T>.meta(filters: DailyReadFilters, nextCursor: String? = null): ReadResponseMeta =
+internal fun <T> List<T>.meta(
+    filters: DailyReadFilters,
+    nextCursor: String? = null,
+): ReadResponseMeta =
     ReadResponseMeta(
         count = size,
         limit = filters.limit,
@@ -139,7 +140,10 @@ internal fun <T> List<T>.meta(filters: DailyReadFilters, nextCursor: String? = n
         nextCursor = nextCursor,
     )
 
-internal fun <T> List<T>.meta(filters: SleepNightReadFilters, nextCursor: String? = null): ReadResponseMeta =
+internal fun <T> List<T>.meta(
+    filters: SleepNightReadFilters,
+    nextCursor: String? = null,
+): ReadResponseMeta =
     ReadResponseMeta(
         count = size,
         limit = filters.limit,
@@ -152,10 +156,12 @@ internal fun <T> List<T>.meta(filters: SleepNightReadFilters, nextCursor: String
  * One page of a keyset-paginated list. Repositories fetch limit+1 rows; the extra row only
  * signals that a next page exists and is dropped from [items].
  */
-internal data class KeysetPage<T>(val items: List<T>, val nextCursor: String?)
+internal data class KeysetPage<T>(
+    val items: List<T>,
+    val nextCursor: String?,
+)
 
-internal fun keysetFetchLimit(limit: Int): Int =
-    if (limit == Int.MAX_VALUE) Int.MAX_VALUE else limit + 1
+internal fun keysetFetchLimit(limit: Int): Int = if (limit == Int.MAX_VALUE) Int.MAX_VALUE else limit + 1
 
 internal fun <T> List<T>.keysetPage(
     limit: Int,

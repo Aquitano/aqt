@@ -20,18 +20,21 @@ fun <T> canonicalIntervalRows(
     val activeBySource = mutableMapOf<Int, TreeMap<Instant, MutableList<CanonicalIntervalCandidate<T>>>>()
     rows.forEach { row ->
         activeBySource.values.forEach { it.pruneEndedAtOrBefore(row.startAt) }
-        val overlapping = activeBySource.asSequence()
-            .filter { (sourceInstanceId, _) -> compareSameSource || sourceInstanceId != row.sourceInstanceId }
-            .flatMap { (_, intervalsByEnd) -> intervalsByEnd.values.asSequence().flatMap { it.asSequence() } }
-            .filter { overlaps(it, row) }
-            .toList()
+        val overlapping =
+            activeBySource
+                .asSequence()
+                .filter { (sourceInstanceId, _) -> compareSameSource || sourceInstanceId != row.sourceInstanceId }
+                .flatMap { (_, intervalsByEnd) -> intervalsByEnd.values.asSequence().flatMap { it.asSequence() } }
+                .filter { overlaps(it, row) }
+                .toList()
         if (overlapping.isEmpty()) {
             selected.add(row)
             activeBySource.add(row)
         } else {
-            val candidateWinsAll = overlapping.all { existing ->
-                choosePreferred(existing, row) == row
-            }
+            val candidateWinsAll =
+                overlapping.all { existing ->
+                    choosePreferred(existing, row) == row
+                }
             if (candidateWinsAll) {
                 overlapping.forEach {
                     selected.remove(it)

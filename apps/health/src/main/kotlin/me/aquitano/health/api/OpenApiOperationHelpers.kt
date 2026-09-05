@@ -73,7 +73,7 @@ internal fun Responses.Builder.defaultError() {
             schema = buildSchema(typeOf<ErrorResponse>())
             example(
                 "error",
-                internalErrorExample()
+                internalErrorExample(),
             )
         }
     }
@@ -142,6 +142,7 @@ internal fun Responses.Builder.commonErrors(
         }
     }
 }
+
 internal fun Route.describeReadOperation(
     operationId: String,
     summary: String,
@@ -149,62 +150,67 @@ internal fun Route.describeReadOperation(
     includeLatest: Boolean = false,
     sortSpec: EnumParamSpec,
     sortExample: String = sortSpec.default,
-): Route = describe {
-    this.operationId = operationId
-    tag("Read")
-    this.summary = summary
-    description = descriptionText
-    requiresBearerAuth()
-    readQueryParameters(
-        includeLatest = includeLatest,
-        sortSpec = sortSpec,
-        sortExample = sortExample,
-    )
-    errorResponses()
-}
-
-internal fun Route.describeDailyStepReadOperation(): Route = describe {
-    operationId = "listDailyStepSummaries"
-    tag("Read")
-    summary = "List daily step summaries"
-    description =
-        "Returns daily UTC step totals. Use `date` for one day, or `fromDate` and `toDate` for an inclusive date range."
-    requiresBearerAuth()
-    dailyStepQueryParameters()
-    parameters {
-        query("latest") {
-            description =
-                "Return the latest matching daily step summary when true. Defaults to false. Cannot be combined with limit, sort, order, or cursor."
-            schema = booleanSchema(default = false, example = true)
-        }
+): Route =
+    describe {
+        this.operationId = operationId
+        tag("Read")
+        this.summary = summary
+        description = descriptionText
+        requiresBearerAuth()
+        readQueryParameters(
+            includeLatest = includeLatest,
+            sortSpec = sortSpec,
+            sortExample = sortExample,
+        )
+        errorResponses()
     }
-    errorResponses()
-}
 
-internal fun Route.describeActivitySummaryReadOperation(): Route = describe {
-    operationId = "listActivitySummaries"
-    tag("Read")
-    summary = "List activity summaries"
-    description =
-        "Returns daily activity summary metrics such as distance, calories, elevation, activity minutes, and daily heart-rate summary values."
-    requiresBearerAuth()
-    dailyStepQueryParameters()
-    parameters {
-        query("latest") {
-            description =
-                "Return the latest matching activity summary when true. Defaults to false. Cannot be combined with limit, sort, order, or cursor."
-            schema = booleanSchema(default = false, example = true)
+internal fun Route.describeDailyStepReadOperation(): Route =
+    describe {
+        operationId = "listDailyStepSummaries"
+        tag("Read")
+        summary = "List daily step summaries"
+        description =
+            "Returns daily UTC step totals. Use `date` for one day, or `fromDate` and `toDate` for an inclusive date range."
+        requiresBearerAuth()
+        dailyStepQueryParameters()
+        parameters {
+            query("latest") {
+                description =
+                    "Return the latest matching daily step summary when true. Defaults to false. Cannot be combined with limit, sort, order, or cursor."
+                schema = booleanSchema(default = false, example = true)
+            }
         }
+        errorResponses()
     }
-    errorResponses()
-}
-internal fun Route.describeSleepNightReadOperation(): Route = describe {
-    operationId = "listSleepNights"
-    tag("Read")
-    summary = "List sleep nights"
-    description =
-        "Returns sleep sessions classified by the localized date of `endAt`. Use `timezone` to control night boundaries."
-    requiresBearerAuth()
-    sleepNightQueryParameters()
-    errorResponses()
-}
+
+internal fun Route.describeActivitySummaryReadOperation(): Route =
+    describe {
+        operationId = "listActivitySummaries"
+        tag("Read")
+        summary = "List activity summaries"
+        description =
+            "Returns daily activity summary metrics such as distance, calories, elevation, activity minutes, and daily heart-rate summary values."
+        requiresBearerAuth()
+        dailyStepQueryParameters()
+        parameters {
+            query("latest") {
+                description =
+                    "Return the latest matching activity summary when true. Defaults to false. Cannot be combined with limit, sort, order, or cursor."
+                schema = booleanSchema(default = false, example = true)
+            }
+        }
+        errorResponses()
+    }
+
+internal fun Route.describeSleepNightReadOperation(): Route =
+    describe {
+        operationId = "listSleepNights"
+        tag("Read")
+        summary = "List sleep nights"
+        description =
+            "Returns sleep sessions classified by the localized date of `endAt`. Use `timezone` to control night boundaries."
+        requiresBearerAuth()
+        sleepNightQueryParameters()
+        errorResponses()
+    }

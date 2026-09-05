@@ -32,13 +32,14 @@ fun Application.configureRequestLogging() {
     // filled in by CallLogging below, read from the attribute the auth provider sets once a request
     // reaches an authenticated route.
     intercept(ApplicationCallPipeline.Plugins) {
-        val mdcMap = mapOf(
-            "requestId" to call.callId.orEmpty(),
-            "method" to call.request.httpMethod.value,
-            "path" to call.request.path(),
-            "clientIp" to call.request.local.remoteHost,
-            "userAgent" to call.request.headers[HttpHeaders.UserAgent].orEmpty(),
-        )
+        val mdcMap =
+            mapOf(
+                "requestId" to call.callId.orEmpty(),
+                "method" to call.request.httpMethod.value,
+                "path" to call.request.path(),
+                "clientIp" to call.request.local.remoteHost,
+                "userAgent" to call.request.headers[HttpHeaders.UserAgent].orEmpty(),
+            )
 
         withContext(MDCContext(mdcMap)) {
             proceed()
@@ -53,14 +54,30 @@ fun Application.configureRequestLogging() {
         mdc("clientIp") { call -> call.request.local.remoteHost }
         mdc("userAgent") { call -> call.request.headers[HttpHeaders.UserAgent].orEmpty() }
         mdc("status") { call ->
-            call.response.status()?.value?.toString().orEmpty()
+            call.response
+                .status()
+                ?.value
+                ?.toString()
+                .orEmpty()
         }
         mdc("durationMs") { call -> call.durationMs()?.toString().orEmpty() }
-        mdc("clientId") { call -> call.attributes.getOrNull(ApiClientAttributeKey)?.id?.toString().orEmpty() }
-        mdc("clientName") { call -> call.attributes.getOrNull(ApiClientAttributeKey)?.name.orEmpty() }
+        mdc("clientId") { call ->
+            call.attributes
+                .getOrNull(ApiClientAttributeKey)
+                ?.id
+                ?.toString()
+                .orEmpty()
+        }
+        mdc("clientName") { call ->
+            call.attributes
+                .getOrNull(ApiClientAttributeKey)
+                ?.name
+                .orEmpty()
+        }
     }
 }
 
 private fun ApplicationCall.durationMs(): Long? =
-    attributes.getOrNull(RequestStartedAtKey)
+    attributes
+        .getOrNull(RequestStartedAtKey)
         ?.let { (System.nanoTime() - it) / 1_000_000 }

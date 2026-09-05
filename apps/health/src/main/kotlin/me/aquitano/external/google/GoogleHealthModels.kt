@@ -6,19 +6,21 @@ import java.time.Instant
 
 const val GOOGLE_HEALTH_PROVIDER_CODE = "google_health"
 
-val GOOGLE_HEALTH_SCOPES = listOf(
-    "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
-    "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
-    "https://www.googleapis.com/auth/googlehealth.sleep.readonly",
-)
+val GOOGLE_HEALTH_SCOPES =
+    listOf(
+        "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
+        "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
+        "https://www.googleapis.com/auth/googlehealth.sleep.readonly",
+    )
 
-val GOOGLE_HEALTH_DEFAULT_DATA_TYPES = listOf(
-    "steps",
-    "sleep",
-    "heart-rate",
-    "weight",
-    "body-fat",
-)
+val GOOGLE_HEALTH_DEFAULT_DATA_TYPES =
+    listOf(
+        "steps",
+        "sleep",
+        "heart-rate",
+        "weight",
+        "body-fat",
+    )
 
 data class GoogleHealthTokenSet(
     val accessToken: String,
@@ -45,8 +47,9 @@ data class GoogleHealthNormalizedBatch(
     val records: List<IngestionRecord>,
 )
 
-class GoogleHealthUnauthorizedException(message: String) :
-    RuntimeException(message)
+class GoogleHealthUnauthorizedException(
+    message: String,
+) : RuntimeException(message)
 
 class GoogleHealthHttpException(
     val code: String,

@@ -94,7 +94,7 @@ class CanonicalStructuralViewsTest {
                 INSERT INTO sources (id, code, display_name, created_at)
                 VALUES (1, 'withings', NULL, '2026-04-19T00:00:00Z'),
                        (2, 'google_health', NULL, '2026-04-19T00:00:00Z')
-                """.trimIndent()
+                """.trimIndent(),
             )
             execute(
                 """
@@ -102,58 +102,87 @@ class CanonicalStructuralViewsTest {
                 VALUES (1, 1, 'withings-1', NULL, '2026-04-19T00:00:00Z', '2026-04-19T00:00:00Z'),
                        (2, 2, 'google-1', NULL, '2026-04-19T00:00:00Z', '2026-04-19T00:00:00Z'),
                        (3, 2, 'google-2', NULL, '2026-04-19T00:00:00Z', '2026-04-19T00:00:00Z')
-                """.trimIndent()
+                """.trimIndent(),
             )
         }
 
-        fun insertActivitySummary(id: Int, sourceInstanceId: Int, date: String) {
+        fun insertActivitySummary(
+            id: Int,
+            sourceInstanceId: Int,
+            date: String,
+        ) {
             execute(
                 """
                 INSERT INTO activity_summaries (id, source_instance_id, date, distance_meters, created_at)
                 VALUES ($id, $sourceInstanceId, '$date', 1000.0, '2026-04-19T10:00:00Z')
-                """.trimIndent()
+                """.trimIndent(),
             )
         }
 
-        fun insertStepDailySummary(id: Int, sourceInstanceId: Int, date: String, steps: Int, sampleCount: Int) {
+        fun insertStepDailySummary(
+            id: Int,
+            sourceInstanceId: Int,
+            date: String,
+            steps: Int,
+            sampleCount: Int,
+        ) {
             execute(
                 """
                 INSERT INTO step_daily_summaries (id, date, source_instance_id, steps, sample_count, computed_at)
                 VALUES ($id, '$date', $sourceInstanceId, $steps, $sampleCount, '2026-04-19T10:00:00Z')
-                """.trimIndent()
+                """.trimIndent(),
             )
         }
 
-        fun insertSleepSummary(id: Int, sourceInstanceId: Int, startAt: String, endAt: String) {
+        fun insertSleepSummary(
+            id: Int,
+            sourceInstanceId: Int,
+            startAt: String,
+            endAt: String,
+        ) {
             execute(
                 """
                 INSERT INTO sleep_summaries (id, source_instance_id, start_at, end_at, total_sleep_seconds, created_at)
                 VALUES ($id, $sourceInstanceId, '$startAt', '$endAt', 28800, '2026-04-19T10:00:00Z')
-                """.trimIndent()
+                """.trimIndent(),
             )
         }
 
-        fun insertSleepSession(id: Int, sourceInstanceId: Int, startAt: String, endAt: String) {
+        fun insertSleepSession(
+            id: Int,
+            sourceInstanceId: Int,
+            startAt: String,
+            endAt: String,
+        ) {
             execute(
                 """
                 INSERT INTO sleep_sessions (id, source_instance_id, start_at, end_at, duration_seconds, created_at)
                 VALUES ($id, $sourceInstanceId, '$startAt', '$endAt',
                         EXTRACT(EPOCH FROM ('$endAt'::timestamptz - '$startAt'::timestamptz))::bigint,
                         '2026-04-19T10:00:00Z')
-                """.trimIndent()
+                """.trimIndent(),
             )
         }
 
-        fun insertSleepNight(id: Int, sourceInstanceId: Int, date: String, timezone: String, sleepSessionId: Int) {
+        fun insertSleepNight(
+            id: Int,
+            sourceInstanceId: Int,
+            date: String,
+            timezone: String,
+            sleepSessionId: Int,
+        ) {
             execute(
                 """
                 INSERT INTO sleep_nights (id, date, timezone, source_instance_id, sleep_session_id, algorithm_version, computed_at)
                 VALUES ($id, '$date', '$timezone', $sourceInstanceId, $sleepSessionId, 1, '2026-04-19T10:00:00Z')
-                """.trimIndent()
+                """.trimIndent(),
             )
         }
 
-        fun canonicalIds(view: String, orderBy: String): List<Int> {
+        fun canonicalIds(
+            view: String,
+            orderBy: String,
+        ): List<Int> {
             val ids = mutableListOf<Int>()
             PostgresTestDatabase.connection(dbConfig).use { connection ->
                 connection.createStatement().use { statement ->

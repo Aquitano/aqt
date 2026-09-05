@@ -1,5 +1,6 @@
 package me.aquitano.health.infrastructure.repositories
 
+import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import me.aquitano.health.infrastructure.database.tables.ProviderSyncJobsTable
 import me.aquitano.health.infrastructure.database.toDbTimestamp
 import org.jetbrains.exposed.v1.core.ResultRow
@@ -10,7 +11,6 @@ import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.insertIgnore
 import org.jetbrains.exposed.v1.jdbc.selectAll
-import me.aquitano.health.infrastructure.database.suspendDbTransaction
 import org.jetbrains.exposed.v1.jdbc.update
 import java.time.Instant
 
@@ -43,9 +43,14 @@ data class ProviderSyncJobRecord(
     val finishedAt: Instant?,
 )
 
-data class ProviderSyncJobCreateResult(val record: ProviderSyncJobRecord, val created: Boolean)
+data class ProviderSyncJobCreateResult(
+    val record: ProviderSyncJobRecord,
+    val created: Boolean,
+)
 
-class ProviderSyncJobRepository(private val database: Database) {
+class ProviderSyncJobRepository(
+    private val database: Database,
+) {
     suspend fun create(
         id: String,
         providerCode: String,
@@ -82,31 +87,32 @@ class ProviderSyncJobRepository(private val database: Database) {
                 return@suspendDbTransaction ProviderSyncJobCreateResult(getByIdInTransaction(id)!!, created = true)
             }
 
-            val inserted = ProviderSyncJobsTable.insertIgnore {
-                it[this.id] = id
-                it[this.providerCode] = providerCode
-                it[this.idempotencyKey] = idempotencyKey
-                it[this.idempotencyRequestHash] = idempotencyRequestHash
-                it[this.providerInstanceId] = providerInstanceId
-                it[this.requestedFrom] = requestedFrom.toDbTimestamp()
-                it[this.requestedTo] = requestedTo.toDbTimestamp()
-                it[this.dataTypes] = dataTypes?.let(::encodeDataTypes)
-                it[this.pageSize] = pageSize
-                it[status] = "queued"
-                it[totalItems] = 0
-                it[completedItems] = 0
-                it[batchesCount] = 0
-                it[emptyCount] = 0
-                it[errorCount] = 0
-                it[createdAt] = now.toDbTimestamp()
-                it[updatedAt] = now.toDbTimestamp()
-            }.insertedCount > 0
+            val inserted =
+                ProviderSyncJobsTable
+                    .insertIgnore {
+                        it[this.id] = id
+                        it[this.providerCode] = providerCode
+                        it[this.idempotencyKey] = idempotencyKey
+                        it[this.idempotencyRequestHash] = idempotencyRequestHash
+                        it[this.providerInstanceId] = providerInstanceId
+                        it[this.requestedFrom] = requestedFrom.toDbTimestamp()
+                        it[this.requestedTo] = requestedTo.toDbTimestamp()
+                        it[this.dataTypes] = dataTypes?.let(::encodeDataTypes)
+                        it[this.pageSize] = pageSize
+                        it[status] = "queued"
+                        it[totalItems] = 0
+                        it[completedItems] = 0
+                        it[batchesCount] = 0
+                        it[emptyCount] = 0
+                        it[errorCount] = 0
+                        it[createdAt] = now.toDbTimestamp()
+                        it[updatedAt] = now.toDbTimestamp()
+                    }.insertedCount > 0
             val record = getByIdInTransaction(id) ?: findByIdempotencyKeyInTransaction(providerCode, idempotencyKey)!!
             ProviderSyncJobCreateResult(record, created = inserted)
         }
 
-    suspend fun get(id: String): ProviderSyncJobRecord? =
-        suspendDbTransaction(db = database) { getByIdInTransaction(id) }
+    suspend fun get(id: String): ProviderSyncJobRecord? = suspendDbTransaction(db = database) { getByIdInTransaction(id) }
 
     suspend fun findByIdempotencyKey(
         providerCode: String,
@@ -124,14 +130,16 @@ class ProviderSyncJobRepository(private val database: Database) {
                     providerCode?.let {
                         query.where { ProviderSyncJobsTable.providerCode eq it }
                     } ?: query
-                }
-                .orderBy(ProviderSyncJobsTable.createdAt to SortOrder.DESC)
+                }.orderBy(ProviderSyncJobsTable.createdAt to SortOrder.DESC)
                 .limit(1)
                 .map { it.toRecord() }
                 .singleOrNull()
         }
 
-    suspend fun markRunning(id: String, now: Instant) {
+    suspend fun markRunning(
+        id: String,
+        now: Instant,
+    ) {
         suspendDbTransaction(db = database) {
             ProviderSyncJobsTable.update({ ProviderSyncJobsTable.id eq id }) {
                 it[status] = "running"
@@ -252,8 +260,7 @@ class ProviderSyncJobRepository(private val database: Database) {
             .where {
                 (ProviderSyncJobsTable.providerCode eq providerCode) and
                     (ProviderSyncJobsTable.idempotencyKey eq idempotencyKey)
-            }
-            .limit(1)
+            }.limit(1)
             .map { it.toRecord() }
             .singleOrNull()
 
@@ -286,11 +293,8 @@ class ProviderSyncJobRepository(private val database: Database) {
             updatedAt = this[ProviderSyncJobsTable.updatedAt].toInstant(),
             finishedAt = this[ProviderSyncJobsTable.finishedAt]?.toInstant(),
         )
-
 }
 
-private fun encodeDataTypes(dataTypes: List<String>): String =
-    dataTypes.joinToString(",")
+private fun encodeDataTypes(dataTypes: List<String>): String = dataTypes.joinToString(",")
 
-private fun decodeDataTypes(value: String): List<String> =
-    value.split(",").filter { it.isNotBlank() }
+private fun decodeDataTypes(value: String): List<String> = value.split(",").filter { it.isNotBlank() }

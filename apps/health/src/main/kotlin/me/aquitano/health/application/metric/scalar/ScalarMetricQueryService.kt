@@ -34,34 +34,40 @@ class ScalarMetricQueryService(
 ) : BaseReadService(database) {
     fun catalog(): MetricTypeCatalogResponse =
         MetricTypeCatalogResponse(
-            items = ScalarMetricRegistry.descriptors.map {
-                MetricCatalogEntryResponse(
-                    metricType = it.metricType,
-                    family = it.family,
-                    unit = it.unit,
-                    supportsSegment = it.supportsSegment,
-                    contexts = it.allowedContexts?.sorted(),
-                )
-            },
+            items =
+                ScalarMetricRegistry.descriptors.map {
+                    MetricCatalogEntryResponse(
+                        metricType = it.metricType,
+                        family = it.family,
+                        unit = it.unit,
+                        supportsSegment = it.supportsSegment,
+                        contexts = it.allowedContexts?.sorted(),
+                    )
+                },
         )
 
-    suspend fun list(metricType: String, params: QueryParams): ScalarSamplesResponse {
+    suspend fun list(
+        metricType: String,
+        params: QueryParams,
+    ): ScalarSamplesResponse {
         requireKnown(metricType)
         val raw = params.boolean(QueryParamSpecs.raw)
         return dbQuery {
-            val filters = params.readFilters(
-                sortSpec = QueryParamSpecs.sortByMeasuredAt,
-                latestSupported = true,
-            )
+            val filters =
+                params.readFilters(
+                    sortSpec = QueryParamSpecs.sortByMeasuredAt,
+                    latestSupported = true,
+                )
             val (rows, sourceMetadata) =
                 scalarRepository.list(filters, setOf(metricType), canonical = !raw)
-            val page = rows.keysetPage(
-                limit = filters.limit,
-                sort = filters.sort,
-                order = filters.order,
-                sortValue = { it.measuredAt.toString() },
-                id = { it.id },
-            )
+            val page =
+                rows.keysetPage(
+                    limit = filters.limit,
+                    sort = filters.sort,
+                    order = filters.order,
+                    sortValue = { it.measuredAt.toString() },
+                    id = { it.id },
+                )
             ScalarSamplesResponse(
                 items = page.items.map { it.toScalarResponse(sourceMetadata) },
                 meta = page.items.meta(filters, page.nextCursor),
@@ -69,7 +75,10 @@ class ScalarMetricQueryService(
         }
     }
 
-    suspend fun summary(metricType: String, params: QueryParams): ScalarSummaryResponse {
+    suspend fun summary(
+        metricType: String,
+        params: QueryParams,
+    ): ScalarSummaryResponse {
         requireKnown(metricType)
         return dbQuery {
             val filters = params.summaryFilters(SortFields.MEASURED_AT)
@@ -87,7 +96,10 @@ class ScalarMetricQueryService(
         }
     }
 
-    suspend fun summaryDaily(metricType: String, params: QueryParams): ScalarDailySummariesResponse {
+    suspend fun summaryDaily(
+        metricType: String,
+        params: QueryParams,
+    ): ScalarDailySummariesResponse {
         requireKnown(metricType)
         return dbQuery {
             val filters = params.summaryFilters(SortFields.MEASURED_AT)
@@ -98,30 +110,32 @@ class ScalarMetricQueryService(
                             field = "from",
                             code = ValidationIssueCodes.Required,
                             message = "at least one of from or to is required",
-                        )
-                    )
+                        ),
+                    ),
                 )
             }
             val zone = params.timezone()
-            val items = scalarRepository
-                .summarizeDaily(filters, setOf(metricType), canonical = true, zone)
-                .map {
-                    ScalarDailySummaryResponse(
-                        date = it.date.toString(),
-                        count = it.count,
-                        minValue = it.minValue,
-                        maxValue = it.maxValue,
-                        avgValue = it.avgValue,
-                    )
-                }
+            val items =
+                scalarRepository
+                    .summarizeDaily(filters, setOf(metricType), canonical = true, zone)
+                    .map {
+                        ScalarDailySummaryResponse(
+                            date = it.date.toString(),
+                            count = it.count,
+                            minValue = it.minValue,
+                            maxValue = it.maxValue,
+                            avgValue = it.avgValue,
+                        )
+                    }
             ScalarDailySummariesResponse(
                 items = items,
-                meta = ReadResponseMeta(
-                    count = items.size,
-                    limit = items.size,
-                    sort = SortFields.DATE,
-                    order = Orders.ASC,
-                ),
+                meta =
+                    ReadResponseMeta(
+                        count = items.size,
+                        limit = items.size,
+                        sort = SortFields.DATE,
+                        order = Orders.ASC,
+                    ),
             )
         }
     }

@@ -1,13 +1,13 @@
 package me.aquitano.health.application.metric.scalar
 
 import me.aquitano.health.application.metric.common.keysetFetchLimit
+import me.aquitano.health.application.metric.common.repository.BaseMetricReadRepository
 import me.aquitano.health.application.metric.common.repository.ReadFilters
 import me.aquitano.health.application.metric.common.repository.SourceMetadata
+import me.aquitano.health.application.metric.common.repository.TimeFilterMode
 import me.aquitano.health.infrastructure.database.tables.CanonicalScalarSamplesView
 import me.aquitano.health.infrastructure.database.tables.ScalarSamplesTable
 import me.aquitano.health.infrastructure.database.toDbTimestamp
-import me.aquitano.health.application.metric.common.repository.BaseMetricReadRepository
-import me.aquitano.health.application.metric.common.repository.TimeFilterMode
 import org.jetbrains.exposed.v1.core.Expression
 import org.jetbrains.exposed.v1.core.Function
 import org.jetbrains.exposed.v1.core.Op
@@ -43,26 +43,28 @@ class ScalarSampleReadRepository : BaseMetricReadRepository() {
         canonical: Boolean,
     ): Pair<List<ScalarSampleRow>, Map<Int, SourceMetadata>> {
         val table = source(canonical)
-        val where = timestampConditions(
-            filters = filters,
-            sourceInstanceIdColumn = table.sourceInstanceId,
-            fromColumn = table.measuredAt,
-        ).whereOrNull() ?: return emptyReadResult()
+        val where =
+            timestampConditions(
+                filters = filters,
+                sourceInstanceIdColumn = table.sourceInstanceId,
+                fromColumn = table.measuredAt,
+            ).whereOrNull() ?: return emptyReadResult()
 
         val keyset = timestampKeyset(filters.cursor, filters.order, table.measuredAt, table.idColumn)
-        val rows = table.query
-            .selectAll()
-            .where(where and (table.metricType inList metricTypes) and (keyset ?: Op.TRUE))
-            .orderBy(
-                table.measuredAt to filters.sortOrder(),
-                table.idColumn to filters.sortOrder(),
+        val rows =
+            table.query
+                .selectAll()
+                .where(where and (table.metricType inList metricTypes) and (keyset ?: Op.TRUE))
+                .orderBy(
+                    table.measuredAt to filters.sortOrder(),
+                    table.idColumn to filters.sortOrder(),
+                ).limit(keysetFetchLimit(filters.limit))
+                .map(table::toRow)
+        return rows to
+            sourceMetadata(
+                rows.map { it.sourceInstanceId }.toSet(),
+                filters.includeSource,
             )
-            .limit(keysetFetchLimit(filters.limit))
-            .map(table::toRow)
-        return rows to sourceMetadata(
-            rows.map { it.sourceInstanceId }.toSet(),
-            filters.includeSource,
-        )
     }
 
     fun latest(
@@ -72,53 +74,55 @@ class ScalarSampleReadRepository : BaseMetricReadRepository() {
         mode: TimeFilterMode = TimeFilterMode.START_AT_IN_RANGE,
     ): Pair<ScalarSampleRow?, Map<Int, SourceMetadata>> {
         val table = source(canonical)
-        val where = timestampConditions(
-            filters = filters,
-            sourceInstanceIdColumn = table.sourceInstanceId,
-            fromColumn = table.measuredAt,
-            mode = mode,
-        ).whereOrNull() ?: return emptyLatestResult()
+        val where =
+            timestampConditions(
+                filters = filters,
+                sourceInstanceIdColumn = table.sourceInstanceId,
+                fromColumn = table.measuredAt,
+                mode = mode,
+            ).whereOrNull() ?: return emptyLatestResult()
 
         // Honor filters.order: desc -> most recent (the common "latest"), asc -> earliest. Callers
         // that want the latest pass order = desc; previously this was hardcoded DESC, so an asc
         // caller silently got the newest sample instead of the earliest.
         val order = filters.sortOrder()
-        val row = table.query
-            .selectAll()
-            .where(where and (table.metricType inList metricTypes))
-            .orderBy(
-                table.measuredAt to order,
-                table.idColumn to order,
+        val row =
+            table.query
+                .selectAll()
+                .where(where and (table.metricType inList metricTypes))
+                .orderBy(
+                    table.measuredAt to order,
+                    table.idColumn to order,
+                ).limit(1)
+                .map(table::toRow)
+                .singleOrNull()
+        return row to
+            sourceMetadata(
+                listOfNotNull(row?.sourceInstanceId).toSet(),
+                filters.includeSource,
             )
-            .limit(1)
-            .map(table::toRow)
-            .singleOrNull()
-        return row to sourceMetadata(
-            listOfNotNull(row?.sourceInstanceId).toSet(),
-            filters.includeSource,
-        )
     }
 
     fun latestBefore(
         filters: ReadFilters,
         metricTypes: Set<String>,
         canonical: Boolean,
-    ): Pair<ScalarSampleRow?, Map<Int, SourceMetadata>> =
-        latest(filters, metricTypes, canonical, mode = TimeFilterMode.BEFORE_FROM)
+    ): Pair<ScalarSampleRow?, Map<Int, SourceMetadata>> = latest(filters, metricTypes, canonical, mode = TimeFilterMode.BEFORE_FROM)
 
     /** Unfiltered "latest sample strictly before" lookup used by trend computations. */
-    fun latestBefore(before: Instant, metricType: String): ScalarSampleRow? =
+    fun latestBefore(
+        before: Instant,
+        metricType: String,
+    ): ScalarSampleRow? =
         ScalarSamplesTable
             .selectAll()
             .where {
                 (ScalarSamplesTable.measuredAt less before.toDbTimestamp()) and
                     (ScalarSamplesTable.metricType eq metricType)
-            }
-            .orderBy(
+            }.orderBy(
                 ScalarSamplesTable.measuredAt to SortOrder.DESC,
                 ScalarSamplesTable.id to SortOrder.DESC,
-            )
-            .limit(1)
+            ).limit(1)
             .map { rawSource.toRow(it) }
             .singleOrNull()
 
@@ -128,11 +132,12 @@ class ScalarSampleReadRepository : BaseMetricReadRepository() {
         canonical: Boolean,
     ): ScalarSummaryRow {
         val table = source(canonical)
-        val where = timestampConditions(
-            filters = filters,
-            sourceInstanceIdColumn = table.sourceInstanceId,
-            fromColumn = table.measuredAt,
-        ).whereOrNull() ?: return ScalarSummaryRow(0, null, null, null)
+        val where =
+            timestampConditions(
+                filters = filters,
+                sourceInstanceIdColumn = table.sourceInstanceId,
+                fromColumn = table.measuredAt,
+            ).whereOrNull() ?: return ScalarSummaryRow(0, null, null, null)
 
         val countExpression = table.valueColumn.count()
         val minExpression = table.valueColumn.min()
@@ -163,11 +168,12 @@ class ScalarSampleReadRepository : BaseMetricReadRepository() {
         zone: ZoneId,
     ): List<ScalarDailySummaryRow> {
         val table = source(canonical)
-        val where = timestampConditions(
-            filters = filters,
-            sourceInstanceIdColumn = table.sourceInstanceId,
-            fromColumn = table.measuredAt,
-        ).whereOrNull() ?: return emptyList()
+        val where =
+            timestampConditions(
+                filters = filters,
+                sourceInstanceIdColumn = table.sourceInstanceId,
+                fromColumn = table.measuredAt,
+            ).whereOrNull() ?: return emptyList()
 
         val dayExpression = LocalDayOf(table.measuredAt, zone.id)
         val countExpression = table.valueColumn.count()
@@ -190,8 +196,7 @@ class ScalarSampleReadRepository : BaseMetricReadRepository() {
             }
     }
 
-    private fun source(canonical: Boolean): ScalarSource =
-        if (canonical) canonicalSource else rawSource
+    private fun source(canonical: Boolean): ScalarSource = if (canonical) canonicalSource else rawSource
 
     /** Adapts the raw table and the canonical view to one column vocabulary. */
     private interface ScalarSource {
@@ -205,47 +210,49 @@ class ScalarSampleReadRepository : BaseMetricReadRepository() {
         fun toRow(row: ResultRow): ScalarSampleRow
     }
 
-    private val rawSource = object : ScalarSource {
-        override val query get() = ScalarSamplesTable
-        override val sourceInstanceId get() = ScalarSamplesTable.sourceInstanceId
-        override val measuredAt get() = ScalarSamplesTable.measuredAt
-        override val metricType get() = ScalarSamplesTable.metricType
-        override val valueColumn get() = ScalarSamplesTable.value
-        override val idColumn get() = ScalarSamplesTable.id
+    private val rawSource =
+        object : ScalarSource {
+            override val query get() = ScalarSamplesTable
+            override val sourceInstanceId get() = ScalarSamplesTable.sourceInstanceId
+            override val measuredAt get() = ScalarSamplesTable.measuredAt
+            override val metricType get() = ScalarSamplesTable.metricType
+            override val valueColumn get() = ScalarSamplesTable.value
+            override val idColumn get() = ScalarSamplesTable.id
 
-        override fun toRow(row: ResultRow): ScalarSampleRow =
-            ScalarSampleRow(
-                id = row[ScalarSamplesTable.id].value,
-                sourceInstanceId = row[ScalarSamplesTable.sourceInstanceId],
-                measuredAt = row[ScalarSamplesTable.measuredAt].toInstant(),
-                metricType = row[ScalarSamplesTable.metricType],
-                value = row[ScalarSamplesTable.value],
-                unit = row[ScalarSamplesTable.unit],
-                context = row[ScalarSamplesTable.context],
-                segment = row[ScalarSamplesTable.segment],
-            )
-    }
+            override fun toRow(row: ResultRow): ScalarSampleRow =
+                ScalarSampleRow(
+                    id = row[ScalarSamplesTable.id].value,
+                    sourceInstanceId = row[ScalarSamplesTable.sourceInstanceId],
+                    measuredAt = row[ScalarSamplesTable.measuredAt].toInstant(),
+                    metricType = row[ScalarSamplesTable.metricType],
+                    value = row[ScalarSamplesTable.value],
+                    unit = row[ScalarSamplesTable.unit],
+                    context = row[ScalarSamplesTable.context],
+                    segment = row[ScalarSamplesTable.segment],
+                )
+        }
 
-    private val canonicalSource = object : ScalarSource {
-        override val query get() = CanonicalScalarSamplesView
-        override val sourceInstanceId get() = CanonicalScalarSamplesView.sourceInstanceId
-        override val measuredAt get() = CanonicalScalarSamplesView.measuredAt
-        override val metricType get() = CanonicalScalarSamplesView.metricType
-        override val valueColumn get() = CanonicalScalarSamplesView.value
-        override val idColumn get() = CanonicalScalarSamplesView.id
+    private val canonicalSource =
+        object : ScalarSource {
+            override val query get() = CanonicalScalarSamplesView
+            override val sourceInstanceId get() = CanonicalScalarSamplesView.sourceInstanceId
+            override val measuredAt get() = CanonicalScalarSamplesView.measuredAt
+            override val metricType get() = CanonicalScalarSamplesView.metricType
+            override val valueColumn get() = CanonicalScalarSamplesView.value
+            override val idColumn get() = CanonicalScalarSamplesView.id
 
-        override fun toRow(row: ResultRow): ScalarSampleRow =
-            ScalarSampleRow(
-                id = row[CanonicalScalarSamplesView.id],
-                sourceInstanceId = row[CanonicalScalarSamplesView.sourceInstanceId],
-                measuredAt = row[CanonicalScalarSamplesView.measuredAt].toInstant(),
-                metricType = row[CanonicalScalarSamplesView.metricType],
-                value = row[CanonicalScalarSamplesView.value],
-                unit = row[CanonicalScalarSamplesView.unit],
-                context = row[CanonicalScalarSamplesView.context],
-                segment = row[CanonicalScalarSamplesView.segment],
-            )
-    }
+            override fun toRow(row: ResultRow): ScalarSampleRow =
+                ScalarSampleRow(
+                    id = row[CanonicalScalarSamplesView.id],
+                    sourceInstanceId = row[CanonicalScalarSamplesView.sourceInstanceId],
+                    measuredAt = row[CanonicalScalarSamplesView.measuredAt].toInstant(),
+                    metricType = row[CanonicalScalarSamplesView.metricType],
+                    value = row[CanonicalScalarSamplesView.value],
+                    unit = row[CanonicalScalarSamplesView.unit],
+                    context = row[CanonicalScalarSamplesView.context],
+                    segment = row[CanonicalScalarSamplesView.segment],
+                )
+        }
 }
 
 /**
@@ -261,11 +268,12 @@ private class LocalDayOf(
     private val timestamp: Expression<OffsetDateTime>,
     private val zoneId: String,
 ) : Function<LocalDate>(JavaLocalDateColumnType()) {
-    override fun toQueryBuilder(queryBuilder: QueryBuilder) = queryBuilder {
-        append("CAST(date_trunc('day', ")
-        append(timestamp)
-        append(" AT TIME ZONE ")
-        append(stringLiteral(zoneId))
-        append(") AS DATE)")
-    }
+    override fun toQueryBuilder(queryBuilder: QueryBuilder) =
+        queryBuilder {
+            append("CAST(date_trunc('day', ")
+            append(timestamp)
+            append(" AT TIME ZONE ")
+            append(stringLiteral(zoneId))
+            append(") AS DATE)")
+        }
 }

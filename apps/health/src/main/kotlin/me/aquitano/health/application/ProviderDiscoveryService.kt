@@ -13,12 +13,15 @@ class ProviderDiscoveryService(
 ) {
     fun listProviders(): ProviderCatalogResponse =
         ProviderCatalogResponse(
-            items = providerRegistry.listProviderDescriptors()
-                .map { it.toDto() },
+            items =
+                providerRegistry
+                    .listProviderDescriptors()
+                    .map { it.toDto() },
         )
 
     fun getProvider(providerCode: String): ProviderDescriptorResponse =
-        providerRegistry.getProviderDescriptor(providerCode)
+        providerRegistry
+            .getProviderDescriptor(providerCode)
             ?.toDto()
             ?: throw NotFoundException("Provider '$providerCode' not found")
 
@@ -36,8 +39,7 @@ class ProviderDiscoveryService(
             aliases = aliases,
         )
 
-    private fun ProviderAuthType.toDto(): String =
-        name.lowercase()
+    private fun ProviderAuthType.toDto(): String = name.lowercase()
 
     private fun ProviderWorkflowEndpoints.toDto(): ProviderWorkflowEndpointsResponse =
         ProviderWorkflowEndpointsResponse(

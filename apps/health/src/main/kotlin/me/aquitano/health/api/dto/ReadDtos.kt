@@ -274,7 +274,9 @@ data class HealthDayResponse(
 )
 
 @Serializable
-enum class HealthDayModuleName(val wireName: String) {
+enum class HealthDayModuleName(
+    val wireName: String,
+) {
     @SerialName("steps")
     Steps("steps"),
 
@@ -285,11 +287,11 @@ enum class HealthDayModuleName(val wireName: String) {
     Weight("weight"),
 
     @SerialName("sleep")
-    Sleep("sleep");
+    Sleep("sleep"),
+    ;
 
     companion object {
-        fun fromWireName(value: String): HealthDayModuleName? =
-            entries.firstOrNull { it.wireName == value }
+        fun fromWireName(value: String): HealthDayModuleName? = entries.firstOrNull { it.wireName == value }
     }
 }
 

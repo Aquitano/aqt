@@ -45,9 +45,10 @@ class ScalarSampleWriteRepository {
         writes: List<ScalarSampleWrite>,
         now: Instant,
     ): List<String> {
-        val rows = writes.flatMap { write ->
-            write.record.values.map { value -> SampleRow(write.ingestionRecordId, write.record, value) }
-        }
+        val rows =
+            writes.flatMap { write ->
+                write.record.values.map { value -> SampleRow(write.ingestionRecordId, write.record, value) }
+            }
         val seenKeys = existingKeys(sourceInstanceId, rows)
         val toInsert = rows.filter { row -> seenKeys.add(row.uniqueKey()) }
         toInsert.chunked(INSERT_CHUNK_SIZE).forEach { chunk ->
@@ -84,18 +85,17 @@ class ScalarSampleWriteRepository {
                     ScalarSamplesTable.providerRecordId,
                     ScalarSamplesTable.metricType,
                     ScalarSamplesTable.segment,
-                )
-                .where {
+                ).where {
                     (ScalarSamplesTable.sourceInstanceId eq sourceInstanceId) and
-                            (ScalarSamplesTable.providerRecordId inList chunk)
-                }
-                .forEach { row ->
+                        (ScalarSamplesTable.providerRecordId inList chunk)
+                }.forEach { row ->
                     row[ScalarSamplesTable.providerRecordId]?.let { providerRecordId ->
-                        keys += SampleKey.ByRecord(
-                            providerRecordId = providerRecordId,
-                            metricType = row[ScalarSamplesTable.metricType],
-                            segment = row[ScalarSamplesTable.segment] ?: "",
-                        )
+                        keys +=
+                            SampleKey.ByRecord(
+                                providerRecordId = providerRecordId,
+                                metricType = row[ScalarSamplesTable.metricType],
+                                segment = row[ScalarSamplesTable.segment] ?: "",
+                            )
                     }
                 }
         }
@@ -103,27 +103,27 @@ class ScalarSampleWriteRepository {
         // Id-less rows can't use the provider-record key, so dedupe them on the natural key. The
         // DB query keys back to existing NULL-id rows (matching scalar_samples_natural_key_uq) so a
         // re-sync of a feed without stable ids doesn't pile up duplicate samples.
-        val measuredAtsWithoutId = rows
-            .filter { it.record.providerRecordId == null }
-            .mapTo(linkedSetOf()) { it.record.measuredAt }
+        val measuredAtsWithoutId =
+            rows
+                .filter { it.record.providerRecordId == null }
+                .mapTo(linkedSetOf()) { it.record.measuredAt }
         measuredAtsWithoutId.toList().chunked(INSERT_CHUNK_SIZE).forEach { chunk ->
             ScalarSamplesTable
                 .select(
                     ScalarSamplesTable.measuredAt,
                     ScalarSamplesTable.metricType,
                     ScalarSamplesTable.segment,
-                )
-                .where {
+                ).where {
                     (ScalarSamplesTable.sourceInstanceId eq sourceInstanceId) and
-                            ScalarSamplesTable.providerRecordId.isNull() and
-                            (ScalarSamplesTable.measuredAt inList chunk.map { it.toDbTimestamp() })
-                }
-                .forEach { row ->
-                    keys += SampleKey.ByNatural(
-                        measuredAt = row[ScalarSamplesTable.measuredAt].toInstant(),
-                        metricType = row[ScalarSamplesTable.metricType],
-                        segment = row[ScalarSamplesTable.segment] ?: "",
-                    )
+                        ScalarSamplesTable.providerRecordId.isNull() and
+                        (ScalarSamplesTable.measuredAt inList chunk.map { it.toDbTimestamp() })
+                }.forEach { row ->
+                    keys +=
+                        SampleKey.ByNatural(
+                            measuredAt = row[ScalarSamplesTable.measuredAt].toInstant(),
+                            metricType = row[ScalarSamplesTable.metricType],
+                            segment = row[ScalarSamplesTable.segment] ?: "",
+                        )
                 }
         }
         return keys

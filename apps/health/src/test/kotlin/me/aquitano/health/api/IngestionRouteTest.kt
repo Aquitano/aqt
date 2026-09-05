@@ -6,8 +6,8 @@ import io.ktor.http.*
 import io.ktor.server.config.*
 import io.ktor.server.testing.*
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.aquitano.health.infrastructure.config.DatabaseConfig
@@ -18,182 +18,193 @@ import kotlin.test.assertEquals
 
 class IngestionRouteTest {
     @Test
-    fun ingestionRequiresBearerToken() = testApplication {
-        val dbPath = configureTestApplication()
+    fun ingestionRequiresBearerToken() =
+        testApplication {
+            val dbPath = configureTestApplication()
 
-        val response = client.post("/api/v2/ingestion/batches") {
-            contentType(ContentType.Application.Json)
-            setBody(minimalStepPayload())
-        }
-
-        assertEquals(HttpStatusCode.Unauthorized, response.status)
-        assertEquals(0, countRows(dbPath, "ingestion_batches"))
-    }
-
-    @Test
-    fun ingestionRejectsInvalidRequest() = testApplication {
-        configureTestApplication()
-
-        val response = client.post("/api/v2/ingestion/batches") {
-            authorized()
-            contentType(ContentType.Application.Json)
-            setBody(
-                """
-                {
-                  "provider": "",
-                  "providerInstanceId": "pixel",
-                  "ingestedAt": "2026-04-19T10:00:00Z",
-                  "sourcePayload": {},
-                  "records": []
+            val response =
+                client.post("/api/v2/ingestion/batches") {
+                    contentType(ContentType.Application.Json)
+                    setBody(minimalStepPayload())
                 }
-                """.trimIndent(),
-            )
-        }
 
-        assertEquals(HttpStatusCode.BadRequest, response.status)
-        assertEquals("validation_failed", response.errorCode())
-    }
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
+            assertEquals(0, countRows(dbPath, "ingestion_batches"))
+        }
 
     @Test
-    fun mixedBatchPersistsIngestionAndMetricRecords() = testApplication {
-        val dbPath = configureTestApplication()
+    fun ingestionRejectsInvalidRequest() =
+        testApplication {
+            configureTestApplication()
 
-        val response = client.post("/api/v2/ingestion/batches") {
-            authorized()
-            contentType(ContentType.Application.Json)
-            setBody(mixedPayload(batchExternalId = "mixed-1"))
+            val response =
+                client.post("/api/v2/ingestion/batches") {
+                    authorized()
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        """
+                        {
+                          "provider": "",
+                          "providerInstanceId": "pixel",
+                          "ingestedAt": "2026-04-19T10:00:00Z",
+                          "sourcePayload": {},
+                          "records": []
+                        }
+                        """.trimIndent(),
+                    )
+                }
+
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+            assertEquals("validation_failed", response.errorCode())
         }
-
-        assertEquals(HttpStatusCode.Created, response.status)
-        val body = response.jsonBody()
-        assertEquals(5, body["recordsReceived"]!!.jsonPrimitive.int)
-        assertEquals(5, body["ingestionRecordsStored"]!!.jsonPrimitive.int)
-        assertEquals(
-            1,
-            body["metricsCreated"]!!.jsonObject["step_samples"]!!.jsonPrimitive.int
-        )
-        assertEquals(
-            1,
-            body["metricsCreated"]!!.jsonObject["sleep_sessions"]!!.jsonPrimitive.int
-        )
-        assertEquals(
-            2,
-            body["metricsCreated"]!!.jsonObject["sleep_stages"]!!.jsonPrimitive.int
-        )
-        assertEquals(
-            1,
-            body["metricsCreated"]!!.jsonObject["weight"]!!.jsonPrimitive.int
-        )
-        assertEquals(
-            1,
-            body["metricsCreated"]!!.jsonObject["heart_rate"]!!.jsonPrimitive.int
-        )
-        assertEquals(
-            1,
-            body["metricsCreated"]!!.jsonObject["sleep_summaries"]!!.jsonPrimitive.int
-        )
-
-        assertEquals(1, countRows(dbPath, "ingestion_batches"))
-        assertEquals(5, countRows(dbPath, "ingestion_records"))
-        assertEquals(1, countRows(dbPath, "step_samples"))
-        assertEquals(1, countRows(dbPath, "step_daily_summaries"))
-        assertEquals(1, countRows(dbPath, "canonical_step_samples"))
-        assertEquals(4, countRows(dbPath, "canonical_step_day_bucket_contributions"))
-        assertEquals(
-            1200,
-            singleInt(dbPath, "SELECT steps FROM step_daily_summaries")
-        )
-        assertEquals(1, countRows(dbPath, "sleep_sessions"))
-        assertEquals(2, countRows(dbPath, "sleep_stages"))
-        assertEquals(
-            5,
-            singleInt(
-                dbPath,
-                "SELECT COUNT(*) FROM scalar_samples WHERE metric_type IN " +
-                    "('weight', 'body_fat', 'muscle', 'water', 'visceral_fat')"
-            )
-        )
-        assertEquals(
-            1,
-            singleInt(dbPath, "SELECT COUNT(*) FROM scalar_samples WHERE metric_type = 'heart_rate'")
-        )
-        assertEquals(1, countRows(dbPath, "sleep_summaries"))
-        assertEquals(1, countRows(dbPath, "canonical_sleep_summaries"))
-        assertEquals(
-            "processed",
-            singleString(dbPath, "SELECT status FROM ingestion_batches")
-        )
-        assertEquals(
-            "unknown",
-            singleString(dbPath, "SELECT context FROM scalar_samples WHERE metric_type = 'heart_rate'")
-        )
-    }
 
     @Test
-    fun batchExternalIdIsIdempotentPerSourceInstance() = testApplication {
-        val dbPath = configureTestApplication()
+    fun mixedBatchPersistsIngestionAndMetricRecords() =
+        testApplication {
+            val dbPath = configureTestApplication()
 
-        val first = client.post("/api/v2/ingestion/batches") {
-            authorized()
-            contentType(ContentType.Application.Json)
-            setBody(minimalStepPayload(batchExternalId = "dupe-batch"))
-        }
-        val second = client.post("/api/v2/ingestion/batches") {
-            authorized()
-            contentType(ContentType.Application.Json)
-            setBody(minimalStepPayload(batchExternalId = "dupe-batch"))
-        }
+            val response =
+                client.post("/api/v2/ingestion/batches") {
+                    authorized()
+                    contentType(ContentType.Application.Json)
+                    setBody(mixedPayload(batchExternalId = "mixed-1"))
+                }
 
-        assertEquals(HttpStatusCode.Created, first.status)
-        assertEquals(HttpStatusCode.OK, second.status)
-        assertEquals(
-            true,
-            second.jsonBody()["duplicateBatch"]!!.jsonPrimitive.content == "true"
-        )
-        assertEquals(1, countRows(dbPath, "ingestion_batches"))
-        assertEquals(1, countRows(dbPath, "ingestion_records"))
-        assertEquals(1, countRows(dbPath, "step_samples"))
-        assertEquals(
-            1200,
-            singleInt(dbPath, "SELECT steps FROM step_daily_summaries")
-        )
-    }
+            assertEquals(HttpStatusCode.Created, response.status)
+            val body = response.jsonBody()
+            assertEquals(5, body["recordsReceived"]!!.jsonPrimitive.int)
+            assertEquals(5, body["ingestionRecordsStored"]!!.jsonPrimitive.int)
+            assertEquals(
+                1,
+                body["metricsCreated"]!!.jsonObject["step_samples"]!!.jsonPrimitive.int,
+            )
+            assertEquals(
+                1,
+                body["metricsCreated"]!!.jsonObject["sleep_sessions"]!!.jsonPrimitive.int,
+            )
+            assertEquals(
+                2,
+                body["metricsCreated"]!!.jsonObject["sleep_stages"]!!.jsonPrimitive.int,
+            )
+            assertEquals(
+                1,
+                body["metricsCreated"]!!.jsonObject["weight"]!!.jsonPrimitive.int,
+            )
+            assertEquals(
+                1,
+                body["metricsCreated"]!!.jsonObject["heart_rate"]!!.jsonPrimitive.int,
+            )
+            assertEquals(
+                1,
+                body["metricsCreated"]!!.jsonObject["sleep_summaries"]!!.jsonPrimitive.int,
+            )
+
+            assertEquals(1, countRows(dbPath, "ingestion_batches"))
+            assertEquals(5, countRows(dbPath, "ingestion_records"))
+            assertEquals(1, countRows(dbPath, "step_samples"))
+            assertEquals(1, countRows(dbPath, "step_daily_summaries"))
+            assertEquals(1, countRows(dbPath, "canonical_step_samples"))
+            assertEquals(4, countRows(dbPath, "canonical_step_day_bucket_contributions"))
+            assertEquals(
+                1200,
+                singleInt(dbPath, "SELECT steps FROM step_daily_summaries"),
+            )
+            assertEquals(1, countRows(dbPath, "sleep_sessions"))
+            assertEquals(2, countRows(dbPath, "sleep_stages"))
+            assertEquals(
+                5,
+                singleInt(
+                    dbPath,
+                    "SELECT COUNT(*) FROM scalar_samples WHERE metric_type IN " +
+                        "('weight', 'body_fat', 'muscle', 'water', 'visceral_fat')",
+                ),
+            )
+            assertEquals(
+                1,
+                singleInt(dbPath, "SELECT COUNT(*) FROM scalar_samples WHERE metric_type = 'heart_rate'"),
+            )
+            assertEquals(1, countRows(dbPath, "sleep_summaries"))
+            assertEquals(1, countRows(dbPath, "canonical_sleep_summaries"))
+            assertEquals(
+                "processed",
+                singleString(dbPath, "SELECT status FROM ingestion_batches"),
+            )
+            assertEquals(
+                "unknown",
+                singleString(dbPath, "SELECT context FROM scalar_samples WHERE metric_type = 'heart_rate'"),
+            )
+        }
 
     @Test
-    fun failedBatchExternalIdCanBeRetried() = testApplication {
-        val dbPath = configureTestApplication()
-        client.get("/api/v2/admin/health")
-        insertFailedBatch(
-            dbPath = dbPath,
-            provider = "health_connect",
-            providerInstanceId = "pixel-8-health-connect",
-            batchExternalId = "retry-batch",
-        )
+    fun batchExternalIdIsIdempotentPerSourceInstance() =
+        testApplication {
+            val dbPath = configureTestApplication()
 
-        val response = client.post("/api/v2/ingestion/batches") {
-            authorized()
-            contentType(ContentType.Application.Json)
-            setBody(minimalStepPayload(batchExternalId = "retry-batch"))
+            val first =
+                client.post("/api/v2/ingestion/batches") {
+                    authorized()
+                    contentType(ContentType.Application.Json)
+                    setBody(minimalStepPayload(batchExternalId = "dupe-batch"))
+                }
+            val second =
+                client.post("/api/v2/ingestion/batches") {
+                    authorized()
+                    contentType(ContentType.Application.Json)
+                    setBody(minimalStepPayload(batchExternalId = "dupe-batch"))
+                }
+
+            assertEquals(HttpStatusCode.Created, first.status)
+            assertEquals(HttpStatusCode.OK, second.status)
+            assertEquals(
+                true,
+                second.jsonBody()["duplicateBatch"]!!.jsonPrimitive.content == "true",
+            )
+            assertEquals(1, countRows(dbPath, "ingestion_batches"))
+            assertEquals(1, countRows(dbPath, "ingestion_records"))
+            assertEquals(1, countRows(dbPath, "step_samples"))
+            assertEquals(
+                1200,
+                singleInt(dbPath, "SELECT steps FROM step_daily_summaries"),
+            )
         }
 
-        assertEquals(HttpStatusCode.Created, response.status)
-        assertEquals(2, countRows(dbPath, "ingestion_batches"))
-        assertEquals(
-            1,
-            singleInt(
-                dbPath,
-                "SELECT COUNT(*) FROM ingestion_batches WHERE status = 'processed' AND batch_external_id = 'retry-batch'"
+    @Test
+    fun failedBatchExternalIdCanBeRetried() =
+        testApplication {
+            val dbPath = configureTestApplication()
+            client.get("/api/v2/admin/health")
+            insertFailedBatch(
+                dbPath = dbPath,
+                provider = "health_connect",
+                providerInstanceId = "pixel-8-health-connect",
+                batchExternalId = "retry-batch",
             )
-        )
-        assertEquals(
-            1,
-            singleInt(
-                dbPath,
-                "SELECT COUNT(*) FROM ingestion_batches WHERE status = 'failed' AND batch_external_id LIKE 'retry-batch#failed:%'"
+
+            val response =
+                client.post("/api/v2/ingestion/batches") {
+                    authorized()
+                    contentType(ContentType.Application.Json)
+                    setBody(minimalStepPayload(batchExternalId = "retry-batch"))
+                }
+
+            assertEquals(HttpStatusCode.Created, response.status)
+            assertEquals(2, countRows(dbPath, "ingestion_batches"))
+            assertEquals(
+                1,
+                singleInt(
+                    dbPath,
+                    "SELECT COUNT(*) FROM ingestion_batches WHERE status = 'processed' AND batch_external_id = 'retry-batch'",
+                ),
             )
-        )
-        assertEquals(1, countRows(dbPath, "step_samples"))
-    }
+            assertEquals(
+                1,
+                singleInt(
+                    dbPath,
+                    "SELECT COUNT(*) FROM ingestion_batches WHERE status = 'failed' AND batch_external_id LIKE 'retry-batch#failed:%'",
+                ),
+            )
+            assertEquals(1, countRows(dbPath, "step_samples"))
+        }
 
     @Test
     fun providerRecordDuplicatesDoNotInflateMetricTables() =
@@ -201,11 +212,12 @@ class IngestionRouteTest {
             val dbPath = configureTestApplication()
 
             repeat(2) {
-                val response = client.post("/api/v2/ingestion/batches") {
-                    authorized()
-                    contentType(ContentType.Application.Json)
-                    setBody(minimalStepPayload(batchExternalId = null))
-                }
+                val response =
+                    client.post("/api/v2/ingestion/batches") {
+                        authorized()
+                        contentType(ContentType.Application.Json)
+                        setBody(minimalStepPayload(batchExternalId = null))
+                    }
                 assertEquals(HttpStatusCode.Created, response.status)
             }
 
@@ -214,7 +226,7 @@ class IngestionRouteTest {
             assertEquals(1, countRows(dbPath, "step_samples"))
             assertEquals(
                 1200,
-                singleInt(dbPath, "SELECT steps FROM step_daily_summaries")
+                singleInt(dbPath, "SELECT steps FROM step_daily_summaries"),
             )
         }
 
@@ -223,41 +235,43 @@ class IngestionRouteTest {
         testApplication {
             val dbPath = configureTestApplication()
 
-            val first = client.post("/api/v2/ingestion/batches") {
-                authorized()
-                contentType(ContentType.Application.Json)
-                setBody(
-                    stepPayload(
-                        provider = "health_connect",
-                        batchExternalId = "overlap-1",
-                        providerRecordId = "steps-1",
-                        startAt = "2026-04-19T08:00:00Z",
-                        endAt = "2026-04-19T09:00:00Z",
-                        steps = 1200,
+            val first =
+                client.post("/api/v2/ingestion/batches") {
+                    authorized()
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        stepPayload(
+                            provider = "health_connect",
+                            batchExternalId = "overlap-1",
+                            providerRecordId = "steps-1",
+                            startAt = "2026-04-19T08:00:00Z",
+                            endAt = "2026-04-19T09:00:00Z",
+                            steps = 1200,
+                        ),
                     )
-                )
-            }
-            val second = client.post("/api/v2/ingestion/batches") {
-                authorized()
-                contentType(ContentType.Application.Json)
-                setBody(
-                    stepPayload(
-                        provider = "health_connect",
-                        batchExternalId = "overlap-2",
-                        providerRecordId = "steps-2",
-                        startAt = "2026-04-19T08:30:00Z",
-                        endAt = "2026-04-19T09:30:00Z",
-                        steps = 800,
+                }
+            val second =
+                client.post("/api/v2/ingestion/batches") {
+                    authorized()
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        stepPayload(
+                            provider = "health_connect",
+                            batchExternalId = "overlap-2",
+                            providerRecordId = "steps-2",
+                            startAt = "2026-04-19T08:30:00Z",
+                            endAt = "2026-04-19T09:30:00Z",
+                            steps = 800,
+                        ),
                     )
-                )
-            }
+                }
 
             assertEquals(HttpStatusCode.Created, first.status)
             assertEquals(HttpStatusCode.Created, second.status)
             assertEquals(2, countRows(dbPath, "step_samples"))
             assertEquals(
                 2000,
-                singleInt(dbPath, "SELECT steps FROM step_daily_summaries")
+                singleInt(dbPath, "SELECT steps FROM step_daily_summaries"),
             )
         }
 
@@ -266,53 +280,55 @@ class IngestionRouteTest {
         testApplication {
             val dbPath = configureTestApplication()
 
-            val response = client.post("/api/v2/ingestion/batches") {
-                authorized()
-                contentType(ContentType.Application.Json)
-                setBody(
-                    stepPayload(
-                        provider = "health_connect",
-                        batchExternalId = "cross-midnight",
-                        providerRecordId = "steps-cross-midnight",
-                        startAt = "2026-04-19T23:00:00Z",
-                        endAt = "2026-04-20T01:00:00Z",
-                        steps = 120,
+            val response =
+                client.post("/api/v2/ingestion/batches") {
+                    authorized()
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        stepPayload(
+                            provider = "health_connect",
+                            batchExternalId = "cross-midnight",
+                            providerRecordId = "steps-cross-midnight",
+                            startAt = "2026-04-19T23:00:00Z",
+                            endAt = "2026-04-20T01:00:00Z",
+                            steps = 120,
+                        ),
                     )
-                )
-            }
+                }
 
             assertEquals(HttpStatusCode.Created, response.status)
             assertEquals(
                 2,
-                response.jsonBody()["affectedStepSummaryDates"]!!.jsonArray.size
+                response.jsonBody()["affectedStepSummaryDates"]!!.jsonArray.size,
             )
             assertEquals(2, countRows(dbPath, "step_daily_summaries"))
             assertEquals(
                 60,
                 singleInt(
                     dbPath,
-                    "SELECT steps FROM step_daily_summaries WHERE date = '2026-04-19'"
-                )
+                    "SELECT steps FROM step_daily_summaries WHERE date = '2026-04-19'",
+                ),
             )
             assertEquals(
                 60,
                 singleInt(
                     dbPath,
-                    "SELECT steps FROM step_daily_summaries WHERE date = '2026-04-20'"
-                )
+                    "SELECT steps FROM step_daily_summaries WHERE date = '2026-04-20'",
+                ),
             )
         }
 
     private fun ApplicationTestBuilder.configureTestApplication(): DatabaseConfig {
         val dbConfig = PostgresTestDatabase.config()
         environment {
-            config = MapApplicationConfig(
-                "ktor.application.modules.size" to "1",
-                "ktor.application.modules.0" to "me.aquitano.health.api.ApplicationKt.module",
-                *PostgresTestDatabase.ktorConfigEntries(dbConfig),
-                "aqtHealth.auth.bootstrapClientName" to "test-client",
-                "aqtHealth.auth.bootstrapApiKey" to "test-key",
-            )
+            config =
+                MapApplicationConfig(
+                    "ktor.application.modules.size" to "1",
+                    "ktor.application.modules.0" to "me.aquitano.health.api.ApplicationKt.module",
+                    *PostgresTestDatabase.ktorConfigEntries(dbConfig),
+                    "aqtHealth.auth.bootstrapClientName" to "test-client",
+                    "aqtHealth.auth.bootstrapApiKey" to "test-key",
+                )
         }
         return dbConfig
     }
@@ -321,16 +337,19 @@ class IngestionRouteTest {
         header(HttpHeaders.Authorization, "Bearer test-key")
     }
 
-    private suspend fun HttpResponse.jsonBody(): JsonObject =
-        AppJson.parseToJsonElement(bodyAsText()).jsonObject
+    private suspend fun HttpResponse.jsonBody(): JsonObject = AppJson.parseToJsonElement(bodyAsText()).jsonObject
 
-    private suspend fun HttpResponse.errorCode(): String =
-        jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
+    private suspend fun HttpResponse.errorCode(): String = jsonBody()["error"]!!.jsonObject["code"]!!.jsonPrimitive.content
 
-    private fun countRows(dbPath: DatabaseConfig, tableName: String): Int =
-        singleInt(dbPath, "SELECT COUNT(*) FROM $tableName")
+    private fun countRows(
+        dbPath: DatabaseConfig,
+        tableName: String,
+    ): Int = singleInt(dbPath, "SELECT COUNT(*) FROM $tableName")
 
-    private fun singleInt(dbPath: DatabaseConfig, sql: String): Int =
+    private fun singleInt(
+        dbPath: DatabaseConfig,
+        sql: String,
+    ): Int =
         PostgresTestDatabase.connection(dbPath).use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeQuery(sql).use { resultSet ->
@@ -340,7 +359,10 @@ class IngestionRouteTest {
             }
         }
 
-    private fun singleString(dbPath: DatabaseConfig, sql: String): String =
+    private fun singleString(
+        dbPath: DatabaseConfig,
+        sql: String,
+    ): String =
         PostgresTestDatabase.connection(dbPath).use { connection ->
             connection.createStatement().use { statement ->
                 statement.executeQuery(sql).use { resultSet ->
@@ -362,13 +384,13 @@ class IngestionRouteTest {
                     """
                     INSERT INTO sources (code, display_name, created_at)
                     VALUES ('$provider', NULL, '2026-04-19T09:00:00Z')
-                    """.trimIndent()
+                    """.trimIndent(),
                 )
                 statement.executeUpdate(
                     """
                     INSERT INTO source_instances (source_id, provider_instance_id, display_name, created_at, updated_at)
                     VALUES (1, '$providerInstanceId', NULL, '2026-04-19T09:00:00Z', '2026-04-19T09:00:00Z')
-                    """.trimIndent()
+                    """.trimIndent(),
                 )
                 statement.executeUpdate(
                     """
@@ -398,14 +420,14 @@ class IngestionRouteTest {
                         '2026-04-19T09:00:00Z',
                         '2026-04-19T09:00:00Z'
                     )
-                    """.trimIndent()
+                    """.trimIndent(),
                 )
             }
         }
     }
 
-    private fun minimalStepPayload(batchExternalId: String? = "steps-1-batch"): String {
-        return stepPayload(
+    private fun minimalStepPayload(batchExternalId: String? = "steps-1-batch"): String =
+        stepPayload(
             provider = "health_connect",
             batchExternalId = batchExternalId,
             providerRecordId = "steps-1",
@@ -413,7 +435,6 @@ class IngestionRouteTest {
             endAt = "2026-04-19T09:00:00Z",
             steps = 1200,
         )
-    }
 
     private fun stepPayload(
         provider: String,
@@ -444,7 +465,7 @@ class IngestionRouteTest {
                 }
               ]
             }
-        """.trimIndent()
+            """.trimIndent()
     }
 
     private fun mixedPayload(batchExternalId: String): String =

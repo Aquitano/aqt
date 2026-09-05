@@ -10,7 +10,8 @@ object StepSamplesTable : IntIdTable("step_samples") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)
     val ingestionRecordId =
-        integer("ingestion_record_id").references(IngestionRecordsTable.id)
+        integer("ingestion_record_id")
+            .references(IngestionRecordsTable.id)
             .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val startAt = timestampWithTimeZone("start_at")
@@ -36,7 +37,8 @@ object SleepSessionsTable : IntIdTable("sleep_sessions") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)
     val ingestionRecordId =
-        integer("ingestion_record_id").references(IngestionRecordsTable.id)
+        integer("ingestion_record_id")
+            .references(IngestionRecordsTable.id)
             .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val startAt = timestampWithTimeZone("start_at")
@@ -155,7 +157,8 @@ object ScalarSamplesTable : LongIdTable("scalar_samples") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)
     val ingestionRecordId =
-        integer("ingestion_record_id").references(IngestionRecordsTable.id)
+        integer("ingestion_record_id")
+            .references(IngestionRecordsTable.id)
             .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val measuredAt = timestampWithTimeZone("measured_at")
@@ -186,7 +189,8 @@ object ActivitySummariesTable : IntIdTable("activity_summaries") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)
     val ingestionRecordId =
-        integer("ingestion_record_id").references(IngestionRecordsTable.id)
+        integer("ingestion_record_id")
+            .references(IngestionRecordsTable.id)
             .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val date = date("date")
@@ -217,7 +221,8 @@ object SleepSummariesTable : IntIdTable("sleep_summaries") {
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)
     val ingestionRecordId =
-        integer("ingestion_record_id").references(IngestionRecordsTable.id)
+        integer("ingestion_record_id")
+            .references(IngestionRecordsTable.id)
             .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val startAt = timestampWithTimeZone("start_at")
@@ -267,7 +272,8 @@ object BloodPressureMeasurementsTable : IntIdTable("blood_pressure_measurements"
     val sourceInstanceId =
         integer("source_instance_id").references(SourceInstancesTable.id)
     val ingestionRecordId =
-        integer("ingestion_record_id").references(IngestionRecordsTable.id)
+        integer("ingestion_record_id")
+            .references(IngestionRecordsTable.id)
             .nullable()
     val providerRecordId = text("provider_record_id").nullable()
     val measuredAt = timestampWithTimeZone("measured_at")

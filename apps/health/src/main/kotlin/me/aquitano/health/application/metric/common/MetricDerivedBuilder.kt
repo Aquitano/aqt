@@ -22,7 +22,6 @@ class MetricDerivedBuilder<I : MetricDerivationInput, O : MetricDerivedOutput>(
     private val calculator: MetricDerivationCalculator<I, O>,
     private val outputWriter: MetricDerivedOutputWriter<O>,
 ) {
-
     /**
      * Executes a single derivation [job] stamped with [computedAt].
      *
@@ -30,12 +29,16 @@ class MetricDerivedBuilder<I : MetricDerivationInput, O : MetricDerivedOutput>(
      * in any stage are propagated as exceptions so that callers can apply
      * back-off and retry logic.
      */
-    suspend fun processJob(job: DerivationJob, computedAt: Instant): DerivedRebuildResult {
-        val input = inputLoader.loadInput(
-            range = job.range,
-            timezone = job.timezone,
-            computedAt = computedAt,
-        )
+    suspend fun processJob(
+        job: DerivationJob,
+        computedAt: Instant,
+    ): DerivedRebuildResult {
+        val input =
+            inputLoader.loadInput(
+                range = job.range,
+                timezone = job.timezone,
+                computedAt = computedAt,
+            )
 
         val output = calculator.derive(input)
 
@@ -62,10 +65,14 @@ data class DerivationJob(
 ) {
     companion object {
         /** The derivation job covering one local [date] in [timezone]. */
-        fun forDate(date: LocalDate, timezone: ZoneId, algorithmVersion: Int): DerivationJob =
+        fun forDate(
+            date: LocalDate,
+            timezone: ZoneId,
+            algorithmVersion: Int,
+        ): DerivationJob =
             DerivationJob(
-                range = date.atStartOfDay(timezone).toInstant()..
-                        date.plusDays(1).atStartOfDay(timezone).toInstant(),
+                range =
+                    date.atStartOfDay(timezone).toInstant()..date.plusDays(1).atStartOfDay(timezone).toInstant(),
                 timezone = timezone,
                 algorithmVersion = algorithmVersion,
             )
@@ -101,6 +108,7 @@ fun interface MetricInputLoader<I : MetricDerivationInput> {
 /** Base interface for metric derivation inputs. */
 interface MetricDerivationInput {
     val date: LocalDate
+
     /** The timezone used for date boundaries. */
     val timezone: ZoneId
 }
@@ -113,8 +121,10 @@ fun interface MetricDerivationCalculator<I : MetricDerivationInput, O : MetricDe
 /** Base interface for derived metric outputs. */
 interface MetricDerivedOutput {
     val date: LocalDate
+
     /** The timezone used for date boundaries. */
     val timezone: ZoneId
+
     /** Algorithm version that produced this output. */
     val algorithmVersion: Int
 }
