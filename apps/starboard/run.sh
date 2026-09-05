@@ -75,7 +75,7 @@ echo "Built $app"
 if [ "$launch_app" = true ]; then
     if pgrep -x Starboard >/dev/null 2>&1; then
         echo "Stopping the currently running Starboard instance..."
-        /usr/bin/osascript -e 'tell application id "com.thomasbreindl.starboard" to quit' >/dev/null 2>&1 || true
+        /usr/bin/osascript -e 'tell application id "com.aquitano.starboard" to quit' >/dev/null 2>&1 || true
 
         attempts=0
         while pgrep -x Starboard >/dev/null 2>&1 && [ "$attempts" -lt 50 ]; do

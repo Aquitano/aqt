@@ -1,6 +1,6 @@
 name: Starboard
 options:
-  bundleIdPrefix: com.thomasbreindl
+  bundleIdPrefix: com.aquitano
   deploymentTarget:
     macOS: "15.0"
   createIntermediateGroups: true
@@ -21,7 +21,7 @@ targets:
     sources: [Starboard]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.thomasbreindl.starboard
+        PRODUCT_BUNDLE_IDENTIFIER: com.aquitano.starboard
         GENERATE_INFOPLIST_FILE: false
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:

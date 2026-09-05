@@ -163,7 +163,7 @@ final class HelperServer: @unchecked Sendable {
     /// Accept, receive, JSON coding and send stay off the main run loop: that
     /// run loop also services the event tap, and the Raycast mirror polls the
     /// overlay throughout a hold — the busiest moment the tap has.
-    private let queue = DispatchQueue(label: "com.thomasbreindl.starboard.helper-socket")
+    private let queue = DispatchQueue(label: "com.aquitano.starboard.helper-socket")
 
     init(socketPath: String, handler: @escaping Handler) throws {
         self.handler = handler

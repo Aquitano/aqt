@@ -4,7 +4,7 @@ import os
 /// Signposts consumed by Instruments' Points of Interest template. Keeping the
 /// names static makes hot-path instrumentation allocation-free when recording.
 enum Perf {
-    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.thomasbreindl.starboard"
+    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.aquitano.starboard"
     private static let signposter = OSSignposter(subsystem: subsystem, category: "Performance")
     private static let logger = Logger(subsystem: subsystem, category: "Performance")
 
