@@ -119,7 +119,7 @@ function useEditorKeys(canEdit: boolean) {
       // Edit mode stays on real spreads, so it owns navigation instead of the
       // book, which would happily turn to a cover there is nothing to edit on.
       const target = navigationTarget(event.key, state);
-      if (target !== null && !(selected && ARROWS[event.key])) {
+      if (target !== null && !(selected && ARROWS.get(event.key))) {
         event.preventDefault();
         event.stopPropagation();
         state.setCurrent(target);
@@ -146,7 +146,7 @@ function useEditorKeys(canEdit: boolean) {
         );
         return;
       }
-      const nudge = ARROWS[event.key];
+      const nudge = ARROWS.get(event.key);
       if (nudge && !meta) {
         event.preventDefault();
         event.stopPropagation();
@@ -164,12 +164,12 @@ function useEditorKeys(canEdit: boolean) {
   }, [store, canEdit]);
 }
 
-const ARROWS: Record<string, { x: number; y: number }> = {
-  ArrowLeft: { x: -1, y: 0 },
-  ArrowRight: { x: 1, y: 0 },
-  ArrowUp: { x: 0, y: -1 },
-  ArrowDown: { x: 0, y: 1 },
-};
+const ARROWS = new Map([
+  ["ArrowLeft", { x: -1, y: 0 }],
+  ["ArrowRight", { x: 1, y: 0 }],
+  ["ArrowUp", { x: 0, y: -1 }],
+  ["ArrowDown", { x: 0, y: 1 }],
+]);
 
 /** Where a spread key should land, or null when the key is not navigation. */
 function navigationTarget(key: string, state: EditorState): number | null {

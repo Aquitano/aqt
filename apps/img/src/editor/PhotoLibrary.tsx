@@ -246,6 +246,6 @@ async function put(url: string, blob: Blob) {
 }
 
 /** The server refuses to delete a photo that is still on a page. */
-function isConflict(error: unknown): error is ServerError {
+function isConflict(error: Error): error is ServerError {
   return error instanceof ServerError && error.status === 409;
 }

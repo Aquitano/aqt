@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 import { readFile } from "node:fs/promises";
+import { text as readStdin } from "node:stream/consumers";
 import { parseArgs } from "node:util";
 
 import { type } from "arktype";
 
 import { bookInput } from "@/domain/api";
 
-import { ApiError, createClient } from "./client";
+import { ApiError, createClient, type Album, type Book, type Photo } from "./client";
 import { loadConfig, saveConfig } from "./config";
 import { bookDocument, coverFrom, importPhotos } from "./ops";
 
@@ -27,6 +28,17 @@ const USAGE = `album - photo books from the terminal
   album mcp                            serve the same commands over MCP (stdio)
 
   --json on any command prints raw API responses.`;
+
+/** Everything a command can hand to `--json`. */
+type CommandOutput =
+  | Album
+  | Album[]
+  | Book
+  | Photo[]
+  | { file: string }
+  | { ok: true }
+  | { slug: string; url: string }
+  | { userId: string };
 
 type Flags = {
   json: boolean;
@@ -69,7 +81,7 @@ async function main(argv: string[]) {
   }
 
   const client = createClient(await loadConfig());
-  const out = (data: unknown, human: () => string) =>
+  const out = (data: CommandOutput, human: () => string) =>
     print(flags.json ? JSON.stringify(data, null, 2) : human());
 
   if (command === "export") {
@@ -140,7 +152,9 @@ async function main(argv: string[]) {
     case "book put": {
       const albumId = need(rest[1], "album id");
       const source =
-        rest[2] && rest[2] !== "-" ? await readFile(rest[2], "utf8") : await readStdin();
+        rest[2] && rest[2] !== "-"
+          ? await readFile(rest[2], "utf8")
+          : await readStdin(process.stdin);
       const parsed = bookInput(JSON.parse(source));
       if (parsed instanceof type.errors) throw new UsageError(`Invalid book:\n${parsed.summary}`);
       const book = await client.albums.putBook(albumId, parsed);
@@ -164,19 +178,15 @@ function need(value: string | undefined, what: string) {
   return value;
 }
 
-async function readStdin() {
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString("utf8");
-}
-
 function print(text: string) {
   process.stdout.write(text + "\n");
 }
 
 class UsageError extends Error {}
 
-main(process.argv.slice(2)).catch((error: unknown) => {
+try {
+  await main(process.argv.slice(2));
+} catch (error) {
   const message =
     error instanceof ApiError
       ? `${error.message} (${error.status})`
@@ -185,4 +195,4 @@ main(process.argv.slice(2)).catch((error: unknown) => {
         : String(error);
   process.stderr.write(message + "\n");
   process.exit(error instanceof UsageError ? 2 : 1);
-});
+}

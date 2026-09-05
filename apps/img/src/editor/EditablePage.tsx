@@ -15,7 +15,7 @@ import type { Spread } from "@/server/db/schema";
 
 import { axisLock, clampToPage, snapMove, type Box, type Guide, type Point } from "./geometry";
 import { beginGesture } from "./history";
-import { photoElementFor, type PhotoRef } from "./place";
+import { photoElementFor, photoRef } from "./place";
 import { useEditor, useEditorStore } from "./store";
 import { TransformBox } from "./TransformBox";
 
@@ -127,8 +127,9 @@ export function EditablePage({ spread, side, layout }: EditablePageProps) {
     const raw = event.dataTransfer.getData(PHOTO_DRAG_TYPE);
     if (!raw) return;
     event.preventDefault();
-    const photo = JSON.parse(raw) as PhotoRef;
-    const element = photoElementFor(photo, side, toPage(event.clientX, event.clientY));
+    const dropped: unknown = JSON.parse(raw);
+    if (!photoRef.allows(dropped)) return;
+    const element = photoElementFor(dropped, side, toPage(event.clientX, event.clientY));
     addElement(spread.id, element);
     select(element.id);
   };

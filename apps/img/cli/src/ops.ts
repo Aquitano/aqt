@@ -1,6 +1,6 @@
 import { type } from "arktype";
 
-import { COVER_COLORS, type CoverColorName } from "@/book/palette";
+import { COVER_COLOR_NAMES, COVER_COLORS } from "@/book/palette";
 import { coverMaterial, type Cover } from "@/domain/element";
 
 import type { Client } from "./client";
@@ -41,5 +41,6 @@ export function coverFrom(input: { material?: string; color?: string }): Cover {
   const material = coverMaterial(input.material ?? "linen");
   if (material instanceof type.errors) throw new Error(`material ${material.summary}`);
   const color = input.color ?? "oxblood";
-  return { material, color: color in COVER_COLORS ? COVER_COLORS[color as CoverColorName] : color };
+  const swatch = COVER_COLOR_NAMES.find((name) => name === color);
+  return { material, color: swatch ? COVER_COLORS[swatch] : color };
 }

@@ -45,7 +45,7 @@ elements inside its own bounds; the spread's gutter is the shared edge at x = 0 
 Workflow: import_photos -> list_photos (ids, sizes, dates) -> create_album -> put_book. Re-read
 with get_book before editing an existing album so you keep spread ids.`;
 
-const text = (value: unknown) => ({
+const text = <T>(value: T) => ({
   content: [
     {
       type: "text" as const,
@@ -54,25 +54,25 @@ const text = (value: unknown) => ({
   ],
 });
 
-const failure = (error: unknown) => ({
+const failure = (cause: unknown) => ({
   isError: true,
   content: [
     {
       type: "text" as const,
       text:
-        error instanceof ApiError
-          ? `${error.message} (${error.status})`
-          : error instanceof Error
-            ? error.message
-            : String(error),
+        cause instanceof ApiError
+          ? `${cause.message} (${cause.status})`
+          : cause instanceof Error
+            ? cause.message
+            : String(cause),
     },
   ],
 });
 
 /** Runs a tool body and turns thrown errors into MCP error results. */
 const tool =
-  <T>(body: (args: T) => Promise<unknown>) =>
-  async (args: T) => {
+  <TArgs, TResult>(body: (args: TArgs) => Promise<TResult>) =>
+  async (args: TArgs) => {
     try {
       return text(await body(args));
     } catch (error) {

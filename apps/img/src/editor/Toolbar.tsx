@@ -32,6 +32,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import {
   MAX_TEXT_SIZE,
   MIN_TEXT_SIZE,
+  photoFrame,
+  textAlign,
+  textFont,
   type PhotoElement,
   type PhotoFrame,
   type TextElement,
@@ -153,7 +156,7 @@ function PhotoControls({ element, spreadId }: { element: PhotoElement; spreadId:
       size="sm"
       value={element.frame}
       onValueChange={(frame) =>
-        frame && updateElement(spreadId, element.id, { frame: frame as PhotoFrame })
+        photoFrame.allows(frame) && updateElement(spreadId, element.id, { frame })
       }
       aria-label="Frame"
     >
@@ -175,7 +178,7 @@ function TextControls({ element, spreadId }: { element: TextElement; spreadId: s
         type="single"
         size="sm"
         value={element.font}
-        onValueChange={(font) => font && patch({ font: font as TextElement["font"] })}
+        onValueChange={(font) => textFont.allows(font) && patch({ font })}
         aria-label="Font"
       >
         <ToggleGroupItem
@@ -217,7 +220,7 @@ function TextControls({ element, spreadId }: { element: TextElement; spreadId: s
         type="single"
         size="sm"
         value={element.align}
-        onValueChange={(align) => align && patch({ align: align as TextElement["align"] })}
+        onValueChange={(align) => textAlign.allows(align) && patch({ align })}
         aria-label="Alignment"
       >
         <ToggleGroupItem value="left" aria-label="Align left">
@@ -269,11 +272,11 @@ function History() {
   );
 }
 
-const SAVE_LABEL: Record<SaveStatus, string> = {
+const SAVE_LABEL = {
   saved: "Saved",
   saving: "Saving",
   error: "Not saved. Edit again to retry.",
-};
+} satisfies Record<SaveStatus, string>;
 
 function SaveDot() {
   const status = useEditor((state) => state.saveStatus);

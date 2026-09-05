@@ -1,3 +1,4 @@
+import { type } from "arktype";
 import exifr from "exifr";
 import sharp from "sharp";
 
@@ -20,7 +21,7 @@ export type PreparedPhoto = {
  */
 export async function preparePhoto(path: string): Promise<PreparedPhoto> {
   const source = sharp(path).rotate();
-  const [display, thumb, exif] = await Promise.all([
+  const [display, thumb, takenAt] = await Promise.all([
     source
       .clone()
       .resize(DISPLAY_MAX, DISPLAY_MAX, { fit: "inside", withoutEnlargement: true })
@@ -31,17 +32,24 @@ export async function preparePhoto(path: string): Promise<PreparedPhoto> {
       .resize(THUMB_MAX, THUMB_MAX, { fit: "inside", withoutEnlargement: true })
       .jpeg({ quality: QUALITY })
       .toBuffer(),
-    exifr.parse(path, ["DateTimeOriginal", "CreateDate"]).catch(() => null) as Promise<{
-      DateTimeOriginal?: Date;
-      CreateDate?: Date;
-    } | null>,
+    readTakenAt(path),
   ]);
-  const taken = exif?.DateTimeOriginal ?? exif?.CreateDate;
   return {
     display: display.data,
     thumb,
     width: display.info.width,
     height: display.info.height,
-    takenAt: taken instanceof Date && !Number.isNaN(taken.getTime()) ? taken.getTime() : undefined,
+    takenAt,
   };
+}
+
+const exifDates = type({ "DateTimeOriginal?": "Date", "CreateDate?": "Date" });
+
+/** A file carries whatever EXIF it likes, so only a real capture date counts. */
+async function readTakenAt(path: string) {
+  const raw = await exifr.parse(path, ["DateTimeOriginal", "CreateDate"]).catch(() => null);
+  const dates = exifDates(raw);
+  if (dates instanceof type.errors) return undefined;
+  const taken = dates.DateTimeOriginal ?? dates.CreateDate;
+  return taken && !Number.isNaN(taken.getTime()) ? taken.getTime() : undefined;
 }

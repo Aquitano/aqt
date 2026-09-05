@@ -13,6 +13,10 @@ export const pageSide = type("'left' | 'right'");
 
 export const photoFrame = type("'none' | 'polaroid' | 'corners' | 'tape'");
 
+export const textFont = type("'hand' | 'clean'");
+
+export const textAlign = type("'left' | 'center' | 'right'");
+
 /** Smallest box the editor lets you resize to. */
 export const MIN_ELEMENT_SIZE = 40;
 /** Boxes may bleed past the page, but never absurdly so. */
@@ -53,10 +57,10 @@ export const textElement = type({
   ...elementBase,
   kind: "'text'",
   text: `string <= ${MAX_TEXT_LENGTH}`,
-  font: "'hand' | 'clean'",
+  font: textFont,
   size: `${MIN_TEXT_SIZE} <= number <= ${MAX_TEXT_SIZE}`,
   color: "string > 0",
-  align: "'left' | 'center' | 'right'",
+  align: textAlign,
 }).narrow((el, ctx) => overlapsPage(el) || ctx.mustBe("on the page"));
 
 export const element = photoElement.or(textElement);

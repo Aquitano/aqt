@@ -17,3 +17,13 @@ export const COVER_COLORS = {
 } as const;
 
 export type CoverColorName = keyof typeof COVER_COLORS;
+
+/** Swatch order in the picker, and the names `album albums create --color` takes. */
+export const COVER_COLOR_NAMES = [
+  "oxblood",
+  "forest",
+  "navy",
+  "sand",
+  "charcoal",
+  "cream",
+] as const satisfies readonly CoverColorName[];

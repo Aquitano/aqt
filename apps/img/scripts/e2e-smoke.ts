@@ -11,6 +11,7 @@
  */
 import { mkdir } from "node:fs/promises";
 
+import { type, type Type } from "arktype";
 import { chromium, type Locator } from "playwright";
 
 const BASE = process.argv[2] ?? "http://localhost:3000";
@@ -36,11 +37,22 @@ const step = (name: string) => console.log(`- ${name}`);
  * matter which identifier strategies the instance enables and skips the bot
  * challenge that blocks headless sign-up.
  */
+const clerkUser = type({ id: "string" });
+const clerkSignInToken = type({ token: "string" });
+
+type ClerkRequest =
+  | { username: string; password: string }
+  | { user_id: string; expires_in_seconds: number };
+
 async function signIn() {
   step("sign in");
   const secret = process.env.CLERK_SECRET_KEY;
   if (!secret) throw new Error("CLERK_SECRET_KEY is missing; put it in .env");
-  const api = async <T>(path: string, body?: object): Promise<T> => {
+  const api = async <T extends Type>(
+    path: string,
+    schema: T,
+    body?: ClerkRequest,
+  ): Promise<T["infer"]> => {
     const response = await fetch(`https://api.clerk.com/v1${path}`, {
       method: body ? "POST" : "GET",
       headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
@@ -48,14 +60,15 @@ async function signIn() {
     });
     if (!response.ok)
       throw new Error(`Clerk API ${path}: ${response.status} ${await response.text()}`);
-    return response.json() as Promise<T>;
+    const parsed = schema(await response.json());
+    if (parsed instanceof type.errors) throw new Error(`Clerk API ${path}: ${parsed.summary}`);
+    return parsed;
   };
-  type User = { id: string };
-  const [existing] = await api<User[]>(`/users?username=${USERNAME}&limit=1`);
+  const [existing] = await api(`/users?username=${USERNAME}&limit=1`, clerkUser.array());
   const user =
     existing ??
-    (await api<User>("/users", { username: USERNAME, password: "Album-smoke-test-1234" }));
-  const { token } = await api<{ token: string }>("/sign_in_tokens", {
+    (await api("/users", clerkUser, { username: USERNAME, password: "Album-smoke-test-1234" }));
+  const { token } = await api("/sign_in_tokens", clerkSignInToken, {
     user_id: user.id,
     expires_in_seconds: 300,
   });

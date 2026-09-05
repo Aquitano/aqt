@@ -10,11 +10,7 @@ export async function exportPdf(client: Client, albumId: string, out?: string) {
   const { album } = await client.albums.get(albumId);
   const file = out ?? `${slug(album.title) || album.id}.pdf`;
 
-  const browser = await chromium.launch().catch((error: unknown) => {
-    throw new Error(
-      `Could not start Chromium. Run \`bunx playwright install chromium\` once.\n${error instanceof Error ? error.message : error}`,
-    );
-  });
+  const browser = await launchChromium();
   try {
     const context = await browser.newContext({ extraHTTPHeaders: client.headers });
     const page = await context.newPage();
@@ -26,6 +22,18 @@ export async function exportPdf(client: Client, albumId: string, out?: string) {
     await browser.close();
   }
   return file;
+}
+
+/** Chromium is downloaded separately, so a missing one gets its own hint. */
+async function launchChromium() {
+  try {
+    return await chromium.launch();
+  } catch (cause) {
+    throw new Error(
+      `Could not start Chromium. Run \`bunx playwright install chromium\` once.\n${cause instanceof Error ? cause.message : cause}`,
+      { cause },
+    );
+  }
 }
 
 function slug(text: string) {

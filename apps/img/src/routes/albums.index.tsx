@@ -6,7 +6,12 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { ShelfCover } from "@/book/Cover";
-import { COVER_COLORS, COVER_MATERIALS, type CoverColorName } from "@/book/palette";
+import {
+  COVER_COLOR_NAMES,
+  COVER_COLORS,
+  COVER_MATERIALS,
+  type CoverColorName,
+} from "@/book/palette";
 import { ApiKeysDialog } from "@/components/api-keys-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -30,7 +35,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import type { CoverMaterial } from "@/domain/element";
+import { coverMaterial, type CoverMaterial } from "@/domain/element";
 import { requireSignedIn } from "@/lib/guard";
 import { albumsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -190,7 +195,7 @@ function CreateAlbumDialog() {
               type="single"
               variant="outline"
               value={material}
-              onValueChange={(next) => next && setMaterial(next as CoverMaterial)}
+              onValueChange={(next) => coverMaterial.allows(next) && setMaterial(next)}
             >
               {COVER_MATERIALS.map((value) => (
                 <ToggleGroupItem key={value} value={value} className="capitalize">
@@ -203,14 +208,14 @@ function CreateAlbumDialog() {
           <div className="grid gap-2">
             <Label>Colour</Label>
             <div className="flex gap-2">
-              {Object.entries(COVER_COLORS).map(([name, value]) => (
+              {COVER_COLOR_NAMES.map((name) => (
                 <button
                   key={name}
                   type="button"
                   aria-label={name}
                   aria-pressed={color === name}
-                  onClick={() => setColor(name as CoverColorName)}
-                  style={{ background: value }}
+                  onClick={() => setColor(name)}
+                  style={{ background: COVER_COLORS[name] }}
                   className={cn(
                     "size-8 rounded-full border transition-all",
                     color === name && "ring-2 ring-ring ring-offset-2",

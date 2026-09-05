@@ -85,8 +85,10 @@ export function normalizeAngle(deg: number) {
   return ((((deg + 180) % 360) + 360) % 360) - 180;
 }
 
+export type Snap = { box: Box; guides: Guide[] };
+
 /** Snaps a moved box's edges and centre to the page centre lines and edges. */
-export function snapMove(box: Box, threshold: number): { box: Box; guides: Guide[] } {
+export function snapMove(box: Box, threshold: number): Snap {
   const guides: Guide[] = [];
   const x = snapAxis([box.x, box.x + box.w / 2, box.x + box.w], threshold);
   const y = snapAxis([box.y, box.y + box.h / 2, box.y + box.h], threshold);

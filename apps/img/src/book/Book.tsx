@@ -220,7 +220,7 @@ function BookStack({
       // Locked means someone else drives the book; they own the keys too.
       if (locked) return;
       if (event.metaKey || event.ctrlKey || event.altKey || isEditable(event.target)) return;
-      const handler = KEYS[event.key];
+      const handler = KEYS.get(event.key);
       if (!handler) return;
       event.preventDefault();
       handler(engine, endTurned);
@@ -304,12 +304,12 @@ function BookStack({
   );
 }
 
-const KEYS: Record<string, (engine: ReturnType<typeof useTurn>, end: number) => void> = {
-  ArrowRight: (engine) => engine.next(),
-  ArrowLeft: (engine) => engine.prev(),
-  Home: (engine) => engine.goTo(0),
-  End: (engine, end) => engine.goTo(end),
-};
+const KEYS = new Map<string, (engine: ReturnType<typeof useTurn>, end: number) => void>([
+  ["ArrowRight", (engine) => engine.next()],
+  ["ArrowLeft", (engine) => engine.prev()],
+  ["Home", (engine) => engine.goTo(0)],
+  ["End", (engine, end) => engine.goTo(end)],
+]);
 
 function isEditable(target: EventTarget | null) {
   return (

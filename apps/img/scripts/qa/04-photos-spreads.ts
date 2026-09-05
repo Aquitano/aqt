@@ -197,8 +197,8 @@ await page.waitForTimeout(900);
 const items = page.locator("[data-spread]");
 const n = await items.count();
 check(n === 3, "three spreads before reorder", `${n}`);
-const idsBefore = await items.evaluateAll((els) =>
-  els.map((e) => (e as HTMLElement).dataset.spread ?? ""),
+const idsBefore = await items.evaluateAll<string[], HTMLElement>((els) =>
+  els.map((e) => e.dataset.spread ?? ""),
 );
 const grip = page.getByRole("button", { name: /move spread 3/i });
 const gb = (await grip.boundingBox())!;
@@ -208,8 +208,8 @@ await page.mouse.down();
 await page.mouse.move(gb.x + gb.width / 2, first.y - 6, { steps: 12 });
 await page.mouse.up();
 await page.waitForTimeout(2500);
-const idsAfter = await items.evaluateAll((els) =>
-  els.map((e) => (e as HTMLElement).dataset.spread ?? ""),
+const idsAfter = await items.evaluateAll<string[], HTMLElement>((els) =>
+  els.map((e) => e.dataset.spread ?? ""),
 );
 check(
   idsBefore.join() !== idsAfter.join(),

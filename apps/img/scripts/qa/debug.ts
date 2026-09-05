@@ -12,6 +12,14 @@ import {
   summary,
 } from "./lib";
 
+/** The page records what it saw, so both probes read it back after the fact. */
+declare global {
+  interface Window {
+    qaEvents: string[];
+    qaKeys: string[];
+  }
+}
+
 const browser = await launch();
 const ctx = await desktop(browser);
 const page = await ctx.newPage();
@@ -41,13 +49,12 @@ console.log("order", await order(), "count", (await pageGeom(page, "left")).leng
 // Does a native mouse dblclick reach the page at all?
 await page.evaluate(() => {
   const root = document.querySelector('[data-editable-page="left"]')!;
-  (window as unknown as { seen: string[] }).seen = [];
+  window.qaEvents = [];
   for (const t of ["pointerdown", "mousedown", "click", "dblclick"]) {
-    root.addEventListener(t, (e) =>
-      (window as unknown as { seen: string[] }).seen.push(
-        `${t}:${(e.target as HTMLElement).dataset?.element ?? (e.target as HTMLElement).tagName}`,
-      ),
-    );
+    root.addEventListener(t, (e) => {
+      const el = e.target instanceof HTMLElement ? e.target : null;
+      window.qaEvents.push(`${t}:${el?.dataset.element ?? el?.tagName ?? "unknown"}`);
+    });
   }
 });
 
@@ -57,7 +64,7 @@ await page.waitForTimeout(250);
 console.log("selected handles:", await page.locator("[data-handle]").count());
 await target.dblclick();
 await page.waitForTimeout(400);
-const seen = await page.evaluate(() => (window as unknown as { seen: string[] }).seen);
+const seen = await page.evaluate(() => window.qaEvents);
 console.log("events after click+dblclick:", JSON.stringify(seen));
 check(
   (await page.locator("[contenteditable]").count()) > 0,
@@ -67,13 +74,12 @@ check(
 // Same on an unselected element.
 await page.keyboard.press("Escape");
 await page.waitForTimeout(200);
-await page.evaluate(() => ((window as unknown as { seen: string[] }).seen = []));
+await page.evaluate(() => {
+  window.qaEvents = [];
+});
 await target.dblclick();
 await page.waitForTimeout(400);
-console.log(
-  "events (unselected):",
-  JSON.stringify(await page.evaluate(() => (window as unknown as { seen: string[] }).seen)),
-);
+console.log("events (unselected):", JSON.stringify(await page.evaluate(() => window.qaEvents)));
 check(
   (await page.locator("[contenteditable]").count()) > 0,
   "dblclick on an unselected caption starts editing",
@@ -82,13 +88,12 @@ await shot(page, "90-dblclick");
 
 // What does the page actually see for the z-order chords?
 await page.evaluate(() => {
-  (window as unknown as { keys: string[] }).keys = [];
+  window.qaKeys = [];
   window.addEventListener(
     "keydown",
-    (e) =>
-      (window as unknown as { keys: string[] }).keys.push(
-        `${e.key}|meta:${e.metaKey}|code:${e.code}|default:${e.defaultPrevented}`,
-      ),
+    (e) => {
+      window.qaKeys.push(`${e.key}|meta:${e.metaKey}|code:${e.code}|default:${e.defaultPrevented}`);
+    },
     true,
   );
 });
@@ -97,10 +102,7 @@ await page.keyboard.press("BracketRight");
 await page.keyboard.press("BracketLeft");
 await page.keyboard.up("Meta");
 await page.waitForTimeout(200);
-console.log(
-  "keys seen:",
-  JSON.stringify(await page.evaluate(() => (window as unknown as { keys: string[] }).keys)),
-);
+console.log("keys seen:", JSON.stringify(await page.evaluate(() => window.qaKeys)));
 
 // Z-order key variants.
 await page.keyboard.press("Escape");

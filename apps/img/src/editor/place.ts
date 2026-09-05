@@ -1,12 +1,15 @@
+import { type } from "arktype";
 import { nanoid } from "nanoid";
 
 import type { Element, PageSide, PhotoElement, TextElement } from "@/domain/element";
 import { PAGE_UNITS } from "@/domain/page";
-import type { Photo } from "@/server/db/schema";
+
+import type { Point } from "./geometry";
 
 /** What the library hands over when a photo is dragged onto a page. */
-export type PhotoRef = Pick<Photo, "id" | "width" | "height">;
-import type { Point } from "./geometry";
+export const photoRef = type({ id: "string > 0", width: "number > 0", height: "number > 0" });
+
+export type PhotoRef = typeof photoRef.infer;
 
 /** Caption colours: ink first, then a few that sit well on cream paper. */
 export const CAPTION_COLORS = [

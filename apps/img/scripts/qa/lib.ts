@@ -4,6 +4,7 @@
  */
 import { mkdir } from "node:fs/promises";
 
+import { type, type Type } from "arktype";
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
 
 export const BASE = process.env.QA_BASE ?? "http://localhost:3000";
@@ -34,7 +35,18 @@ export function probe(page: Page): Probe {
   return { errors, requests };
 }
 
-async function clerk<T>(path: string, body?: object): Promise<T> {
+const clerkUser = type({ id: "string" });
+const clerkSignInToken = type({ token: "string" });
+
+type ClerkRequest =
+  | { username: string; password: string }
+  | { user_id: string; expires_in_seconds: number };
+
+async function clerk<T extends Type>(
+  path: string,
+  schema: T,
+  body?: ClerkRequest,
+): Promise<T["infer"]> {
   const secret = process.env.CLERK_SECRET_KEY;
   if (!secret) throw new Error("CLERK_SECRET_KEY missing");
   const res = await fetch(`https://api.clerk.com/v1${path}`, {
@@ -43,21 +55,23 @@ async function clerk<T>(path: string, body?: object): Promise<T> {
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(`Clerk ${path}: ${res.status} ${await res.text()}`);
-  return res.json() as Promise<T>;
+  const parsed = schema(await res.json());
+  if (parsed instanceof type.errors) throw new Error(`Clerk ${path}: ${parsed.summary}`);
+  return parsed;
 }
 
 /** Creates or reuses a Clerk user and returns its id. */
 export async function testUser(username = USERNAME) {
-  type User = { id: string };
-  const [existing] = await clerk<User[]>(`/users?username=${username}&limit=1`);
+  const [existing] = await clerk(`/users?username=${username}&limit=1`, clerkUser.array());
   return (
-    existing ?? (await clerk<User>("/users", { username, password: `Album-qa-${username}-1234` }))
+    existing ??
+    (await clerk("/users", clerkUser, { username, password: `Album-qa-${username}-1234` }))
   );
 }
 
 export async function signIn(page: Page, username = USERNAME) {
   const user = await testUser(username);
-  const { token } = await clerk<{ token: string }>("/sign_in_tokens", {
+  const { token } = await clerk("/sign_in_tokens", clerkSignInToken, {
     user_id: user.id,
     expires_in_seconds: 300,
   });

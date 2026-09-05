@@ -3,6 +3,7 @@ import { type, type Type } from "arktype";
 import { albumInput, albumPatch, bookInput, photoInput } from "@/domain/api";
 import * as albums from "@/server/albums";
 import { currentUserId } from "@/server/auth";
+import type { Album, Photo, Spread } from "@/server/db/schema";
 import * as photos from "@/server/photos";
 import * as spreads from "@/server/spreads";
 
@@ -14,6 +15,18 @@ import * as spreads from "@/server/spreads";
  */
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+/** Every body the API sends back. */
+type ApiPayload =
+  | Album
+  | Album[]
+  | Photo[]
+  | (Photo & { uploadUrl: string; thumbUploadUrl: string })
+  | { album: Album | undefined; spreads: Spread[] }
+  | { error: string }
+  | { slug: string; url: string }
+  | { userId: string }
+  | undefined;
 
 type Context = {
   userId: string;
@@ -34,7 +47,7 @@ function on(method: Method, path: string, handler: Route["handler"]) {
   routes.push({ method, segments: path.split("/").filter(Boolean), handler });
 }
 
-function json(data: unknown, status = 200) {
+function json(data: ApiPayload, status = 200) {
   return Response.json(data, { status });
 }
 
@@ -47,7 +60,7 @@ async function body<T extends Type>(request: Request, schema: T): Promise<T["inf
   });
   const result = schema(raw);
   if (result instanceof type.errors) throw new Response(result.summary, { status: 400 });
-  return result as T["infer"];
+  return result;
 }
 
 on("GET", "/me", async ({ userId }) => json({ userId }));

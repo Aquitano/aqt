@@ -16,6 +16,13 @@ import {
   turnedIndex,
 } from "./lib";
 
+/** The page records its own long tasks while the drag runs. */
+declare global {
+  interface Window {
+    qaLongTasks: number[];
+  }
+}
+
 const browser = await launch();
 const ctx = await desktop(browser);
 const page = await ctx.newPage();
@@ -69,10 +76,9 @@ const readFrames = async () => {
   };
 };
 await page.evaluate(() => {
-  (window as unknown as { longTasks: number[] }).longTasks = [];
+  window.qaLongTasks = [];
   new PerformanceObserver((list) => {
-    for (const e of list.getEntries())
-      (window as unknown as { longTasks: number[] }).longTasks.push(e.duration);
+    for (const e of list.getEntries()) window.qaLongTasks.push(e.duration);
   }).observe({ entryTypes: ["longtask"] });
 });
 const m0 = await readFrames();
@@ -85,9 +91,7 @@ await dragFromTo(
 );
 const dragMs = Date.now() - t0;
 const m1 = await readFrames();
-const longTasks = await page.evaluate(
-  () => (window as unknown as { longTasks: number[] }).longTasks,
-);
+const longTasks = await page.evaluate(() => window.qaLongTasks);
 const blocked = longTasks.reduce((a, b) => a + b, 0);
 check(
   blocked < 300,

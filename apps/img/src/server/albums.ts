@@ -93,14 +93,10 @@ export async function updateAlbum(
   patch: { title?: string; cover?: Cover },
 ) {
   await ownedAlbum(albumId, ownerId);
-  await db()
-    .update(albums)
-    .set({
-      ...(patch.title === undefined ? {} : { title: patch.title }),
-      ...(patch.cover === undefined ? {} : { cover: patch.cover }),
-      updatedAt: Date.now(),
-    })
-    .where(eq(albums.id, albumId));
+  const changes: Partial<Album> = { updatedAt: Date.now() };
+  if (patch.title !== undefined) changes.title = patch.title;
+  if (patch.cover !== undefined) changes.cover = patch.cover;
+  await db().update(albums).set(changes).where(eq(albums.id, albumId));
 }
 
 export async function deleteAlbum(albumId: string, ownerId: string) {
