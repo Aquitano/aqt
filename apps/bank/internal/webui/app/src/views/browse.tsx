@@ -131,7 +131,12 @@ export function BrowseView({
             ))}
           </SelectContent>
         </Select>
-        <Select value={order} onValueChange={(v) => setOrder(v as "asc" | "desc")}>
+        <Select
+          value={order}
+          onValueChange={(v) => {
+            if (v === "asc" || v === "desc") setOrder(v);
+          }}
+        >
           <SelectTrigger size="sm" className="flex-1 text-xs">
             <SelectValue />
           </SelectTrigger>
@@ -145,9 +150,7 @@ export function BrowseView({
         {q.isLoading ? (
           <ListSkeleton />
         ) : q.isError ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            {(q.error as Error).message}
-          </div>
+          <div className="py-12 text-center text-sm text-muted-foreground">{q.error.message}</div>
         ) : (
           <>
             {groups.map((g) => {

@@ -117,9 +117,7 @@ export function ContactsView({
         {q.isLoading ? (
           <ListSkeleton />
         ) : q.isError ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            {(q.error as Error).message}
-          </div>
+          <div className="py-12 text-center text-sm text-muted-foreground">{q.error.message}</div>
         ) : (
           <>
             {contacts.map((c) => (

@@ -210,9 +210,7 @@ export function SearchView({
         {q.isLoading ? (
           <ListSkeleton />
         ) : q.isError ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            {(q.error as Error).message}
-          </div>
+          <div className="py-12 text-center text-sm text-muted-foreground">{q.error.message}</div>
         ) : params && hits.length === 0 ? (
           <div className="py-12 text-center text-sm text-muted-foreground">No results</div>
         ) : (

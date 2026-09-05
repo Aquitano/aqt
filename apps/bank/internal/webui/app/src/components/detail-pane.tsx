@@ -95,7 +95,7 @@ export function DetailPane({ selection }: { selection: Selection }) {
             <ShieldAlert />
           </EmptyMedia>
           <EmptyTitle>Could not load</EmptyTitle>
-          <EmptyDescription>{(q.error as Error).message}</EmptyDescription>
+          <EmptyDescription>{q.error.message}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );

@@ -14,7 +14,10 @@ const client = new QueryClient({
   defaultOptions: { queries: { staleTime: 60_000, retry: 1, refetchOnWindowFocus: false } },
 });
 
-type View = "search" | "browse" | "contacts" | "stats";
+const VIEWS = ["search", "browse", "contacts", "stats"] as const;
+type View = (typeof VIEWS)[number];
+
+const isView = (value: string): value is View => VIEWS.some((candidate) => candidate === value);
 
 function Shell() {
   const [view, setView] = useState<View>("search");
@@ -30,19 +33,23 @@ function Shell() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const t = e.target as HTMLElement;
-      const inField = t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable;
-      if (e.key === "/" && !inField) {
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      const field =
+        target !== null &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+          ? target
+          : null;
+      if (e.key === "/" && field === null) {
         e.preventDefault();
         setView("search");
         requestAnimationFrame(() => searchRef.current?.focus());
         return;
       }
-      const down = e.key === "ArrowDown" || (e.key === "j" && !inField);
-      const up = e.key === "ArrowUp" || (e.key === "k" && !inField);
+      const down = e.key === "ArrowDown" || (e.key === "j" && field === null);
+      const up = e.key === "ArrowUp" || (e.key === "k" && field === null);
       if (!down && !up) return;
       // arrows from the search input jump into the results; otherwise skip fields
-      if (inField && !(t as HTMLInputElement).matches("input[type=text],input:not([type])")) return;
+      if (field !== null && !field.matches("input[type=text],input:not([type])")) return;
       const rows = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-row]"));
       if (!rows.length) return;
       const cur = rows.findIndex((r) => r.dataset.selected !== undefined);
@@ -65,7 +72,12 @@ function Shell() {
             <span className="text-primary">aqt</span>-bank
           </span>
         </h1>
-        <Tabs value={view} onValueChange={(v) => setView(v as View)}>
+        <Tabs
+          value={view}
+          onValueChange={(v) => {
+            if (isView(v)) setView(v);
+          }}
+        >
           <TabsList className="h-8">
             <TabsTrigger value="search" className="text-xs">
               Search

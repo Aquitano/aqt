@@ -74,9 +74,7 @@ async function setupPrettier(
 
   await shell.writeFile(`${projectPath}/.prettierrc`, JSON.stringify(preset, null, 2) + "\n");
 
-  const pkg = await shell.readJson<{ scripts?: Record<string, string> }>(
-    `${projectPath}/package.json`,
-  );
+  const pkg = await shell.readPackageJson(`${projectPath}/package.json`);
   pkg.scripts ??= {};
   pkg.scripts.format = "prettier --write .";
   pkg.scripts["format:check"] = "prettier --check .";
@@ -127,9 +125,7 @@ async function setupScripts(
   projectPath: string,
   shell: ShellRunner,
 ): Promise<void> {
-  const pkg = await shell.readJson<{ scripts?: Record<string, string> }>(
-    `${projectPath}/package.json`,
-  );
+  const pkg = await shell.readPackageJson(`${projectPath}/package.json`);
   pkg.scripts ??= {};
   pkg.scripts.typecheck = "tsc --noEmit";
   if (config.testing) {

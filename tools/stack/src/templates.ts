@@ -433,11 +433,16 @@ export interface TemplateOptions {
   prettier: boolean;
 }
 
+/** Generated file contents, keyed by path relative to the project root. */
+export interface ProjectFiles {
+  [path: string]: string;
+}
+
 /**
  * Returns the file templates for a scaffolded project, gated by config flags.
  */
-export function getTemplates(opts: TemplateOptions): Record<string, string> {
-  const files: Record<string, string> = {
+export function getTemplates(opts: TemplateOptions): ProjectFiles {
+  const files: ProjectFiles = {
     "src/app/page.tsx": buildLanding(opts),
     "src/lib/env.ts": ENV_FILE,
     ".env.example": ENV_EXAMPLE,

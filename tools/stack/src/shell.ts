@@ -2,6 +2,11 @@ import { $ } from "bun";
 
 // ── Port ─────────────────────────────────────────────────────────
 
+/** The slice of a project's package.json this scaffolder reads and rewrites. */
+export interface PackageManifest {
+  scripts?: Record<string, string>;
+}
+
 export interface ShellRunner {
   /** Spawn a command with inherited stdio. Throws on non-zero exit. */
   spawn(command: string, args: string[], opts: { cwd: string }): Promise<void>;
@@ -18,8 +23,8 @@ export interface ShellRunner {
   /** Read a file as text. */
   readFile(path: string): Promise<string>;
 
-  /** Read a JSON file. */
-  readJson<T>(path: string): Promise<T>;
+  /** Read a project's package.json. */
+  readPackageJson(path: string): Promise<PackageManifest>;
 }
 
 // ── Bun adapter ──────────────────────────────────────────────────
@@ -52,7 +57,7 @@ export class BunShellRunner implements ShellRunner {
     return Bun.file(path).text();
   }
 
-  async readJson<T>(path: string): Promise<T> {
-    return Bun.file(path).json() as Promise<T>;
+  async readPackageJson(path: string): Promise<PackageManifest> {
+    return Bun.file(path).json();
   }
 }

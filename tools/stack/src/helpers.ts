@@ -30,8 +30,9 @@ export async function step(
   }
 }
 
-export function die(err: unknown): never {
-  const msg = err instanceof Error ? err.message : String(err);
-  log.error(`Bootstrapping failed: ${msg}`);
+/** Report a rejected top-level promise. The cause is whatever was thrown, so it stays `unknown`. */
+export function die(cause: unknown): never {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  log.error(`Bootstrapping failed: ${message}`);
   process.exit(1);
 }

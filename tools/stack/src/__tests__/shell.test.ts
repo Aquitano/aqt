@@ -1,11 +1,11 @@
 import { describe, expect, test, beforeEach } from "bun:test";
 
-import type { ShellRunner } from "../shell.ts";
+import type { PackageManifest, ShellRunner } from "../shell.ts";
 
 // ── Recording test adapter ───────────────────────────────────────
 
 interface ShellCall {
-  kind: "spawn" | "install" | "mkdir" | "writeFile" | "readFile" | "readJson";
+  kind: "spawn" | "install" | "mkdir" | "writeFile" | "readFile" | "readPackageJson";
   args: unknown[];
 }
 
@@ -33,9 +33,9 @@ class RecordingShellRunner implements ShellRunner {
     return `content of ${path}`;
   }
 
-  async readJson<T>(path: string): Promise<T> {
-    this.calls.push({ kind: "readJson", args: [path] });
-    return { scripts: {} } as T;
+  async readPackageJson(path: string): Promise<PackageManifest> {
+    this.calls.push({ kind: "readPackageJson", args: [path] });
+    return { scripts: {} };
   }
 }
 

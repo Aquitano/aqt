@@ -4,6 +4,24 @@ import type { Config, PrettierPreset } from "./config.ts";
 import { DEFAULT_SHADCN_COMPONENTS, SHADCN_COMPONENTS } from "./config.ts";
 import { unwrap } from "./helpers.ts";
 
+const PRETTIER_PRESET_OPTIONS: { value: PrettierPreset; label: string; hint: string }[] = [
+  {
+    value: "default",
+    label: "Default",
+    hint: "Semi, single quotes, trailing commas, 100 width",
+  },
+  {
+    value: "relaxed",
+    label: "Relaxed",
+    hint: "No semi, no trailing commas, 120 width",
+  },
+  {
+    value: "strict",
+    label: "Strict",
+    hint: "Semi, trailing commas, 80 width",
+  },
+];
+
 export async function promptConfig(): Promise<Config> {
   const projectName = unwrap(
     await text({
@@ -24,27 +42,8 @@ export async function promptConfig(): Promise<Config> {
   let prettierPreset: PrettierPreset = "default";
   if (usePrettier) {
     prettierPreset = unwrap(
-      await select({
-        message: "Prettier preset",
-        options: [
-          {
-            value: "default",
-            label: "Default",
-            hint: "Semi, single quotes, trailing commas, 100 width",
-          },
-          {
-            value: "relaxed",
-            label: "Relaxed",
-            hint: "No semi, no trailing commas, 120 width",
-          },
-          {
-            value: "strict",
-            label: "Strict",
-            hint: "Semi, trailing commas, 80 width",
-          },
-        ],
-      }),
-    ) as PrettierPreset;
+      await select({ message: "Prettier preset", options: PRETTIER_PRESET_OPTIONS }),
+    );
   }
 
   const useShadcn = unwrap(await confirm({ message: "Add shadcn/ui?", initialValue: true }));
@@ -58,7 +57,7 @@ export async function promptConfig(): Promise<Config> {
         initialValues: DEFAULT_SHADCN_COMPONENTS,
         required: false,
       }),
-    ) as string[];
+    );
   }
 
   const useHono = unwrap(
@@ -78,7 +77,7 @@ export async function promptConfig(): Promise<Config> {
   );
 
   return {
-    projectName: projectName as string,
+    projectName,
     eslint,
     prettier: usePrettier,
     prettierPreset,

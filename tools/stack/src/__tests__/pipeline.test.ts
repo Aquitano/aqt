@@ -2,38 +2,41 @@ import { describe, expect, test, beforeEach } from "bun:test";
 
 import type { Config } from "../config.ts";
 import { scaffold } from "../pipeline.ts";
-import type { ShellRunner } from "../shell.ts";
+import type { PackageManifest, ShellRunner } from "../shell.ts";
 
 // ── Recording test adapter ───────────────────────────────────────
 
-interface ShellCall {
-  kind: string;
-  args: unknown[];
-}
+type ShellCall =
+  | { kind: "spawn"; command: string; args: string[] }
+  | { kind: "install"; packages: string[]; dev: boolean }
+  | { kind: "mkdir" }
+  | { kind: "writeFile"; path: string }
+  | { kind: "readFile"; path: string }
+  | { kind: "readPackageJson"; path: string };
 
 class RecordingShell implements ShellRunner {
   calls: ShellCall[] = [];
   private files: Map<string, string> = new Map();
 
   async spawn(command: string, args: string[], _opts: { cwd: string }): Promise<void> {
-    this.calls.push({ kind: "spawn", args: [command, ...args] });
+    this.calls.push({ kind: "spawn", command, args });
   }
 
   async install(packages: string[], opts: { cwd: string; dev?: boolean }): Promise<void> {
-    this.calls.push({ kind: "install", args: [packages, opts.dev ?? false] });
+    this.calls.push({ kind: "install", packages, dev: opts.dev ?? false });
   }
 
   async mkdir(_path: string, _cwd: string): Promise<void> {
-    this.calls.push({ kind: "mkdir", args: [] });
+    this.calls.push({ kind: "mkdir" });
   }
 
   async writeFile(path: string, content: string): Promise<void> {
-    this.calls.push({ kind: "writeFile", args: [path] });
+    this.calls.push({ kind: "writeFile", path });
     this.files.set(path, content);
   }
 
   async readFile(path: string): Promise<string> {
-    this.calls.push({ kind: "readFile", args: [path] });
+    this.calls.push({ kind: "readFile", path });
     if (path.endsWith("next.config.ts")) {
       return `const nextConfig = { /* config options here */ };`;
     }
@@ -46,11 +49,17 @@ class RecordingShell implements ShellRunner {
     return this.files.get(path) ?? "";
   }
 
-  async readJson<T>(path: string): Promise<T> {
-    this.calls.push({ kind: "readJson", args: [path] });
-    return { scripts: {} } as T;
+  async readPackageJson(path: string): Promise<PackageManifest> {
+    this.calls.push({ kind: "readPackageJson", path });
+    return { scripts: {} };
   }
 }
+
+const spawns = (calls: ShellCall[]) => calls.filter((c) => c.kind === "spawn");
+const installs = (calls: ShellCall[]) => calls.filter((c) => c.kind === "install");
+const installedPackages = (calls: ShellCall[]) => installs(calls).flatMap((c) => c.packages);
+const writtenPaths = (calls: ShellCall[]) =>
+  calls.filter((c) => c.kind === "writeFile").map((c) => c.path);
 
 // ── Default config ───────────────────────────────────────────────
 
@@ -82,16 +91,15 @@ describe("scaffold pipeline", () => {
   test("invokes create-next-app as first spawn", async () => {
     await scaffold(defaultConfig(), shell, async (_label, fn) => fn());
 
-    const spawnCalls = shell.calls.filter((c) => c.kind === "spawn");
-    const firstSpawn = spawnCalls[0]!;
-    expect(firstSpawn.args[0]).toBe("bunx");
-    expect(firstSpawn.args[1]).toContain("create-next-app@latest");
+    const firstSpawn = spawns(shell.calls)[0]!;
+    expect(firstSpawn.command).toBe("bunx");
+    expect(firstSpawn.args[0]).toBe("create-next-app@latest");
   });
 
   test("passes --eslint when config.eslint is true", async () => {
     await scaffold(defaultConfig({ eslint: true }), shell, async (_label, fn) => fn());
 
-    const firstSpawn = shell.calls.filter((c) => c.kind === "spawn")[0]!;
+    const firstSpawn = spawns(shell.calls)[0]!;
     expect(firstSpawn.args).toContain("--eslint");
     expect(firstSpawn.args).not.toContain("--no-eslint");
   });
@@ -99,41 +107,30 @@ describe("scaffold pipeline", () => {
   test("passes --no-eslint when config.eslint is false", async () => {
     await scaffold(defaultConfig({ eslint: false }), shell, async (_label, fn) => fn());
 
-    const firstSpawn = shell.calls.filter((c) => c.kind === "spawn")[0]!;
+    const firstSpawn = spawns(shell.calls)[0]!;
     expect(firstSpawn.args).toContain("--no-eslint");
   });
 
   test("skips prettier setup when config.prettier is false", async () => {
     await scaffold(defaultConfig({ prettier: false }), shell, async (_label, fn) => fn());
 
-    const prettierInstall = shell.calls.filter(
-      (c) =>
-        c.kind === "install" &&
-        Array.isArray(c.args[0]) &&
-        (c.args[0] as string[]).includes("prettier"),
-    );
-    expect(prettierInstall).toHaveLength(0);
+    const prettierInstalls = installs(shell.calls).filter((c) => c.packages.includes("prettier"));
+    expect(prettierInstalls).toHaveLength(0);
   });
 
   test("installs prettier as dev dep when config.prettier is true", async () => {
     await scaffold(defaultConfig({ prettier: true }), shell, async (_label, fn) => fn());
 
-    const prettierInstall = shell.calls.filter(
-      (c) =>
-        c.kind === "install" &&
-        Array.isArray(c.args[0]) &&
-        (c.args[0] as string[]).includes("prettier"),
-    );
-    expect(prettierInstall.length).toBeGreaterThan(0);
-    expect(prettierInstall[0]!.args[1]).toBe(true);
+    const prettierInstalls = installs(shell.calls).filter((c) => c.packages.includes("prettier"));
+    expect(prettierInstalls.length).toBeGreaterThan(0);
+    expect(prettierInstalls[0]!.dev).toBe(true);
   });
 
   test("skips shadcn setup when config.shadcn is false", async () => {
     await scaffold(defaultConfig({ shadcn: false }), shell, async (_label, fn) => fn());
 
-    const spawnCalls = shell.calls.filter((c) => c.kind === "spawn");
-    const shadcnSpawns = spawnCalls.filter((c) =>
-      (c.args as string[]).some((a: string) => a.includes("shadcn")),
+    const shadcnSpawns = spawns(shell.calls).filter((c) =>
+      c.args.some((a) => a.includes("shadcn")),
     );
     expect(shadcnSpawns).toHaveLength(0);
   });
@@ -141,11 +138,8 @@ describe("scaffold pipeline", () => {
   test("spawns shadcn init when config.shadcn is true", async () => {
     await scaffold(defaultConfig({ shadcn: true }), shell, async (_label, fn) => fn());
 
-    const shadcnInit = shell.calls.filter(
-      (c) =>
-        c.kind === "spawn" &&
-        (c.args as string[]).includes("shadcn@latest") &&
-        (c.args as string[]).includes("init"),
+    const shadcnInit = spawns(shell.calls).filter(
+      (c) => c.args.includes("shadcn@latest") && c.args.includes("init"),
     );
     expect(shadcnInit.length).toBeGreaterThan(0);
   });
@@ -153,9 +147,7 @@ describe("scaffold pipeline", () => {
   test("installs hono and valibot validator when config.hono is true", async () => {
     await scaffold(defaultConfig({ hono: true }), shell, async (_label, fn) => fn());
 
-    const allInstalled = shell.calls
-      .filter((c) => c.kind === "install" && Array.isArray(c.args[0]))
-      .flatMap((c) => c.args[0] as string[]);
+    const allInstalled = installedPackages(shell.calls);
     expect(allInstalled).toContain("hono");
     expect(allInstalled).toContain("@hono/valibot-validator");
   });
@@ -163,9 +155,7 @@ describe("scaffold pipeline", () => {
   test("skips hono install when config.hono is false", async () => {
     await scaffold(defaultConfig({ hono: false }), shell, async (_label, fn) => fn());
 
-    const allInstalled = shell.calls
-      .filter((c) => c.kind === "install" && Array.isArray(c.args[0]))
-      .flatMap((c) => c.args[0] as string[]);
+    const allInstalled = installedPackages(shell.calls);
     expect(allInstalled).not.toContain("hono");
     expect(allInstalled).not.toContain("@hono/valibot-validator");
   });
@@ -173,9 +163,7 @@ describe("scaffold pipeline", () => {
   test("writes hono template files when config.hono is true", async () => {
     await scaffold(defaultConfig({ hono: true }), shell, async (_label, fn) => fn());
 
-    const writePaths = shell.calls
-      .filter((c) => c.kind === "writeFile")
-      .map((c) => c.args[0] as string);
+    const writePaths = writtenPaths(shell.calls);
 
     expect(writePaths.some((p) => p.endsWith("src/lib/hono/index.ts"))).toBe(true);
     expect(writePaths.some((p) => p.endsWith("src/lib/hono/routes/health.ts"))).toBe(true);
@@ -186,9 +174,7 @@ describe("scaffold pipeline", () => {
   test("writes landing page and env files always", async () => {
     await scaffold(defaultConfig({ hono: false }), shell, async (_label, fn) => fn());
 
-    const writePaths = shell.calls
-      .filter((c) => c.kind === "writeFile")
-      .map((c) => c.args[0] as string);
+    const writePaths = writtenPaths(shell.calls);
 
     expect(writePaths.some((p) => p.endsWith("src/app/page.tsx"))).toBe(true);
     expect(writePaths.some((p) => p.endsWith("src/lib/env.ts"))).toBe(true);
@@ -198,9 +184,7 @@ describe("scaffold pipeline", () => {
   test("patches next.config.ts and layout.tsx", async () => {
     await scaffold(defaultConfig(), shell, async (_label, fn) => fn());
 
-    const writePaths = shell.calls
-      .filter((c) => c.kind === "writeFile")
-      .map((c) => c.args[0] as string);
+    const writePaths = writtenPaths(shell.calls);
 
     expect(writePaths.some((p) => p.endsWith("next.config.ts"))).toBe(true);
     expect(writePaths.some((p) => p.endsWith("src/app/layout.tsx"))).toBe(true);
@@ -209,9 +193,7 @@ describe("scaffold pipeline", () => {
   test("writes theme files when config.themes is true", async () => {
     await scaffold(defaultConfig({ themes: true }), shell, async (_label, fn) => fn());
 
-    const writePaths = shell.calls
-      .filter((c) => c.kind === "writeFile")
-      .map((c) => c.args[0] as string);
+    const writePaths = writtenPaths(shell.calls);
 
     expect(writePaths.some((p) => p.endsWith("src/components/theme-provider.tsx"))).toBe(true);
     expect(writePaths.some((p) => p.endsWith("src/components/theme-toggle.tsx"))).toBe(true);
@@ -220,9 +202,7 @@ describe("scaffold pipeline", () => {
   test("skips theme files when config.themes is false", async () => {
     await scaffold(defaultConfig({ themes: false }), shell, async (_label, fn) => fn());
 
-    const writePaths = shell.calls
-      .filter((c) => c.kind === "writeFile")
-      .map((c) => c.args[0] as string);
+    const writePaths = writtenPaths(shell.calls);
 
     expect(writePaths.some((p) => p.endsWith("theme-provider.tsx"))).toBe(false);
   });
@@ -230,9 +210,7 @@ describe("scaffold pipeline", () => {
   test("writes vitest config and sample tests when config.testing is true", async () => {
     await scaffold(defaultConfig({ testing: true }), shell, async (_label, fn) => fn());
 
-    const writePaths = shell.calls
-      .filter((c) => c.kind === "writeFile")
-      .map((c) => c.args[0] as string);
+    const writePaths = writtenPaths(shell.calls);
 
     expect(writePaths.some((p) => p.endsWith("vitest.config.ts"))).toBe(true);
     expect(writePaths.some((p) => p.endsWith("vitest.setup.ts"))).toBe(true);
@@ -242,9 +220,7 @@ describe("scaffold pipeline", () => {
   test("writes CI workflow when config.ci is true", async () => {
     await scaffold(defaultConfig({ ci: true }), shell, async (_label, fn) => fn());
 
-    const writePaths = shell.calls
-      .filter((c) => c.kind === "writeFile")
-      .map((c) => c.args[0] as string);
+    const writePaths = writtenPaths(shell.calls);
 
     expect(writePaths.some((p) => p.endsWith(".github/workflows/ci.yml"))).toBe(true);
   });
@@ -252,18 +228,15 @@ describe("scaffold pipeline", () => {
   test("installs next-themes when config.themes is true", async () => {
     await scaffold(defaultConfig({ themes: true }), shell, async (_label, fn) => fn());
 
-    const allInstalled = shell.calls
-      .filter((c) => c.kind === "install" && Array.isArray(c.args[0]))
-      .flatMap((c) => c.args[0] as string[]);
-    expect(allInstalled).toContain("next-themes");
+    expect(installedPackages(shell.calls)).toContain("next-themes");
   });
 
   test("installs vitest as dev dep when config.testing is true", async () => {
     await scaffold(defaultConfig({ testing: true }), shell, async (_label, fn) => fn());
 
-    const devInstalls = shell.calls
-      .filter((c) => c.kind === "install" && c.args[1] === true)
-      .flatMap((c) => c.args[0] as string[]);
+    const devInstalls = installs(shell.calls)
+      .filter((c) => c.dev)
+      .flatMap((c) => c.packages);
     expect(devInstalls).toContain("vitest");
     expect(devInstalls).toContain("@testing-library/react");
   });
@@ -271,18 +244,16 @@ describe("scaffold pipeline", () => {
   test("runs git commit as last spawn", async () => {
     await scaffold(defaultConfig(), shell, async (_label, fn) => fn());
 
-    const spawnCalls = shell.calls.filter((c) => c.kind === "spawn");
+    const spawnCalls = spawns(shell.calls);
     const lastSpawn = spawnCalls[spawnCalls.length - 1]!;
-    expect(lastSpawn.args[0]).toBe("git");
+    expect(lastSpawn.command).toBe("git");
     expect(lastSpawn.args).toContain("commit");
   });
 
   test("always installs valibot", async () => {
     await scaffold(defaultConfig({ hono: false }), shell, async (_label, fn) => fn());
 
-    const allInstalled = shell.calls
-      .filter((c) => c.kind === "install" && Array.isArray(c.args[0]))
-      .flatMap((c) => c.args[0] as string[]);
+    const allInstalled = installedPackages(shell.calls);
     expect(allInstalled).toContain("valibot");
     expect(allInstalled).toContain("@t3-oss/env-nextjs");
   });

@@ -1,18 +1,20 @@
 // Display helpers shared across views: source badges, dates, query highlighting.
 
-const SOURCE_HUES: Record<string, number> = {
-  whatsapp: 130,
-  gmail: 10,
-  proton: 270,
-  discord: 235,
-  linkedin: 205,
-  chatgpt: 170,
-  claude: 25,
-  "claude-code": 40,
-};
+const SOURCE_HUES = new Map([
+  ["whatsapp", 130],
+  ["gmail", 10],
+  ["proton", 270],
+  ["discord", 235],
+  ["linkedin", 205],
+  ["chatgpt", 170],
+  ["claude", 25],
+  ["claude-code", 40],
+]);
 
 export function sourceHue(src: string): number {
-  return SOURCE_HUES[src] ?? (Array.from(src).reduce((a, c) => a + c.charCodeAt(0), 0) * 37) % 360;
+  return (
+    SOURCE_HUES.get(src) ?? (Array.from(src).reduce((a, c) => a + c.charCodeAt(0), 0) * 37) % 360
+  );
 }
 
 export function SourceBadge({ source }: { source: string }) {

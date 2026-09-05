@@ -55,11 +55,16 @@ export interface ThreadGroup {
   members: string | null;
 }
 
+// Failed /v1 requests answer with `{"error": "..."}` in place of the payload.
+interface ErrorBody {
+  error?: string;
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, init);
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error((data as { error?: string }).error || r.statusText);
-  return data as T;
+  const body: T & ErrorBody = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || r.statusText);
+  return body;
 }
 
 export interface SearchParams {
@@ -126,12 +131,35 @@ export async function createContactWithAlias(name: string, alias: string) {
   });
 }
 
+interface QueryResult {
+  columns: string[];
+  rows: unknown[][];
+}
+
 function query(sql: string, limit: number) {
-  return api<{ columns: string[]; rows: unknown[][] }>("/v1/query", {
+  return api<QueryResult>("/v1/query", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sql, limit }),
   });
+}
+
+// /v1/query answers with positional rows, so each column is read back by name
+// and coerced into the ThreadGroup contract the browse list works with.
+function toThreadGroup(columns: string[], row: unknown[]): ThreadGroup {
+  const cell = (column: string) => row[columns.indexOf(column)];
+  const members = cell("members");
+  return {
+    source: String(cell("source")),
+    gid: String(cell("gid")),
+    n: Number(cell("n")),
+    last_at: String(cell("last_at")),
+    last_id: Number(cell("last_id")),
+    sender: String(cell("sender")),
+    subject: String(cell("subject")),
+    preview: String(cell("preview")),
+    members: members === null || members === undefined ? null : String(members),
+  };
 }
 
 const PAGE = 50;
@@ -161,9 +189,7 @@ export async function browseThreads(opts: {
     order by last_at ${order}
     limit ${PAGE} offset ${opts.offset}`;
   const res = await query(sql, PAGE);
-  return res.rows.map(
-    (r) => Object.fromEntries(res.columns.map((c, i) => [c, r[i]])) as unknown as ThreadGroup,
-  );
+  return res.rows.map((row) => toThreadGroup(res.columns, row));
 }
 
 export const BROWSE_PAGE = PAGE;
