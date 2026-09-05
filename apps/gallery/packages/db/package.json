@@ -1,5 +1,5 @@
 {
-  "name": "@aqt-gallery/db",
+  "name": "@aqt/gallery-db",
   "type": "module",
   "exports": {
     ".": {
@@ -16,14 +16,14 @@
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
-    "@aqt-gallery/env": "workspace:*",
+    "@aqt/gallery-env": "workspace:*",
     "dotenv": "catalog:",
     "drizzle-orm": "^0.45.1",
     "pg": "^8.17.1",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@aqt-gallery/config": "workspace:*",
+    "@aqt/config": "workspace:*",
     "@types/pg": "^8.16.0",
     "drizzle-kit": "^0.31.8",
     "typescript": "catalog:"

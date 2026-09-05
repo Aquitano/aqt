@@ -1,5 +1,5 @@
+import type { AppRouter } from "@aqt/gallery-server/api/routers/index";
 import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "server/api/routers/index";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 

@@ -1,5 +1,5 @@
 {
-  "extends": "@aqt-gallery/config/tsconfig.base.json",
+  "extends": "@aqt/config/tsconfig.bun.json",
   "compilerOptions": {
     "composite": true,
     "outDir": "dist",

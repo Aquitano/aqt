@@ -1,5 +1,5 @@
-import { Badge } from "@aqt-gallery/ui/components/badge";
-import { Button } from "@aqt-gallery/ui/components/button";
+import { Badge } from "@aqt/gallery-ui/components/badge";
+import { Button } from "@aqt/gallery-ui/components/button";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { Plus } from "lucide-react";

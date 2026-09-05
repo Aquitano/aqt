@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@aqt-gallery/ui/lib/utils";
+import { cn } from "@aqt/gallery-ui/lib/utils";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import type * as React from "react";

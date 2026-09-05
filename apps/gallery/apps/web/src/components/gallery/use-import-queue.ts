@@ -1,4 +1,4 @@
-import { env } from "@aqt-gallery/env/web";
+import { env } from "@aqt/gallery-env/web";
 import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 

@@ -1,16 +1,21 @@
-name: CI
-
+name: health
 on:
-  pull_request:
   push:
-    branches:
-      - main
-
+    branches: [main]
+    paths: ["apps/health/**", "!apps/health/frontend/**", ".github/workflows/health.yml"]
+  pull_request:
+    paths: ["apps/health/**", "!apps/health/frontend/**", ".github/workflows/health.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: health-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  test:
-    name: Gradle tests
+  check:
     runs-on: ubuntu-latest
-
+    defaults:
+      run:
+        working-directory: apps/health
     services:
       postgres:
         image: postgres:17-alpine
@@ -18,32 +23,22 @@ jobs:
           POSTGRES_DB: aqt_health
           POSTGRES_USER: aqt_health
           POSTGRES_PASSWORD: aqt_health
-        ports:
-          - 5432:5432
+        ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U aqt_health -d aqt_health"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
     env:
       AQT_HEALTH_TEST_JDBC_URL: jdbc:postgresql://localhost:5432/aqt_health
       AQT_HEALTH_TEST_DB_USER: aqt_health
       AQT_HEALTH_TEST_DB_PASSWORD: aqt_health
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
           cache: gradle
-
-      - name: Make Gradle wrapper executable
-        run: chmod +x ./gradlew
-
-      - name: Run tests
-        run: ./gradlew check --continue
+      - run: chmod +x ./gradlew
+      - run: ./gradlew check --continue

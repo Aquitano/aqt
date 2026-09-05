@@ -6,6 +6,7 @@
       "apps/*",
       "apps/gallery/apps/*",
       "apps/gallery/packages/*",
+      "apps/img/cli",
       "apps/health/frontend",
       "apps/bank/internal/webui/app",
       "packages/ts/*",
@@ -27,7 +28,8 @@
   "scripts": {
     "lint": "oxlint && oxlint --type-aware packages/ts",
     "fmt": "oxfmt",
-    "fmt:check": "oxfmt --check"
+    "fmt:check": "oxfmt --check",
+    "typecheck": "for p in apps/gallery/apps/web apps/gallery/apps/server apps/gallery/packages/db apps/gallery/packages/auth apps/gallery/packages/env apps/gallery/packages/ui apps/img apps/img/cli apps/health/frontend apps/bank/internal/webui/app tools/stack packages/ts/ui; do tsc --noEmit -p $p || exit 1; done"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.81.0",

@@ -1,5 +1,5 @@
 {
-  "name": "@aqt-gallery/auth",
+  "name": "@aqt/gallery-auth",
   "type": "module",
   "exports": {
     ".": {
@@ -11,11 +11,11 @@
   },
   "scripts": {},
   "dependencies": {
-    "@aqt-gallery/env": "workspace:*",
+    "@aqt/gallery-env": "workspace:*",
     "@clerk/backend": "^3.7.0"
   },
   "devDependencies": {
-    "@aqt-gallery/config": "workspace:*",
+    "@aqt/config": "workspace:*",
     "typescript": "catalog:"
   }
 }

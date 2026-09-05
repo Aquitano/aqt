@@ -1,13 +1,7 @@
 {
-  "name": "album",
+  "name": "@aqt/img",
   "private": true,
-  "workspaces": [
-    "cli"
-  ],
   "type": "module",
-  "imports": {
-    "#/*": "./src/*"
-  },
   "scripts": {
     "dev": "vite dev --port 3000",
     "build": "vite build",
@@ -47,6 +41,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@aqt/config": "workspace:*",
     "@cloudflare/vite-plugin": "^1.26.0",
     "@tanstack/devtools-vite": "latest",
     "@tanstack/router-cli": "^1.132.0",

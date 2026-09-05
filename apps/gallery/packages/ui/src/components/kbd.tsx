@@ -1,4 +1,4 @@
-import { cn } from "@aqt-gallery/ui/lib/utils";
+import { cn } from "@aqt/gallery-ui/lib/utils";
 import type * as React from "react";
 
 function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {

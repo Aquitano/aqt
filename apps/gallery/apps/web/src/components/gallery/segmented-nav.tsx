@@ -1,4 +1,4 @@
-import { cn } from "@aqt-gallery/ui/lib/utils";
+import { cn } from "@aqt/gallery-ui/lib/utils";
 import { Link } from "@tanstack/react-router";
 
 import type { ActiveGalleryTab } from "./types";

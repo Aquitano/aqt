@@ -1,9 +1,9 @@
-import { env } from "@aqt-gallery/env/web";
-import { Button } from "@aqt-gallery/ui/components/button";
-import { Input } from "@aqt-gallery/ui/components/input";
-import { Label } from "@aqt-gallery/ui/components/label";
-import { Textarea } from "@aqt-gallery/ui/components/textarea";
-import { cn } from "@aqt-gallery/ui/lib/utils";
+import { env } from "@aqt/gallery-env/web";
+import { Button } from "@aqt/gallery-ui/components/button";
+import { Input } from "@aqt/gallery-ui/components/input";
+import { Label } from "@aqt/gallery-ui/components/label";
+import { Textarea } from "@aqt/gallery-ui/components/textarea";
+import { cn } from "@aqt/gallery-ui/lib/utils";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { Check, ChevronDown, ChevronUp, GripVertical, Star, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useState } from "react";

@@ -1,4 +1,4 @@
-import { env } from "@aqt-gallery/env/server";
+import { env } from "@aqt/gallery-env/server";
 import { createClerkClient } from "@clerk/backend";
 
 const clerk = createClerkClient({

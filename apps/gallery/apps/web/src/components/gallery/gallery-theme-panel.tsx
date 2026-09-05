@@ -1,6 +1,6 @@
-import { Button } from "@aqt-gallery/ui/components/button";
-import { Input } from "@aqt-gallery/ui/components/input";
-import { cn } from "@aqt-gallery/ui/lib/utils";
+import { Button } from "@aqt/gallery-ui/components/button";
+import { Input } from "@aqt/gallery-ui/components/input";
+import { cn } from "@aqt/gallery-ui/lib/utils";
 import { RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 

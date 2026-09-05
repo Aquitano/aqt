@@ -16,8 +16,8 @@ import type {
 } from "@/lib/types";
 
 import {
-  HealthChartDatum,
-  HealthChartSeries,
+  type HealthChartDatum,
+  type HealthChartSeries,
   HealthMetricChart,
   type ChartPointDetail,
 } from "./charts/HealthMetricChart";

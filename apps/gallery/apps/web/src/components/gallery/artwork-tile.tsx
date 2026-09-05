@@ -1,4 +1,4 @@
-import { env } from "@aqt-gallery/env/web";
+import { env } from "@aqt/gallery-env/web";
 import { Link } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import type { CSSProperties } from "react";

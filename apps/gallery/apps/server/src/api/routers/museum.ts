@@ -1,10 +1,10 @@
 import path from "node:path";
 
-import { db } from "@aqt-gallery/db";
-import { artist, artwork, mediaAsset } from "@aqt-gallery/db/schema/gallery";
-import { artGroup, groupArtwork, museum, placement, room } from "@aqt-gallery/db/schema/museum";
-import { themeSchema } from "@aqt-gallery/db/schema/theme";
-import { env } from "@aqt-gallery/env/server";
+import { db } from "@aqt/gallery-db";
+import { artist, artwork, mediaAsset } from "@aqt/gallery-db/schema/gallery";
+import { artGroup, groupArtwork, museum, placement, room } from "@aqt/gallery-db/schema/museum";
+import { themeSchema } from "@aqt/gallery-db/schema/theme";
+import { env } from "@aqt/gallery-env/server";
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, inArray, ne, or } from "drizzle-orm";
 import { z } from "zod";

@@ -4,6 +4,7 @@
   "private": true,
   "files": [
     "tsconfig.base.json",
-    "tsconfig.app.json"
+    "tsconfig.app.json",
+    "tsconfig.bun.json"
   ]
 }

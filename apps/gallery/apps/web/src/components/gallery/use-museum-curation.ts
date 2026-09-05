@@ -1,7 +1,7 @@
+import type { AppRouter } from "@aqt/gallery-server/api/routers/index";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import { useEffect, useMemo, useState } from "react";
-import type { AppRouter } from "server/api/routers/index";
 import { toast } from "sonner";
 
 import type { ThemeValue } from "@/components/museum/theme";

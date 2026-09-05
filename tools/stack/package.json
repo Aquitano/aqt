@@ -1,5 +1,5 @@
 {
-  "name": "aqt-stack",
+  "name": "@aqt/stack",
   "private": true,
   "type": "module",
   "module": "index.ts",
@@ -10,6 +10,7 @@
     "@clack/prompts": "^1.5.1"
   },
   "devDependencies": {
+    "@aqt/config": "workspace:*",
     "@types/bun": "latest"
   },
   "peerDependencies": {

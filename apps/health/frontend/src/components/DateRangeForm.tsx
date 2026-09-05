@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useCallback, useEffect } from "react";
+import { type FormEvent, useCallback, useEffect } from "react";
 
 import styles from "./DateRangeForm.module.css";
 

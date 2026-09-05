@@ -23,22 +23,21 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "check-types": "turbo check-types",
-    "dev:web": "turbo -F web dev",
-    "dev:server": "turbo -F server dev",
-    "db:push": "turbo -F @aqt-gallery/db db:push",
-    "db:studio": "turbo -F @aqt-gallery/db db:studio",
-    "db:generate": "turbo -F @aqt-gallery/db db:generate",
-    "db:migrate": "turbo -F @aqt-gallery/db db:migrate",
-    "check": "biome check --write ."
+    "dev:web": "turbo -F @aqt/gallery-web dev",
+    "dev:server": "turbo -F @aqt/gallery-server dev",
+    "db:push": "turbo -F @aqt/gallery-db db:push",
+    "db:studio": "turbo -F @aqt/gallery-db db:studio",
+    "db:generate": "turbo -F @aqt/gallery-db db:generate",
+    "db:migrate": "turbo -F @aqt/gallery-db db:migrate",
+    "check": "oxlint"
   },
   "dependencies": {
-    "@aqt-gallery/env": "workspace:*",
+    "@aqt/gallery-env": "workspace:*",
     "dotenv": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@aqt-gallery/config": "workspace:*",
-    "@biomejs/biome": "^2.2.0",
+    "@aqt/config": "workspace:*",
     "@types/bun": "catalog:",
     "turbo": "^2.8.12",
     "typescript": "catalog:"

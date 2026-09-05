@@ -1,8 +1,8 @@
 import path from "node:path";
 
-import { db } from "@aqt-gallery/db";
-import { artwork, mediaAsset } from "@aqt-gallery/db/schema/gallery";
-import { artGroup, museum } from "@aqt-gallery/db/schema/museum";
+import { db } from "@aqt/gallery-db";
+import { artwork, mediaAsset } from "@aqt/gallery-db/schema/gallery";
+import { artGroup, museum } from "@aqt/gallery-db/schema/museum";
 import { eq } from "drizzle-orm";
 
 /**

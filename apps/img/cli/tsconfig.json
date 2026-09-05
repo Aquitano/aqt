@@ -1,19 +1,11 @@
 {
-  "include": ["src/**/*.ts", "../src/domain/**/*.ts"],
+  "extends": "@aqt/config/tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM"],
     "types": ["node"],
-    "paths": { "@/*": ["../src/*"] },
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "noEmit": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
-  }
+    "paths": {
+      "@/*": ["../src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "../src/domain/**/*.ts"]
 }

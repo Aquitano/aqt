@@ -4,8 +4,8 @@ import { X } from "lucide-react";
 import { useEffect, useId } from "react";
 
 import {
-  HealthChartDatum,
-  HealthChartSeries,
+  type HealthChartDatum,
+  type HealthChartSeries,
   HealthMetricChart,
   type ChartPointDetail,
 } from "@/components/charts/HealthMetricChart";

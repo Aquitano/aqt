@@ -1,4 +1,4 @@
-import { env } from "@aqt-gallery/env/server";
+import { env } from "@aqt/gallery-env/server";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";

@@ -1,5 +1,5 @@
-import { Input } from "@aqt-gallery/ui/components/input";
-import { Kbd } from "@aqt-gallery/ui/components/kbd";
+import { Input } from "@aqt/gallery-ui/components/input";
+import { Kbd } from "@aqt/gallery-ui/components/kbd";
 import { Search } from "lucide-react";
 import { useRef } from "react";
 

@@ -2,7 +2,7 @@ import type { GalleryTheme } from "./types";
 
 /**
  * Presentation half of the theme contract. The *shape* is owned by the server
- * (`@aqt-gallery/db/schema/theme`) and reaches the client through tRPC type
+ * (`@aqt/gallery-db/schema/theme`) and reaches the client through tRPC type
  * inference as `GalleryTheme`. The *fallback values* are a rendering concern,
  * so they live here — once — and are shared by the 3D renderer (`gallery-scene`)
  * and the editor (`gallery-theme-panel`).

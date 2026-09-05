@@ -13,8 +13,8 @@
   "iconLibrary": "lucide",
   "aliases": {
     "components": "@/components",
-    "utils": "@aqt-gallery/ui/lib/utils",
-    "ui": "@aqt-gallery/ui/components",
+    "utils": "@aqt/gallery-ui/lib/utils",
+    "ui": "@aqt/gallery-ui/components",
     "lib": "@/lib",
     "hooks": "@/hooks"
   },

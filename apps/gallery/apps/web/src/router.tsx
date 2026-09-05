@@ -1,12 +1,12 @@
-import { env } from "@aqt-gallery/env/web";
-import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
+import { env } from "@aqt/gallery-env/web";
+import type { AppRouter } from "@aqt/gallery-server/api/routers/index";
 
 import "./index.css";
+import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { createRouter as createTanStackRouter } from "@tanstack/react-router";
 import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import { createTRPCOptionsProxy } from "@trpc/tanstack-react-query";
-import type { AppRouter } from "server/api/routers/index";
 import { toast } from "sonner";
 
 import { NotFound, RouteError } from "./components/error-states";

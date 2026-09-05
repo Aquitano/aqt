@@ -1,9 +1,9 @@
 import path from "node:path";
 
-import { getSession } from "@aqt-gallery/auth";
-import { db } from "@aqt-gallery/db";
-import { mediaAsset } from "@aqt-gallery/db/schema/gallery";
-import { env } from "@aqt-gallery/env/server";
+import { getSession } from "@aqt/gallery-auth";
+import { db } from "@aqt/gallery-db";
+import { mediaAsset } from "@aqt/gallery-db/schema/gallery";
+import { env } from "@aqt/gallery-env/server";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { trpcServer } from "@hono/trpc-server";
 import { and, eq } from "drizzle-orm";

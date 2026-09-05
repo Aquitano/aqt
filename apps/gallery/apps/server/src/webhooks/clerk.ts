@@ -2,10 +2,10 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { rm, unlink } from "node:fs/promises";
 import path from "node:path";
 
-import { db } from "@aqt-gallery/db";
-import { artist, artwork, tag } from "@aqt-gallery/db/schema/gallery";
-import { artGroup } from "@aqt-gallery/db/schema/museum";
-import { apiToken } from "@aqt-gallery/db/schema/tokens";
+import { db } from "@aqt/gallery-db";
+import { artist, artwork, tag } from "@aqt/gallery-db/schema/gallery";
+import { artGroup } from "@aqt/gallery-db/schema/museum";
+import { apiToken } from "@aqt/gallery-db/schema/tokens";
 import { eq } from "drizzle-orm";
 
 /** Reject webhooks whose signed timestamp is older/newer than this, to blunt

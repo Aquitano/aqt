@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
-import type { AuthSession } from "@aqt-gallery/auth";
-import { db } from "@aqt-gallery/db";
-import { apiToken } from "@aqt-gallery/db/schema/tokens";
+import type { AuthSession } from "@aqt/gallery-auth";
+import { db } from "@aqt/gallery-db";
+import { apiToken } from "@aqt/gallery-db/schema/tokens";
 import { eq } from "drizzle-orm";
 
 /** Every personal access token starts with this so we can cheaply tell a PAT

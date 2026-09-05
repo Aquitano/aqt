@@ -1,4 +1,4 @@
-import { env } from "@aqt-gallery/env/server";
+import { env } from "@aqt/gallery-env/server";
 import { drizzle } from "drizzle-orm/node-postgres";
 
 import * as schema from "./schema";

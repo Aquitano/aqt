@@ -1,4 +1,4 @@
-import { Button } from "@aqt-gallery/ui/components/button";
+import { Button } from "@aqt/gallery-ui/components/button";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 

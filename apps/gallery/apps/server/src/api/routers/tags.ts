@@ -1,5 +1,5 @@
-import { db } from "@aqt-gallery/db";
-import { artwork, artworkTag, tag } from "@aqt-gallery/db/schema/gallery";
+import { db } from "@aqt/gallery-db";
+import { artwork, artworkTag, tag } from "@aqt/gallery-db/schema/gallery";
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";

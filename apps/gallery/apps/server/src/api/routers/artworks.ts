@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { db } from "@aqt-gallery/db";
+import { db } from "@aqt/gallery-db";
 import {
   artist,
   artwork,
@@ -8,8 +8,8 @@ import {
   artworkTag,
   mediaAsset,
   tag,
-} from "@aqt-gallery/db/schema/gallery";
-import { env } from "@aqt-gallery/env/server";
+} from "@aqt/gallery-db/schema/gallery";
+import { env } from "@aqt/gallery-env/server";
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, ilike, inArray, isNull, or } from "drizzle-orm";
 import { Effect } from "effect";

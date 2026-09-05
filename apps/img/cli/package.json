@@ -1,5 +1,5 @@
 {
-  "name": "album-cli",
+  "name": "@aqt/img-cli",
   "private": true,
   "bin": {
     "album": "./src/main.ts"
@@ -17,6 +17,7 @@
     "zod": "^4"
   },
   "devDependencies": {
+    "@aqt/config": "workspace:*",
     "@types/node": "^22.10.2",
     "typescript": "^6.0.2"
   }

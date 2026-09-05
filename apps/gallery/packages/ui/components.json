@@ -12,11 +12,11 @@
   },
   "iconLibrary": "lucide",
   "aliases": {
-    "components": "@aqt-gallery/ui/components",
-    "utils": "@aqt-gallery/ui/lib/utils",
-    "hooks": "@aqt-gallery/ui/hooks",
-    "lib": "@aqt-gallery/ui/lib",
-    "ui": "@aqt-gallery/ui/components"
+    "components": "@aqt/gallery-ui/components",
+    "utils": "@aqt/gallery-ui/lib/utils",
+    "hooks": "@aqt/gallery-ui/hooks",
+    "lib": "@aqt/gallery-ui/lib",
+    "ui": "@aqt/gallery-ui/components"
   },
   "menuColor": "default",
   "menuAccent": "subtle",

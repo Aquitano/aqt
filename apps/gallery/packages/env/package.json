@@ -1,5 +1,5 @@
 {
-  "name": "@aqt-gallery/env",
+  "name": "@aqt/gallery-env",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@aqt-gallery/config": "workspace:*",
+    "@aqt/config": "workspace:*",
     "@types/bun": "catalog:",
     "typescript": "catalog:"
   }

@@ -1,4 +1,4 @@
-import { getSession } from "@aqt-gallery/auth";
+import { getSession } from "@aqt/gallery-auth";
 import type { Context as HonoContext } from "hono";
 
 export type CreateContextOptions = {

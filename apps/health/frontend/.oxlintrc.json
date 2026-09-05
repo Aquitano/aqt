@@ -1,7 +1,5 @@
 {
-  "extends": [
-    "../../../.oxlintrc.json"
-  ],
+  "extends": ["../../../.oxlintrc.json"],
   "rules": {
     "anti-slop/no-chained-type-assertions": "warn",
     "anti-slop/no-conditional-empty-object-spread": "warn",
@@ -27,12 +25,5 @@
     "unicorn/no-useless-fallback-in-spread": "warn",
     "no-useless-escape": "warn"
   },
-  "plugins": [
-    "typescript",
-    "react",
-    "import",
-    "unicorn",
-    "promise",
-    "nextjs"
-  ]
+  "plugins": ["typescript", "react", "import", "unicorn", "promise", "nextjs"]
 }

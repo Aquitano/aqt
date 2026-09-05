@@ -1,4 +1,4 @@
-import { Button } from "@aqt-gallery/ui/components/button";
+import { Button } from "@aqt/gallery-ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -6,15 +6,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@aqt-gallery/ui/components/dialog";
+} from "@aqt/gallery-ui/components/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@aqt-gallery/ui/components/dropdown-menu";
-import { Input } from "@aqt-gallery/ui/components/input";
-import { Label } from "@aqt-gallery/ui/components/label";
+} from "@aqt/gallery-ui/components/dropdown-menu";
+import { Input } from "@aqt/gallery-ui/components/input";
+import { Label } from "@aqt/gallery-ui/components/label";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Shapes, Tag, Trash2, X } from "lucide-react";
 import { useState } from "react";

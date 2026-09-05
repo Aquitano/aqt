@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState, useTransition } from "react";
+import { type FormEvent, useEffect, useState, useTransition } from "react";
 
 import { formatDateTime } from "@/lib/format";
 import type {

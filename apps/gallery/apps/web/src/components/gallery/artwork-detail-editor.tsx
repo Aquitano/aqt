@@ -1,5 +1,5 @@
-import { env } from "@aqt-gallery/env/web";
-import { Button } from "@aqt-gallery/ui/components/button";
+import { env } from "@aqt/gallery-env/web";
+import { Button } from "@aqt/gallery-ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -7,7 +7,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@aqt-gallery/ui/components/dialog";
+} from "@aqt/gallery-ui/components/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +16,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@aqt-gallery/ui/components/dropdown-menu";
+} from "@aqt/gallery-ui/components/dropdown-menu";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronDown, Pencil, Plus, Save, Trash2, UserRound } from "lucide-react";

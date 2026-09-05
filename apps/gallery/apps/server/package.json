@@ -1,5 +1,5 @@
 {
-  "name": "server",
+  "name": "@aqt/gallery-server",
   "type": "module",
   "main": "src/index.ts",
   "exports": {
@@ -18,9 +18,9 @@
     "start": "bun run dist/index.mjs"
   },
   "dependencies": {
-    "@aqt-gallery/auth": "workspace:*",
-    "@aqt-gallery/db": "workspace:*",
-    "@aqt-gallery/env": "workspace:*",
+    "@aqt/gallery-auth": "workspace:*",
+    "@aqt/gallery-db": "workspace:*",
+    "@aqt/gallery-env": "workspace:*",
     "@hono/mcp": "^0.3.0",
     "@hono/trpc-server": "^0.4.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -33,7 +33,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@aqt-gallery/config": "workspace:*",
+    "@aqt/config": "workspace:*",
     "@types/bun": "catalog:",
     "tsdown": "^0.21.9",
     "typescript": "catalog:"

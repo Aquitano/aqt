@@ -1,10 +1,10 @@
 {
-  "extends": "@aqt-gallery/config/tsconfig.base.json",
+  "extends": "@aqt/config/tsconfig.bun.json",
   "compilerOptions": {
     "jsx": "react-jsx",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "paths": {
-      "@aqt-gallery/ui/*": ["./src/*"]
+      "@aqt/gallery-ui/*": ["./src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
