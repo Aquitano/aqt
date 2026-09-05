@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788025453500,
+      "tag": "0000_thin_sunfire",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788078338802,
+      "tag": "0001_overrated_slapstick",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788078467420,
+      "tag": "0002_oval_maverick",
+      "breakpoints": true
+    }
+  ]
+}
