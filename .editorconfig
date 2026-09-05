@@ -18,12 +18,12 @@ indent_size = 4
 [*.{kt,kts}]
 ktlint_code_style = ktlint_official
 ktlint_standard_no-wildcard-imports = disabled
+ktlint_standard_property-naming = disabled
+ktlint_standard_filename = disabled
+max_line_length = 160
 
 [Makefile]
 indent_style = tab
 
 [*.md]
 trim_trailing_whitespace = false
-
-[*.gradle.kts]
-ktlint_standard_property-naming = disabled

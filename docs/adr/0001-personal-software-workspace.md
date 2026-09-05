@@ -57,6 +57,7 @@ Gallery (Bun, Postgres, tRPC, Base UI, zod) and img (Cloudflare Worker, D1, R2, 
 ## Deferred
 
 - Revisit gallery's ten biome style rules (no parameter reassignment, self-closing elements, no useless else, and the rest) and port the ones worth keeping to oxlint for every app.
+- Re-enable ktlint's property-naming and filename rules in health after renaming its 32 constants and 4 files, and bring max line length back to 140.
 - Fix the React and anti-slop warnings in apps and promote them to errors app by app.
 
 - Unified logging to OpenObserve: one package per server language plus a written contract, after the migration.
