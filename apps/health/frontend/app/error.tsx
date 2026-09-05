@@ -11,9 +11,7 @@ export default function Error({
   return (
     <section className={styles.panel}>
       <h2>Something went wrong</h2>
-      <span className={styles.message}>
-        An unexpected error occurred.
-      </span>
+      <span className={styles.message}>An unexpected error occurred.</span>
       <button className={styles.retry} onClick={reset} type="button">
         Try again
       </button>

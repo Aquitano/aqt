@@ -78,4 +78,3 @@ BATTLEPLAN.md. Prereq: Accessibility granted; Safari, Slack, Spotify running.
 - [ ] Excluded Apps: add an app (e.g. Docker, Slack) in Settings → Excluded Apps (or via the "Exclude" button on an assignment row); verify it does not receive dynamic letters, does not show in the letter map, and is omitted from window cycle and search.
 - [ ] Fuzzy Match Highlighting: search overlay visually highlights matching letters in Coral bold against the rest of the title.
 - [ ] Immediate Recovery on Sleep/Wake: sleep Mac and wake; verify Starboard responds to hotkeys immediately upon wake without waiting for the fallback poll timer.
-

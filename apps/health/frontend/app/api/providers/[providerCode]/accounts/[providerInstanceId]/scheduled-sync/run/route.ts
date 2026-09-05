@@ -15,6 +15,6 @@ export async function POST(request: Request, context: RouteContext) {
   const result = await runScheduledSyncNow(providerCode, providerInstanceId);
 
   return NextResponse.json(result, {
-    status: result.ok ? 200 : result.status ?? 500,
+    status: result.ok ? 200 : (result.status ?? 500),
   });
 }

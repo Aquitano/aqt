@@ -68,7 +68,12 @@ export function ExpandedChartModal({
             <h2 id={titleId}>{title}</h2>
             {description ? <p>{description}</p> : null}
           </div>
-          <button className={styles.closeButton} type="button" onClick={onClose} aria-label="Close expanded chart">
+          <button
+            className={styles.closeButton}
+            type="button"
+            onClick={onClose}
+            aria-label="Close expanded chart"
+          >
             <X size={18} aria-hidden="true" />
           </button>
         </header>
@@ -129,4 +134,3 @@ export function ExpandedChartModal({
     onClose();
   }
 }
-

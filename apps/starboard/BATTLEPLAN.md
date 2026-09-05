@@ -3,6 +3,7 @@
 > **Status (2026-08-21): Phases 1–7 implemented.** All phases below are built
 > and unit-tested; `docs/SMOKE.md` holds the manual checklist. Two deliberate
 > deviations from the original spec:
+>
 > - **Stages trigger is a leader key** (tap Caps Lock — consumed so the lock
 >   never toggles — or a bare Right Shift tap, then letter/`=`/`-` within 3 s)
 >   instead of a held chord: Caps Lock's down/up semantics are ambiguous at the
@@ -94,15 +95,15 @@ Principles:
 
 ### 3.2 Modifier key identification
 
-`flagsChanged` events tell you a modifier changed, and the event's `keyCode` field tells you *which physical key*:
+`flagsChanged` events tell you a modifier changed, and the event's `keyCode` field tells you _which physical key_:
 
-| Key | keyCode |
-|---|---|
-| Left Command | 55 (0x37) |
+| Key               | keyCode       |
+| ----------------- | ------------- |
+| Left Command      | 55 (0x37)     |
 | **Right Command** | **54 (0x36)** |
-| Left Option | 58 (0x3A) |
-| **Right Option** | **61 (0x3D)** |
-| Caps Lock | 57 (0x39) |
+| Left Option       | 58 (0x3A)     |
+| **Right Option**  | **61 (0x3D)** |
+| Caps Lock         | 57 (0x39)     |
 
 Track held-state in `ModifierTracker` from flagsChanged keyDown/keyUp semantics (modifier down = flag bit present after the event; up = absent). Right-vs-left must come from keyCode, not from `CGEventFlags` (the generic `.maskCommand` bit is set for both sides; the device-side bits `NX_DEVICERCMDKEYMASK` = 0x10 in `event.flags.rawValue` also work as a cross-check).
 
@@ -125,7 +126,7 @@ Caps Lock as a Stages trigger: consume its flagsChanged event so the lock state 
 
 ### 3.5 Windows
 
-- Enumeration with titles: `CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements])`. Reading `kCGWindowName` of *other apps* requires **Screen Recording** permission (`CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess`). Degrade gracefully without it: show app name + "Window N".
+- Enumeration with titles: `CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements])`. Reading `kCGWindowName` of _other apps_ requires **Screen Recording** permission (`CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess`). Degrade gracefully without it: show app name + "Window N".
 - Focusing a specific window: get the app's `AXUIElement` (`AXUIElementCreateApplication(pid)`), list `kAXWindowsAttribute`, match by `_AXUIElementGetWindow` window ID (private but stable; fallback: match on title + frame), then `AXUIElementPerformAction(kAXRaiseAction)` + set `kAXMainAttribute` + activate the app.
 - Minimized detection: `kAXMinimizedAttribute`. Cmd-Tab replacement filters these and windows on other Spaces.
 
@@ -167,6 +168,7 @@ All tokens live in `DesignSystem/Theme.swift`. No hardcoded colors/fonts/duratio
 Work strictly in order; each phase ends with its acceptance criteria demonstrably true and committed.
 
 ### Phase 1 — Skeleton that switches (core loop)
+
 - Wire `EventTap` + `ModifierTracker` + `KeyRouter` for real (scaffold has stubs).
 - `AppRegistry` + `LetterAssigner` with dynamic assignments; MRU tracking.
 - rcmd+letter: focus / toggle-hide / launch-if-installed. Same-letter repeat cycling.
@@ -175,12 +177,14 @@ Work strictly in order; each phase ends with its acceptance criteria demonstrabl
 - **Accept:** with Safari, Slack, Spotify running — rcmd+S focuses the best S match, Tab while holding cycles the three (stable per-hold order), rcmd+S on a focused S app hides it (or cycles when hide-on-repeat is off), rcmd+M launches Mail from cold. Left ⌘ shortcuts unaffected. Keyboard behaves 100 % normally when rcmd not held.
 
 ### Phase 2 — Custom assignments + persistence
+
 - rcmd+ralt+letter pins the frontmost app to that letter (works mid-hold; shows a confirmation toast HUD).
 - Assignments persisted by bundle ID; custom beats dynamic; conflict re-flow for the displaced dynamic app.
 - Settings window v1 (Raycast-styled): assignment table (letter, app, dynamic/custom badge, clear button), general toggles (launch-if-closed, hide-on-repeat, launch-at-login via `SMAppService`).
 - **Accept:** pin Slack to K, quit + relaunch Starboard, rcmd+K still focuses Slack even when Slack was closed (launches it).
 
 ### Phase 3 — Fuzzy search overlay
+
 - Pure fuzzy matcher in `Core/Search` (subsequence scoring: consecutive-run bonus, word-boundary bonus, start-of-string bonus) + unit tests.
 - Nonactivating `NSPanel` overlay (never steals focus — input arrives via the event tap, not the panel). Typing ≥1 non-assigned key or holding rcmd past 250 ms with typed input shows it; results list apps (icon, name, letter chip). Release rcmd → focus top/selected hit; Escape cancels; arrows/Tab move selection.
 - Double-tap-and-hold rcmd → windows-only mode (needs Phase 4 enumeration; ship apps-only first, flip on later).
@@ -188,6 +192,7 @@ Work strictly in order; each phase ends with its acceptance criteria demonstrabl
 - **Accept:** rcmd, type "xco" → Xcode top hit; release → focused. Overlay never takes key focus from the frontmost app (verify: a text field caret in Safari keeps blinking).
 
 ### Phase 4 — Windows: enumeration, Cmd-Tab replacement, window jumping
+
 - `Core/Windows`: enumeration (CGWindowList + AX merge), Screen Recording soft-prompt in onboarding (skippable; titles degrade), focus-specific-window machinery.
 - rcmd+Tab: window cycler HUD (horizontal strip of window cards: app icon + title), filters minimized/other-Space windows; typing switches to fuzzy window search; release focuses.
 - rcmd+` cycles the frontmost app's windows.
@@ -196,18 +201,21 @@ Work strictly in order; each phase ends with its acceptance criteria demonstrabl
 - **Accept:** two Safari windows + minimized Notes: rcmd+Tab shows both Safari windows, not Notes; selecting the background one raises exactly that window.
 
 ### Phase 5 — Spaces
+
 - `SpaceSwitching` protocol; Strategy A (synthetic ctrl+digit / ctrl+arrows) + Strategy B (CGS private, runtime-feature-detected, animation-free) per §3.6. Setting to choose; auto-fallback A.
 - rcmd+1…9 jump, rcmd+[ ] adjacent, ralt+1…9 move focused window (Strategy B only; hide the binding when unavailable).
 - Optional menu-bar Space number.
 - **Accept:** on a 3-Space setup, rcmd+3 lands on Space 3; with Strategy B, no swipe animation; on symbol-missing macOS the app silently uses Strategy A and nothing crashes.
 
 ### Phase 6 — Stages
+
 - Trigger key config (Caps Lock default, consumed per §3.2; alternatives offered).
 - trigger+`=`: snapshot visible apps of current Space into a named Stage (sheet to name it + assign letter). trigger+letter: restore — launch missing apps, open configured files/folders/URLs (editable per-Stage in settings), hide non-Stage apps; second press = activate (re-hide intruders). trigger+`-`: close the Stage's windows only (AX close button per window, never `terminate`).
 - Stage editor in settings: app list, per-app open-items, reorder, delete.
 - **Accept:** save a "writing" Stage (Notes + Safari with a URL); switch to other apps; trigger+W restores both, opens the URL, hides everything else. Caps Lock LED/state never toggles.
 
 ### Phase 7 — Polish pass (the "Apple-like" phase)
+
 - Key-hint HUD (hold rcmd 400 ms with no keypress → letter grid; setting to disable).
 - Mouse-follows-focus option (warp pointer via `CGWarpMouseCursorPosition` to focused window center).
 - Full settings audit against §4: keyboard navigation, dark/light, Reduce Motion/Contrast, empty states, alignment sweep at 2× zoom.
@@ -223,16 +231,16 @@ Work strictly in order; each phase ends with its acceptance criteria demonstrabl
 
 - Unit tests (XCTest target, already in project.yml): `LetterAssigner` conflict/stability matrix, fuzzy scorer ranking table, Stage snapshot/diff round-trip, settings Codable migration.
 - Manual smoke script in `docs/SMOKE.md` (write it in Phase 1, grow per phase): the acceptance criteria above as a checklist.
-- The event tap itself can't be CI-tested — keep `KeyRouter` pure (input: key event + modifier state → output: `Intent` enum) so routing *is* testable; only the thin tap callback is untested.
+- The event tap itself can't be CI-tested — keep `KeyRouter` pure (input: key event + modifier state → output: `Intent` enum) so routing _is_ testable; only the thin tap callback is untested.
 
 ## 7. Risks & mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Private CGS APIs break on a macOS update | Protocol seam + dlsym feature-detect + Strategy A fallback (§3.6) |
-| Event-tap bug swallows normal typing | Never consume when rcmd/ralt/trigger not held; kill-switch: menu bar toggle + auto-disable tap on 3 consecutive callback crashes |
-| Tap silently disabled by timeout | Re-enable in callback + watchdog timer re-checking `CGEvent.tapIsEnabled` every 5 s |
-| AX calls hang on unresponsive apps | All AX enumeration off-main with per-app 250 ms timeout (`AXUIElementSetMessagingTimeout`) |
+| Risk                                                      | Mitigation                                                                                                                                   |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Private CGS APIs break on a macOS update                  | Protocol seam + dlsym feature-detect + Strategy A fallback (§3.6)                                                                            |
+| Event-tap bug swallows normal typing                      | Never consume when rcmd/ralt/trigger not held; kill-switch: menu bar toggle + auto-disable tap on 3 consecutive callback crashes             |
+| Tap silently disabled by timeout                          | Re-enable in callback + watchdog timer re-checking `CGEvent.tapIsEnabled` every 5 s                                                          |
+| AX calls hang on unresponsive apps                        | All AX enumeration off-main with per-app 250 ms timeout (`AXUIElementSetMessagingTimeout`)                                                   |
 | Caps Lock consumption fights user remaps (e.g. hyper key) | Detect Karabiner/hidutil remapping is out of scope; just make the trigger key configurable and default-off if Caps Lock events look remapped |
 
 ## 8. Repo map (scaffold already present)

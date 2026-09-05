@@ -17,7 +17,11 @@ export function TrendsBoard({ stats }: TrendsBoardProps) {
   const selected = stats.find((stat) => stat.key === selectedKey) ?? stats[0];
 
   if (!selected) {
-    return <p className={styles.empty}>No trend data in this range yet. Sync a provider to populate it.</p>;
+    return (
+      <p className={styles.empty}>
+        No trend data in this range yet. Sync a provider to populate it.
+      </p>
+    );
   }
 
   return (
@@ -39,12 +43,15 @@ export function TrendsBoard({ stats }: TrendsBoardProps) {
             <FocusStat label="30-day" change={selected.change30d} stat={selected} />
             <div className={styles.focusStat}>
               <span className={styles.focusStatLabel}>Average</span>
-              <span className={styles.focusStatValue}>{formatValue(selected.average, selected.unit)}</span>
+              <span className={styles.focusStatValue}>
+                {formatValue(selected.average, selected.unit)}
+              </span>
             </div>
             <div className={styles.focusStat}>
               <span className={styles.focusStatLabel}>Range</span>
               <span className={styles.focusStatValue}>
-                {formatValue(selected.min, selected.unit)} – {formatValue(selected.max, selected.unit)}
+                {formatValue(selected.min, selected.unit)} –{" "}
+                {formatValue(selected.max, selected.unit)}
               </span>
             </div>
           </div>
@@ -92,7 +99,15 @@ export function TrendsBoard({ stats }: TrendsBoardProps) {
   );
 }
 
-function FocusStat({ label, change, stat }: { label: string; change: TrendChange | null; stat: TrendStat }) {
+function FocusStat({
+  label,
+  change,
+  stat,
+}: {
+  label: string;
+  change: TrendChange | null;
+  stat: TrendStat;
+}) {
   return (
     <div className={styles.focusStat}>
       <span className={styles.focusStatLabel}>{label}</span>
@@ -132,7 +147,10 @@ function ChangeChip({
   );
 }
 
-function chipTone(goodWhen: TrendStat["goodWhen"], up: boolean): "chipUp" | "chipDown" | "chipNeutral" {
+function chipTone(
+  goodWhen: TrendStat["goodWhen"],
+  up: boolean,
+): "chipUp" | "chipDown" | "chipNeutral" {
   if (!goodWhen) return "chipNeutral";
   const good = (goodWhen === "up" && up) || (goodWhen === "down" && !up);
   return good ? "chipUp" : "chipDown";
@@ -145,7 +163,8 @@ function unitLabel(unit: string): string {
 
 function formatValue(value: number | null, unit: string): string {
   if (value === null || !Number.isFinite(value)) return "—";
-  if (unit === "steps") return new Intl.NumberFormat("en", { maximumFractionDigits: 0 }).format(value);
+  if (unit === "steps")
+    return new Intl.NumberFormat("en", { maximumFractionDigits: 0 }).format(value);
   if (unit === "h") {
     const totalMinutes = Math.round(value * 60);
     const hours = Math.floor(totalMinutes / 60);

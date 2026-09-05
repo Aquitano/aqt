@@ -12,8 +12,20 @@ export function Bars({ buckets, height = 56 }: BarsProps) {
   const barWidth = buckets.length ? width / buckets.length : width;
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Bucketed bars" preserveAspectRatio="none">
-      <line x1="0" x2={width} y1={height - 4} y2={height - 4} stroke="currentColor" opacity="0.18" />
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label="Bucketed bars"
+      preserveAspectRatio="none"
+    >
+      <line
+        x1="0"
+        x2={width}
+        y1={height - 4}
+        y2={height - 4}
+        stroke="currentColor"
+        opacity="0.18"
+      />
       {buckets.map((bucket, index) => {
         const value = bucket.value ?? 0;
         const barHeight = Math.max(0, (value / max) * (height - 8));

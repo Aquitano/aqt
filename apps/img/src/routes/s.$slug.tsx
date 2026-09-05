@@ -1,15 +1,13 @@
-import { useState } from 'react'
-import { useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute, notFound } from '@tanstack/react-router'
-import { Book } from '@/book/Book'
-import { sharedAlbumQuery } from '@/lib/queries'
+import { useState } from "react";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { createFileRoute, notFound } from "@tanstack/react-router";
+import { Book } from "@/book/Book";
+import { sharedAlbumQuery } from "@/lib/queries";
 
-export const Route = createFileRoute('/s/$slug')({
+export const Route = createFileRoute("/s/$slug")({
   loader: async ({ context, params }) => {
-    const shared = await context.queryClient.ensureQueryData(
-      sharedAlbumQuery(params.slug),
-    )
-    if (!shared) throw notFound()
+    const shared = await context.queryClient.ensureQueryData(sharedAlbumQuery(params.slug));
+    if (!shared) throw notFound();
   },
   notFoundComponent: () => (
     <main className="flex min-h-dvh items-center justify-center px-6">
@@ -17,14 +15,14 @@ export const Route = createFileRoute('/s/$slug')({
     </main>
   ),
   component: SharedAlbum,
-})
+});
 
 function SharedAlbum() {
-  const { slug } = Route.useParams()
-  const { data } = useSuspenseQuery(sharedAlbumQuery(slug))
-  const [current, setCurrent] = useState(-1)
+  const { slug } = Route.useParams();
+  const { data } = useSuspenseQuery(sharedAlbumQuery(slug));
+  const [current, setCurrent] = useState(-1);
 
-  if (!data) return null
+  if (!data) return null;
 
   return (
     <main className="flex h-dvh flex-col">
@@ -41,5 +39,5 @@ function SharedAlbum() {
         />
       </div>
     </main>
-  )
+  );
 }

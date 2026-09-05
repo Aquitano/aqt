@@ -10,7 +10,11 @@ services:
     volumes:
       - aqt_health_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${AQT_HEALTH_DB_USER:-aqt_health} -d ${POSTGRES_DB:-aqt_health}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${AQT_HEALTH_DB_USER:-aqt_health} -d ${POSTGRES_DB:-aqt_health}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5

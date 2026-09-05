@@ -11,8 +11,9 @@ Technique reference: `devmegablaster/Notch-Pilot` (MIT) — we reuse its hard-wo
 push-based, protocol+adapter architecture and to a lighter scope.
 
 **Scope:**
+
 - **Watch + notify only** — live session status in the pill + an Agents list; notifications for
-  *started / needs-attention / finished*. **No** approve/deny buttons, no AskUserQuestion answering.
+  _started / needs-attention / finished_. **No** approve/deny buttons, no AskUserQuestion answering.
 - **Opt-in config writes** — ship the installer but gate it behind a per-agent "Enable" button.
   Nothing is written to `~/.claude/settings.json` or `~/.codex/config.toml` until the user clicks.
 
@@ -21,11 +22,11 @@ questions, live usage %. The model carries enough (permission id, capabilities) 
 
 ## Capability matrix (drives per-provider design)
 
-| Agent | Live events | Needs-attention signal | Finished signal | Mechanism |
-|---|---|---|---|---|
-| **Claude Code** | push (hooks) | `Notification` hook (`permission_prompt`/`idle_prompt`) | `Stop` hook | opt-in fire-and-forget hooks → unix socket; transcript tail for activity; `libproc` liveness |
-| **OpenCode** | push (SSE) | `permission.*` event | `session.idle` event | connect to `opencode serve` (`127.0.0.1:4096`) SSE `/event`; REST `/session` for detail |
-| **Codex** | turn-complete only | — (not exposed) | `notify` `agent-turn-complete` | opt-in `notify` program → socket; `~/.codex/sessions` + `libproc` for liveness/active |
+| Agent           | Live events        | Needs-attention signal                                  | Finished signal                | Mechanism                                                                                    |
+| --------------- | ------------------ | ------------------------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------- |
+| **Claude Code** | push (hooks)       | `Notification` hook (`permission_prompt`/`idle_prompt`) | `Stop` hook                    | opt-in fire-and-forget hooks → unix socket; transcript tail for activity; `libproc` liveness |
+| **OpenCode**    | push (SSE)         | `permission.*` event                                    | `session.idle` event           | connect to `opencode serve` (`127.0.0.1:4096`) SSE `/event`; REST `/session` for detail      |
+| **Codex**       | turn-complete only | — (not exposed)                                         | `notify` `agent-turn-complete` | opt-in `notify` program → socket; `~/.codex/sessions` + `libproc` for liveness/active        |
 
 Honest constraint surfaced in the UI: Codex is finish-notification + liveness only; it has no
 external "needs approval / is idle" event.
@@ -58,7 +59,7 @@ uniformly. We replicate that exactly for agents.
   - `AgentNotifier` — routes a notification to `ActivityManager.peek()` (in-notch) and, when
     enabled, `UNUserNotificationCenter` + optional sound. Rate-limited.
 - **Hook entry point**: replace SwiftUI `@main` with a manual entry that branches on argv
-  *before* AppKit loads (Notch-Pilot's trick):
+  _before_ AppKit loads (Notch-Pilot's trick):
   ```swift
   @main enum NotchMain {
       static func main() {

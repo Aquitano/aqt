@@ -26,7 +26,14 @@ export default async function IngestionsPage({ searchParams }: PageProps) {
       <form className={styles.filters}>
         <label className={styles.field}>
           <span className={styles.label}>Limit</span>
-          <input className={styles.input} name="limit" type="number" min="1" max="500" defaultValue={limit} />
+          <input
+            className={styles.input}
+            name="limit"
+            type="number"
+            min="1"
+            max="500"
+            defaultValue={limit}
+          />
         </label>
         <label className={styles.field}>
           <span className={styles.label}>Status</span>

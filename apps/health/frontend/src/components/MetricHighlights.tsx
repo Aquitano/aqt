@@ -51,7 +51,10 @@ export function MetricHighlights({
     {
       kind: "sleep",
       label: "Sleep score",
-      value: sleep?.sleepScore !== undefined && sleep.sleepScore !== null ? `${sleep.sleepScore}/100` : "n/a",
+      value:
+        sleep?.sleepScore !== undefined && sleep.sleepScore !== null
+          ? `${sleep.sleepScore}/100`
+          : "n/a",
       detail: sleep
         ? `${formatDuration(sleep.totalSleepSeconds)} asleep - ${formatMeasurement(sleep.sleepEfficiencyPercent, "%")} efficiency`
         : "No sleep summary",
@@ -59,7 +62,9 @@ export function MetricHighlights({
     {
       kind: "respiratory",
       label: "Respiratory rate",
-      value: respiratoryRate ? formatMeasurement(respiratoryRate.value, respiratoryRate.unit) : "n/a",
+      value: respiratoryRate
+        ? formatMeasurement(respiratoryRate.value, respiratoryRate.unit)
+        : "n/a",
       detail: respiratoryRate
         ? `${respiratoryRate.context} - ${formatDateTime(respiratoryRate.measuredAt)}`
         : "No respiratory-rate sample",

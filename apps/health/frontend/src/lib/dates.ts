@@ -23,8 +23,7 @@ export function parseDateRange(values: {
   timezone?: string | string[];
 }): DateRange {
   const timezoneInput = first(values.timezone);
-  const timezone =
-    timezoneInput != null && isTimezoneLike(timezoneInput) ? timezoneInput : "UTC";
+  const timezone = timezoneInput != null && isTimezoneLike(timezoneInput) ? timezoneInput : "UTC";
   // Resolve the default range in the requested timezone so an unset range matches the local dates
   // the picker produces, rather than UTC "today" (off-by-one for users east/west of UTC).
   const fallback = defaultDateRange(new Date(), timezone);

@@ -1,17 +1,11 @@
-import {
-	index,
-	pgTable,
-	text,
-	timestamp,
-	uniqueIndex,
-} from "drizzle-orm/pg-core";
+import { index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 const timestamps = {
-	createdAt: timestamp("created_at").defaultNow().notNull(),
-	updatedAt: timestamp("updated_at")
-		.defaultNow()
-		.$onUpdate(() => /* @__PURE__ */ new Date())
-		.notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
 };
 
 /**
@@ -22,20 +16,20 @@ const timestamps = {
  * list without it ever revealing the secret. A null `expiresAt` never expires.
  */
 export const apiToken = pgTable(
-	"api_token",
-	{
-		id: text("id").primaryKey(),
-		// Clerk user id of the token owner. No FK (identities live in Clerk).
-		userId: text("user_id").notNull(),
-		name: text("name").notNull(),
-		tokenHash: text("token_hash").notNull(),
-		prefix: text("prefix").notNull(),
-		lastUsedAt: timestamp("last_used_at"),
-		expiresAt: timestamp("expires_at"),
-		...timestamps,
-	},
-	(table) => [
-		index("api_token_user_id_idx").on(table.userId),
-		uniqueIndex("api_token_hash_idx").on(table.tokenHash),
-	],
+  "api_token",
+  {
+    id: text("id").primaryKey(),
+    // Clerk user id of the token owner. No FK (identities live in Clerk).
+    userId: text("user_id").notNull(),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    prefix: text("prefix").notNull(),
+    lastUsedAt: timestamp("last_used_at"),
+    expiresAt: timestamp("expires_at"),
+    ...timestamps,
+  },
+  (table) => [
+    index("api_token_user_id_idx").on(table.userId),
+    uniqueIndex("api_token_hash_idx").on(table.tokenHash),
+  ],
 );

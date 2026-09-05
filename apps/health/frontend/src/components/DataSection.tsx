@@ -10,10 +10,14 @@ type DataSectionProps<T> = {
 };
 
 export function DataSection<T>({ title, result, children }: DataSectionProps<T>) {
-  const count = result.ok && typeof result.data === "object" && result.data !== null
-    && "items" in result.data && Array.isArray((result.data as { items: unknown[] }).items)
-    ? (result.data as { items: unknown[] }).items.length
-    : undefined;
+  const count =
+    result.ok &&
+    typeof result.data === "object" &&
+    result.data !== null &&
+    "items" in result.data &&
+    Array.isArray((result.data as { items: unknown[] }).items)
+      ? (result.data as { items: unknown[] }).items.length
+      : undefined;
 
   return (
     <section className={styles.section}>

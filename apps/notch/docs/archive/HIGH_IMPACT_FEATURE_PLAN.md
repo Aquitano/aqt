@@ -46,17 +46,17 @@ file/process work stays off the main actor.
 
 ## 2. Recommended delivery order
 
-| Milestone | Scope | Why this order |
-|---|---|---|
-| M1 | Display identity, selection, and single-panel migration | Establishes stable display behavior without multi-window complexity. |
-| M2 | Virtual pill profiles and active-display following | Completes the most valuable single-display modes. |
-| M3 | All-displays panel coordinator | Builds multi-panel support on tested display policy and geometry. |
-| M4 | Structured permission payload and risk engine | Security-sensitive data work lands before UI actions depend on it. |
-| M5 | Permission request card and actions | Delivers the complete agent workflow. |
-| M6 | Tray model v2 and common ingestion pipeline | Creates the migration-safe base for every tray feature. |
-| M7 | Quick Look, clipboard, rich items, and actions | Delivers the highest-frequency tray improvements. |
-| M8 | Collections, visible expiry, and Option-move | Adds organization and lifecycle controls. |
-| M9 | Screenshot candidates in the compact pill | Lands after rich ingestion and activity actions exist. |
+| Milestone | Scope                                                   | Why this order                                                       |
+| --------- | ------------------------------------------------------- | -------------------------------------------------------------------- |
+| M1        | Display identity, selection, and single-panel migration | Establishes stable display behavior without multi-window complexity. |
+| M2        | Virtual pill profiles and active-display following      | Completes the most valuable single-display modes.                    |
+| M3        | All-displays panel coordinator                          | Builds multi-panel support on tested display policy and geometry.    |
+| M4        | Structured permission payload and risk engine           | Security-sensitive data work lands before UI actions depend on it.   |
+| M5        | Permission request card and actions                     | Delivers the complete agent workflow.                                |
+| M6        | Tray model v2 and common ingestion pipeline             | Creates the migration-safe base for every tray feature.              |
+| M7        | Quick Look, clipboard, rich items, and actions          | Delivers the highest-frequency tray improvements.                    |
+| M8        | Collections, visible expiry, and Option-move            | Adds organization and lifecycle controls.                            |
+| M9        | Screenshot candidates in the compact pill               | Lands after rich ingestion and activity actions exist.               |
 
 M1-M3, M4-M5, and M6-M9 are separate vertical tracks. They may be developed independently,
 but each milestone should merge only when its own acceptance criteria pass.

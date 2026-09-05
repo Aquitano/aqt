@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import {
-  getScheduledSyncConfig,
-  updateScheduledSyncConfig,
-} from "@/lib/aqtHealthApi";
+import { getScheduledSyncConfig, updateScheduledSyncConfig } from "@/lib/aqtHealthApi";
 import type { ScheduledSyncConfigUpdateRequest } from "@/lib/types";
 
 type RouteContext = {
@@ -17,21 +14,27 @@ export async function GET(request: Request, context: RouteContext) {
   const result = await getScheduledSyncConfig(providerCode, providerInstanceId);
 
   return NextResponse.json(result, {
-    status: result.ok ? 200 : result.status ?? 500,
+    status: result.ok ? 200 : (result.status ?? 500),
   });
 }
 
 export async function PUT(request: Request, context: RouteContext) {
   const { providerCode, providerInstanceId } = await context.params;
   const body = (await request.json().catch(() => ({}))) as ScheduledSyncConfigUpdateRequest;
-  const result = await updateScheduledSyncConfig(providerCode, providerInstanceId, normalizePayload(body));
+  const result = await updateScheduledSyncConfig(
+    providerCode,
+    providerInstanceId,
+    normalizePayload(body),
+  );
 
   return NextResponse.json(result, {
-    status: result.ok ? 200 : result.status ?? 500,
+    status: result.ok ? 200 : (result.status ?? 500),
   });
 }
 
-function normalizePayload(body: ScheduledSyncConfigUpdateRequest): ScheduledSyncConfigUpdateRequest {
+function normalizePayload(
+  body: ScheduledSyncConfigUpdateRequest,
+): ScheduledSyncConfigUpdateRequest {
   const dataTypes = Array.isArray(body.dataTypes)
     ? body.dataTypes.filter((dataType) => typeof dataType === "string" && dataType.trim())
     : undefined;

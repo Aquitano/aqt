@@ -438,35 +438,35 @@ export interface TemplateOptions {
  */
 export function getTemplates(opts: TemplateOptions): Record<string, string> {
   const files: Record<string, string> = {
-    'src/app/page.tsx': buildLanding(opts),
-    'src/lib/env.ts': ENV_FILE,
-    '.env.example': ENV_EXAMPLE,
+    "src/app/page.tsx": buildLanding(opts),
+    "src/lib/env.ts": ENV_FILE,
+    ".env.example": ENV_EXAMPLE,
   };
 
   if (opts.hono) {
-    files['src/lib/hono/index.ts'] = HONO_INDEX;
-    files['src/lib/hono/routes/health.ts'] = HEALTH_ROUTE;
-    files['src/lib/hono/routes/users.ts'] = USERS_ROUTE;
-    files['src/lib/hono/client.ts'] = HONO_CLIENT;
-    files['src/app/api/[[...route]]/route.ts'] = API_ROUTE;
+    files["src/lib/hono/index.ts"] = HONO_INDEX;
+    files["src/lib/hono/routes/health.ts"] = HEALTH_ROUTE;
+    files["src/lib/hono/routes/users.ts"] = USERS_ROUTE;
+    files["src/lib/hono/client.ts"] = HONO_CLIENT;
+    files["src/app/api/[[...route]]/route.ts"] = API_ROUTE;
   }
 
   if (opts.themes) {
-    files['src/components/theme-provider.tsx'] = THEME_PROVIDER;
-    files['src/components/theme-toggle.tsx'] = THEME_TOGGLE;
+    files["src/components/theme-provider.tsx"] = THEME_PROVIDER;
+    files["src/components/theme-toggle.tsx"] = THEME_TOGGLE;
   }
 
   if (opts.testing) {
-    files['vitest.config.ts'] = VITEST_CONFIG;
-    files['vitest.setup.ts'] = VITEST_SETUP;
-    files['src/app/page.test.tsx'] = PAGE_TEST;
+    files["vitest.config.ts"] = VITEST_CONFIG;
+    files["vitest.setup.ts"] = VITEST_SETUP;
+    files["src/app/page.test.tsx"] = PAGE_TEST;
     if (opts.hono) {
-      files['src/lib/hono/routes/health.test.ts'] = HEALTH_TEST;
+      files["src/lib/hono/routes/health.test.ts"] = HEALTH_TEST;
     }
   }
 
   if (opts.ci) {
-    files['.github/workflows/ci.yml'] = buildCi(opts);
+    files[".github/workflows/ci.yml"] = buildCi(opts);
   }
 
   return files;

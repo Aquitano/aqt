@@ -94,7 +94,13 @@ function changeOverDays(points: TrendPoint[], days: number): TrendChange | null 
 }
 
 function summarize(
-  config: { key: string; label: string; unit: string; color: string; goodWhen: "up" | "down" | null },
+  config: {
+    key: string;
+    label: string;
+    unit: string;
+    color: string;
+    goodWhen: "up" | "down" | null;
+  },
   points: TrendPoint[],
 ): TrendStat {
   const values = points.map((point) => point.value);
@@ -104,7 +110,9 @@ function summarize(
     points,
     latest: latest?.value ?? null,
     latestAt: latest?.date ?? null,
-    average: values.length ? values.reduce((total, value) => total + value, 0) / values.length : null,
+    average: values.length
+      ? values.reduce((total, value) => total + value, 0) / values.length
+      : null,
     min: values.length ? Math.min(...values) : null,
     max: values.length ? Math.max(...values) : null,
     change7d: changeOverDays(points, 7),
@@ -128,7 +136,13 @@ export function buildTrendStats(input: TrendsInput): TrendStat[] {
   const weightUnit = weightItems[0]?.unit ?? "kg";
   stats.push(
     summarize(
-      { key: "weight", label: "Weight", unit: weightUnit, color: "var(--hue-weight)", goodWhen: null },
+      {
+        key: "weight",
+        label: "Weight",
+        unit: weightUnit,
+        color: "var(--hue-weight)",
+        goodWhen: null,
+      },
       dailyAggregate(
         weightItems.map((item) => ({ date: dayKey(item.measuredAt), value: item.value })),
         "last",
@@ -152,7 +166,10 @@ export function buildTrendStats(input: TrendsInput): TrendStat[] {
       dailyAggregate(
         (input.sleep?.items ?? [])
           .filter((item) => typeof item.totalSleepSeconds === "number")
-          .map((item) => ({ date: dayKey(item.endAt), value: (item.totalSleepSeconds ?? 0) / 3600 })),
+          .map((item) => ({
+            date: dayKey(item.endAt),
+            value: (item.totalSleepSeconds ?? 0) / 3600,
+          })),
         "last",
       ),
     ),
@@ -160,7 +177,13 @@ export function buildTrendStats(input: TrendsInput): TrendStat[] {
 
   stats.push(
     summarize(
-      { key: "sleep_score", label: "Sleep score", unit: "", color: "var(--hue-score)", goodWhen: "up" },
+      {
+        key: "sleep_score",
+        label: "Sleep score",
+        unit: "",
+        color: "var(--hue-score)",
+        goodWhen: "up",
+      },
       dailyAggregate(
         (input.sleep?.items ?? [])
           .filter((item) => typeof item.sleepScore === "number")
@@ -174,7 +197,10 @@ export function buildTrendStats(input: TrendsInput): TrendStat[] {
     summarize(
       { key: "hrv", label: "HRV", unit: "ms", color: "var(--hue-hrv)", goodWhen: "up" },
       dailyAggregate(
-        (input.hrv?.items ?? []).map((item) => ({ date: dayKey(item.measuredAt), value: item.value })),
+        (input.hrv?.items ?? []).map((item) => ({
+          date: dayKey(item.measuredAt),
+          value: item.value,
+        })),
         "avg",
       ),
     ),
@@ -182,7 +208,13 @@ export function buildTrendStats(input: TrendsInput): TrendStat[] {
 
   stats.push(
     summarize(
-      { key: "resting_hr", label: "Resting HR", unit: "bpm", color: "var(--hue-heart)", goodWhen: "down" },
+      {
+        key: "resting_hr",
+        label: "Resting HR",
+        unit: "bpm",
+        color: "var(--hue-heart)",
+        goodWhen: "down",
+      },
       dailyAggregate(
         (input.activity?.items ?? [])
           .filter((item) => typeof item.minHeartRateBpm === "number")
@@ -194,9 +226,18 @@ export function buildTrendStats(input: TrendsInput): TrendStat[] {
 
   stats.push(
     summarize(
-      { key: "respiratory", label: "Respiratory", unit: "rpm", color: "var(--hue-resp)", goodWhen: null },
+      {
+        key: "respiratory",
+        label: "Respiratory",
+        unit: "rpm",
+        color: "var(--hue-resp)",
+        goodWhen: null,
+      },
       dailyAggregate(
-        (input.respiratory?.items ?? []).map((item) => ({ date: dayKey(item.measuredAt), value: item.value })),
+        (input.respiratory?.items ?? []).map((item) => ({
+          date: dayKey(item.measuredAt),
+          value: item.value,
+        })),
         "avg",
       ),
     ),

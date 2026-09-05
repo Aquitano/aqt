@@ -23,13 +23,9 @@ import type {
   ScheduledSyncRunResponse,
   HealthStatusData,
   HeartRateDailyPoint,
- } from "./types";
+} from "./types";
 import { createAqtHealthClient } from "./aqtHealthClient";
-import {
-  addUtcDays,
-  dateOnlyToUtcInstant,
-  dayAfterDateOnlyToUtcInstant,
-} from "./dates";
+import { addUtcDays, dateOnlyToUtcInstant, dayAfterDateOnlyToUtcInstant } from "./dates";
 
 export async function getHealthStatus(): Promise<HealthStatusData> {
   const client = createAqtHealthClient();
@@ -146,10 +142,7 @@ export function getHealthDataPageSources(
   };
 }
 
-export async function getTrendsPageData(
-  toDate: string,
-  days: number,
-): Promise<TrendsPageData> {
+export async function getTrendsPageData(toDate: string, days: number): Promise<TrendsPageData> {
   const client = createAqtHealthClient();
   const fromDate = addUtcDays(toDate, -(days - 1));
   const from = dateOnlyToUtcInstant(fromDate);
@@ -208,19 +201,19 @@ export async function getProviderSyncPageData(): Promise<ProviderSyncPageData> {
     getProviderCatalog(),
     getProviderStatuses(),
   ]);
-  const scheduledSyncConfigs =
-    providerStatuses.ok
-      ? await Promise.all(
-          providerStatuses.data.items.flatMap((provider) =>
-            provider.accounts.map((account) =>
+  const scheduledSyncConfigs = providerStatuses.ok
+    ? await Promise.all(
+        providerStatuses.data.items.flatMap((provider) =>
+          provider.accounts.map(
+            (account) =>
               client.getScheduledSyncConfig(
                 provider.providerCode,
                 account.providerInstanceId,
               ) as Promise<ApiResult<ScheduledSyncConfig>>,
-            ),
           ),
-        )
-      : [];
+        ),
+      )
+    : [];
 
   return {
     apiBaseUrl: client.apiBaseUrl,
@@ -356,7 +349,11 @@ export async function updateScheduledSyncConfig(
   providerInstanceId: string,
   payload: ScheduledSyncConfigUpdateRequest,
 ): Promise<ApiResult<ScheduledSyncConfig>> {
-  return createAqtHealthClient().updateScheduledSyncConfig(providerCode, providerInstanceId, payload);
+  return createAqtHealthClient().updateScheduledSyncConfig(
+    providerCode,
+    providerInstanceId,
+    payload,
+  );
 }
 
 export async function runScheduledSyncNow(

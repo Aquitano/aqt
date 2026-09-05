@@ -1,4 +1,4 @@
-import { $ } from 'bun';
+import { $ } from "bun";
 
 // ── Port ─────────────────────────────────────────────────────────
 
@@ -27,16 +27,16 @@ export interface ShellRunner {
 export class BunShellRunner implements ShellRunner {
   async spawn(command: string, args: string[], opts: { cwd: string }): Promise<void> {
     const proc = Bun.spawn([command, ...args], {
-      stdio: ['inherit', 'inherit', 'inherit'],
+      stdio: ["inherit", "inherit", "inherit"],
       cwd: opts.cwd,
     });
     if ((await proc.exited) !== 0) {
-      throw new Error(`${command} ${args.join(' ')} failed with exit code ${proc.exitCode}`);
+      throw new Error(`${command} ${args.join(" ")} failed with exit code ${proc.exitCode}`);
     }
   }
 
   async install(packages: string[], opts: { cwd: string; dev?: boolean }): Promise<void> {
-    const args = opts.dev ? ['add', '-d', ...packages] : ['add', ...packages];
+    const args = opts.dev ? ["add", "-d", ...packages] : ["add", ...packages];
     await $`bun ${args}`.cwd(opts.cwd).quiet();
   }
 
@@ -56,4 +56,3 @@ export class BunShellRunner implements ShellRunner {
     return Bun.file(path).json() as Promise<T>;
   }
 }
-

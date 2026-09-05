@@ -114,13 +114,15 @@ async function OverviewSection({
     sources.latestBloodPressure,
   ]);
 
-  console.info(JSON.stringify({
-    event: "health_data_route_overview_completed",
-    page: "/health-data",
-    fromDate,
-    toDate,
-    timezone,
-  }));
+  console.info(
+    JSON.stringify({
+      event: "health_data_route_overview_completed",
+      page: "/health-data",
+      fromDate,
+      toDate,
+      timezone,
+    }),
+  );
 
   const bodyMeasurementItems = bodyMeasurements.ok ? bodyMeasurements.data.items : [];
   const weightTrendItems = bodyMeasurementItems.filter((item) => isWeightTrendItem(item, toDate));

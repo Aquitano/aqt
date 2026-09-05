@@ -85,11 +85,7 @@ function jobStatus(
 
 function renderPanel() {
   return render(
-    <ProviderSyncPanel
-      catalog={catalog()}
-      statuses={statuses()}
-      scheduledSyncConfigs={[]}
-    />,
+    <ProviderSyncPanel catalog={catalog()} statuses={statuses()} scheduledSyncConfigs={[]} />,
   );
 }
 
@@ -125,9 +121,7 @@ describe("ProviderSyncPanel polling", () => {
 
     expect(screen.getByRole("button", { name: /syncing/i })).toBeDisabled();
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/providers/google-health/sync-jobs/job-1",
-      );
+      expect(fetchMock).toHaveBeenCalledWith("/api/providers/google-health/sync-jobs/job-1");
     });
     await screen.findByText(/1 of 2 windows complete/);
   });

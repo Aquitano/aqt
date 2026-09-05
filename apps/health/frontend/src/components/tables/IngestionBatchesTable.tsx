@@ -22,8 +22,14 @@ function badgeClass(status: string): string {
 
 export function IngestionBatchesTable({ items, getHref }: Props) {
   const columns: Column<IngestionBatch>[] = [
-    { header: "ID", cell: (item) => (getHref ? <Link href={getHref(item)}>{item.id}</Link> : item.id) },
-    { header: "Status", cell: (item) => <span className={badgeClass(item.status)}>{item.status}</span> },
+    {
+      header: "ID",
+      cell: (item) => (getHref ? <Link href={getHref(item)}>{item.id}</Link> : item.id),
+    },
+    {
+      header: "Status",
+      cell: (item) => <span className={badgeClass(item.status)}>{item.status}</span>,
+    },
     { header: "Provider", cell: (item) => item.providerInstanceId || item.provider, muted: true },
     { header: "Records", cell: (item) => formatNumber(item.recordCount) },
     { header: "Ingested", cell: (item) => formatDateTime(item.ingestedAt), muted: true },

@@ -1,8 +1,8 @@
-import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, KeyRound, Trash2 } from 'lucide-react'
-import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Copy, KeyRound, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -10,42 +10,42 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { apiKeysQuery } from '@/lib/queries'
-import { rejectFailures } from '@/lib/server-error'
-import * as apiKeyFns from '@/server/fns/api-keys'
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { apiKeysQuery } from "@/lib/queries";
+import { rejectFailures } from "@/lib/server-error";
+import * as apiKeyFns from "@/server/fns/api-keys";
 
 /** Create, list and revoke bearer keys for the CLI and the JSON API. */
 export function ApiKeysDialog() {
-  const queryClient = useQueryClient()
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState('')
-  const [fresh, setFresh] = useState<{ name: string; key: string } | null>(null)
-  const keys = useQuery({ ...apiKeysQuery(), enabled: open })
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [fresh, setFresh] = useState<{ name: string; key: string } | null>(null);
+  const keys = useQuery({ ...apiKeysQuery(), enabled: open });
 
   const create = useMutation({
     mutationFn: (name: string) => rejectFailures(apiKeyFns.create({ data: { name } })),
     onSuccess: (created) => {
-      setFresh({ name: created.name, key: created.key })
-      setName('')
-      queryClient.invalidateQueries(apiKeysQuery())
+      setFresh({ name: created.name, key: created.key });
+      setName("");
+      queryClient.invalidateQueries(apiKeysQuery());
     },
-    onError: () => toast.error('Could not create that key'),
-  })
+    onError: () => toast.error("Could not create that key"),
+  });
 
   const revoke = useMutation({
     mutationFn: (id: string) => rejectFailures(apiKeyFns.revoke({ data: { id } })),
     onSuccess: () => queryClient.invalidateQueries(apiKeysQuery()),
-    onError: () => toast.error('Could not revoke that key'),
-  })
+    onError: () => toast.error("Could not revoke that key"),
+  });
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        setOpen(next)
-        if (!next) setFresh(null)
+        setOpen(next);
+        if (!next) setFresh(null);
       }}
     >
       <DialogTrigger asChild>
@@ -64,8 +64,8 @@ export function ApiKeysDialog() {
         <form
           className="flex gap-2"
           onSubmit={(event) => {
-            event.preventDefault()
-            if (name.trim()) create.mutate(name.trim())
+            event.preventDefault();
+            if (name.trim()) create.mutate(name.trim());
           }}
         >
           <Input
@@ -106,20 +106,21 @@ export function ApiKeysDialog() {
         </ul>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 function FreshKey({ name, value }: { name: string; value: string }) {
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState(false);
   const copy = async () => {
-    await navigator.clipboard.writeText(value)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
   return (
     <div className="bg-muted rounded-md p-3 text-sm">
       <p className="mb-1">
-        Key for <span className="font-medium">{name}</span>. Copy it now; it will not be shown again.
+        Key for <span className="font-medium">{name}</span>. Copy it now; it will not be shown
+        again.
       </p>
       <div className="flex items-center gap-2">
         <code className="min-w-0 flex-1 truncate font-mono text-xs" data-testid="fresh-api-key">
@@ -127,16 +128,19 @@ function FreshKey({ name, value }: { name: string; value: string }) {
         </code>
         <Button variant="outline" size="sm" onClick={copy}>
           {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
-          {copied ? 'Copied' : 'Copy'}
+          {copied ? "Copied" : "Copy"}
         </Button>
       </div>
       <p className="text-muted-foreground mt-2 text-xs">
-        Then run <code>album login --url {typeof window === 'undefined' ? '' : window.location.origin} --key …</code>
+        Then run{" "}
+        <code>
+          album login --url {typeof window === "undefined" ? "" : window.location.origin} --key …
+        </code>
       </p>
     </div>
-  )
+  );
 }
 
 function formatUsed(at: number | null) {
-  return at ? `used ${new Date(at).toLocaleDateString()}` : 'never used'
+  return at ? `used ${new Date(at).toLocaleDateString()}` : "never used";
 }

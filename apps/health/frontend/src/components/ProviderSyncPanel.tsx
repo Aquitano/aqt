@@ -30,17 +30,24 @@ type ProviderOption = {
   status?: ProviderStatus;
 };
 
-export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: ProviderSyncPanelProps) {
+export function ProviderSyncPanel({
+  catalog,
+  statuses,
+  scheduledSyncConfigs,
+}: ProviderSyncPanelProps) {
   const router = useRouter();
   const [selectedProviderCode, setSelectedProviderCode] = useState("");
   const [result, setResult] = useState<ApiResult<ProviderSyncResponse> | null>(null);
   const [syncJob, setSyncJob] = useState<ProviderSyncJobStatusResponse | null>(null);
-  const [activeSyncJob, setActiveSyncJob] = useState<ActiveSyncJob | null>(() => readStoredSyncJob());
+  const [activeSyncJob, setActiveSyncJob] = useState<ActiveSyncJob | null>(() =>
+    readStoredSyncJob(),
+  );
   const [isSyncing, setIsSyncing] = useState(() => activeSyncJob != null);
   const [oauthError, setOAuthError] = useState<string | null>(null);
   const [accountActionError, setAccountActionError] = useState<string | null>(null);
   const [pendingAccountAction, setPendingAccountAction] = useState<string | null>(null);
-  const [scheduledResult, setScheduledResult] = useState<ApiResult<ScheduledSyncRunResponse> | null>(null);
+  const [scheduledResult, setScheduledResult] =
+    useState<ApiResult<ScheduledSyncRunResponse> | null>(null);
   const [scheduledError, setScheduledError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isOAuthPending, startOAuthTransition] = useTransition();
@@ -130,7 +137,10 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
   const scheduledConfigByAccount = new Map(
     scheduledSyncConfigs
       .filter((config): config is { ok: true; data: ScheduledSyncConfig } => config.ok)
-      .map((config) => [`${config.data.providerCode}:${config.data.providerInstanceId}`, config.data]),
+      .map((config) => [
+        `${config.data.providerCode}:${config.data.providerInstanceId}`,
+        config.data,
+      ]),
   );
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -326,7 +336,9 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
       <div className={styles.providerTabs}>
         {providers.map((provider) => (
           <button
-            className={provider === selectedProvider ? styles.providerTabActive : styles.providerTab}
+            className={
+              provider === selectedProvider ? styles.providerTabActive : styles.providerTab
+            }
             key={provider.descriptor.providerCode}
             onClick={() => {
               setResult(null);
@@ -395,7 +407,11 @@ export function ProviderSyncPanel({ catalog, statuses, scheduledSyncConfigs }: P
               ))}
             </div>
           </fieldset>
-          <button className={styles.submit} type="submit" disabled={isPending || isSyncing || !canSync}>
+          <button
+            className={styles.submit}
+            type="submit"
+            disabled={isPending || isSyncing || !canSync}
+          >
             {isPending || isSyncing ? (
               <>
                 <span className={styles.spinner} />
@@ -422,11 +438,13 @@ type ActiveSyncJob = {
 };
 
 function SyncProgressView({ job }: { job: ProviderSyncJobStatusResponse }) {
-  const completedPercent = job.totalItems > 0
-    ? Math.round((job.completedItems / job.totalItems) * 100)
-    : 0;
+  const completedPercent =
+    job.totalItems > 0 ? Math.round((job.completedItems / job.totalItems) * 100) : 0;
   const startedAt = job.startedAt ?? job.createdAt;
-  const elapsedSeconds = Math.max(0, Math.round((new Date(job.updatedAt).getTime() - new Date(startedAt).getTime()) / 1000));
+  const elapsedSeconds = Math.max(
+    0,
+    Math.round((new Date(job.updatedAt).getTime() - new Date(startedAt).getTime()) / 1000),
+  );
   const currentLabel = job.currentItem
     ? `${formatDataType(job.currentItem.dataType)} ${formatWindowLabel(new Date(job.currentItem.from), new Date(job.currentItem.to))}`
     : "Waiting for backend worker";
@@ -440,7 +458,8 @@ function SyncProgressView({ job }: { job: ProviderSyncJobStatusResponse }) {
         <div>
           <strong>Sync {formatStatus(job.status)}</strong>
           <span>
-            {job.completedItems} of {job.totalItems || "?"} windows complete, {elapsedSeconds}s elapsed
+            {job.completedItems} of {job.totalItems || "?"} windows complete, {elapsedSeconds}s
+            elapsed
           </span>
         </div>
       </div>
@@ -552,7 +571,8 @@ function ProviderAccountRow({
   const disconnectPending = pendingAccountAction === `disconnect:${account.providerInstanceId}`;
   const reconnectPending = pendingAccountAction === `reconnect:${account.providerInstanceId}`;
   const scheduledPending = pendingAccountAction === `scheduled:${account.providerInstanceId}`;
-  const scheduledRunPending = pendingAccountAction === `scheduled-run:${account.providerInstanceId}`;
+  const scheduledRunPending =
+    pendingAccountAction === `scheduled-run:${account.providerInstanceId}`;
 
   return (
     <div className={styles.accountRow}>
@@ -583,7 +603,8 @@ function ProviderAccountRow({
           <div>
             <dt>Refresh</dt>
             <dd>
-              {formatStatus(account.lastTokenRefreshStatus ?? "unknown")} {formatDateTime(account.lastTokenRefreshAt)}
+              {formatStatus(account.lastTokenRefreshStatus ?? "unknown")}{" "}
+              {formatDateTime(account.lastTokenRefreshAt)}
             </dd>
           </div>
         ) : null}
@@ -597,7 +618,9 @@ function ProviderAccountRow({
           <dt>Automatic</dt>
           <dd>
             {scheduledConfig?.enabled ? "Enabled" : "Paused"}
-            {scheduledConfig?.nextRunAt ? `, next ${formatDateTime(scheduledConfig.nextRunAt)}` : ""}
+            {scheduledConfig?.nextRunAt
+              ? `, next ${formatDateTime(scheduledConfig.nextRunAt)}`
+              : ""}
           </dd>
         </div>
         {scheduledConfig?.lastErrorMessage ? (
@@ -613,10 +636,16 @@ function ProviderAccountRow({
             <button
               className={styles.secondaryButton}
               disabled={scheduledPending || scheduledRunPending}
-              onClick={() => onToggleScheduled(account.providerInstanceId, !scheduledConfig?.enabled)}
+              onClick={() =>
+                onToggleScheduled(account.providerInstanceId, !scheduledConfig?.enabled)
+              }
               type="button"
             >
-              {scheduledPending ? "Saving..." : scheduledConfig?.enabled ? "Pause auto" : "Enable auto"}
+              {scheduledPending
+                ? "Saving..."
+                : scheduledConfig?.enabled
+                  ? "Pause auto"
+                  : "Enable auto"}
             </button>
             <button
               className={styles.oauthButton}
@@ -660,7 +689,8 @@ function ScheduledRunResult({ result }: { result: ApiResult<ScheduledSyncRunResp
     <div className={styles.result}>
       <strong>Automatic sync {result.data.status}</strong>
       <span>
-        {result.data.providerCode}: {result.data.requestedFrom ?? "n/a"} - {result.data.requestedTo ?? "n/a"}
+        {result.data.providerCode}: {result.data.requestedFrom ?? "n/a"} -{" "}
+        {result.data.requestedTo ?? "n/a"}
       </span>
       {result.data.errors.length > 0 ? (
         <ul>

@@ -2,8 +2,8 @@ import { env } from "@aqt-gallery/env/server";
 import { createClerkClient } from "@clerk/backend";
 
 const clerk = createClerkClient({
-	secretKey: env.CLERK_SECRET_KEY,
-	publishableKey: env.CLERK_PUBLISHABLE_KEY,
+  secretKey: env.CLERK_SECRET_KEY,
+  publishableKey: env.CLERK_PUBLISHABLE_KEY,
 });
 
 /**
@@ -13,8 +13,8 @@ const clerk = createClerkClient({
  * drop-in replacement at every call site (see apps/server/src/api/auth-token).
  */
 export type AuthSession = {
-	user: { id: string };
-	session: { id: string; userId: string };
+  user: { id: string };
+  session: { id: string; userId: string };
 };
 
 /**
@@ -22,21 +22,19 @@ export type AuthSession = {
  * bearer token). Networkless JWT verification — no round-trip to Clerk on the
  * hot path. Returns null when the request is unauthenticated.
  */
-export async function getSession(
-	request: Request,
-): Promise<AuthSession | null> {
-	const state = await clerk.authenticateRequest(request, {
-		// Only accept tokens minted for our own web origin.
-		authorizedParties: [env.CORS_ORIGIN],
-	});
+export async function getSession(request: Request): Promise<AuthSession | null> {
+  const state = await clerk.authenticateRequest(request, {
+    // Only accept tokens minted for our own web origin.
+    authorizedParties: [env.CORS_ORIGIN],
+  });
 
-	if (!state.isSignedIn) return null;
+  if (!state.isSignedIn) return null;
 
-	const { userId, sessionId } = state.toAuth();
-	if (!userId) return null;
+  const { userId, sessionId } = state.toAuth();
+  if (!userId) return null;
 
-	return {
-		user: { id: userId },
-		session: { id: sessionId ?? userId, userId },
-	};
+  return {
+    user: { id: userId },
+    session: { id: sessionId ?? userId, userId },
+  };
 }

@@ -76,13 +76,20 @@ export function HealthMetricChart({
   const titleId = useId();
   const isClient = useHydrated();
   const initialVisible = useMemo(
-    () => new Set(defaultVisibleMetricKeys?.length ? defaultVisibleMetricKeys : series.map((item) => item.key)),
+    () =>
+      new Set(
+        defaultVisibleMetricKeys?.length
+          ? defaultVisibleMetricKeys
+          : series.map((item) => item.key),
+      ),
     [defaultVisibleMetricKeys, series],
   );
   const [visibleMetricKeys, setVisibleMetricKeys] = useState(initialVisible);
   const visibleSeries = series.filter((item) => visibleMetricKeys.has(item.key));
   const numericValues = visibleSeries.flatMap((item) =>
-    data.map((datum) => datum[item.key]).filter((value): value is number => typeof value === "number"),
+    data
+      .map((datum) => datum[item.key])
+      .filter((value): value is number => typeof value === "number"),
   );
   const referenceValue = numericValues.length
     ? numericValues.reduce((total, value) => total + value, 0) / numericValues.length
@@ -103,7 +110,12 @@ export function HealthMetricChart({
   if (data.length === 0 || series.length === 0) {
     return (
       <section className={styles.panel} aria-labelledby={titleId}>
-        <ChartHeader title={title} titleId={titleId} description={description} onExpand={undefined} />
+        <ChartHeader
+          title={title}
+          titleId={titleId}
+          description={description}
+          onExpand={undefined}
+        />
         <p className={styles.empty}>No chartable data in this range.</p>
       </section>
     );
@@ -150,7 +162,10 @@ export function HealthMetricChart({
                   ifOverflow="extendDomain"
                 />
               ) : null}
-              <Tooltip content={<ChartTooltip series={series} />} cursor={{ stroke: "var(--chart-cursor)" }} />
+              <Tooltip
+                content={<ChartTooltip series={series} />}
+                cursor={{ stroke: "var(--chart-cursor)" }}
+              />
               <Legend
                 verticalAlign="bottom"
                 content={() => (
@@ -215,7 +230,12 @@ function ChartHeader({
         {description ? <p>{description}</p> : null}
       </div>
       {onExpand ? (
-        <button className={styles.iconButton} type="button" onClick={onExpand} aria-label={`Expand ${title}`}>
+        <button
+          className={styles.iconButton}
+          type="button"
+          onClick={onExpand}
+          aria-label={`Expand ${title}`}
+        >
           <Maximize2 size={16} aria-hidden="true" />
         </button>
       ) : null}
@@ -239,7 +259,10 @@ function ChartTooltip({ active, payload, series }: TooltipProps & { series: Heal
         const metric = seriesByKey.get(metricKey);
         return (
           <div className={styles.tooltipRow} key={metricKey}>
-            <span className={styles.tooltipSwatch} style={{ background: metric?.color ?? item.color }} />
+            <span
+              className={styles.tooltipSwatch}
+              style={{ background: metric?.color ?? item.color }}
+            />
             <span>{metric?.label ?? metricKey}</span>
             <strong>{formatChartValue(Number(item.value), detail?.unit ?? metric?.unit)}</strong>
             {detail?.source ? <small>{detail.source}</small> : null}
@@ -249,4 +272,3 @@ function ChartTooltip({ active, payload, series }: TooltipProps & { series: Heal
     </div>
   );
 }
-

@@ -12,8 +12,7 @@ type DateRangeFormProps = {
 export function DateRangeForm({ fromDate, toDate }: DateRangeFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const browserTimezone =
-    Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
   useEffect(() => {
     if (searchParams.get("timezone")) return;
@@ -59,12 +58,22 @@ export function DateRangeForm({ fromDate, toDate }: DateRangeFormProps) {
         <span className={styles.fieldLabel}>To</span>
         <input className={styles.input} name="toDate" type="date" defaultValue={toDate} />
       </div>
-      <button className={styles.submit} type="submit">Apply</button>
+      <button className={styles.submit} type="submit">
+        Apply
+      </button>
       <div className={styles.presets}>
-        <button className={styles.preset} type="button" onClick={() => applyPreset(1)}>Today</button>
-        <button className={styles.preset} type="button" onClick={() => applyPreset(7)}>7d</button>
-        <button className={styles.preset} type="button" onClick={() => applyPreset(30)}>30d</button>
-        <button className={styles.preset} type="button" onClick={() => applyPreset(90)}>90d</button>
+        <button className={styles.preset} type="button" onClick={() => applyPreset(1)}>
+          Today
+        </button>
+        <button className={styles.preset} type="button" onClick={() => applyPreset(7)}>
+          7d
+        </button>
+        <button className={styles.preset} type="button" onClick={() => applyPreset(30)}>
+          30d
+        </button>
+        <button className={styles.preset} type="button" onClick={() => applyPreset(90)}>
+          90d
+        </button>
       </div>
     </form>
   );

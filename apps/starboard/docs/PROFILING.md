@@ -38,11 +38,11 @@ quits and activations via `AppRegistry.refresh()`.
 Use p50/p95/p99, not only averages. Treat regressions larger than 10% as worth
 investigating even when still below budget.
 
-| Interval | p50 | p95 | p99 |
-| --- | ---: | ---: | ---: |
-| Event routing | < 0.10 ms | < 0.25 ms | < 0.50 ms |
-| Search ranking (500 candidates) | < 0.50 ms | < 1.0 ms | < 2.0 ms |
-| Window enumeration (uncached) | < 3 ms | < 8 ms | < 15 ms |
+| Interval                        |       p50 |       p95 |       p99 |
+| ------------------------------- | --------: | --------: | --------: |
+| Event routing                   | < 0.10 ms | < 0.25 ms | < 0.50 ms |
+| Search ranking (500 candidates) | < 0.50 ms |  < 1.0 ms |  < 2.0 ms |
+| Window enumeration (uncached)   |    < 3 ms |    < 8 ms |   < 15 ms |
 
 The callback should show zero persistent allocations per ordinary key event.
 Any AX call, application scan, disk I/O, or main-thread wait in `Event routing`

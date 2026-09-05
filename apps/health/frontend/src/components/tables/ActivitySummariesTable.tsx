@@ -14,7 +14,8 @@ const columns: Column<ActivitySummary>[] = [
   { header: "Active min", cell: (item) => formatNumber(item.activeMinutes) },
   {
     header: "Avg HR",
-    cell: (item) => (item.averageHeartRateBpm ? `${Math.round(item.averageHeartRateBpm)} bpm` : "n/a"),
+    cell: (item) =>
+      item.averageHeartRateBpm ? `${Math.round(item.averageHeartRateBpm)} bpm` : "n/a",
   },
   { header: "Source", cell: (item) => sourceLabel(item.source), muted: true },
 ];

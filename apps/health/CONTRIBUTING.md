@@ -4,7 +4,7 @@ Welcome! This guide outlines the development standards and conventional commit g
 
 ## Conventional Commits
 
-We use [Conventional Commits](https://www.conventionalcommits.org/) to maintain a structured, readable, and machine-parsable repository history. 
+We use [Conventional Commits](https://www.conventionalcommits.org/) to maintain a structured, readable, and machine-parsable repository history.
 
 ### Format
 
@@ -73,6 +73,8 @@ Before submitting a Pull Request or closing an issue:
 2. **Document Testing**: In your pull request description or issue closeout notes, you **must** explicitly mention the tests that were run (both automated tests and manual verification steps).
 
 Example PR/Closeout Note:
+
 > **Verification Run:**
+>
 > - Ran `./gradlew test` successfully (all 42 tests passed).
 > - Manually verified sleep night routing with local timezone `Europe/Berlin` using `curl` against local dev server.

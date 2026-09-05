@@ -1,19 +1,8 @@
 import { describe, it, expect } from "vitest";
-import type {
-  ProviderDescriptor,
-  ProviderStatus,
-  ProviderAccountStatus,
-} from "@/lib/types";
-import {
-  actionLabel,
-  actionDetail,
-  primaryOAuthLabel,
-  formatStatus,
-} from "./ProviderSyncPanel";
+import type { ProviderDescriptor, ProviderStatus, ProviderAccountStatus } from "@/lib/types";
+import { actionLabel, actionDetail, primaryOAuthLabel, formatStatus } from "./ProviderSyncPanel";
 
-function descriptor(
-  overrides: Partial<ProviderDescriptor> = {},
-): ProviderDescriptor {
+function descriptor(overrides: Partial<ProviderDescriptor> = {}): ProviderDescriptor {
   return {
     providerCode: "google-health",
     displayName: "Google Health",
@@ -35,9 +24,7 @@ function descriptor(
   };
 }
 
-function status(
-  overrides: Partial<ProviderStatus> = {},
-): ProviderStatus {
+function status(overrides: Partial<ProviderStatus> = {}): ProviderStatus {
   return {
     providerCode: "google-health",
     displayName: "Google Health",
@@ -51,9 +38,7 @@ function status(
   };
 }
 
-function account(
-  overrides: Partial<ProviderAccountStatus> = {},
-): ProviderAccountStatus {
+function account(overrides: Partial<ProviderAccountStatus> = {}): ProviderAccountStatus {
   return {
     providerInstanceId: "google-health-me",
     status: "connected",
@@ -64,60 +49,39 @@ function account(
 
 describe("actionLabel", () => {
   it("returns configure label when nextAction is configure", () => {
-    const result = actionLabel(
-      descriptor(),
-      status({ nextAction: "configure" }),
-    );
+    const result = actionLabel(descriptor(), status({ nextAction: "configure" }));
     expect(result).toBe("Google Health is not configured");
   });
 
   it("returns connect label when nextAction is connect", () => {
-    const result = actionLabel(
-      descriptor(),
-      status({ nextAction: "connect" }),
-    );
+    const result = actionLabel(descriptor(), status({ nextAction: "connect" }));
     expect(result).toBe("Google Health needs OAuth");
   });
 
   it("returns reconnect label when nextAction is reconnect", () => {
-    const result = actionLabel(
-      descriptor(),
-      status({ nextAction: "reconnect" }),
-    );
+    const result = actionLabel(descriptor(), status({ nextAction: "reconnect" }));
     expect(result).toBe("Google Health needs reconnection");
   });
 
   it("returns sync label when nextAction is sync", () => {
-    const result = actionLabel(
-      descriptor(),
-      status({ nextAction: "sync" }),
-    );
+    const result = actionLabel(descriptor(), status({ nextAction: "sync" }));
     expect(result).toBe("Google Health is ready to sync");
   });
 });
 
 describe("actionDetail", () => {
   it("returns credential setup detail for configure", () => {
-    const result = actionDetail(
-      descriptor(),
-      status({ nextAction: "configure" }),
-    );
+    const result = actionDetail(descriptor(), status({ nextAction: "configure" }));
     expect(result).toContain("credentials");
   });
 
   it("returns OAuth login detail for connect with oauthStart endpoint", () => {
-    const result = actionDetail(
-      descriptor(),
-      status({ nextAction: "connect" }),
-    );
+    const result = actionDetail(descriptor(), status({ nextAction: "connect" }));
     expect(result).toBe("Login before syncing this provider.");
   });
 
   it("returns reconnect detail for reconnect with oauthStart endpoint", () => {
-    const result = actionDetail(
-      descriptor(),
-      status({ nextAction: "reconnect" }),
-    );
+    const result = actionDetail(descriptor(), status({ nextAction: "reconnect" }));
     expect(result).toBe("Restart OAuth if provider access was revoked.");
   });
 
@@ -161,27 +125,19 @@ describe("actionDetail", () => {
 
 describe("primaryOAuthLabel", () => {
   it("returns Connect for connect action", () => {
-    expect(primaryOAuthLabel(status({ nextAction: "connect" }))).toBe(
-      "Connect",
-    );
+    expect(primaryOAuthLabel(status({ nextAction: "connect" }))).toBe("Connect");
   });
 
   it("returns Reconnect for reconnect action", () => {
-    expect(primaryOAuthLabel(status({ nextAction: "reconnect" }))).toBe(
-      "Reconnect",
-    );
+    expect(primaryOAuthLabel(status({ nextAction: "reconnect" }))).toBe("Reconnect");
   });
 
   it("returns Start OAuth for sync action", () => {
-    expect(primaryOAuthLabel(status({ nextAction: "sync" }))).toBe(
-      "Start OAuth",
-    );
+    expect(primaryOAuthLabel(status({ nextAction: "sync" }))).toBe("Start OAuth");
   });
 
   it("returns Start OAuth for configure action", () => {
-    expect(primaryOAuthLabel(status({ nextAction: "configure" }))).toBe(
-      "Start OAuth",
-    );
+    expect(primaryOAuthLabel(status({ nextAction: "configure" }))).toBe("Start OAuth");
   });
 });
 

@@ -9,7 +9,13 @@ type ValueSparklineProps = {
 };
 
 /** Minimal inline trend glyph: an area-filled polyline normalized to its range. */
-export function ValueSparkline({ values, color, width = 120, height = 36, className }: ValueSparklineProps) {
+export function ValueSparkline({
+  values,
+  color,
+  width = 120,
+  height = 36,
+  className,
+}: ValueSparklineProps) {
   const gradientId = useId();
   if (values.length === 0) {
     return <svg className={className} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" />;
@@ -28,7 +34,9 @@ export function ValueSparkline({ values, color, width = 120, height = 36, classN
     return [x, y] as const;
   });
 
-  const line = points.map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+  const line = points
+    .map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`)
+    .join(" ");
   const area = `${line} L${width} ${height} L0 ${height} Z`;
 
   return (

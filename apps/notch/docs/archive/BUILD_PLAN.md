@@ -7,17 +7,17 @@ you haven't done before.
 
 ## Locked decisions
 
-| Decision | Choice |
-|---|---|
-| v1 scope | Media/Now Playing **+** HUDs/live activities **+** Tray/AirDrop **+** Widgets (all four) |
-| Distribution | Personal use; Developer-ID signed + notarized DMG; **not** sandboxed; private APIs OK |
-| Min target | **macOS 26 (Tahoe)** only — newest SwiftUI, Liquid Glass, no back-compat shims |
-| Now Playing | `mediaremote-adapter` perl-bridge (system-wide) → AppleScript fallback (Music/Spotify) |
-| Displays | Built-in panel only for v1 (real notch); external + virtual notch deferred |
+| Decision        | Choice                                                                                           |
+| --------------- | ------------------------------------------------------------------------------------------------ |
+| v1 scope        | Media/Now Playing **+** HUDs/live activities **+** Tray/AirDrop **+** Widgets (all four)         |
+| Distribution    | Personal use; Developer-ID signed + notarized DMG; **not** sandboxed; private APIs OK            |
+| Min target      | **macOS 26 (Tahoe)** only — newest SwiftUI, Liquid Glass, no back-compat shims                   |
+| Now Playing     | `mediaremote-adapter` perl-bridge (system-wide) → AppleScript fallback (Music/Spotify)           |
+| Displays        | Built-in panel only for v1 (real notch); external + virtual notch deferred                       |
 | Window coverage | `collectionBehavior` only — **no** fullscreen/lock-screen presence; no CGS/SkyLight private APIs |
-| Weather | **Open-Meteo** (no key, no account) — no WeatherKit (no paid Apple Developer account) |
-| Native HUD | **Overlay only** — show our HUD alongside the system HUD; do not consume keys / touch the system |
-| Experience | Swift-fluent, new to AppKit/notch — deep dives below on windowing, private frameworks, geometry |
+| Weather         | **Open-Meteo** (no key, no account) — no WeatherKit (no paid Apple Developer account)            |
+| Native HUD      | **Overlay only** — show our HUD alongside the system HUD; do not consume keys / touch the system |
+| Experience      | Swift-fluent, new to AppKit/notch — deep dives below on windowing, private frameworks, geometry  |
 
 Reference implementations to study/borrow (all ship the techniques below):
 **DynamicNotchKit** (MrKai77) — cleanest window/shape/animation scaffold ·
@@ -128,7 +128,7 @@ testing on the actual content bounds when `.compact`/`.expanded`. Use SwiftUI `.
 (or an `NSTrackingArea`) on the content view to trigger expand.
 
 **Floating over fullscreen / lock screen — decided: not needed.**
-`collectionBehavior` alone does *not* reliably keep the overlay above a true-fullscreen app
+`collectionBehavior` alone does _not_ reliably keep the overlay above a true-fullscreen app
 or on the lock screen, but you've decided neither is required. So **stop at
 `collectionBehavior`** and skip the private CGS Spaces / SkyLight path entirely. This removes
 the most fragile, point-release-breakable code from the project — the overlay shows on normal
@@ -155,8 +155,8 @@ state enum, with the black "blob" shape and the content morphing together.
   - open → `.bouncy(duration: 0.4)`
   - close → `.smooth(duration: 0.4)`
   - compact↔expanded → `.snappy(duration: 0.4)`
-  Wrap transitions in `withAnimation(...) { state = … }`. Gate the bounce behind
-  `@Environment(\.accessibilityReduceMotion)` and fall back to `.smooth`/crossfade.
+    Wrap transitions in `withAnimation(...) { state = … }`. Gate the bounce behind
+    `@Environment(\.accessibilityReduceMotion)` and fall back to `.smooth`/crossfade.
 - **Micro-animations.** Use `phaseAnimator(_:trigger:)` (fires once per event, then idles)
   for the "pop" on a new track or a charging flourish — **never** `repeatForever`, and never
   a mounted `TimelineView(.animation)` while collapsed (both pin the render loop at refresh
@@ -177,6 +177,7 @@ System-wide Now Playing is **broken for unentitled apps since macOS 15.4** —
 working system-wide path on Tahoe is the **perl platform-binary loophole**:
 
 **Primary path — `mediaremote-adapter`.**
+
 - `/usr/bin/perl` reports bundle id `com.apple.perl` (a platform binary), so a process it
   hosts passes the daemon's entitlement check.
 - Bundle two artifacts: `mediaremote-adapter.pl` (a Resource) and the prebuilt
@@ -193,6 +194,7 @@ working system-wide path on Tahoe is the **perl platform-binary loophole**:
 **Fallback path — AppleScript / ScriptingBridge.** If `test` fails (a future Apple break, or
 a 26.x write/seek regression), fall back to per-app control for the two apps with scripting
 dictionaries:
+
 - Apple Music (`com.apple.Music`) and Spotify (`com.spotify.client`) via `SBApplication` /
   `NSAppleScript` (player state, track name/artist/album/duration, position, artwork).
 - Drive updates push-style via `DistributedNotificationCenter` on
@@ -202,7 +204,7 @@ dictionaries:
 **Abstraction.** Define a `MediaControllerProtocol` (current track, isPlaying, artwork,
 play/pause/next/prev/seek) and select the concrete controller at runtime: adapter when
 available, else Music/Spotify scripting (mirror boring.notch's controller-selection design).
-Playback *control* (`MRMediaRemoteSendCommand`) still works even where reads don't, so keep
+Playback _control_ (`MRMediaRemoteSendCommand`) still works even where reads don't, so keep
 that as a backstop.
 
 **v1 risk call:** the perl trick reads reliably on Tahoe 26.0; write/seek regressed on some
@@ -222,7 +224,7 @@ brightness-stops-working bug. Implementation:
   act only when `subtype == 8` (aux control buttons), decode `data1`:
   `keyCode = (data1 & 0xFFFF0000) >> 16`, state `(data1 & 0xFF00) >> 8` (0xA=down). Key
   codes: `NX_KEYTYPE_SOUND_UP/DOWN/MUTE = 0/1/7`, `BRIGHTNESS_UP/DOWN = 2/3`.
-  *Listen-only never consumes*, so the system still changes the value and draws its HUD.
+  _Listen-only never consumes_, so the system still changes the value and draws its HUD.
 - **Read current values (to render our overlay):**
   - Volume/mute via CoreAudio: default output device
     (`kAudioHardwarePropertyDefaultOutputDevice`), then
@@ -237,7 +239,7 @@ brightness-stops-working bug. Implementation:
   `CGRequestListenEventAccess`). Periodically verify with `CGEvent.tapIsEnabled`; re-enable
   on `tapDisabledByTimeout`.
 
-**Upgrade path (shipped as the opt-in "Replace the system HUD" setting):** if you later want the *clean single HUD*, switch the tap to
+**Upgrade path (shipped as the opt-in "Replace the system HUD" setting):** if you later want the _clean single HUD_, switch the tap to
 `.defaultTap`, return `nil` to swallow the key (this is what hides the native HUD without
 SIP changes), and then you become responsible for applying the change yourself
 (`AudioObjectSetPropertyData` / `DisplayServicesSetBrightness`) — with a read-back, or you
@@ -251,13 +253,13 @@ the switch is one flag.
 The morph engine already gives you the container; activities are just data.
 
 - **Activity model.** `enum Activity { case media, charging, deviceConnected(Device),
-  notification(Payload), timer, focus, … }` with priority + TTL. `ActivityManager` keeps the
+notification(Payload), timer, focus, … }` with priority + TTL. `ActivityManager` keeps the
   ordered queue; the topmost shows in the compact notch, others cycle (swipe-down / middle-
   click). Restore dismissed ones.
 - **Sources (all event-driven):**
   - Charging / power: IOKit power-source run-loop source (see §7 battery).
   - Device connect / output switch: CoreAudio default-device listener + Bluetooth.
-  - **Quick Peek notifications.** True system-notification *interception* needs private
+  - **Quick Peek notifications.** True system-notification _interception_ needs private
     Bulletin/Notification-Center SPI and is fragile; for v1 generate Peeks from your own
     sources (battery, connect, focus, timer) and treat third-party notification mirroring as
     a later, clearly-scoped spike rather than a v1 promise.
@@ -323,7 +325,7 @@ Ship the zero-friction ones first.
   Continuity-advertisement sniffing (`NSBluetoothAlwaysUsageDescription`) — port AirBattery's
   parser; treat as a later enhancement.
 - **Focus mode.** `INFocusStatusCenter.default` gives only on/off (`isFocused`) +
-  `NSFocusStatusUsageDescription`. The *specific* Focus name requires reading
+  `NSFocusStatusUsageDescription`. The _specific_ Focus name requires reading
   `~/Library/DoNotDisturb/DB/Assertions.json` → needs **Full Disk Access**. v1: show the
   on/off badge; gate the named-Focus behind an optional FDA onboarding.
 
@@ -370,16 +372,16 @@ this **direct-distribution only** (no App Store — already your choice). Notari
 
 **Permissions matrix:**
 
-| Feature | Permission |
-|---|---|
-| HUD trigger (listen-only tap) | Input Monitoring |
-| Media (adapter) | none (perl trick) |
-| Media (fallback) | Automation (Apple Events) |
-| Calendar | Calendars (full access) |
-| Weather (Open-Meteo) | Location (optional) |
-| AirPods live % | Bluetooth |
-| Focus name | Full Disk Access |
-| Battery, tray, AirDrop | none |
+| Feature                       | Permission                |
+| ----------------------------- | ------------------------- |
+| HUD trigger (listen-only tap) | Input Monitoring          |
+| Media (adapter)               | none (perl trick)         |
+| Media (fallback)              | Automation (Apple Events) |
+| Calendar                      | Calendars (full access)   |
+| Weather (Open-Meteo)          | Location (optional)       |
+| AirPods live %                | Bluetooth                 |
+| Focus name                    | Full Disk Access          |
+| Battery, tray, AirDrop        | none                      |
 
 **TCC dev pain:** grants are keyed to the signing identity — ad-hoc re-signing during
 development resets Input Monitoring/Accessibility/Automation repeatedly. Use a stable
@@ -393,17 +395,17 @@ Foundation → flagship → framework → breadth → polish. Each milestone is 
 
 - **M0 — Skeleton & the notch (foundation).** Agent app, `NSStatusItem`, `NotchPanel`
   anchored to the real notch, `NotchShape` blob, hover-to-expand with the asymmetric-spring
-  state machine. *Done when:* the empty notch expands/collapses buttery-smooth at ~0% idle.
+  state machine. _Done when:_ the empty notch expands/collapses buttery-smooth at ~0% idle.
 - **M1 — Now Playing (flagship/highest risk first).** `mediaremote-adapter` + `test` gate +
   AppleScript fallback; compact now-playing + expanded player with `matchedGeometryEffect`,
-  controls, downsampled art. *Done when:* track/art/controls work for Music, Spotify, and a
+  controls, downsampled art. _Done when:_ track/art/controls work for Music, Spotify, and a
   browser; falls back cleanly when `test` fails.
 - **M2 — Activity framework + Peeks.** Generalize activities (charging, device connect, own
-  notifications), cycling, TTL. *Done when:* plugging in / connecting AirPods animates a card.
+  notifications), cycling, TTL. _Done when:_ plugging in / connecting AirPods animates a card.
 - **M3 — HUDs.** Listen-only tap, CoreAudio + DisplayServices reads, overlay render (native
-  HUD coexists per your choice). *Done when:* volume/brightness keys show our overlay.
+  HUD coexists per your choice). _Done when:_ volume/brightness keys show our overlay.
 - **M4 — Tray + AirDrop.** Inbound drop + promises, shelf model + persistence, outbound drag,
-  `sendViaAirDrop`. *Done when:* drag in → drag out / AirDrop round-trips.
+  `sendViaAirDrop`. _Done when:_ drag in → drag out / AirDrop round-trips.
 - **M5 — Widgets.** Battery → Calendar → Weather (Open-Meteo) → AirPods battery → Focus badge.
 - **M6 — Polish & hardening.** Instruments pass (idle CPU/RAM, leaks, hitches), Reduce Motion,
   Liquid Glass tuning, settings UI, onboarding/permissions flow.
@@ -412,14 +414,14 @@ Foundation → flagship → framework → breadth → polish. Each milestone is 
 
 ## 12. Risk register
 
-| Risk | Severity | Mitigation |
-|---|---|---|
-| MediaRemote perl loophole closes on an OS update | High | `test`-gate; AppleScript fallback; pin a known-good fork; control commands still work |
-| Private SPI (`DisplayServices` brightness) breaks on 26.x point release | Med | Isolate behind one file; dlopen + guard; degrade gracefully (CGS/SkyLight already out of scope) |
-| 4-area v1 scope creep | Med | Strict vertical slices M0–M5; each independently shippable |
-| Share sheet won't anchor to non-activating panel | Med | Flip `canBecomeKey` during share; lifecycle delegate keeps panel alive |
-| Idle CPU not actually zero (stray repeatForever/timer) | Med | No timers; Instruments Time Profiler each milestone; `orderOut` when hidden |
-| Album-art RAM bloat | Low | ImageIO downsample + cost-limited NSCache (already specced) |
+| Risk                                                                    | Severity | Mitigation                                                                                      |
+| ----------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| MediaRemote perl loophole closes on an OS update                        | High     | `test`-gate; AppleScript fallback; pin a known-good fork; control commands still work           |
+| Private SPI (`DisplayServices` brightness) breaks on 26.x point release | Med      | Isolate behind one file; dlopen + guard; degrade gracefully (CGS/SkyLight already out of scope) |
+| 4-area v1 scope creep                                                   | Med      | Strict vertical slices M0–M5; each independently shippable                                      |
+| Share sheet won't anchor to non-activating panel                        | Med      | Flip `canBecomeKey` during share; lifecycle delegate keeps panel alive                          |
+| Idle CPU not actually zero (stray repeatForever/timer)                  | Med      | No timers; Instruments Time Profiler each milestone; `orderOut` when hidden                     |
+| Album-art RAM bloat                                                     | Low      | ImageIO downsample + cost-limited NSCache (already specced)                                     |
 
 ---
 
@@ -428,11 +430,14 @@ Foundation → flagship → framework → breadth → polish. Each milestone is 
 Resolved: **Weather → Open-Meteo** (no paid account). **No fullscreen/lock-screen presence**
 → `collectionBehavior`-only, CGS/SkyLight out of scope. Remaining:
 
-1. **Third-party notification mirroring:** is reflecting *other apps'* notifications as Quick
+1. **Third-party notification mirroring:** is reflecting _other apps'_ notifications as Quick
    Peeks required for v1, or are self-generated Peeks (battery/connect/focus/timer) enough?
    (Mirroring needs fragile private SPI — recommend deferring.)
 2. **Build tooling:** plain `.xcodeproj`, or XcodeGen/Tuist for a checked-in, regenerable
    project? (Defaulting to a plain Xcode project unless you prefer generated.)
 3. **Settings surface:** menu-bar dropdown only, or a full `Settings` window
    (`MenuBarExtra`/`Settings` scene)? Affects M6 scope.
+
+```
+
 ```

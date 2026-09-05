@@ -1,11 +1,8 @@
 import type { components } from "./generated/aqtHealthApiTypes";
 
-export type ApiSchema<Name extends keyof components["schemas"]> =
-  components["schemas"][Name];
+export type ApiSchema<Name extends keyof components["schemas"]> = components["schemas"][Name];
 
-export type ApiResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; status?: number; message: string };
+export type ApiResult<T> = { ok: true; data: T } | { ok: false; status?: number; message: string };
 
 export type HealthResponse = ApiSchema<"HealthResponse">;
 export type SourceMetadata = ApiSchema<"SourceMetadataResponse">;

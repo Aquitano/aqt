@@ -62,16 +62,16 @@ release's assets. One-time setup:
 
 The app requests these lazily; deny-able without crashing:
 
-| Feature | Permission | Prompt |
-|---|---|---|
-| Volume/brightness HUD | Input Monitoring | first media-key press (System Settings → Privacy → Input Monitoring) |
-| Media (Music/Spotify fallback) | Automation (Apple Events) | first control of Music/Spotify |
-| Live three-band audio visualizer | Screen & System Audio Recording | enabling the visualizer in Settings |
-| Calendar widget | Calendars (full access) | "Enable Calendar" in the widget |
-| Weather | Location (optional) | "Enable Location" in the widget |
-| AirPods/BT battery | — (system_profiler) | none for battery; Bluetooth prompt only for future live AirPods |
-| Focus badge | Focus status | on first launch |
-| Battery, tray, AirDrop | none | — |
+| Feature                          | Permission                      | Prompt                                                               |
+| -------------------------------- | ------------------------------- | -------------------------------------------------------------------- |
+| Volume/brightness HUD            | Input Monitoring                | first media-key press (System Settings → Privacy → Input Monitoring) |
+| Media (Music/Spotify fallback)   | Automation (Apple Events)       | first control of Music/Spotify                                       |
+| Live three-band audio visualizer | Screen & System Audio Recording | enabling the visualizer in Settings                                  |
+| Calendar widget                  | Calendars (full access)         | "Enable Calendar" in the widget                                      |
+| Weather                          | Location (optional)             | "Enable Location" in the widget                                      |
+| AirPods/BT battery               | — (system_profiler)             | none for battery; Bluetooth prompt only for future live AirPods      |
+| Focus badge                      | Focus status                    | on first launch                                                      |
+| Battery, tray, AirDrop           | none                            | —                                                                    |
 
 ## Now Playing: the two paths
 

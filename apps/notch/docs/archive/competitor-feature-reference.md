@@ -159,6 +159,7 @@ activities, polished animations, rich media, HUDs, lock screen). Notably:
 ## Platform & requirements
 
 ### Alcove
+
 - **macOS 15 (Sequoia) or later**; notch not required.
 - Native Swift app, distributed as a DMG (not the Mac App Store);
   `brew install --cask alcove`.

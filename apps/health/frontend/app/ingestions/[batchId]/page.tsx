@@ -11,10 +11,7 @@ type PageProps = {
 
 export default async function IngestionBatchDetailPage({ params }: PageProps) {
   const { batchId } = await params;
-  const [status, batch] = await Promise.all([
-    getHealthStatus(),
-    getIngestionBatchDetail(batchId),
-  ]);
+  const [status, batch] = await Promise.all([getHealthStatus(), getIngestionBatchDetail(batchId)]);
 
   return (
     <>

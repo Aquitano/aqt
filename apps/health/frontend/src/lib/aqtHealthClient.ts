@@ -32,9 +32,7 @@ type IngestionFailuresQuery = NonNullable<
 type ProviderPathCode =
   paths["/api/v2/providers/{providerCode}/sync"]["post"]["parameters"]["path"]["providerCode"];
 type HealthDayQuery = NonNullable<paths["/api/v2/health/day"]["get"]["parameters"]["query"]>;
-type DailyStepsQuery = NonNullable<
-  paths["/api/v2/steps/daily"]["get"]["parameters"]["query"]
->;
+type DailyStepsQuery = NonNullable<paths["/api/v2/steps/daily"]["get"]["parameters"]["query"]>;
 type ActivitySummariesQuery = NonNullable<
   paths["/api/v2/activity/summaries"]["get"]["parameters"]["query"]
 >;
@@ -91,7 +89,8 @@ export function createAqtHealthClient() {
   });
   const longRunningClient = createClient<paths>({
     baseUrl: apiBaseUrl,
-    fetch: (input: Request) => fetchWithTimeout(input, undefined, longRunningBackendRequestTimeoutMs),
+    fetch: (input: Request) =>
+      fetchWithTimeout(input, undefined, longRunningBackendRequestTimeoutMs),
   });
 
   return {
@@ -103,30 +102,27 @@ export function createAqtHealthClient() {
       }),
 
     listIngestionBatches: (query: IngestionBatchQuery) =>
-      call<ApiSchema<"IngestionBatchesResponse">>(
-        (headers) =>
-          rawClient.GET("/api/v2/admin/ingestion/batches", {
-            headers,
-            params: { query },
-          }),
+      call<ApiSchema<"IngestionBatchesResponse">>((headers) =>
+        rawClient.GET("/api/v2/admin/ingestion/batches", {
+          headers,
+          params: { query },
+        }),
       ),
 
     getIngestionBatch: (id: number) =>
-      call<ApiSchema<"IngestionBatchDetailResponse">>(
-        (headers) =>
-          rawClient.GET("/api/v2/admin/ingestion/batches/{id}", {
-            headers,
-            params: { path: { id } },
-          }),
+      call<ApiSchema<"IngestionBatchDetailResponse">>((headers) =>
+        rawClient.GET("/api/v2/admin/ingestion/batches/{id}", {
+          headers,
+          params: { path: { id } },
+        }),
       ),
 
     listIngestionFailures: (query: IngestionFailuresQuery) =>
-      call<ApiSchema<"IngestionBatchesResponse">>(
-        (headers) =>
-          rawClient.GET("/api/v2/admin/ingestion/failures", {
-            headers,
-            params: { query },
-          }),
+      call<ApiSchema<"IngestionBatchesResponse">>((headers) =>
+        rawClient.GET("/api/v2/admin/ingestion/failures", {
+          headers,
+          params: { query },
+        }),
       ),
 
     listProviders: () =>
@@ -170,15 +166,18 @@ export function createAqtHealthClient() {
 
     disconnectProviderAccount: (providerCode: string, providerInstanceId: string) =>
       call<ApiSchema<"ProviderDisconnectResponse">>((headers) =>
-        rawClient.POST("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/disconnect", {
-          headers,
-          params: {
-            path: {
-              providerCode: providerCode as ProviderPathCode,
-              providerInstanceId,
+        rawClient.POST(
+          "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/disconnect",
+          {
+            headers,
+            params: {
+              path: {
+                providerCode: providerCode as ProviderPathCode,
+                providerInstanceId,
+              },
             },
           },
-        }),
+        ),
       ),
 
     reconnectProviderAccount: (providerCode: string, providerInstanceId: string) =>
@@ -196,15 +195,18 @@ export function createAqtHealthClient() {
 
     getScheduledSyncConfig: (providerCode: string, providerInstanceId: string) =>
       call<ScheduledSyncConfig>((headers) =>
-        rawClient.GET("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync", {
-          headers,
-          params: {
-            path: {
-              providerCode: providerCode as ProviderPathCode,
-              providerInstanceId,
+        rawClient.GET(
+          "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync",
+          {
+            headers,
+            params: {
+              path: {
+                providerCode: providerCode as ProviderPathCode,
+                providerInstanceId,
+              },
             },
           },
-        }),
+        ),
       ),
 
     updateScheduledSyncConfig: (
@@ -213,35 +215,38 @@ export function createAqtHealthClient() {
       body: ScheduledSyncConfigUpdateRequest,
     ) =>
       call<ScheduledSyncConfig>((headers) =>
-        rawClient.PUT("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync", {
-          body,
-          headers,
-          params: {
-            path: {
-              providerCode: providerCode as ProviderPathCode,
-              providerInstanceId,
+        rawClient.PUT(
+          "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync",
+          {
+            body,
+            headers,
+            params: {
+              path: {
+                providerCode: providerCode as ProviderPathCode,
+                providerInstanceId,
+              },
             },
           },
-        }),
+        ),
       ),
 
     runScheduledSyncNow: (providerCode: string, providerInstanceId: string) =>
       call<ScheduledSyncRunResponse>((headers) =>
-        longRunningClient.POST("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync/run", {
-          headers,
-          params: {
-            path: {
-              providerCode: providerCode as ProviderPathCode,
-              providerInstanceId,
+        longRunningClient.POST(
+          "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync/run",
+          {
+            headers,
+            params: {
+              path: {
+                providerCode: providerCode as ProviderPathCode,
+                providerInstanceId,
+              },
             },
           },
-        }),
+        ),
       ),
 
-    syncProvider: (
-      providerCode: string,
-      body: ApiSchema<"ProviderSyncRequest">,
-    ) =>
+    syncProvider: (providerCode: string, body: ApiSchema<"ProviderSyncRequest">) =>
       call<ApiSchema<"ProviderSyncResponse">>((headers) =>
         longRunningClient.POST("/api/v2/providers/{providerCode}/sync", {
           body,
@@ -250,10 +255,7 @@ export function createAqtHealthClient() {
         }),
       ),
 
-    startProviderSyncJob: (
-      providerCode: string,
-      body: ApiSchema<"ProviderSyncRequest">,
-    ) =>
+    startProviderSyncJob: (providerCode: string, body: ApiSchema<"ProviderSyncRequest">) =>
       call<ProviderSyncJobStartResponse>((headers) =>
         fetchJson(`${apiBaseUrl}/api/v2/providers/${encodeURIComponent(providerCode)}/sync-jobs`, {
           method: "POST",
@@ -265,10 +267,7 @@ export function createAqtHealthClient() {
         }),
       ),
 
-    getProviderSyncJob: (
-      providerCode: string,
-      jobId: string,
-    ) =>
+    getProviderSyncJob: (providerCode: string, jobId: string) =>
       call<ProviderSyncJobStatusResponse>((headers) =>
         fetchJson(
           `${apiBaseUrl}/api/v2/providers/${encodeURIComponent(providerCode)}/sync-jobs/${encodeURIComponent(jobId)}`,
@@ -335,8 +334,7 @@ export function createAqtHealthClient() {
     listRespiratoryRateSamples: (query: ScalarSamplesQuery) =>
       listScalarMetric(rawClient, "respiratory_rate", query),
 
-    listHrvSamples: (query: ScalarSamplesQuery) =>
-      listScalarMetric(rawClient, "hrv_rmssd", query),
+    listHrvSamples: (query: ScalarSamplesQuery) => listScalarMetric(rawClient, "hrv_rmssd", query),
 
     listSleepNights: (query: SleepNightsQuery) =>
       call<ApiSchema<"SleepNightsResponse">>((headers) =>
@@ -488,9 +486,7 @@ async function fetchJson<T>(
 ): Promise<ClientResponse<T>> {
   const response = await fetchWithTimeout(input, init, timeoutMs);
   const body = await response.json().catch(() => undefined);
-  return response.ok
-    ? { data: body as T, response }
-    : { error: body, response };
+  return response.ok ? { data: body as T, response } : { error: body, response };
 }
 
 async function fetchWithTimeout(

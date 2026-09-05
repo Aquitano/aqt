@@ -22,10 +22,18 @@
   }
 }
 
-.card[data-kind="weight"] { --hue: var(--hue-weight); }
-.card[data-kind="steps"] { --hue: var(--hue-steps); }
-.card[data-kind="heart"] { --hue: var(--hue-heart); }
-.card[data-kind="sleep"] { --hue: var(--hue-sleep); }
+.card[data-kind="weight"] {
+  --hue: var(--hue-weight);
+}
+.card[data-kind="steps"] {
+  --hue: var(--hue-steps);
+}
+.card[data-kind="heart"] {
+  --hue: var(--hue-heart);
+}
+.card[data-kind="sleep"] {
+  --hue: var(--hue-sleep);
+}
 
 .head {
   display: flex;

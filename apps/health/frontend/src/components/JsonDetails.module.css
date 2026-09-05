@@ -75,7 +75,9 @@
   color: var(--fg-dim);
   font-size: 0.7rem;
   cursor: pointer;
-  transition: color var(--ease), border-color var(--ease);
+  transition:
+    color var(--ease),
+    border-color var(--ease);
 }
 
 .copyBtn:hover {

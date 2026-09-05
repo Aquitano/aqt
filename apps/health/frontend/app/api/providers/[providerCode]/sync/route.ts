@@ -16,7 +16,7 @@ export async function POST(request: Request, context: RouteContext) {
   const result = await syncProvider(providerCode, normalizePayload(body));
 
   return NextResponse.json(result, {
-    status: result.ok ? 200 : result.status ?? 500,
+    status: result.ok ? 200 : (result.status ?? 500),
   });
 }
 

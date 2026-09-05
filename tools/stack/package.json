@@ -1,18 +1,18 @@
 {
   "name": "aqt-stack",
+  "private": true,
+  "type": "module",
   "module": "index.ts",
   "scripts": {
     "start": "bun run index.ts"
   },
-  "type": "module",
-  "private": true,
+  "dependencies": {
+    "@clack/prompts": "^1.5.1"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^5"
-  },
-  "dependencies": {
-    "@clack/prompts": "^1.5.1"
   }
 }

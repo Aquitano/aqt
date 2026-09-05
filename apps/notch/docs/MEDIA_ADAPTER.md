@@ -36,16 +36,16 @@ playing positions, clears `NIL`, and refuses smaller artwork updates for the sam
 
 Validated on macOS 26.5.2 arm64 on 2026-07-10:
 
-| Check | Result |
-|---|---|
-| Pinned package resolution and clean framework build | Pass |
-| Framework embedded but absent from app load commands | Pass |
-| Bundled launcher checksum and required exported symbols | Pass |
-| Development-signed app + framework, same TeamIdentifier, strict verification | Pass |
-| Real one-shot `get` while idle | Pass (`NIL`, exit 0) |
-| Real one-shot browser frame | Pass (Brave source identity, timing, artwork) |
-| Real push `loop` initial frame | Pass (`NIL`) |
-| Playing, paused, artwork, and partial payload variants | Covered by wire-format tests |
+| Check                                                                        | Result                                        |
+| ---------------------------------------------------------------------------- | --------------------------------------------- |
+| Pinned package resolution and clean framework build                          | Pass                                          |
+| Framework embedded but absent from app load commands                         | Pass                                          |
+| Bundled launcher checksum and required exported symbols                      | Pass                                          |
+| Development-signed app + framework, same TeamIdentifier, strict verification | Pass                                          |
+| Real one-shot `get` while idle                                               | Pass (`NIL`, exit 0)                          |
+| Real one-shot browser frame                                                  | Pass (Brave source identity, timing, artwork) |
+| Real push `loop` initial frame                                               | Pass (`NIL`)                                  |
+| Playing, paused, artwork, and partial payload variants                       | Covered by wire-format tests                  |
 
 Before distributing a macOS point release, perform the live-source/control matrix in
 `docs/archive/POLISH_PLAN.md`; those checks require installed apps, user media, and audible transport

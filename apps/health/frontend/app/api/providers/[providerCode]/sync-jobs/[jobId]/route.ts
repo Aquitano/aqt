@@ -13,6 +13,6 @@ export async function GET(_request: Request, context: RouteContext) {
   const result = await getProviderSyncJob(providerCode, jobId);
 
   return NextResponse.json(result, {
-    status: result.ok ? 200 : result.status ?? 500,
+    status: result.ok ? 200 : (result.status ?? 500),
   });
 }

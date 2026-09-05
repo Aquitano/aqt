@@ -30,7 +30,9 @@ export function JsonDetails({ title, value }: JsonDetailsProps) {
             {copied ? "Copied" : "Copy"}
           </button>
         </div>
-        <pre ref={preRef} className={styles.pre}>{JSON.stringify(value, null, 2)}</pre>
+        <pre ref={preRef} className={styles.pre}>
+          {JSON.stringify(value, null, 2)}
+        </pre>
       </div>
     </details>
   );

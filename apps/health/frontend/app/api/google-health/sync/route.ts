@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   const result = await syncProvider("google-health", payload);
 
   return NextResponse.json(result, {
-    status: result.ok ? 200 : result.status ?? 500,
+    status: result.ok ? 200 : (result.status ?? 500),
   });
 }
 

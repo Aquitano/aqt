@@ -7,6 +7,7 @@ Decisions below were settled in the initial interview. Anything not listed here 
 ## Scope
 
 **v1**
+
 - Accounts (Clerk). Albums are owned by one user.
 - Album shelf, create/rename/delete albums, choose cover material and color.
 - Book view: cover + N spreads + back cover, 3D page turn with drag, click and keyboard.
@@ -22,18 +23,18 @@ Decisions below were settled in the initial interview. Anything not listed here 
 
 ## Stack
 
-| Concern | Choice |
-|---|---|
-| Runtime / package manager | bun |
-| Framework | TanStack Start (React 19, Vite), deployed as one Cloudflare Worker |
-| Styling | Tailwind v4 + shadcn/ui (radix, `new-york`, neutral base) |
-| Auth | Clerk (`@clerk/tanstack-react-start`) |
-| Database | Cloudflare D1 + Drizzle ORM, migrations via drizzle-kit + wrangler |
-| Photo storage | Cloudflare R2, accessed through the Worker binding behind a `Storage` interface |
-| Client state | Zustand (+ `zundo` for undo history), TanStack Query for server data |
-| Animation | `motion` (Framer Motion) |
-| Validation | ArkType, one schema per element kind, shared between client and server |
-| Toasts | sonner |
+| Concern                   | Choice                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| Runtime / package manager | bun                                                                             |
+| Framework                 | TanStack Start (React 19, Vite), deployed as one Cloudflare Worker              |
+| Styling                   | Tailwind v4 + shadcn/ui (radix, `new-york`, neutral base)                       |
+| Auth                      | Clerk (`@clerk/tanstack-react-start`)                                           |
+| Database                  | Cloudflare D1 + Drizzle ORM, migrations via drizzle-kit + wrangler              |
+| Photo storage             | Cloudflare R2, accessed through the Worker binding behind a `Storage` interface |
+| Client state              | Zustand (+ `zundo` for undo history), TanStack Query for server data            |
+| Animation                 | `motion` (Framer Motion)                                                        |
+| Validation                | ArkType, one schema per element kind, shared between client and server          |
+| Toasts                    | sonner                                                                          |
 
 Uploads are intentionally routed through the Worker (`PUT /api/photos/:id`) and streamed to the R2 binding. No S3 credentials, no presign logic. The `Storage` interface is the seam for moving to presigned URLs or Cloudflare Images later.
 
@@ -42,36 +43,36 @@ Uploads are intentionally routed through the Worker (`PUT /api/photos/:id`) and 
 Coordinate system: every page is a **1000 x 1000 unit** square. Element geometry is stored in page units and scaled to pixels at render time. This keeps layouts independent of screen size and makes the math integer-friendly.
 
 ```ts
-type Page = 'left' | 'right'
+type Page = "left" | "right";
 
-type PhotoFrame = 'none' | 'polaroid' | 'corners' | 'tape'
+type PhotoFrame = "none" | "polaroid" | "corners" | "tape";
 
 type ElementBase = {
-  id: string
-  page: Page
-  x: number      // page units, top-left of the unrotated box
-  y: number
-  w: number
-  h: number
-  rotation: number // degrees, around the box center
-}
+  id: string;
+  page: Page;
+  x: number; // page units, top-left of the unrotated box
+  y: number;
+  w: number;
+  h: number;
+  rotation: number; // degrees, around the box center
+};
 
 type PhotoElement = ElementBase & {
-  kind: 'photo'
-  photoId: string
-  frame: PhotoFrame
-}
+  kind: "photo";
+  photoId: string;
+  frame: PhotoFrame;
+};
 
 type TextElement = ElementBase & {
-  kind: 'text'
-  text: string
-  font: 'hand' | 'clean'   // Caveat / Inter
-  size: number             // page units (font-size), scales with page
-  color: string            // oklch or hex
-  align: 'left' | 'center' | 'right'
-}
+  kind: "text";
+  text: string;
+  font: "hand" | "clean"; // Caveat / Inter
+  size: number; // page units (font-size), scales with page
+  color: string; // oklch or hex
+  align: "left" | "center" | "right";
+};
 
-type Element = PhotoElement | TextElement
+type Element = PhotoElement | TextElement;
 ```
 
 Z-order is the array order of `Spread.elements` (last = topmost). No separate `z` field.
@@ -125,15 +126,15 @@ Every write validates elements with the ArkType schemas (bounds included: a box 
 
 ## Routes
 
-| Route | Purpose |
-|---|---|
-| `/` | Signed out: minimal landing with sign-in. Signed in: redirect to `/albums`. |
-| `/albums` | Shelf. Grid of album covers rendered with the real cover component. Create album dialog. |
-| `/albums/$albumId` | The book. View mode by default, `E` or toolbar toggles edit mode. |
-| `/s/$slug` | Public read-only book. Same `Book` component, no editor, no Clerk. |
-| `/print/$albumId` | Cover on a square page, one landscape page per spread, at 1 CSS px per page unit. `album export` prints it. |
-| `/api/photos/$id` | `PUT` streams body to R2 (auth required). `GET` serves from R2 with long cache headers. `?thumb=1` for the thumbnail. |
-| `/api/v1/*` | JSON API, see below. |
+| Route              | Purpose                                                                                                               |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `/`                | Signed out: minimal landing with sign-in. Signed in: redirect to `/albums`.                                           |
+| `/albums`          | Shelf. Grid of album covers rendered with the real cover component. Create album dialog.                              |
+| `/albums/$albumId` | The book. View mode by default, `E` or toolbar toggles edit mode.                                                     |
+| `/s/$slug`         | Public read-only book. Same `Book` component, no editor, no Clerk.                                                    |
+| `/print/$albumId`  | Cover on a square page, one landscape page per spread, at 1 CSS px per page unit. `album export` prints it.           |
+| `/api/photos/$id`  | `PUT` streams body to R2 (auth required). `GET` serves from R2 with long cache headers. `?thumb=1` for the thumbnail. |
+| `/api/v1/*`        | JSON API, see below.                                                                                                  |
 
 Auth (`src/server/auth.ts`) accepts an `Authorization: Bearer alb_...` API key before falling back to the Clerk session, on every server function and route.
 
@@ -214,6 +215,7 @@ Single-page layout: page width = viewport width minus padding, turning uses the 
 `<PageSurface>` draws the paper: warm off-white, subtle grain (inline SVG `feTurbulence` at ~4% opacity), gutter gradient toward the spine, and a hairline inner edge. Elements render inside a `position: relative` box that is the page; each element is `position: absolute` with `left/top/width/height` computed from page units times `scale`, and `transform: rotate(deg)`.
 
 `<PhotoView>` draws the photo with its frame:
+
 - `none`: 1px inset shadow, slight lift.
 - `polaroid`: white matte, 5% padding on top/sides, 14% bottom, soft drop shadow.
 - `corners`: four black photo-corner triangles overlaid on the corners.
@@ -255,6 +257,7 @@ A store subscriber diffs `spreads[i].elements` by reference, debounces 800ms per
 ### Transform handles
 
 Own implementation with pointer events and `setPointerCapture`, no library:
+
 - Body drag: move. Shift: axis lock.
 - Four corner handles: resize around the opposite corner. Photos are aspect-locked; text resizes width only and re-flows.
 - One rotate handle above the top edge. Shift: snap to 15deg.
@@ -268,6 +271,7 @@ While the photo library or filmstrip sheet is open the book gives up the sheet's
 ### Toolbar
 
 A floating shadcn `Card` docked at the bottom, always visible in edit mode:
+
 - Add photo (opens the photo library `Sheet`: upload dropzone + grid of thumbnails; click or drag onto a page)
 - Add text
 - Selected-element controls: frame `ToggleGroup` for photos; font `ToggleGroup`, size `Slider`, color swatches, align for text; z-order buttons; delete
@@ -291,10 +295,11 @@ shadcn defaults carry the chrome. The book is the only place with material rende
 **Paper**: `oklch(0.985 0.006 85)`, grain via `feTurbulence baseFrequency=0.9` at 4% opacity, gutter: linear gradient from `black/0.12` at the spine to transparent over 6% of the page width.
 
 **Cover materials** (each = base color from the album's `cover.color` + a texture + edge treatment):
+
 - `linen`: cross-hatch texture (two low-opacity repeating linear gradients at 0/90deg), matte, slight color desaturation.
 - `leather`: turbulence grain at higher contrast, a 1px lighter inner rim, subtle vignette.
 - `cloth`: fine diagonal weave, softer edges.
-Cover color palette (six swatches): oxblood, forest, navy, sand, charcoal, cream.
+  Cover color palette (six swatches): oxblood, forest, navy, sand, charcoal, cream.
 
 **Shadows**, layered, never a single box-shadow:
 `0 1px 2px rgb(0 0 0 / .08), 0 8px 24px rgb(0 0 0 / .12), 0 32px 64px -16px rgb(0 0 0 / .28)`.

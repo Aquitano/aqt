@@ -7,7 +7,9 @@ type BucketSparklineProps = {
 
 export function BucketSparkline({ buckets, height = 56 }: BucketSparklineProps) {
   const width = 240;
-  const values = buckets.map((bucket) => bucket.value).filter((value): value is number => value !== undefined);
+  const values = buckets
+    .map((bucket) => bucket.value)
+    .filter((value): value is number => value !== undefined);
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 1;
   const range = max - min || 1;
@@ -21,10 +23,28 @@ export function BucketSparkline({ buckets, height = 56 }: BucketSparklineProps) 
     .join(" ");
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Trend" preserveAspectRatio="none">
-      <line x1="0" x2={width} y1={height - 4} y2={height - 4} stroke="currentColor" opacity="0.18" />
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label="Trend"
+      preserveAspectRatio="none"
+    >
+      <line
+        x1="0"
+        x2={width}
+        y1={height - 4}
+        y2={height - 4}
+        stroke="currentColor"
+        opacity="0.18"
+      />
       {buckets.length ? (
-        <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
+        <polyline
+          points={points}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          vectorEffect="non-scaling-stroke"
+        />
       ) : null}
     </svg>
   );

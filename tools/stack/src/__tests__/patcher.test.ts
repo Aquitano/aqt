@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from "bun:test";
 import {
   applyPatches,
   GITIGNORE_ENV_PATCH,
@@ -6,52 +6,52 @@ import {
   NEXT_CONFIG_PATCH,
   THEME_LAYOUT_PATCHES,
   type Patch,
-} from '../patcher.ts';
+} from "../patcher.ts";
 
-describe('applyPatches', () => {
-  test('applies a single patch', () => {
-    const patches: Patch[] = [{ name: 'greeting', search: 'hello', replace: 'hi' }];
-    const result = applyPatches('hello world', patches);
+describe("applyPatches", () => {
+  test("applies a single patch", () => {
+    const patches: Patch[] = [{ name: "greeting", search: "hello", replace: "hi" }];
+    const result = applyPatches("hello world", patches);
 
-    expect(result.content).toBe('hi world');
-    expect(result.applied).toEqual(['greeting']);
+    expect(result.content).toBe("hi world");
+    expect(result.applied).toEqual(["greeting"]);
     expect(result.missed).toEqual([]);
   });
 
-  test('reports missed patches when search string not found', () => {
-    const patches: Patch[] = [{ name: 'missing', search: 'xyz', replace: 'abc' }];
-    const result = applyPatches('hello world', patches);
+  test("reports missed patches when search string not found", () => {
+    const patches: Patch[] = [{ name: "missing", search: "xyz", replace: "abc" }];
+    const result = applyPatches("hello world", patches);
 
-    expect(result.content).toBe('hello world');
+    expect(result.content).toBe("hello world");
     expect(result.applied).toEqual([]);
-    expect(result.missed).toEqual(['missing']);
+    expect(result.missed).toEqual(["missing"]);
   });
 
-  test('applies multiple patches in order', () => {
+  test("applies multiple patches in order", () => {
     const patches: Patch[] = [
-      { name: 'first', search: 'a', replace: 'A' },
-      { name: 'second', search: 'b', replace: 'B' },
+      { name: "first", search: "a", replace: "A" },
+      { name: "second", search: "b", replace: "B" },
     ];
-    const result = applyPatches('abc', patches);
+    const result = applyPatches("abc", patches);
 
-    expect(result.content).toBe('ABc');
-    expect(result.applied).toEqual(['first', 'second']);
+    expect(result.content).toBe("ABc");
+    expect(result.applied).toEqual(["first", "second"]);
     expect(result.missed).toEqual([]);
   });
 
-  test('handles mixed applied and missed', () => {
+  test("handles mixed applied and missed", () => {
     const patches: Patch[] = [
-      { name: 'good', search: 'hello', replace: 'hi' },
-      { name: 'bad', search: 'nonexistent', replace: 'nope' },
+      { name: "good", search: "hello", replace: "hi" },
+      { name: "bad", search: "nonexistent", replace: "nope" },
     ];
-    const result = applyPatches('hello world', patches);
+    const result = applyPatches("hello world", patches);
 
-    expect(result.content).toBe('hi world');
-    expect(result.applied).toEqual(['good']);
-    expect(result.missed).toEqual(['bad']);
+    expect(result.content).toBe("hi world");
+    expect(result.applied).toEqual(["good"]);
+    expect(result.missed).toEqual(["bad"]);
   });
 
-  test('NEXT_CONFIG_PATCH matches the create-next-app default', () => {
+  test("NEXT_CONFIG_PATCH matches the create-next-app default", () => {
     const defaultConfig = `import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -62,12 +62,12 @@ export default nextConfig;
 `;
     const result = applyPatches(defaultConfig, [NEXT_CONFIG_PATCH]);
 
-    expect(result.applied).toContain('react-compiler');
-    expect(result.content).toContain('reactCompiler: true');
-    expect(result.content).not.toContain('/* config options here */');
+    expect(result.applied).toContain("react-compiler");
+    expect(result.content).toContain("reactCompiler: true");
+    expect(result.content).not.toContain("/* config options here */");
   });
 
-  test('LAYOUT_PATCHES apply to a typical create-next-app layout', () => {
+  test("LAYOUT_PATCHES apply to a typical create-next-app layout", () => {
     const layout = `import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -103,17 +103,17 @@ export default function RootLayout({
 `;
     const result = applyPatches(layout, LAYOUT_PATCHES);
 
-    expect(result.applied).toContain('title');
-    expect(result.applied).toContain('description');
-    expect(result.applied).toContain('html-className');
-    expect(result.applied).toContain('body-tag');
+    expect(result.applied).toContain("title");
+    expect(result.applied).toContain("description");
+    expect(result.applied).toContain("html-className");
+    expect(result.applied).toContain("body-tag");
     expect(result.missed).toEqual([]);
     expect(result.content).toContain('title: "AQT Stack"');
-    expect(result.content).toContain('h-full antialiased');
+    expect(result.content).toContain("h-full antialiased");
     expect(result.content).toContain('<body className="min-h-full flex flex-col">');
   });
 
-  test('LAYOUT_PATCHES report missed when content is completely different', () => {
+  test("LAYOUT_PATCHES report missed when content is completely different", () => {
     const nonstandard = '<html lang="fr"><div>bonjour</div></html>';
     const result = applyPatches(nonstandard, LAYOUT_PATCHES);
 
@@ -121,7 +121,7 @@ export default function RootLayout({
     expect(result.applied.length).toBeLessThan(LAYOUT_PATCHES.length);
   });
 
-  test('THEME_LAYOUT_PATCHES inject ThemeProvider and suppressHydrationWarning', () => {
+  test("THEME_LAYOUT_PATCHES inject ThemeProvider and suppressHydrationWarning", () => {
     // Simulate layout after base LAYOUT_PATCHES have already run
     const layout = `import "./globals.css";
 export default function RootLayout({ children }) {
@@ -133,19 +133,19 @@ export default function RootLayout({ children }) {
 }`;
     const result = applyPatches(layout, THEME_LAYOUT_PATCHES);
 
-    expect(result.applied).toContain('theme-import');
-    expect(result.applied).toContain('theme-suppress-hydration');
-    expect(result.applied).toContain('theme-provider-wrap');
-    expect(result.content).toContain('ThemeProvider');
-    expect(result.content).toContain('suppressHydrationWarning');
+    expect(result.applied).toContain("theme-import");
+    expect(result.applied).toContain("theme-suppress-hydration");
+    expect(result.applied).toContain("theme-provider-wrap");
+    expect(result.content).toContain("ThemeProvider");
+    expect(result.content).toContain("suppressHydrationWarning");
     expect(result.content).toContain('attribute="class"');
   });
 
-  test('GITIGNORE_ENV_PATCH carves out .env.example from .env* glob', () => {
+  test("GITIGNORE_ENV_PATCH carves out .env.example from .env* glob", () => {
     const gitignore = `# env files (can opt-in for committing if needed)\n.env*\n`;
     const result = applyPatches(gitignore, [GITIGNORE_ENV_PATCH]);
 
-    expect(result.applied).toContain('gitignore-env-example');
-    expect(result.content).toContain('!.env.example');
+    expect(result.applied).toContain("gitignore-env-example");
+    expect(result.content).toContain("!.env.example");
   });
 });

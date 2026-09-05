@@ -16,10 +16,7 @@ export class ServerError extends Error {
 export async function rejectFailures<T>(work: Promise<T>): Promise<T> {
   const result = await work;
   if (result instanceof Response && !result.ok) {
-    throw new ServerError(
-      result.status,
-      (await result.text()) || result.statusText,
-    );
+    throw new ServerError(result.status, (await result.text()) || result.statusText);
   }
   return result;
 }

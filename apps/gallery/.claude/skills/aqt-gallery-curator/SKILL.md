@@ -34,10 +34,10 @@ publishing.
    - `description` — a clear paragraph about the work
    - `story` — a short, engaging wall-label narrative for museum visitors
    - `funFacts` — a few short, surprising facts
-   Then `set_artwork_tags` with relevant themes/keywords.
+     Then `set_artwork_tags` with relevant themes/keywords.
    - Only set fields you're reasonably sure of. Don't invent facts; if you're
      guessing, say so to the user or leave the field out.
-   - `rating`/`review`/`thoughts` are the owner's *private* notes — leave them
+   - `rating`/`review`/`thoughts` are the owner's _private_ notes — leave them
      unless the user gives an opinion to record.
 
 3. **Create the gallery.** `create_gallery` with a `name`, `tagline`, and

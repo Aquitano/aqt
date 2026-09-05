@@ -70,13 +70,25 @@ export function HealthDataVisualizations({
   timezone,
 }: HealthDataVisualizationsProps) {
   const [modalChart, setModalChart] = useState<ModalChart | null>(null);
-  const bodyChart = useMemo(() => buildBodyChart(bodyMeasurements?.items ?? []), [bodyMeasurements]);
-  const weightChart = useMemo(() => buildWeightChart(bodyMeasurements?.items ?? []), [bodyMeasurements]);
+  const bodyChart = useMemo(
+    () => buildBodyChart(bodyMeasurements?.items ?? []),
+    [bodyMeasurements],
+  );
+  const weightChart = useMemo(
+    () => buildWeightChart(bodyMeasurements?.items ?? []),
+    [bodyMeasurements],
+  );
   const stepsChart = useMemo(() => buildStepsChart(dailySteps?.items ?? []), [dailySteps]);
-  const activityChart = useMemo(() => buildActivityChart(activitySummaries?.items ?? []), [activitySummaries]);
+  const activityChart = useMemo(
+    () => buildActivityChart(activitySummaries?.items ?? []),
+    [activitySummaries],
+  );
   const heartRateChart = useMemo(() => buildHeartRateDailyChart(heartRateDaily), [heartRateDaily]);
   const sleepChart = useMemo(() => buildSleepChart(sleepNights), [sleepNights]);
-  const sleepSummaryChart = useMemo(() => buildSleepSummaryChart(sleepSummaries?.items ?? []), [sleepSummaries]);
+  const sleepSummaryChart = useMemo(
+    () => buildSleepSummaryChart(sleepSummaries?.items ?? []),
+    [sleepSummaries],
+  );
   const respiratoryRateChart = useMemo(
     () => buildRespiratoryRateChart(respiratoryRates?.items ?? []),
     [respiratoryRates],
@@ -278,7 +290,9 @@ export function HealthDataVisualizations({
     chart: NormalizedChart;
     visibleMetricKeys: string[];
   }) {
-    const selectedKeys = visibleMetricKeys.length ? visibleMetricKeys : chart.defaultVisibleMetricKeys;
+    const selectedKeys = visibleMetricKeys.length
+      ? visibleMetricKeys
+      : chart.defaultVisibleMetricKeys;
     setModalChart({
       title,
       description,
@@ -325,7 +339,14 @@ function buildWeightChart(items: BodyMeasurement[]): NormalizedChart {
   const weightItems = items.filter((item) => item.metricType === "weight");
   return {
     series: weightItems.length
-      ? [{ key: "weight", label: "Weight", color: bodyMetricConfig.weight.color, unit: weightItems[0]?.unit }]
+      ? [
+          {
+            key: "weight",
+            label: "Weight",
+            color: bodyMetricConfig.weight.color,
+            unit: weightItems[0]?.unit,
+          },
+        ]
       : [],
     data: measurementsToData(weightItems),
     details: measurementsToDetails(weightItems),
@@ -346,7 +367,11 @@ function buildStepsChart(items: StepDailySummariesResponse["items"]): Normalized
       source: sourceLabel(item.source),
     }));
 
-  return detailsToChart(details, [{ key: "steps", label: "Steps", color: "var(--hue-steps)", unit: "steps" }], ["steps"]);
+  return detailsToChart(
+    details,
+    [{ key: "steps", label: "Steps", color: "var(--hue-steps)", unit: "steps" }],
+    ["steps"],
+  );
 }
 
 function buildActivityChart(items: ActivitySummariesResponse["items"]): NormalizedChart {
@@ -418,13 +443,37 @@ function buildHeartRateDailyChart(items: HeartRateDailyPoint[]): NormalizedChart
     const at = `${item.date}T12:00:00.000Z`;
     const source = `${item.count} samples`;
     if (typeof item.avg === "number") {
-      details.push({ id: `hr-avg-${item.date}`, at, metricKey: "hr_avg", label: "Average", value: item.avg, unit: "bpm", source });
+      details.push({
+        id: `hr-avg-${item.date}`,
+        at,
+        metricKey: "hr_avg",
+        label: "Average",
+        value: item.avg,
+        unit: "bpm",
+        source,
+      });
     }
     if (typeof item.min === "number") {
-      details.push({ id: `hr-min-${item.date}`, at, metricKey: "hr_min", label: "Min", value: item.min, unit: "bpm", source });
+      details.push({
+        id: `hr-min-${item.date}`,
+        at,
+        metricKey: "hr_min",
+        label: "Min",
+        value: item.min,
+        unit: "bpm",
+        source,
+      });
     }
     if (typeof item.max === "number") {
-      details.push({ id: `hr-max-${item.date}`, at, metricKey: "hr_max", label: "Max", value: item.max, unit: "bpm", source });
+      details.push({
+        id: `hr-max-${item.date}`,
+        at,
+        metricKey: "hr_max",
+        label: "Max",
+        value: item.max,
+        unit: "bpm",
+        source,
+      });
     }
   }
 
@@ -453,7 +502,11 @@ function buildSleepChart(sleepNights?: SleepNightsResponse): NormalizedChart {
       source: sourceLabel(session.source),
     }));
 
-  return detailsToChart(details, [{ key: "sleep", label: "Sleep", color: "var(--hue-sleep)", unit: "h" }], ["sleep"]);
+  return detailsToChart(
+    details,
+    [{ key: "sleep", label: "Sleep", color: "var(--hue-sleep)", unit: "h" }],
+    ["sleep"],
+  );
 }
 
 function buildSleepSummaryChart(items: SleepSummariesResponse["items"]): NormalizedChart {
@@ -518,7 +571,9 @@ function buildSleepSummaryChart(items: SleepSummariesResponse["items"]): Normali
   );
 }
 
-function buildRespiratoryRateChart(items: RespiratoryRateSamplesResponse["items"]): NormalizedChart {
+function buildRespiratoryRateChart(
+  items: RespiratoryRateSamplesResponse["items"],
+): NormalizedChart {
   const details = [...items]
     .sort((a, b) => a.measuredAt.localeCompare(b.measuredAt) || a.id - b.id)
     .map((item) => ({
@@ -533,7 +588,14 @@ function buildRespiratoryRateChart(items: RespiratoryRateSamplesResponse["items"
 
   return detailsToChart(
     details,
-    [{ key: "respiratory_rate", label: "Respiratory rate", color: "var(--hue-resp)", unit: items[0]?.unit }],
+    [
+      {
+        key: "respiratory_rate",
+        label: "Respiratory rate",
+        color: "var(--hue-resp)",
+        unit: items[0]?.unit,
+      },
+    ],
     ["respiratory_rate"],
   );
 }
@@ -615,14 +677,20 @@ function detailsToData(details: ChartPointDetail[]): HealthChartDatum[] {
 }
 
 function buildSummaries(details: ChartPointDetail[], visibleMetricKeys: string[]): ChartSummary[] {
-  const metricKey = visibleMetricKeys.find((key) => details.some((detail) => detail.metricKey === key));
+  const metricKey = visibleMetricKeys.find((key) =>
+    details.some((detail) => detail.metricKey === key),
+  );
   if (!metricKey) return [];
-  const metricDetails = details.filter((detail) => detail.metricKey === metricKey).sort((a, b) => a.at.localeCompare(b.at));
+  const metricDetails = details
+    .filter((detail) => detail.metricKey === metricKey)
+    .sort((a, b) => a.at.localeCompare(b.at));
   const values = metricDetails.map((detail) => detail.value);
   const latest = metricDetails[metricDetails.length - 1];
   const oldest = metricDetails[0];
   const unit = latest?.unit;
-  const average = values.length ? values.reduce((total, value) => total + value, 0) / values.length : undefined;
+  const average = values.length
+    ? values.reduce((total, value) => total + value, 0) / values.length
+    : undefined;
   const delta = latest && oldest ? latest.value - oldest.value : undefined;
 
   return [
@@ -640,7 +708,9 @@ function formatSignedValue(value: number, unit?: string): string {
   return `${sign}${formatChartValue(value, unit)}`;
 }
 
-function sourceLabel(source?: { provider: string; providerInstanceId: string } | null): string | undefined {
+function sourceLabel(
+  source?: { provider: string; providerInstanceId: string } | null,
+): string | undefined {
   if (!source) return undefined;
   return `${source.provider} / ${source.providerInstanceId}`;
 }

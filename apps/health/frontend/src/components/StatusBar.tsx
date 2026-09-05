@@ -18,10 +18,7 @@ export function StatusBar({ apiBaseUrl, health, fromDate, toDate }: StatusBarPro
       <div className={styles.item}>
         <span className={styles.label}>Status</span>
         <div className={styles.statusItem}>
-          <span
-            className={`${styles.dot} ${health.ok ? styles.ok : ""}`}
-            aria-hidden="true"
-          />
+          <span className={`${styles.dot} ${health.ok ? styles.ok : ""}`} aria-hidden="true" />
           <span className={styles.value}>{status}</span>
         </div>
       </div>
@@ -32,7 +29,9 @@ export function StatusBar({ apiBaseUrl, health, fromDate, toDate }: StatusBarPro
       {fromDate && toDate ? (
         <div className={styles.item}>
           <span className={styles.label}>Range</span>
-          <span className={styles.value}>{fromDate} to {toDate}</span>
+          <span className={styles.value}>
+            {fromDate} to {toDate}
+          </span>
         </div>
       ) : null}
       <div className={styles.item}>

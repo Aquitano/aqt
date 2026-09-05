@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState } from "react";
 import {
   AlignCenter,
   AlignLeft,
@@ -13,9 +13,9 @@ import {
   Trash2,
   Type,
   Undo2,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -23,42 +23,48 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Separator } from '@/components/ui/separator'
-import { Slider } from '@/components/ui/slider'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { MAX_TEXT_SIZE, MIN_TEXT_SIZE, type PhotoElement, type PhotoFrame, type TextElement } from '@/domain/element'
-import { cn } from '@/lib/utils'
-import { CAPTION_COLORS, targetPage, textElementFor } from './place'
-import { useEditor, useEditorTemporal, type SaveStatus } from './store'
+} from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
+import { Slider } from "@/components/ui/slider";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  MAX_TEXT_SIZE,
+  MIN_TEXT_SIZE,
+  type PhotoElement,
+  type PhotoFrame,
+  type TextElement,
+} from "@/domain/element";
+import { cn } from "@/lib/utils";
+import { CAPTION_COLORS, targetPage, textElementFor } from "./place";
+import { useEditor, useEditorTemporal, type SaveStatus } from "./store";
 
-const FRAMES: readonly PhotoFrame[] = ['none', 'polaroid', 'corners', 'tape']
+const FRAMES: readonly PhotoFrame[] = ["none", "polaroid", "corners", "tape"];
 
 /** Floating edit controls, docked below the book. */
 export function Toolbar() {
-  const spreads = useEditor((state) => state.spreads)
-  const current = useEditor((state) => state.current)
-  const selection = useEditor((state) => state.selection)
-  const setMode = useEditor((state) => state.setMode)
-  const setPanel = useEditor((state) => state.setPanel)
-  const addElement = useEditor((state) => state.addElement)
-  const select = useEditor((state) => state.select)
-  const setEditing = useEditor((state) => state.setEditing)
-  const insertSpread = useEditor((state) => state.insertSpread)
-  const removeSpread = useEditor((state) => state.removeSpread)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const spreads = useEditor((state) => state.spreads);
+  const current = useEditor((state) => state.current);
+  const selection = useEditor((state) => state.selection);
+  const setMode = useEditor((state) => state.setMode);
+  const setPanel = useEditor((state) => state.setPanel);
+  const addElement = useEditor((state) => state.addElement);
+  const select = useEditor((state) => state.select);
+  const setEditing = useEditor((state) => state.setEditing);
+  const insertSpread = useEditor((state) => state.insertSpread);
+  const removeSpread = useEditor((state) => state.removeSpread);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const spread = spreads[current]
-  const selected = spread?.elements.find((el) => el.id === selection)
+  const spread = spreads[current];
+  const selected = spread?.elements.find((el) => el.id === selection);
 
   const addText = () => {
-    if (!spread) return
-    const element = textElementFor(targetPage(spread.elements, selection))
-    addElement(spread.id, element)
-    select(element.id)
-    setEditing(element.id)
-  }
+    if (!spread) return;
+    const element = textElementFor(targetPage(spread.elements, selection));
+    addElement(spread.id, element);
+    select(element.id);
+    setEditing(element.id);
+  };
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
@@ -66,7 +72,7 @@ export function Toolbar() {
         data-editor-toolbar
         className="pointer-events-auto flex-row items-center gap-1 px-2 py-1.5 shadow-lg"
       >
-        <IconButton label="Add photo" onClick={() => setPanel('photos')} disabled={!spread}>
+        <IconButton label="Add photo" onClick={() => setPanel("photos")} disabled={!spread}>
           <ImagePlus />
         </IconButton>
         <IconButton label="Add text" onClick={addText} disabled={!spread}>
@@ -76,7 +82,7 @@ export function Toolbar() {
         {selected ? (
           <>
             <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-6" />
-            {selected.kind === 'photo' ? (
+            {selected.kind === "photo" ? (
               <PhotoControls element={selected} spreadId={spread.id} />
             ) : (
               <TextControls element={selected} spreadId={spread.id} />
@@ -86,7 +92,7 @@ export function Toolbar() {
         ) : null}
 
         <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-6" />
-        <IconButton label="Pages" onClick={() => setPanel('pages')}>
+        <IconButton label="Pages" onClick={() => setPanel("pages")}>
           <BookOpen />
         </IconButton>
         <IconButton label="Insert spread after" onClick={() => insertSpread(current)}>
@@ -103,7 +109,7 @@ export function Toolbar() {
         <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-6" />
         <History />
         <SaveDot />
-        <Button size="sm" onClick={() => setMode('view')}>
+        <Button size="sm" onClick={() => setMode("view")}>
           <Check data-icon="inline-start" />
           Done
         </Button>
@@ -124,8 +130,8 @@ export function Toolbar() {
             <Button
               variant="destructive"
               onClick={() => {
-                if (spread) removeSpread(spread.id)
-                setConfirmDelete(false)
+                if (spread) removeSpread(spread.id);
+                setConfirmDelete(false);
               }}
             >
               Delete
@@ -134,17 +140,19 @@ export function Toolbar() {
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }
 
 function PhotoControls({ element, spreadId }: { element: PhotoElement; spreadId: string }) {
-  const updateElement = useEditor((state) => state.updateElement)
+  const updateElement = useEditor((state) => state.updateElement);
   return (
     <ToggleGroup
       type="single"
       size="sm"
       value={element.frame}
-      onValueChange={(frame) => frame && updateElement(spreadId, element.id, { frame: frame as PhotoFrame })}
+      onValueChange={(frame) =>
+        frame && updateElement(spreadId, element.id, { frame: frame as PhotoFrame })
+      }
       aria-label="Frame"
     >
       {FRAMES.map((frame) => (
@@ -153,22 +161,26 @@ function PhotoControls({ element, spreadId }: { element: PhotoElement; spreadId:
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
-  )
+  );
 }
 
 function TextControls({ element, spreadId }: { element: TextElement; spreadId: string }) {
-  const updateElement = useEditor((state) => state.updateElement)
-  const patch = (next: Partial<TextElement>) => updateElement(spreadId, element.id, next)
+  const updateElement = useEditor((state) => state.updateElement);
+  const patch = (next: Partial<TextElement>) => updateElement(spreadId, element.id, next);
   return (
     <>
       <ToggleGroup
         type="single"
         size="sm"
         value={element.font}
-        onValueChange={(font) => font && patch({ font: font as TextElement['font'] })}
+        onValueChange={(font) => font && patch({ font: font as TextElement["font"] })}
         aria-label="Font"
       >
-        <ToggleGroupItem value="hand" style={{ fontFamily: 'var(--font-hand)' }} className="text-base">
+        <ToggleGroupItem
+          value="hand"
+          style={{ fontFamily: "var(--font-hand)" }}
+          className="text-base"
+        >
           Hand
         </ToggleGroupItem>
         <ToggleGroupItem value="clean">Clean</ToggleGroupItem>
@@ -193,8 +205,8 @@ function TextControls({ element, spreadId }: { element: TextElement; spreadId: s
             style={{ background: color }}
             onClick={() => patch({ color })}
             className={cn(
-              'size-5 rounded-full border border-black/10',
-              element.color === color && 'ring-ring ring-2 ring-offset-1',
+              "size-5 rounded-full border border-black/10",
+              element.color === color && "ring-ring ring-2 ring-offset-1",
             )}
           />
         ))}
@@ -203,7 +215,7 @@ function TextControls({ element, spreadId }: { element: TextElement; spreadId: s
         type="single"
         size="sm"
         value={element.align}
-        onValueChange={(align) => align && patch({ align: align as TextElement['align'] })}
+        onValueChange={(align) => align && patch({ align: align as TextElement["align"] })}
         aria-label="Alignment"
       >
         <ToggleGroupItem value="left" aria-label="Align left">
@@ -217,32 +229,32 @@ function TextControls({ element, spreadId }: { element: TextElement; spreadId: s
         </ToggleGroupItem>
       </ToggleGroup>
     </>
-  )
+  );
 }
 
 function ZOrderControls({ id, spreadId }: { id: string; spreadId: string }) {
-  const reorderElement = useEditor((state) => state.reorderElement)
-  const removeElement = useEditor((state) => state.removeElement)
+  const reorderElement = useEditor((state) => state.reorderElement);
+  const removeElement = useEditor((state) => state.removeElement);
   return (
     <>
-      <IconButton label="Bring forward" onClick={() => reorderElement(spreadId, id, 'forward')}>
+      <IconButton label="Bring forward" onClick={() => reorderElement(spreadId, id, "forward")}>
         <ArrowUpToLine />
       </IconButton>
-      <IconButton label="Send backward" onClick={() => reorderElement(spreadId, id, 'backward')}>
+      <IconButton label="Send backward" onClick={() => reorderElement(spreadId, id, "backward")}>
         <ArrowDownToLine />
       </IconButton>
       <IconButton label="Delete element" onClick={() => removeElement(spreadId, id)}>
         <Trash2 />
       </IconButton>
     </>
-  )
+  );
 }
 
 function History() {
-  const canUndo = useEditorTemporal((state) => state.pastStates.length > 0)
-  const canRedo = useEditorTemporal((state) => state.futureStates.length > 0)
-  const undo = useEditorTemporal((state) => state.undo)
-  const redo = useEditorTemporal((state) => state.redo)
+  const canUndo = useEditorTemporal((state) => state.pastStates.length > 0);
+  const canRedo = useEditorTemporal((state) => state.futureStates.length > 0);
+  const undo = useEditorTemporal((state) => state.undo);
+  const redo = useEditorTemporal((state) => state.redo);
   return (
     <>
       <IconButton label="Undo" onClick={() => undo()} disabled={!canUndo}>
@@ -252,17 +264,17 @@ function History() {
         <Redo2 />
       </IconButton>
     </>
-  )
+  );
 }
 
 const SAVE_LABEL: Record<SaveStatus, string> = {
-  saved: 'Saved',
-  saving: 'Saving',
-  error: 'Not saved. Edit again to retry.',
-}
+  saved: "Saved",
+  saving: "Saving",
+  error: "Not saved. Edit again to retry.",
+};
 
 function SaveDot() {
-  const status = useEditor((state) => state.saveStatus)
+  const status = useEditor((state) => state.saveStatus);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -271,34 +283,40 @@ function SaveDot() {
           aria-label={SAVE_LABEL[status]}
           data-status={status}
           className={cn(
-            'mx-2 inline-block size-2 rounded-full',
-            status === 'saved' && 'bg-muted-foreground/40',
-            status === 'saving' && 'bg-primary animate-pulse',
-            status === 'error' && 'bg-destructive',
+            "mx-2 inline-block size-2 rounded-full",
+            status === "saved" && "bg-muted-foreground/40",
+            status === "saving" && "bg-primary animate-pulse",
+            status === "error" && "bg-destructive",
           )}
         />
       </TooltipTrigger>
       <TooltipContent>{SAVE_LABEL[status]}</TooltipContent>
     </Tooltip>
-  )
+  );
 }
 
 type IconButtonProps = {
-  label: string
-  onClick: () => void
-  disabled?: boolean
-  children: React.ReactNode
-}
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+};
 
 function IconButton({ label, onClick, disabled, children }: IconButtonProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label={label} onClick={onClick} disabled={disabled}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          onClick={onClick}
+          disabled={disabled}
+        >
           {children}
         </Button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
-  )
+  );
 }

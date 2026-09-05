@@ -328,12 +328,8 @@
           "name": "artwork_artist_id_artist_id_fk",
           "tableFrom": "artwork",
           "tableTo": "artist",
-          "columnsFrom": [
-            "artist_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["artist_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -402,12 +398,8 @@
           "name": "artwork_custom_field_artwork_id_artwork_id_fk",
           "tableFrom": "artwork_custom_field",
           "tableTo": "artwork",
-          "columnsFrom": [
-            "artwork_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["artwork_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -472,12 +464,8 @@
           "name": "artwork_tag_artwork_id_artwork_id_fk",
           "tableFrom": "artwork_tag",
           "tableTo": "artwork",
-          "columnsFrom": [
-            "artwork_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["artwork_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -485,12 +473,8 @@
           "name": "artwork_tag_tag_id_tag_id_fk",
           "tableFrom": "artwork_tag",
           "tableTo": "tag",
-          "columnsFrom": [
-            "tag_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tag_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -498,10 +482,7 @@
       "compositePrimaryKeys": {
         "artwork_tag_artwork_id_tag_id_pk": {
           "name": "artwork_tag_artwork_id_tag_id_pk",
-          "columns": [
-            "artwork_id",
-            "tag_id"
-          ]
+          "columns": ["artwork_id", "tag_id"]
         }
       },
       "uniqueConstraints": {},
@@ -618,12 +599,8 @@
           "name": "media_asset_artwork_id_artwork_id_fk",
           "tableFrom": "media_asset",
           "tableTo": "artwork",
-          "columnsFrom": [
-            "artwork_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["artwork_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -881,12 +858,8 @@
           "name": "art_group_cover_artwork_id_artwork_id_fk",
           "tableFrom": "art_group",
           "tableTo": "artwork",
-          "columnsFrom": [
-            "cover_artwork_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["cover_artwork_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -894,12 +867,8 @@
           "name": "art_group_museum_id_museum_id_fk",
           "tableFrom": "art_group",
           "tableTo": "museum",
-          "columnsFrom": [
-            "museum_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["museum_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -907,12 +876,8 @@
           "name": "art_group_artist_id_artist_id_fk",
           "tableFrom": "art_group",
           "tableTo": "artist",
-          "columnsFrom": [
-            "artist_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["artist_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -991,12 +956,8 @@
           "name": "group_artwork_group_id_art_group_id_fk",
           "tableFrom": "group_artwork",
           "tableTo": "art_group",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1004,12 +965,8 @@
           "name": "group_artwork_artwork_id_artwork_id_fk",
           "tableFrom": "group_artwork",
           "tableTo": "artwork",
-          "columnsFrom": [
-            "artwork_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["artwork_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1017,10 +974,7 @@
       "compositePrimaryKeys": {
         "group_artwork_group_id_artwork_id_pk": {
           "name": "group_artwork_group_id_artwork_id_pk",
-          "columns": [
-            "group_id",
-            "artwork_id"
-          ]
+          "columns": ["group_id", "artwork_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1213,12 +1167,8 @@
           "name": "placement_room_id_room_id_fk",
           "tableFrom": "placement",
           "tableTo": "room",
-          "columnsFrom": [
-            "room_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["room_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1226,12 +1176,8 @@
           "name": "placement_artwork_id_artwork_id_fk",
           "tableFrom": "placement",
           "tableTo": "artwork",
-          "columnsFrom": [
-            "artwork_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["artwork_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1239,10 +1185,7 @@
       "compositePrimaryKeys": {
         "placement_room_id_artwork_id_pk": {
           "name": "placement_room_id_artwork_id_pk",
-          "columns": [
-            "room_id",
-            "artwork_id"
-          ]
+          "columns": ["room_id", "artwork_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1355,12 +1298,8 @@
           "name": "room_museum_id_museum_id_fk",
           "tableFrom": "room",
           "tableTo": "museum",
-          "columnsFrom": [
-            "museum_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["museum_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }

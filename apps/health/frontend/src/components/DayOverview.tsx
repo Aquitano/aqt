@@ -28,7 +28,9 @@ export function DayOverview({ day, weightDelta7d, weightDelta7dUnit }: DayOvervi
       <article className={styles.card} data-kind="weight" data-reveal style={revealIndex(1)}>
         <div className={styles.head}>
           <span className={styles.label}>Weight</span>
-          <span className={styles.meta}>{formatSevenDayDelta(weightDelta7d, weightDelta7dUnit)}</span>
+          <span className={styles.meta}>
+            {formatSevenDayDelta(weightDelta7d, weightDelta7dUnit)}
+          </span>
         </div>
         <AnimatedNumber
           className={styles.value}
@@ -61,7 +63,11 @@ export function DayOverview({ day, weightDelta7d, weightDelta7dUnit }: DayOvervi
         </div>
         <AnimatedNumber
           className={styles.value}
-          value={day?.heartRate?.latest ? `${day.heartRate.latest.value} ${day.heartRate.latest.unit}` : "n/a"}
+          value={
+            day?.heartRate?.latest
+              ? `${day.heartRate.latest.value} ${day.heartRate.latest.unit}`
+              : "n/a"
+          }
         />
         <div className={styles.subvalue}>
           avg {day?.heartRate?.avgBpm != null ? `${Math.round(day.heartRate.avgBpm)} bpm` : "n/a"}
@@ -76,15 +82,20 @@ export function DayOverview({ day, weightDelta7d, weightDelta7dUnit }: DayOvervi
           <span className={styles.label}>Sleep</span>
           <span className={styles.meta}>{day?.sleep?.sessions.length ?? 0} sessions</span>
         </div>
-        <AnimatedNumber className={styles.value} value={formatDuration(day?.sleep?.totalDurationSeconds)} />
+        <AnimatedNumber
+          className={styles.value}
+          value={formatDuration(day?.sleep?.totalDurationSeconds)}
+        />
         <div className={styles.stageTotals}>
-          {day?.sleep?.stageTotals.length
-            ? day.sleep.stageTotals.map((stage) => (
-                <span key={stage.stage}>
-                  {stage.stage} {formatDuration(stage.durationSeconds)}
-                </span>
-              ))
-            : <span>n/a</span>}
+          {day?.sleep?.stageTotals.length ? (
+            day.sleep.stageTotals.map((stage) => (
+              <span key={stage.stage}>
+                {stage.stage} {formatDuration(stage.durationSeconds)}
+              </span>
+            ))
+          ) : (
+            <span>n/a</span>
+          )}
         </div>
         <div className={styles.chart}>
           <SleepTimeline from={day?.from} to={day?.to} timeline={day?.sleep?.timeline ?? []} />
