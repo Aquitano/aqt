@@ -1,29 +1,18 @@
 {
-  "extends": ["../../../.oxlintrc.json"],
-  "rules": {
-    "anti-slop/no-chained-type-assertions": "warn",
-    "anti-slop/no-conditional-empty-object-spread": "warn",
-    "anti-slop/no-known-value-widening": "warn",
-    "anti-slop/no-module-mocking": "warn",
-    "anti-slop/no-object-parameters": "warn",
-    "anti-slop/no-reflect-apply": "warn",
-    "anti-slop/no-reflect-get": "warn",
-    "anti-slop/no-runtime-typeof": "warn",
-    "anti-slop/no-shape-in-symbol-names": "warn",
-    "anti-slop/no-unknown-parameters": "warn",
-    "anti-slop/no-unknown-returns": "warn",
-    "anti-slop/no-unknown-type-aliases": "warn",
-    "anti-slop/no-unsafe-dictionary-type": "warn",
-    "anti-slop/no-widen-then-assert": "warn",
-    "anti-slop/require-safety-comment-for-type-assertion": "warn",
-    "react/set-state-in-effect": "warn",
-    "react/refs": "warn",
-    "react/purity": "warn",
-    "react/immutability": "warn",
-    "react-hooks/exhaustive-deps": "warn",
-    "unicorn/no-useless-spread": "warn",
-    "unicorn/no-useless-fallback-in-spread": "warn",
-    "no-useless-escape": "warn"
-  },
-  "plugins": ["typescript", "react", "import", "unicorn", "promise", "nextjs"]
+  "extends": [
+    "../../../.oxlintrc.json"
+  ],
+  "plugins": [
+    "typescript",
+    "react",
+    "import",
+    "unicorn",
+    "promise",
+    "nextjs"
+  ],
+  "ignorePatterns": [
+    "**/node_modules/**",
+    ".next/**",
+    "src/lib/generated/**"
+  ]
 }
