@@ -1,0 +1,7 @@
+# Ensure shell scripts always have LF line endings on checkout
+gradlew        text eol=lf
+gradlew.bat    text eol=crlf
+*.sh           text eol=lf
+
+# Normalise all other text files to LF
+*              text=auto

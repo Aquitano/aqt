@@ -1,0 +1,71 @@
+/* Slim system strip — quiet, mono, instrument-like */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-5);
+  padding: var(--s-2) var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  flex-shrink: 0;
+}
+
+.item + .item {
+  padding-left: var(--s-5);
+  border-left: 1px solid var(--border);
+}
+
+.label {
+  color: var(--fg-dim);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.value {
+  color: var(--fg-muted);
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusItem {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 8px rgba(242, 120, 109, 0.5);
+  flex-shrink: 0;
+}
+
+.dot.ok {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--accent-glow);
+  animation: pulse 2.5s var(--ease-in-out) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}

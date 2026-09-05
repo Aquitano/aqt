@@ -1,0 +1,70 @@
+.chart {
+  width: 100%;
+}
+
+.skeleton {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--r-md);
+  background: linear-gradient(110deg, var(--bg-inset) 30%, var(--bg-panel-hover) 50%, var(--bg-inset) 70%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+.empty {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  color: var(--fg-dim);
+  font-size: 0.85rem;
+}
+
+.tooltip {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: rgba(13, 17, 24, 0.92);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(8px);
+}
+
+.tooltipDate {
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tooltipRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--fg);
+  font-size: 0.85rem;
+}
+
+.tooltipRow strong {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--r-full);
+}

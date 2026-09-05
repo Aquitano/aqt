@@ -1,0 +1,112 @@
+.form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-2);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.fieldLabel {
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.input {
+  height: 36px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  color: var(--fg);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  transition: border-color var(--dur-fast) var(--ease-out);
+  color-scheme: dark;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+.submit {
+  height: 36px;
+  padding: 0 var(--s-4);
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.submit:hover {
+  background: var(--accent-hover);
+}
+
+/* segmented preset control */
+.presets {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  overflow: hidden;
+}
+
+.preset {
+  height: 34px;
+  padding: 0 var(--s-3);
+  border: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 0.74rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.preset + .preset {
+  border-left: 1px solid var(--border);
+}
+
+.preset:hover {
+  background: var(--bg-panel-hover);
+  color: var(--fg);
+}
+
+@media (max-width: 700px) {
+  .form {
+    flex-wrap: wrap;
+  }
+
+  .field {
+    flex: 1;
+    min-width: 130px;
+  }
+
+  .presets {
+    width: 100%;
+  }
+
+  .preset {
+    flex: 1;
+  }
+}
