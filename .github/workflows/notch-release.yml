@@ -4,7 +4,6 @@ name: notch-release
 # Sparkle appcast. Required repository secrets:
 #   DEVELOPER_ID_P12          base64 of the Developer ID Application .p12
 #   DEVELOPER_ID_P12_PASSWORD password of that .p12
-#   DEVELOPMENT_TEAM          10-character team id
 #   APPLE_ID                  Apple ID used for notarytool
 #   APPLE_APP_PASSWORD        app-specific password for that Apple ID
 #   SPARKLE_PRIVATE_ED_KEY    output of Sparkle's generate_keys -x
@@ -25,6 +24,7 @@ jobs:
       contents: write
     env:
       DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      DEVELOPMENT_TEAM: KRZZXX9G3M
       FEED_URL: https://github.com/${{ github.repository }}/releases/latest/download/appcast.xml
     defaults:
       run:
@@ -32,8 +32,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install tooling
-        run: brew install xcodegen
+      - uses: jdx/mise-action@v2
+        with:
+          install_args: xcodegen
 
       - name: Import signing certificate
         env:
@@ -56,7 +57,7 @@ jobs:
           xcodegen generate
           xcodebuild -project Notch.xcodeproj -scheme Notch -configuration Release \
             -archivePath build/Notch.xcarchive \
-            DEVELOPMENT_TEAM="${{ secrets.DEVELOPMENT_TEAM }}" \
+            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
             MARKETING_VERSION="${VERSION#notch/v}" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
             SPARKLE_FEED_URL="$FEED_URL" \
@@ -69,7 +70,7 @@ jobs:
           xcrun notarytool submit build/Notch.zip --wait \
             --apple-id "${{ secrets.APPLE_ID }}" \
             --password "${{ secrets.APPLE_APP_PASSWORD }}" \
-            --team-id "${{ secrets.DEVELOPMENT_TEAM }}"
+            --team-id "$DEVELOPMENT_TEAM"
           xcrun stapler staple build/Notch.xcarchive/Products/Applications/Notch.app
           rm build/Notch.zip
           ditto -c -k --keepParent build/Notch.xcarchive/Products/Applications/Notch.app build/Notch.zip

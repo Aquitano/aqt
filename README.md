@@ -15,10 +15,12 @@ Every app under `apps/` is a self-contained project with its own native build. T
 ## Setup
 
 ```sh
-brew install mise swiftformat swiftlint xcodegen
+brew install mise
 mise install
 bun install
 ```
+
+mise pins bun, go, java, golangci-lint, swiftformat, swiftlint and xcodegen. Activate it in your shell (`mise activate`) or prefix commands with `mise exec --`.
 
 ## Checks
 

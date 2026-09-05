@@ -1,5 +1,8 @@
 [tools]
-bun = "1.4.0"
+bun = "1.4.2"
 go = "1.26.6"
 java = "temurin-21"
-golangci-lint = "2"
+golangci-lint = "2.13.2"
+swiftformat = "0.63.0"
+swiftlint = "0.65.1"
+xcodegen = "2.46.0"

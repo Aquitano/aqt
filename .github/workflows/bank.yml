@@ -23,6 +23,7 @@ jobs:
           go-version-file: apps/bank/go.mod
       - uses: golangci/golangci-lint-action@v8
         with:
+          version: v2.13.2
           working-directory: apps/bank
       - run: go vet ./...
       - run: go test -race ./...
