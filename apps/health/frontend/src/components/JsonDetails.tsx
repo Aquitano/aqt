@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+
 import styles from "./JsonDetails.module.css";
 
 type JsonDetailsProps = {

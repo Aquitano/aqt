@@ -1,8 +1,8 @@
-import { ServerError, rejectFailures } from "@/lib/server-error";
-import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ImagePlus, Trash2, Upload } from "lucide-react";
+import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -21,9 +21,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { photoUrl, resizePhoto } from "@/lib/image";
 import { photosQuery } from "@/lib/queries";
+import { ServerError, rejectFailures } from "@/lib/server-error";
 import { cn } from "@/lib/utils";
 import type { Photo } from "@/server/db/schema";
 import * as photoFns from "@/server/fns/photos";
+
 import { PHOTO_DRAG_TYPE } from "./EditablePage";
 import { photoElementFor, targetPage, type PhotoRef } from "./place";
 import { useEditor } from "./store";
@@ -128,7 +130,7 @@ export function PhotoLibrary() {
           <label
             data-testid="dropzone"
             className={cn(
-              "border-border text-muted-foreground flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-6 text-sm transition-colors",
+              "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground transition-colors",
               dragOver && "border-primary bg-accent",
             )}
             onDragOver={(event) => {
@@ -204,7 +206,7 @@ function Thumb({
     <div className="group relative aspect-square overflow-hidden rounded-md">
       <button
         type="button"
-        className="focus-visible:ring-ring size-full focus-visible:ring-2 focus-visible:outline-none"
+        className="size-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         onClick={onPlace}
         draggable
         onDragStart={(event) => {

@@ -21,7 +21,7 @@ function RouteComponent() {
       )}
       <button
         type="button"
-        className="text-indigo-400 text-sm hover:text-indigo-300"
+        className="text-sm text-indigo-400 hover:text-indigo-300"
         onClick={() => setShowSignIn((v) => !v)}
       >
         {showSignIn ? "Need an account? Sign Up" : "Already have an account? Sign In"}

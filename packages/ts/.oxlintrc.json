@@ -1,0 +1,10 @@
+{
+  "extends": ["../../.oxlintrc.json"],
+  "rules": {
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/no-unnecessary-condition": "warn",
+    "typescript/switch-exhaustiveness-check": "error"
+  }
+}

@@ -39,7 +39,7 @@ function RouteComponent() {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
+    <p className="text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
       {children}
     </p>
   );
@@ -96,8 +96,8 @@ function StudioBody({ galleryId, search }: { galleryId: string; search: string }
     return (
       <div className="mx-auto w-full max-w-[1120px] pt-20">
         <div className="flex max-w-xl flex-col items-start gap-3">
-          <h1 className="font-semibold text-2xl">Gallery not found.</h1>
-          <p className="text-muted-foreground text-sm">
+          <h1 className="text-2xl font-semibold">Gallery not found.</h1>
+          <p className="text-sm text-muted-foreground">
             This gallery may have been deleted, or it belongs to another account.
           </p>
           <Button
@@ -116,11 +116,11 @@ function StudioBody({ galleryId, search }: { galleryId: string; search: string }
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <SectionLabel>Curated gallery</SectionLabel>
-          <h1 className="mt-1 truncate font-semibold text-3xl tracking-tight">
+          <h1 className="mt-1 truncate text-3xl font-semibold tracking-tight">
             {group?.name ?? "Gallery"}
           </h1>
           {group?.tagline ? (
-            <p className="mt-1 text-muted-foreground text-sm">{group.tagline}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{group.tagline}</p>
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -199,7 +199,7 @@ function StudioBody({ galleryId, search }: { galleryId: string; search: string }
       {/* Room theme */}
       <div className="flex flex-col gap-1">
         <SectionLabel>Room theme</SectionLabel>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-xs text-muted-foreground">
           How this gallery's 3D room looks when visitors walk through.
         </p>
         {group ? (
@@ -218,12 +218,12 @@ function StudioBody({ galleryId, search }: { galleryId: string; search: string }
           In this gallery — {members.length} {members.length === 1 ? "artwork" : "artworks"}
         </SectionLabel>
         {members.length === 0 ? (
-          <p className="text-muted-foreground text-xs">
+          <p className="text-xs text-muted-foreground">
             Nothing here yet. Import artworks or add them from your archive below.
           </p>
         ) : (
           <>
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               Drag or use the arrow buttons to reorder. The star sets the gallery cover.
             </p>
             <ul className="mt-1 flex flex-col gap-1.5">
@@ -269,7 +269,7 @@ function StudioBody({ galleryId, search }: { galleryId: string; search: string }
                       aria-hidden="true"
                       className="size-4 shrink-0 text-muted-foreground"
                     />
-                    <span className="w-5 text-center text-muted-foreground text-xs">{i + 1}</span>
+                    <span className="w-5 text-center text-xs text-muted-foreground">{i + 1}</span>
                     {url ? (
                       <img
                         src={url}
@@ -282,7 +282,7 @@ function StudioBody({ galleryId, search }: { galleryId: string; search: string }
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm">{a.title}</p>
-                      <p className="truncate text-muted-foreground text-xs">
+                      <p className="truncate text-xs text-muted-foreground">
                         {a.artist ?? "Unknown artist"}
                       </p>
                     </div>
@@ -370,11 +370,11 @@ function StudioBody({ galleryId, search }: { galleryId: string; search: string }
             )}
           </div>
         </div>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-xs text-muted-foreground">
           Adding an artwork publishes it so it can appear in the museum.
         </p>
         {!curation.archiveLoaded ? null : available.length === 0 ? (
-          <div className="flex flex-col items-start gap-3 border border-border border-dashed bg-card/40 px-5 py-8 text-muted-foreground text-xs">
+          <div className="flex flex-col items-start gap-3 border border-dashed border-border bg-card/40 px-5 py-8 text-xs text-muted-foreground">
             <span>
               {members.length === 0
                 ? "Your archive is empty — import artworks to get started."
@@ -386,7 +386,7 @@ function StudioBody({ galleryId, search }: { galleryId: string; search: string }
             </Button>
           </div>
         ) : visibleAvailable.length === 0 ? (
-          <p className="text-muted-foreground text-xs">No archive artworks match “{search}”.</p>
+          <p className="text-xs text-muted-foreground">No archive artworks match “{search}”.</p>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(116px,1fr))] gap-3">
             {visibleAvailable.map((a) => (
@@ -421,7 +421,7 @@ function ArchiveTile({
       onClick={onToggle}
       title={`Select "${artwork.title}"`}
       className={cn(
-        "group relative aspect-square overflow-hidden bg-card outline-none ring-1 ring-foreground/10 transition-all focus-visible:ring-2 focus-visible:ring-ring",
+        "group relative aspect-square overflow-hidden bg-card ring-1 ring-foreground/10 transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
         selected && "ring-2 ring-ring",
       )}
     >
@@ -432,7 +432,7 @@ function ArchiveTile({
           className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
         />
       ) : (
-        <span className="grid size-full place-items-center p-2 text-center text-muted-foreground text-xs">
+        <span className="grid size-full place-items-center p-2 text-center text-xs text-muted-foreground">
           {artwork.title}
         </span>
       )}

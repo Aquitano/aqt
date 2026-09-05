@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   AlignCenter,
   AlignLeft,
@@ -14,6 +13,8 @@ import {
   Type,
   Undo2,
 } from "lucide-react";
+import { useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -36,6 +37,7 @@ import {
   type TextElement,
 } from "@/domain/element";
 import { cn } from "@/lib/utils";
+
 import { CAPTION_COLORS, targetPage, textElementFor } from "./place";
 import { useEditor, useEditorTemporal, type SaveStatus } from "./store";
 
@@ -206,7 +208,7 @@ function TextControls({ element, spreadId }: { element: TextElement; spreadId: s
             onClick={() => patch({ color })}
             className={cn(
               "size-5 rounded-full border border-black/10",
-              element.color === color && "ring-ring ring-2 ring-offset-1",
+              element.color === color && "ring-2 ring-ring ring-offset-1",
             )}
           />
         ))}
@@ -285,7 +287,7 @@ function SaveDot() {
           className={cn(
             "mx-2 inline-block size-2 rounded-full",
             status === "saved" && "bg-muted-foreground/40",
-            status === "saving" && "bg-primary animate-pulse",
+            status === "saving" && "animate-pulse bg-primary",
             status === "error" && "bg-destructive",
           )}
         />

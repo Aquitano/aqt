@@ -1,7 +1,10 @@
 import Link from "next/link";
+
 import { formatDateTime, formatNumber } from "@/lib/format";
 import type { IngestionBatch } from "@/lib/types";
+
 import { DataTable, type Column } from "./DataTable";
+
 import styles from "./tables.module.css";
 
 type Props = {

@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+
 import { formatDateTime, formatDuration, formatMeasurement, formatNumber } from "@/lib/format";
 import type {
   ActivitySummaryLatestResponse,
@@ -7,6 +8,7 @@ import type {
   RespiratoryRateSamplesResponse,
   SleepSummaryLatestResponse,
 } from "@/lib/types";
+
 import styles from "./MetricHighlights.module.css";
 
 type MetricHighlightsProps = {

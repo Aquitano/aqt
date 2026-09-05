@@ -1,5 +1,6 @@
 import { formatNumber } from "@/lib/format";
 import type { StepDailySummary } from "@/lib/types";
+
 import { DataTable, type Column } from "./DataTable";
 import { sourceLabel } from "./shared";
 

@@ -3,6 +3,7 @@
  * Sign-in mirrors scripts/e2e-smoke.ts: a Backend-API test user + __clerk_ticket.
  */
 import { mkdir } from "node:fs/promises";
+
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
 
 export const BASE = process.env.QA_BASE ?? "http://localhost:3000";

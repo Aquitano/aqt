@@ -40,29 +40,29 @@ function MuseumPanel({ museum, index }: { museum: LobbyMuseum; index: number }) 
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-[#0b0a09] via-[#0b0a09]/45 to-[#0b0a09]/30 transition-opacity duration-700 group-hover:opacity-80" />
       <div className="absolute inset-0 flex flex-col items-start justify-end px-8 pb-14 md:px-20">
-        <p className="museum-fade-up text-[#c9b687] text-[11px] uppercase tracking-[0.34em]">
+        <p className="museum-fade-up text-[11px] tracking-[0.34em] text-[#c9b687] uppercase">
           {museum.tagline ?? "Museum"}
         </p>
-        <h2 className="museum-fade-up mt-3 max-w-3xl font-museum text-6xl text-[#f4efe3] leading-[0.98] md:text-8xl">
+        <h2 className="museum-fade-up font-museum mt-3 max-w-3xl text-6xl leading-[0.98] text-[#f4efe3] md:text-8xl">
           {museum.name}
         </h2>
-        <p className="museum-fade-up mt-5 max-w-xl text-[14px] text-white/60 leading-relaxed">
+        <p className="museum-fade-up mt-5 max-w-xl text-[14px] leading-relaxed text-white/60">
           {museum.description}
         </p>
-        <div className="museum-fade-up mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] text-white/45 uppercase tracking-[0.22em]">
+        <div className="museum-fade-up mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] tracking-[0.22em] text-white/45 uppercase">
           <span>{museum.roomCount} rooms</span>
           <span aria-hidden>—</span>
           <span>{museum.artworkCount} artworks</span>
           {museum.roomNames.length > 0 ? (
             <>
               <span aria-hidden>—</span>
-              <span className="text-white/40 normal-case tracking-normal">
+              <span className="tracking-normal text-white/40 normal-case">
                 {museum.roomNames.join(" · ")}
               </span>
             </>
           ) : null}
         </div>
-        <span className="mt-8 inline-flex items-center gap-3 rounded-full border border-[#cbb87f]/50 bg-black/30 px-8 py-3.5 text-[#e9dcb4] text-[12px] uppercase tracking-[0.3em] backdrop-blur transition-all duration-300 group-hover:gap-5 group-hover:bg-[#cbb87f]/20">
+        <span className="mt-8 inline-flex items-center gap-3 rounded-full border border-[#cbb87f]/50 bg-black/30 px-8 py-3.5 text-[12px] tracking-[0.3em] text-[#e9dcb4] uppercase backdrop-blur transition-all duration-300 group-hover:gap-5 group-hover:bg-[#cbb87f]/20">
           Enter the museum <span aria-hidden>→</span>
         </span>
       </div>
@@ -89,16 +89,16 @@ function GroupCard({ group }: { group: LobbyGroup }) {
           <div className="h-full w-full bg-[#1a1713]" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-[#12100d] to-transparent" />
-        <span className="absolute top-4 left-4 rounded-full border border-white/15 bg-black/45 px-3 py-1 text-[10px] text-white/75 uppercase tracking-[0.22em] backdrop-blur">
+        <span className="absolute top-4 left-4 rounded-full border border-white/15 bg-black/45 px-3 py-1 text-[10px] tracking-[0.22em] text-white/75 uppercase backdrop-blur">
           {GROUP_KIND_LABEL[group.kind] ?? "Collection"}
         </span>
       </div>
       <div className="px-6 pt-2 pb-7">
-        <h3 className="font-museum text-3xl text-[#efe8d6] leading-tight">{group.name}</h3>
-        <p className="mt-2 line-clamp-2 text-[13px] text-white/50 leading-relaxed">
+        <h3 className="font-museum text-3xl leading-tight text-[#efe8d6]">{group.name}</h3>
+        <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-white/50">
           {group.tagline ?? group.description}
         </p>
-        <p className="mt-4 text-[#b7a989] text-[11px] uppercase tracking-[0.24em]">
+        <p className="mt-4 text-[11px] tracking-[0.24em] text-[#b7a989] uppercase">
           {group.artworkCount} artworks · walk through →
         </p>
       </div>
@@ -127,21 +127,21 @@ function LobbyPage() {
     <main className="min-h-screen bg-[#0b0a09] text-white">
       <header className="flex items-center justify-between px-8 pt-8 pb-6 md:px-20">
         <div>
-          <p className="text-[#b7a989] text-[10px] uppercase tracking-[0.4em]">
+          <p className="text-[10px] tracking-[0.4em] text-[#b7a989] uppercase">
             AQT Gallery presents
           </p>
-          <h1 className="mt-1 font-museum text-3xl text-[#f0e9d8]">The Museum</h1>
+          <h1 className="font-museum mt-1 text-3xl text-[#f0e9d8]">The Museum</h1>
         </div>
         <div className="flex items-center gap-6">
           <Link
             to="/galleries"
-            className="text-[#c9b687] text-[11px] uppercase tracking-[0.24em] transition-colors hover:text-[#e9dcb4]"
+            className="text-[11px] tracking-[0.24em] text-[#c9b687] uppercase transition-colors hover:text-[#e9dcb4]"
           >
             Curate your own
           </Link>
           <Link
             to="/"
-            className="text-[11px] text-white/40 uppercase tracking-[0.24em] transition-colors hover:text-white/80"
+            className="text-[11px] tracking-[0.24em] text-white/40 uppercase transition-colors hover:text-white/80"
           >
             Exit to archive
           </Link>
@@ -153,14 +153,14 @@ function LobbyPage() {
       {lobby.isError ? (
         <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
           <p className="font-museum text-4xl text-[#e8e2d5]">The doors are stuck</p>
-          <p className="mt-4 max-w-md text-sm text-white/50 leading-relaxed">
+          <p className="mt-4 max-w-md text-sm leading-relaxed text-white/50">
             We couldn't reach the museum's collection service. Check your connection — or try the
             handle again.
           </p>
           <button
             type="button"
             onClick={() => lobby.refetch()}
-            className="mt-8 rounded-full border border-[#cbb87f]/50 px-7 py-3 text-[#e9dcb4] text-[12px] uppercase tracking-[0.26em] transition-colors hover:bg-[#cbb87f]/15"
+            className="mt-8 rounded-full border border-[#cbb87f]/50 px-7 py-3 text-[12px] tracking-[0.26em] text-[#e9dcb4] uppercase transition-colors hover:bg-[#cbb87f]/15"
           >
             Try again
           </button>
@@ -171,7 +171,7 @@ function LobbyPage() {
         lobby.data.museums.length === 0 && lobby.data.groups.length === 0 ? (
           <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
             <p className="font-museum text-4xl text-[#e8e2d5]">Nothing on display</p>
-            <p className="mt-4 max-w-md text-sm text-white/50 leading-relaxed">
+            <p className="mt-4 max-w-md text-sm leading-relaxed text-white/50">
               No museums or collections have been published yet. The curators are still hanging the
               first show.
             </p>
@@ -188,15 +188,15 @@ function LobbyPage() {
               <section className="px-8 pt-14 pb-20 md:px-20">
                 <div className="flex items-end justify-between">
                   <div>
-                    <p className="text-[#b7a989] text-[11px] uppercase tracking-[0.3em]">
+                    <p className="text-[11px] tracking-[0.3em] text-[#b7a989] uppercase">
                       Beyond the permanent halls
                     </p>
-                    <h2 className="mt-2 font-museum text-4xl text-[#f0e9d8]">
+                    <h2 className="font-museum mt-2 text-4xl text-[#f0e9d8]">
                       Exhibitions & Collections
                     </h2>
                   </div>
                 </div>
-                <div className="mt-8 flex snap-x gap-5 overflow-x-auto pb-4 [scrollbar-width:thin]">
+                <div className="mt-8 flex snap-x [scrollbar-width:thin] gap-5 overflow-x-auto pb-4">
                   {lobby.data.groups.map((group) => (
                     <GroupCard key={group.id} group={group} />
                   ))}

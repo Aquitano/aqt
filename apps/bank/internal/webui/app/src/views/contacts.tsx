@@ -1,6 +1,11 @@
-import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserPlus } from "lucide-react";
+import { useState } from "react";
+
+import type { Selection } from "@/components/detail-pane";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import {
   createContactWithAlias,
   getContacts,
@@ -8,12 +13,8 @@ import {
   type ContactSuggestion,
 } from "@/lib/api";
 import { isMe, SourceBadge } from "@/lib/format";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
-import type { Selection } from "@/components/detail-pane";
-import { ListSkeleton } from "@/views/search";
 import { cn } from "@/lib/utils";
+import { ListSkeleton } from "@/views/search";
 
 // "Pocket" <team@x.com> -> Pocket; bare identities get title-cased words
 function suggestedName(s: ContactSuggestion) {
@@ -47,7 +48,7 @@ function SuggestionRow({ s }: { s: ContactSuggestion }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <span className="truncate text-sm">{suggestedName(s)}</span>
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground/60">
+          <span className="shrink-0 text-xs text-muted-foreground/60 tabular-nums">
             {s.messages.toLocaleString("en")} msgs
           </span>
         </div>

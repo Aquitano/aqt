@@ -1,4 +1,5 @@
 import path from "node:path";
+
 import { db } from "@aqt-gallery/db";
 import { artist, artwork, mediaAsset } from "@aqt-gallery/db/schema/gallery";
 import { artGroup, groupArtwork, museum, placement, room } from "@aqt-gallery/db/schema/museum";

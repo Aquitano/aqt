@@ -1,8 +1,8 @@
-import { useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { MessagesSquare } from "lucide-react";
-import { browseThreads, BROWSE_PAGE, type SourceStat, type ThreadGroup } from "@/lib/api";
-import { fmtDate, SourceBadge } from "@/lib/format";
+import { useState } from "react";
+
+import type { Selection } from "@/components/detail-pane";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,9 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Selection } from "@/components/detail-pane";
-import { ListSkeleton } from "@/views/search";
+import { browseThreads, BROWSE_PAGE, type SourceStat, type ThreadGroup } from "@/lib/api";
+import { fmtDate, SourceBadge } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ListSkeleton } from "@/views/search";
 
 export const ALL_SOURCES = "__all__";
 
@@ -64,7 +65,7 @@ function GroupRow({
             {g.n}
           </Badge>
         )}
-        <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground/70">
+        <span className="ml-auto shrink-0 text-xs text-muted-foreground/70 tabular-nums">
           {fmtDate(g.last_at)}
         </span>
       </div>

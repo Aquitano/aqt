@@ -1,5 +1,6 @@
 import { formatDateTime, formatMeasurement } from "@/lib/format";
 import type { RespiratoryRateSample } from "@/lib/types";
+
 import { DataTable, type Column } from "./DataTable";
 import { sourceLabel } from "./shared";
 

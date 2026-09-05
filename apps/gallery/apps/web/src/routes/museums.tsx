@@ -38,10 +38,10 @@ function RouteComponent() {
       <div className="mx-auto w-full max-w-[1120px] pt-6">
         <div className="mb-6 flex items-end justify-between gap-4">
           <div>
-            <p className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
+            <p className="text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
               Multi-room museums
             </p>
-            <h1 className="mt-1 font-semibold text-3xl tracking-tight">Museums</h1>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight">Museums</h1>
           </div>
           <Button size="lg" onClick={() => setEditorOpen(true)}>
             <Plus />
@@ -57,7 +57,7 @@ function RouteComponent() {
             <button
               type="button"
               onClick={() => setEditorOpen(true)}
-              className="flex min-h-56 flex-col items-center justify-center gap-2 border border-border border-dashed bg-card/40 px-4 text-center text-muted-foreground text-xs outline-none transition-colors hover:border-ring hover:text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
+              className="flex min-h-56 flex-col items-center justify-center gap-2 border border-dashed border-border bg-card/40 px-4 text-center text-xs text-muted-foreground transition-colors outline-none hover:border-ring hover:text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
             >
               <Plus className="size-5" />
               <span>
@@ -93,12 +93,12 @@ function MuseumCard({ museum }: { museum: StudioMuseum }) {
         )}
       </div>
       <div className="flex flex-1 flex-col gap-1 p-3">
-        <h2 className="font-medium text-sm">{museum.name}</h2>
-        <p className="line-clamp-2 text-muted-foreground text-xs">
+        <h2 className="text-sm font-medium">{museum.name}</h2>
+        <p className="line-clamp-2 text-xs text-muted-foreground">
           {museum.tagline || museum.description || "A multi-room museum"}
         </p>
         <div className="mt-auto flex items-center justify-between pt-3">
-          <span className="text-muted-foreground text-xs">
+          <span className="text-xs text-muted-foreground">
             {roomCount} {roomCount === 1 ? "room" : "rooms"} · {artworkCount}{" "}
             {artworkCount === 1 ? "artwork" : "artworks"}
           </span>

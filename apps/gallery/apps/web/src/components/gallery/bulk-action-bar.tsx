@@ -104,7 +104,7 @@ export function BulkActionBar({
   return (
     <>
       <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 border bg-popover/95 px-3 py-2 text-popover-foreground shadow-2xl ring-1 ring-foreground/10 backdrop-blur-md">
-        <span className="px-1 font-medium text-sm tabular-nums">{count} selected</span>
+        <span className="px-1 text-sm font-medium tabular-nums">{count} selected</span>
 
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="outline" size="sm" disabled={busy} />}>

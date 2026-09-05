@@ -1,9 +1,8 @@
-import { memo, useEffect, useRef, type ReactNode } from "react";
 import { Download, Paperclip } from "lucide-react";
+import { memo, useEffect, useRef, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Message as BankMessage } from "@/lib/api";
-import { fmtDay, fmtTime, isMarkdownSource, isMe, Linkified, sourceHue } from "@/lib/format";
+
 import {
   Attachment,
   AttachmentContent,
@@ -28,6 +27,8 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
+import type { Message as BankMessage } from "@/lib/api";
+import { fmtDay, fmtTime, isMarkdownSource, isMe, Linkified, sourceHue } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 function initials(name: string) {
@@ -99,7 +100,7 @@ const MEDIA_TAG =
 const Body = memo(function Body({ m }: { m: BankMessage }) {
   if (isMarkdownSource(m.source))
     return (
-      <div className="prose prose-sm prose-invert max-w-none prose-pre:overflow-x-auto prose-pre:whitespace-pre-wrap prose-p:my-1.5 prose-headings:my-2 prose-a:break-all">
+      <div className="prose prose-sm max-w-none prose-invert prose-headings:my-2 prose-p:my-1.5 prose-a:break-all prose-pre:overflow-x-auto prose-pre:whitespace-pre-wrap">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.body ?? ""}</ReactMarkdown>
       </div>
     );

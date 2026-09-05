@@ -37,7 +37,7 @@ function RouteComponent() {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
+    <p className="text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
       {children}
     </p>
   );
@@ -76,7 +76,7 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
 function CodeBlock({ text }: { text: string }) {
   return (
     <div className="flex items-start justify-between gap-2 border border-border bg-card px-3 py-2">
-      <pre className="min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[12px] text-foreground/90">
+      <pre className="min-w-0 flex-1 overflow-x-auto font-mono text-[12px] break-all whitespace-pre-wrap text-foreground/90">
         {text}
       </pre>
       <CopyButton text={text} />
@@ -142,8 +142,8 @@ function ConnectBody() {
     <div className="mx-auto flex w-full max-w-[820px] flex-col gap-8 pt-6">
       <div>
         <SectionLabel>Connect an agent</SectionLabel>
-        <h1 className="mt-1 font-semibold text-3xl tracking-tight">Connect an agent</h1>
-        <p className="mt-2 max-w-prose text-muted-foreground text-sm">
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Connect an agent</h1>
+        <p className="mt-2 max-w-prose text-sm text-muted-foreground">
           Give an AI agent (Claude, or any MCP client) access to your gallery so it can import
           artworks, fill in their details, and build curated galleries for you — all from a chat. It
           connects over the Model Context Protocol using a personal access token.
@@ -179,7 +179,7 @@ function ConnectBody() {
               value={expiresInDays}
               disabled={busy}
               onChange={(e) => setExpiresInDays(Number(e.target.value))}
-              className="h-8 rounded-none border border-input bg-transparent px-2.5 py-1 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
+              className="h-8 rounded-none border border-input bg-transparent px-2.5 py-1 text-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
             >
               <option value={30}>30 days</option>
               <option value={90}>90 days</option>
@@ -198,7 +198,7 @@ function ConnectBody() {
 
         {fresh ? (
           <div className="flex flex-col gap-2 border border-amber-500/40 bg-amber-500/5 p-3">
-            <div className="flex items-center gap-1.5 font-medium text-amber-500 text-xs">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-amber-500">
               <TriangleAlert className="size-3.5" />
               Copy this token now — it won't be shown again.
             </div>
@@ -212,7 +212,7 @@ function ConnectBody() {
               <li key={t.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{t.name}</p>
-                  <p className="truncate font-mono text-muted-foreground text-xs">
+                  <p className="truncate font-mono text-xs text-muted-foreground">
                     {t.prefix}…{" · "}
                     {t.lastUsedAt
                       ? `last used ${new Date(t.lastUsedAt).toLocaleDateString()}`
@@ -241,7 +241,7 @@ function ConnectBody() {
             ))}
           </ul>
         ) : tokens.isSuccess ? (
-          <p className="text-muted-foreground text-xs">
+          <p className="text-xs text-muted-foreground">
             No tokens yet. Create one above to connect an agent.
           </p>
         ) : null}
@@ -250,23 +250,23 @@ function ConnectBody() {
       {/* Step 2 — connect */}
       <section className="flex flex-col gap-3">
         <SectionLabel>2 · Point your agent at the server</SectionLabel>
-        <p className="text-muted-foreground text-xs">Endpoint — your agent connects here:</p>
+        <p className="text-xs text-muted-foreground">Endpoint — your agent connects here:</p>
         <CodeBlock text={ENDPOINT} />
 
         <div className="mt-2 flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
-            <span className="font-medium text-sm">Claude Code</span>
+            <span className="text-sm font-medium">Claude Code</span>
             <Badge variant="outline">CLI</Badge>
           </div>
           <CodeBlock text={cliCommand} />
         </div>
 
         <div className="mt-2 flex flex-col gap-1.5">
-          <span className="font-medium text-sm">Other MCP clients (config file)</span>
+          <span className="text-sm font-medium">Other MCP clients (config file)</span>
           <CodeBlock text={jsonConfig} />
         </div>
 
-        <p className="mt-1 text-muted-foreground text-xs">
+        <p className="mt-1 text-xs text-muted-foreground">
           {fresh
             ? "The snippets above include your new token."
             : "Replace YOUR_TOKEN with the token you created above."}{" "}

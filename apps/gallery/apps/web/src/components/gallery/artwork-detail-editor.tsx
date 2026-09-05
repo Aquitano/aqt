@@ -432,7 +432,7 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
           <div className="detail-panel-heading">
             <h2>Danger zone</h2>
           </div>
-          <p className="mt-3 text-[13px] text-white/55 leading-relaxed">
+          <p className="mt-3 text-[13px] leading-relaxed text-white/55">
             Permanently delete this artwork from your archive. It is also removed from any galleries
             it hangs in. This can't be undone.
           </p>

@@ -22,7 +22,7 @@ function shallowEqual(a: Required<ThemeValue>, b: Required<ThemeValue>) {
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <span className="font-medium text-[11px] text-muted-foreground">{children}</span>;
+  return <span className="text-[11px] font-medium text-muted-foreground">{children}</span>;
 }
 
 export function GalleryThemePanel({

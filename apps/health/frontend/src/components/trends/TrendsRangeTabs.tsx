@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+
 import styles from "./TrendsRangeTabs.module.css";
 
 type TrendsRangeTabsProps = {

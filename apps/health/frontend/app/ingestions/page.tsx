@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBar } from "@/components/StatusBar";
 import { IngestionBatchesTable } from "@/components/tables/IngestionBatchesTable";
 import { getIngestionsPageData } from "@/lib/aqtHealthApi";
+
 import styles from "./IngestionsPage.module.css";
 
 type PageProps = {

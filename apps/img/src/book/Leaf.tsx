@@ -1,5 +1,5 @@
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { motion, useTransform, type MotionValue } from "motion/react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
 export type SpineAt = "center" | "left";
 

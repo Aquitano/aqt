@@ -41,10 +41,10 @@ function RouteComponent() {
     <CosmosShell active="reviews" search={search} onSearch={setSearch}>
       <div className="mx-auto w-full max-w-[1120px] pt-6">
         <div className="mb-6">
-          <p className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
+          <p className="text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
             Seen and scored
           </p>
-          <h1 className="mt-1 font-semibold text-3xl tracking-tight">Reviews</h1>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Reviews</h1>
         </div>
         <ArchiveControls
           sort={sort}
@@ -57,8 +57,8 @@ function RouteComponent() {
         />
         {reviewed.length === 0 ? (
           <div className="flex max-w-xl flex-col items-start gap-2 pt-10">
-            <h2 className="font-semibold text-xl">No reviews yet.</h2>
-            <p className="text-muted-foreground text-sm">
+            <h2 className="text-xl font-semibold">No reviews yet.</h2>
+            <p className="text-sm text-muted-foreground">
               Open an artwork and add a rating or review to build this page.
             </p>
           </div>
@@ -69,7 +69,7 @@ function RouteComponent() {
                 key={artwork.id}
                 to="/artworks/$artworkId"
                 params={{ artworkId: artwork.id }}
-                className="grid grid-cols-[1fr_auto_auto] items-center gap-4 border-border/60 border-t py-3.5 text-sm transition-colors hover:bg-card/60"
+                className="grid grid-cols-[1fr_auto_auto] items-center gap-4 border-t border-border/60 py-3.5 text-sm transition-colors hover:bg-card/60"
               >
                 <span className="truncate">{artwork.title}</span>
                 <strong className="tabular-nums">{artwork.rating}/5</strong>

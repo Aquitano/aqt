@@ -1,4 +1,5 @@
 import { type, type Type } from "arktype";
+
 import { albumInput, albumPatch, bookInput, photoInput } from "@/domain/api";
 import * as albums from "@/server/albums";
 import { currentUserId } from "@/server/auth";

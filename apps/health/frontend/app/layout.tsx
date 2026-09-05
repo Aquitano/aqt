@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+
 import { AppShell } from "@/components/AppShell";
+
 import "./globals.css";
 
 const inter = Inter({

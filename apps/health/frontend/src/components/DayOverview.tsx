@@ -1,10 +1,12 @@
 import type { CSSProperties } from "react";
+
 import { Bars } from "@/components/charts/Bars";
-import { SleepTimeline } from "@/components/charts/SleepTimeline";
 import { BucketSparkline } from "@/components/charts/BucketSparkline";
+import { SleepTimeline } from "@/components/charts/SleepTimeline";
 import { AnimatedNumber } from "@/components/motion/AnimatedNumber";
 import { formatDuration, formatMeasurement, formatNumber } from "@/lib/format";
 import type { HealthDayBucket, HealthDayResponse } from "@/lib/types";
+
 import styles from "./DayOverview.module.css";
 
 type DayOverviewProps = {

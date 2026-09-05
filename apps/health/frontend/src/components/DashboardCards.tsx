@@ -1,7 +1,9 @@
 import type { CSSProperties } from "react";
+
 import { AnimatedNumber } from "@/components/motion/AnimatedNumber";
 import { formatDuration, formatMeasurement, formatNumber } from "@/lib/format";
 import type { DashboardSummaryResponse, DashboardTrendsResponse } from "@/lib/types";
+
 import styles from "./DashboardCards.module.css";
 
 type DashboardCardsProps = {

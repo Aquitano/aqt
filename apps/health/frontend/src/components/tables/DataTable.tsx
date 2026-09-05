@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
+
 import { EmptyState } from "./shared";
+
 import styles from "./tables.module.css";
 
 export type Column<T> = {

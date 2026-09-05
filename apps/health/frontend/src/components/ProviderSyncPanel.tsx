@@ -1,7 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useState, useTransition } from "react";
+
+import { formatDateTime } from "@/lib/format";
 import type {
   ApiResult,
   ProviderCatalogResponse,
@@ -15,8 +17,9 @@ import type {
   ProviderSyncResponse,
   ProviderSyncJobStatusResponse,
 } from "@/lib/types";
-import { formatDateTime } from "@/lib/format";
+
 import { ErrorNotice } from "./ErrorNotice";
+
 import styles from "./ProviderSyncPanel.module.css";
 
 type ProviderSyncPanelProps = {

@@ -1,7 +1,9 @@
-import type { CSSProperties, ReactNode } from "react";
 import { motion } from "motion/react";
+import type { CSSProperties, ReactNode } from "react";
+
 import type { Cover } from "@/domain/element";
 import { cn } from "@/lib/utils";
+
 import {
   BOOK_SHADOW,
   BOOK_SHADOW_LIFTED,

@@ -5,12 +5,14 @@ import {
   type DragEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+
 import type { PageLayout } from "@/book/Book";
 import { PageGutter } from "@/book/PageSurface";
 import { PhotoView } from "@/book/PhotoView";
 import { TextView } from "@/book/TextView";
 import type { Element, PageSide } from "@/domain/element";
 import type { Spread } from "@/server/db/schema";
+
 import { axisLock, clampToPage, snapMove, type Box, type Guide, type Point } from "./geometry";
 import { beginGesture } from "./history";
 import { photoElementFor, type PhotoRef } from "./place";
@@ -182,7 +184,7 @@ export function EditablePage({ spread, side, layout }: EditablePageProps) {
         <span
           key={`${guide.axis}${guide.at}`}
           aria-hidden
-          className="bg-primary/70 pointer-events-none absolute"
+          className="pointer-events-none absolute bg-primary/70"
           style={
             guide.axis === "x"
               ? { left: guide.at * scale, top: 0, width: 1, height: pagePx }

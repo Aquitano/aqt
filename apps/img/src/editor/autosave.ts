@@ -1,8 +1,9 @@
 import type { Element } from "@/domain/element";
-import * as spreadFns from "@/server/fns/spreads";
 import { rejectFailures } from "@/lib/server-error";
-import type { EditorState, EditorStore } from "./store";
 import type { Spread } from "@/server/db/schema";
+import * as spreadFns from "@/server/fns/spreads";
+
+import type { EditorState, EditorStore } from "./store";
 
 const DEBOUNCE_MS = 800;
 

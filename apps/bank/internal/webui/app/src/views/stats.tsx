@@ -1,6 +1,6 @@
+import { Card, CardContent } from "@/components/ui/card";
 import type { SourceStat } from "@/lib/api";
 import { fmtDay, SourceBadge } from "@/lib/format";
-import { Card, CardContent } from "@/components/ui/card";
 
 export function StatsView({
   stats,

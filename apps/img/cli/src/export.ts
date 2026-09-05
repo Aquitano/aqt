@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+
 import type { Client } from "./client";
 
 /**

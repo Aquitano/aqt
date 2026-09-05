@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import type {
   ApiResult,
   ProviderCatalogResponse,
@@ -8,6 +9,7 @@ import type {
   ProviderStatusCatalogResponse,
   ProviderSyncJobStatusResponse,
 } from "@/lib/types";
+
 import { ProviderSyncPanel } from "./ProviderSyncPanel";
 
 const mocks = vi.hoisted(() => ({

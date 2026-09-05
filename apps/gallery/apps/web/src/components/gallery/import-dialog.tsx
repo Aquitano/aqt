@@ -17,6 +17,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { isMacPlatform } from "@/hooks/use-hotkeys";
+
 import { type ImportItem, type ImportStatus, useImportQueue } from "./use-import-queue";
 
 export type ImportTarget = {
@@ -169,11 +170,11 @@ function ImportWorkspace({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           data-dragging={dragging}
-          className="flex min-h-28 flex-col items-center justify-center gap-1.5 rounded-none border border-input border-dashed bg-input/20 px-4 text-center outline-none transition-colors hover:bg-input/40 focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 data-[dragging=true]:border-ring data-[dragging=true]:bg-input/50"
+          className="flex min-h-28 flex-col items-center justify-center gap-1.5 rounded-none border border-dashed border-input bg-input/20 px-4 text-center transition-colors outline-none hover:bg-input/40 focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 data-[dragging=true]:border-ring data-[dragging=true]:bg-input/50"
         >
           <Upload className="size-5 text-muted-foreground" />
-          <span className="font-medium text-sm">Drop images, paste, or browse</span>
-          <span className="flex items-center gap-1.5 text-muted-foreground text-xs">
+          <span className="text-sm font-medium">Drop images, paste, or browse</span>
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             JPEG · PNG · WebP · GIF
             <span className="text-muted-foreground/60">·</span>
             <Kbd>{modKey}</Kbd>
@@ -200,7 +201,7 @@ function ImportWorkspace({
           <div className="flex flex-1 flex-col gap-1.5">
             <label
               htmlFor={urlInputId}
-              className="flex items-center gap-1.5 font-medium text-muted-foreground text-xs"
+              className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
             >
               <Link2 className="size-3.5" /> Image URLs
             </label>
@@ -234,7 +235,7 @@ function ImportWorkspace({
         </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-between border-border/60 border-t px-5 py-2.5">
+      <div className="mt-4 flex items-center justify-between border-t border-border/60 px-5 py-2.5">
         <div className="flex items-center gap-2 text-xs">
           <span className="font-medium">Queue</span>
           <span className="text-muted-foreground">{queue.counts.total}</span>
@@ -258,7 +259,7 @@ function ImportWorkspace({
 
       <ScrollArea className="min-h-0 flex-1">
         {queue.items.length === 0 ? (
-          <div className="flex min-h-32 flex-col items-center justify-center gap-1 px-5 py-8 text-center text-muted-foreground text-xs">
+          <div className="flex min-h-32 flex-col items-center justify-center gap-1 px-5 py-8 text-center text-xs text-muted-foreground">
             <ImageIcon className="size-5 opacity-60" />
             Nothing queued yet. Add files or URLs above.
           </div>
@@ -277,8 +278,8 @@ function ImportWorkspace({
         )}
       </ScrollArea>
 
-      <div className="flex shrink-0 items-center justify-between gap-3 border-border/60 border-t px-5 py-4">
-        <span className="hidden items-center gap-1.5 text-muted-foreground text-xs sm:flex">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/60 px-5 py-4">
+        <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex">
           <Kbd>{modKey}</Kbd>
           <Kbd>↵</Kbd>
           to import
@@ -377,26 +378,26 @@ function Thumb({ item }: { item: ImportItem }) {
 function StatusLabel({ status, error }: { status: ImportStatus; error?: string }) {
   if (status === "uploading") {
     return (
-      <span className="flex items-center gap-1 text-muted-foreground text-xs">
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
         <Loader2 className="size-3 animate-spin" /> Importing
       </span>
     );
   }
   if (status === "done") {
     return (
-      <span className="flex items-center gap-1 text-emerald-400 text-xs">
+      <span className="flex items-center gap-1 text-xs text-emerald-400">
         <CheckCircle2 className="size-3" /> Done
       </span>
     );
   }
   if (status === "error") {
     return (
-      <span className="flex items-center gap-1 truncate text-destructive text-xs" title={error}>
+      <span className="flex items-center gap-1 truncate text-xs text-destructive" title={error}>
         <TriangleAlert className="size-3 shrink-0" /> {error ?? "Failed"}
       </span>
     );
   }
-  return <span className="text-muted-foreground text-xs">Ready</span>;
+  return <span className="text-xs text-muted-foreground">Ready</span>;
 }
 
 function parseHasUrl(text: string): boolean {

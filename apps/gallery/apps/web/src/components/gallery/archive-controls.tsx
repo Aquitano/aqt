@@ -139,7 +139,7 @@ export function ArchiveControls({
 
       <div className="ml-auto flex items-center gap-3">
         {typeof count === "number" ? (
-          <span className="text-muted-foreground text-xs tabular-nums">
+          <span className="text-xs text-muted-foreground tabular-nums">
             {count} {count === 1 ? "work" : "works"}
           </span>
         ) : null}

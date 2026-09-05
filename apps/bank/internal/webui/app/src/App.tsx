@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from "react";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Landmark } from "lucide-react";
-import { getStats } from "@/lib/api";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useEffect, useRef, useState } from "react";
+
 import { DetailPane, type Selection } from "@/components/detail-pane";
-import { SearchView } from "@/views/search";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getStats } from "@/lib/api";
 import { ALL_SOURCES, BrowseView } from "@/views/browse";
 import { ContactsView } from "@/views/contacts";
+import { SearchView } from "@/views/search";
 import { StatsView } from "@/views/stats";
 
 const client = new QueryClient({
@@ -80,7 +81,7 @@ function Shell() {
             </TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="ml-auto text-xs tabular-nums text-muted-foreground/70">
+        <div className="ml-auto text-xs text-muted-foreground/70 tabular-nums">
           {statsQ.isError
             ? "archive unreachable"
             : total
@@ -101,7 +102,7 @@ function Shell() {
         </main>
       ) : (
         <main className="flex min-h-0 flex-1">
-          <div className="flex w-[44%] min-w-[380px] max-w-[560px] flex-col border-r">
+          <div className="flex w-[44%] max-w-[560px] min-w-[380px] flex-col border-r">
             {view === "search" && (
               <SearchView
                 stats={stats}

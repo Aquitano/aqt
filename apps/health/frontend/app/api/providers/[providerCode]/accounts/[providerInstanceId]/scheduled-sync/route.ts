@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { getScheduledSyncConfig, updateScheduledSyncConfig } from "@/lib/aqtHealthApi";
 import type { ScheduledSyncConfigUpdateRequest } from "@/lib/types";
 

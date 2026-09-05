@@ -1,5 +1,6 @@
 import { formatDateTime } from "@/lib/format";
 import type { ApiResult, HealthResponse } from "@/lib/types";
+
 import styles from "./StatusBar.module.css";
 
 type StatusBarProps = {

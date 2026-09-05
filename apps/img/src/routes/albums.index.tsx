@@ -1,13 +1,14 @@
-import { useState } from "react";
 import { UserButton } from "@clerk/tanstack-react-start";
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { MoreHorizontal, Plus } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
+
 import { ShelfCover } from "@/book/Cover";
+import { COVER_COLORS, COVER_MATERIALS, type CoverColorName } from "@/book/palette";
 import { ApiKeysDialog } from "@/components/api-keys-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { COVER_COLORS, COVER_MATERIALS, type CoverColorName } from "@/book/palette";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import {
@@ -30,10 +31,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { CoverMaterial } from "@/domain/element";
-import type { Album } from "@/server/db/schema";
 import { requireSignedIn } from "@/lib/guard";
 import { albumsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
+import type { Album } from "@/server/db/schema";
 import * as albumFns from "@/server/fns/albums";
 
 export const Route = createFileRoute("/albums/")({
@@ -84,7 +85,7 @@ function Shelf() {
               <CardFooter className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{album.title}</p>
-                  <p className="text-muted-foreground text-xs capitalize">{album.cover.material}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{album.cover.material}</p>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -212,7 +213,7 @@ function CreateAlbumDialog() {
                   style={{ background: value }}
                   className={cn(
                     "size-8 rounded-full border transition-all",
-                    color === name && "ring-ring ring-2 ring-offset-2",
+                    color === name && "ring-2 ring-ring ring-offset-2",
                   )}
                 />
               ))}

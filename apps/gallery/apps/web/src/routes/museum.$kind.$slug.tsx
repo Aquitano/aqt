@@ -36,20 +36,20 @@ function FullScreenMessage({
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-[#0b0a09] px-6 text-center text-white">
       <p className="font-museum text-4xl text-[#e8e2d5]">{title}</p>
-      <p className="mt-4 max-w-md text-sm text-white/50 leading-relaxed">{body}</p>
+      <p className="mt-4 max-w-md text-sm leading-relaxed text-white/50">{body}</p>
       <div className="mt-8 flex items-center gap-4">
         {retry ? (
           <button
             type="button"
             onClick={retry}
-            className="rounded-full border border-[#cbb87f]/50 px-7 py-3 text-[#e9dcb4] text-[12px] uppercase tracking-[0.26em] transition-colors hover:bg-[#cbb87f]/15"
+            className="rounded-full border border-[#cbb87f]/50 px-7 py-3 text-[12px] tracking-[0.26em] text-[#e9dcb4] uppercase transition-colors hover:bg-[#cbb87f]/15"
           >
             Try again
           </button>
         ) : null}
         <Link
           to="/museum"
-          className="rounded-full border border-white/20 px-7 py-3 text-[12px] text-white/70 uppercase tracking-[0.26em] transition-colors hover:border-white/50 hover:text-white"
+          className="rounded-full border border-white/20 px-7 py-3 text-[12px] tracking-[0.26em] text-white/70 uppercase transition-colors hover:border-white/50 hover:text-white"
         >
           Back to the lobby
         </Link>
@@ -62,7 +62,7 @@ function LoadingScreen() {
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-[#0b0a09]">
       <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/15 border-t-[#cbb87f]" />
-      <p className="mt-6 text-[11px] text-white/45 uppercase tracking-[0.3em]">
+      <p className="mt-6 text-[11px] tracking-[0.3em] text-white/45 uppercase">
         Opening the gallery…
       </p>
     </div>
@@ -133,7 +133,7 @@ function GalleryPage() {
       <MuseumExperience key={content.id} content={content} />
       {isDraftPreview ? (
         <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center pt-4">
-          <span className="rounded-full border border-[#cbb87f]/40 bg-black/60 px-5 py-2 text-[#e9dcb4] text-[11px] uppercase tracking-[0.24em] backdrop-blur">
+          <span className="rounded-full border border-[#cbb87f]/40 bg-black/60 px-5 py-2 text-[11px] tracking-[0.24em] text-[#e9dcb4] uppercase backdrop-blur">
             Draft preview — only you can see this gallery
           </span>
         </div>

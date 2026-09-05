@@ -4,6 +4,7 @@ import { Activity, Database, PlugZap, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+
 import styles from "./AppShell.module.css";
 
 const navItems = [

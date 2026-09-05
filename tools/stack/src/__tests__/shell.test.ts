@@ -1,4 +1,5 @@
 import { describe, expect, test, beforeEach } from "bun:test";
+
 import type { ShellRunner } from "../shell.ts";
 
 // ── Recording test adapter ───────────────────────────────────────

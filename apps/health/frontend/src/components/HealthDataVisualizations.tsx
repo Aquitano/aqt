@@ -1,13 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ExpandedChartModal, type ChartSummary } from "./ExpandedChartModal";
-import {
-  HealthChartDatum,
-  HealthChartSeries,
-  HealthMetricChart,
-  type ChartPointDetail,
-} from "./charts/HealthMetricChart";
+
+import { formatAxisDate, formatChartValue } from "@/lib/format";
 import type {
   ActivitySummariesResponse,
   BodyMeasurement,
@@ -19,7 +14,15 @@ import type {
   SleepSummariesResponse,
   StepDailySummariesResponse,
 } from "@/lib/types";
-import { formatAxisDate, formatChartValue } from "@/lib/format";
+
+import {
+  HealthChartDatum,
+  HealthChartSeries,
+  HealthMetricChart,
+  type ChartPointDetail,
+} from "./charts/HealthMetricChart";
+import { ExpandedChartModal, type ChartSummary } from "./ExpandedChartModal";
+
 import styles from "./HealthDataVisualizations.module.css";
 
 const bodyMetricConfig: Record<string, { label: string; color: string }> = {

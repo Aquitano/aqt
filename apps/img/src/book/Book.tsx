@@ -1,3 +1,4 @@
+import { motion, useTransform } from "motion/react";
 import {
   useEffect,
   useLayoutEffect,
@@ -6,11 +7,12 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { motion, useTransform } from "motion/react";
+
 import type { Cover, Element, PageSide } from "@/domain/element";
 import { pageScale } from "@/domain/page";
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { Spread } from "@/server/db/schema";
+
 import { CoverFace, Endpaper } from "./Cover";
 import { Leaf, type SpineAt } from "./Leaf";
 import { BOOK_SHADOW, PAPER } from "./materials";

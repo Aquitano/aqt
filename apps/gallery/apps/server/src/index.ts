@@ -1,4 +1,5 @@
 import path from "node:path";
+
 import { getSession } from "@aqt-gallery/auth";
 import { db } from "@aqt-gallery/db";
 import { mediaAsset } from "@aqt-gallery/db/schema/gallery";
@@ -10,6 +11,7 @@ import { Effect } from "effect";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+
 import { sessionFromApiToken } from "./api/auth-token";
 import { createContext } from "./api/context";
 import { appRouter } from "./api/routers/index";

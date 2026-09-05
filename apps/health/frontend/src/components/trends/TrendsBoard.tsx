@@ -2,10 +2,13 @@
 
 import { ArrowDownRight, ArrowRight, ArrowUpRight } from "lucide-react";
 import { useState } from "react";
+
 import type { TrendChange, TrendStat } from "@/lib/trends";
 import { insightSentence } from "@/lib/trends";
-import { ValueSparkline } from "./ValueSparkline";
+
 import { TrendChart } from "./TrendChart";
+import { ValueSparkline } from "./ValueSparkline";
+
 import styles from "./TrendsBoard.module.css";
 
 type TrendsBoardProps = {

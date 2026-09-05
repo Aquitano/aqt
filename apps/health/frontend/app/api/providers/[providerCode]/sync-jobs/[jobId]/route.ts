@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { getProviderSyncJob } from "@/lib/aqtHealthApi";
 
 type RouteContext = {

@@ -40,8 +40,8 @@ function HoverTitle() {
       }`}
     >
       <div className="rounded-full border border-white/10 bg-black/55 px-5 py-2.5 text-center backdrop-blur">
-        <p className="font-museum text-[#f1ead9] text-lg leading-tight">{hovered?.artwork.title}</p>
-        <p className="text-[11px] text-white/50 uppercase tracking-[0.22em]">
+        <p className="font-museum text-lg leading-tight text-[#f1ead9]">{hovered?.artwork.title}</p>
+        <p className="text-[11px] tracking-[0.22em] text-white/50 uppercase">
           {hovered?.artwork.artistName} — click to inspect
         </p>
       </div>
@@ -59,8 +59,8 @@ function RoomIndicator({ content }: { content: GalleryContent }) {
         locked ? "opacity-100" : "opacity-0"
       }`}
     >
-      <p className="text-[10px] text-white/45 uppercase tracking-[0.3em]">{content.name}</p>
-      <p className="mt-1 font-museum text-2xl text-[#ece5d3]">{room?.name ?? ""}</p>
+      <p className="text-[10px] tracking-[0.3em] text-white/45 uppercase">{content.name}</p>
+      <p className="font-museum mt-1 text-2xl text-[#ece5d3]">{room?.name ?? ""}</p>
     </div>
   );
 }
@@ -76,7 +76,7 @@ function ControlsHint() {
   }, [locked]);
   return (
     <div
-      className={`pointer-events-none absolute right-6 bottom-6 z-10 text-right text-[11px] text-white/45 leading-5 transition-opacity duration-700 ${
+      className={`pointer-events-none absolute right-6 bottom-6 z-10 text-right text-[11px] leading-5 text-white/45 transition-opacity duration-700 ${
         locked && !expired ? "opacity-100" : "opacity-0"
       }`}
     >
@@ -100,7 +100,7 @@ function EnterOverlay({ content, entered }: { content: GalleryContent; entered: 
         className="absolute inset-0 z-20 flex w-full cursor-pointer flex-col items-center justify-center bg-black/35 backdrop-blur-[2px] transition-opacity"
       >
         <p className="font-museum text-3xl text-[#efe8d6]">Paused</p>
-        <p className="mt-3 text-[12px] text-white/55 uppercase tracking-[0.28em]">
+        <p className="mt-3 text-[12px] tracking-[0.28em] text-white/55 uppercase">
           Click to continue walking
         </p>
       </button>
@@ -112,25 +112,25 @@ function EnterOverlay({ content, entered }: { content: GalleryContent; entered: 
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-gradient-to-b from-black/70 via-black/55 to-black/80 px-6 text-center">
-      <p className="text-[#b7a989] text-[11px] uppercase tracking-[0.34em]">
+      <p className="text-[11px] tracking-[0.34em] text-[#b7a989] uppercase">
         {content.tagline ?? "A walkable gallery"}
       </p>
-      <h1 className="mt-4 max-w-3xl font-museum text-6xl text-[#f4efe3] leading-[1.02] md:text-7xl">
+      <h1 className="font-museum mt-4 max-w-3xl text-6xl leading-[1.02] text-[#f4efe3] md:text-7xl">
         {content.name}
       </h1>
       {content.description ? (
-        <p className="mt-6 max-w-xl text-[15px] text-white/65 leading-relaxed">
+        <p className="mt-6 max-w-xl text-[15px] leading-relaxed text-white/65">
           {content.description}
         </p>
       ) : null}
-      <p className="mt-5 text-[11px] text-white/40 uppercase tracking-[0.24em]">
+      <p className="mt-5 text-[11px] tracking-[0.24em] text-white/40 uppercase">
         {roomsWithArt.length} {roomsWithArt.length === 1 ? "room" : "rooms"} · {artworkCount}{" "}
         artworks
       </p>
       <button
         type="button"
         onClick={requestWalk}
-        className="group mt-10 rounded-full border border-[#cbb87f]/60 bg-[#cbb87f]/10 px-10 py-4 text-[#e9dcb4] text-[13px] uppercase tracking-[0.3em] transition-all hover:bg-[#cbb87f]/25 hover:tracking-[0.36em]"
+        className="group mt-10 rounded-full border border-[#cbb87f]/60 bg-[#cbb87f]/10 px-10 py-4 text-[13px] tracking-[0.3em] text-[#e9dcb4] uppercase transition-all hover:bg-[#cbb87f]/25 hover:tracking-[0.36em]"
       >
         {active ? `Preparing ${Math.round(progress)}%` : "Enter the gallery"}
       </button>
@@ -139,7 +139,7 @@ function EnterOverlay({ content, entered }: { content: GalleryContent; entered: 
       </p>
       <Link
         to="/museum"
-        className="mt-10 text-[11px] text-white/40 uppercase tracking-[0.24em] underline-offset-4 transition-colors hover:text-white/80 hover:underline"
+        className="mt-10 text-[11px] tracking-[0.24em] text-white/40 uppercase underline-offset-4 transition-colors hover:text-white/80 hover:underline"
       >
         ← Back to the lobby
       </Link>
@@ -184,13 +184,13 @@ export function MuseumExperience({ content }: { content: GalleryContent }) {
     return (
       <div className="flex h-screen flex-col items-center justify-center bg-[#0b0a09] px-6 text-center">
         <p className="font-museum text-4xl text-[#e8e2d5]">The walls are bare</p>
-        <p className="mt-4 max-w-md text-sm text-white/50 leading-relaxed">
+        <p className="mt-4 max-w-md text-sm leading-relaxed text-white/50">
           This gallery has no published artworks yet. Check back when the curators have finished
           hanging the collection.
         </p>
         <Link
           to="/museum"
-          className="mt-8 rounded-full border border-white/20 px-6 py-2.5 text-[12px] text-white/70 uppercase tracking-[0.24em] transition-colors hover:border-white/50 hover:text-white"
+          className="mt-8 rounded-full border border-white/20 px-6 py-2.5 text-[12px] tracking-[0.24em] text-white/70 uppercase transition-colors hover:border-white/50 hover:text-white"
         >
           Back to the lobby
         </Link>
@@ -199,7 +199,7 @@ export function MuseumExperience({ content }: { content: GalleryContent }) {
   }
 
   return (
-    <div className="relative h-screen w-full select-none overflow-hidden bg-[#0b0a09]">
+    <div className="relative h-screen w-full overflow-hidden bg-[#0b0a09] select-none">
       <Canvas
         shadows={{ enabled: true, type: THREE.PCFShadowMap }}
         camera={{ fov: 70, near: 0.1, far: 220 }}

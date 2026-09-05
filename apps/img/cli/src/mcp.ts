@@ -2,8 +2,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { type } from "arktype";
 import { z } from "zod";
+
 import { bookInput } from "@/domain/api";
 import { PAGE_UNITS } from "@/domain/page";
+
 import { ApiError, type Client } from "./client";
 import { bookDocument, coverFrom, importPhotos } from "./ops";
 

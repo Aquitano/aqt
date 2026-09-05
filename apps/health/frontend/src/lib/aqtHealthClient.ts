@@ -1,4 +1,6 @@
 import createClient from "openapi-fetch";
+
+import type { paths } from "./generated/aqtHealthApiTypes";
 import type {
   ApiResult,
   ApiSchema,
@@ -10,7 +12,6 @@ import type {
   ScheduledSyncConfigUpdateRequest,
   ScheduledSyncRunResponse,
 } from "./types";
-import type { paths } from "./generated/aqtHealthApiTypes";
 
 type ClientResponse<T> = {
   data?: T;

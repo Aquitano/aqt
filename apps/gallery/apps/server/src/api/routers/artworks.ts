@@ -1,4 +1,5 @@
 import path from "node:path";
+
 import { db } from "@aqt-gallery/db";
 import {
   artist,

@@ -1,4 +1,5 @@
 import { useRef, type KeyboardEvent, type Ref } from "react";
+
 import type { TextElement } from "@/domain/element";
 
 type TextViewProps = {

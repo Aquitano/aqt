@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Inbox, ShieldAlert } from "lucide-react";
-import { getContactMessages, getMessage, getThread } from "@/lib/api";
-import { SourceBadge } from "@/lib/format";
+
+import { Conversation } from "@/components/conversation";
 import {
   Empty,
   EmptyDescription,
@@ -10,7 +10,8 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
-import { Conversation } from "@/components/conversation";
+import { getContactMessages, getMessage, getThread } from "@/lib/api";
+import { SourceBadge } from "@/lib/format";
 
 // What the right-hand pane is showing. A thread selection carries the id of
 // the message that triggered it so the pane can scroll to and highlight it.

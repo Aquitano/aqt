@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import {
   animate,
   motionValue,
@@ -6,6 +5,7 @@ import {
   type AnimationPlaybackControls,
   type MotionValue,
 } from "motion/react";
+import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from "react";
 
 /** Screen-space geometry of the book box, resolved at pointer-down time. */
 export type TurnGeometry = {

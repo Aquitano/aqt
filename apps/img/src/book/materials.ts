@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+
 import type { Cover } from "@/domain/element";
 
 /** Paper is paper in both themes; it never follows the shadcn tokens. */

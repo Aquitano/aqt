@@ -1,6 +1,7 @@
-import { useEffect, useMemo } from "react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, notFound } from "@tanstack/react-router";
+import { useEffect, useMemo } from "react";
+
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AlbumHeader } from "@/editor/AlbumHeader";
 import { attachAutosave } from "@/editor/autosave";

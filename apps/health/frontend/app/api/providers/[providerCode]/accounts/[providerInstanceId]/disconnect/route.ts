@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { disconnectProviderAccount } from "@/lib/aqtHealthApi";
 
 type RouteContext = {

@@ -7,6 +7,7 @@
  * Run from the repo root: bun apps/server/src/scripts/seed-test-user-art.ts
  */
 import path from "node:path";
+
 import { db } from "@aqt-gallery/db";
 import { artwork } from "@aqt-gallery/db/schema/gallery";
 import { env } from "@aqt-gallery/env/server";

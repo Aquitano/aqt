@@ -1,4 +1,5 @@
 import { type } from "arktype";
+
 import { PAGE_UNITS } from "./page";
 
 /**

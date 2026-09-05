@@ -1,6 +1,7 @@
-import { useState } from "react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, notFound } from "@tanstack/react-router";
+import { useState } from "react";
+
 import { Book } from "@/book/Book";
 import { sharedAlbumQuery } from "@/lib/queries";
 

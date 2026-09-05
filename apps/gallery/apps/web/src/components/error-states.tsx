@@ -17,11 +17,11 @@ export function NotFound() {
   return (
     <CenteredShell>
       <div className="flex flex-col items-center gap-2">
-        <p className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.2em]">
+        <p className="text-[11px] font-semibold tracking-[0.2em] text-muted-foreground uppercase">
           Error 404
         </p>
-        <h1 className="font-semibold text-3xl tracking-tight">Page not found</h1>
-        <p className="max-w-sm text-muted-foreground text-sm">
+        <h1 className="text-3xl font-semibold tracking-tight">Page not found</h1>
+        <p className="max-w-sm text-sm text-muted-foreground">
           The page you're looking for doesn't exist, or it may have moved.
         </p>
       </div>
@@ -41,15 +41,15 @@ export function RouteError({ error, reset }: { error: Error; reset?: () => void 
   return (
     <CenteredShell>
       <div className="flex flex-col items-center gap-2">
-        <p className="font-semibold text-[11px] text-destructive uppercase tracking-[0.2em]">
+        <p className="text-[11px] font-semibold tracking-[0.2em] text-destructive uppercase">
           Something went wrong
         </p>
-        <h1 className="font-semibold text-3xl tracking-tight">This page hit an error</h1>
-        <p className="max-w-md text-muted-foreground text-sm">
+        <h1 className="text-3xl font-semibold tracking-tight">This page hit an error</h1>
+        <p className="max-w-md text-sm text-muted-foreground">
           An unexpected error stopped the page from loading. You can try again, or head back home.
         </p>
         {error.message ? (
-          <pre className="mt-2 max-w-md overflow-x-auto whitespace-pre-wrap border border-border bg-card px-3 py-2 text-left font-mono text-muted-foreground text-xs">
+          <pre className="mt-2 max-w-md overflow-x-auto border border-border bg-card px-3 py-2 text-left font-mono text-xs whitespace-pre-wrap text-muted-foreground">
             {error.message}
           </pre>
         ) : null}

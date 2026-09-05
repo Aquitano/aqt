@@ -21,7 +21,7 @@ export function SegmentedNav({ active }: { active: ActiveGalleryTab }) {
           key={tab.id}
           aria-current={active === tab.id ? "page" : undefined}
           className={cn(
-            "inline-flex h-7 items-center justify-center px-3 font-medium text-muted-foreground text-xs transition-colors hover:text-foreground aria-[current=page]:bg-secondary aria-[current=page]:text-secondary-foreground",
+            "inline-flex h-7 items-center justify-center px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground aria-[current=page]:bg-secondary aria-[current=page]:text-secondary-foreground",
           )}
           to={tab.to}
         >

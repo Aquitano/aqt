@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+
 import { sql } from "drizzle-orm";
+
 import { db } from "../index";
 
 // Baseline: record migration 0000 as applied (its tables already exist from db:push).

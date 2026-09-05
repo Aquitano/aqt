@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { getTemplates, type TemplateOptions } from "../templates.ts";
 
 function opts(overrides: Partial<TemplateOptions> = {}): TemplateOptions {

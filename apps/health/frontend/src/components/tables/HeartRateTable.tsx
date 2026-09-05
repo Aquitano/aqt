@@ -1,5 +1,6 @@
 import { formatDateTime } from "@/lib/format";
 import type { HeartRateSample } from "@/lib/types";
+
 import { DataTable, type Column } from "./DataTable";
 import { sourceLabel } from "./shared";
 

@@ -11,5 +11,48 @@
     "**/worker-configuration.d.ts",
     "**/drizzle/**",
     "tools/oxlint/anti-slop/**"
+  ],
+  "sortImports": true,
+  "sortPackageJson": true,
+  "sortTailwindcss": {
+    "functions": ["cn", "cva", "clsx"]
+  },
+  "overrides": [
+    {
+      "files": ["apps/bank/**"],
+      "options": {
+        "sortTailwindcss": {
+          "functions": ["cn", "cva", "clsx"],
+          "stylesheet": "apps/bank/internal/webui/app/src/index.css"
+        }
+      }
+    },
+    {
+      "files": ["apps/gallery/**"],
+      "options": {
+        "sortTailwindcss": {
+          "functions": ["cn", "cva", "clsx"],
+          "stylesheet": "apps/gallery/packages/ui/src/styles/globals.css"
+        }
+      }
+    },
+    {
+      "files": ["apps/img/**"],
+      "options": {
+        "sortTailwindcss": {
+          "functions": ["cn", "cva", "clsx"],
+          "stylesheet": "apps/img/src/styles.css"
+        }
+      }
+    },
+    {
+      "files": ["packages/ts/ui/**"],
+      "options": {
+        "sortTailwindcss": {
+          "functions": ["cn", "cva", "clsx"],
+          "stylesheet": "packages/ts/ui/src/styles/globals.css"
+        }
+      }
+    }
   ]
 }

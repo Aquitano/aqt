@@ -1,8 +1,8 @@
-import { useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Search as SearchIcon } from "lucide-react";
-import { search, SEARCH_PAGE, type Message, type SourceStat } from "@/lib/api";
-import { fmtDate, Highlight, SourceBadge } from "@/lib/format";
+import { useState } from "react";
+
+import type { Selection } from "@/components/detail-pane";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
@@ -14,7 +14,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Selection } from "@/components/detail-pane";
+import { search, SEARCH_PAGE, type Message, type SourceStat } from "@/lib/api";
+import { fmtDate, Highlight, SourceBadge } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const ALL = "__all__";
@@ -55,7 +56,7 @@ export function HitRow({
       <div className="flex items-baseline gap-2">
         <SourceBadge source={m.source} />
         <span className="truncate text-sm font-semibold">{m.sender || "—"}</span>
-        <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground/70">
+        <span className="ml-auto shrink-0 text-xs text-muted-foreground/70 tabular-nums">
           {fmtDate(m.sent_at)}
         </span>
       </div>
@@ -66,7 +67,7 @@ export function HitRow({
       ) : null}
       <div className="mt-0.5 line-clamp-2 text-[13px] text-muted-foreground">
         {m.attachment_snippet ? (
-          <span className="italic text-muted-foreground/60">in attachment · </span>
+          <span className="text-muted-foreground/60 italic">in attachment · </span>
         ) : null}
         <Highlight text={m.attachment_snippet || m.snippet || m.body || ""} query={query} />
       </div>

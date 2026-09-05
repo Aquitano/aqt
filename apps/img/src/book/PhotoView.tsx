@@ -1,5 +1,6 @@
-import { useState, type CSSProperties } from "react";
 import { ImageOff } from "lucide-react";
+import { useState, type CSSProperties } from "react";
+
 import type { PhotoElement } from "@/domain/element";
 import { photoUrl } from "@/lib/image";
 
@@ -104,7 +105,7 @@ function Picture({ photoId }: { photoId: string }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
-      <div className="bg-muted text-muted-foreground flex size-full items-center justify-center">
+      <div className="flex size-full items-center justify-center bg-muted text-muted-foreground">
         <ImageOff className="size-1/4 opacity-50" />
       </div>
     );

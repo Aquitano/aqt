@@ -1,4 +1,5 @@
 import { log } from "@clack/prompts";
+
 import type { Config } from "./config.ts";
 import { PRETTIER_PRESETS, REQUIRED_LANDING_COMPONENTS } from "./config.ts";
 import {

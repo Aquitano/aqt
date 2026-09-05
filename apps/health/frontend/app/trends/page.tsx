@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { LoadingPulse } from "@/components/motion/LoadingPulse";
 import { PageHeader } from "@/components/PageHeader";
@@ -6,7 +8,6 @@ import { TrendsRangeTabs } from "@/components/trends/TrendsRangeTabs";
 import { getTrendsPageData } from "@/lib/aqtHealthApi";
 import { defaultDateRange } from "@/lib/dates";
 import { buildTrendStats } from "@/lib/trends";
-import { Suspense } from "react";
 
 const windowOptions = [30, 90, 180, 365] as const;
 const defaultWindow = 90;

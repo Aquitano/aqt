@@ -37,7 +37,7 @@ export function ActionCluster() {
       <DropdownMenu>
         <DropdownMenuTrigger
           aria-label="Open user menu"
-          className="inline-grid size-9 place-items-center rounded-full bg-secondary font-medium text-secondary-foreground text-xs outline-none ring-1 ring-foreground/10 transition-colors hover:bg-secondary/80 focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-grid size-9 place-items-center rounded-full bg-secondary text-xs font-medium text-secondary-foreground ring-1 ring-foreground/10 transition-colors outline-none hover:bg-secondary/80 focus-visible:ring-2 focus-visible:ring-ring"
         >
           {initials}
         </DropdownMenuTrigger>

@@ -54,7 +54,7 @@ function RouteComponent() {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
+    <p className="text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
       {children}
     </p>
   );
@@ -143,8 +143,8 @@ function StudioBody({ museumId, search }: { museumId: string; search: string }) 
     return (
       <div className="mx-auto w-full max-w-[1120px] pt-20">
         <div className="flex max-w-xl flex-col items-start gap-3">
-          <h1 className="font-semibold text-2xl">Museum not found.</h1>
-          <p className="text-muted-foreground text-sm">
+          <h1 className="text-2xl font-semibold">Museum not found.</h1>
+          <p className="text-sm text-muted-foreground">
             This museum may have been deleted, or it belongs to another account.
           </p>
           <Button
@@ -163,11 +163,11 @@ function StudioBody({ museumId, search }: { museumId: string; search: string }) 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <SectionLabel>Multi-room museum</SectionLabel>
-          <h1 className="mt-1 truncate font-semibold text-3xl tracking-tight">
+          <h1 className="mt-1 truncate text-3xl font-semibold tracking-tight">
             {museum?.name ?? "Museum"}
           </h1>
           {museum?.tagline ? (
-            <p className="mt-1 text-muted-foreground text-sm">{museum.tagline}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{museum.tagline}</p>
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -251,7 +251,7 @@ function StudioBody({ museumId, search }: { museumId: string; search: string }) 
       {/* Theme */}
       <div className="flex flex-col gap-1">
         <SectionLabel>Museum theme</SectionLabel>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-xs text-muted-foreground">
           How this museum's 3D rooms look when visitors walk through.
         </p>
         {museum ? (
@@ -303,7 +303,7 @@ function StudioBody({ museumId, search }: { museumId: string; search: string }) 
         </div>
 
         {rooms.length === 0 ? (
-          <p className="text-muted-foreground text-xs">
+          <p className="text-xs text-muted-foreground">
             No rooms yet. Add a room above, then hang artworks in it.
           </p>
         ) : (
@@ -356,13 +356,13 @@ function StudioBody({ museumId, search }: { museumId: string; search: string }) 
             )}
           </div>
         </div>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-xs text-muted-foreground">
           {rooms.length === 0
             ? "Add a room first, then pick artworks to hang in it."
             : "Adding an artwork publishes it so it can appear in the museum. Each artwork hangs in one room."}
         </p>
         {!curation.archiveLoaded ? null : available.length === 0 ? (
-          <div className="flex flex-col items-start gap-3 border border-border border-dashed bg-card/40 px-5 py-8 text-muted-foreground text-xs">
+          <div className="flex flex-col items-start gap-3 border border-dashed border-border bg-card/40 px-5 py-8 text-xs text-muted-foreground">
             <span>
               {rooms.some((r) => r.members.length > 0)
                 ? "Every artwork in your archive is already hung in this museum."
@@ -374,7 +374,7 @@ function StudioBody({ museumId, search }: { museumId: string; search: string }) 
             </Button>
           </div>
         ) : visibleAvailable.length === 0 ? (
-          <p className="text-muted-foreground text-xs">No archive artworks match “{search}”.</p>
+          <p className="text-xs text-muted-foreground">No archive artworks match “{search}”.</p>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(116px,1fr))] gap-3">
             {visibleAvailable.map((a) => (
@@ -437,7 +437,7 @@ function RoomCard({
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="grid size-6 shrink-0 place-items-center bg-muted text-muted-foreground text-xs">
+        <span className="grid size-6 shrink-0 place-items-center bg-muted text-xs text-muted-foreground">
           {index + 1}
         </span>
         <Input
@@ -518,7 +518,7 @@ function RoomCard({
       </div>
 
       {room.members.length === 0 ? (
-        <p className="text-muted-foreground text-xs">
+        <p className="text-xs text-muted-foreground">
           Empty room — add artworks from your archive below.
         </p>
       ) : (
@@ -565,7 +565,7 @@ function RoomCard({
                   aria-hidden="true"
                   className="size-4 shrink-0 text-muted-foreground"
                 />
-                <span className="w-5 text-center text-muted-foreground text-xs">{i + 1}</span>
+                <span className="w-5 text-center text-xs text-muted-foreground">{i + 1}</span>
                 {url ? (
                   <img
                     src={url}
@@ -578,7 +578,7 @@ function RoomCard({
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm">{a.title}</p>
-                  <p className="truncate text-muted-foreground text-xs">
+                  <p className="truncate text-xs text-muted-foreground">
                     {a.artist ?? "Unknown artist"}
                   </p>
                 </div>
@@ -674,7 +674,7 @@ function ArchiveTile({
       onClick={onToggle}
       title={disabled ? "Pick a room first" : `Select "${artwork.title}"`}
       className={cn(
-        "group relative aspect-square overflow-hidden bg-card outline-none ring-1 ring-foreground/10 transition-all focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+        "group relative aspect-square overflow-hidden bg-card ring-1 ring-foreground/10 transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
         selected && "ring-2 ring-ring",
       )}
     >
@@ -685,7 +685,7 @@ function ArchiveTile({
           className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
         />
       ) : (
-        <span className="grid size-full place-items-center p-2 text-center text-muted-foreground text-xs">
+        <span className="grid size-full place-items-center p-2 text-center text-xs text-muted-foreground">
           {artwork.title}
         </span>
       )}

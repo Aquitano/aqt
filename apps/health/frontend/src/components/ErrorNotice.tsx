@@ -1,4 +1,5 @@
 import type { ApiResult } from "@/lib/types";
+
 import styles from "./ErrorNotice.module.css";
 
 type ErrorNoticeProps<T> = {

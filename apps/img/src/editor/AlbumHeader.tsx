@@ -1,8 +1,9 @@
-import { useState, type KeyboardEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Check, ChevronLeft, Copy, Link2, Pencil } from "lucide-react";
+import { useState, type KeyboardEvent } from "react";
 import { toast } from "sonner";
+
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { albumQuery, albumsQuery } from "@/lib/queries";
 import * as albumFns from "@/server/fns/albums";
 import * as shareFns from "@/server/fns/share";
+
 import { useEditor } from "./store";
 
 type AlbumHeaderProps = {
@@ -96,7 +98,7 @@ function Title() {
   return (
     <button
       type="button"
-      className="hover:bg-accent truncate rounded-md px-2 py-1 text-lg font-medium"
+      className="truncate rounded-md px-2 py-1 text-lg font-medium hover:bg-accent"
       onClick={() => setDraft(album.title)}
       title="Rename"
     >
@@ -146,7 +148,7 @@ function SharePopover() {
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col gap-1">
             <Label htmlFor="share-switch">Share with a link</Label>
-            <p className="text-muted-foreground text-xs">
+            <p className="text-xs text-muted-foreground">
               Anyone with the link can flip through, not edit.
             </p>
           </div>

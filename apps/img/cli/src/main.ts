@@ -1,8 +1,11 @@
 #!/usr/bin/env bun
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
+
 import { type } from "arktype";
+
 import { bookInput } from "@/domain/api";
+
 import { ApiError, createClient } from "./client";
 import { loadConfig, saveConfig } from "./config";
 import { bookDocument, coverFrom, importPhotos } from "./ops";

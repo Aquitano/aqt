@@ -1,12 +1,14 @@
 import { useEffect } from "react";
+
 import { Book, PageElements, type PageLayout } from "@/book/Book";
 import type { PageSide } from "@/domain/element";
-import type { Spread } from "@/server/db/schema";
-import { EditablePage } from "./EditablePage";
-import { clampToPage } from "./geometry";
-import { Filmstrip } from "./Filmstrip";
-import { PhotoLibrary } from "./PhotoLibrary";
 import { cn } from "@/lib/utils";
+import type { Spread } from "@/server/db/schema";
+
+import { EditablePage } from "./EditablePage";
+import { Filmstrip } from "./Filmstrip";
+import { clampToPage } from "./geometry";
+import { PhotoLibrary } from "./PhotoLibrary";
 import { useEditor, useEditorStore, type EditorState } from "./store";
 import { Toolbar } from "./Toolbar";
 

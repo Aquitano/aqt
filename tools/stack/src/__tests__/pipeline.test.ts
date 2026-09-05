@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeEach } from "bun:test";
-import { scaffold } from "../pipeline.ts";
+
 import type { Config } from "../config.ts";
+import { scaffold } from "../pipeline.ts";
 import type { ShellRunner } from "../shell.ts";
 
 // ── Recording test adapter ───────────────────────────────────────

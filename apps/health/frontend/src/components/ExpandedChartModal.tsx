@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 import { useEffect, useId } from "react";
+
 import {
   HealthChartDatum,
   HealthChartSeries,
@@ -9,6 +10,7 @@ import {
   type ChartPointDetail,
 } from "@/components/charts/HealthMetricChart";
 import { formatChartValue, formatDateTime } from "@/lib/format";
+
 import styles from "./ExpandedChartModal.module.css";
 
 export type ChartSummary = {

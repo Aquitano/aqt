@@ -1,3 +1,5 @@
+import { createAqtHealthClient } from "./aqtHealthClient";
+import { addUtcDays, dateOnlyToUtcInstant, dayAfterDateOnlyToUtcInstant } from "./dates";
 import type {
   ApiResult,
   HealthDataPageSources,
@@ -24,8 +26,6 @@ import type {
   HealthStatusData,
   HeartRateDailyPoint,
 } from "./types";
-import { createAqtHealthClient } from "./aqtHealthClient";
-import { addUtcDays, dateOnlyToUtcInstant, dayAfterDateOnlyToUtcInstant } from "./dates";
 
 export async function getHealthStatus(): Promise<HealthStatusData> {
   const client = createAqtHealthClient();

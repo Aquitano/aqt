@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { reconnectProviderAccount } from "@/lib/aqtHealthApi";
 
 type RouteContext = {

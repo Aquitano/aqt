@@ -1,7 +1,8 @@
-import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, KeyRound, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -81,12 +82,12 @@ export function ApiKeysDialog() {
 
         {fresh ? <FreshKey name={fresh.name} value={fresh.key} /> : null}
 
-        <ul className="divide-border divide-y text-sm">
+        <ul className="divide-y divide-border text-sm">
           {keys.data?.map((key) => (
             <li key={key.id} className="flex items-center gap-3 py-2">
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{key.name}</p>
-                <p className="text-muted-foreground font-mono text-xs">
+                <p className="font-mono text-xs text-muted-foreground">
                   {key.prefix}… · {formatUsed(key.lastUsedAt)}
                 </p>
               </div>
@@ -101,7 +102,7 @@ export function ApiKeysDialog() {
             </li>
           ))}
           {keys.data?.length === 0 ? (
-            <li className="text-muted-foreground py-2">No keys yet.</li>
+            <li className="py-2 text-muted-foreground">No keys yet.</li>
           ) : null}
         </ul>
       </DialogContent>
@@ -117,7 +118,7 @@ function FreshKey({ name, value }: { name: string; value: string }) {
     setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <div className="bg-muted rounded-md p-3 text-sm">
+    <div className="rounded-md bg-muted p-3 text-sm">
       <p className="mb-1">
         Key for <span className="font-medium">{name}</span>. Copy it now; it will not be shown
         again.
@@ -131,7 +132,7 @@ function FreshKey({ name, value }: { name: string; value: string }) {
           {copied ? "Copied" : "Copy"}
         </Button>
       </div>
-      <p className="text-muted-foreground mt-2 text-xs">
+      <p className="mt-2 text-xs text-muted-foreground">
         Then run{" "}
         <code>
           album login --url {typeof window === "undefined" ? "" : window.location.origin} --key …

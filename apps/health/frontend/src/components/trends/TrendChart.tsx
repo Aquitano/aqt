@@ -11,9 +11,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+
 import { formatAxisDate, formatChartValue, formatFullDate } from "@/lib/format";
 import type { TrendPoint } from "@/lib/trends";
 import { useHydrated } from "@/lib/useHydrated";
+
 import styles from "./TrendChart.module.css";
 
 type TrendChartProps = {

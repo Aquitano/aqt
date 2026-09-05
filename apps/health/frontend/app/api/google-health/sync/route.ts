@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { syncProvider } from "@/lib/aqtHealthApi";
 import type { ProviderSyncRequest } from "@/lib/types";
 

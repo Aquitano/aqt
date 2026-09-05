@@ -42,7 +42,7 @@ function DialogContent({
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 flex max-h-[min(90svh,46rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-none border bg-popover p-5 text-popover-foreground shadow-2xl outline-none ring-1 ring-foreground/10 transition-all duration-150 data-[ending-style]:scale-[0.98] data-[starting-style]:scale-[0.98] data-[ending-style]:opacity-0 data-[starting-style]:opacity-0",
+          "fixed top-1/2 left-1/2 z-50 flex max-h-[min(90svh,46rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-none border bg-popover p-5 text-popover-foreground shadow-2xl ring-1 ring-foreground/10 transition-all duration-150 outline-none data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0",
           className,
         )}
         {...props}
@@ -51,7 +51,7 @@ function DialogContent({
         {showClose ? (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="absolute top-4 right-4 inline-flex size-7 items-center justify-center rounded-none text-muted-foreground opacity-80 outline-none transition-opacity hover:opacity-100 focus-visible:ring-1 focus-visible:ring-ring/50 [&_svg]:size-4"
+            className="absolute top-4 right-4 inline-flex size-7 items-center justify-center rounded-none text-muted-foreground opacity-80 transition-opacity outline-none hover:opacity-100 focus-visible:ring-1 focus-visible:ring-ring/50 [&_svg]:size-4"
           >
             <XIcon />
             <span className="sr-only">Close</span>
@@ -85,7 +85,7 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn("font-medium text-base leading-none", className)}
+      className={cn("text-base leading-none font-medium", className)}
       {...props}
     />
   );
@@ -95,7 +95,7 @@ function DialogDescription({ className, ...props }: DialogPrimitive.Description.
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      className={cn("text-muted-foreground text-xs/relaxed", className)}
+      className={cn("text-xs/relaxed text-muted-foreground", className)}
       {...props}
     />
   );

@@ -1,4 +1,5 @@
 import { PulseLine } from "@/components/motion/PulseLine";
+
 import styles from "./LoadingPulse.module.css";
 
 type LoadingPulseProps = {

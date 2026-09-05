@@ -1,12 +1,14 @@
+import { Suspense } from "react";
+
 import { DashboardCards } from "@/components/DashboardCards";
 import { DataSection } from "@/components/DataSection";
 import { DateRangeForm } from "@/components/DateRangeForm";
-import { DebugDataPanel } from "@/components/DebugDataPanel";
 import { DayOverview } from "@/components/DayOverview";
+import { DebugDataPanel } from "@/components/DebugDataPanel";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { HealthDataVisualizations } from "@/components/HealthDataVisualizations";
-import { LoadingPulse } from "@/components/motion/LoadingPulse";
 import { MetricHighlights } from "@/components/MetricHighlights";
+import { LoadingPulse } from "@/components/motion/LoadingPulse";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBar } from "@/components/StatusBar";
 import { ActivitySummariesTable } from "@/components/tables/ActivitySummariesTable";
@@ -23,7 +25,6 @@ import { SleepSummariesTable } from "@/components/tables/SleepSummariesTable";
 import { getHealthDataPageSources } from "@/lib/aqtHealthApi";
 import { addUtcDays, parseDateRange } from "@/lib/dates";
 import type { BodyMeasurement, HealthDataPageSources } from "@/lib/types";
-import { Suspense } from "react";
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;

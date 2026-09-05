@@ -1,11 +1,13 @@
 import Link from "next/link";
+
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { JsonDetails } from "@/components/JsonDetails";
 import { EmptyState } from "@/components/tables/shared";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import type { ApiResult, IngestionBatchDetailResponse } from "@/lib/types";
-import tableStyles from "./tables/tables.module.css";
+
 import styles from "./IngestionBatchDetail.module.css";
+import tableStyles from "./tables/tables.module.css";
 
 type IngestionBatchDetailProps = {
   result: ApiResult<IngestionBatchDetailResponse>;

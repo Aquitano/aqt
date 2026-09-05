@@ -1,5 +1,6 @@
 import type { AlbumInput, AlbumPatch, BookInput, PhotoInput } from "@/domain/api";
 import type { Album, Photo, Spread } from "@/server/db/schema";
+
 import type { Config } from "./config";
 
 /** Server rejected a request; `status` and `message` are the API's own. */

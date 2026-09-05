@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
+
 import styles from "./DebugDataPanel.module.css";
 
 type DebugDataPanelProps = {

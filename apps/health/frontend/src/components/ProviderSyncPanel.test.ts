@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
+
 import type { ProviderDescriptor, ProviderStatus, ProviderAccountStatus } from "@/lib/types";
+
 import { actionLabel, actionDetail, primaryOAuthLabel, formatStatus } from "./ProviderSyncPanel";
 
 function descriptor(overrides: Partial<ProviderDescriptor> = {}): ProviderDescriptor {

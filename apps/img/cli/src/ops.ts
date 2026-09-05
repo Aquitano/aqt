@@ -1,6 +1,8 @@
 import { type } from "arktype";
-import { coverMaterial, type Cover } from "@/domain/element";
+
 import { COVER_COLORS, type CoverColorName } from "@/book/palette";
+import { coverMaterial, type Cover } from "@/domain/element";
+
 import type { Client } from "./client";
 import { preparePhoto } from "./photos";
 

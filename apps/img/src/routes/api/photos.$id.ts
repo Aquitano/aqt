@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { and, eq, isNotNull } from "drizzle-orm";
+
 import { currentUserId } from "@/server/auth";
 import { db } from "@/server/db/client";
 import { albums, photos, spreadPhotos, spreads } from "@/server/db/schema";

@@ -1,5 +1,6 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { GripVertical, MoreHorizontal } from "lucide-react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+
 import { PageElements } from "@/book/Book";
 import { PageSurface } from "@/book/PageSurface";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import {
 import { pageScale } from "@/domain/page";
 import { cn } from "@/lib/utils";
 import type { Spread } from "@/server/db/schema";
+
 import { useEditor } from "./store";
 
 const THUMB_PX = 72;
@@ -104,14 +106,14 @@ export function Filmstrip() {
               data-spread={spread.id}
               className={cn(
                 "flex items-center gap-1 rounded-lg border p-1 transition-shadow",
-                spreads[current]?.id === spread.id && "ring-primary ring-2",
+                spreads[current]?.id === spread.id && "ring-2 ring-primary",
                 order && drag.current?.id === spread.id && "shadow-lg",
               )}
             >
               <button
                 type="button"
                 aria-label={`Move spread ${index + 1}`}
-                className="text-muted-foreground cursor-grab touch-none px-1 active:cursor-grabbing"
+                className="cursor-grab touch-none px-1 text-muted-foreground active:cursor-grabbing"
                 onPointerDown={(event) => onGripDown(event, spread, spreads.indexOf(spread))}
                 onPointerMove={onGripMove}
                 onPointerUp={onGripUp}
@@ -126,7 +128,7 @@ export function Filmstrip() {
                 aria-label={`Go to spread ${index + 1}`}
                 aria-current={spreads[current]?.id === spread.id ? "true" : undefined}
               >
-                <span className="text-muted-foreground w-5 text-xs tabular-nums">{index + 1}</span>
+                <span className="w-5 text-xs text-muted-foreground tabular-nums">{index + 1}</span>
                 <span className="flex shadow-sm">
                   <PageSurface sizePx={THUMB_PX} side="left">
                     <PageElements

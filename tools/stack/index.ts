@@ -1,8 +1,9 @@
 import { intro, log, confirm, cancel, outro } from "@clack/prompts";
-import { promptConfig } from "./src/prompts.ts";
-import { scaffold } from "./src/pipeline.ts";
-import { BunShellRunner } from "./src/shell.ts";
+
 import { step, die, unwrap } from "./src/helpers.ts";
+import { scaffold } from "./src/pipeline.ts";
+import { promptConfig } from "./src/prompts.ts";
+import { BunShellRunner } from "./src/shell.ts";
 
 async function main(): Promise<void> {
   const args = Bun.argv.slice(2);

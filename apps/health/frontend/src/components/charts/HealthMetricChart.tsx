@@ -13,8 +13,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+
 import { formatChartValue, formatDateTime } from "@/lib/format";
 import { useHydrated } from "@/lib/useHydrated";
+
 import styles from "./HealthMetricChart.module.css";
 
 export type ChartPointDetail = {

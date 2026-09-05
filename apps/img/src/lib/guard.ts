@@ -1,4 +1,5 @@
 import { redirect } from "@tanstack/react-router";
+
 import { getUserId } from "@/server/fns/session";
 
 /** `beforeLoad` guard: sends signed-out visitors back to the landing page. */

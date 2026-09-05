@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
-import { ErrorNotice } from "./ErrorNotice";
+
 import type { ApiResult } from "@/lib/types";
+
+import { ErrorNotice } from "./ErrorNotice";
+
 import styles from "./DataSection.module.css";
 
 type DataSectionProps<T> = {

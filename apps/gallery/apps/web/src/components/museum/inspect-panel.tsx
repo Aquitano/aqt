@@ -39,7 +39,7 @@ export function InspectPanel() {
         onClick={() => visible && closeInspect()}
       />
       <aside
-        className={`relative flex h-full w-full max-w-[420px] flex-col overflow-y-auto border-white/10 border-l bg-[#0e0d0bf2] px-8 py-10 text-[#e8e2d5] backdrop-blur-md transition-all duration-500 ${
+        className={`relative flex h-full w-full max-w-[420px] flex-col overflow-y-auto border-l border-white/10 bg-[#0e0d0bf2] px-8 py-10 text-[#e8e2d5] backdrop-blur-md transition-all duration-500 ${
           visible ? "translate-x-0 opacity-100" : "translate-x-10 opacity-0"
         }`}
       >
@@ -52,10 +52,10 @@ export function InspectPanel() {
           <X size={16} />
         </button>
 
-        <p className="text-[#b7a989] text-[11px] uppercase tracking-[0.28em]">
+        <p className="text-[11px] tracking-[0.28em] text-[#b7a989] uppercase">
           {[a.artistName, a.year].filter(Boolean).join(" · ")}
         </p>
-        <h2 className="mt-3 font-museum text-4xl text-[#f4efe3] leading-[1.05]">{a.title}</h2>
+        <h2 className="font-museum mt-3 text-4xl leading-[1.05] text-[#f4efe3]">{a.title}</h2>
 
         <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-white/55">
           {a.medium ? (
@@ -67,24 +67,24 @@ export function InspectPanel() {
         </div>
 
         {a.description ? (
-          <p className="mt-6 text-[15px] text-white/80 leading-relaxed">{a.description}</p>
+          <p className="mt-6 text-[15px] leading-relaxed text-white/80">{a.description}</p>
         ) : null}
 
         {a.story ? (
           <div className="mt-7">
-            <h3 className="text-[#b7a989] text-[11px] uppercase tracking-[0.28em]">The story</h3>
-            <p className="mt-2.5 text-[14px] text-white/70 leading-relaxed">{a.story}</p>
+            <h3 className="text-[11px] tracking-[0.28em] text-[#b7a989] uppercase">The story</h3>
+            <p className="mt-2.5 text-[14px] leading-relaxed text-white/70">{a.story}</p>
           </div>
         ) : null}
 
         {facts.length > 0 ? (
           <div className="mt-7">
-            <h3 className="text-[#b7a989] text-[11px] uppercase tracking-[0.28em]">
+            <h3 className="text-[11px] tracking-[0.28em] text-[#b7a989] uppercase">
               Worth knowing
             </h3>
             <ul className="mt-2.5 space-y-2.5">
               {facts.map((fact) => (
-                <li key={fact} className="flex gap-2.5 text-[13.5px] text-white/70 leading-relaxed">
+                <li key={fact} className="flex gap-2.5 text-[13.5px] leading-relaxed text-white/70">
                   <span
                     aria-hidden
                     className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-[#b7a989]"
@@ -97,19 +97,19 @@ export function InspectPanel() {
         ) : null}
 
         {a.artist?.bio ? (
-          <div className="mt-7 border-white/10 border-t pt-6">
-            <h3 className="text-[#b7a989] text-[11px] uppercase tracking-[0.28em]">
+          <div className="mt-7 border-t border-white/10 pt-6">
+            <h3 className="text-[11px] tracking-[0.28em] text-[#b7a989] uppercase">
               {a.artist.name}
               {a.artist.birthYear ? `, ${a.artist.birthYear}–${a.artist.deathYear ?? ""}` : ""}
             </h3>
-            <p className="mt-2.5 text-[13.5px] text-white/60 leading-relaxed">{a.artist.bio}</p>
+            <p className="mt-2.5 text-[13.5px] leading-relaxed text-white/60">{a.artist.bio}</p>
           </div>
         ) : null}
 
         <button
           type="button"
           onClick={() => closeInspect()}
-          className="mt-9 self-start rounded-full border border-[#b7a989]/50 px-5 py-2 text-[#d8cba8] text-[12px] uppercase tracking-[0.2em] transition-colors hover:bg-[#b7a989]/10"
+          className="mt-9 self-start rounded-full border border-[#b7a989]/50 px-5 py-2 text-[12px] tracking-[0.2em] text-[#d8cba8] uppercase transition-colors hover:bg-[#b7a989]/10"
         >
           Back to gallery
         </button>

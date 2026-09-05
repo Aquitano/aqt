@@ -1,6 +1,8 @@
-import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { motion } from "motion/react";
+import { useRef, type PointerEvent as ReactPointerEvent } from "react";
+
 import { cn } from "@/lib/utils";
+
 import {
   CORNERS,
   angleAround,
@@ -95,7 +97,7 @@ export function TransformBox({
     >
       <div
         aria-hidden
-        className={cn("ring-primary absolute inset-0 ring-[1.5px]", editing && "ring-primary/40")}
+        className={cn("absolute inset-0 ring-[1.5px] ring-primary", editing && "ring-primary/40")}
       />
       {editing ? null : (
         <>
@@ -122,7 +124,7 @@ export function TransformBox({
           ))}
           <span
             aria-hidden
-            className="bg-primary/60 absolute left-1/2 w-px"
+            className="absolute left-1/2 w-px bg-primary/60"
             style={{ top: -ROTATE_OFFSET, height: ROTATE_OFFSET }}
           />
           <span
