@@ -206,7 +206,7 @@ func (r *Result) storeAsset(ctx context.Context, st *store.Store, md *media, mes
 	// and bare UUIDs are common), so sniff the bytes when nothing named them.
 	head := make([]byte, 512)
 	n, err := io.ReadFull(rc, head)
-	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
 		return fail.Opf("read asset %q: %w", a.ID, err)
 	}
 	head = head[:n]

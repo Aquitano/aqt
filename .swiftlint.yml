@@ -20,3 +20,4 @@ disabled_rules:
   - trailing_comma
   - todo
 reporter: xcode
+baseline: .swiftlint-baseline.json

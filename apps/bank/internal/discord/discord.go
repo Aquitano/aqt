@@ -169,7 +169,7 @@ func channelName(fsys fs.FS, dir string) string {
 	var ch struct {
 		Name string `json:"name"`
 	}
-	json.Unmarshal(raw, &ch)
+	_ = json.Unmarshal(raw, &ch)
 	return ch.Name
 }
 

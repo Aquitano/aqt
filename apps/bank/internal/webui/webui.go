@@ -20,12 +20,12 @@ import (
 var content embed.FS
 
 func Handler(apiBase *url.URL, token string) http.Handler {
-	proxy := httputil.NewSingleHostReverseProxy(apiBase)
-	director := proxy.Director
-	proxy.Director = func(r *http.Request) {
-		director(r)
-		r.Host = apiBase.Host
-		r.Header.Set("Authorization", "Bearer "+token)
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(apiBase)
+			r.Out.Host = apiBase.Host
+			r.Out.Header.Set("Authorization", "Bearer "+token)
+		},
 	}
 
 	dist, err := fs.Sub(content, "app/dist")

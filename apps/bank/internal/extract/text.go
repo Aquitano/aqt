@@ -3,6 +3,7 @@ package extract
 import (
 	"archive/zip"
 	"encoding/xml"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -109,7 +110,7 @@ func appendXMLText(sb *strings.Builder, r io.Reader) (int64, error) {
 	for {
 		tok, err := dec.Token()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return counting.n, nil
 			}
 			return counting.n, err

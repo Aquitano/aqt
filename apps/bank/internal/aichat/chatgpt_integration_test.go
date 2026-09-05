@@ -2,6 +2,7 @@ package aichat
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -86,7 +87,7 @@ func TestImportChatGPTRekeysStoredMessages(t *testing.T) {
 	if len(th.Messages) != 1 || th.Messages[0].Subject != "Postgres advice" {
 		t.Errorf("thread conv-1 = %+v, want the one message carrying the title as subject", th.Messages)
 	}
-	if _, err := st.GetThread(ctx, "chatgpt", "Postgres advice", 0); err != store.ErrNotFound {
+	if _, err := st.GetThread(ctx, "chatgpt", "Postgres advice", 0); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("the old title-keyed thread survived: %v", err)
 	}
 

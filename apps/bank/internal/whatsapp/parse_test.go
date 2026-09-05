@@ -41,8 +41,8 @@ func TestParseAndroidDayFirst(t *testing.T) {
 
 func TestParseIOSMonthFirst12h(t *testing.T) {
 	chat := strings.Join([]string{
-		"‎[05/13/24, 9:07:12 PM] Alice: hi",
-		"[05/13/24, 9:08:01 PM] Alice: ‎<attached: 00000012-PHOTO-2024-05-13.jpg>",
+		"\u200e[05/13/24, 9:07:12 PM] Alice: hi",
+		"[05/13/24, 9:08:01 PM] Alice: \u200e<attached: 00000012-PHOTO-2024-05-13.jpg>",
 		"[05/14/24, 12:15:00 AM] Thomas: late reply",
 	}, "\n")
 

@@ -2,6 +2,7 @@ package aichat
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -70,7 +71,7 @@ func TestReimportRekeysFromArchive(t *testing.T) {
 	if _, err := st.GetThread(ctx, "chatgpt", "conv-1", 0); err != nil {
 		t.Errorf("message was not re-keyed onto the conversation id: %v", err)
 	}
-	if _, err := st.GetThread(ctx, "chatgpt", "Postgres advice", 0); err != store.ErrNotFound {
+	if _, err := st.GetThread(ctx, "chatgpt", "Postgres advice", 0); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("the old title-keyed thread survived: %v", err)
 	}
 

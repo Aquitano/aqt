@@ -116,7 +116,7 @@ func Authorize(ctx context.Context, dataDir, bind string, port int) error {
 		fmt.Fprintln(w, "Authorized. You can close this tab and return to the terminal.")
 		ch <- outcome{code: q.Get("code")}
 	})}
-	go srv.Serve(ln)
+	go func() { _ = srv.Serve(ln) }()
 	defer srv.Close()
 
 	var o outcome

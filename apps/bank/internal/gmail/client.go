@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -177,7 +178,7 @@ func (c *client) listHistory(ctx context.Context, startHistoryID string) ([]stri
 			NextPageToken string `json:"nextPageToken"`
 		}
 		err := c.getJSON(ctx, path, &page)
-		if err == errNotFound {
+		if errors.Is(err, errNotFound) {
 			return nil, "", false, nil
 		}
 		if err != nil {

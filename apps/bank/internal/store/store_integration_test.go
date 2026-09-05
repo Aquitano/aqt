@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -393,11 +394,12 @@ func TestThreads(t *testing.T) {
 }
 
 func asAmbiguous(err error, target **store.AmbiguousThreadError) bool {
-	amb, ok := err.(*store.AmbiguousThreadError)
-	if ok {
-		*target = amb
+	var amb *store.AmbiguousThreadError
+	if !errors.As(err, &amb) {
+		return false
 	}
-	return ok
+	*target = amb
+	return true
 }
 
 // The body healer is the only write allowed past "a re-import never overwrites

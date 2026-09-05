@@ -1374,7 +1374,9 @@ func cmdQuery(ctx context.Context, args []string) error {
 		}
 		fmt.Fprintln(w, strings.Join(cells, "\t"))
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		return err
+	}
 	if res.Truncated {
 		fmt.Fprintf(os.Stderr, "(truncated at %d rows; raise --limit or aggregate)\n", len(res.Rows))
 	}
@@ -1535,7 +1537,7 @@ func cmdUI(args []string) error {
 	}
 	apiBase, err := url.Parse(base)
 	if err != nil {
-		return fmt.Errorf("invalid BANK_URL: %v", err)
+		return fmt.Errorf("invalid BANK_URL: %w", err)
 	}
 	addr := "http://" + *listen
 	fmt.Printf("bank ui: %s -> %s\n", addr, base)

@@ -195,7 +195,7 @@ func saveUpload(r *http.Request, dataDir string) (string, func(), error) {
 	}
 	for {
 		part, err := mr.NextPart()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return "", nil, fmt.Errorf("no file field in upload")
 		}
 		if err != nil {

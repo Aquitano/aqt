@@ -236,7 +236,7 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
-	io.Copy(w, f)
+	_, _ = io.Copy(w, f)
 }
 
 // handleQuery runs one read-only ad-hoc SQL statement. Safety lives in the
@@ -315,7 +315,7 @@ func parseInt(s string, def int) (int, error) {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 func writeErr(w http.ResponseWriter, status int, msg string) {

@@ -170,7 +170,9 @@ func (s *Store) migrate(ctx context.Context) error {
 	if _, err := conn.Exec(ctx, `select pg_advisory_lock($1)`, migrationLock); err != nil {
 		return err
 	}
-	defer conn.Exec(context.WithoutCancel(ctx), `select pg_advisory_unlock($1)`, migrationLock)
+	defer func() {
+		_, _ = conn.Exec(context.WithoutCancel(ctx), `select pg_advisory_unlock($1)`, migrationLock)
+	}()
 
 	if _, err := conn.Exec(ctx,
 		`create table if not exists schema_migrations (filename text primary key, applied_at timestamptz not null default now())`); err != nil {

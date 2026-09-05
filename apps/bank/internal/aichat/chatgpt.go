@@ -142,7 +142,7 @@ func parseChatGPTConversation(c cgptConversation, withAssets bool) []message {
 					}
 				}
 			}
-			if len(parts) == 0 && !(withAssets && len(refs) > 0) {
+			if len(parts) == 0 && (!withAssets || len(refs) == 0) {
 				continue
 			}
 			body = strings.Join(parts, "\n")
