@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+DerivedData/
+.DS_Store
+.env
+.env.*
+!.env.example
+.dev.vars
+*.xcodeproj/
+xcuserdata/
+perf-results/
+graphify-out/
+.claude/worktrees/
+coverage/

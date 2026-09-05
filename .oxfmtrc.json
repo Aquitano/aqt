@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 100,
+  "singleQuote": false,
+  "semi": true,
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/*.gen.ts",
+    "**/worker-configuration.d.ts",
+    "**/drizzle/**",
+    "apps/bank/**",
+    "apps/health/**",
+    "apps/starboard/**",
+    "apps/notch/**",
+    "tools/oxlint/anti-slop/**"
+  ]
+}

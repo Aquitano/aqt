@@ -1,0 +1,22 @@
+included:
+  - apps/starboard
+  - apps/notch
+excluded:
+  - "**/build"
+  - "**/DerivedData"
+  - "**/.build"
+  - "**/*.xcodeproj"
+line_length:
+  warning: 120
+  ignores_comments: true
+  ignores_urls: true
+type_body_length:
+  warning: 350
+file_length:
+  warning: 500
+identifier_name:
+  min_length: 2
+disabled_rules:
+  - trailing_comma
+  - todo
+reporter: xcode
