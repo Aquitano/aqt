@@ -1,14 +1,21 @@
 "use client";
 
+import { type } from "arktype";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState, useTransition } from "react";
 
+import {
+  readAcknowledgement,
+  readOAuthStart,
+  readScheduledSyncRun,
+  readSyncJobStart,
+  readSyncJobStatus,
+} from "@/lib/apiResponses";
 import { formatDateTime } from "@/lib/format";
 import type {
   ApiResult,
   ProviderCatalogResponse,
   ProviderDescriptor,
-  ProviderOAuthStartResponse,
   ProviderAccountStatus,
   ProviderStatus,
   ProviderStatusCatalogResponse,
@@ -69,7 +76,7 @@ export function ProviderSyncPanel({
           const response = await fetch(
             `/api/providers/${encodeURIComponent(pollingJob.providerCode)}/sync-jobs/${encodeURIComponent(pollingJob.jobId)}`,
           );
-          const body = (await response.json()) as ApiResult<ProviderSyncJobStatusResponse>;
+          const body = await readSyncJobStatus(response);
           if (!body.ok) {
             setResult(body);
             setSyncJob(null);
@@ -174,7 +181,7 @@ export function ProviderSyncPanel({
             body: JSON.stringify(payload),
           },
         );
-        const body = (await response.json()) as ApiResult<{ jobId: string }>;
+        const body = await readSyncJobStart(response);
         if (!body.ok) {
           setResult(body);
           setIsSyncing(false);
@@ -208,7 +215,7 @@ export function ProviderSyncPanel({
         `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/oauth/start`,
         { method: "POST" },
       );
-      const body = (await response.json()) as ApiResult<ProviderOAuthStartResponse>;
+      const body = await readOAuthStart(response);
       if (body.ok) {
         window.location.assign(body.data.authorizationUrl);
       } else {
@@ -229,7 +236,7 @@ export function ProviderSyncPanel({
           `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/disconnect`,
           { method: "POST" },
         );
-        const body = (await response.json()) as ApiResult<unknown>;
+        const body = await readAcknowledgement(response);
         if (body.ok) {
           router.refresh();
         } else {
@@ -255,7 +262,7 @@ export function ProviderSyncPanel({
           `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/reconnect`,
           { method: "POST" },
         );
-        const body = (await response.json()) as ApiResult<ProviderOAuthStartResponse>;
+        const body = await readOAuthStart(response);
         if (body.ok) {
           window.location.assign(body.data.authorizationUrl);
         } else {
@@ -293,7 +300,7 @@ export function ProviderSyncPanel({
             }),
           },
         );
-        const body = (await response.json()) as ApiResult<ScheduledSyncConfig>;
+        const body = await readAcknowledgement(response);
         if (body.ok) router.refresh();
         else setScheduledError(body.message);
       } catch {
@@ -316,7 +323,7 @@ export function ProviderSyncPanel({
           `/api/providers/${encodeURIComponent(selectedProvider.descriptor.providerCode)}/accounts/${encodeURIComponent(providerInstanceId)}/scheduled-sync/run`,
           { method: "POST" },
         );
-        const body = (await response.json()) as ApiResult<ScheduledSyncRunResponse>;
+        const body = await readScheduledSyncRun(response);
         setScheduledResult(body);
         if (body.ok) router.refresh();
       } catch {
@@ -833,12 +840,14 @@ function readStoredSyncJob(): ActiveSyncJob | null {
   return parseStoredSyncJob(raw);
 }
 
+const storedSyncJob = type({ providerCode: "string", jobId: "string" });
+
 function parseStoredSyncJob(raw: string): ActiveSyncJob | null {
   try {
-    const parsed = JSON.parse(raw) as Partial<ActiveSyncJob>;
-    return typeof parsed.providerCode === "string" && typeof parsed.jobId === "string"
-      ? { providerCode: parsed.providerCode, jobId: parsed.jobId }
-      : null;
+    const stored = storedSyncJob(JSON.parse(raw));
+    return stored instanceof type.errors
+      ? null
+      : { providerCode: stored.providerCode, jobId: stored.jobId };
   } catch {
     return null;
   }

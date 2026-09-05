@@ -19,7 +19,7 @@ type PageProps = {
 function parseWindow(value: string | string[] | undefined): number {
   const raw = Array.isArray(value) ? value[0] : value;
   const parsed = Number(raw);
-  return (windowOptions as readonly number[]).includes(parsed) ? parsed : defaultWindow;
+  return windowOptions.some((option) => option === parsed) ? parsed : defaultWindow;
 }
 
 export default async function TrendsPage({ searchParams }: PageProps) {

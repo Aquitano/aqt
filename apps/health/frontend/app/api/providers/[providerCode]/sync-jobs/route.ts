@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { startProviderSyncJob } from "@/lib/aqtHealthApi";
-import type { ProviderSyncRequest } from "@/lib/types";
+import { readProviderSyncRequest } from "@/lib/syncRequests";
 
 type RouteContext = {
   params: Promise<{
@@ -11,31 +11,9 @@ type RouteContext = {
 
 export async function POST(request: Request, context: RouteContext) {
   const { providerCode } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as ProviderSyncRequest;
-  const result = await startProviderSyncJob(providerCode, normalizePayload(body));
+  const result = await startProviderSyncJob(providerCode, await readProviderSyncRequest(request));
 
   return NextResponse.json(result, {
     status: result.ok ? 202 : (result.status ?? 500),
   });
-}
-
-function normalizePayload(body: ProviderSyncRequest): ProviderSyncRequest {
-  const dataTypes = Array.isArray(body.dataTypes)
-    ? body.dataTypes.filter((dataType) => typeof dataType === "string" && dataType.trim())
-    : undefined;
-  const pageSize =
-    typeof body.pageSize === "number" && Number.isInteger(body.pageSize) && body.pageSize > 0
-      ? body.pageSize
-      : undefined;
-
-  return {
-    from: nonEmpty(body.from),
-    to: nonEmpty(body.to),
-    dataTypes: dataTypes && dataTypes.length > 0 ? dataTypes : undefined,
-    pageSize,
-  };
-}
-
-function nonEmpty(value?: string | null): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }

@@ -4,20 +4,20 @@ import type { ExtendedBodyMeasurement } from "@/lib/types";
 import { DataTable, type Column } from "./DataTable";
 import { sourceLabel } from "./shared";
 
-const METRIC_LABELS: Record<string, string> = {
-  fat_mass: "Fat Mass",
-  fat_free_mass: "Fat-Free Mass",
-  bone_mass: "Bone Mass",
-  intracellular_water: "Intracellular Water",
-  extracellular_water: "Extracellular Water",
-  basal_metabolic_rate: "BMR",
-  segmental_fat_mass: "Segmental Fat",
-  segmental_muscle_mass: "Segmental Muscle",
-  segmental_fat_free_mass: "Segmental Fat-Free",
-};
+const metricLabels = new Map([
+  ["fat_mass", "Fat Mass"],
+  ["fat_free_mass", "Fat-Free Mass"],
+  ["bone_mass", "Bone Mass"],
+  ["intracellular_water", "Intracellular Water"],
+  ["extracellular_water", "Extracellular Water"],
+  ["basal_metabolic_rate", "BMR"],
+  ["segmental_fat_mass", "Segmental Fat"],
+  ["segmental_muscle_mass", "Segmental Muscle"],
+  ["segmental_fat_free_mass", "Segmental Fat-Free"],
+]);
 
 function metricLabel(metricType: string): string {
-  return METRIC_LABELS[metricType] ?? metricType;
+  return metricLabels.get(metricType) ?? metricType;
 }
 
 const columns: Column<ExtendedBodyMeasurement>[] = [

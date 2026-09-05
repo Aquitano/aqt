@@ -1,18 +1,5 @@
 {
-  "extends": [
-    "../../../.oxlintrc.json"
-  ],
-  "plugins": [
-    "typescript",
-    "react",
-    "import",
-    "unicorn",
-    "promise",
-    "nextjs"
-  ],
-  "ignorePatterns": [
-    "**/node_modules/**",
-    ".next/**",
-    "src/lib/generated/**"
-  ]
+  "extends": ["../../../.oxlintrc.json"],
+  "plugins": ["typescript", "react", "import", "unicorn", "promise", "nextjs"],
+  "ignorePatterns": ["**/node_modules/**", ".next/**", "src/lib/generated/**"]
 }

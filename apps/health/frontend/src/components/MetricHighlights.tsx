@@ -1,6 +1,5 @@
-import type { CSSProperties } from "react";
-
 import { formatDateTime, formatDuration, formatMeasurement, formatNumber } from "@/lib/format";
+import { revealStyle } from "@/lib/styles";
 import type {
   ActivitySummaryLatestResponse,
   BloodPressureLatestResponse,
@@ -89,7 +88,7 @@ export function MetricHighlights({
           data-kind={card.kind}
           key={card.kind}
           data-reveal
-          style={{ "--reveal-i": index } as CSSProperties}
+          style={revealStyle(index)}
         >
           <span className={styles.label}>{card.label}</span>
           <span className={styles.value}>{card.value}</span>

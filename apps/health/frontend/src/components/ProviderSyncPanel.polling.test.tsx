@@ -1,4 +1,6 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -12,13 +14,16 @@ import type {
 
 import { ProviderSyncPanel } from "./ProviderSyncPanel";
 
-const mocks = vi.hoisted(() => ({
-  refresh: vi.fn(),
-}));
+const refresh = vi.fn();
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: mocks.refresh }),
-}));
+const testRouter: AppRouterInstance = {
+  back: () => {},
+  forward: () => {},
+  push: () => {},
+  prefetch: () => {},
+  refresh,
+  replace: () => {},
+};
 
 const SYNC_JOB_STORAGE_KEY = "aqt-health.provider-sync.active-job";
 
@@ -87,7 +92,9 @@ function jobStatus(
 
 function renderPanel() {
   return render(
-    <ProviderSyncPanel catalog={catalog()} statuses={statuses()} scheduledSyncConfigs={[]} />,
+    <AppRouterContext.Provider value={testRouter}>
+      <ProviderSyncPanel catalog={catalog()} statuses={statuses()} scheduledSyncConfigs={[]} />
+    </AppRouterContext.Provider>,
   );
 }
 
@@ -108,7 +115,7 @@ describe("ProviderSyncPanel polling", () => {
   afterEach(() => {
     cleanup();
     fetchMock.mockReset();
-    mocks.refresh.mockReset();
+    refresh.mockReset();
     vi.unstubAllGlobals();
     window.localStorage.clear();
   });
@@ -137,7 +144,7 @@ describe("ProviderSyncPanel polling", () => {
     await screen.findByText(/network down/);
     expect(window.localStorage.getItem(SYNC_JOB_STORAGE_KEY)).toBeNull();
     expect(screen.getByRole("button", { name: "Start sync" })).toBeEnabled();
-    expect(mocks.refresh).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("refreshes the router and clears the stored job when the sync finishes", async () => {
@@ -166,7 +173,7 @@ describe("ProviderSyncPanel polling", () => {
     renderPanel();
 
     await screen.findByText(/Synced 0 batches, created 0 metrics/);
-    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledTimes(1);
     expect(window.localStorage.getItem(SYNC_JOB_STORAGE_KEY)).toBeNull();
     expect(screen.getByRole("button", { name: "Start sync" })).toBeEnabled();
   });

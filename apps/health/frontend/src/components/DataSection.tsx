@@ -13,14 +13,7 @@ type DataSectionProps<T> = {
 };
 
 export function DataSection<T>({ title, result, children }: DataSectionProps<T>) {
-  const count =
-    result.ok &&
-    typeof result.data === "object" &&
-    result.data !== null &&
-    "items" in result.data &&
-    Array.isArray((result.data as { items: unknown[] }).items)
-      ? (result.data as { items: unknown[] }).items.length
-      : undefined;
+  const count = result.ok ? itemCount(result.data) : undefined;
 
   return (
     <section className={styles.section}>
@@ -32,4 +25,10 @@ export function DataSection<T>({ title, result, children }: DataSectionProps<T>)
       {result.ok ? children(result.data) : null}
     </section>
   );
+}
+
+/** Response payloads carry their rows under `items`; anything else renders without a count. */
+function itemCount<T>(data: T): number | undefined {
+  if (typeof data !== "object" || data === null || !("items" in data)) return undefined;
+  return Array.isArray(data.items) ? data.items.length : undefined;
 }

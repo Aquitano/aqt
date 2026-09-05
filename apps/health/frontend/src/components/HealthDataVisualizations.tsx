@@ -25,7 +25,7 @@ import { ExpandedChartModal, type ChartSummary } from "./ExpandedChartModal";
 
 import styles from "./HealthDataVisualizations.module.css";
 
-const bodyMetricConfig: Record<string, { label: string; color: string }> = {
+const bodyMetricConfig = {
   weight: { label: "Weight", color: "var(--hue-weight)" },
   body_fat: { label: "Body fat", color: "#eab265" },
   muscle: { label: "Muscle", color: "#8b9dff" },
@@ -33,7 +33,13 @@ const bodyMetricConfig: Record<string, { label: string; color: string }> = {
   visceral_fat: { label: "Visceral fat", color: "#f2786d" },
 };
 
-const bodyMetricOrder = ["weight", "body_fat", "muscle", "water", "visceral_fat"];
+type BodyMetricKey = keyof typeof bodyMetricConfig;
+
+const bodyMetricOrder: BodyMetricKey[] = ["weight", "body_fat", "muscle", "water", "visceral_fat"];
+
+function isBodyMetricKey(metricType: string): metricType is BodyMetricKey {
+  return Object.hasOwn(bodyMetricConfig, metricType);
+}
 
 type HealthDataVisualizationsProps = {
   activitySummaries?: ActivitySummariesResponse;
@@ -316,7 +322,7 @@ type NormalizedChart = {
 };
 
 function buildBodyChart(items: BodyMeasurement[]): NormalizedChart {
-  const supported = items.filter((item) => item.metricType in bodyMetricConfig);
+  const supported = items.filter((item) => isBodyMetricKey(item.metricType));
   const presentMetricKeys = bodyMetricOrder.filter((metricKey) =>
     supported.some((item) => item.metricType === metricKey),
   );
@@ -640,7 +646,9 @@ function measurementsToDetails(items: BodyMeasurement[]): ChartPointDetail[] {
       id: String(item.id),
       at: item.measuredAt,
       metricKey: item.metricType,
-      label: bodyMetricConfig[item.metricType]?.label ?? item.metricType,
+      label: isBodyMetricKey(item.metricType)
+        ? bodyMetricConfig[item.metricType].label
+        : item.metricType,
       value: item.value,
       unit: item.unit,
       source: sourceLabel(item.source),

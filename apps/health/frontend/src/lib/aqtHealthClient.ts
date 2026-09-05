@@ -1,3 +1,5 @@
+import { type } from "arktype";
+import type { ArkErrors } from "arktype";
 import createClient from "openapi-fetch";
 
 import type { paths } from "./generated/aqtHealthApiTypes";
@@ -5,7 +7,7 @@ import type {
   ApiResult,
   ApiSchema,
   BloodPressureMeasurementsResponse,
-  ExtendedBodyMeasurementResponse,
+  ProviderCode,
   ProviderSyncJobStartResponse,
   ProviderSyncJobStatusResponse,
   ScheduledSyncConfig,
@@ -19,6 +21,9 @@ type ClientResponse<T> = {
   response?: Response;
 };
 
+/** Next widens `fetch` with its own caching options, which the DOM `RequestInit` does not carry. */
+type NextFetchInit = RequestInit & { next: { revalidate: number } };
+
 type ClientOptions = {
   protected?: boolean;
 };
@@ -30,8 +35,6 @@ type IngestionBatchQuery = NonNullable<
 type IngestionFailuresQuery = NonNullable<
   paths["/api/v2/admin/ingestion/failures"]["get"]["parameters"]["query"]
 >;
-type ProviderPathCode =
-  paths["/api/v2/providers/{providerCode}/sync"]["post"]["parameters"]["path"]["providerCode"];
 type HealthDayQuery = NonNullable<paths["/api/v2/health/day"]["get"]["parameters"]["query"]>;
 type DailyStepsQuery = NonNullable<paths["/api/v2/steps/daily"]["get"]["parameters"]["query"]>;
 type ActivitySummariesQuery = NonNullable<
@@ -74,6 +77,14 @@ const extendedBodyMetricTypes = [
   "segmental_fat_free_mass",
 ];
 
+/** Failure bodies the backend sends alongside a non-2xx status; anything else falls back to the status text. */
+const backendErrorBody = type({
+  error: { "code?": "string", "message?": "string" },
+}).or("string");
+
+type BackendErrorBody = typeof backendErrorBody.infer;
+
+const genericErrorMessage = "Backend returned an error.";
 const defaultBaseUrl = "http://localhost:8080";
 const backendRequestTimeoutMs = 8_000;
 const longRunningBackendRequestTimeoutMs = 300_000;
@@ -136,36 +147,36 @@ export function createAqtHealthClient() {
         rawClient.GET("/api/v2/providers/status", { headers }),
       ),
 
-    startProviderOAuth: (providerCode: string) =>
+    startProviderOAuth: (providerCode: ProviderCode) =>
       call<ApiSchema<"ProviderOAuthStartResponse">>((headers) =>
         rawClient.GET("/api/v2/providers/{providerCode}/oauth/start", {
           headers,
-          params: { path: { providerCode: providerCode as ProviderPathCode } },
+          params: { path: { providerCode } },
         }),
       ),
 
-    listProviderAccounts: (providerCode: string) =>
+    listProviderAccounts: (providerCode: ProviderCode) =>
       call<ApiSchema<"ProviderAccountListResponse">>((headers) =>
         rawClient.GET("/api/v2/providers/{providerCode}/accounts", {
           headers,
-          params: { path: { providerCode: providerCode as ProviderPathCode } },
+          params: { path: { providerCode } },
         }),
       ),
 
-    getProviderAccount: (providerCode: string, providerInstanceId: string) =>
+    getProviderAccount: (providerCode: ProviderCode, providerInstanceId: string) =>
       call<ApiSchema<"ProviderAccountStatusResponse">>((headers) =>
         rawClient.GET("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}", {
           headers,
           params: {
             path: {
-              providerCode: providerCode as ProviderPathCode,
+              providerCode,
               providerInstanceId,
             },
           },
         }),
       ),
 
-    disconnectProviderAccount: (providerCode: string, providerInstanceId: string) =>
+    disconnectProviderAccount: (providerCode: ProviderCode, providerInstanceId: string) =>
       call<ApiSchema<"ProviderDisconnectResponse">>((headers) =>
         rawClient.POST(
           "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/disconnect",
@@ -173,7 +184,7 @@ export function createAqtHealthClient() {
             headers,
             params: {
               path: {
-                providerCode: providerCode as ProviderPathCode,
+                providerCode,
                 providerInstanceId,
               },
             },
@@ -181,20 +192,20 @@ export function createAqtHealthClient() {
         ),
       ),
 
-    reconnectProviderAccount: (providerCode: string, providerInstanceId: string) =>
+    reconnectProviderAccount: (providerCode: ProviderCode, providerInstanceId: string) =>
       call<ApiSchema<"ProviderOAuthStartResponse">>((headers) =>
         rawClient.POST("/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/reconnect", {
           headers,
           params: {
             path: {
-              providerCode: providerCode as ProviderPathCode,
+              providerCode,
               providerInstanceId,
             },
           },
         }),
       ),
 
-    getScheduledSyncConfig: (providerCode: string, providerInstanceId: string) =>
+    getScheduledSyncConfig: (providerCode: ProviderCode, providerInstanceId: string) =>
       call<ScheduledSyncConfig>((headers) =>
         rawClient.GET(
           "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync",
@@ -202,7 +213,7 @@ export function createAqtHealthClient() {
             headers,
             params: {
               path: {
-                providerCode: providerCode as ProviderPathCode,
+                providerCode,
                 providerInstanceId,
               },
             },
@@ -211,7 +222,7 @@ export function createAqtHealthClient() {
       ),
 
     updateScheduledSyncConfig: (
-      providerCode: string,
+      providerCode: ProviderCode,
       providerInstanceId: string,
       body: ScheduledSyncConfigUpdateRequest,
     ) =>
@@ -223,7 +234,7 @@ export function createAqtHealthClient() {
             headers,
             params: {
               path: {
-                providerCode: providerCode as ProviderPathCode,
+                providerCode,
                 providerInstanceId,
               },
             },
@@ -231,7 +242,7 @@ export function createAqtHealthClient() {
         ),
       ),
 
-    runScheduledSyncNow: (providerCode: string, providerInstanceId: string) =>
+    runScheduledSyncNow: (providerCode: ProviderCode, providerInstanceId: string) =>
       call<ScheduledSyncRunResponse>((headers) =>
         longRunningClient.POST(
           "/api/v2/providers/{providerCode}/accounts/{providerInstanceId}/scheduled-sync/run",
@@ -239,7 +250,7 @@ export function createAqtHealthClient() {
             headers,
             params: {
               path: {
-                providerCode: providerCode as ProviderPathCode,
+                providerCode,
                 providerInstanceId,
               },
             },
@@ -247,33 +258,30 @@ export function createAqtHealthClient() {
         ),
       ),
 
-    syncProvider: (providerCode: string, body: ApiSchema<"ProviderSyncRequest">) =>
+    syncProvider: (providerCode: ProviderCode, body: ApiSchema<"ProviderSyncRequest">) =>
       call<ApiSchema<"ProviderSyncResponse">>((headers) =>
         longRunningClient.POST("/api/v2/providers/{providerCode}/sync", {
           body,
           headers,
-          params: { path: { providerCode: providerCode as ProviderPathCode } },
+          params: { path: { providerCode } },
         }),
       ),
 
-    startProviderSyncJob: (providerCode: string, body: ApiSchema<"ProviderSyncRequest">) =>
+    startProviderSyncJob: (providerCode: ProviderCode, body: ApiSchema<"ProviderSyncRequest">) =>
       call<ProviderSyncJobStartResponse>((headers) =>
-        fetchJson(`${apiBaseUrl}/api/v2/providers/${encodeURIComponent(providerCode)}/sync-jobs`, {
-          method: "POST",
-          headers: {
-            ...headers,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body),
+        rawClient.POST("/api/v2/providers/{providerCode}/sync-jobs", {
+          body,
+          headers,
+          params: { path: { providerCode } },
         }),
       ),
 
-    getProviderSyncJob: (providerCode: string, jobId: string) =>
+    getProviderSyncJob: (providerCode: ProviderCode, jobId: string) =>
       call<ProviderSyncJobStatusResponse>((headers) =>
-        fetchJson(
-          `${apiBaseUrl}/api/v2/providers/${encodeURIComponent(providerCode)}/sync-jobs/${encodeURIComponent(jobId)}`,
-          { headers },
-        ),
+        rawClient.GET("/api/v2/providers/{providerCode}/sync-jobs/{jobId}", {
+          headers,
+          params: { path: { providerCode, jobId } },
+        }),
       ),
 
     getMetricCatalog: () =>
@@ -407,9 +415,7 @@ export function createAqtHealthClient() {
       listScalarMetrics(rawClient, extendedBodyMetricTypes, query),
 
     getLatestExtendedBodyMeasurement: (query: ScalarSamplesQuery) =>
-      listScalarMetrics(rawClient, extendedBodyMetricTypes, { ...query, latest: true }) as Promise<
-        ApiResult<ExtendedBodyMeasurementResponse>
-      >,
+      listScalarMetrics(rawClient, extendedBodyMetricTypes, { ...query, latest: true }),
   };
 }
 
@@ -451,7 +457,7 @@ async function mergedScalarMetrics(
     ),
   );
   const failed = responses.find((result) => result.error || !result.response?.ok);
-  if (failed) return failed as ClientResponse<ApiSchema<"ScalarSamplesResponse">>;
+  if (failed) return { error: failed.error, response: failed.response };
 
   const order = query.order ?? (query.latest ? "desc" : "asc");
   const requestedLimit = query.limit ?? 500;
@@ -480,16 +486,6 @@ async function mergedScalarMetrics(
   };
 }
 
-async function fetchJson<T>(
-  input: string,
-  init: RequestInit,
-  timeoutMs = backendRequestTimeoutMs,
-): Promise<ClientResponse<T>> {
-  const response = await fetchWithTimeout(input, init, timeoutMs);
-  const body = await response.json().catch(() => undefined);
-  return response.ok ? { data: body as T, response } : { error: body, response };
-}
-
 async function fetchWithTimeout(
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -497,12 +493,13 @@ async function fetchWithTimeout(
 ): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const uncachedInit: NextFetchInit = {
+    ...init,
+    signal: controller.signal,
+    next: { revalidate: 0 },
+  };
   try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-      next: { revalidate: 0 },
-    } as RequestInit & { next: { revalidate: 0 } });
+    return await fetch(input, uncachedInit);
   } finally {
     clearTimeout(timeout);
   }
@@ -532,14 +529,15 @@ async function call<T>(
       return {
         ok: false,
         status: response?.status,
-        message: errorMessage(error, response?.statusText ?? "Backend returned an error."),
+        message: errorMessage(backendErrorBody(error), response?.statusText || genericErrorMessage),
       };
     }
 
-    return {
-      ok: true,
-      data: data as T,
-    };
+    if (data === undefined) {
+      return { ok: false, status: response.status, message: "Backend returned an empty response." };
+    }
+
+    return { ok: true, data };
   } catch (error) {
     return {
       ok: false,
@@ -548,13 +546,8 @@ async function call<T>(
   }
 }
 
-function errorMessage(body: unknown, fallback: string): string {
-  if (typeof body === "object" && body !== null && "error" in body) {
-    const error = (body as { error?: { message?: unknown; code?: unknown } }).error;
-    if (typeof error?.message === "string") return error.message;
-    if (typeof error?.code === "string") return error.code;
-  }
-
-  if (typeof body === "string" && body.trim()) return body;
-  return fallback || "Backend returned an error.";
+function errorMessage(body: BackendErrorBody | ArkErrors, fallback: string): string {
+  if (body instanceof type.errors) return fallback;
+  if (typeof body === "string") return body.trim() ? body : fallback;
+  return body.error.message ?? body.error.code ?? fallback;
 }

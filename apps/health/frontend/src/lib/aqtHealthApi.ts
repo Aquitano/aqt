@@ -9,6 +9,7 @@ import type {
   IngestionsPageData,
   MetricCatalogResponse,
   ProviderCatalogResponse,
+  ProviderCode,
   ProviderDisconnectResponse,
   ProviderOAuthStartResponse,
   ProviderAccountListResponse,
@@ -203,15 +204,13 @@ export async function getProviderSyncPageData(): Promise<ProviderSyncPageData> {
   ]);
   const scheduledSyncConfigs = providerStatuses.ok
     ? await Promise.all(
-        providerStatuses.data.items.flatMap((provider) =>
-          provider.accounts.map(
-            (account) =>
-              client.getScheduledSyncConfig(
-                provider.providerCode,
-                account.providerInstanceId,
-              ) as Promise<ApiResult<ScheduledSyncConfig>>,
-          ),
-        ),
+        providerStatuses.data.items.flatMap((provider) => {
+          const { providerCode } = provider;
+          if (!isProviderCode(providerCode)) return [];
+          return provider.accounts.map((account) =>
+            client.getScheduledSyncConfig(providerCode, account.providerInstanceId),
+          );
+        }),
       )
     : [];
 
@@ -286,12 +285,14 @@ export async function getProviderStatuses(): Promise<ApiResult<ProviderStatusCat
 export async function startProviderOAuth(
   providerCode: string,
 ): Promise<ApiResult<ProviderOAuthStartResponse>> {
+  if (!isProviderCode(providerCode)) return unknownProvider(providerCode);
   return createAqtHealthClient().startProviderOAuth(providerCode);
 }
 
 export async function listProviderAccounts(
   providerCode: string,
 ): Promise<ApiResult<ProviderAccountListResponse>> {
+  if (!isProviderCode(providerCode)) return unknownProvider(providerCode);
   return createAqtHealthClient().listProviderAccounts(providerCode);
 }
 
@@ -299,6 +300,7 @@ export async function getProviderAccount(
   providerCode: string,
   providerInstanceId: string,
 ): Promise<ApiResult<ProviderAccountStatus>> {
+  if (!isProviderCode(providerCode)) return unknownProvider(providerCode);
   return createAqtHealthClient().getProviderAccount(providerCode, providerInstanceId);
 }
 
@@ -306,6 +308,7 @@ export async function disconnectProviderAccount(
   providerCode: string,
   providerInstanceId: string,
 ): Promise<ApiResult<ProviderDisconnectResponse>> {
+  if (!isProviderCode(providerCode)) return unknownProvider(providerCode);
   return createAqtHealthClient().disconnectProviderAccount(providerCode, providerInstanceId);
 }
 
@@ -313,6 +316,7 @@ export async function reconnectProviderAccount(
   providerCode: string,
   providerInstanceId: string,
 ): Promise<ApiResult<ProviderOAuthStartResponse>> {
+  if (!isProviderCode(providerCode)) return unknownProvider(providerCode);
   return createAqtHealthClient().reconnectProviderAccount(providerCode, providerInstanceId);
 }
 
@@ -320,6 +324,7 @@ export async function syncProvider(
   providerCode: string,
   payload: ProviderSyncRequest,
 ): Promise<ApiResult<ProviderSyncResponse>> {
+  if (!isProviderCode(providerCode)) return unknownProvider(providerCode);
   return createAqtHealthClient().syncProvider(providerCode, payload);
 }
 
@@ -327,6 +332,7 @@ export async function startProviderSyncJob(
   providerCode: string,
   payload: ProviderSyncRequest,
 ): Promise<ApiResult<ProviderSyncJobStartResponse>> {
+  if (!isProviderCode(providerCode)) return unknownProvider(providerCode);
   return createAqtHealthClient().startProviderSyncJob(providerCode, payload);
 }
 
@@ -334,6 +340,7 @@ export async function getProviderSyncJob(
   providerCode: string,
   jobId: string,
 ): Promise<ApiResult<ProviderSyncJobStatusResponse>> {
+  if (!isProviderCode(providerCode)) return unknownProvider(providerCode);
   return createAqtHealthClient().getProviderSyncJob(providerCode, jobId);
 }
 
@@ -341,6 +348,7 @@ export async function getScheduledSyncConfig(
   providerCode: string,
   providerInstanceId: string,
 ): Promise<ApiResult<ScheduledSyncConfig>> {
+  if (!isProviderCode(providerCode)) return unknownProvider(providerCode);
   return createAqtHealthClient().getScheduledSyncConfig(providerCode, providerInstanceId);
 }
 
@@ -349,6 +357,7 @@ export async function updateScheduledSyncConfig(
   providerInstanceId: string,
   payload: ScheduledSyncConfigUpdateRequest,
 ): Promise<ApiResult<ScheduledSyncConfig>> {
+  if (!isProviderCode(providerCode)) return unknownProvider(providerCode);
   return createAqtHealthClient().updateScheduledSyncConfig(
     providerCode,
     providerInstanceId,
@@ -360,6 +369,7 @@ export async function runScheduledSyncNow(
   providerCode: string,
   providerInstanceId: string,
 ): Promise<ApiResult<ScheduledSyncRunResponse>> {
+  if (!isProviderCode(providerCode)) return unknownProvider(providerCode);
   return createAqtHealthClient().runScheduledSyncNow(providerCode, providerInstanceId);
 }
 
@@ -394,6 +404,19 @@ async function fetchHeartRateDaily(
       min: item.minValue ?? null,
       max: item.maxValue ?? null,
     }));
+}
+
+const knownProviderCodes = {
+  "google-health": true,
+  withings: true,
+} satisfies Record<ProviderCode, true>;
+
+function isProviderCode(value: string): value is ProviderCode {
+  return Object.hasOwn(knownProviderCodes, value);
+}
+
+function unknownProvider(providerCode: string): ApiResult<never> {
+  return { ok: false, status: 404, message: `Unknown provider code: ${providerCode}.` };
 }
 
 function ingestionStatus(value?: string): "processed" | "failed" | undefined {

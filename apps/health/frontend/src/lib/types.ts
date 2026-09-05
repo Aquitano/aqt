@@ -1,6 +1,10 @@
-import type { components } from "./generated/aqtHealthApiTypes";
+import type { components, paths } from "./generated/aqtHealthApiTypes";
 
 export type ApiSchema<Name extends keyof components["schemas"]> = components["schemas"][Name];
+
+/** The providers this build of the API knows how to address; regenerate the API types to add one. */
+export type ProviderCode =
+  paths["/api/v2/providers/{providerCode}/sync"]["post"]["parameters"]["path"]["providerCode"];
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status?: number; message: string };
 

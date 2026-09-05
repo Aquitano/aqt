@@ -8,15 +8,16 @@ type SleepTimelineProps = {
   }>;
 };
 
-const stageClass: Record<string, string> = {
-  awake: "var(--warning)",
-  restless: "#d99a6c",
-  asleep: "#8b9dff",
-  light: "#45d6a4",
-  deep: "#5d77e8",
-  rem: "#b88be0",
-  unknown: "var(--fg-muted)",
-};
+const unknownStageColor = "var(--fg-muted)";
+const stageColors = new Map([
+  ["awake", "var(--warning)"],
+  ["restless", "#d99a6c"],
+  ["asleep", "#8b9dff"],
+  ["light", "#45d6a4"],
+  ["deep", "#5d77e8"],
+  ["rem", "#b88be0"],
+  ["unknown", unknownStageColor],
+]);
 
 export function SleepTimeline({ from, to, timeline }: SleepTimelineProps) {
   const start = from ? new Date(from).getTime() : 0;
@@ -39,7 +40,7 @@ export function SleepTimeline({ from, to, timeline }: SleepTimelineProps) {
             width={width}
             height="24"
             rx="2"
-            fill={stageClass[segment.stage] ?? stageClass.unknown}
+            fill={stageColors.get(segment.stage) ?? unknownStageColor}
           />
         );
       })}
