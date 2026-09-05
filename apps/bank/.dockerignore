@@ -1,0 +1,13 @@
+# The build context should be the source and nothing else: a stray archive or
+# blob store here would be baked into an image layer.
+.git
+.claude
+.env
+bank
+*.log
+
+# Local data directories, if anyone points BANK_DATA_DIR at the repo.
+.bankdata
+blobs/
+archive/
+inbox/

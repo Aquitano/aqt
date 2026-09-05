@@ -1,0 +1,118 @@
+# ParadeDB = Postgres + pg_search (BM25 full-text search extension), plus the
+# archive server itself. Nothing here is published on a public interface.
+#
+# Which of these run is COMPOSE_PROFILES in .env. Unset — local development —
+# starts only the database, and the CLI talks to DATABASE_URL directly. The
+# VPS sets `server`, and `server,ocr` to also run the OCR worker.
+#
+# Settings come from .env; see .env.example and DEPLOY.md.
+#
+# No service carries a restart policy, deliberately: the data volume is LUKS
+# and unlocked by hand (DEPLOY.md), so after an unattended reboot the bind
+# paths point at the unencrypted root disk. A restart policy would let
+# Postgres initdb a fresh cluster there and the archive write into it; with
+# none, the box comes back only the documented way — unlock, mount, then
+# `docker compose up -d`.
+services:
+  db:
+    image: paradedb/paradedb:latest
+    environment:
+      POSTGRES_USER: bank
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bank}
+      POSTGRES_DB: bank
+    ports:
+      # Loopback only. The server reaches Postgres over the compose network,
+      # so this is here for psql and pg_dump on the box itself.
+      - "127.0.0.1:5433:5432"
+    volumes:
+      # A bare name is a named volume; an absolute path (BANK_PG_DIR=/data/pgdata
+      # on the VPS) is a bind mount onto the encrypted volume.
+      # Postgres 18+ images want the mount at /var/lib/postgresql (not .../data)
+      - ${BANK_PG_DIR:-pgdata}:/var/lib/postgresql
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bank -d bank"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  bank:
+    profiles: ["server"]
+    build: .
+    image: aqt-bank:local
+    # Extraction parses decades of hostile attachments; a bug that slips the
+    # in-process limits must not take the box (and Postgres) down with it.
+    mem_limit: 2g
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://bank:${POSTGRES_PASSWORD:-bank}@db:5432/bank?sslmode=disable
+      BANK_DATA_DIR: /data
+      # Dates and WhatsApp export timestamps are read in local time; without
+      # this the container would read them as UTC and shift them.
+      TZ: ${TZ:-UTC}
+    volumes:
+      # Blobs, raw archives, the inbox and the token file. On the VPS this is
+      # the LUKS-encrypted mount.
+      - ${BANK_DATA_DIR:-./.bankdata}:/data
+    ports:
+      # Publish on the tailnet address, never 0.0.0.0: bank serve has no TLS
+      # and the tailnet is the transport security. Default is loopback so a
+      # mistyped .env cannot expose the archive.
+      - "${BANK_LISTEN:-127.0.0.1:8480}:8480"
+    user: "${BANK_UID:-65532}:${BANK_GID:-65532}"
+    # The process only ever writes under /data, so the image itself can be
+    # immutable.
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # No healthcheck: the image has no shell or HTTP client to run one with,
+    # which is the point of it. /healthz is there for an external prober.
+
+  # The OCR worker. It drains blob_text's needs_ocr queue on a timer and
+  # writes the text back — nothing calls it and it calls nothing, so the
+  # server needs no docker socket, no sidecar API and no knowledge that it
+  # exists. It cannot be on the import path: a forty-page scan is minutes, and
+  # an upload must not wait for it.
+  #
+  # Off unless COMPOSE_PROFILES names "ocr" (see .env.example). It is also
+  # usable as a one-off, which overrides the command below:
+  #
+  #   docker compose run --rm bank-ocr extract --ocr
+  #
+  # Built from the image that carries tesseract and poppler, so the process
+  # listening on a port keeps nothing but the static binary.
+  bank-ocr:
+    profiles: ["ocr"]
+    build:
+      context: .
+      target: ocr
+    image: aqt-bank-ocr:local
+    mem_limit: 2g
+    command: ["extract", "--ocr", "--lang", "${BANK_OCR_LANG:-eng}", "--watch", "--interval", "${BANK_OCR_INTERVAL:-30m}"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://bank:${POSTGRES_PASSWORD:-bank}@db:5432/bank?sslmode=disable
+      BANK_DATA_DIR: /data
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ${BANK_DATA_DIR:-./.bankdata}:/data
+    user: "${BANK_UID:-65532}:${BANK_GID:-65532}"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  pgdata:

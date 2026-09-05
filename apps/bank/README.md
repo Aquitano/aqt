@@ -1,0 +1,91 @@
+# aqt-bank
+
+Personal message archive: every message from every source in one Postgres, full-text searchable from a CLI by me and my agents. See [DESIGN.md](DESIGN.md) for architecture and roadmap.
+
+## Quickstart
+
+```sh
+docker compose up -d          # ParadeDB (Postgres + pg_search)
+go build -o bank ./cmd/bank
+
+./bank auth gmail             # once; then:
+./bank sync                   # incremental Gmail pull (cron this)
+
+./bank import whatsapp "WhatsApp Chat with Alice.zip"
+./bank import eml ~/proton-export/            # proton-mail-export output
+./bank import mbox takeout/All\ mail.mbox     # Gmail Takeout
+./bank import discord package.zip             # GDPR data package
+./bank import linkedin Complete_LinkedInDataExport.zip
+./bank import youtube takeout.zip               # YouTube watch history from Google
+                                                #  Takeout (zip, unpacked dir, or the
+                                                #  watch-history.json/.html itself)
+./bank import chatgpt chatgpt-export.zip        # ChatGPT data export (zip or unpacked
+                                                #  dir; uploaded/generated files come
+                                                #  along as attachments, and re-importing
+                                                #  heals an earlier text-only pass)
+./bank import claude claude-export.zip          # Claude.ai data export
+./bank import claude-code ~/.claude/projects    # Claude Code transcripts
+./bank import codex ~/.codex/sessions           # Codex CLI rollouts
+./bank import opencode ~/.local/share/opencode  # OpenCode session database
+./bank import antigravity ~/.gemini/antigravity-cli/brain  # Antigravity transcripts
+./bank import ai                                # all four from their default locations
+echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source notes -
+
+./bank import inbox                             # sweep $BANK_DATA_DIR/inbox/<kind>/
+
+./bank extract                                  # read text out of attachments
+./bank extract --ocr                            # scanned documents (needs tesseract)
+./bank attachment stats                         # how much is searchable inside
+
+./bank contact add alice                        # one person, many identities
+./bank contact alias add alice alice@example.com "whatsapp:Alice" discord:alice_x
+./bank contact messages alice                   # everything she sent or received
+./bank contact import contacts.json             # a whole contact book at once
+
+./bank search "that invoice" --from alice --since 2024-01-01
+./bank search "retainer"                        # matches text inside PDFs and Office files
+./bank search "the deck" --to bob               # by recipient
+./bank search "that invoice" --person alice     # every identity she uses
+./bank search "typo-tolerannt query" --json     # agents consume this
+./bank search "invoice" --limit 50 --offset 50  # the next page
+./bank show 42
+./bank show c5e63bfc3750                        # the stable ref a citation carries
+./bank thread "Alice" --source whatsapp         # the whole conversation
+./bank stats                                    # counts, freshness, coverage notes
+./bank coverage whatsapp "only the chats exported in 2025-08"
+./bank query --schema                           # tables and columns, before the first query
+./bank query "select source, count(*) from messages group by 1"
+                                                # read-only ad-hoc SQL: READ ONLY tx,
+                                                # 15s timeout, row cap — analytics only
+./bank verify --heal                            # check the archive, repair what the raw inputs allow
+./bank reimport chatgpt                         # replay archived exports through today's importer
+./bank reimport mbox --heal-bodies              # dry run: mail whose archived raw parses longer
+./bank reimport mbox --heal-bodies --apply      # write those bodies
+```
+
+## Remote use
+
+When Postgres lives on a VPS, run the server there in a container (`COMPOSE_PROFILES=server docker compose up -d`, published on a Tailscale address — there is no TLS) and set two env vars on the laptop. `search`, `show`, `stats`, `import` and `fetch` then go over HTTP, so rows, blobs and raw archives always land on the same box.
+
+```sh
+export BANK_URL=http://vps.tailnet.ts.net:8480
+# through the server's own image, so the digest lands in the file it reads
+export BANK_TOKEN=$(ssh vps 'cd /opt/aqt-bank && docker compose run --rm -T bank token new laptop')
+
+./bank import whatsapp "WhatsApp Chat with Alice.zip"   # uploaded to the VPS
+./bank fetch 9f86d081... -o photo.jpg                   # attachment bytes back
+```
+
+`bank ui` opens a local archive browser (search, thread-grouped browse, contacts, stats) at `127.0.0.1:8481`. It needs `BANK_URL`/`BANK_TOKEN` and attaches the token server-side, so it never reaches the browser. The page is a Vite + React + shadcn/ui app in `internal/webui/app`; its built `dist/` is committed and embedded, so `go build` needs no JS toolchain — after changing the app, rebuild with `bun run build` there.
+
+Agents on a client machine get the CLI handed to them by a Claude Code skill: [skill/README.md](skill/README.md).
+
+Deployment (VPS, LUKS, containerized server, restic, cron): [DEPLOY.md](DEPLOY.md).
+
+Attachments are searchable inside. Importing reads text out of PDFs, Office and OpenDocument files, HTML and plain text, keyed on the blob digest so a document attached to forty messages is read once.
+
+Scanned pages and images hold no text layer, so they are recorded as `needs_ocr` rather than guessed at. `bank extract --ocr` reads them wherever tesseract is installed: on the deployed box that is a worker draining the queue on a timer, turned on by adding `ocr` to `COMPOSE_PROFILES`. `bank attachment text <sha256> --set` takes a transcription from anywhere else, including a model running on the client, and marks it `manual` so no later pass overwrites it. `BANK_EXTRACT=off` or `bank import --no-extract` leaves attachment text alone entirely.
+
+Config via env (see `.env.example`): `DATABASE_URL`, `BANK_DATA_DIR` (blobs, raw archives, inbox; default `~/.local/share/aqt-bank`), `BANK_EXTRACT`.
+
+Schema migrations are embedded and run automatically on startup.
