@@ -11,16 +11,16 @@ const APPLE_EPOCH = 978307200; // Core Data timestamps are seconds since 2001-01
 // ZMESSAGETYPE values whose messages are media without a ZTEXT body. They get
 // a typed placeholder (plus the caption from ZWAMEDIAITEM.ZTITLE) so the
 // conversation keeps its shape; system events and unknown types stay skipped.
-const MEDIA_KIND: Record<number, string> = {
-  1: "photo",
-  2: "video",
-  3: "voice message",
-  4: "contact card",
-  5: "location",
-  8: "document",
-  11: "GIF",
-  15: "sticker",
-};
+const MEDIA_KIND = new Map<number, string>([
+  [1, "photo"],
+  [2, "video"],
+  [3, "voice message"],
+  [4, "contact card"],
+  [5, "location"],
+  [8, "document"],
+  [11, "GIF"],
+  [15, "sticker"],
+]);
 
 const db = new Database(process.argv[2], { readonly: true });
 
@@ -96,7 +96,7 @@ function memberName(jid: string) {
 }
 
 function mediaBody(r: { msg_type: number; media_title: string | null; vcard_name: string | null }) {
-  const kind = MEDIA_KIND[r.msg_type];
+  const kind = MEDIA_KIND.get(r.msg_type);
   if (!kind) return null;
   const label = r.msg_type === 4 && r.vcard_name ? `${kind}: ${r.vcard_name}` : kind;
   return r.media_title ? `[${label}] ${r.media_title}` : `[${label}]`;
