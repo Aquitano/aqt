@@ -14,7 +14,9 @@ package enum WidgetKind: String, CaseIterable, Identifiable, Codable {
         case info
     }
 
-    package var id: String { rawValue }
+    package var id: String {
+        rawValue
+    }
 
     package var row: Row {
         switch self {
@@ -61,7 +63,6 @@ package enum WidgetKind: String, CaseIterable, Identifiable, Codable {
         case .note: "note.text"
         }
     }
-
 
     /// Matches the pre-layout behavior: hardware tiles plus weather/calendar on,
     /// clock/shortcuts/note off.

@@ -5,5 +5,5 @@
 --wraparguments before-first
 --wrapcollections before-first
 --commas always
---disable redundantSelf
+--disable redundantSelf,preferKeyPath
 --exclude **/DerivedData,**/build,**/.build

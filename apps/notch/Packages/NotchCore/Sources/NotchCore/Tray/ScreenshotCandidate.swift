@@ -19,7 +19,15 @@ package struct ScreenshotFileDescriptor: Equatable, Sendable {
     package let hasScreenshotEvidence: Bool
     package let isReadable: Bool
 
-    package init(url: URL, resourceIdentifier: String? = nil, createdAt: Date? = nil, fileSize: Int? = nil, isImage: Bool, hasScreenshotEvidence: Bool, isReadable: Bool) {
+    package init(
+        url: URL,
+        resourceIdentifier: String? = nil,
+        createdAt: Date? = nil,
+        fileSize: Int? = nil,
+        isImage: Bool,
+        hasScreenshotEvidence: Bool,
+        isReadable: Bool
+    ) {
         self.url = url
         self.resourceIdentifier = resourceIdentifier
         self.createdAt = createdAt

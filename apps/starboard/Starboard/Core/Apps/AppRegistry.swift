@@ -41,7 +41,9 @@ final class AppRegistry {
         WindowEnumerator.invalidateCache()
         let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
         runningApps = apps.sorted { a, b in
-            if a.isActive != b.isActive { return a.isActive }
+            if a.isActive != b.isActive {
+                return a.isActive
+            }
             let ia = a.bundleIdentifier.flatMap { lastActivated[$0] }
             let ib = b.bundleIdentifier.flatMap { lastActivated[$0] }
             switch (ia, ib) {

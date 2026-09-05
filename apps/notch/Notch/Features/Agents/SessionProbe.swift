@@ -14,7 +14,6 @@ import NotchCore
 /// the session id, the pid and the transcript path, so none of that is needed —
 /// a session is exactly what a hook said it was, for as long as its process lives.
 struct SessionProbe: Sendable {
-
     let lookup: ProcessLookup
 
     nonisolated static let projectsRoot = FileManager.default.homeDirectoryForCurrentUser
@@ -101,8 +100,12 @@ struct SessionProbe: Sendable {
     /// Warp exports a per-tab focus deep link; it's the one terminal that hands
     /// out an addressable handle through the environment.
     private static func focusURL(_ env: [String: String]) -> String? {
-        if let url = env["WARP_FOCUS_URL"], !url.isEmpty { return url }
-        if let uuid = env["WARP_TERMINAL_SESSION_UUID"], !uuid.isEmpty { return "warp://session/\(uuid)" }
+        if let url = env["WARP_FOCUS_URL"], !url.isEmpty {
+            return url
+        }
+        if let uuid = env["WARP_TERMINAL_SESSION_UUID"], !uuid.isEmpty {
+            return "warp://session/\(uuid)"
+        }
         return nil
     }
 
@@ -118,15 +121,15 @@ struct SessionProbe: Sendable {
 
     private static func terminalName(_ termProgram: String?) -> String? {
         switch termProgram {
-        case "WarpTerminal": return "Warp"
-        case "iTerm.app": return "iTerm"
-        case "Apple_Terminal": return "Terminal"
-        case "vscode": return "VS Code"
-        case "ghostty", "xterm-ghostty": return "Ghostty"
-        case "WezTerm": return "WezTerm"
-        case "Hyper": return "Hyper"
-        case let other?: return other.isEmpty ? nil : other
-        case nil: return nil
+        case "WarpTerminal": "Warp"
+        case "iTerm.app": "iTerm"
+        case "Apple_Terminal": "Terminal"
+        case "vscode": "VS Code"
+        case "ghostty", "xterm-ghostty": "Ghostty"
+        case "WezTerm": "WezTerm"
+        case "Hyper": "Hyper"
+        case let other?: other.isEmpty ? nil : other
+        case nil: nil
         }
     }
 
@@ -141,7 +144,7 @@ struct SessionProbe: Sendable {
         guard var data = try? handle.readToEnd() else { return nil }
         // Drop the leading partial line when we seeked into the middle of one.
         if start > 0, let newline = data.firstIndex(of: 0x0A) {
-            data = data.subdata(in: data.index(after: newline)..<data.endIndex)
+            data = data.subdata(in: data.index(after: newline) ..< data.endIndex)
         }
         return data
     }

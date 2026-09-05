@@ -11,7 +11,6 @@ import SwiftUI
 @MainActor
 @Observable
 final class HUDManager {
-
     private(set) var isVisible = false
     private(set) var kind: HUDKind = .volume
     private(set) var value: Double = 0
@@ -44,7 +43,9 @@ final class HUDManager {
             // is safe and keeps the swallow decision synchronous.
             MainActor.assumeIsolated { self?.handle(key, fine: fine) ?? false }
         }
-        settingsObserver = watch({ [settings] in (settings.hud.enabled, settings.hud.replacesSystem) }) { [weak self] show, replace in
+        settingsObserver = watch({ [settings] in
+            (settings.hud.enabled, settings.hud.replacesSystem) })
+        { [weak self] show, replace in
             self?.configure(show: show, replace: replace)
         }
     }
@@ -94,7 +95,8 @@ final class HUDManager {
         switch key {
         case .volumeUp, .volumeDown:
             if replacingSystemHUD,
-               let result = audio.applyVolumeStep(key == .volumeUp ? step : -step) {
+               let result = audio.applyVolumeStep(key == .volumeUp ? step : -step)
+            {
                 present(volume: Double(result.volume), muted: result.muted)
                 return true
             }
@@ -111,7 +113,8 @@ final class HUDManager {
 
         case .brightnessUp, .brightnessDown:
             if replacingSystemHUD,
-               let level = brightness.applyStep(key == .brightnessUp ? step : -step) {
+               let level = brightness.applyStep(key == .brightnessUp ? step : -step)
+            {
                 kind = .brightness
                 value = Double(level)
                 show()

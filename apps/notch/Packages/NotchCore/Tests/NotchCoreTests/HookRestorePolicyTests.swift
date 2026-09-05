@@ -1,14 +1,15 @@
 import Foundation
-import Testing
 @testable import NotchCore
+import Testing
 
 /// The throttle that decides whether a hook removal is repaired now. Table-driven
 /// over the two rules: one repair per minute, and a hard stop after three in an hour.
 struct HookRestorePolicyTests {
-
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    private func ago(_ seconds: TimeInterval) -> Date { now.addingTimeInterval(-seconds) }
+    private func ago(_ seconds: TimeInterval) -> Date {
+        now.addingTimeInterval(-seconds)
+    }
 
     @Test func decision() {
         let cases: [(name: String, restores: [Date], expected: HookRestorePolicy.Decision)] = [
@@ -16,12 +17,21 @@ struct HookRestorePolicyTests {
             ("within a minute of the last repair holds off", [ago(30)], .holdOff),
             ("a minute after the last repair restores again", [ago(60)], .restore),
             ("two recent repairs still leave one allowance", [ago(3000), ago(120)], .restore),
-            ("three within the hour stops auto-restoring",
-             [ago(3000), ago(1200), ago(120)], .stopAutoRestoring),
-            ("repairs that aged out of the window don't count",
-             [ago(7200), ago(5400), ago(3601)], .restore),
-            ("the newest timestamp gates the interval, not the oldest",
-             [ago(3000), ago(10)], .holdOff),
+            (
+                "three within the hour stops auto-restoring",
+                [ago(3000), ago(1200), ago(120)],
+                .stopAutoRestoring
+            ),
+            (
+                "repairs that aged out of the window don't count",
+                [ago(7200), ago(5400), ago(3601)],
+                .restore
+            ),
+            (
+                "the newest timestamp gates the interval, not the oldest",
+                [ago(3000), ago(10)],
+                .holdOff
+            ),
         ]
 
         for (name, restores, expected) in cases {

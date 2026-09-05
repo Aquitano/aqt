@@ -8,15 +8,16 @@ package enum TabBarStyle: String, CaseIterable, Identifiable, Codable {
     /// Icons straight on the black band flanking the physical cutout.
     case shoulders
 
-    package var id: String { rawValue }
+    package var id: String {
+        rawValue
+    }
 
     /// Name shown in Settings.
     package var title: String {
         switch self {
-        case .floating: return "Floating below the notch"
-        case .inside: return "Inside the panel"
-        case .shoulders: return "On the notch shoulders"
+        case .floating: "Floating below the notch"
+        case .inside: "Inside the panel"
+        case .shoulders: "On the notch shoulders"
         }
     }
 }
-

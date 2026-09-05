@@ -1,5 +1,5 @@
-import Testing
 import NotchCore
+import Testing
 
 @MainActor
 struct NotchCoordinatorTests {

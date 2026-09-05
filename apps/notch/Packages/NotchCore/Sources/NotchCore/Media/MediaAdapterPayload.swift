@@ -31,7 +31,8 @@ package struct MediaAdapterPayload: Decodable {
         if playing,
            let timestampEpochMicros,
            let playbackRate,
-           playbackRate > 0 {
+           playbackRate > 0
+        {
             let timestamp = timestampEpochMicros / 1_000_000
             elapsed += max(0, date.timeIntervalSince1970 - timestamp) * playbackRate
         }

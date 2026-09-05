@@ -6,13 +6,22 @@ package struct NowPlayingTrack: Equatable {
     package var title: String
     package var artist: String
     package var album: String
-    package var duration: TimeInterval        // seconds; 0 if unknown
-    package var elapsed: TimeInterval         // seconds at `timestamp`
+    package var duration: TimeInterval // seconds; 0 if unknown
+    package var elapsed: TimeInterval // seconds at `timestamp`
     package var isPlaying: Bool
-    package var bundleIdentifier: String?     // the source app, when known
+    package var bundleIdentifier: String? // the source app, when known
     package var appName: String?
 
-    package init(title: String, artist: String, album: String, duration: TimeInterval, elapsed: TimeInterval, isPlaying: Bool, bundleIdentifier: String? = nil, appName: String? = nil) {
+    package init(
+        title: String,
+        artist: String,
+        album: String,
+        duration: TimeInterval,
+        elapsed: TimeInterval,
+        isPlaying: Bool,
+        bundleIdentifier: String? = nil,
+        appName: String? = nil
+    ) {
         self.title = title
         self.artist = artist
         self.album = album
@@ -24,7 +33,9 @@ package struct NowPlayingTrack: Equatable {
     }
 
     /// Stable identity for the track so we only redecode artwork on real changes.
-    package var identity: String { "\(title)\u{1F}\(artist)\u{1F}\(album)" }
+    package var identity: String {
+        "\(title)\u{1F}\(artist)\u{1F}\(album)"
+    }
 
     package static let empty = NowPlayingTrack(
         title: "", artist: "", album: "",
@@ -32,7 +43,9 @@ package struct NowPlayingTrack: Equatable {
         bundleIdentifier: nil, appName: nil
     )
 
-    package var isEmpty: Bool { title.isEmpty && artist.isEmpty }
+    package var isEmpty: Bool {
+        title.isEmpty && artist.isEmpty
+    }
 
     /// Interpolated playback position given a wall-clock reference.
     package func position(asOf reference: Date, lastUpdate: Date) -> TimeInterval {
@@ -59,12 +72,15 @@ package enum MediaCommand: Equatable {
 
 package struct MediaCapabilities: OptionSet {
     package let rawValue: Int
-    package init(rawValue: Int) { self.rawValue = rawValue }
-    package static let transport = MediaCapabilities(rawValue: 1 << 0)   // play/pause/next/prev
-    package static let seek      = MediaCapabilities(rawValue: 1 << 1)
-    package static let shuffle   = MediaCapabilities(rawValue: 1 << 2)
+    package init(rawValue: Int) {
+        self.rawValue = rawValue
+    }
+
+    package static let transport = MediaCapabilities(rawValue: 1 << 0) // play/pause/next/prev
+    package static let seek = MediaCapabilities(rawValue: 1 << 1)
+    package static let shuffle = MediaCapabilities(rawValue: 1 << 2)
     package static let repeatMode = MediaCapabilities(rawValue: 1 << 3)
-    package static let artwork   = MediaCapabilities(rawValue: 1 << 4)
+    package static let artwork = MediaCapabilities(rawValue: 1 << 4)
 
     package static let full: MediaCapabilities = [.transport, .seek, .shuffle, .repeatMode, .artwork]
 }

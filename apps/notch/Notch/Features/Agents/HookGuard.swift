@@ -10,7 +10,6 @@ import NotchCore
 /// Repairs are throttled by `HookRestorePolicy` — see there for the rules.
 @MainActor
 final class HookGuard {
-
     private let installer = AgentConfigInstaller()
     private unowned let notifier: AgentNotifier
 

@@ -15,7 +15,9 @@ final class PermissionWatcher: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(500))
                 guard let self else { return }
                 let now = Permissions.hasAccessibility
-                if now != self.granted { self.granted = now }
+                if now != self.granted {
+                    self.granted = now
+                }
             }
         }
     }

@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import NotchCore
+import Testing
 
 struct PreferencesTests {
     @Test func partialDocumentKeepsDefaultsForMissingKeys() throws {
@@ -16,8 +16,8 @@ struct PreferencesTests {
         #expect(decoded.tray.ttlDays == 7)
     }
 
-    @Test func legacyDefaultsImportMapsEveryGroup() {
-        let defaults = UserDefaults(suiteName: "PreferencesTests.\(UUID().uuidString)")!
+    @Test func legacyDefaultsImportMapsEveryGroup() throws {
+        let defaults = try #require(UserDefaults(suiteName: "PreferencesTests.\(UUID().uuidString)"))
         defaults.set(false, forKey: "showHUD")
         defaults.set("inside", forKey: "tabBarStyle")
         defaults.set(["battery", "note"], forKey: "widgetLayout")

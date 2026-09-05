@@ -9,13 +9,15 @@ package enum DisplayPlacement: String, Codable, CaseIterable, Identifiable, Send
     case main
     case all
 
-    package var id: String { rawValue }
+    package var id: String {
+        rawValue
+    }
 
     package var title: String {
         switch self {
-        case .builtIn: return "Built-in Display"
-        case .main: return "Main Display"
-        case .all: return "All Displays"
+        case .builtIn: "Built-in Display"
+        case .main: "Main Display"
+        case .all: "All Displays"
         }
     }
 }
@@ -27,21 +29,23 @@ package enum VirtualNotchMode: String, Codable, CaseIterable, Identifiable, Send
     case always
     case never
 
-    package var id: String { rawValue }
+    package var id: String {
+        rawValue
+    }
 
     package var title: String {
         switch self {
-        case .automatic: return "Automatic"
-        case .always: return "Always"
-        case .never: return "Never"
+        case .automatic: "Automatic"
+        case .always: "Always"
+        case .never: "Never"
         }
     }
 
     package func usesVirtualChrome(for display: DisplayDescriptor) -> Bool {
         switch self {
-        case .automatic: return !display.hasPhysicalNotch
-        case .always: return true
-        case .never: return false
+        case .automatic: !display.hasPhysicalNotch
+        case .always: true
+        case .never: false
         }
     }
 }
@@ -61,7 +65,9 @@ package struct DisplayProfile: Codable, Equatable, Sendable, Identifiable {
     package var widgetLayout: [String]?
     package var defaultTab: String?
 
-    package var id: String { displayKey }
+    package var id: String {
+        displayKey
+    }
 
     package static func standard(for displayKey: String) -> DisplayProfile {
         DisplayProfile(displayKey: displayKey)
@@ -69,17 +75,17 @@ package struct DisplayProfile: Codable, Equatable, Sendable, Identifiable {
 
     package var normalized: DisplayProfile {
         var copy = self
-        copy.compactWidthAdjustment = compactWidthAdjustment.clamped(to: -40...160)
-        copy.compactHeightAdjustment = compactHeightAdjustment.clamped(to: -6...20)
-        copy.horizontalOffset = horizontalOffset.clamped(to: -240...240)
-        copy.verticalOffset = verticalOffset.clamped(to: 0...80)
-        copy.expandedWidthAdjustment = expandedWidthAdjustment.clamped(to: -80...180)
+        copy.compactWidthAdjustment = compactWidthAdjustment.clamped(to: -40 ... 160)
+        copy.compactHeightAdjustment = compactHeightAdjustment.clamped(to: -6 ... 20)
+        copy.horizontalOffset = horizontalOffset.clamped(to: -240 ... 240)
+        copy.verticalOffset = verticalOffset.clamped(to: 0 ... 80)
+        copy.expandedWidthAdjustment = expandedWidthAdjustment.clamped(to: -80 ... 180)
         return copy
     }
 }
 
-extension Double {
-    package func clamped(to range: ClosedRange<Double>) -> Double {
+package extension Double {
+    func clamped(to range: ClosedRange<Double>) -> Double {
         min(max(self, range.lowerBound), range.upperBound)
     }
 }
@@ -97,8 +103,17 @@ package struct DisplayDescriptor: Equatable, Sendable {
     package let isBuiltIn: Bool
     package let isMain: Bool
 
-    package init(key: String, displayID: UInt32, name: String, frame: CGRect, safeAreaTop: CGFloat,
-                 auxiliaryLeftWidth: CGFloat?, auxiliaryRightWidth: CGFloat?, isBuiltIn: Bool, isMain: Bool) {
+    package init(
+        key: String,
+        displayID: UInt32,
+        name: String,
+        frame: CGRect,
+        safeAreaTop: CGFloat,
+        auxiliaryLeftWidth: CGFloat?,
+        auxiliaryRightWidth: CGFloat?,
+        isBuiltIn: Bool,
+        isMain: Bool
+    ) {
         self.key = key
         self.displayID = displayID
         self.name = name
@@ -110,7 +125,9 @@ package struct DisplayDescriptor: Equatable, Sendable {
         self.isMain = isMain
     }
 
-    package var hasPhysicalNotch: Bool { safeAreaTop > 0 }
+    package var hasPhysicalNotch: Bool {
+        safeAreaTop > 0
+    }
 
     /// Public CoreGraphics exposes vendor/model/serial but not a persistent
     /// display UUID. Serial is stable across reconnects when the monitor reports
@@ -169,7 +186,8 @@ package enum DisplaySelectionPolicy {
         let ordered = displays.sorted(by: displayOrder)
         if followActiveDisplay, placement != .all {
             if let activeDisplayKey,
-               let active = ordered.first(where: { $0.key == activeDisplayKey }) {
+               let active = ordered.first(where: { $0.key == activeDisplayKey })
+            {
                 return DisplaySelection(targets: [active], reason: .activeDisplay)
             }
             let fallback = resolve(displays: displays, placement: placement)
@@ -200,10 +218,18 @@ package enum DisplaySelectionPolicy {
     }
 
     private static func displayOrder(_ lhs: DisplayDescriptor, _ rhs: DisplayDescriptor) -> Bool {
-        if lhs.isMain != rhs.isMain { return lhs.isMain }
-        if lhs.isBuiltIn != rhs.isBuiltIn { return lhs.isBuiltIn }
-        if lhs.frame.minX != rhs.frame.minX { return lhs.frame.minX < rhs.frame.minX }
-        if lhs.frame.minY != rhs.frame.minY { return lhs.frame.minY > rhs.frame.minY }
+        if lhs.isMain != rhs.isMain {
+            return lhs.isMain
+        }
+        if lhs.isBuiltIn != rhs.isBuiltIn {
+            return lhs.isBuiltIn
+        }
+        if lhs.frame.minX != rhs.frame.minX {
+            return lhs.frame.minX < rhs.frame.minX
+        }
+        if lhs.frame.minY != rhs.frame.minY {
+            return lhs.frame.minY > rhs.frame.minY
+        }
         return lhs.key < rhs.key
     }
 }
@@ -216,8 +242,12 @@ package enum DisplayHostPolicy {
         current: String?,
         active: String?
     ) -> String? {
-        if let current, availableKeys.contains(current) { return current }
-        if let active, availableKeys.contains(active) { return active }
+        if let current, availableKeys.contains(current) {
+            return current
+        }
+        if let active, availableKeys.contains(active) {
+            return active
+        }
         return availableKeys.sorted().first
     }
 
@@ -226,8 +256,12 @@ package enum DisplayHostPolicy {
         active: String?,
         interaction: String?
     ) -> String? {
-        if let active, availableKeys.contains(active) { return active }
-        if let interaction, availableKeys.contains(interaction) { return interaction }
+        if let active, availableKeys.contains(active) {
+            return active
+        }
+        if let interaction, availableKeys.contains(interaction) {
+            return interaction
+        }
         return availableKeys.sorted().first
     }
 }
@@ -249,8 +283,12 @@ package enum DisplayHostMigrationPolicy {
         wasHovering: Bool,
         hasTransientInteraction: Bool
     ) -> DisplayHostMigrationInstruction {
-        if targetStillAvailable { return .keepPresentation }
-        if hasTransientInteraction { return .endTransientInteractionAndCollapse }
+        if targetStillAvailable {
+            return .keepPresentation
+        }
+        if hasTransientInteraction {
+            return .endTransientInteractionAndCollapse
+        }
         guard wasExpanded else { return .keepPresentation }
         return wasHovering ? .collapse : .restoreProgrammaticExpansion
     }

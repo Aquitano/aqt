@@ -9,37 +9,39 @@ package enum AgentKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case ohMyPi
     case t3code
 
-    package var id: String { rawValue }
+    package var id: String {
+        rawValue
+    }
 
     /// Lowercase tag used in the compact pill ("claude · editing").
     package var shortName: String {
         switch self {
-        case .claudeCode: return "claude"
-        case .codex: return "codex"
-        case .openCode: return "opencode"
-        case .ohMyPi: return "omp"
-        case .t3code: return "t3"
+        case .claudeCode: "claude"
+        case .codex: "codex"
+        case .openCode: "opencode"
+        case .ohMyPi: "omp"
+        case .t3code: "t3"
         }
     }
 
     package var displayName: String {
         switch self {
-        case .claudeCode: return "Claude Code"
-        case .codex: return "Codex"
-        case .openCode: return "OpenCode"
-        case .ohMyPi: return "oh-my-pi"
-        case .t3code: return "T3 Code"
+        case .claudeCode: "Claude Code"
+        case .codex: "Codex"
+        case .openCode: "OpenCode"
+        case .ohMyPi: "oh-my-pi"
+        case .t3code: "T3 Code"
         }
     }
 
     /// Semantic icon key resolved by the app-wide pixel glyph renderer.
     package var symbol: String {
         switch self {
-        case .claudeCode: return "sparkles"
-        case .codex: return "chevron.left.forwardslash.chevron.right"
-        case .openCode: return "curlybraces"
-        case .ohMyPi: return "fossil.shell.fill"
-        case .t3code: return "square.grid.2x2"
+        case .claudeCode: "sparkles"
+        case .codex: "chevron.left.forwardslash.chevron.right"
+        case .openCode: "curlybraces"
+        case .ohMyPi: "fossil.shell.fill"
+        case .t3code: "square.grid.2x2"
         }
     }
 }
@@ -56,29 +58,29 @@ package enum AgentFeatures {
 /// states; `idle` is alive-but-waiting; `needsAttention` and `finished` are the
 /// two notify-worthy transitions.
 package enum AgentStatus: String, Codable, Sendable {
-    case running         // generating / thinking
-    case editing         // applying a file edit (Edit/Write/MultiEdit)
-    case tool            // running a non-edit tool (Bash, etc.)
-    case idle            // alive, waiting for the next prompt
-    case needsAttention  // permission prompt / waiting on the user
-    case finished        // turn just completed (transient, then idle)
+    case running // generating / thinking
+    case editing // applying a file edit (Edit/Write/MultiEdit)
+    case tool // running a non-edit tool (Bash, etc.)
+    case idle // alive, waiting for the next prompt
+    case needsAttention // permission prompt / waiting on the user
+    case finished // turn just completed (transient, then idle)
 
     /// A busy state actively does work; the pill shows these with motion priority.
     package var isBusy: Bool {
         switch self {
-        case .running, .editing, .tool: return true
-        case .idle, .needsAttention, .finished: return false
+        case .running, .editing, .tool: true
+        case .idle, .needsAttention, .finished: false
         }
     }
 
     package var label: String {
         switch self {
-        case .running: return "running"
-        case .editing: return "editing"
-        case .tool: return "tool"
-        case .idle: return "idle"
-        case .needsAttention: return "needs you"
-        case .finished: return "done"
+        case .running: "running"
+        case .editing: "editing"
+        case .tool: "tool"
+        case .idle: "idle"
+        case .needsAttention: "needs you"
+        case .finished: "done"
         }
     }
 }
@@ -112,7 +114,8 @@ package struct T3ThreadRef: Codable, Equatable, Sendable {
     /// exact thread should start working once they ship their handler.
     package var deepLink: URL? {
         guard let environment = environmentID.addingPercentEncoding(withAllowedCharacters: Self.pathSegment),
-              let thread = threadID.addingPercentEncoding(withAllowedCharacters: Self.pathSegment) else {
+              let thread = threadID.addingPercentEncoding(withAllowedCharacters: Self.pathSegment)
+        else {
             return nil
         }
         return URL(string: "t3code://threads/\(environment)/\(thread)")
@@ -166,7 +169,29 @@ package struct AgentSession: Identifiable, Equatable, Sendable {
     /// blocked on our reply); non-nil enables the Approve/Deny row actions.
     package var permissionRequestId: String?
 
-    package init(id: String, kind: AgentKind, project: String, cwd: String? = nil, status: AgentStatus, startedAt: Date, lastActivity: Date, pid: pid_t? = nil, gitBranch: String? = nil, detail: String? = nil, terminalFocusURL: String? = nil, lastPrompt: String? = nil, lastResponse: String? = nil, terminalName: String? = nil, herdrPaneID: String? = nil, t3Thread: T3ThreadRef? = nil, terminalBundleID: String? = nil, isDetached: Bool = false, activityVerb: String? = nil, parentSessionID: String? = nil, permissionRequestId: String? = nil) {
+    package init(
+        id: String,
+        kind: AgentKind,
+        project: String,
+        cwd: String? = nil,
+        status: AgentStatus,
+        startedAt: Date,
+        lastActivity: Date,
+        pid: pid_t? = nil,
+        gitBranch: String? = nil,
+        detail: String? = nil,
+        terminalFocusURL: String? = nil,
+        lastPrompt: String? = nil,
+        lastResponse: String? = nil,
+        terminalName: String? = nil,
+        herdrPaneID: String? = nil,
+        t3Thread: T3ThreadRef? = nil,
+        terminalBundleID: String? = nil,
+        isDetached: Bool = false,
+        activityVerb: String? = nil,
+        parentSessionID: String? = nil,
+        permissionRequestId: String? = nil
+    ) {
         self.id = id
         self.kind = kind
         self.project = project
@@ -200,16 +225,16 @@ package let agentEditTools: Set<String> = ["Edit", "Write", "MultiEdit", "Notebo
 /// Human-readable verb for a tool name — the row's "what it's doing now".
 package func agentToolVerb(_ tool: String) -> String {
     switch tool.lowercased() {
-    case "bash", "shell": return "Running"
-    case "read", "notebookread", "cat", "view": return "Reading"
+    case "bash", "shell": "Running"
+    case "read", "notebookread", "cat", "view": "Reading"
     case "edit", "write", "multiedit", "notebookedit", "apply_patch", "str_replace_editor", "update":
-        return "Editing"
-    case "grep", "glob", "search", "codebase_search", "ripgrep", "ls": return "Searching"
-    case "webfetch", "websearch", "fetch", "browser": return "Browsing"
-    case "task", "agent": return "Delegating"
-    case "todowrite", "todoread": return "Planning"
+        "Editing"
+    case "grep", "glob", "search", "codebase_search", "ripgrep", "ls": "Searching"
+    case "webfetch", "websearch", "fetch", "browser": "Browsing"
+    case "task", "agent": "Delegating"
+    case "todowrite", "todoread": "Planning"
     default:
-        return tool.isEmpty ? "Working" : tool.prefix(1).uppercased() + tool.dropFirst()
+        tool.isEmpty ? "Working" : tool.prefix(1).uppercased() + tool.dropFirst()
     }
 }
 
@@ -250,8 +275,8 @@ package struct AgentEvent: Sendable {
 /// clients (which never load the UI) build this; `AgentSocketServer` decodes it.
 /// Fields are normalized by the client so the server stays agent-agnostic.
 package struct HookEnvelope: Codable, Sendable {
-    package var agent: String            // AgentKind.rawValue
-    package var hook: String             // event name ("Notification", "Stop", "agent-turn-complete", ...)
+    package var agent: String // AgentKind.rawValue
+    package var hook: String // event name ("Notification", "Stop", "agent-turn-complete", ...)
     package var sessionId: String?
     package var cwd: String?
     package var transcriptPath: String?
@@ -286,14 +311,29 @@ package struct HookEnvelope: Codable, Sendable {
     package var fiveHourResetsAt: Double?
     package var sevenDayResetsAt: Double?
 
-    package init(agent: String, hook: String, sessionId: String? = nil, cwd: String? = nil,
-                 transcriptPath: String? = nil, message: String? = nil, pid: Int32? = nil,
-                 status: String? = nil, tool: String? = nil, notificationType: String? = nil,
-                 prompt: String? = nil, response: String? = nil, model: String? = nil,
-                 project: String? = nil, parent: String? = nil, requestId: String? = nil,
-                 permission: AgentPermissionRequest? = nil, fiveHourUsed: Double? = nil,
-                 sevenDayUsed: Double? = nil, fiveHourResetsAt: Double? = nil,
-                 sevenDayResetsAt: Double? = nil) {
+    package init(
+        agent: String,
+        hook: String,
+        sessionId: String? = nil,
+        cwd: String? = nil,
+        transcriptPath: String? = nil,
+        message: String? = nil,
+        pid: Int32? = nil,
+        status: String? = nil,
+        tool: String? = nil,
+        notificationType: String? = nil,
+        prompt: String? = nil,
+        response: String? = nil,
+        model: String? = nil,
+        project: String? = nil,
+        parent: String? = nil,
+        requestId: String? = nil,
+        permission: AgentPermissionRequest? = nil,
+        fiveHourUsed: Double? = nil,
+        sevenDayUsed: Double? = nil,
+        fiveHourResetsAt: Double? = nil,
+        sevenDayResetsAt: Double? = nil
+    ) {
         self.agent = agent
         self.hook = hook
         self.sessionId = sessionId
@@ -325,7 +365,12 @@ package struct AgentUsage: Equatable, Sendable {
     package var fiveHourResetsAt: Date?
     package var sevenDayResetsAt: Date?
 
-    package init(fiveHourUsedPercent: Double, sevenDayUsedPercent: Double, fiveHourResetsAt: Date? = nil, sevenDayResetsAt: Date? = nil) {
+    package init(
+        fiveHourUsedPercent: Double,
+        sevenDayUsedPercent: Double,
+        fiveHourResetsAt: Date? = nil,
+        sevenDayResetsAt: Date? = nil
+    ) {
         self.fiveHourUsedPercent = fiveHourUsedPercent
         self.sevenDayUsedPercent = sevenDayUsedPercent
         self.fiveHourResetsAt = fiveHourResetsAt

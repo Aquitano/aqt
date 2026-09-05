@@ -3,11 +3,11 @@ import Foundation
 import Testing
 
 struct AudioLevelAnalysisTests {
-    private let sampleRate = 48_000.0
+    private let sampleRate = 48000.0
 
     @Test func silenceSettlesAtZero() {
         var analyzer = AudioBandAnalyzer()
-        let levels = analyzer.process(Array(repeating: 0, count: 4_800), sampleRate: sampleRate)
+        let levels = analyzer.process(Array(repeating: 0, count: 4800), sampleRate: sampleRate)
         #expect(levels == .zero)
     }
 
@@ -18,13 +18,13 @@ struct AudioLevelAnalysisTests {
     }
 
     @Test func midToneDominatesMidBand() {
-        let levels = analyzeTone(frequency: 1_000)
+        let levels = analyzeTone(frequency: 1000)
         #expect(levels.mid > levels.low)
         #expect(levels.mid > levels.high)
     }
 
     @Test func trebleToneDominatesHighBand() {
-        let levels = analyzeTone(frequency: 6_000)
+        let levels = analyzeTone(frequency: 6000)
         #expect(levels.high > levels.low)
         #expect(levels.high > levels.mid)
     }
@@ -35,7 +35,7 @@ struct AudioLevelAnalysisTests {
         let levels = analyzer.process(malformed, sampleRate: sampleRate)
         for level in levels.values {
             #expect(level.isFinite)
-            #expect((0...1).contains(level))
+            #expect((0 ... 1).contains(level))
         }
     }
 
@@ -54,7 +54,7 @@ struct AudioLevelAnalysisTests {
     }
 
     private func analyzeTone(frequency: Double) -> AudioLevels {
-        let samples = (0..<4_800).map { index in
+        let samples = (0 ..< 4800).map { index in
             Float(sin(2 * Double.pi * frequency * Double(index) / sampleRate) * 0.5)
         }
         var analyzer = AudioBandAnalyzer()

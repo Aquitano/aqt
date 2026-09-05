@@ -1,18 +1,17 @@
 import Foundation
-import NotchCore
 import IOKit.ps
+import NotchCore
 
 /// Battery + power state from IOKit, updated by a run-loop source (no polling).
 /// Emits charging / low-battery / low-power activities on state transitions.
 @MainActor
 @Observable
 final class BatteryManager {
-
     private(set) var percent: Int = 100
     private(set) var isCharging = false
     private(set) var isPluggedIn = false
     private(set) var isFullyCharged = false
-    private(set) var timeToEmpty: Int?     // minutes, nil if calculating
+    private(set) var timeToEmpty: Int? // minutes, nil if calculating
     private(set) var lowPowerMode = false
     /// False on a desktop Mac (or when only a UPS is attached), so the tile can hide
     /// instead of showing a fake permanent 100%.

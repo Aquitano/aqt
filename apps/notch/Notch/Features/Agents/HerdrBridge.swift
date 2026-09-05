@@ -10,7 +10,6 @@ import NotchCore
 /// Everything here shells out to the `herdr` CLI, which answers with JSON on
 /// stdout, and degrades to nil/false/empty when herdr is absent or not running.
 enum HerdrBridge {
-
     /// Injected into every managed pane, so their presence marks a hosted agent.
     /// The pane id is also the target `agent focus` takes.
     static let paneIDKey = "HERDR_PANE_ID"
@@ -129,7 +128,9 @@ enum HerdrBridge {
         func value(ttl: TimeInterval, fetch: () -> Value) -> Value {
             lock.lock()
             defer { lock.unlock() }
-            if let cached, Date().timeIntervalSince(fetchedAt) < ttl { return cached }
+            if let cached, Date().timeIntervalSince(fetchedAt) < ttl {
+                return cached
+            }
             let fresh = fetch()
             cached = fresh
             fetchedAt = Date()

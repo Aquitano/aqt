@@ -1,15 +1,14 @@
 import Foundation
-import Testing
 @testable import NotchCore
+import Testing
 
 /// `SessionReconciler` is pure, so the grace-window / carry-forward / event rules
 /// are exercised here without the provider's actor, timers, or sockets.
 struct SessionReconcilerTests {
-
-    private let t0 = Date(timeIntervalSince1970: 1_000)
+    private let t0 = Date(timeIntervalSince1970: 1000)
     /// Inside `StatusReducer.busyEvidenceTimeout` of `t0`, so these fixtures
     /// exercise the reconciler's own rules rather than the staleness backstop.
-    private let later = Date(timeIntervalSince1970: 1_300)
+    private let later = Date(timeIntervalSince1970: 1300)
 
     private func scanned(
         _ id: String, cwd: String = "/Users/x/proj", busy: AgentStatus = .idle,
@@ -127,16 +126,30 @@ struct SessionReconcilerTests {
     }
 
     @Test func disappearedSessionEmitsEnded() {
-        let prior = AgentSession(id: "s1", kind: .claudeCode, project: "proj", cwd: "/x",
-                                 status: .running, startedAt: t0, lastActivity: t0)
+        let prior = AgentSession(
+            id: "s1",
+            kind: .claudeCode,
+            project: "proj",
+            cwd: "/x",
+            status: .running,
+            startedAt: t0,
+            lastActivity: t0
+        )
         let out = run { $0.previous = ["s1": prior] }
         #expect(out.events.map(\.kind) == [.ended])
         #expect(out.sessions["s1"] == nil)
     }
 
     @Test func transitionToFinishedEmitsFinished() {
-        let prior = AgentSession(id: "s1", kind: .claudeCode, project: "proj", cwd: "/Users/x/proj",
-                                 status: .running, startedAt: t0, lastActivity: t0)
+        let prior = AgentSession(
+            id: "s1",
+            kind: .claudeCode,
+            project: "proj",
+            cwd: "/Users/x/proj",
+            status: .running,
+            startedAt: t0,
+            lastActivity: t0
+        )
         let out = run {
             $0.scan = [scanned("s1", at: t0)]
             $0.hookState = ["s1": hook("Stop", at: later)]
@@ -228,8 +241,15 @@ struct SessionReconcilerTests {
     }
 
     @Test func startedAtCarriesForwardFromPrevious() {
-        let prior = AgentSession(id: "s1", kind: .claudeCode, project: "proj", cwd: "/Users/x/proj",
-                                 status: .running, startedAt: t0, lastActivity: t0)
+        let prior = AgentSession(
+            id: "s1",
+            kind: .claudeCode,
+            project: "proj",
+            cwd: "/Users/x/proj",
+            status: .running,
+            startedAt: t0,
+            lastActivity: t0
+        )
         let out = run {
             $0.scan = [scanned("s1", at: later)] // newer mtime, but startedAt should stick to t0
             $0.previous = ["s1": prior]

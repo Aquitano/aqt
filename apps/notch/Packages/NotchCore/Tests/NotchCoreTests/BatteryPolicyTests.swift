@@ -1,12 +1,11 @@
 import Foundation
-import Testing
 @testable import NotchCore
+import Testing
 
 /// `BatteryPolicy.decide` is a pure function of `(snapshot, previous)`, so the
 /// plug-in edge, the low-battery hysteresis, the Low Power Mode edge, and each
 /// activity's TTL are table-tested here without a real battery or charger.
 struct BatteryPolicyTests {
-
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
     private func snapshot(
@@ -85,8 +84,8 @@ struct BatteryPolicyTests {
 
     @Test func reArmedLowBatteryFiresAgainOnNextDip() {
         var state = BatteryPolicy.State(lowBatteryNotified: true)
-        state = decide(snapshot(percent: 30), state).state          // re-arm above 25
-        let out = decide(snapshot(percent: 18), state)              // dip again
+        state = decide(snapshot(percent: 30), state).state // re-arm above 25
+        let out = decide(snapshot(percent: 18), state) // dip again
         #expect(out.activities.map(\.kind) == [.lowBattery(percent: 18)])
     }
 

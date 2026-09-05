@@ -1,6 +1,6 @@
 import AppKit
-import NotchCore
 import CoreGraphics
+import NotchCore
 
 /// Converts the current AppKit display topology into stable, value-only
 /// descriptors. Recreate on every screen-parameter notification; never retain

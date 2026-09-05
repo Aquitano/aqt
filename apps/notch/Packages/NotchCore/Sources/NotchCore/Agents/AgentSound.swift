@@ -10,13 +10,19 @@ package enum AgentSound: String, CaseIterable {
     case coin = "Coin"
     case blip = "Blip"
 
-    package static var availableNames: [String] { allCases.map(\.rawValue) }
+    package static var availableNames: [String] {
+        allCases.map(\.rawValue)
+    }
 
     /// Convert settings from the previous macOS-system-sound picker into the new
     /// palette. Unknown non-empty values still produce a useful retro blip.
     package static func resolve(_ name: String) -> AgentSound? {
-        if name.isEmpty { return nil }
-        if let sound = AgentSound(rawValue: name) { return sound }
+        if name.isEmpty {
+            return nil
+        }
+        if let sound = AgentSound(rawValue: name) {
+            return sound
+        }
         switch name {
         case "Ping", "Basso", "Sosumi", "Submarine": return .alert
         case "Glass", "Hero", "Tink": return .complete

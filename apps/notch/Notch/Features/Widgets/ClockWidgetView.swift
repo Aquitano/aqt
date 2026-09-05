@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// Wall-clock tile, optionally with a second time zone. The scoped
 /// `TimelineView(.everyMinute)` only ticks while the expanded surface is
@@ -11,8 +11,11 @@ struct ClockWidgetView: View {
     var body: some View {
         TimelineView(.everyMinute) { context in
             VStack(alignment: .leading, spacing: 0) {
-                PixelIcon(systemName: "clock", size: 17,
-                          tint: .white.opacity(0.7))
+                PixelIcon(
+                    systemName: "clock",
+                    size: 17,
+                    tint: .white.opacity(0.7)
+                )
 
                 Spacer(minLength: 4)
 

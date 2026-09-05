@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import NotchCore
+import Testing
 
 /// With the filesystem root injected, `AgentConfigInstaller`'s install/uninstall
 /// round-trip runs against a temp dir — so the subtle correctness bits (leaving a
@@ -9,11 +9,12 @@ import Testing
 ///
 /// A class, not a struct: the temp dir is torn down in `deinit`.
 final class AgentConfigInstallerTests {
-
     private let home: URL
     private var installer: AgentConfigInstaller
 
-    private var settingsURL: URL { home.appendingPathComponent(".claude/settings.json") }
+    private var settingsURL: URL {
+        home.appendingPathComponent(".claude/settings.json")
+    }
 
     init() throws {
         home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -28,7 +29,10 @@ final class AgentConfigInstallerTests {
     // MARK: - Helpers
 
     private func writeSettings(_ raw: String) throws {
-        try FileManager.default.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: settingsURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         try raw.write(to: settingsURL, atomically: true, encoding: .utf8)
     }
 
@@ -83,8 +87,10 @@ final class AgentConfigInstallerTests {
         try installer.installClaudeHooks()
         try installer.removeClaudeHooks()
 
-        #expect(try settingsText().contains("my-agent-hook.sh"),
-                "a user hook merely containing \"agent-hook\" must survive our uninstall")
+        #expect(
+            try settingsText().contains("my-agent-hook.sh"),
+            "a user hook merely containing \"agent-hook\" must survive our uninstall"
+        )
         #expect(!installer.claudeHooksInstalled())
     }
 
@@ -105,8 +111,10 @@ final class AgentConfigInstallerTests {
         try installer.removeClaudeUsage()
 
         let line = try #require(settingsObject()["statusLine"] as? [String: Any])
-        #expect(line["command"] as? String == "ccstatusline",
-                "the user's original statusLine must be restored from the in-settings backup")
+        #expect(
+            line["command"] as? String == "ccstatusline",
+            "the user's original statusLine must be restored from the in-settings backup"
+        )
     }
 
     @Test func usageUninstallRemovesWrapperWhenUserHadNoStatusLine() throws {
@@ -120,8 +128,10 @@ final class AgentConfigInstallerTests {
 
         let statusLine = try settingsObject()["statusLine"]
         #expect(statusLine == nil, "no original -> our wrapper is removed")
-        #expect(!(try settingsText().contains("notchStatusLineBackup")),
-                "our private backup key must not linger after uninstall")
+        #expect(
+            try !(settingsText().contains("notchStatusLineBackup")),
+            "our private backup key must not linger after uninstall"
+        )
     }
 
     @Test func refusesToClobberUnreadableSettings() throws {
@@ -142,20 +152,27 @@ final class AgentConfigInstallerTests {
         try FileManager.default.createDirectory(at: real.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "{}".write(to: real, atomically: true, encoding: .utf8)
 
-        try FileManager.default.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: settingsURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         try FileManager.default.createSymbolicLink(at: settingsURL, withDestinationURL: real)
 
         try installer.installClaudeHooks()
 
         let dest = try FileManager.default.destinationOfSymbolicLink(atPath: settingsURL.path)
         #expect(dest == real.path, "settings.json must remain a symlink to the real file")
-        #expect(try String(contentsOf: real, encoding: .utf8).contains("agent-hook"),
-                "the real target must receive the hooks")
+        #expect(
+            try String(contentsOf: real, encoding: .utf8).contains("agent-hook"),
+            "the real target must receive the hooks"
+        )
     }
 
     // MARK: - Generated plugin ownership
 
-    private var openCodePluginURL: URL { home.appendingPathComponent(".config/opencode/plugins/notch.js") }
+    private var openCodePluginURL: URL {
+        home.appendingPathComponent(".config/opencode/plugins/notch.js")
+    }
 
     private func writeFile(_ contents: String, to url: URL) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -170,8 +187,10 @@ final class AgentConfigInstallerTests {
         try installer.installOpenCodePlugin()
 
         let rewritten = try String(contentsOf: openCodePluginURL, encoding: .utf8)
-        #expect(rewritten.hasPrefix("// notch agent watcher r\(AgentConfigInstaller.pluginRevision) —"),
-                "the stale file must be upgraded to the current revision")
+        #expect(
+            rewritten.hasPrefix("// notch agent watcher r\(AgentConfigInstaller.pluginRevision) —"),
+            "the stale file must be upgraded to the current revision"
+        )
         #expect(!rewritten.contains("old body"))
     }
 
@@ -187,8 +206,10 @@ final class AgentConfigInstallerTests {
         #expect(try String(contentsOf: openCodePluginURL, encoding: .utf8) == mine)
 
         try installer.removeOpenCodePlugin()
-        #expect(try String(contentsOf: openCodePluginURL, encoding: .utf8) == mine,
-                "uninstall must not delete a file we never wrote")
+        #expect(
+            try String(contentsOf: openCodePluginURL, encoding: .utf8) == mine,
+            "uninstall must not delete a file we never wrote"
+        )
     }
 
     @Test func ohMyPiFansOutToExistingProfileAgentRoots() throws {
@@ -204,11 +225,15 @@ final class AgentConfigInstallerTests {
         let mainIndex = home.appendingPathComponent(".omp/agent/extensions/notch/index.js")
         let workIndex = workAgent.appendingPathComponent("extensions/notch/index.js")
         #expect(FileManager.default.fileExists(atPath: mainIndex.path))
-        #expect(try String(contentsOf: workIndex, encoding: .utf8)
-            .hasPrefix("// notch agent watcher r\(AgentConfigInstaller.pluginRevision) —"),
-            "the profile root must get the current extension")
-        #expect(!FileManager.default.fileExists(atPath: bare.appendingPathComponent("agent").path),
-                "a missing profile agent root must not be created")
+        #expect(
+            try String(contentsOf: workIndex, encoding: .utf8)
+                .hasPrefix("// notch agent watcher r\(AgentConfigInstaller.pluginRevision) —"),
+            "the profile root must get the current extension"
+        )
+        #expect(
+            !FileManager.default.fileExists(atPath: bare.appendingPathComponent("agent").path),
+            "a missing profile agent root must not be created"
+        )
         #expect(installer.ohMyPiInstalled())
 
         try installer.removeOhMyPi()

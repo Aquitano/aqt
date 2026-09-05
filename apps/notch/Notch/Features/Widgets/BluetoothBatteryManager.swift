@@ -1,8 +1,8 @@
+import AppKit
+import Darwin
+import Foundation
 import IOBluetooth
 import NotchCore
-import AppKit
-import Foundation
-import Darwin
 
 /// Bluetooth device battery via `system_profiler SPBluetoothDataType -json`
 /// (off-main, cached). Connect events come from IOBluetooth notifications and
@@ -10,7 +10,6 @@ import Darwin
 @MainActor
 @Observable
 final class BluetoothBatteryManager: NSObject {
-
     private(set) var devices: [BluetoothDevice] = []
 
     private unowned let activities: ActivityManager
@@ -48,10 +47,13 @@ final class BluetoothBatteryManager: NSObject {
         }
     }
 
-    // IOBluetooth delivers this ObjC callback on its own notification thread, not
-    // main, so read the device name here and hop to the main actor before touching
-    // published activity state or kicking off a rescan.
-    @objc private nonisolated func deviceConnected(_ notification: IOBluetoothUserNotification, fromDevice device: IOBluetoothDevice) {
+    /// IOBluetooth delivers this ObjC callback on its own notification thread, not
+    /// main, so read the device name here and hop to the main actor before touching
+    /// published activity state or kicking off a rescan.
+    @objc private nonisolated func deviceConnected(
+        _: IOBluetoothUserNotification,
+        fromDevice device: IOBluetoothDevice
+    ) {
         let name = device.name ?? "Bluetooth Device"
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -65,12 +67,14 @@ final class BluetoothBatteryManager: NSObject {
 
     private func apply(_ scanned: [BluetoothDevice]?) {
         scanning = false
-        if let scanned { devices = scanned }
+        if let scanned {
+            devices = scanned
+        }
     }
 
     // MARK: - system_profiler
 
-    nonisolated private static func scan() -> [BluetoothDevice]? {
+    private nonisolated static func scan() -> [BluetoothDevice]? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
         process.arguments = ["SPBluetoothDataType", "-json"]
@@ -84,13 +88,17 @@ final class BluetoothBatteryManager: NSObject {
         }
         let deadline = Date().addingTimeInterval(8)
         while process.isRunning, Date() < deadline {
-            usleep(50_000)
+            usleep(50000)
         }
         guard !process.isRunning else {
             process.terminate()
             let terminationDeadline = Date().addingTimeInterval(1)
-            while process.isRunning, Date() < terminationDeadline { usleep(20_000) }
-            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            while process.isRunning, Date() < terminationDeadline {
+                usleep(20000)
+            }
+            if process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
             Log.widgets.error("Bluetooth scan timed out")
             return nil
         }
@@ -99,7 +107,7 @@ final class BluetoothBatteryManager: NSObject {
         return parse(data)
     }
 
-    nonisolated private static func parse(_ data: Data) -> [BluetoothDevice] {
+    private nonisolated static func parse(_ data: Data) -> [BluetoothDevice] {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let section = (root["SPBluetoothDataType"] as? [[String: Any]])?.first else { return [] }
 
@@ -125,20 +133,34 @@ final class BluetoothBatteryManager: NSObject {
         return result
     }
 
-    nonisolated private static func percent(_ value: Any?) -> Int? {
+    private nonisolated static func percent(_ value: Any?) -> Int? {
         guard let string = value as? String else { return nil }
         return Int(string.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces))
     }
 
-    nonisolated private static func symbol(forName name: String, minorType: String?) -> String {
+    private nonisolated static func symbol(forName name: String, minorType: String?) -> String {
         let lowered = (name + " " + (minorType ?? "")).lowercased()
-        if lowered.contains("airpods max") { return "airpods.max" }
-        if lowered.contains("airpods pro") { return "airpods.pro" }
-        if lowered.contains("airpods") { return "airpods" }
-        if lowered.contains("homepod") { return "homepod.fill" }
-        if lowered.contains("mouse") { return "magicmouse.fill" }
-        if lowered.contains("keyboard") { return "keyboard.fill" }
-        if lowered.contains("headphone") || lowered.contains("buds") { return "headphones" }
+        if lowered.contains("airpods max") {
+            return "airpods.max"
+        }
+        if lowered.contains("airpods pro") {
+            return "airpods.pro"
+        }
+        if lowered.contains("airpods") {
+            return "airpods"
+        }
+        if lowered.contains("homepod") {
+            return "homepod.fill"
+        }
+        if lowered.contains("mouse") {
+            return "magicmouse.fill"
+        }
+        if lowered.contains("keyboard") {
+            return "keyboard.fill"
+        }
+        if lowered.contains("headphone") || lowered.contains("buds") {
+            return "headphones"
+        }
         return "wave.3.right.circle.fill"
     }
 }

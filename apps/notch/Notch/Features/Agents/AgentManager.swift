@@ -1,6 +1,6 @@
-import SwiftUI
-import NotchCore
 import AppKit
+import NotchCore
+import SwiftUI
 
 /// Aggregates the per-agent providers, owns the shared socket + process lookup +
 /// notifier, reconciles their sessions into one published list, and mirrors the
@@ -9,13 +9,13 @@ import AppKit
 @MainActor
 @Observable
 final class AgentManager {
-
     private(set) var sessions: [AgentSession] = []
     /// Sessions the compact pill represents: busy or waiting on the user. Shared
     /// by `syncPill` and the pill's per-session glyph strip so they can't disagree.
     var pillSessions: [AgentSession] {
         sessions.filter { $0.status.isBusy || $0.status == .needsAttention }
     }
+
     /// Account-wide Claude usage limits (when enabled), from the statusLine.
     private(set) var usage: AgentUsage?
     /// Last enable/install failure, for the Settings UI. Cleared on the next
@@ -56,9 +56,15 @@ final class AgentManager {
         let notifier = AgentNotifier(activities: activities, settings: settings)
         self.notifier = notifier
         self.hookGuard = HookGuard(notifier: notifier)
-        self.permissionApprovalObserver = watch(initial: false, { settings.agents.permissionApproval }) { [weak self] enabled in
-            if !enabled { self?.disablePermissionResponses() }
-        }
+        self
+            .permissionApprovalObserver = watch(
+                initial: false,
+                { settings.agents.permissionApproval }
+            ) { [weak self] enabled in
+                if !enabled {
+                    self?.disablePermissionResponses()
+                }
+            }
     }
 
     func start() {
@@ -67,7 +73,9 @@ final class AgentManager {
         isRunning = true
 
         providers.forEach { $0.start() }
-        if settings.agents.claudeEnabled { hookGuard.start() }
+        if settings.agents.claudeEnabled {
+            hookGuard.start()
+        }
 
         // Deliver envelopes through one serial stream instead of an independent
         // Task per envelope. Independent tasks have no ordering guarantee, so two
@@ -128,15 +136,23 @@ final class AgentManager {
     /// live subsystem can never disagree.
     func setWatchingEnabled(_ enabled: Bool) {
         settings.agents.enabled = enabled
-        if enabled { start() } else { stop() }
+        if enabled {
+            start()
+        } else {
+            stop()
+        }
     }
 
     private func configureProvidersIfNeeded() {
         guard providers.isEmpty else { return }
         let installer = AgentConfigInstaller()
         providers = [
-            ClaudeCodeProvider(processLookup: processLookup, settings: settings,
-                               persistence: persistence, diagnostics: diagnostics),
+            ClaudeCodeProvider(
+                processLookup: processLookup,
+                settings: settings,
+                persistence: persistence,
+                diagnostics: diagnostics
+            ),
             // Codex hooks are short-lived subprocesses (pid unreliable) -> age out by staleness.
             SocketAgentProvider(
                 kind: .codex, liveness: .staleness,
@@ -181,7 +197,6 @@ final class AgentManager {
         }
     }
 
-
     /// Opt-in: wrap (or unwrap) Claude's statusLine to surface usage limits.
     func setUsageLimits(_ enabled: Bool) {
         let installer = AgentConfigInstaller()
@@ -209,9 +224,13 @@ final class AgentManager {
     }
 
     /// Agents that have a provider this build (drives which Enable cards appear).
-    var availableKinds: [AgentKind] { providers.map(\.kind) }
+    var availableKinds: [AgentKind] {
+        providers.map(\.kind)
+    }
 
-    func isInstalled(_ kind: AgentKind) -> Bool { CLIDetector().isInstalled(kind) }
+    func isInstalled(_ kind: AgentKind) -> Bool {
+        CLIDetector().isInstalled(kind)
+    }
 
     func jumpToTerminal(_ session: AgentSession) {
         // A t3 row is a thread on a (possibly remote) server: there is no local
@@ -265,8 +284,9 @@ final class AgentManager {
         providers.forEach { $0.refresh() }
     }
 
-    func isEnabled(_ kind: AgentKind) -> Bool { provider(for: kind)?.isEnabled ?? false }
-
+    func isEnabled(_ kind: AgentKind) -> Bool {
+        provider(for: kind)?.isEnabled ?? false
+    }
 
     func setEnabled(_ enabled: Bool, for kind: AgentKind) {
         guard let provider = provider(for: kind) else { return }
@@ -283,7 +303,11 @@ final class AgentManager {
         // The guard follows the integration's real state, so a failed enable
         // leaves it off rather than watching hooks that were never installed.
         if kind == .claudeCode {
-            if provider.isEnabled { hookGuard.start() } else { hookGuard.stop() }
+            if provider.isEnabled {
+                hookGuard.start()
+            } else {
+                hookGuard.stop()
+            }
         }
     }
 
@@ -323,7 +347,8 @@ final class AgentManager {
         }
         guard let kind = AgentKind(rawValue: envelope.agent) else { return }
         if envelope.hook == "PermissionRequest", let requestId = envelope.requestId,
-           !AgentFeatures.permissionApproval {
+           !AgentFeatures.permissionApproval
+        {
             // Approval is switched off build-wide: release the blocked hook at
             // once so the agent falls back to its own terminal prompt, and skip
             // the card bookkeeping entirely.
@@ -336,8 +361,10 @@ final class AgentManager {
             )
             let receivedAt = Date()
             let canRespond = kind == .claudeCode && settings.agents.permissionApproval
-            let deadline = min(request?.replyDeadline ?? receivedAt.addingTimeInterval(120),
-                               receivedAt.addingTimeInterval(120))
+            let deadline = min(
+                request?.replyDeadline ?? receivedAt.addingTimeInterval(120),
+                receivedAt.addingTimeInterval(120)
+            )
             let risk = request.map {
                 PermissionRiskClassifier.classify(request: $0, cwd: envelope.cwd)
             } ?? AgentPermissionRisk(level: .unknown, reasons: [.missingEvidence])
@@ -373,7 +400,7 @@ final class AgentManager {
               settings.agents.permissionApproval,
               var pending = permissionRequests[requestId],
               let next = AgentPermissionStateMachine.transition(
-                from: pending.state, event: .respond(decision)
+                  from: pending.state, event: .respond(decision)
               ) else { return }
         pending.state = next
         permissionRequests[requestId] = pending
@@ -414,7 +441,7 @@ final class AgentManager {
     private func permissionTimedOut(_ requestId: String) {
         guard isRunning, var pending = permissionRequests[requestId],
               let state = AgentPermissionStateMachine.transition(
-                from: pending.state, event: .expire
+                  from: pending.state, event: .expire
               ) else { return }
         pending.state = state
         permissionRequests[requestId] = pending
@@ -489,8 +516,11 @@ final class AgentManager {
     private func syncPill() {
         let active = pillSessions
         guard let representative = active.first(where: { $0.status == .needsAttention })
-            ?? active.max(by: { $0.lastActivity < $1.lastActivity }) else {
-            if pillSignature != nil { activities.remove(channel: .agents); pillSignature = nil }
+            ?? active.max(by: { $0.lastActivity < $1.lastActivity })
+        else {
+            if pillSignature != nil {
+                activities.remove(channel: .agents); pillSignature = nil
+            }
             return
         }
 
@@ -501,8 +531,12 @@ final class AgentManager {
         pillSignature = signature
         // Sticky (no TTL): removed above once no agent is busy or waiting.
         activities.publish(Activity(
-            kind: .agent(count: active.count, kind: representative.kind,
-                         project: representative.project, status: status),
+            kind: .agent(
+                count: active.count,
+                kind: representative.kind,
+                project: representative.project,
+                status: status
+            ),
             priority: needsAttention ? .urgent : .normal,
             createdAt: Date()
         ))

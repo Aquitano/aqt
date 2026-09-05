@@ -10,7 +10,6 @@ import NotchCore
 /// Once the notch panel is interactive it covers this one and takes over.
 @MainActor
 final class HoverSensorPanel: NSPanel {
-
     var onEnter: (() -> Void)?
 
     init() {
@@ -38,17 +37,28 @@ final class HoverSensorPanel: NSPanel {
         contentView = view
     }
 
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
+    override var canBecomeKey: Bool {
+        false
+    }
+
+    override var canBecomeMain: Bool {
+        false
+    }
 
     /// Position the sensor over `rect` (screen coordinates) or take it off-screen.
     func update(rect: NSRect?) {
         guard let rect, !rect.isEmpty else {
-            if isVisible { orderOut(nil) }
+            if isVisible {
+                orderOut(nil)
+            }
             return
         }
-        if frame != rect { setFrame(rect, display: false) }
-        if !isVisible { orderFrontRegardless() }
+        if frame != rect {
+            setFrame(rect, display: false)
+        }
+        if !isVisible {
+            orderFrontRegardless()
+        }
     }
 }
 
@@ -57,7 +67,9 @@ private final class SensorView: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        for area in trackingAreas { removeTrackingArea(area) }
+        for area in trackingAreas {
+            removeTrackingArea(area)
+        }
         addTrackingArea(NSTrackingArea(
             rect: bounds,
             options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
@@ -65,10 +77,21 @@ private final class SensorView: NSView {
         ))
     }
 
-    override func mouseEntered(with event: NSEvent) { onEnter?() }
-    // A pointer already resting on the pill when the sensor appears gets no
-    // enter event, only moves; treat any of them as an entry.
-    override func mouseMoved(with event: NSEvent) { onEnter?() }
-    override func mouseDown(with event: NSEvent) { onEnter?() }
-    override func scrollWheel(with event: NSEvent) { onEnter?() }
+    override func mouseEntered(with _: NSEvent) {
+        onEnter?()
+    }
+
+    /// A pointer already resting on the pill when the sensor appears gets no
+    /// enter event, only moves; treat any of them as an entry.
+    override func mouseMoved(with _: NSEvent) {
+        onEnter?()
+    }
+
+    override func mouseDown(with _: NSEvent) {
+        onEnter?()
+    }
+
+    override func scrollWheel(with _: NSEvent) {
+        onEnter?()
+    }
 }

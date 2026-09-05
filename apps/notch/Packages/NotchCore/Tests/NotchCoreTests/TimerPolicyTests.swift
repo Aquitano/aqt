@@ -1,9 +1,8 @@
 import Foundation
-import Testing
 @testable import NotchCore
+import Testing
 
 struct TimerPolicyTests {
-
     @Test func phasesAlternate() {
         #expect(PomodoroPolicy.next(after: .focus) == .rest)
         #expect(PomodoroPolicy.next(after: .rest) == .focus)

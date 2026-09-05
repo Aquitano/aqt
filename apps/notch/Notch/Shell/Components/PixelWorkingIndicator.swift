@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// A small retro pixel "spinner": a 3×3 grid whose perimeter lights a moving
 /// two-cell comet while an agent works. Animation is scoped to a `TimelineView`
@@ -32,9 +32,9 @@ struct PixelWorkingIndicator: View {
     private func grid(frame: Int) -> some View {
         let lit: Set<Int> = frame < 0 ? [] : [frame, (frame + 1) % Self.ring.count]
         return VStack(spacing: gap) {
-            ForEach(0..<3, id: \.self) { row in
+            ForEach(0 ..< 3, id: \.self) { row in
                 HStack(spacing: gap) {
-                    ForEach(0..<3, id: \.self) { col in
+                    ForEach(0 ..< 3, id: \.self) { col in
                         Rectangle()
                             .fill(tint.opacity(opacity(row: row, col: col, lit: lit)))
                             .frame(width: cell, height: cell)
@@ -46,7 +46,9 @@ struct PixelWorkingIndicator: View {
     }
 
     private func opacity(row: Int, col: Int, lit: Set<Int>) -> Double {
-        if row == 1 && col == 1 { return 0.28 } // dim center
+        if row == 1 && col == 1 {
+            return 0.28
+        } // dim center
         guard let index = Self.ring.firstIndex(where: { $0.row == row && $0.col == col }) else { return 0.18 }
         return lit.contains(index) ? 1.0 : 0.18
     }

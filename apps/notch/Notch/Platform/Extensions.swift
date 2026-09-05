@@ -1,61 +1,24 @@
-import SwiftUI
 import NotchCore
-
-// MARK: - Notch geometry through the environment
-
-private struct NotchGeometryKey: EnvironmentKey {
-    static let defaultValue: CGSize = NotchMetrics.fallbackNotchSize
-}
-
-private struct NotchExpandedWidthKey: EnvironmentKey {
-    static let defaultValue: CGFloat = NotchMetrics.expandedWidth
-}
-
-private struct NotchControlsSharedRenderingKey: EnvironmentKey {
-    static let defaultValue = true
-}
-
-private struct NotchVirtualChromeKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
-private struct NotchDisplayKeyKey: EnvironmentKey {
-    static let defaultValue = ""
-}
+import SwiftUI
 
 extension EnvironmentValues {
-    /// The physical notch size, injected by the window controller.
-    var notchGeometry: CGSize {
-        get { self[NotchGeometryKey.self] }
-        set { self[NotchGeometryKey.self] = newValue }
-    }
+    // The physical notch size, injected by the window controller.
+    @Entry var notchGeometry: CGSize = NotchMetrics.fallbackNotchSize
 
-    /// Per-display expanded width, injected from the same geometry snapshot as
-    /// the physical/virtual notch size.
-    var notchExpandedWidth: CGFloat {
-        get { self[NotchExpandedWidthKey.self] }
-        set { self[NotchExpandedWidthKey.self] = newValue }
-    }
+    // Per-display expanded width, injected from the same geometry snapshot as
+    // the physical/virtual notch size.
+    @Entry var notchExpandedWidth: CGFloat = NotchMetrics.expandedWidth
 
-    /// True for the one host allowed to start/stop shared capture work. Secondary
-    /// compact mirrors render shared samples but never own their lifecycle.
-    var notchControlsSharedRendering: Bool {
-        get { self[NotchControlsSharedRenderingKey.self] }
-        set { self[NotchControlsSharedRenderingKey.self] = newValue }
-    }
+    // True for the one host allowed to start/stop shared capture work. Secondary
+    // compact mirrors render shared samples but never own their lifecycle.
+    @Entry var notchControlsSharedRendering: Bool = true
 
-    /// Whether this host draws detached pill chrome instead of a top-edge notch.
-    var notchUsesVirtualChrome: Bool {
-        get { self[NotchVirtualChromeKey.self] }
-        set { self[NotchVirtualChromeKey.self] = newValue }
-    }
+    // Whether this host draws detached pill chrome instead of a top-edge notch.
+    @Entry var notchUsesVirtualChrome: Bool = false
 
-    /// The hosting display's stable key, for per-display settings resolution.
-    /// Empty (the default) resolves to the global settings.
-    var notchDisplayKey: String {
-        get { self[NotchDisplayKeyKey.self] }
-        set { self[NotchDisplayKeyKey.self] = newValue }
-    }
+    // The hosting display's stable key, for per-display settings resolution.
+    // Empty (the default) resolves to the global settings.
+    @Entry var notchDisplayKey: String = ""
 }
 
 // MARK: - Color helpers
@@ -64,7 +27,9 @@ extension Color {
     /// Parse "#RRGGBB" / "RRGGBB" (EventKit calendar colors come through as hex).
     init?(hex: String) {
         var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-        if s.hasPrefix("#") { s.removeFirst() }
+        if s.hasPrefix("#") {
+            s.removeFirst()
+        }
         guard s.count == 6, let value = UInt32(s, radix: 16) else { return nil }
         self.init(
             .sRGB,

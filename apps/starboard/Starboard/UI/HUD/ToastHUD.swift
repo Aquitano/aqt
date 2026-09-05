@@ -18,7 +18,9 @@ class HudPanel: NSPanel {
     }
 
     /// Overlays must never take key focus from the frontmost app.
-    override var canBecomeKey: Bool { false }
+    override var canBecomeKey: Bool {
+        false
+    }
 
     /// HUDs belong on the screen the user is looking at, which the pointer
     /// tracks better than `NSScreen.main` does. `visibleFrame` keeps them clear
@@ -55,7 +57,7 @@ struct SurfaceBackground: View {
     }
 
     private struct VisualEffectSurface: NSViewRepresentable {
-        func makeNSView(context: Context) -> NSVisualEffectView {
+        func makeNSView(context _: Context) -> NSVisualEffectView {
             let view = NSVisualEffectView()
             view.material = .hudWindow
             view.blendingMode = .behindWindow
@@ -63,7 +65,7 @@ struct SurfaceBackground: View {
             return view
         }
 
-        func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+        func updateNSView(_: NSVisualEffectView, context _: Context) {}
     }
 }
 
@@ -122,7 +124,7 @@ final class ToastHUD {
 
         let hosting = NSHostingView(
             rootView: content
-                .environment(\.toastDismiss, { [weak panel] in panel?.orderOut(nil) })
+                .environment(\.toastDismiss) { [weak panel] in panel?.orderOut(nil) }
                 .themeAccessibility()
         )
         hosting.sizingOptions = []
@@ -138,10 +140,12 @@ final class ToastHUD {
             try? await Task.sleep(for: .seconds(1.8))
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                NSAnimationContext.runAnimationGroup({ context in
+                NSAnimationContext.runAnimationGroup { context in
                     context.duration = 0.1
                     panel.animator().alphaValue = 0
-                }, completionHandler: { panel.orderOut(nil) })
+                } completionHandler: {
+                    panel.orderOut(nil)
+                }
             }
             _ = self
         }
@@ -162,15 +166,8 @@ final class ToastHUD {
     }
 }
 
-private struct ToastDismissKey: EnvironmentKey {
-    nonisolated(unsafe) static let defaultValue: () -> Void = {}
-}
-
 private extension EnvironmentValues {
-    var toastDismiss: () -> Void {
-        get { self[ToastDismissKey.self] }
-        set { self[ToastDismissKey.self] = newValue }
-    }
+    @Entry var toastDismiss: () -> Void = {}
 }
 
 private struct MessageToastContent: View {

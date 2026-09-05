@@ -1,6 +1,6 @@
 import Darwin
-import NotchCore
 import Foundation
+import NotchCore
 
 /// Listens on `~/.notch/agents.sock` for line-delimited `HookEnvelope` JSON from
 /// the hook/notify clients. Almost all traffic is fire-and-forget: the client
@@ -12,7 +12,6 @@ import Foundation
 /// handler, which hops to the main actor. Push-based via `DispatchSource` — no
 /// polling. Technique reference: devmegablaster/Notch-Pilot (MIT).
 final class AgentSocketServer: @unchecked Sendable {
-
     private let queue = DispatchQueue(label: "com.aquitano.notch.agentsocket")
     /// Bound client concurrency so malformed local peers cannot consume the entire
     /// cooperative thread pool. Each read also has one total deadline below.
@@ -23,6 +22,7 @@ final class AgentSocketServer: @unchecked Sendable {
         queue.maxConcurrentOperationCount = 16
         return queue
     }()
+
     private var listenFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
     /// Invalidates reads/timeouts queued by an earlier stop/start cycle.
@@ -144,12 +144,16 @@ final class AgentSocketServer: @unchecked Sendable {
         generation += 1
         acceptSource?.cancel()
         acceptSource = nil
-        if listenFD >= 0 { close(listenFD) }
+        if listenFD >= 0 {
+            close(listenFD)
+        }
         listenFD = -1
         handler = nil
         permissionTimeoutHandler = nil
         ioQueue.cancelAllOperations()
-        for fd in pendingReplies.values { close(fd) }
+        for fd in pendingReplies.values {
+            close(fd)
+        }
         pendingReplies = [:]
         if ownsSocket {
             unlink(AgentSocket.url.path)
@@ -185,7 +189,9 @@ final class AgentSocketServer: @unchecked Sendable {
                 return
             }
             // A duplicate request id would orphan the previous fd; close it first.
-            if let stale = self.pendingReplies.removeValue(forKey: requestId) { close(stale) }
+            if let stale = self.pendingReplies.removeValue(forKey: requestId) {
+                close(stale)
+            }
             self.pendingReplies[requestId] = fd
             self.queue.asyncAfter(deadline: .now() + Self.pendingWindow) { [weak self] in
                 guard let self, self.generation == generation,
@@ -203,7 +209,9 @@ final class AgentSocketServer: @unchecked Sendable {
         while true {
             let client = accept(listenFD, nil, nil)
             if client < 0 {
-                if errno == EINTR { continue }
+                if errno == EINTR {
+                    continue
+                }
                 break // EAGAIN/EWOULDBLOCK: drained (other errors: the source re-fires)
             }
             // Snapshot the handler on the accept queue, then hand the blocking
@@ -223,7 +231,11 @@ final class AgentSocketServer: @unchecked Sendable {
         generation: Int
     ) {
         var keepOpen = false
-        defer { if !keepOpen { close(client) } }
+        defer {
+            if !keepOpen {
+                close(client)
+            }
+        }
 
         let peer = peerPID(of: client)
         let data = readAll(client, timeout: 2)
@@ -234,18 +246,20 @@ final class AgentSocketServer: @unchecked Sendable {
             }
             // A blocking permission hook stays connected awaiting the decision.
             if envelope.agent == AgentKind.claudeCode.rawValue,
-               envelope.hook == "PermissionRequest", let requestId = envelope.requestId {
+               envelope.hook == "PermissionRequest", let requestId = envelope.requestId
+            {
                 registerPendingReply(requestId, fd: client, generation: generation)
                 keepOpen = true
             }
             // In-process plugins connect directly, so the kernel peer pid is the
             // trustworthy liveness handle. Short-lived hook tools may report their
             // parent agent/shell pid, but those providers do not use pid liveness.
-            let pid: pid_t
-            if envelope.agent == AgentKind.openCode.rawValue || envelope.agent == AgentKind.ohMyPi.rawValue {
-                pid = peer
+            let pid: pid_t = if envelope.agent == AgentKind.openCode.rawValue || envelope.agent == AgentKind.ohMyPi
+                .rawValue
+            {
+                peer
             } else {
-                pid = envelope.pid.map { pid_t($0) } ?? peer
+                envelope.pid.map { pid_t($0) } ?? peer
             }
             handler?(envelope, pid)
         }
@@ -264,14 +278,18 @@ final class AgentSocketServer: @unchecked Sendable {
             guard ready > 0, descriptor.revents & Int16(POLLIN | POLLHUP) != 0 else { break }
             let n = buffer.withUnsafeMutableBytes { read(fd, $0.baseAddress, $0.count) }
             guard n > 0 else { break } // 0 = EOF, <0 = error/timeout
-            data.append(contentsOf: buffer[0..<n])
+            data.append(contentsOf: buffer[0 ..< n])
             // Both bundled clients enforce this cap before sending. Reject a
             // larger local-peer envelope rather than decoding unbounded input.
-            if data.count > AgentPermissionLimits.maximumEnvelopeBytes { return Data() }
+            if data.count > AgentPermissionLimits.maximumEnvelopeBytes {
+                return Data()
+            }
             // A trailing newline ends the batch: every client writes whole lines,
             // and returning here (instead of waiting for EOF) both avoids the 2s
             // timeout and leaves a blocking permission client's connection usable.
-            if data.last == 0x0A { break }
+            if data.last == 0x0A {
+                break
+            }
         }
         return data
     }

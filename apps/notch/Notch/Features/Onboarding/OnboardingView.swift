@@ -1,7 +1,7 @@
-import SwiftUI
-import NotchCore
 import CoreLocation
 import EventKit
+import NotchCore
+import SwiftUI
 
 /// First-run welcome: what the notch does, guided permission grants, and the
 /// two most consequential toggles. Everything here is skippable — each feature
@@ -49,12 +49,18 @@ struct OnboardingView: View {
 
             VStack(spacing: 10) {
                 Toggle(isOn: $settings.general.launchAtLogin) {
-                    toggleLabel(symbol: "power", title: "Launch at login",
-                                subtitle: "Start the notch when you log in.")
+                    toggleLabel(
+                        symbol: "power",
+                        title: "Launch at login",
+                        subtitle: "Start the notch when you log in."
+                    )
                 }
                 Toggle(isOn: agentsEnabledBinding) {
-                    toggleLabel(symbol: "terminal", title: "Watch coding agents",
-                                subtitle: "Follow Claude Code, Codex, and friends from the notch.")
+                    toggleLabel(
+                        symbol: "terminal",
+                        title: "Watch coding agents",
+                        subtitle: "Follow Claude Code, Codex, and friends from the notch."
+                    )
                 }
             }
             .toggleStyle(.switch)
@@ -85,15 +91,20 @@ struct OnboardingView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            PixelIcon(systemName: "rectangle.tophalf.inset.filled", size: 42,
-                      tint: .accentColor)
+            PixelIcon(
+                systemName: "rectangle.tophalf.inset.filled",
+                size: 42,
+                tint: .accentColor
+            )
             Text("Welcome to Notch")
                 .font(.title2.weight(.semibold))
-            Text("Media, agents, widgets, and a file shelf — all living in the notch. Grant what you'd like to use; everything can also be enabled later, in place.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+            Text(
+                "Media, agents, widgets, and a file shelf — all living in the notch. Grant what you'd like to use; everything can also be enabled later, in place."
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 32)
         }
     }
 

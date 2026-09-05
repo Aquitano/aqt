@@ -1,5 +1,5 @@
-import Testing
 import NotchCore
+import Testing
 
 @MainActor
 struct NotchStateTests {
@@ -74,7 +74,9 @@ struct NotchStateTests {
 
         #expect(state.presentation == .compact)
         #expect(state.isCollapsing)
-        #expect(state.expandedTab == .media,
-                "the active body stays mounted until the close animation finishes")
+        #expect(
+            state.expandedTab == .media,
+            "the active body stays mounted until the close animation finishes"
+        )
     }
 }

@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// The Agents tab: live sessions (tap to jump to the terminal) plus Claude usage
 /// limits. Sessions quiet for a while collapse to one-line rows under an "idle"
@@ -37,20 +37,25 @@ struct AgentsView: View {
                     permissionCard(pending)
                 }
                 ForEach(rows.active) { row in
-                    AgentRowView(session: row.session,
-                                 onJump: { jump(row.session) },
-                                 onQuit: { agents.terminate(row.session) })
-                        .padding(.leading, CGFloat(row.depth) * 22)
-                        .opacity(row.depth > 0 ? 0.92 : 1)
+                    AgentRowView(
+                        session: row.session,
+                        onJump: { jump(row.session) },
+                        onQuit: { agents.terminate(row.session) }
+                    )
+                    .padding(.leading, CGFloat(row.depth) * 22)
+                    .opacity(row.depth > 0 ? 0.92 : 1)
                 }
                 if !rows.collapsed.isEmpty {
                     if !rows.active.isEmpty {
                         idleDivider
                     }
                     ForEach(rows.collapsed) { session in
-                        AgentRowView(session: session, collapsed: true,
-                                     onJump: { jump(session) },
-                                     onQuit: { agents.terminate(session) })
+                        AgentRowView(
+                            session: session,
+                            collapsed: true,
+                            onJump: { jump(session) },
+                            onQuit: { agents.terminate(session) }
+                        )
                     }
                 }
                 if agents.sessions.isEmpty {
@@ -59,8 +64,10 @@ struct AgentsView: View {
             }
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .top)
-            .animation(NotchAnimation.morph(reduceMotion: reduceMotion),
-                       value: rows.collapsed.map(\.id))
+            .animation(
+                NotchAnimation.morph(reduceMotion: reduceMotion),
+                value: rows.collapsed.map(\.id)
+            )
         }
         .onScrollGeometryChange(for: ScrollEdges.self) { geometry in
             let overflow = geometry.contentSize.height - geometry.containerSize.height
@@ -80,7 +87,8 @@ struct AgentsView: View {
 
     private func jump(_ session: AgentSession) {
         if let requestId = session.permissionRequestId,
-           agents.permissionRequests[requestId] != nil {
+           agents.permissionRequests[requestId] != nil
+        {
             selectedPermissionId = requestId
         } else {
             agents.jumpToTerminal(session)
@@ -122,21 +130,27 @@ struct AgentsView: View {
         Rectangle().fill(.white.opacity(0.12)).frame(height: 1)
     }
 
-    private var permissionIds: [String] { agents.permissionRequests.keys.sorted() }
+    private var permissionIds: [String] {
+        agents.permissionRequests.keys.sorted()
+    }
 
     private var selectedPermission: PendingAgentPermission? {
         selectedPermissionId.flatMap { agents.permissionRequests[$0] }
     }
 
     private func selectBestPermissionIfNeeded() {
-        if let selectedPermissionId, agents.permissionRequests[selectedPermissionId] != nil { return }
+        if let selectedPermissionId, agents.permissionRequests[selectedPermissionId] != nil {
+            return
+        }
         selectedPermissionId = agents.permissionRequests.values.sorted(by: permissionOrder).first?.id
     }
 
     private func permissionOrder(_ lhs: PendingAgentPermission, _ rhs: PendingAgentPermission) -> Bool {
         let lhsUrgent = lhs.risk.level == .high || lhs.risk.level == .unknown
         let rhsUrgent = rhs.risk.level == .high || rhs.risk.level == .unknown
-        if lhsUrgent != rhsUrgent { return lhsUrgent }
+        if lhsUrgent != rhsUrgent {
+            return lhsUrgent
+        }
         return lhs.receivedAt < rhs.receivedAt
     }
 
@@ -148,8 +162,11 @@ struct AgentsView: View {
             onApprove: { agents.respondToPermission(requestId: pending.id, decision: .allow) },
             onDeny: { agents.respondToPermission(requestId: pending.id, decision: .deny) },
             onJump: {
-                if let session { agents.jumpToTerminal(session) }
-                else { agents.jumpToTerminal(pending) }
+                if let session {
+                    agents.jumpToTerminal(session)
+                } else {
+                    agents.jumpToTerminal(pending)
+                }
             },
             onCopy: { agents.copyPermissionSummary(pending, session: session) }
         )
@@ -158,7 +175,9 @@ struct AgentsView: View {
     private struct Row: Identifiable {
         let session: AgentSession
         let depth: Int
-        var id: String { session.id }
+        var id: String {
+            session.id
+        }
     }
 
     private struct Rows {
@@ -204,7 +223,9 @@ struct AgentsView: View {
         func visit(_ session: AgentSession, depth: Int) {
             guard visited.insert(session.id).inserted else { return } // guard against parent cycles
             rows.active.append(Row(session: session, depth: depth))
-            for child in childrenByParent[session.id] ?? [] { visit(child, depth: depth + 1) }
+            for child in childrenByParent[session.id] ?? [] {
+                visit(child, depth: depth + 1)
+            }
         }
         for root in roots {
             var probe = visited
@@ -238,7 +259,9 @@ struct AgentsView: View {
                 Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
                 Spacer(minLength: 4)
                 Text("\(Int(clamped))%").font(.system(size: 11)).monospacedDigit().foregroundStyle(.white.opacity(0.6))
-                if let reset { Text("· \(resetString(reset))").font(.system(size: 10)).foregroundStyle(.white.opacity(0.4)) }
+                if let reset {
+                    Text("· \(resetString(reset))").font(.system(size: 10)).foregroundStyle(.white.opacity(0.4))
+                }
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -252,24 +275,31 @@ struct AgentsView: View {
 
     private func usageColor(_ percent: Double) -> Color {
         switch percent {
-        case ..<70: return .green
-        case ..<90: return .orange
-        default: return .red
+        case ..<70: .green
+        case ..<90: .orange
+        default: .red
         }
     }
 
     private func resetString(_ date: Date) -> String {
         let seconds = Int(date.timeIntervalSinceNow)
         guard seconds > 0 else { return "resetting" }
-        if seconds < 3600 { return "resets in \(seconds / 60)m" }
-        if seconds < 86400 { return "resets in \(seconds / 3600)h" }
+        if seconds < 3600 {
+            return "resets in \(seconds / 60)m"
+        }
+        if seconds < 86400 {
+            return "resets in \(seconds / 3600)h"
+        }
         return "resets in \(seconds / 86400)d"
     }
 
     private var emptyState: some View {
         VStack(spacing: 6) {
-            PixelIcon(systemName: "terminal", size: 22,
-                      tint: .white.opacity(0.4))
+            PixelIcon(
+                systemName: "terminal",
+                size: 22,
+                tint: .white.opacity(0.4)
+            )
             Text("No active agents")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.7))

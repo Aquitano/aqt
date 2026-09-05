@@ -11,7 +11,16 @@ package struct CalendarEvent: Identifiable, Equatable {
     /// First detected video-call URL, for a join-meeting button.
     package var conferenceURL: URL?
 
-    package init(id: String, title: String, start: Date, end: Date, isAllDay: Bool, calendarColorHex: String? = nil, location: String? = nil, conferenceURL: URL? = nil) {
+    package init(
+        id: String,
+        title: String,
+        start: Date,
+        end: Date,
+        isAllDay: Bool,
+        calendarColorHex: String? = nil,
+        location: String? = nil,
+        conferenceURL: URL? = nil
+    ) {
         self.id = id
         self.title = title
         self.start = start
@@ -30,17 +39,27 @@ package struct CalendarEvent: Identifiable, Equatable {
 
 /// Current conditions + a short daily outlook from Open-Meteo.
 package struct WeatherSnapshot: Equatable {
-    package var temperature: Double          // in the user's unit
+    package var temperature: Double // in the user's unit
     package var apparentTemperature: Double?
-    package var weatherCode: Int             // WMO code
+    package var weatherCode: Int // WMO code
     package var isDay: Bool
-    package var symbolName: String           // our own SF Symbol mapping
+    package var symbolName: String // our own SF Symbol mapping
     package var conditionText: String
     package var locationName: String?
     package var unit: TemperatureUnit
     package var daily: [WeatherDay]
 
-    package init(temperature: Double, apparentTemperature: Double? = nil, weatherCode: Int, isDay: Bool, symbolName: String, conditionText: String, locationName: String? = nil, unit: TemperatureUnit, daily: [WeatherDay]) {
+    package init(
+        temperature: Double,
+        apparentTemperature: Double? = nil,
+        weatherCode: Int,
+        isDay: Bool,
+        symbolName: String,
+        conditionText: String,
+        locationName: String? = nil,
+        unit: TemperatureUnit,
+        daily: [WeatherDay]
+    ) {
         self.temperature = temperature
         self.apparentTemperature = apparentTemperature
         self.weatherCode = weatherCode
@@ -53,12 +72,17 @@ package struct WeatherSnapshot: Equatable {
     }
 
     package enum TemperatureUnit: String, Codable { case celsius, fahrenheit
-        package var suffix: String { self == .celsius ? "°C" : "°F" }
+        package var suffix: String {
+            self == .celsius ? "°C" : "°F"
+        }
     }
 }
 
 package struct WeatherDay: Identifiable, Equatable {
-    package var id: Date { date }
+    package var id: Date {
+        date
+    }
+
     package var date: Date
     package var high: Double
     package var low: Double
@@ -76,7 +100,7 @@ package struct WeatherDay: Identifiable, Equatable {
 
 /// A Bluetooth device with whatever battery info we could resolve.
 package struct BluetoothDevice: Identifiable, Equatable {
-    package let id: String                   // address or registry id
+    package let id: String // address or registry id
     package var name: String
     package var symbol: String
     package var batteryMain: Int?
@@ -85,7 +109,16 @@ package struct BluetoothDevice: Identifiable, Equatable {
     package var batteryCase: Int?
     package var isConnected: Bool
 
-    package init(id: String, name: String, symbol: String, batteryMain: Int? = nil, batteryLeft: Int? = nil, batteryRight: Int? = nil, batteryCase: Int? = nil, isConnected: Bool) {
+    package init(
+        id: String,
+        name: String,
+        symbol: String,
+        batteryMain: Int? = nil,
+        batteryLeft: Int? = nil,
+        batteryRight: Int? = nil,
+        batteryCase: Int? = nil,
+        isConnected: Bool
+    ) {
         self.id = id
         self.name = name
         self.symbol = symbol
@@ -97,4 +130,4 @@ package struct BluetoothDevice: Identifiable, Equatable {
     }
 }
 
-/// How the tray's share zone hands a dropped file off. AirDrop uses the native
+// How the tray's share zone hands a dropped file off. AirDrop uses the native

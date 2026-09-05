@@ -11,9 +11,9 @@ struct DisplaySelectionPolicyTests {
     ) -> DisplayDescriptor {
         DisplayDescriptor(
             key: key,
-            displayID: UInt32(abs(key.hashValue % 10_000)),
+            displayID: UInt32(abs(key.hashValue % 10000)),
             name: key,
-            frame: CGRect(x: x, y: 0, width: 1_920, height: 1_080),
+            frame: CGRect(x: x, y: 0, width: 1920, height: 1080),
             safeAreaTop: builtIn ? 32 : 0,
             auxiliaryLeftWidth: nil,
             auxiliaryRightWidth: nil,
@@ -24,7 +24,7 @@ struct DisplaySelectionPolicyTests {
 
     @Test func builtInPlacementIgnoresInputOrdering() {
         let external = display("external", main: true)
-        let builtIn = display("built-in", x: -1_512, builtIn: true)
+        let builtIn = display("built-in", x: -1512, builtIn: true)
 
         let result = DisplaySelectionPolicy.resolve(
             displays: [external, builtIn], placement: .builtIn
@@ -35,7 +35,7 @@ struct DisplaySelectionPolicyTests {
     }
 
     @Test func builtInPlacementFallsBackToMainWhenLidIsClosed() {
-        let secondary = display("secondary", x: -1_920)
+        let secondary = display("secondary", x: -1920)
         let main = display("main", main: true)
 
         let result = DisplaySelectionPolicy.resolve(
@@ -47,7 +47,7 @@ struct DisplaySelectionPolicyTests {
     }
 
     @Test func mainPlacementFallsBackToBuiltInWhenMainFlagIsMissing() {
-        let external = display("external", x: 1_512)
+        let external = display("external", x: 1512)
         let builtIn = display("built-in", builtIn: true)
 
         let result = DisplaySelectionPolicy.resolve(
@@ -59,9 +59,9 @@ struct DisplaySelectionPolicyTests {
     }
 
     @Test func allPlacementIsDeterministicAndPutsMainFirst() {
-        let right = display("right", x: 1_920)
+        let right = display("right", x: 1920)
         let builtInMain = display("built-in", builtIn: true, main: true)
-        let left = display("left", x: -1_920)
+        let left = display("left", x: -1920)
 
         let result = DisplaySelectionPolicy.resolve(
             displays: [right, builtInMain, left], placement: .all
@@ -78,7 +78,7 @@ struct DisplaySelectionPolicyTests {
 
     @Test func followActiveDisplayOverridesSinglePlacement() {
         let builtIn = display("built-in", builtIn: true, main: true)
-        let external = display("external", x: 1_512)
+        let external = display("external", x: 1512)
         let result = DisplaySelectionPolicy.resolve(
             displays: [builtIn, external], placement: .builtIn,
             followActiveDisplay: true, activeDisplayKey: "external"
@@ -99,7 +99,7 @@ struct DisplaySelectionPolicyTests {
 
     @Test func allPlacementIgnoresFollowActiveDisplay() {
         let main = display("main", main: true)
-        let other = display("other", x: 1_920)
+        let other = display("other", x: 1920)
         let result = DisplaySelectionPolicy.resolve(
             displays: [main, other], placement: .all,
             followActiveDisplay: true, activeDisplayKey: "other"

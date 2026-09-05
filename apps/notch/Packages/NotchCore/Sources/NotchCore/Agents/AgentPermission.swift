@@ -15,9 +15,9 @@ package enum AgentPermissionOperation: String, Codable, Equatable, Sendable {
     package var canModify: Bool {
         switch self {
         case .write, .edit, .delete, .move, .execute, .install, .permissionChange:
-            return true
+            true
         case .read, .network, .unknown:
-            return false
+            false
         }
     }
 }
@@ -88,7 +88,7 @@ package enum AgentPermissionExtractor {
     private static let pathKeys = [
         "file_path", "path", "paths", "directory", "destination",
         "destination_path", "target_path", "source", "source_path",
-        "old_path", "new_path"
+        "old_path", "new_path",
     ]
 
     package static func makeRequest(
@@ -99,8 +99,10 @@ package enum AgentPermissionExtractor {
         replyWindow: TimeInterval = 120
     ) -> AgentPermissionRequest {
         let cleanedTool = clipped(toolName, maximumBytes: 128).value
-        let commandResult = clipped(input?["command"] as? String,
-                                    maximumBytes: AgentPermissionLimits.maximumCommandBytes)
+        let commandResult = clipped(
+            input?["command"] as? String,
+            maximumBytes: AgentPermissionLimits.maximumCommandBytes
+        )
         let descriptionResult = clipped(input?["description"] as? String)
         let urlResult = clipped(input?["url"] as? String)
         let explicitPaths = extractExplicitPaths(input)
@@ -157,7 +159,9 @@ package enum AgentPermissionExtractor {
                 }
                 let result = clipped(candidate)
                 truncated = truncated || result.truncated
-                if let value = result.value, !values.contains(value) { values.append(value) }
+                if let value = result.value, !values.contains(value) {
+                    values.append(value)
+                }
             }
         }
         return (values, truncated)
@@ -181,10 +185,18 @@ package enum AgentPermissionExtractor {
         command: String?, paths: [String], url: String?, description: String?
     ) -> String? {
         var fields: [String] = []
-        if command != nil { fields.append("command") }
-        if !paths.isEmpty { fields.append(paths.count == 1 ? "1 path" : "\(paths.count) paths") }
-        if url != nil { fields.append("URL") }
-        if description != nil { fields.append("description") }
+        if command != nil {
+            fields.append("command")
+        }
+        if !paths.isEmpty {
+            fields.append(paths.count == 1 ? "1 path" : "\(paths.count) paths")
+        }
+        if url != nil {
+            fields.append("URL")
+        }
+        if description != nil {
+            fields.append("description")
+        }
         return fields.isEmpty ? nil : fields.joined(separator: ", ")
     }
 
@@ -199,7 +211,9 @@ package enum AgentPermissionExtractor {
         let bytes = Array(cleaned.utf8)
         guard bytes.count > maximumBytes else { return (cleaned, false) }
         var end = maximumBytes
-        while end > 0 && (bytes[end] & 0b1100_0000) == 0b1000_0000 { end -= 1 }
+        while end > 0, (bytes[end] & 0b1100_0000) == 0b1000_0000 {
+            end -= 1
+        }
         return (String(decoding: bytes[..<end], as: UTF8.self), true)
     }
 }
@@ -216,8 +230,10 @@ private enum ShellPermissionAnalysis {
         if command.range(of: #"(^|[;&|]\s*)(chmod|chown|chgrp)\s"#, options: .regularExpression) != nil {
             return .permissionChange
         }
-        if command.range(of: #"\b(npm|pnpm|yarn|pip|pip3|brew|gem|cargo)\s+(add|install)\b"#,
-                         options: .regularExpression) != nil {
+        if command.range(
+            of: #"\b(npm|pnpm|yarn|pip|pip3|brew|gem|cargo)\s+(add|install)\b"#,
+            options: .regularExpression
+        ) != nil {
             return .install
         }
         if command.range(of: #"\b(curl|wget|ssh|scp|rsync)\b"#, options: .regularExpression) != nil {
@@ -232,13 +248,17 @@ private enum ShellPermissionAnalysis {
         var result: [String] = []
         for raw in command.components(separatedBy: separators) {
             var token = raw.trimmingCharacters(in: CharacterSet(charactersIn: "'\"`()[],"))
-            while token.hasSuffix(":") { token.removeLast() }
+            while token.hasSuffix(":") {
+                token.removeLast()
+            }
             guard !token.isEmpty, !token.contains("://"),
                   token.hasPrefix("/") || token.hasPrefix("./") || token.hasPrefix("../")
-                    || token.hasPrefix("~/") || token.contains("/") else { continue }
+                  || token.hasPrefix("~/") || token.contains("/") else { continue }
             guard !result.contains(token) else { continue }
             result.append(token)
-            if result.count == AgentPermissionLimits.maximumPathCount { break }
+            if result.count == AgentPermissionLimits.maximumPathCount {
+                break
+            }
         }
         return result
     }
@@ -282,21 +302,30 @@ package enum AgentPermissionPathNormalizer {
         guard !hasAmbiguousSyntax(path), let cwd, cwd.hasPrefix("/") else {
             return assessment(path, nil, nil, .unknown, source, hasTraversal)
         }
-        let expanded: String
-        if path == "~" { expanded = homeDirectory }
-        else if path.hasPrefix("~/") { expanded = homeDirectory + String(path.dropFirst()) }
-        else if path.hasPrefix("/") { expanded = path }
-        else { expanded = cwd + "/" + path }
+        let expanded: String = if path == "~" {
+            homeDirectory
+        } else if path.hasPrefix("~/") {
+            homeDirectory + String(path.dropFirst())
+        } else if path.hasPrefix("/") {
+            path
+        } else {
+            cwd + "/" + path
+        }
 
         let normalized = lexicalStandardize(expanded)
         let project = lexicalStandardize(cwd)
         let home = lexicalStandardize(homeDirectory)
-        let scope: AgentPermissionPathScope
-        if isSystemPath(normalized) { scope = .system }
-        else if normalized == "/Volumes" || normalized.hasPrefix("/Volumes/") { scope = .removableVolume }
-        else if isInside(normalized, root: project) { scope = .project }
-        else if isInside(normalized, root: home) { scope = .home }
-        else { scope = .outsideProject }
+        let scope: AgentPermissionPathScope = if isSystemPath(normalized) {
+            .system
+        } else if normalized == "/Volumes" || normalized.hasPrefix("/Volumes/") {
+            .removableVolume
+        } else if isInside(normalized, root: project) {
+            .project
+        } else if isInside(normalized, root: home) {
+            .home
+        } else {
+            .outsideProject
+        }
         let relative = scope == .project
             ? (normalized == project ? "." : String(normalized.dropFirst(project.count + 1)))
             : nil
@@ -322,8 +351,14 @@ package enum AgentPermissionPathNormalizer {
     private static func lexicalStandardize(_ path: String) -> String {
         var components: [Substring] = []
         for component in path.split(separator: "/") {
-            if component == "." { continue }
-            if component == ".." { if !components.isEmpty { components.removeLast() }; continue }
+            if component == "." {
+                continue
+            }
+            if component == ".." {
+                if !components.isEmpty {
+                    components.removeLast()
+                }; continue
+            }
             components.append(component)
         }
         return "/" + components.joined(separator: "/")
@@ -407,18 +442,18 @@ package enum AgentPermissionStateMachine {
         event: AgentPermissionStateEvent
     ) -> AgentPermissionRequestState? {
         switch (state, event) {
-        case (.pending, .respond(let decision)):
-            return .responding(decision)
+        case let (.pending, .respond(decision)):
+            .responding(decision)
         case (.responding(.allow), .delivered):
-            return .approved
+            .approved
         case (.responding(.deny), .delivered):
-            return .denied
+            .denied
         case (.responding, .deliveryFailed):
-            return .deliveryFailed
+            .deliveryFailed
         case (.pending, .expire), (.responding, .expire), (.deliveryFailed, .expire):
-            return .expired
+            .expired
         default:
-            return nil
+            nil
         }
     }
 }
@@ -436,7 +471,19 @@ package struct PendingAgentPermission: Identifiable, Equatable, Sendable {
     package let canRespond: Bool
     package var state: AgentPermissionRequestState
 
-    package init(id: String, kind: AgentKind, sessionId: String? = nil, cwd: String? = nil, pid: pid_t, request: AgentPermissionRequest? = nil, risk: AgentPermissionRisk, receivedAt: Date, replyDeadline: Date, canRespond: Bool, state: AgentPermissionRequestState) {
+    package init(
+        id: String,
+        kind: AgentKind,
+        sessionId: String? = nil,
+        cwd: String? = nil,
+        pid: pid_t,
+        request: AgentPermissionRequest? = nil,
+        risk: AgentPermissionRisk,
+        receivedAt: Date,
+        replyDeadline: Date,
+        canRespond: Bool,
+        state: AgentPermissionRequestState
+    ) {
         self.id = id
         self.kind = kind
         self.sessionId = sessionId
@@ -460,17 +507,27 @@ package enum AgentPermissionAuditSummary {
         let request = pending.request
         var lines = [
             "Agent: \(pending.kind.displayName)",
-            "Project: \(session?.project ?? agentProjectName(pending.cwd))"
+            "Project: \(session?.project ?? agentProjectName(pending.cwd))",
         ]
-        if let branch = session?.gitBranch { lines.append("Branch: \(branch)") }
-        if let terminal = session?.terminalName { lines.append("Terminal: \(terminal)") }
-        if let cwd = pending.cwd { lines.append("Working directory: \(cwd)") }
-        if let tool = request?.toolName { lines.append("Tool: \(tool)") }
+        if let branch = session?.gitBranch {
+            lines.append("Branch: \(branch)")
+        }
+        if let terminal = session?.terminalName {
+            lines.append("Terminal: \(terminal)")
+        }
+        if let cwd = pending.cwd {
+            lines.append("Working directory: \(cwd)")
+        }
+        if let tool = request?.toolName {
+            lines.append("Tool: \(tool)")
+        }
         lines.append("Operation: \(request?.operation.rawValue ?? "unknown")")
         if let command = request?.command {
             lines.append("Command: \(command)\(request?.commandTruncated == true ? " [truncated]" : "")")
         }
-        if let url = request?.url { lines.append("URL: \(url)") }
+        if let url = request?.url {
+            lines.append("URL: \(url)")
+        }
         if let request, !request.paths.isEmpty {
             lines.append(request.pathSource == .explicit ? "Affected paths:" : "Possible paths:")
             lines.append(contentsOf: request.paths.map { "- \($0)" })
@@ -500,20 +557,32 @@ package enum PermissionRiskClassifier {
         var medium: Set<AgentPermissionRiskReason> = []
         var low: Set<AgentPermissionRiskReason> = []
 
-        if destructiveDeletion(command) { high.insert(.recursiveDeletion) }
+        if destructiveDeletion(command) {
+            high.insert(.recursiveDeletion)
+        }
         if command.range(of: #"(^|\s)(sudo|doas)\s"#, options: .regularExpression) != nil {
             high.insert(.privilegeEscalation)
         }
-        if downloadAndExecute(command) { high.insert(.downloadAndExecute) }
-        if broadPermissionChange(command) { high.insert(.broadPermissionChange) }
+        if downloadAndExecute(command) {
+            high.insert(.downloadAndExecute)
+        }
+        if broadPermissionChange(command) {
+            high.insert(.broadPermissionChange)
+        }
 
         if request.operation.canModify || request.operation == .network {
-            if assessments.contains(where: { $0.scope == .system }) { high.insert(.systemWrite) }
+            if assessments.contains(where: { $0.scope == .system }) {
+                high.insert(.systemWrite)
+            }
             if assessments.contains(where: { $0.scope == .outsideProject || $0.scope == .removableVolume }) {
                 high.insert(.outsideProjectWrite)
             }
-            if assessments.contains(where: sensitivePath) { high.insert(.sensitiveDataMutation) }
-            if assessments.contains(where: { $0.scope == .home }) { medium.insert(.userConfigurationWrite) }
+            if assessments.contains(where: sensitivePath) {
+                high.insert(.sensitiveDataMutation)
+            }
+            if assessments.contains(where: { $0.scope == .home }) {
+                medium.insert(.userConfigurationWrite)
+            }
         }
         if assessments.contains(where: { $0.scope == .unknown || $0.hasLexicalTraversal }) {
             medium.insert(.ambiguousPath)
@@ -522,30 +591,46 @@ package enum PermissionRiskClassifier {
         if request.operation == .network || request.url != nil || networkCommand(command) {
             medium.insert(.networkAccess)
         }
-        if request.operation == .install { medium.insert(.packageInstallation) }
+        if request.operation == .install {
+            medium.insert(.packageInstallation)
+        }
         if command.range(of: #"(^|[;&|]\s*)(kill|killall|pkill)\s"#, options: .regularExpression) != nil {
             medium.insert(.processTermination)
         }
-        if command.range(of: #"\bgit\s+push\b"#, options: .regularExpression) != nil { medium.insert(.gitPush) }
+        if command.range(of: #"\bgit\s+push\b"#, options: .regularExpression) != nil {
+            medium.insert(.gitPush)
+        }
         if request.operation == .delete || request.operation == .move {
             medium.insert(.destructiveProjectChange)
         }
-        if hasShellAmbiguity(command) { medium.insert(.shellAmbiguity) }
+        if hasShellAmbiguity(command) {
+            medium.insert(.shellAmbiguity)
+        }
 
         let explicitProjectPaths = !assessments.isEmpty
             && assessments.allSatisfy { $0.scope == .project && $0.source == .explicit && !$0.hasLexicalTraversal }
-        if request.operation == .read && explicitProjectPaths { low.insert(.explicitProjectRead) }
+        if request.operation == .read && explicitProjectPaths {
+            low.insert(.explicitProjectRead)
+        }
         if (request.operation == .write || request.operation == .edit) && explicitProjectPaths {
             low.insert(.explicitProjectWrite)
         }
-        if knownLocalBuild(command), medium.isEmpty { low.insert(.knownLocalBuild) }
+        if knownLocalBuild(command), medium.isEmpty {
+            low.insert(.knownLocalBuild)
+        }
 
-        if !high.isEmpty { return risk(.high, high) }
+        if !high.isEmpty {
+            return risk(.high, high)
+        }
         if request.commandTruncated || request.inputTruncated {
             return risk(.unknown, [.truncatedInput])
         }
-        if !medium.isEmpty { return risk(.medium, medium) }
-        if !low.isEmpty { return risk(.low, low) }
+        if !medium.isEmpty {
+            return risk(.medium, medium)
+        }
+        if !low.isEmpty {
+            return risk(.low, low)
+        }
         if request.operation == .unknown {
             let tool = request.toolName?.lowercased()
             let knownShellWithoutInput = tool.map {
@@ -563,22 +648,30 @@ package enum PermissionRiskClassifier {
     }
 
     private static func destructiveDeletion(_ command: String) -> Bool {
-        command.range(of: #"\brm\s+[^\n;&|]*(?:-[a-z]*[rf][a-z]*|--recursive|--force)"#,
-                      options: .regularExpression) != nil
+        command.range(
+            of: #"\brm\s+[^\n;&|]*(?:-[a-z]*[rf][a-z]*|--recursive|--force)"#,
+            options: .regularExpression
+        ) != nil
             || command.contains("diskutil erase") || command.contains("diskutil partition")
             || command.contains("mkfs.")
     }
 
     private static func downloadAndExecute(_ command: String) -> Bool {
-        command.range(of: #"\b(curl|wget)\b[^\n]*(\||>)\s*(sh|bash|zsh|python|perl)\b"#,
-                      options: .regularExpression) != nil
-            || command.range(of: #"\b(base64|openssl)\b[^\n]*\|\s*(sh|bash|zsh|python|perl)\b"#,
-                             options: .regularExpression) != nil
+        command.range(
+            of: #"\b(curl|wget)\b[^\n]*(\||>)\s*(sh|bash|zsh|python|perl)\b"#,
+            options: .regularExpression
+        ) != nil
+            || command.range(
+                of: #"\b(base64|openssl)\b[^\n]*\|\s*(sh|bash|zsh|python|perl)\b"#,
+                options: .regularExpression
+            ) != nil
     }
 
     private static func broadPermissionChange(_ command: String) -> Bool {
-        command.range(of: #"\bchmod\s+(?:-[rR]\s+)?(?:777|a\+[rwx]*[wx][rwx]*)\b"#,
-                      options: .regularExpression) != nil
+        command.range(
+            of: #"\bchmod\s+(?:-[rR]\s+)?(?:777|a\+[rwx]*[wx][rwx]*)\b"#,
+            options: .regularExpression
+        ) != nil
     }
 
     private static func networkCommand(_ command: String) -> Bool {
@@ -594,9 +687,19 @@ package enum PermissionRiskClassifier {
     }
 
     private static func knownLocalBuild(_ command: String) -> Bool {
-        ["xcodebuild ", "swift test", "swift build", "cargo test", "cargo build",
-         "npm test", "pnpm test", "yarn test", "gradle test", "./gradlew test"]
-            .contains { command == $0.trimmingCharacters(in: .whitespaces) || command.hasPrefix($0) }
+        [
+            "xcodebuild ",
+            "swift test",
+            "swift build",
+            "cargo test",
+            "cargo build",
+            "npm test",
+            "pnpm test",
+            "yarn test",
+            "gradle test",
+            "./gradlew test",
+        ]
+        .contains { command == $0.trimmingCharacters(in: .whitespaces) || command.hasPrefix($0) }
     }
 
     private static func sensitivePath(_ assessment: AgentPermissionPathAssessment) -> Bool {

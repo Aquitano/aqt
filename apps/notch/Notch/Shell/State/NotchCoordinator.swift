@@ -10,7 +10,6 @@ import Observation
 @MainActor
 @Observable
 final class NotchCoordinator {
-
     private(set) var states: [String: NotchState] = [:]
 
     /// The tab a display's panel resets to, answered by Settings.
@@ -24,22 +23,36 @@ final class NotchCoordinator {
         self.clock = clock
     }
 
-    var expandedKey: String? { states.first { $0.value.isExpanded }?.key }
-    var expanded: NotchState? { expandedKey.flatMap { states[$0] } }
-    var isVisible: Bool { states.values.contains { $0.isVisible } }
+    var expandedKey: String? {
+        states.first { $0.value.isExpanded }?.key
+    }
 
-    func state(for displayKey: String) -> NotchState? { states[displayKey] }
+    var expanded: NotchState? {
+        expandedKey.flatMap { states[$0] }
+    }
+
+    var isVisible: Bool {
+        states.values.contains { $0.isVisible }
+    }
+
+    func state(for displayKey: String) -> NotchState? {
+        states[displayKey]
+    }
 
     /// The machine for a display, created on first sight. A display that
     /// appears while the notch is showing starts compact like the others.
     @discardableResult
     func register(displayKey: String) -> NotchState {
-        if let existing = states[displayKey] { return existing }
+        if let existing = states[displayKey] {
+            return existing
+        }
         let state = NotchState(clock: clock)
         state.defaultTab = { [weak self] in self?.defaultTab(displayKey) ?? .home }
         state.expandedTab = expanded?.expandedTab ?? defaultTab(displayKey)
         state.onExpand = { [weak self] state in self?.compactOthers(than: state) }
-        if isVisible { state.showCompact() }
+        if isVisible {
+            state.showCompact()
+        }
         states[displayKey] = state
         return state
     }

@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// One activity rendered as a horizontal glass card: symbol + title + subtitle.
 /// Used inside the expanded home surface and the activity cycle, so it sits on
@@ -7,15 +7,18 @@ import NotchCore
 /// sizes to its text.
 struct ActivityCardView: View {
     let activity: Activity
-    var namespace: Namespace.ID? = nil
+    var namespace: Namespace.ID?
 
     var body: some View {
         let content = ActivityPresenter.card(for: activity.kind)
 
         HStack(spacing: 10) {
-            PixelIcon(systemName: ActivityPresenter.symbol(for: activity.kind),
-                      size: 17, tint: content.tint)
-                .frame(width: 22)
+            PixelIcon(
+                systemName: ActivityPresenter.symbol(for: activity.kind),
+                size: 17,
+                tint: content.tint
+            )
+            .frame(width: 22)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(content.title)

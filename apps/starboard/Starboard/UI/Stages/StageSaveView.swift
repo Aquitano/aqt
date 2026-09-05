@@ -76,7 +76,11 @@ struct StageSaveView: View {
         Binding(
             get: { included.contains(bundleID) },
             set: { isOn in
-                if isOn { included.insert(bundleID) } else { included.remove(bundleID) }
+                if isOn {
+                    included.insert(bundleID)
+                } else {
+                    included.remove(bundleID)
+                }
             }
         )
     }

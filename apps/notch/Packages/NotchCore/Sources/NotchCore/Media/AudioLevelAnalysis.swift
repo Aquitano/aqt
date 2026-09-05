@@ -8,7 +8,9 @@ package struct AudioLevels: Equatable, Sendable {
 
     package static let zero = AudioLevels(low: 0, mid: 0, high: 0)
 
-    package var values: [Float] { [low, mid, high] }
+    package var values: [Float] {
+        [low, mid, high]
+    }
 
     /// The compact meter draws six discrete heights (zero through five). Keep
     /// published state at that same resolution so invisible floating-point
@@ -50,7 +52,7 @@ package struct AudioBandAnalyzer: Sendable {
         guard !samples.isEmpty, sampleRate > 0 else { return smoothed }
 
         let lowCoefficient = Self.lowPassCoefficient(cutoff: 250, sampleRate: sampleRate)
-        let midCoefficient = Self.lowPassCoefficient(cutoff: 2_000, sampleRate: sampleRate)
+        let midCoefficient = Self.lowPassCoefficient(cutoff: 2000, sampleRate: sampleRate)
         var lowEnergy: Float = 0
         var midEnergy: Float = 0
         var highEnergy: Float = 0

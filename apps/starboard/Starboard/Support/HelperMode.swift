@@ -11,7 +11,9 @@ struct HelperMode {
 
     static let current = parse(CommandLine.arguments)
 
-    static var isActive: Bool { current != nil }
+    static var isActive: Bool {
+        current != nil
+    }
 
     static func parse(_ arguments: [String]) -> HelperMode? {
         var config: String?

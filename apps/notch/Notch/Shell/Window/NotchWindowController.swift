@@ -10,7 +10,10 @@ import SwiftUI
 @MainActor
 final class NotchWindowController {
     private let env: AppEnvironment
-    private var notch: NotchCoordinator { env.notch }
+    private var notch: NotchCoordinator {
+        env.notch
+    }
+
     private var hosts: [String: NotchPanelHost] = [:]
     /// The host a transient key-capable interaction (share sheet, text editing,
     /// drag) is bound to while nothing is expanded; an expanded host always wins.
@@ -33,7 +36,9 @@ final class NotchWindowController {
     private var cycleCooldown = false
 
     /// Anchor for AppKit popovers such as the sharing picker.
-    var panelContentView: NSView? { interactionHost?.panel.contentView }
+    var panelContentView: NSView? {
+        interactionHost?.panel.contentView
+    }
 
     private var interactionHost: NotchPanelHost? {
         notch.expandedKey.flatMap { hosts[$0] }
@@ -45,7 +50,9 @@ final class NotchWindowController {
     init(env: AppEnvironment) {
         self.env = env
         var inventory = DisplayInventory.current()
-        if inventory.isEmpty { inventory = [DisplayInventory.fallback()] }
+        if inventory.isEmpty {
+            inventory = [DisplayInventory.fallback()]
+        }
         self.displayInventory = inventory
         self.activeDisplayKey = DisplayInventory.displayKey(
             containing: NSEvent.mouseLocation,
@@ -53,7 +60,9 @@ final class NotchWindowController {
         )
         env.notch.expansionTarget = { [weak self] in
             guard let self else { return nil }
-            if let key = self.displayKeyAtPointer(), self.hosts[key] != nil { return key }
+            if let key = self.displayKeyAtPointer(), self.hosts[key] != nil {
+                return key
+            }
             return self.interactionHostKey.flatMap { self.hosts[$0] != nil ? $0 : nil }
         }
         reconcileHosts()
@@ -63,14 +72,20 @@ final class NotchWindowController {
 
     func stop() {
         // Observation callbacks must not run into a half-torn-down AppKit.
-        for observer in observers { observer.cancel() }
+        for observer in observers {
+            observer.cancel()
+        }
         observers.removeAll()
         activeDisplayTask?.cancel()
         pointerDisplayTask?.cancel()
         removeDragUpMonitor()
-        for monitor in mouseMonitors { NSEvent.removeMonitor(monitor) }
+        for monitor in mouseMonitors {
+            NSEvent.removeMonitor(monitor)
+        }
         mouseMonitors.removeAll()
-        for host in hosts.values { host.orderOut() }
+        for host in hosts.values {
+            host.orderOut()
+        }
     }
 
     // MARK: - Host inventory
@@ -131,7 +146,9 @@ final class NotchWindowController {
         )
         // A programmatic expansion whose display went away reopens on the
         // display the pointer is on now.
-        if migration == .restoreProgrammaticExpansion { notch.expand() }
+        if migration == .restoreProgrammaticExpansion {
+            notch.expand()
+        }
         updateHostRoles()
         applyAll()
         updatePointerDisplayPolling()
@@ -163,7 +180,9 @@ final class NotchWindowController {
             host.panel.editingText = false
             host.panel.interactingWithTray = false
             host.panel.previewing = false
-            if dragHostKey == key { endDragSession(host) }
+            if dragHostKey == key {
+                endDragSession(host)
+            }
             host.state.collapseImmediately()
         }
         return instruction
@@ -179,8 +198,12 @@ final class NotchWindowController {
             interaction: interactionHostKey
         )
         let orderedKeys = hosts.keys.sorted { lhs, rhs in
-            if lhs == primaryKey { return false }
-            if rhs == primaryKey { return true }
+            if lhs == primaryKey {
+                return false
+            }
+            if rhs == primaryKey {
+                return true
+            }
             return lhs < rhs
         }
         for key in orderedKeys {
@@ -202,7 +225,8 @@ final class NotchWindowController {
         // With a notch on every display the HUD belongs on the pointer's
         // display; resolve that now rather than tracking the pointer.
         if hudVisible, env.settings.display.placement == .all,
-           let key = displayKeyAtPointer(), hosts[key] != nil {
+           let key = displayKeyAtPointer(), hosts[key] != nil
+        {
             activateDisplay(key)
         }
         if let expanded = notch.expandedKey, hosts[expanded] != nil {
@@ -214,7 +238,8 @@ final class NotchWindowController {
 
     private func chooseInteractionHostAtPointer() {
         if let key = displayKeyAtPointer(),
-           hosts[key] != nil {
+           hosts[key] != nil
+        {
             activeDisplayKey = key
             interactionHostKey = key
         } else if interactionHostKey.flatMap({ hosts[$0] }) == nil {
@@ -274,7 +299,9 @@ final class NotchWindowController {
 
     private func topologyChanged() {
         var inventory = DisplayInventory.current()
-        if inventory.isEmpty { inventory = [DisplayInventory.fallback()] }
+        if inventory.isEmpty {
+            inventory = [DisplayInventory.fallback()]
+        }
         displayInventory = inventory
         if activeDisplayKey == nil || !displayInventory.contains(where: { $0.key == activeDisplayKey }) {
             activeDisplayKey = displayKeyAtPointer()
@@ -318,7 +345,9 @@ final class NotchWindowController {
     }
 
     private func pointerMoved() {
-        if isDragSessionActive, let host = dragHost { endDragSession(host) }
+        if isDragSessionActive, let host = dragHost {
+            endDragSession(host)
+        }
         for host in hosts.values where host.state.activeDropZone != nil {
             host.state.activeDropZone = nil
         }
@@ -330,7 +359,9 @@ final class NotchWindowController {
     /// evaluate hover right away since the sensor already saw the pointer.
     private func hoverSensorEntered(_ host: NotchPanelHost) {
         guard host.state.presentation == .compact, host.panel.isVisible else { return }
-        if env.settings.display.placement == .all { activateDisplay(host.displayKey) }
+        if env.settings.display.placement == .all {
+            activateDisplay(host.displayKey)
+        }
         setIgnoresMouseEvents(false, on: host)
         applyPassthrough(host, mouseLocation: NSEvent.mouseLocation)
     }
@@ -364,7 +395,9 @@ final class NotchWindowController {
     private func activateDisplay(_ key: String) {
         guard key != activeDisplayKey else { return }
         activeDisplayKey = key
-        if notch.expandedKey == nil { interactionHostKey = key }
+        if notch.expandedKey == nil {
+            interactionHostKey = key
+        }
         updateHostRoles()
         applyAll()
     }
@@ -386,7 +419,9 @@ final class NotchWindowController {
             try? await Task.sleep(for: .milliseconds(260))
             guard let self else { return }
             defer {
-                if self.activeDisplayCandidate == candidate { self.activeDisplayCandidate = nil }
+                if self.activeDisplayCandidate == candidate {
+                    self.activeDisplayCandidate = nil
+                }
             }
             guard !Task.isCancelled,
                   self.displayKeyAtPointer() == candidate else { return }
@@ -419,7 +454,9 @@ final class NotchWindowController {
             && NSEvent.modifierFlags.contains(.option)
             && !originalFileURLsForDrop().isEmpty
         let zone = dropZone(for: mouse, host: host)
-        if host.state.activeDropZone != zone { host.state.activeDropZone = zone }
+        if host.state.activeDropZone != zone {
+            host.state.activeDropZone = zone
+        }
     }
 
     private func dragRepresentation() -> TrayRepresentationKind? {
@@ -472,7 +509,9 @@ final class NotchWindowController {
     }
 
     private func removeDragUpMonitor() {
-        if let monitor = dragUpMonitor { NSEvent.removeMonitor(monitor) }
+        if let monitor = dragUpMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
         dragUpMonitor = nil
     }
 
@@ -620,8 +659,10 @@ final class NotchWindowController {
             guard host.state.expandedTab == .timer else { return }
             NotificationCenter.default.post(
                 name: .timerDialScroll, object: nil,
-                userInfo: [TimerDialScroll.deltaY: event.scrollingDeltaY,
-                           TimerDialScroll.precise: event.hasPreciseScrollingDeltas]
+                userInfo: [
+                    TimerDialScroll.deltaY: event.scrollingDeltaY,
+                    TimerDialScroll.precise: event.hasPreciseScrollingDeltas,
+                ]
             )
             return
         }
@@ -637,7 +678,7 @@ final class NotchWindowController {
     }
 
     private func cyclableHostAtCursor() -> NotchPanelHost? {
-        guard (!env.settings.media.compactNowPlaying || env.media.track.isEmpty),
+        guard !env.settings.media.compactNowPlaying || env.media.track.isEmpty,
               env.activities.compactActivityCount > 1,
               let host = hostAtCursor(), host.state.presentation == .compact else { return nil }
         return host
@@ -723,5 +764,7 @@ final class NotchWindowController {
         }
     }
 
-    var window: NSWindow? { interactionHost?.panel }
+    var window: NSWindow? {
+        interactionHost?.panel
+    }
 }

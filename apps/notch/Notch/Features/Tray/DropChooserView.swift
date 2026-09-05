@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// Shown inside the expanded notch while a file drag is in progress: two side-by-side
 /// drop fields. The left one stages the files on the shelf; the right one shares the
@@ -29,7 +29,9 @@ struct DropChooserView: View {
     }
 
     private var keepTitle: String {
-        if state.isOptionMoveActive { return "Move to Shelf" }
+        if state.isOptionMoveActive {
+            return "Move to Shelf"
+        }
         switch state.activeDropRepresentation {
         case .webURL: return "Keep Link"
         case .plainText: return "Keep Text"
@@ -58,8 +60,11 @@ struct DropChooserView: View {
     private func zone(_ id: DropZone, title: String, subtitle: String, systemImage: String) -> some View {
         let targeted = state.activeDropZone == id
         return VStack(spacing: 8) {
-            PixelIcon(systemName: systemImage, size: 28,
-                      tint: .white.opacity(targeted ? 1 : 0.85))
+            PixelIcon(
+                systemName: systemImage,
+                size: 28,
+                tint: .white.opacity(targeted ? 1 : 0.85)
+            )
             VStack(spacing: 2) {
                 Text(title)
                     .font(.system(size: 14, weight: .semibold))

@@ -86,8 +86,8 @@ struct NotchRootView: View {
                 usesVirtualChrome: usesVirtualChrome,
                 notchWidth: notchSize.width
             )
-                .fill(.black)
-                .shadow(color: .black.opacity(expanded ? 0.45 : 0), radius: 18, y: 8)
+            .fill(.black)
+            .shadow(color: .black.opacity(expanded ? 0.45 : 0), radius: 18, y: 8)
 
             ZStack(alignment: .top) {
                 // Expanded body kept mounted (fading via opacity) through the whole
@@ -175,7 +175,6 @@ struct NotchRootView: View {
             tabBarStyle: settings.notch.tabBarStyle
         )
     }
-
 }
 
 /// Always-present drop surface for the panel. The field (keep vs share) is decided
@@ -193,12 +192,12 @@ private struct NotchDropDelegate: DropDelegate {
         info.hasItemsConforming(to: TrayDropCapabilities.acceptedTypes)
     }
 
-    func dropEntered(info: DropInfo) {
+    func dropEntered(info _: DropInfo) {
         // Backup: the window controller normally opens the chooser first.
         state.beginDropTargeting()
     }
 
-    func dropExited(info: DropInfo) {
+    func dropExited(info _: DropInfo) {
         // Matching backup for dropEntered: if the controller missed the enter it
         // also misses the exit, so without this a drag-away or Esc leaves
         // isDropActive true and collapse() bails forever, pinning the panel open.
@@ -206,7 +205,7 @@ private struct NotchDropDelegate: DropDelegate {
         state.collapse()
     }
 
-    func dropUpdated(info: DropInfo) -> DropProposal? {
+    func dropUpdated(info _: DropInfo) -> DropProposal? {
         let canMove = moveEnabled()
             && NSEvent.modifierFlags.contains(.option)
             && !originalFileURLs().isEmpty
@@ -221,7 +220,9 @@ private struct NotchDropDelegate: DropDelegate {
         let moveURLs = moveEnabled() && NSEvent.modifierFlags.contains(.option)
             ? originalFileURLs() : []
         let accepted = target == .share ? onShare(providers) : onKeep(providers, moveURLs)
-        if accepted { Haptics.tap(.alignment) }
+        if accepted {
+            Haptics.tap(.alignment)
+        }
         Log.tray.notice("drop routed to \(target == .share ? "share" : "keep")")
         return accepted
     }

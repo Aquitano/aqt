@@ -23,14 +23,16 @@ package enum PersistenceError: Error, LocalizedError {
 /// or removing tray items never stalls layout, and hands its failures to
 /// `onFailure` (Diagnostics in the app, nothing in tests).
 package final class Persistence: @unchecked Sendable {
-
     package let rootDirectory: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let onFailure: @Sendable (PersistenceError) -> Void
     private let writeQueue = DispatchQueue(label: "com.aquitano.notch.persistence", qos: .utility)
 
-    package init(rootDirectory override: URL? = nil, onFailure: @escaping @Sendable (PersistenceError) -> Void = { _ in }) {
+    package init(
+        rootDirectory override: URL? = nil,
+        onFailure: @escaping @Sendable (PersistenceError) -> Void = { _ in }
+    ) {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         rootDirectory = override ?? base.appendingPathComponent("Notch", isDirectory: true)
@@ -78,7 +80,7 @@ package final class Persistence: @unchecked Sendable {
     }
 
     /// Encodes now, writes off-main, and reports a failed write to `onFailure`.
-    package func save<T: Encodable>(_ value: T, to fileName: String) {
+    package func save(_ value: some Encodable, to fileName: String) {
         let url = rootDirectory.appendingPathComponent(fileName)
         let data: Data
         do {
@@ -98,7 +100,7 @@ package final class Persistence: @unchecked Sendable {
 
     /// Migration commits are synchronous so the backup can never be mistaken for
     /// the authoritative store on a fast relaunch.
-    package func saveSynchronously<T: Encodable>(_ value: T, to fileName: String) throws(PersistenceError) {
+    package func saveSynchronously(_ value: some Encodable, to fileName: String) throws(PersistenceError) {
         let url = rootDirectory.appendingPathComponent(fileName)
         let data: Data
         do {
@@ -115,7 +117,9 @@ package final class Persistence: @unchecked Sendable {
 
     package func writeBackupIfMissing(_ data: Data, to fileName: String) throws(PersistenceError) {
         let url = rootDirectory.appendingPathComponent(fileName)
-        if FileManager.default.fileExists(atPath: url.path) { return }
+        if FileManager.default.fileExists(atPath: url.path) {
+            return
+        }
         do {
             try data.write(to: url, options: .atomic)
         } catch {

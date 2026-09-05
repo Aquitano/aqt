@@ -1,7 +1,7 @@
-import SwiftUI
-import NotchCore
 import AppKit
 import Carbon.HIToolbox
+import NotchCore
+import SwiftUI
 
 /// Click-to-record control for the global toggle shortcut. While recording, a
 /// local key monitor captures the next chord; the AppDelegate suspends the live
@@ -13,7 +13,9 @@ struct HotkeyRecorderView: View {
     @State private var monitor: Any?
     @State private var heldModifiers = ""
 
-    private var isRecording: Bool { monitor != nil }
+    private var isRecording: Bool {
+        monitor != nil
+    }
 
     var body: some View {
         LabeledContent("Shortcut") {
@@ -26,7 +28,7 @@ struct HotkeyRecorderView: View {
             }
             .buttonStyle(.bordered)
             .accessibilityLabel(isRecording ? "Recording shortcut, press a key combination"
-                                            : "Change shortcut")
+                : "Change shortcut")
         }
         .onDisappear { stopRecording() }
     }
@@ -35,8 +37,10 @@ struct HotkeyRecorderView: View {
         if isRecording {
             return heldModifiers.isEmpty ? "Type shortcut…" : heldModifiers
         }
-        return HotKeyChord(keyCode: settings.general.hotkeyKeyCode,
-                           carbonModifiers: settings.general.hotkeyModifiers).display
+        return HotKeyChord(
+            keyCode: settings.general.hotkeyKeyCode,
+            carbonModifiers: settings.general.hotkeyModifiers
+        ).display
     }
 
     private func startRecording() {
@@ -48,7 +52,9 @@ struct HotkeyRecorderView: View {
     }
 
     private func stopRecording() {
-        if let monitor { NSEvent.removeMonitor(monitor) }
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+        }
         monitor = nil
         heldModifiers = ""
         settings.isRecordingHotkey = false

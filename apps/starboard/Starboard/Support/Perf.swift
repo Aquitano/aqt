@@ -10,7 +10,9 @@ enum Perf {
 
     /// Instruments is recording. The event tap checks this before paying for
     /// an interval on every keystroke system-wide.
-    static var signpostsEnabled: Bool { signposter.isEnabled }
+    static var signpostsEnabled: Bool {
+        signposter.isEnabled
+    }
 
     static func beginEventRouting() -> OSSignpostIntervalState {
         signposter.beginInterval("Event routing")

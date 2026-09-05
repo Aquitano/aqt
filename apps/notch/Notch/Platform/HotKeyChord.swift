@@ -1,6 +1,6 @@
 import AppKit
-import NotchCore
 import Carbon.HIToolbox
+import NotchCore
 
 /// A keyCode + Carbon-modifier pair as stored in Settings, with the conversion
 /// and display logic the recorder UI needs.
@@ -10,10 +10,18 @@ struct HotKeyChord: Equatable {
 
     static func carbonModifiers(from flags: NSEvent.ModifierFlags) -> Int {
         var modifiers = 0
-        if flags.contains(.control) { modifiers |= controlKey }
-        if flags.contains(.option) { modifiers |= optionKey }
-        if flags.contains(.shift) { modifiers |= shiftKey }
-        if flags.contains(.command) { modifiers |= cmdKey }
+        if flags.contains(.control) {
+            modifiers |= controlKey
+        }
+        if flags.contains(.option) {
+            modifiers |= optionKey
+        }
+        if flags.contains(.shift) {
+            modifiers |= shiftKey
+        }
+        if flags.contains(.command) {
+            modifiers |= cmdKey
+        }
         return modifiers
     }
 
@@ -23,14 +31,24 @@ struct HotKeyChord: Equatable {
         isFunctionKey || carbonModifiers & (controlKey | optionKey | cmdKey) != 0
     }
 
-    var display: String { modifierSymbols + Self.keyName(for: keyCode) }
+    var display: String {
+        modifierSymbols + Self.keyName(for: keyCode)
+    }
 
     var modifierSymbols: String {
         var symbols = ""
-        if carbonModifiers & controlKey != 0 { symbols += "⌃" }
-        if carbonModifiers & optionKey != 0 { symbols += "⌥" }
-        if carbonModifiers & shiftKey != 0 { symbols += "⇧" }
-        if carbonModifiers & cmdKey != 0 { symbols += "⌘" }
+        if carbonModifiers & controlKey != 0 {
+            symbols += "⌃"
+        }
+        if carbonModifiers & optionKey != 0 {
+            symbols += "⌥"
+        }
+        if carbonModifiers & shiftKey != 0 {
+            symbols += "⇧"
+        }
+        if carbonModifiers & cmdKey != 0 {
+            symbols += "⌘"
+        }
         return symbols
     }
 
@@ -49,22 +67,22 @@ struct HotKeyChord: Equatable {
 
     static func keyName(for keyCode: Int) -> String {
         switch keyCode {
-        case kVK_Space: return "Space"
-        case kVK_Return: return "↩"
-        case kVK_Tab: return "⇥"
-        case kVK_Escape: return "⎋"
-        case kVK_Delete: return "⌫"
-        case kVK_ForwardDelete: return "⌦"
-        case kVK_LeftArrow: return "←"
-        case kVK_RightArrow: return "→"
-        case kVK_UpArrow: return "↑"
-        case kVK_DownArrow: return "↓"
-        case kVK_Home: return "↖"
-        case kVK_End: return "↘"
-        case kVK_PageUp: return "⇞"
-        case kVK_PageDown: return "⇟"
+        case kVK_Space: "Space"
+        case kVK_Return: "↩"
+        case kVK_Tab: "⇥"
+        case kVK_Escape: "⎋"
+        case kVK_Delete: "⌫"
+        case kVK_ForwardDelete: "⌦"
+        case kVK_LeftArrow: "←"
+        case kVK_RightArrow: "→"
+        case kVK_UpArrow: "↑"
+        case kVK_DownArrow: "↓"
+        case kVK_Home: "↖"
+        case kVK_End: "↘"
+        case kVK_PageUp: "⇞"
+        case kVK_PageDown: "⇟"
         default:
-            return functionKeys[keyCode]
+            functionKeys[keyCode]
                 ?? character(for: keyCode)
                 ?? "Key \(keyCode)"
         }

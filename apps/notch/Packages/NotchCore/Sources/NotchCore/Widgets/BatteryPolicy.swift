@@ -27,14 +27,18 @@ package struct BatterySnapshot: Equatable {
 /// `(snapshot, previous)` — so the transitions are table-testable without a
 /// real battery, charger, or Low Power Mode toggle.
 package enum BatteryPolicy {
-
     package struct Config: Equatable {
         package var alertThreshold = 20
 
-        package init(alertThreshold: Int = 20) { self.alertThreshold = alertThreshold }
+        package init(alertThreshold: Int = 20) {
+            self.alertThreshold = alertThreshold
+        }
+
         /// Alerts re-arm only above this dead band, so a percentage hovering at
         /// the threshold can't flap.
-        package var rearmThreshold: Int { min(alertThreshold + 5, 100) }
+        package var rearmThreshold: Int {
+            min(alertThreshold + 5, 100)
+        }
 
         package static let standard = Config()
     }
@@ -58,8 +62,12 @@ package enum BatteryPolicy {
         package var state: State
     }
 
-    package static func decide(_ snapshot: BatterySnapshot, previous: State,
-                       config: Config = .standard, now: Date) -> Output {
+    package static func decide(
+        _ snapshot: BatterySnapshot,
+        previous: State,
+        config: Config = .standard,
+        now: Date
+    ) -> Output {
         var state = previous
         var activities: [Activity] = []
 
@@ -68,7 +76,11 @@ package enum BatteryPolicy {
             state.lastPluggedIn = snapshot.isPluggedIn
             if snapshot.isPluggedIn {
                 activities.append(Activity(
-                    kind: .charging(percent: snapshot.percent, isCharging: snapshot.isCharging, isFull: snapshot.isFullyCharged),
+                    kind: .charging(
+                        percent: snapshot.percent,
+                        isCharging: snapshot.isCharging,
+                        isFull: snapshot.isFullyCharged
+                    ),
                     priority: .high, createdAt: now, ttl: 4
                 ))
             }

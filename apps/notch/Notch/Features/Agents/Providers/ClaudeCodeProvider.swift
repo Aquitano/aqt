@@ -1,6 +1,6 @@
 import AppKit
-import NotchCore
 import Foundation
+import NotchCore
 
 /// Watches Claude Code sessions. Every session is announced by its own hooks:
 /// the envelope carries the session id, the agent's pid and the transcript it
@@ -20,7 +20,6 @@ import Foundation
 /// state), and the pure `StatusReducer` ((hook, scan) → status).
 @MainActor
 final class ClaudeCodeProvider: AgentProviding {
-
     let kind: AgentKind = .claudeCode
 
     var onSessions: (([AgentSession]) -> Void)?
@@ -65,7 +64,9 @@ final class ClaudeCodeProvider: AgentProviding {
         self.diagnostics = diagnostics
     }
 
-    var isEnabled: Bool { settings.agents.claudeEnabled }
+    var isEnabled: Bool {
+        settings.agents.claudeEnabled
+    }
 
     // MARK: - Lifecycle
 
@@ -85,7 +86,7 @@ final class ClaudeCodeProvider: AgentProviding {
         // Sessions announced while we were not running are still out there; the
         // first reconcile drops whichever of them have since exited.
         do {
-            bindings = (try persistence.load([AgentSessionBinding].self, from: Self.bindingsFile) ?? [])
+            bindings = try (persistence.load([AgentSessionBinding].self, from: Self.bindingsFile) ?? [])
                 .reduce(into: [:]) { $0[$1.sessionId] = $1 }
         } catch {
             diagnostics.report(source: "Claude Code sessions", error)
@@ -171,13 +172,15 @@ final class ClaudeCodeProvider: AgentProviding {
 
     // MARK: - Socket events
 
-    func ingest(_ envelope: HookEnvelope, pid: pid_t) {
+    func ingest(_ envelope: HookEnvelope, pid _: pid_t) {
         // A still-running claude keeps its hooks loaded after the user toggles the
         // integration off; without this guard its envelopes resurrect sessions
         // while the feature is disabled.
         guard isEnabled else { return }
         guard let sid = envelope.sessionId else { scheduleReconcile(); return }
-        if let cwd = envelope.cwd { hookCwd[sid] = cwd }
+        if let cwd = envelope.cwd {
+            hookCwd[sid] = cwd
+        }
         bind(envelope, to: sid)
         if envelope.hook == "SessionEnd" {
             // Tombstone the session for removal, and drop its hook state so it
@@ -188,7 +191,9 @@ final class ClaudeCodeProvider: AgentProviding {
             endedSessionIDs.insert(sid)
             hookState[sid] = nil
             hookCwd[sid] = nil
-            if bindings.removeValue(forKey: sid) != nil { persistBindings() }
+            if bindings.removeValue(forKey: sid) != nil {
+                persistBindings()
+            }
         } else {
             endedSessionIDs.remove(sid)
             hookState[sid] = HookSnapshot(
@@ -241,7 +246,9 @@ final class ClaudeCodeProvider: AgentProviding {
     private func adopt(_ probed: [AgentSessionBinding], from snapshot: [AgentSessionBinding]) {
         let survivors = Set(probed.map(\.sessionId))
         for binding in snapshot where !survivors.contains(binding.sessionId) {
-            if bindings[binding.sessionId]?.pid == binding.pid { bindings[binding.sessionId] = nil }
+            if bindings[binding.sessionId]?.pid == binding.pid {
+                bindings[binding.sessionId] = nil
+            }
         }
         for binding in probed where bindings[binding.sessionId]?.pid == binding.pid {
             bindings[binding.sessionId] = binding
@@ -304,7 +311,9 @@ final class ClaudeCodeProvider: AgentProviding {
             hookCwd[sid] = nil
         }
         emittedAttentionAt = outcome.emittedAttentionAt
-        for event in outcome.events { onEvent?(event) }
+        for event in outcome.events {
+            onEvent?(event)
+        }
         sessionsByID = outcome.sessions
         onSessions?(Array(outcome.sessions.values))
 

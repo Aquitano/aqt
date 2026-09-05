@@ -57,14 +57,13 @@ package struct TrayExpiryPresentation: Equatable, Sendable {
     package static func make(for item: TrayItem, now: Date, lifetimeDays: Int) -> Self? {
         guard !item.isPinned, let expiry = item.expiresAt else { return nil }
         let remaining = expiry.timeIntervalSince(now)
-        let day: TimeInterval = 86_400
-        let label: String
-        if remaining <= 0 {
-            label = item.cleanupError == true ? "cleanup retry" : "expired"
+        let day: TimeInterval = 86400
+        let label: String = if remaining <= 0 {
+            item.cleanupError == true ? "cleanup retry" : "expired"
         } else if remaining < day {
-            label = "expires today"
+            "expires today"
         } else {
-            label = "\(Int(ceil(remaining / day)))d left"
+            "\(Int(ceil(remaining / day)))d left"
         }
         let lifetime = max(Double(max(lifetimeDays, 1)) * day, 1)
         return Self(
@@ -77,7 +76,7 @@ package struct TrayExpiryPresentation: Equatable, Sendable {
 
 package enum TrayExpiryPolicy {
     package static func deadline(addedAt: Date, days: Int) -> Date? {
-        days > 0 ? addedAt.addingTimeInterval(Double(days) * 86_400) : nil
+        days > 0 ? addedAt.addingTimeInterval(Double(days) * 86400) : nil
     }
 
     package static func nearestDeadline(in items: [TrayItem], after now: Date) -> Date? {

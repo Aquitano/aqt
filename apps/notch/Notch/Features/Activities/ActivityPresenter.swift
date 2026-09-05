@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// All per-`Kind` presentation for an `Activity` in one place: the compact pill's
 /// symbol and trailing label, plus the expanded card's title/subtitle/tint. Kept
@@ -7,21 +7,20 @@ import NotchCore
 /// pill's reserved width and its rendered label read this one source, instead of
 /// a producer being able to shift notch geometry by editing a label on the model.
 enum ActivityPresenter {
-
     /// Semantic icon key shown through the shared pixel glyph renderer.
     static func symbol(for kind: Activity.Kind) -> String {
         switch kind {
-        case .nowPlaying: return "music.note"
-        case .charging: return "bolt.fill"
-        case .lowBattery: return "battery.25"
-        case .lowPowerMode: return "battery.0"
-        case let .deviceConnected(_, symbol, _): return symbol
-        case let .audioRoute(_, symbol): return symbol
-        case let .focus(_, isOn): return isOn ? "moon.fill" : "moon"
-        case let .peek(_, _, symbol, _): return symbol
-        case .timer: return "timer"
-        case let .agent(_, kind, _, _): return kind.symbol
-        case .screenshotCandidates: return "photo"
+        case .nowPlaying: "music.note"
+        case .charging: "bolt.fill"
+        case .lowBattery: "battery.25"
+        case .lowPowerMode: "battery.0"
+        case let .deviceConnected(_, symbol, _): symbol
+        case let .audioRoute(_, symbol): symbol
+        case let .focus(_, isOn): isOn ? "moon.fill" : "moon"
+        case let .peek(_, _, symbol, _): symbol
+        case .timer: "timer"
+        case let .agent(_, kind, _, _): kind.symbol
+        case .screenshotCandidates: "photo"
         }
     }
 
@@ -30,23 +29,23 @@ enum ActivityPresenter {
     /// the view and the layout must read the same value.
     static func compactLabel(for kind: Activity.Kind) -> String {
         switch kind {
-        case .nowPlaying: return ""
-        case let .charging(percent, _, _): return "\(percent)%"
-        case let .lowBattery(percent): return "\(percent)%"
-        case .lowPowerMode: return "Low Power"
-        case let .deviceConnected(name, _, battery): return battery.map { "\($0)%" } ?? name
-        case let .audioRoute(name, _): return name
-        case let .focus(name, _): return name ?? "Focus"
-        case let .peek(title, _, _, _): return title
+        case .nowPlaying: ""
+        case let .charging(percent, _, _): "\(percent)%"
+        case let .lowBattery(percent): "\(percent)%"
+        case .lowPowerMode: "Low Power"
+        case let .deviceConnected(name, _, battery): battery.map { "\($0)%" } ?? name
+        case let .audioRoute(name, _): name
+        case let .focus(name, _): name ?? "Focus"
+        case let .peek(title, _, _, _): title
         // The pill draws the live countdown (see CompactView), not the name, so
         // reserve width for the clock — that string is what actually gets rendered.
         case let .timer(_, endsAt, pausedRemaining):
-            return (pausedRemaining ?? max(0, endsAt.timeIntervalSinceNow)).clockString
+            (pausedRemaining ?? max(0, endsAt.timeIntervalSinceNow)).clockString
         // Terse in the pill (it hugs the notch); the pixel glyph shows activity,
         // the expanded card carries detail. Show the count when more than one runs.
-        case let .agent(count, _, _, status): return count > 1 ? "\(count) agents" : status.label
+        case let .agent(count, _, _, status): count > 1 ? "\(count) agents" : status.label
         case let .screenshotCandidates(candidates):
-            return ScreenshotCandidatePolicy.coalescedLabel(count: candidates.count)
+            ScreenshotCandidatePolicy.coalescedLabel(count: candidates.count)
         }
     }
 
@@ -111,12 +110,12 @@ enum ActivityPresenter {
     /// `NotchLayout.compactAgentSlotWidth`.
     static func agentCompactStatus(_ status: AgentStatus) -> String {
         switch status {
-        case .running: return "Running"
-        case .editing: return "Editing"
-        case .tool: return "Working"
-        case .idle: return "Idle"
-        case .needsAttention: return "Needs you"
-        case .finished: return "Done"
+        case .running: "Running"
+        case .editing: "Editing"
+        case .tool: "Working"
+        case .idle: "Idle"
+        case .needsAttention: "Needs you"
+        case .finished: "Done"
         }
     }
 
@@ -128,20 +127,20 @@ enum ActivityPresenter {
     /// the session rows can't drift apart (they used to keep three copies).
     static func agentTint(_ status: AgentStatus) -> Color {
         switch status {
-        case .needsAttention: return .orange
-        case .finished: return .green
-        case .running, .tool: return .cyan
-        case .editing: return .blue
-        case .idle: return .white.opacity(0.6)
+        case .needsAttention: .orange
+        case .finished: .green
+        case .running, .tool: .cyan
+        case .editing: .blue
+        case .idle: .white.opacity(0.6)
         }
     }
 
     private static func color(for tint: Activity.PeekTint) -> Color {
         switch tint {
-        case .neutral: return .white
-        case .accent: return .accentColor
-        case .warning: return .orange
-        case .success: return .green
+        case .neutral: .white
+        case .accent: .accentColor
+        case .warning: .orange
+        case .success: .green
         }
     }
 }

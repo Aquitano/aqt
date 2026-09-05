@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// One agent session as a rich card: agent glyph, "project · prompt" title,
 /// status dot, agent/terminal badges, branch + uptime, and a preview of the
@@ -37,7 +37,11 @@ struct AgentRowView: View {
 
     @ViewBuilder
     private var layout: some View {
-        if collapsed { compactBody } else { fullBody }
+        if collapsed {
+            compactBody
+        } else {
+            fullBody
+        }
     }
 
     private var fullBody: some View {
@@ -61,7 +65,6 @@ struct AgentRowView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
             }
         }
         .padding(.horizontal, 14)
@@ -148,7 +151,11 @@ struct AgentRowView: View {
     private var quitButton: some View {
         Button {
             Haptics.tap(.levelChange)
-            if quitArmed { onQuit() } else { quitArmed = true }
+            if quitArmed {
+                onQuit()
+            } else {
+                quitArmed = true
+            }
         } label: {
             Text(quitArmed ? "Quit?" : "Quit")
                 .font(.caption.weight(.semibold))
@@ -181,11 +188,11 @@ struct AgentRowView: View {
 
     private var kindTint: Color {
         switch session.kind {
-        case .claudeCode: return Color(red: 0.85, green: 0.55, blue: 0.35) // Claude amber
-        case .codex: return .green
-        case .openCode: return .cyan
-        case .ohMyPi: return .mint
-        case .t3code: return .purple
+        case .claudeCode: Color(red: 0.85, green: 0.55, blue: 0.35) // Claude amber
+        case .codex: .green
+        case .openCode: .cyan
+        case .ohMyPi: .mint
+        case .t3code: .purple
         }
     }
 
@@ -203,14 +210,20 @@ struct AgentRowView: View {
 
     private static func duration(since date: Date) -> String {
         let seconds = max(0, Int(Date().timeIntervalSince(date)))
-        if seconds < 60 { return "\(seconds)s" }
-        if seconds < 3600 { return "\(seconds / 60)m" }
+        if seconds < 60 {
+            return "\(seconds)s"
+        }
+        if seconds < 3600 {
+            return "\(seconds / 60)m"
+        }
         return "\(seconds / 3600)h\((seconds % 3600) / 60)m"
     }
 
     private var accessibilityText: String {
         var parts = ["\(session.kind.displayName) in \(session.project)", session.status.label]
-        if let prompt = session.lastPrompt { parts.append("prompt: \(prompt)") }
+        if let prompt = session.lastPrompt {
+            parts.append("prompt: \(prompt)")
+        }
         parts.append(session.isDetached ? "detached, no terminal to jump to" : "jump to terminal")
         return parts.joined(separator: ", ")
     }

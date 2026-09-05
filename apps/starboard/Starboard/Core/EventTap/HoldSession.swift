@@ -71,14 +71,22 @@ struct HoldSession {
     private(set) var query = ""
     private(set) var scope: SearchScope = .apps
 
-    var cancelled: Bool { mode == .cancelled }
+    var cancelled: Bool {
+        mode == .cancelled
+    }
+
     var searchActive: Bool {
-        if case .letter = mode { return true }
+        if case .letter = mode {
+            return true
+        }
         return mode == .search
     }
+
     /// No keys were pressed during this hold — a "bare" tap, half of a
     /// double-tap gesture.
-    var isBareHold: Bool { mode == .idle }
+    var isBareHold: Bool {
+        mode == .idle
+    }
 
     /// Double-tap detected by KeyRouter: enter windows-only search.
     mutating func beginWindowSearch() -> [Intent] {
@@ -95,14 +103,13 @@ struct HoldSession {
     }
 
     mutating func primaryModifierUp() -> [Intent] {
-        let intents: [Intent]
-        switch mode {
+        let intents: [Intent] = switch mode {
         case .search, .windowCycle:
-            intents = [.commitSearch]
+            [.commitSearch]
         case .letter:
-            intents = [.cancelSearch] // the switch already happened on keyDown
+            [.cancelSearch] // the switch already happened on keyDown
         case .idle, .cancelled:
-            intents = []
+            []
         }
         self = HoldSession()
         return intents
@@ -132,7 +139,7 @@ struct HoldSession {
             mode = .letter(letter)
             query = String(letter)
             return [.switchToLetter(letter), .searchQuery(query)]
-        case .letter(let buffered) where buffered == letter:
+        case let .letter(buffered) where buffered == letter:
             return [.switchToLetter(letter)]
         case .letter:
             mode = .search
@@ -193,7 +200,7 @@ struct HoldSession {
                 mode = .windowCycle
                 scope = .windows
                 return [.beginWindowCycle]
-            case .letter(let buffered):
+            case let .letter(buffered):
                 return [.cycleLetter(buffered)]
             case .search, .windowCycle:
                 return [.moveSelection(1)]

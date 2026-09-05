@@ -228,7 +228,9 @@ struct SearchResultRow: View {
     }
 
     private var rowBackground: Color {
-        if isSelected { return Theme.Colors.selection }
+        if isSelected {
+            return Theme.Colors.selection
+        }
         return isHovered ? Theme.Colors.hover : .clear
     }
 

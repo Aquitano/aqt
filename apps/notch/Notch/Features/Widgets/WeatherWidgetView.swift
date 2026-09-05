@@ -1,6 +1,6 @@
-import SwiftUI
-import NotchCore
 import CoreLocation
+import NotchCore
+import SwiftUI
 
 /// At-a-glance weather: current conditions plus a short daily outlook. Owns its
 /// own glass chrome and only renders inside the expanded home surface, so it
@@ -31,8 +31,8 @@ struct WeatherWidgetView: View {
     /// permission problem, so it keeps the plain placeholder.
     private var needsLocationAccess: Bool {
         switch weather.authorization {
-        case .notDetermined, .denied, .restricted: return true
-        default: return false
+        case .notDetermined, .denied, .restricted: true
+        default: false
         }
     }
 
@@ -40,9 +40,12 @@ struct WeatherWidgetView: View {
 
     private func current(_ s: WeatherSnapshot) -> some View {
         HStack(spacing: 10) {
-            PixelIcon(systemName: s.symbolName, size: 32,
-                      tint: weatherTint(s.symbolName))
-                .frame(width: 32, height: 32)
+            PixelIcon(
+                systemName: s.symbolName,
+                size: 32,
+                tint: weatherTint(s.symbolName)
+            )
+            .frame(width: 32, height: 32)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text("\(Int(s.temperature.rounded()))\(s.unit.suffix)")
@@ -79,9 +82,12 @@ struct WeatherWidgetView: View {
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.white.opacity(0.7))
 
-                        PixelIcon(systemName: day.symbolName, size: 16,
-                                  tint: weatherTint(day.symbolName))
-                            .frame(height: 16)
+                        PixelIcon(
+                            systemName: day.symbolName,
+                            size: 16,
+                            tint: weatherTint(day.symbolName)
+                        )
+                        .frame(height: 16)
 
                         // High and low share a line to keep the row to a single
                         // compact band that fits inside the card.
@@ -106,8 +112,11 @@ struct WeatherWidgetView: View {
     /// retry instead of the ambiguous em-dash placeholder.
     private var fetchFailedPrompt: some View {
         VStack(alignment: .leading, spacing: 8) {
-            PixelIcon(systemName: "wifi.exclamationmark", size: 22,
-                      tint: .white.opacity(0.6))
+            PixelIcon(
+                systemName: "wifi.exclamationmark",
+                size: 22,
+                tint: .white.opacity(0.6)
+            )
 
             Text("Couldn't load the weather.")
                 .font(.callout)
@@ -128,8 +137,11 @@ struct WeatherWidgetView: View {
 
     private var accessPrompt: some View {
         VStack(alignment: .leading, spacing: 8) {
-            PixelIcon(systemName: "location.slash", size: 22,
-                      tint: .white.opacity(0.6))
+            PixelIcon(
+                systemName: "location.slash",
+                size: 22,
+                tint: .white.opacity(0.6)
+            )
 
             Text("Show local weather for your location.")
                 .font(.callout)
@@ -153,8 +165,11 @@ struct WeatherWidgetView: View {
 
     private var placeholder: some View {
         HStack(spacing: 10) {
-            PixelIcon(systemName: "location.slash", size: 22,
-                      tint: .white.opacity(0.6))
+            PixelIcon(
+                systemName: "location.slash",
+                size: 22,
+                tint: .white.opacity(0.6)
+            )
 
             VStack(alignment: .leading, spacing: 1) {
                 Text("—")
@@ -173,11 +188,21 @@ struct WeatherWidgetView: View {
     }
 
     private func weatherTint(_ symbol: String) -> Color {
-        if symbol.contains("sun") { return .yellow }
-        if symbol.contains("rain") || symbol.contains("drizzle") { return .cyan }
-        if symbol.contains("snow") { return .white }
-        if symbol.contains("bolt") { return .purple }
-        if symbol.contains("moon") { return .indigo }
+        if symbol.contains("sun") {
+            return .yellow
+        }
+        if symbol.contains("rain") || symbol.contains("drizzle") {
+            return .cyan
+        }
+        if symbol.contains("snow") {
+            return .white
+        }
+        if symbol.contains("bolt") {
+            return .purple
+        }
+        if symbol.contains("moon") {
+            return .indigo
+        }
         return .white.opacity(0.72)
     }
 }

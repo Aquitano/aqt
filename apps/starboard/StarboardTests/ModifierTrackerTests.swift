@@ -1,6 +1,6 @@
 import CoreGraphics
-import XCTest
 @testable import Starboard
+import XCTest
 
 final class ModifierTrackerTests: XCTestCase {
     private enum Bit {
@@ -15,7 +15,9 @@ final class ModifierTrackerTests: XCTestCase {
         static let command: UInt64 = 0x0010_0000
     }
 
-    private func flags(_ raw: UInt64) -> CGEventFlags { CGEventFlags(rawValue: raw) }
+    private func flags(_ raw: UInt64) -> CGEventFlags {
+        CGEventFlags(rawValue: raw)
+    }
 
     func testEachDeviceBitMapsToOneSide() {
         let cases: [(UInt64, ModifierState)] = [

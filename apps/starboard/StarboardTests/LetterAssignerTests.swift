@@ -1,5 +1,5 @@
-import XCTest
 @testable import Starboard
+import XCTest
 
 final class LetterAssignerTests: XCTestCase {
     func testDynamicLetterFoldsDiacriticsAndCase() {
@@ -22,7 +22,11 @@ final class LetterAssignerTests: XCTestCase {
     func testDynamicWinnerIsStableByLaunchOrderNotListOrder() {
         let assigner = LetterAssigner()
         let vlc = AppCandidate(bundleID: "org.videolan.vlc", name: "VLC", launchedAt: Date(timeIntervalSince1970: 200))
-        let vivaldi = AppCandidate(bundleID: "com.vivaldi.Vivaldi", name: "Vivaldi", launchedAt: Date(timeIntervalSince1970: 100))
+        let vivaldi = AppCandidate(
+            bundleID: "com.vivaldi.Vivaldi",
+            name: "Vivaldi",
+            launchedAt: Date(timeIntervalSince1970: 100)
+        )
         // Whatever order MRU hands us, the earlier-launched app owns the
         // letter for as long as both run (BATTLEPLAN §3.4 stability).
         XCTAssertEqual(assigner.apps(for: "v", in: [vlc, vivaldi]).first?.name, "Vivaldi")

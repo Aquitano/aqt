@@ -10,7 +10,6 @@ import Foundation
 package struct ProcessLookup: Sendable {
     package init() {}
 
-
     /// Every pid currently visible to this user's session.
     package func allPIDs() -> [pid_t] {
         let needed = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
@@ -74,23 +73,33 @@ package struct ProcessLookup: Sendable {
 
         let argc = buffer.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 0, as: Int32.self) }
         var i = MemoryLayout<Int32>.size
-        while i < size && buffer[i] != 0 { i += 1 }   // skip exec_path
-        while i < size && buffer[i] == 0 { i += 1 }   // skip padding
+        while i < size, buffer[i] != 0 {
+            i += 1
+        } // skip exec_path
+        while i < size, buffer[i] == 0 {
+            i += 1
+        } // skip padding
 
         func nextToken() -> String? {
             let start = i
-            while i < size && buffer[i] != 0 { i += 1 }
+            while i < size && buffer[i] != 0 {
+                i += 1
+            }
             defer { i += 1 }
-            return i > start ? String(bytes: buffer[start..<i], encoding: .utf8) : nil
+            return i > start ? String(bytes: buffer[start ..< i], encoding: .utf8) : nil
         }
 
         var args: [String] = []
-        for _ in 0..<Int(argc) where i < size {
-            if let token = nextToken() { args.append(token) }
+        for _ in 0 ..< Int(argc) where i < size {
+            if let token = nextToken() {
+                args.append(token)
+            }
         }
         var env: [String] = []
         while i < size {
-            if let token = nextToken() { env.append(token) }
+            if let token = nextToken() {
+                env.append(token)
+            }
         }
         return (args, env)
     }
@@ -147,8 +156,10 @@ package struct ProcessLookup: Sendable {
     /// pid. Used to find the terminal that hosts an agent.
     package func firstAncestor(of pid: pid_t, maxDepth: Int = 12, where match: (pid_t) -> Bool) -> pid_t? {
         var current = pid
-        for _ in 0..<maxDepth {
-            if match(current) { return current }
+        for _ in 0 ..< maxDepth {
+            if match(current) {
+                return current
+            }
             guard let parent = ppid(of: current), parent > 1, parent != current else { return nil }
             current = parent
         }

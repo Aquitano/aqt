@@ -5,7 +5,6 @@ import NotchCore
 /// Passive overlay: it never steals focus except while presenting the AirDrop
 /// share sheet, which must anchor to a key-capable window.
 final class NotchPanel: NSPanel {
-
     /// Flipped true only for the duration of an AirDrop / share interaction.
     var presentingShareSheet = false
 
@@ -45,6 +44,12 @@ final class NotchPanel: NSPanel {
     override var canBecomeKey: Bool {
         presentingShareSheet || editingText || interactingWithTray || previewing
     }
-    override var canBecomeMain: Bool { false }
-    override var acceptsFirstResponder: Bool { canBecomeKey }
+
+    override var canBecomeMain: Bool {
+        false
+    }
+
+    override var acceptsFirstResponder: Bool {
+        canBecomeKey
+    }
 }

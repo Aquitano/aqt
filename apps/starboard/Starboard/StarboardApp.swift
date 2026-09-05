@@ -78,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var tapFailureObserver: NSObjectProtocol?
     private var workspaceObservers: [NSObjectProtocol] = []
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    func applicationDidFinishLaunching(_: Notification) {
         terminateOlderInstances()
         tapFailureObserver = NotificationCenter.default.addObserver(
             forName: EventTap.failedNotification,
@@ -162,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
+    func applicationWillTerminate(_: Notification) {
         if let tapFailureObserver {
             NotificationCenter.default.removeObserver(tapFailureObserver)
         }
@@ -202,7 +202,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let ownLaunch = NSRunningApplication.current.launchDate else { return }
         let ownPID = ProcessInfo.processInfo.processIdentifier
         for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        where app.processIdentifier != ownPID && (app.launchDate ?? .distantPast) < ownLaunch {
+            where app.processIdentifier != ownPID && (app.launchDate ?? .distantPast) < ownLaunch
+        {
             NSLog("Starboard: taking over from instance \(app.processIdentifier)")
             app.terminate()
         }
@@ -232,19 +233,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch request {
         case .status:
             return .status(helperStatus())
-        case .setEnabled(let enabled):
+        case let .setEnabled(enabled):
             setEnabled(enabled)
             return .status(helperStatus())
         case .visibleApps:
             return .apps(switcher.stages.capturedApps().map { HelperApp(bundleID: $0.bundleID, name: $0.name) })
-        case .restoreStage(let letter):
+        case let .restoreStage(letter):
             switcher.stages.restore(letter: letter)
             return .done
         case .overlay:
             return .overlay(OverlaySnapshot(switcher.searchModel))
-        case .focus(let itemID):
+        case let .focus(itemID):
             return switcher.focusSearchItem(id: itemID) ? .done : .error("no such item")
-        case .search(let query, let scope):
+        case let .search(query, scope):
             return .items(OverlaySnapshot.rows(switcher.searchResults(query: query, scope: scope)))
         }
     }
@@ -272,7 +273,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let tap = try makeTap()
             eventTap = tap
-            if state.starboardEnabled { tap.enable() }
+            if state.starboardEnabled {
+                tap.enable()
+            }
         } catch {
             NSLog("Starboard: failed to create event tap: \(error)")
         }
@@ -305,9 +308,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     switcher: switcher
                 )
                 if tapSettings.stagesTrigger == .rightShift {
-                    if !was.rightShiftHeld && now.rightShiftHeld {
+                    if !was.rightShiftHeld, now.rightShiftHeld {
                         router.rightShiftDown()
-                    } else if was.rightShiftHeld && !now.rightShiftHeld {
+                    } else if was.rightShiftHeld, !now.rightShiftHeld {
                         Self.dispatch(router.rightShiftUp(), to: switcher)
                     }
                 }
@@ -376,12 +379,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let now = modifiers.update(flags: event.flags)
         let wasHeld = was.isHeld(primaryModifier)
         let nowHeld = now.isHeld(primaryModifier)
-        if !wasHeld && nowHeld {
+        if !wasHeld, nowHeld {
             dispatch(router.primaryModifierDown(), to: switcher)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { switcher.holdBegan() }
             }
-        } else if wasHeld && !nowHeld {
+        } else if wasHeld, !nowHeld {
             dispatch(router.primaryModifierUp(), to: switcher)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { switcher.endHold() }

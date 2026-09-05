@@ -11,7 +11,7 @@ enum KeyLayout {
     /// Latin letter on that key — on a Cyrillic or Greek layout the letter map
     /// is positional, which beats disabling every shortcut.
     static func letter(for keyCode: Int64) -> Character? {
-        guard case .translated(let character) = cache.character(for: keyCode),
+        guard case let .translated(character) = cache.character(for: keyCode),
               let latin = latinLetter(character)
         else { return Keycode.letters[keyCode] }
         return latin
@@ -19,7 +19,7 @@ enum KeyLayout {
 
     static func digit(for keyCode: Int64) -> Int? {
         switch cache.character(for: keyCode) {
-        case .translated(let character):
+        case let .translated(character):
             guard let value = character.wholeNumberValue, (1 ... 9).contains(value) else {
                 return nil
             }
@@ -76,7 +76,9 @@ private final class LayoutCache: @unchecked Sendable {
     }
 
     func character(for keyCode: Int64) -> Result {
-        if let cached = lock.withLock({ translations[keyCode] }) { return cached }
+        if let cached = lock.withLock({ translations[keyCode] }) {
+            return cached
+        }
         guard (0 ... Int64(UInt16.max)).contains(keyCode), let data = currentLayoutData() else {
             return .unavailable
         }
@@ -117,7 +119,9 @@ private final class LayoutCache: @unchecked Sendable {
 
     private func currentLayoutData() -> Data? {
         lock.withLock {
-            if loaded { return layoutData }
+            if loaded {
+                return layoutData
+            }
             loaded = true
 
             guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),

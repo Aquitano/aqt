@@ -7,9 +7,17 @@ import NotchCore
 final class ManualClock: Clock, @unchecked Sendable {
     struct Instant: InstantProtocol {
         var offset: Duration
-        func advanced(by duration: Duration) -> Instant { Instant(offset: offset + duration) }
-        func duration(to other: Instant) -> Duration { other.offset - offset }
-        static func < (lhs: Instant, rhs: Instant) -> Bool { lhs.offset < rhs.offset }
+        func advanced(by duration: Duration) -> Instant {
+            Instant(offset: offset + duration)
+        }
+
+        func duration(to other: Instant) -> Duration {
+            other.offset - offset
+        }
+
+        static func < (lhs: Instant, rhs: Instant) -> Bool {
+            lhs.offset < rhs.offset
+        }
     }
 
     private struct Sleeper {
@@ -22,10 +30,15 @@ final class ManualClock: Clock, @unchecked Sendable {
     private var _now = Instant(offset: .zero)
     private var sleepers: [Sleeper] = []
 
-    var now: Instant { lock.withLock { _now } }
-    var minimumResolution: Duration { .zero }
+    var now: Instant {
+        lock.withLock { _now }
+    }
 
-    func sleep(until deadline: Instant, tolerance: Duration?) async throws {
+    var minimumResolution: Duration {
+        .zero
+    }
+
+    func sleep(until deadline: Instant, tolerance _: Duration?) async throws {
         let id = UUID()
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -73,7 +86,7 @@ final class ManualClock: Clock, @unchecked Sendable {
     /// tasks enqueued there, in order, which a bare yield on this executor
     /// would race past.
     private static func settle() async {
-        for _ in 0..<10 {
+        for _ in 0 ..< 10 {
             await Task.yield()
             await MainActor.run {}
         }

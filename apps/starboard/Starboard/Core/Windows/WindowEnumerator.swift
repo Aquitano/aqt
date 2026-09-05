@@ -12,7 +12,9 @@ struct WindowInfo: Equatable, Identifiable {
     let isOnScreen: Bool
 
     var displayTitle: String {
-        if let title, !title.isEmpty { return title }
+        if let title, !title.isEmpty {
+            return title
+        }
         return "\(appName) Window"
     }
 }
@@ -28,7 +30,7 @@ enum WindowEnumerator {
     }
 
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var cache: Cache?
+    private nonisolated(unsafe) static var cache: Cache?
     /// Long enough that priming at the start of a hold still pays off on the
     /// first Tab. Anything that reorders windows — Space changes, app
     /// activation, launches and quits — invalidates the cache outright.
@@ -63,7 +65,8 @@ enum WindowEnumerator {
 
             // Skip tiny utility surfaces (status items, tooltips).
             if let bounds = entry[kCGWindowBounds as String] as? [String: CGFloat],
-               (bounds["Width"] ?? 0) < 64 || (bounds["Height"] ?? 0) < 64 {
+               (bounds["Width"] ?? 0) < 64 || (bounds["Height"] ?? 0) < 64
+            {
                 return nil
             }
 

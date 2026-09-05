@@ -1,6 +1,6 @@
-import SwiftUI
-import NotchCore
 import AppKit
+import NotchCore
+import SwiftUI
 
 /// The timer tab: a Focus/Break selector, a scrubbable tick dial, and the
 /// running countdown. Phase decisions live in `PomodoroPolicy`; the view only
@@ -17,9 +17,11 @@ struct TimerPanelView: View {
             if timer.runState == .idle {
                 Group {
                     phasePicker
-                    TimerDial(minutes: minutesBinding,
-                              range: PomodoroPolicy.minuteRange,
-                              tint: tint)
+                    TimerDial(
+                        minutes: minutesBinding,
+                        range: PomodoroPolicy.minuteRange,
+                        tint: tint
+                    )
                     idleControls
                 }
                 .transition(.blurReplace)
@@ -40,8 +42,8 @@ struct TimerPanelView: View {
 
     private static func tint(for phase: PomodoroPhase) -> Color {
         switch phase {
-        case .focus: return .orange
-        case .rest: return .mint
+        case .focus: .orange
+        case .rest: .mint
         }
     }
 
@@ -175,8 +177,10 @@ struct TimerPanelView: View {
                 .foregroundStyle(tint.opacity(paused ? 0.5 : 1))
                 // Digits roll downward each second instead of hard-cutting.
                 .contentTransition(.numericText(countsDown: true))
-                .animation(reduceMotion ? nil : .smooth(duration: 0.35),
-                           value: Int(remaining.rounded()))
+                .animation(
+                    reduceMotion ? nil : .smooth(duration: 0.35),
+                    value: Int(remaining.rounded())
+                )
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -204,8 +208,10 @@ struct TimerPanelView: View {
                 Haptics.tap(.levelChange)
                 timer.cancel()
             }
-            GlassButton(systemName: timer.runState == .paused ? "play.fill" : "pause.fill",
-                        size: 40) {
+            GlassButton(
+                systemName: timer.runState == .paused ? "play.fill" : "pause.fill",
+                size: 40
+            ) {
                 Haptics.tap(.levelChange)
                 timer.runState == .paused ? timer.resume() : timer.pause()
             }
@@ -216,7 +222,7 @@ struct TimerPanelView: View {
     /// not a scoreboard.
     private var sessionDots: some View {
         HStack(spacing: 4) {
-            ForEach(0..<min(timer.completedFocusSessions, 6), id: \.self) { _ in
+            ForEach(0 ..< min(timer.completedFocusSessions, 6), id: \.self) { _ in
                 Circle()
                     .fill(Self.tint(for: .focus).opacity(0.8))
                     .frame(width: 5, height: 5)

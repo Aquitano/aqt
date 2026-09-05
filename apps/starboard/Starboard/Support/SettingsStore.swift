@@ -53,47 +53,49 @@ enum PrimaryModifier: String, Codable, CaseIterable, Identifiable {
     case leftOption
     case fn
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var displayName: String {
         switch self {
-        case .rightCommand: return "Right ⌘ (Command)"
-        case .rightOption: return "Right ⌥ (Option)"
-        case .rightControl: return "Right ⌃ (Control)"
-        case .leftOption: return "Left ⌥ (Option)"
-        case .fn: return "fn / Globe"
+        case .rightCommand: "Right ⌘ (Command)"
+        case .rightOption: "Right ⌥ (Option)"
+        case .rightControl: "Right ⌃ (Control)"
+        case .leftOption: "Left ⌥ (Option)"
+        case .fn: "fn / Globe"
         }
     }
 
     var shortName: String {
         switch self {
-        case .rightCommand: return "Right ⌘"
-        case .rightOption: return "Right ⌥"
-        case .rightControl: return "Right ⌃"
-        case .leftOption: return "Left ⌥"
-        case .fn: return "fn"
+        case .rightCommand: "Right ⌘"
+        case .rightOption: "Right ⌥"
+        case .rightControl: "Right ⌃"
+        case .leftOption: "Left ⌥"
+        case .fn: "fn"
         }
     }
 
     var secondaryShortName: String {
         switch self {
         case .rightCommand, .rightControl, .fn:
-            return "Right ⌥"
+            "Right ⌥"
         case .rightOption:
-            return "Right ⌘"
+            "Right ⌘"
         case .leftOption:
-            return "Right ⌥"
+            "Right ⌥"
         }
     }
 
     func secondaryIsHeld(in state: ModifierState) -> Bool {
         switch self {
         case .rightCommand, .rightControl, .fn:
-            return state.rightOptionHeld
+            state.rightOptionHeld
         case .rightOption:
-            return state.rightCommandHeld
+            state.rightCommandHeld
         case .leftOption:
-            return state.rightOptionHeld || state.rightCommandHeld
+            state.rightOptionHeld || state.rightCommandHeld
         }
     }
 }
@@ -111,6 +113,7 @@ final class SettingsStore {
                 }
             }
         }
+
         var repeatPress = RepeatPressAction.cycleWindows
         var launchIfNotRunning = true
         var customAssignments: [String: String] = [:] // letter → bundleID
@@ -133,53 +136,53 @@ final class SettingsStore {
             Set(excludedBundleIDs)
         }
 
-        // Every field decodes with decodeIfPresent + default so settings
-        // persisted by older (or newer) versions never fail to load — a plain
-        // synthesized decode would silently wipe them on any added field.
+        /// Every field decodes with decodeIfPresent + default so settings
+        /// persisted by older (or newer) versions never fail to load — a plain
+        /// synthesized decode would silently wipe them on any added field.
         init() {}
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             primaryModifier =
                 (try? container.decodeIfPresent(PrimaryModifier.self, forKey: .primaryModifier))
-                .flatMap { $0 } ?? .rightCommand
+                    .flatMap { $0 } ?? .rightCommand
             let decodedDelay =
                 (try? container.decodeIfPresent(Int.self, forKey: .holdOverlayDelayMs))
-                .flatMap { $0 } ?? 300
+                    .flatMap { $0 } ?? 300
             holdOverlayDelayMs = min(max(50, decodedDelay), 2000)
             repeatPress =
                 (try? container.decodeIfPresent(RepeatPressAction.self, forKey: .repeatPress))
-                .flatMap { $0 } ?? .cycleWindows
+                    .flatMap { $0 } ?? .cycleWindows
             launchIfNotRunning =
                 (try? container.decodeIfPresent(Bool.self, forKey: .launchIfNotRunning))
-                .flatMap { $0 } ?? true
+                    .flatMap { $0 } ?? true
             customAssignments =
                 (try? container.decodeIfPresent([String: String].self, forKey: .customAssignments))
-                .flatMap { $0 } ?? [:]
+                    .flatMap { $0 } ?? [:]
             windowJumpEnabled =
                 (try? container.decodeIfPresent(Bool.self, forKey: .windowJumpEnabled))
-                .flatMap { $0 } ?? false
+                    .flatMap { $0 } ?? false
             spacesStrategy =
                 (try? container.decodeIfPresent(SpacesStrategy.self, forKey: .spacesStrategy))
-                .flatMap { $0 } ?? .synthetic
+                    .flatMap { $0 } ?? .synthetic
             spacesMoveWindowEnabled =
                 (try? container.decodeIfPresent(Bool.self, forKey: .spacesMoveWindowEnabled))
-                .flatMap { $0 } ?? false
+                    .flatMap { $0 } ?? false
             showSpaceNumber =
                 (try? container.decodeIfPresent(Bool.self, forKey: .showSpaceNumber))
-                .flatMap { $0 } ?? false
+                    .flatMap { $0 } ?? false
             stagesTrigger =
                 (try? container.decodeIfPresent(StagesTrigger.self, forKey: .stagesTrigger))
-                .flatMap { $0 } ?? .capsLock
+                    .flatMap { $0 } ?? .capsLock
             stages =
                 (try? container.decodeIfPresent([Stage].self, forKey: .stages))
-                .flatMap { $0 } ?? []
+                    .flatMap { $0 } ?? []
             mouseFollowsFocus =
                 (try? container.decodeIfPresent(Bool.self, forKey: .mouseFollowsFocus))
-                .flatMap { $0 } ?? false
+                    .flatMap { $0 } ?? false
             excludedBundleIDs =
                 (try? container.decodeIfPresent([String].self, forKey: .excludedBundleIDs))
-                .flatMap { $0 } ?? []
+                    .flatMap { $0 } ?? []
         }
     }
 
@@ -216,7 +219,7 @@ final class SettingsStore {
     init(storage: Storage) {
         self.storage = storage
         model = Self.load(from: storage) ?? Model()
-        if case .file(let url) = storage {
+        if case let .file(url) = storage {
             if !FileManager.default.fileExists(atPath: url.path) {
                 persistPending = true
                 flush()
@@ -232,9 +235,9 @@ final class SettingsStore {
         persistPending = false
         guard let data = try? exportJSON() else { return }
         switch storage {
-        case .defaults(let defaults):
+        case let .defaults(defaults):
             defaults.set(data, forKey: Self.key)
-        case .file(let url):
+        case let .file(url):
             try? FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true
             )
@@ -251,10 +254,9 @@ final class SettingsStore {
     }
 
     private static func load(from storage: Storage) -> Model? {
-        let data: Data?
-        switch storage {
-        case .defaults(let defaults): data = defaults.data(forKey: key)
-        case .file(let url): data = try? Data(contentsOf: url)
+        let data: Data? = switch storage {
+        case let .defaults(defaults): defaults.data(forKey: key)
+        case let .file(url): try? Data(contentsOf: url)
         }
         return data.flatMap { try? JSONDecoder().decode(Model.self, from: $0) }
     }

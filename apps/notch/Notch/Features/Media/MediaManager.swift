@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// Owns the active `MediaController`, publishes Now Playing state, and decodes
 /// artwork off-main. Selects the system-wide adapter when available, otherwise
@@ -7,7 +7,6 @@ import NotchCore
 @MainActor
 @Observable
 final class MediaManager {
-
     private(set) var track: NowPlayingTrack = .empty
     private(set) var artwork: NSImage?
     private(set) var capabilities: MediaCapabilities = []
@@ -24,6 +23,7 @@ final class MediaManager {
         case missing
         case unavailable(String)
     }
+
     private(set) var adapterState: AdapterState = .notRequested
 
     /// Wall-clock of the last snapshot, so views can interpolate the seek bar.
@@ -72,7 +72,7 @@ final class MediaManager {
                     switch probe {
                     case .available:
                         self.upgradeToAdapter(adapter)
-                    case .unavailable(let reason):
+                    case let .unavailable(reason):
                         self.adapterState = .unavailable("\(reason) Using per-app control instead.")
                         Log.media.notice("mediaremote-adapter self-test failed; staying on scripting")
                     }
@@ -124,7 +124,9 @@ final class MediaManager {
         renderingActive = active
     }
 
-    var canSeek: Bool { capabilities.contains(.seek) }
+    var canSeek: Bool {
+        capabilities.contains(.seek)
+    }
 
     /// Interpolated playback position for the current instant.
     func position(asOf date: Date = Date()) -> TimeInterval {

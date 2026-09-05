@@ -33,7 +33,9 @@ final class DirectSpaceSwitcher {
             .map { unsafeBitCast($0, to: MoveWindowsFn.self) }
     }
 
-    var canMoveWindows: Bool { moveWindows != nil }
+    var canMoveWindows: Bool {
+        moveWindows != nil
+    }
 
     /// 1-based index of the active Space among the active display's user Spaces.
     var currentSpaceIndex: Int? {

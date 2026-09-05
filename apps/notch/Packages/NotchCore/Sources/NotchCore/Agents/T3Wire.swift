@@ -17,7 +17,6 @@ import Foundation
 /// deliberately tolerant: unknown tags, item kinds, and fields are skipped, and
 /// a decode miss degrades to "no update", never a crash.
 package enum T3Wire {
-
     package static let subscribeShellMethod = "orchestration.subscribeShell"
 
     // MARK: - Client -> server frames
@@ -58,12 +57,18 @@ package enum T3Wire {
             var drift = false
             for value in values {
                 let decoded = shellItem(from: value as? [String: Any])
-                if let item = decoded.item { items.append(item) }
-                if decoded.drift { drift = true }
+                if let item = decoded.item {
+                    items.append(item)
+                }
+                if decoded.drift {
+                    drift = true
+                }
             }
             // A non-empty chunk that decodes to nothing means the schema moved
             // under us, not that t3 is quiet.
-            if !values.isEmpty && items.isEmpty { drift = true }
+            if !values.isEmpty, items.isEmpty {
+                drift = true
+            }
             return .chunk(requestId: requestId, items: items, drift: drift)
         case "Exit":
             return .exit
@@ -109,15 +114,18 @@ package enum T3Wire {
         let projects = (snapshot["projects"] as? [Any] ?? [])
             .compactMap { T3Project($0 as? [String: Any]) }
         let threads = rawThreads.compactMap { T3Thread($0 as? [String: Any]) }
-        return (.snapshot(projects: projects, threads: threads),
-                !rawThreads.isEmpty && threads.isEmpty)
+        return (
+            .snapshot(projects: projects, threads: threads),
+            !rawThreads.isEmpty && threads.isEmpty
+        )
     }
 
     /// Decode the HTTP shell-snapshot response (the polling fallback when the
     /// ws framing breaks). nil item = the response wasn't a shell snapshot.
     package static func shellSnapshotResponse(_ data: Data) -> (item: T3ShellItem?, drift: Bool) {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              object["threads"] != nil || object["projects"] != nil else {
+              object["threads"] != nil || object["projects"] != nil
+        else {
             return (nil, true)
         }
         return snapshotItem(from: object)
@@ -135,10 +143,12 @@ package enum T3Wire {
     package static func isVersion(_ version: String, newerThan reference: String) -> Bool {
         let lhs = numericComponents(version)
         let rhs = numericComponents(reference)
-        for index in 0..<max(lhs.count, rhs.count) {
+        for index in 0 ..< max(lhs.count, rhs.count) {
             let a = index < lhs.count ? lhs[index] : 0
             let b = index < rhs.count ? rhs[index] : 0
-            if a != b { return a > b }
+            if a != b {
+                return a > b
+            }
         }
         return false
     }
@@ -194,11 +204,13 @@ package enum T3Wire {
     /// updates so uptime doesn't reset on every event. Session ids are prefixed
     /// with the environment id so two servers' threads can never collide, and
     /// the row badge names the machine the session runs on.
-    package static func session(for thread: T3Thread,
-                        project: T3Project?,
-                        environment: T3Environment,
-                        previous: AgentSession?,
-                        now: Date) -> AgentSession? {
+    package static func session(
+        for thread: T3Thread,
+        project: T3Project?,
+        environment: T3Environment,
+        previous: AgentSession?,
+        now: Date
+    ) -> AgentSession? {
         guard let status = status(of: thread) else { return nil }
         var session = AgentSession(
             id: "t3-\(environment.id)-\(thread.id)",
@@ -222,7 +234,9 @@ package enum T3Wire {
     /// historical thread around, and the Agents tab is a list of what's running.
     package static func status(of thread: T3Thread) -> AgentStatus? {
         guard !thread.archived else { return nil }
-        if thread.needsUser { return .needsAttention }
+        if thread.needsUser {
+            return .needsAttention
+        }
         switch thread.sessionStatus {
         case "starting", "running": return .running
         // "ready": the turn completed and the runtime awaits the next prompt.
@@ -234,8 +248,10 @@ package enum T3Wire {
     /// Notify-worthy transitions between two published session maps. The caller
     /// suppresses this for the initial snapshot so reconnecting never replays
     /// notifications for sessions that were already running.
-    package static func events(previous: [String: AgentSession],
-                       current: [String: AgentSession]) -> [AgentEvent] {
+    package static func events(
+        previous: [String: AgentSession],
+        current: [String: AgentSession]
+    ) -> [AgentEvent] {
         var events: [AgentEvent] = []
         for (id, session) in current {
             guard let old = previous[id] else {
@@ -272,7 +288,9 @@ package struct T3Environment: Codable, Equatable, Identifiable {
         self.baseURL = baseURL
     }
 
-    package var tokenAccount: String { "t3code-access-token.\(id)" }
+    package var tokenAccount: String {
+        "t3code-access-token.\(id)"
+    }
 }
 
 /// Effect RPC request ids are `string | number` on the wire; acks must echo the
@@ -282,15 +300,19 @@ package enum T3RequestID: Equatable {
     case number(Int)
 
     package init?(_ raw: Any?) {
-        if let string = raw as? String { self = .string(string) }
-        else if let number = raw as? Int { self = .number(number) }
-        else { return nil }
+        if let string = raw as? String {
+            self = .string(string)
+        } else if let number = raw as? Int {
+            self = .number(number)
+        } else {
+            return nil
+        }
     }
 
     package var jsonValue: Any {
         switch self {
-        case let .string(value): return value
-        case let .number(value): return value
+        case let .string(value): value
+        case let .number(value): value
         }
     }
 }
@@ -394,9 +416,11 @@ package struct T3ShellState {
     }
 
     /// Map the current shell into sessions keyed by session id.
-    package func sessions(environment: T3Environment,
-                  previous: [String: AgentSession],
-                  now: Date) -> [String: AgentSession] {
+    package func sessions(
+        environment: T3Environment,
+        previous: [String: AgentSession],
+        now: Date
+    ) -> [String: AgentSession] {
         var result: [String: AgentSession] = [:]
         for thread in threads.values {
             let project = thread.projectId.flatMap { projects[$0] }

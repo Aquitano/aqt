@@ -1,13 +1,13 @@
-import QuickLookUI
 import NotchCore
+import QuickLookUI
 import SwiftUI
 
 @MainActor
 @Observable
 final class TrayQuickLookController: NSObject,
     @preconcurrency QLPreviewPanelDataSource,
-    QLPreviewPanelDelegate {
-
+    QLPreviewPanelDelegate
+{
     private(set) var isVisible = false
 
     private var itemIDs: Set<UUID> = []
@@ -20,7 +20,9 @@ final class TrayQuickLookController: NSObject,
         onClose: @escaping () -> Void
     ) {
         guard !items.isEmpty, let panel = QLPreviewPanel.shared() else { return }
-        if isVisible { finish() }
+        if isVisible {
+            finish()
+        }
         itemIDs = Set(items.map(\.id))
         previewURLs = items.map { $0.url(relativeTo: storageRoot) }
         self.onClose = onClose
@@ -34,7 +36,9 @@ final class TrayQuickLookController: NSObject,
 
     func present(urls: [URL], onClose: @escaping () -> Void) {
         guard !urls.isEmpty, let panel = QLPreviewPanel.shared() else { return }
-        if isVisible { finish() }
+        if isVisible {
+            finish()
+        }
         itemIDs = []
         previewURLs = urls
         self.onClose = onClose
@@ -53,19 +57,21 @@ final class TrayQuickLookController: NSObject,
     }
 
     func closeIfContains(_ ids: Set<UUID>) {
-        if !itemIDs.isDisjoint(with: ids) { close() }
+        if !itemIDs.isDisjoint(with: ids) {
+            close()
+        }
     }
 
-    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+    func numberOfPreviewItems(in _: QLPreviewPanel!) -> Int {
         previewURLs.count
     }
 
-    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+    func previewPanel(_: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
         guard previewURLs.indices.contains(index) else { return nil }
         return previewURLs[index] as NSURL
     }
 
-    func previewPanelWillClose(_ panel: QLPreviewPanel!) {
+    func previewPanelWillClose(_: QLPreviewPanel!) {
         finish()
     }
 

@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// Real entry point. Branches on argv *before* AppKit loads so the same binary
 /// can serve as a Claude hook / Codex notify client (write one line to the agent
@@ -9,7 +9,7 @@ enum NotchMain {
     static func main() {
         switch CommandLine.arguments.dropFirst().first {
         case "--agent-hook": HookClient.dispatch(Array(CommandLine.arguments.dropFirst()))
-        default:             NotchApp.main()
+        default: NotchApp.main()
         }
     }
 }

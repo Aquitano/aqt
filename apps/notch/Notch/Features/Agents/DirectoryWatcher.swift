@@ -1,12 +1,11 @@
 import CoreServices
-import NotchCore
 import Foundation
+import NotchCore
 
 /// Recursive file-level directory watcher built on FSEvents. Push-based: the
 /// callback fires (coalesced by a short latency) only when something under the
 /// watched path changes, so an idle agent costs nothing.
 final class DirectoryWatcher: @unchecked Sendable {
-
     private let path: String
     private let latency: CFTimeInterval
     private let queue = DispatchQueue(label: "com.aquitano.notch.dirwatcher")
@@ -63,7 +62,7 @@ final class DirectoryWatcher: @unchecked Sendable {
         let flags = FSEventStreamCreateFlags(
             kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagNoDefer
         )
-        let callback: FSEventStreamCallback = { _, info, count, eventPaths, _, _ in
+        let callback: FSEventStreamCallback = { _, info, _, eventPaths, _, _ in
             guard let info else { return }
             let watcher = Unmanaged<DirectoryWatcher>.fromOpaque(info).takeUnretainedValue()
             let paths = (unsafeBitCast(eventPaths, to: NSArray.self) as? [String]) ?? []

@@ -1,7 +1,7 @@
 import AudioToolbox
-import NotchCore
 import CoreGraphics
 import CoreMedia
+import NotchCore
 import ScreenCaptureKit
 import SwiftUI
 
@@ -57,19 +57,27 @@ final class AudioVisualizerManager {
     /// never just because a track happened to begin playing.
     func requestPermission() {
         if CGPreflightScreenCaptureAccess() {
-            if captureState == .permissionRequired { captureState = .idle }
-            if desiredActive { startIfAuthorized(generation: generation) }
+            if captureState == .permissionRequired {
+                captureState = .idle
+            }
+            if desiredActive {
+                startIfAuthorized(generation: generation)
+            }
             return
         }
 
         let granted = CGRequestScreenCaptureAccess()
         captureState = granted ? .idle : .permissionRequired
-        if granted, desiredActive { startIfAuthorized(generation: generation) }
+        if granted, desiredActive {
+            startIfAuthorized(generation: generation)
+        }
     }
 
     func refreshPermissionState(required: Bool = false) {
         if CGPreflightScreenCaptureAccess() {
-            if captureState == .permissionRequired { captureState = .idle }
+            if captureState == .permissionRequired {
+                captureState = .idle
+            }
         } else if required || desiredActive {
             captureState = .permissionRequired
         }
@@ -92,7 +100,8 @@ final class AudioVisualizerManager {
                 )
                 try Task.checkCancellation()
                 guard let display = content.displays.first(where: { $0.displayID == CGMainDisplayID() })
-                        ?? content.displays.first else {
+                    ?? content.displays.first
+                else {
                     throw AudioVisualizerError.noDisplay
                 }
 
@@ -105,7 +114,7 @@ final class AudioVisualizerManager {
                 configuration.showsCursor = false
                 configuration.capturesAudio = true
                 configuration.excludesCurrentProcessAudio = true
-                configuration.sampleRate = 48_000
+                configuration.sampleRate = 48000
                 configuration.channelCount = 1
                 configuration.streamName = "Notch audio visualizer"
 
@@ -120,7 +129,8 @@ final class AudioVisualizerManager {
 
                 guard !Task.isCancelled,
                       desiredActive,
-                      generation == requestedGeneration else {
+                      generation == requestedGeneration
+                else {
                     try? await newStream.stopCapture()
                     return
                 }
@@ -145,7 +155,9 @@ final class AudioVisualizerManager {
         levels = .zero
         processor.reset()
         guard let stream else {
-            if captureState != .permissionRequired { captureState = .idle }
+            if captureState != .permissionRequired {
+                captureState = .idle
+            }
             return
         }
         self.stream = nil
@@ -204,7 +216,7 @@ private final class AudioSampleProcessor: NSObject, SCStreamOutput, SCStreamDele
     }
 
     func stream(
-        _ stream: SCStream,
+        _: SCStream,
         didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
         of type: SCStreamOutputType
     ) {
@@ -234,7 +246,8 @@ private final class AudioSampleProcessor: NSObject, SCStreamOutput, SCStreamDele
         let asbd = description.pointee
         let levels: AudioLevels
         if asbd.mFormatFlags & kAudioFormatFlagIsFloat != 0,
-           asbd.mBitsPerChannel == 32 {
+           asbd.mBitsPerChannel == 32
+        {
             let count = Int(bufferList.mBuffers.mDataByteSize) / MemoryLayout<Float>.size
             let samples = UnsafeBufferPointer(
                 start: data.assumingMemoryBound(to: Float.self),
@@ -242,13 +255,14 @@ private final class AudioSampleProcessor: NSObject, SCStreamOutput, SCStreamDele
             )
             levels = analyzer.process(samples, sampleRate: asbd.mSampleRate)
         } else if asbd.mFormatFlags & kAudioFormatFlagIsSignedInteger != 0,
-                  asbd.mBitsPerChannel == 16 {
+                  asbd.mBitsPerChannel == 16
+        {
             let count = Int(bufferList.mBuffers.mDataByteSize) / MemoryLayout<Int16>.size
             if conversionScratch.count != count {
                 conversionScratch = Array(repeating: 0, count: count)
             }
             let source = data.assumingMemoryBound(to: Int16.self)
-            for index in 0..<count {
+            for index in 0 ..< count {
                 conversionScratch[index] = Float(source[index]) / Float(Int16.max)
             }
             levels = conversionScratch.withUnsafeBufferPointer {
@@ -267,7 +281,7 @@ private final class AudioSampleProcessor: NSObject, SCStreamOutput, SCStreamDele
         onLevels(visibleLevels)
     }
 
-    func stream(_ stream: SCStream, didStopWithError error: Error) {
+    func stream(_: SCStream, didStopWithError error: Error) {
         onStopped(error)
     }
 }

@@ -8,15 +8,37 @@ import Observation
 @MainActor
 @Observable
 final class Settings {
+    var general: Preferences.General {
+        didSet { generalChanged(from: oldValue) }
+    }
 
-    var general: Preferences.General { didSet { generalChanged(from: oldValue) } }
-    var notch: Preferences.Notch { didSet { persist() } }
-    var display: Preferences.Display { didSet { persist() } }
-    var hud: Preferences.HUD { didSet { persist() } }
-    var media: Preferences.Media { didSet { persist() } }
-    var tray: Preferences.Tray { didSet { persist() } }
-    var widgets: Preferences.Widgets { didSet { persist() } }
-    var agents: Preferences.Agents { didSet { persist() } }
+    var notch: Preferences.Notch {
+        didSet { persist() }
+    }
+
+    var display: Preferences.Display {
+        didSet { persist() }
+    }
+
+    var hud: Preferences.HUD {
+        didSet { persist() }
+    }
+
+    var media: Preferences.Media {
+        didSet { persist() }
+    }
+
+    var tray: Preferences.Tray {
+        didSet { persist() }
+    }
+
+    var widgets: Preferences.Widgets {
+        didSet { persist() }
+    }
+
+    var agents: Preferences.Agents {
+        didSet { persist() }
+    }
 
     /// True while the Settings recorder is capturing a chord. Not persisted;
     /// the AppDelegate suspends the live registration so the current chord can
@@ -43,8 +65,16 @@ final class Settings {
     }
 
     var snapshot: Preferences {
-        Preferences(general: general, notch: notch, display: display, hud: hud,
-                    media: media, tray: tray, widgets: widgets, agents: agents)
+        Preferences(
+            general: general,
+            notch: notch,
+            display: display,
+            hud: hud,
+            media: media,
+            tray: tray,
+            widgets: widgets,
+            agents: agents
+        )
     }
 
     private func persist() {
@@ -52,7 +82,9 @@ final class Settings {
     }
 
     private func generalChanged(from old: Preferences.General) {
-        if general.launchAtLogin != old.launchAtLogin { LoginItem.setEnabled(general.launchAtLogin) }
+        if general.launchAtLogin != old.launchAtLogin {
+            LoginItem.setEnabled(general.launchAtLogin)
+        }
         Haptics.isEnabled = general.hapticFeedback
         persist()
     }
@@ -78,7 +110,9 @@ final class Settings {
             notch.tabLayout.append(tab)
         } else {
             notch.tabLayout.removeAll { $0 == tab }
-            if notch.defaultTab == tab { notch.defaultTab = .home }
+            if notch.defaultTab == tab {
+                notch.defaultTab = .home
+            }
         }
     }
 
@@ -107,7 +141,9 @@ final class Settings {
     private static func applying(_ kind: WidgetKind, enabled: Bool, to layout: [WidgetKind]) -> [WidgetKind] {
         var layout = layout
         if enabled {
-            if !layout.contains(kind) { layout.append(kind) }
+            if !layout.contains(kind) {
+                layout.append(kind)
+            }
         } else {
             layout.removeAll { $0 == kind }
         }

@@ -1,12 +1,11 @@
 import Foundation
-import Testing
 @testable import NotchCore
+import Testing
 
 /// The `StatusReducer` source is compiled directly into this logic-test target
 /// (see `project.yml`), so its `internal` API is reachable without hosting the
 /// app — these fixtures run without a live Claude process.
 struct StatusReducerTests {
-
     /// Both fixtures sit well inside `busyEvidenceTimeout`, so a test only meets
     /// the staleness backstop when it asks for it by passing its own `now`.
     private let now: Date
@@ -24,8 +23,13 @@ struct StatusReducerTests {
         _ name: String, at time: Date, message: String? = nil, tool: String? = nil,
         notificationType: String? = nil
     ) -> HookSnapshot {
-        HookSnapshot(name: name, time: time, message: message, tool: tool,
-                     notificationType: notificationType)
+        HookSnapshot(
+            name: name,
+            time: time,
+            message: message,
+            tool: tool,
+            notificationType: notificationType
+        )
     }
 
     private func scan(at time: Date, busy: AgentStatus = .running, verb: String? = nil) -> StatusReducer.Scan {
@@ -127,8 +131,12 @@ struct StatusReducerTests {
     @Test func permissionNotificationTypeNeedsAttention() {
         // The type decides even when the message reads like an idle nudge.
         let resolved = StatusReducer.reduce(
-            hook: hook("Notification", at: later, message: "waiting for your input",
-                       notificationType: "permission_prompt"),
+            hook: hook(
+                "Notification",
+                at: later,
+                message: "waiting for your input",
+                notificationType: "permission_prompt"
+            ),
             scan: nil
         )
         #expect(resolved.status == .needsAttention)
@@ -155,8 +163,11 @@ struct StatusReducerTests {
         // A permission prompt whose tool name/description contains "waiting" must not
         // be demoted to an idle nudge by a bare-substring match.
         let resolved = StatusReducer.reduce(
-            hook: hook("Notification", at: later,
-                       message: "Claude needs your permission to use waiting-room-cli"),
+            hook: hook(
+                "Notification",
+                at: later,
+                message: "Claude needs your permission to use waiting-room-cli"
+            ),
             scan: nil
         )
         #expect(resolved.status == .needsAttention)

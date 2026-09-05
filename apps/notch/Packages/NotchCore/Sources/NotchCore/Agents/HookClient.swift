@@ -7,7 +7,6 @@ import Foundation
 /// socket, exit. Every failure path is swallowed and exits 0 so the host agent
 /// is never blocked, slowed, or made to fail by us.
 package enum HookClient {
-
     /// `Notch --agent-hook` — Claude Code hook. Event JSON arrives on stdin
     /// (`hook_event_name`, `session_id`, `cwd`, `transcript_path`, ...). Almost
     /// all events are fire-and-forget; PermissionRequest blocks on the app's
@@ -17,7 +16,9 @@ package enum HookClient {
         let json = (try? JSONSerialization.jsonObject(with: input)) as? [String: Any] ?? [:]
         let event = (json["hook_event_name"] as? String) ?? "unknown"
 
-        if event == "PermissionRequest" { runClaudePermission(json) }
+        if event == "PermissionRequest" {
+            runClaudePermission(json)
+        }
 
         send(HookEnvelope(
             agent: AgentKind.claudeCode.rawValue,
@@ -41,7 +42,9 @@ package enum HookClient {
     /// of its own — name the error instead, so a turn that died on a rate limit
     /// says so rather than just going quiet.
     private static func claudeMessage(_ json: [String: Any]) -> String? {
-        if let message = json["message"] as? String { return message }
+        if let message = json["message"] as? String {
+            return message
+        }
         let error = [json["error_type"] as? String, json["error_message"] as? String]
             .compactMap { $0 }
             .joined(separator: " — ")
@@ -80,9 +83,11 @@ package enum HookClient {
               decision == "allow" || decision == "deny" else { exit(0) }
 
         var behavior: [String: Any] = ["behavior": decision]
-        if decision == "deny" { behavior["reason"] = "Denied from the notch" }
+        if decision == "deny" {
+            behavior["reason"] = "Denied from the notch"
+        }
         let output: [String: Any] = [
-            "hookSpecificOutput": ["hookEventName": "PermissionRequest", "decision": behavior]
+            "hookSpecificOutput": ["hookEventName": "PermissionRequest", "decision": behavior],
         ]
         if let data = try? JSONSerialization.data(withJSONObject: output) {
             FileHandle.standardOutput.write(data)
@@ -197,7 +202,7 @@ package enum HookClient {
     private static func agentPID() -> pid_t {
         let lookup = ProcessLookup()
         var current = getppid()
-        for _ in 0..<6 {
+        for _ in 0 ..< 6 {
             if let path = lookup.path(of: current), isAgent(path, pid: current, lookup: lookup) {
                 return current
             }
@@ -213,9 +218,13 @@ package enum HookClient {
     /// runtime-hosted CLI (`node …/claude-code/cli.js`).
     private static func isAgent(_ path: String, pid: pid_t, lookup: ProcessLookup) -> Bool {
         let lower = path.lowercased()
-        if lower.contains("/claude/") || lower.contains("/claude-code") { return true }
+        if lower.contains("/claude/") || lower.contains("/claude-code") {
+            return true
+        }
         let base = (path as NSString).lastPathComponent
-        if base == "claude" || base == "codex" { return true }
+        if base == "claude" || base == "codex" {
+            return true
+        }
         if base == "node" || base == "bun" || base == "deno" {
             return lookup.arguments(of: pid).contains { $0.lowercased().contains("claude") }
         }
@@ -228,8 +237,10 @@ package enum HookClient {
         while true {
             let n = read(0, &buffer, buffer.count)
             guard n > 0 else { break }
-            data.append(contentsOf: buffer[0..<n])
-            if data.count > 1 << 20 { break }
+            data.append(contentsOf: buffer[0 ..< n])
+            if data.count > 1 << 20 {
+                break
+            }
         }
         return data
     }
@@ -253,8 +264,10 @@ package enum HookClient {
         while data.last != 0x0A {
             let n = read(fd, &buffer, buffer.count)
             guard n > 0 else { return nil } // EOF (window lapsed) or timeout
-            data.append(contentsOf: buffer[0..<n])
-            if data.count > 4096 { return nil }
+            data.append(contentsOf: buffer[0 ..< n])
+            if data.count > 4096 {
+                return nil
+            }
         }
         return data
     }
@@ -306,7 +319,8 @@ package enum HookClient {
             guard poll(&pfd, 1, 2000) == 1, pfd.revents & Int16(POLLOUT) != 0 else { close(fd); return nil }
             var soError: Int32 = 0
             var soLen = socklen_t(MemoryLayout<Int32>.size)
-            guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &soLen) == 0, soError == 0 else { close(fd); return nil }
+            guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &soLen) == 0,
+                  soError == 0 else { close(fd); return nil }
         }
 
         // Restore blocking with a send timeout so a stalled write can't hang either.

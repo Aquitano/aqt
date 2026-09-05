@@ -1,6 +1,6 @@
+import AppKit
 import Intents
 import NotchCore
-import AppKit
 
 /// Focus on/off via INFocusStatusCenter. v1 shows the badge only; the *named*
 /// Focus needs Full Disk Access (deferred). Re-reads when the app activates or a
@@ -8,7 +8,6 @@ import AppKit
 @MainActor
 @Observable
 final class FocusManager {
-
     private(set) var isOn = false
     private(set) var name: String?
     private(set) var authorized = false
@@ -69,7 +68,11 @@ final class FocusManager {
         isOn = focused
         // Don't announce the state we already found at launch as a transition.
         guard didInitialRead else { return }
-        activities.publish(Activity(kind: .focus(name: name, isOn: focused),
-                                    priority: .low, createdAt: Date(), ttl: 3))
+        activities.publish(Activity(
+            kind: .focus(name: name, isOn: focused),
+            priority: .low,
+            createdAt: Date(),
+            ttl: 3
+        ))
     }
 }

@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// Reusable circular control for the expanded chrome (transport, tray actions,
 /// tab bar). Glass sits on content only, never on the black pill, so callers

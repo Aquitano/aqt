@@ -1,6 +1,6 @@
-import SwiftUI
-import NotchCore
 import AppKit
+import NotchCore
+import SwiftUI
 
 /// The expanded panel's section switcher, dissolved into the frame. Instead of a
 /// glass strip that costs the body a row, the icons sit straight on the two black
@@ -51,7 +51,8 @@ struct NotchShoulderTabs: View {
         // slack around its 16pt glyph, which is what lands the icons on the same
         // visible margin the body below them uses.
         .padding(.horizontal, NotchMetrics.shoulderInset(
-            width: expandedWidth, notchWidth: notchSize.width))
+            width: expandedWidth, notchWidth: notchSize.width
+        ))
         .animation(.easeOut(duration: 0.15), value: hovered)
     }
 
@@ -67,8 +68,12 @@ struct NotchShoulderTabs: View {
 
     private func tabButton(_ tab: NotchState.ExpandedTab) -> some View {
         let selected = state.expandedTab == tab
-        return button(symbol: tab.symbol, item: .tab(tab), selected: selected,
-                      label: tab.title) {
+        return button(
+            symbol: tab.symbol,
+            item: .tab(tab),
+            selected: selected,
+            label: tab.title
+        ) {
             Haptics.tap(.levelChange)
             state.select(tab: tab)
         }
@@ -89,8 +94,13 @@ struct NotchShoulderTabs: View {
         }
     }
 
-    private func button(symbol: String, item: Item, selected: Bool,
-                        label: String, action: @escaping () -> Void) -> some View {
+    private func button(
+        symbol: String,
+        item: Item,
+        selected: Bool,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             VStack(spacing: Self.underlineGap) {
                 PixelIcon(systemName: symbol, size: Self.iconSize, tint: .white)
@@ -129,7 +139,9 @@ struct NotchShoulderTabs: View {
     }
 
     private func brightness(of item: Item, selected: Bool) -> Double {
-        if selected { return 1 }
+        if selected {
+            return 1
+        }
         return hovered == item ? 0.72 : 0.4
     }
 }

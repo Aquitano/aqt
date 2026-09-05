@@ -24,7 +24,9 @@ package final class Diagnostics {
         Log.app.error("[\(source)] \(message)")
         Task { @MainActor in
             self.issues.insert(Issue(date: Date(), source: source, message: message), at: 0)
-            if self.issues.count > Self.capacity { self.issues.removeLast(self.issues.count - Self.capacity) }
+            if self.issues.count > Self.capacity {
+                self.issues.removeLast(self.issues.count - Self.capacity)
+            }
         }
     }
 

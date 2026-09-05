@@ -52,7 +52,9 @@ final class ScreenshotMonitor {
         dismiss(ids: Set(current.map(\.id)))
     }
 
-    func dismissAll() { dismiss(ids: Set(candidates.map(\.id))) }
+    func dismissAll() {
+        dismiss(ids: Set(candidates.map(\.id)))
+    }
 
     func previewAll(onClose: @escaping () -> Void) {
         let urls = candidates.map(\.url).filter { FileManager.default.fileExists(atPath: $0.path) }
@@ -92,7 +94,9 @@ final class ScreenshotMonitor {
         let paths = Set(entries.map(\.path))
         let newURLs = entries.filter { !knownPaths.contains($0.path) }
         knownPaths = paths
-        for url in newURLs { scheduleStableRead(for: url) }
+        for url in newURLs {
+            scheduleStableRead(for: url)
+        }
     }
 
     private func scheduleStableRead(for url: URL) {
@@ -105,7 +109,7 @@ final class ScreenshotMonitor {
             guard !Task.isCancelled, let second = Self.descriptor(for: url),
                   first.fileSize == second.fileSize,
                   let candidate = ScreenshotCandidatePolicy.candidate(
-                    from: second, monitoringStartedAt: startedAt, now: Date()
+                      from: second, monitoringStartedAt: startedAt, now: Date()
                   ) else { return }
             self?.accept(candidate)
         }
@@ -131,7 +135,7 @@ final class ScreenshotMonitor {
         }
     }
 
-    nonisolated private static func screenshotDirectory() -> URL {
+    private nonisolated static func screenshotDirectory() -> URL {
         let defaults = UserDefaults(suiteName: "com.apple.screencapture")
         if let raw = defaults?.string(forKey: "location"), !raw.isEmpty {
             return URL(fileURLWithPath: NSString(string: raw).expandingTildeInPath, isDirectory: true)
@@ -139,17 +143,17 @@ final class ScreenshotMonitor {
         return FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0]
     }
 
-    nonisolated private static func directoryEntries(_ directory: URL) -> [URL] {
+    private nonisolated static func directoryEntries(_ directory: URL) -> [URL] {
         (try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
         )) ?? []
     }
 
-    nonisolated private static func descriptor(for url: URL) -> ScreenshotFileDescriptor? {
+    private nonisolated static func descriptor(for url: URL) -> ScreenshotFileDescriptor? {
         let keys: Set<URLResourceKey> = [
             .contentTypeKey, .creationDateKey, .fileSizeKey,
-            .fileResourceIdentifierKey, .isReadableKey, .isRegularFileKey
+            .fileResourceIdentifierKey, .isReadableKey, .isRegularFileKey,
         ]
         guard let values = try? url.resourceValues(forKeys: keys), values.isRegularFile == true else {
             return nil

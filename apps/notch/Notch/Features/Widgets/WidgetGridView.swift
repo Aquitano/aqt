@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// The expanded home dashboard: a compact row of status tiles above a wider row
 /// of info panels, both driven by the ordered `Settings.widgetLayout`. Purely a
@@ -94,8 +94,11 @@ struct WidgetGridView: View {
             openSettings()
         } label: {
             VStack(spacing: 6) {
-                PixelIcon(systemName: "square.grid.2x2", size: 22,
-                          tint: .white.opacity(0.4))
+                PixelIcon(
+                    systemName: "square.grid.2x2",
+                    size: 22,
+                    tint: .white.opacity(0.4)
+                )
                 Text("No widgets enabled")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.7))

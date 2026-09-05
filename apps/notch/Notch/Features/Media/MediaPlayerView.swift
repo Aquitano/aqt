@@ -1,6 +1,6 @@
-import SwiftUI
-import NotchCore
 import AppKit
+import NotchCore
+import SwiftUI
 
 /// Expanded now-playing surface: large album art that glides in from the compact
 /// pill via `matchedGeometryEffect(id: "artwork")`, title/artist, transport, and a
@@ -46,8 +46,11 @@ struct MediaPlayerView: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(.white.opacity(0.08))
                     .overlay {
-                        PixelIcon(systemName: "music.note", size: 34,
-                                  tint: .white.opacity(0.55))
+                        PixelIcon(
+                            systemName: "music.note",
+                            size: 34,
+                            tint: .white.opacity(0.55)
+                        )
                     }
             }
         }
@@ -185,10 +188,14 @@ private struct SeekBar: View {
     private func holdUntilSeekLands(_ target: TimeInterval) {
         seekHoldTask?.cancel()
         seekHoldTask = Task { @MainActor in
-            for _ in 0..<20 {
+            for _ in 0 ..< 20 {
                 try? await Task.sleep(for: .milliseconds(100))
-                if Task.isCancelled { return }
-                if abs(position(Date()) - target) < 1.5 { break }
+                if Task.isCancelled {
+                    return
+                }
+                if abs(position(Date()) - target) < 1.5 {
+                    break
+                }
             }
             isScrubbing = false
         }

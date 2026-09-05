@@ -6,7 +6,6 @@ import NotchCore
 /// queue; results are delivered on the main actor.
 @MainActor
 final class ScriptingMediaController: MediaControlling {
-
     var onUpdate: ((NowPlayingTrack) -> Void)?
     var onArtwork: ((Data?) -> Void)?
     let capabilities: MediaCapabilities = .full
@@ -44,7 +43,9 @@ final class ScriptingMediaController: MediaControlling {
             let track = Self.readTrack(app: app)
             Task { @MainActor in
                 guard let self else { return }
-                if let track { self.deliver(track, from: app) }
+                if let track {
+                    self.deliver(track, from: app)
+                }
             }
         }
     }
@@ -52,7 +53,8 @@ final class ScriptingMediaController: MediaControlling {
     // MARK: - Refresh
 
     private func refresh(preferred: MediaApp?) {
-        let order: [MediaApp] = preferred.map { pref in [pref] + MediaApp.allCases.filter { $0 != pref } } ?? MediaApp.allCases
+        let order: [MediaApp] = preferred.map { pref in [pref] + MediaApp.allCases.filter { $0 != pref } } ?? MediaApp
+            .allCases
         queue.async { [weak self] in
             let candidates = order.compactMap { app -> (MediaApp, NowPlayingTrack)? in
                 guard app.isRunning, let track = Self.readTrack(app: app) else { return nil }
@@ -77,7 +79,7 @@ final class ScriptingMediaController: MediaControlling {
     }
 
     /// Reads one app off-main and returns its current non-stopped track.
-    nonisolated private static func readTrack(app: MediaApp) -> NowPlayingTrack? {
+    private nonisolated static func readTrack(app: MediaApp) -> NowPlayingTrack? {
         guard app.isRunning, let descriptor = AppleScript.run(app.readScript) else { return nil }
         let raw = descriptor.stringValue ?? ""
         return MediaApp.parse(raw, app: app)
@@ -130,7 +132,9 @@ final class ScriptingMediaController: MediaControlling {
         guard artworkRequestIdentity == identity else { return }
         artworkRequestIdentity = nil
         guard currentTrackIdentity == identity else { return }
-        if data != nil { lastArtworkIdentity = identity }
+        if data != nil {
+            lastArtworkIdentity = identity
+        }
         onArtwork?(data)
     }
 }
@@ -140,11 +144,17 @@ final class ScriptingMediaController: MediaControlling {
 enum MediaApp: CaseIterable {
     case music, spotify
 
-    var bundleID: String { self == .music ? "com.apple.Music" : "com.spotify.client" }
+    var bundleID: String {
+        self == .music ? "com.apple.Music" : "com.spotify.client"
+    }
+
     var notificationName: Notification.Name {
         Notification.Name(self == .music ? "com.apple.Music.playerInfo" : "com.spotify.client.PlaybackStateChanged")
     }
-    private var appName: String { self == .music ? "Music" : "Spotify" }
+
+    private var appName: String {
+        self == .music ? "Music" : "Spotify"
+    }
 
     var isRunning: Bool {
         !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
@@ -195,11 +205,13 @@ enum MediaApp: CaseIterable {
     }
 
     static func parse(_ raw: String, app: MediaApp) -> NowPlayingTrack? {
-        if raw == "stopped" || raw.isEmpty { return nil }
+        if raw == "stopped" || raw.isEmpty {
+            return nil
+        }
         let parts = raw.components(separatedBy: "\u{1F}")
         guard parts.count >= 6 else { return nil }
         let state = parts[0]
-        let track = NowPlayingTrack(
+        return NowPlayingTrack(
             title: parts[1],
             artist: parts[2],
             album: parts[3],
@@ -209,7 +221,6 @@ enum MediaApp: CaseIterable {
             bundleIdentifier: app.bundleID,
             appName: app == .music ? "Music" : "Spotify"
         )
-        return track
     }
 }
 

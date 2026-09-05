@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// Pinned Shortcuts as one-tap run buttons. The pin list lives in Settings; run
 /// failures surface via the activity peek channel (see ShortcutsManager).
@@ -10,8 +10,11 @@ struct ShortcutsWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                PixelIcon(systemName: "square.2.layers.3d", size: 15,
-                          tint: .white.opacity(0.7))
+                PixelIcon(
+                    systemName: "square.2.layers.3d",
+                    size: 15,
+                    tint: .white.opacity(0.7)
+                )
                 Text("Shortcuts")
                     .font(.headline)
                     .foregroundStyle(.white)

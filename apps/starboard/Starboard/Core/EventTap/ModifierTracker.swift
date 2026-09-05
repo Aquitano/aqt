@@ -11,11 +11,11 @@ struct ModifierState: Equatable {
 
     func isHeld(_ modifier: PrimaryModifier) -> Bool {
         switch modifier {
-        case .rightCommand: return rightCommandHeld
-        case .rightOption: return rightOptionHeld
-        case .rightControl: return rightControlHeld
-        case .leftOption: return leftOptionHeld
-        case .fn: return fnHeld
+        case .rightCommand: rightCommandHeld
+        case .rightOption: rightOptionHeld
+        case .rightControl: rightControlHeld
+        case .leftOption: leftOptionHeld
+        case .fn: fnHeld
         }
     }
 }

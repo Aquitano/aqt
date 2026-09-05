@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// Glass card listing connected Bluetooth devices and whatever battery info we
 /// could resolve. Lives inside the expanded panel, so glass on the card is fine.
@@ -33,9 +33,12 @@ struct BluetoothWidgetView: View {
 
     private func row(for device: BluetoothDevice) -> some View {
         HStack(spacing: 8) {
-            PixelIcon(systemName: device.symbol, size: 16,
-                      tint: .white.opacity(0.75))
-                .frame(width: 18)
+            PixelIcon(
+                systemName: device.symbol,
+                size: 16,
+                tint: .white.opacity(0.75)
+            )
+            .frame(width: 18)
 
             Text(device.name)
                 .font(.caption)
@@ -60,9 +63,15 @@ struct BluetoothWidgetView: View {
         }
 
         var parts: [String] = []
-        if let left = device.batteryLeft { parts.append("L \(left)%") }
-        if let right = device.batteryRight { parts.append("R \(right)%") }
-        if let caseLevel = device.batteryCase { parts.append("C \(caseLevel)%") }
+        if let left = device.batteryLeft {
+            parts.append("L \(left)%")
+        }
+        if let right = device.batteryRight {
+            parts.append("R \(right)%")
+        }
+        if let caseLevel = device.batteryCase {
+            parts.append("C \(caseLevel)%")
+        }
         return parts.joined(separator: "  ")
     }
 }

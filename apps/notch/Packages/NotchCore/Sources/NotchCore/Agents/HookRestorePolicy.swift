@@ -8,8 +8,7 @@ import Foundation
 /// editor or a sync run rewrites a settings file several times in a row), and a
 /// hard stop after three repairs in an hour — at that point the other tool owns
 /// the file and the user has to settle it.
-package struct HookRestorePolicy {
-
+package enum HookRestorePolicy {
     package enum Decision: Equatable {
         case restore
         /// Too soon after the last repair. The next change event re-checks.

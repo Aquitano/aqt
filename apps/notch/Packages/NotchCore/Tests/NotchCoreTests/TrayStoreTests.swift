@@ -7,16 +7,16 @@ struct TrayStoreTests {
     @Test func representationPriorityIsFileImageURLThenText() {
         #expect(TrayDropCapabilities.preferredKind(for: [
             UTType.plainText.identifier, UTType.url.identifier,
-            UTType.png.identifier, UTType.fileURL.identifier
+            UTType.png.identifier, UTType.fileURL.identifier,
         ]) == .fileURLs)
         #expect(TrayDropCapabilities.preferredKind(for: [
-            UTType.plainText.identifier, UTType.url.identifier, UTType.png.identifier
+            UTType.plainText.identifier, UTType.url.identifier, UTType.png.identifier,
         ]) == .image)
         #expect(TrayDropCapabilities.preferredKind(for: [
-            UTType.plainText.identifier, UTType.url.identifier
+            UTType.plainText.identifier, UTType.url.identifier,
         ]) == .webURL)
         #expect(TrayDropCapabilities.preferredKind(for: [
-            UTType.utf8PlainText.identifier
+            UTType.utf8PlainText.identifier,
         ]) == .plainText)
     }
 
@@ -59,13 +59,13 @@ struct TrayStoreTests {
 
     @Test func migrationPreservesIdentityMetadataAndEffectiveTTL() {
         let id = UUID()
-        let added = Date(timeIntervalSince1970: 1_000)
+        let added = Date(timeIntervalSince1970: 1000)
         let result = TrayStoreMigration.migrate([
             LegacyDropItem(
                 id: id, fileName: "photo.png", relativePath: "id/photo.png",
                 byteSize: 42, addedAt: added,
                 typeIdentifier: UTType.png.identifier
-            )
+            ),
         ], ttlDays: 7, fileExists: { _ in true })
 
         #expect(result.quarantinedItemCount == 0)
@@ -74,7 +74,7 @@ struct TrayStoreTests {
         #expect(result.store.items.first?.kind == .image)
         #expect(result.store.items.first?.relativePath == "id/photo.png")
         #expect(result.store.items.first?.byteSize == 42)
-        #expect(result.store.items.first?.expiresAt == added.addingTimeInterval(7 * 86_400))
+        #expect(result.store.items.first?.expiresAt == added.addingTimeInterval(7 * 86400))
     }
 
     @Test func migrationQuarantinesMissingPayloadWithoutTouchingOthers() {
@@ -252,7 +252,7 @@ struct TrayStoreTests {
         second.expiresAt = TrayExpiryPolicy.deadline(addedAt: now, days: 4)
         #expect(TrayExpiryPolicy.nearestDeadline(in: [second, first], after: now) == first.expiresAt)
         let updated = TrayExpiryPolicy.applying(days: 7, to: [first, second])
-        #expect(updated[0].expiresAt == now.addingTimeInterval(7 * 86_400))
+        #expect(updated[0].expiresAt == now.addingTimeInterval(7 * 86400))
         #expect(TrayExpiryPresentation.make(for: first, now: now, lifetimeDays: 2)?.label == "2d left")
     }
 

@@ -1,7 +1,7 @@
-import SwiftUI
-import NotchCore
 import AppKit
 import EventKit
+import NotchCore
+import SwiftUI
 
 /// Glass card listing the next few calendar events, or an access prompt when
 /// calendar permission hasn't been granted. Lives inside the expanded panel,

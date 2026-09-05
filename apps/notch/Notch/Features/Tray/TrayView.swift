@@ -27,7 +27,11 @@ struct TrayView: View {
     var body: some View {
         VStack(spacing: 10) {
             collectionBar
-            if tray.activeItems.isEmpty { emptyHint } else { itemRow }
+            if tray.activeItems.isEmpty {
+                emptyHint
+            } else {
+                itemRow
+            }
             toolbar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -85,18 +89,28 @@ struct TrayView: View {
         }
         .alert("Rename Item", isPresented: Binding(
             get: { renameItem != nil },
-            set: { if !$0 { renameItem = nil } }
+            set: {
+                if !$0 {
+                    renameItem = nil
+                }
+            }
         )) {
             TextField("Name", text: $renameText)
             Button("Rename") {
-                if let item = renameItem { tray.rename(item, to: renameText) }
+                if let item = renameItem {
+                    tray.rename(item, to: renameText)
+                }
                 renameItem = nil
             }
             Button("Cancel", role: .cancel) { renameItem = nil }
         }
         .alert(collectionEditor?.title ?? "Collection", isPresented: Binding(
             get: { collectionEditor != nil },
-            set: { if !$0 { collectionEditor = nil } }
+            set: {
+                if !$0 {
+                    collectionEditor = nil
+                }
+            }
         )) {
             TextField("Name", text: $collectionName)
             Button(collectionEditor?.actionTitle ?? "Save") { commitCollectionEdit() }
@@ -106,7 +120,11 @@ struct TrayView: View {
             "Delete \(collectionPendingDeletion?.name ?? "Collection")?",
             isPresented: Binding(
                 get: { collectionPendingDeletion != nil },
-                set: { if !$0 { collectionPendingDeletion = nil } }
+                set: {
+                    if !$0 {
+                        collectionPendingDeletion = nil
+                    }
+                }
             ),
             titleVisibility: .visible
         ) {
@@ -194,8 +212,11 @@ struct TrayView: View {
 
     private var emptyHint: some View {
         VStack(spacing: 8) {
-            PixelIcon(systemName: "tray.and.arrow.down", size: 28,
-                      tint: .white.opacity(0.55))
+            PixelIcon(
+                systemName: "tray.and.arrow.down",
+                size: 28,
+                tint: .white.opacity(0.55)
+            )
             Text("Drop or paste into \(tray.activeCollection.name)")
                 .font(.callout)
         }
@@ -388,7 +409,9 @@ struct TrayView: View {
 
     private func select(_ item: TrayItem, toggling: Bool) {
         if toggling {
-            if !selection.insert(item.id).inserted { selection.remove(item.id) }
+            if !selection.insert(item.id).inserted {
+                selection.remove(item.id)
+            }
         } else {
             selection = [item.id]
         }
@@ -419,7 +442,9 @@ struct TrayView: View {
         }
     }
 
-    private func shareSelection() { share(selectedItems) }
+    private func shareSelection() {
+        share(selectedItems)
+    }
 
     private func share(_ items: [TrayItem]) {
         guard !items.isEmpty else { return }
@@ -430,7 +455,9 @@ struct TrayView: View {
     private func shareRepresentation(_ item: TrayItem) -> Any {
         switch item.kind {
         case .url:
-            if let raw = item.sourceURL, let url = URL(string: raw) { return url }
+            if let raw = item.sourceURL, let url = URL(string: raw) {
+                return url
+            }
             return tray.fileURL(for: item)
         case .text:
             return item.text ?? tray.fileURL(for: item)
@@ -455,7 +482,7 @@ struct TrayView: View {
         switch editor {
         case .create:
             _ = tray.createCollection(named: collectionName)
-        case .rename(let id):
+        case let .rename(id):
             _ = tray.renameCollection(id, to: collectionName)
         }
         collectionEditor = nil
@@ -510,15 +537,15 @@ struct TrayView: View {
 
         var title: String {
             switch self {
-            case .create: return "New Collection"
-            case .rename: return "Rename Collection"
+            case .create: "New Collection"
+            case .rename: "Rename Collection"
             }
         }
 
         var actionTitle: String {
             switch self {
-            case .create: return "Create"
-            case .rename: return "Rename"
+            case .create: "Create"
+            case .rename: "Rename"
             }
         }
     }

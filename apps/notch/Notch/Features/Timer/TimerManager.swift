@@ -8,7 +8,6 @@ import NotchCore
 @MainActor
 @Observable
 final class TimerManager {
-
     enum RunState: Equatable { case idle, running, paused }
 
     private(set) var runState: RunState = .idle
@@ -23,7 +22,9 @@ final class TimerManager {
     /// one (see `PomodoroPolicy.next`) so the natural next session is one tap away.
     var selectedPhase: PomodoroPhase = .focus
 
-    var isRunning: Bool { runState != .idle }
+    var isRunning: Bool {
+        runState != .idle
+    }
 
     private unowned let activities: ActivityManager
     private let clock: any Clock<Duration>
@@ -37,9 +38,11 @@ final class TimerManager {
     }
 
     func start(phase: PomodoroPhase, minutes: Int) {
-        begin(name: phase.title,
-              duration: TimeInterval(PomodoroPolicy.clampedMinutes(minutes) * 60),
-              phase: phase)
+        begin(
+            name: phase.title,
+            duration: TimeInterval(PomodoroPolicy.clampedMinutes(minutes) * 60),
+            phase: phase
+        )
     }
 
     func start(name: String, duration: TimeInterval) {
@@ -96,8 +99,12 @@ final class TimerManager {
 
     private func complete() {
         let peek = PomodoroPolicy.completionPeek(for: activePhase, name: name)
-        if activePhase == .focus { completedFocusSessions += 1 }
-        if let phase = activePhase { selectedPhase = PomodoroPolicy.next(after: phase) }
+        if activePhase == .focus {
+            completedFocusSessions += 1
+        }
+        if let phase = activePhase {
+            selectedPhase = PomodoroPolicy.next(after: phase)
+        }
         task = nil
         clearActivity()
         reset()
@@ -126,7 +133,9 @@ final class TimerManager {
     }
 
     private func clearActivity() {
-        if let id = activityID { activities.remove(id: id) }
+        if let id = activityID {
+            activities.remove(id: id)
+        }
         activityID = nil
     }
 }

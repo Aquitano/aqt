@@ -46,7 +46,11 @@ struct ScreenshotCandidateTests {
         )
         #expect(
             ScreenshotCandidate.identity(resourceIdentifier: "42", url: url, createdAt: date)
-                != ScreenshotCandidate.identity(resourceIdentifier: "42", url: url, createdAt: date.addingTimeInterval(1))
+                != ScreenshotCandidate.identity(
+                    resourceIdentifier: "42",
+                    url: url,
+                    createdAt: date.addingTimeInterval(1)
+                )
         )
     }
 

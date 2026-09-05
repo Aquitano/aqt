@@ -1,5 +1,5 @@
-import Observation
 import NotchCore
+import Observation
 
 /// Runs `handler` with the value of `read` and again whenever any observable
 /// property `read` touched changes. Changes are coalesced per main-actor turn,
@@ -17,7 +17,9 @@ func watch<Value: Sendable>(
         var isFirst = true
         for await value in values {
             defer { isFirst = false }
-            if isFirst && !initial { continue }
+            if isFirst, !initial {
+                continue
+            }
             handler(value)
         }
     }
@@ -39,7 +41,9 @@ func watch<Value: Sendable & Equatable>(
         for await value in values {
             defer { previous = value }
             if let previous {
-                if previous != value { handler(value) }
+                if previous != value {
+                    handler(value)
+                }
             } else if initial {
                 handler(value)
             }

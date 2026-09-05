@@ -6,7 +6,8 @@ import AppKit
 @discardableResult
 func _AXUIElementGetWindow(
     _ element: AXUIElement,
-    _ identifier: UnsafeMutablePointer<CGWindowID>) -> AXError
+    _ identifier: UnsafeMutablePointer<CGWindowID>
+) -> AXError
 
 /// Focuses specific windows via AX: activate the owning app first (on main),
 /// then raise + make-main off the main thread (with the 250 ms timeout). The

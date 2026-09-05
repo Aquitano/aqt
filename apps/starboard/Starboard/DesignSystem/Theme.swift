@@ -47,15 +47,8 @@ enum Theme {
     }
 }
 
-private struct ThemeContrastBoostKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
 extension EnvironmentValues {
-    var themeContrastBoost: Bool {
-        get { self[ThemeContrastBoostKey.self] }
-        set { self[ThemeContrastBoostKey.self] = newValue }
-    }
+    @Entry var themeContrastBoost: Bool = false
 }
 
 private struct ThemeAccessibilityModifier: ViewModifier {

@@ -11,19 +11,27 @@ package enum TrayRepresentationKind: String, Equatable, Sendable {
 package enum TrayDropCapabilities {
     package static let internalItemIDsType = "com.aquitano.notch.tray-item-ids"
     package static let acceptedTypes: [UTType] = [
-        .fileURL, .image, .url, .plainText, .utf8PlainText
+        .fileURL, .image, .url, .plainText, .utf8PlainText,
     ]
 
     package static let acceptedTypeIdentifiers = acceptedTypes.map(\.identifier)
 
     package static func preferredKind(for typeIdentifiers: [String]) -> TrayRepresentationKind? {
         let types = typeIdentifiers.compactMap(UTType.init)
-        if types.contains(where: { $0.conforms(to: .fileURL) }) { return .fileURLs }
-        if types.contains(where: { $0.conforms(to: .image) }) { return .image }
-        if types.contains(where: { $0.conforms(to: .url) }) { return .webURL }
+        if types.contains(where: { $0.conforms(to: .fileURL) }) {
+            return .fileURLs
+        }
+        if types.contains(where: { $0.conforms(to: .image) }) {
+            return .image
+        }
+        if types.contains(where: { $0.conforms(to: .url) }) {
+            return .webURL
+        }
         if types.contains(where: {
             $0.conforms(to: .plainText) || $0.conforms(to: .utf8PlainText)
-        }) { return .plainText }
+        }) {
+            return .plainText
+        }
         return nil
     }
 
@@ -31,12 +39,11 @@ package enum TrayDropCapabilities {
         for kind: TrayRepresentationKind,
         in typeIdentifiers: [String]
     ) -> String? {
-        let target: UTType
-        switch kind {
-        case .fileURLs: target = .fileURL
-        case .image: target = .image
-        case .webURL: target = .url
-        case .plainText: target = .plainText
+        let target: UTType = switch kind {
+        case .fileURLs: .fileURL
+        case .image: .image
+        case .webURL: .url
+        case .plainText: .plainText
         }
         return typeIdentifiers.first { identifier in
             UTType(identifier)?.conforms(to: target) == true
@@ -61,17 +68,21 @@ package enum TrayFileNamePolicy {
         ) })
         if !folded.contains(valid.folding(
             options: [.caseInsensitive, .diacriticInsensitive], locale: .current
-        )) { return valid }
+        )) {
+            return valid
+        }
 
         let url = URL(fileURLWithPath: valid)
         let ext = url.pathExtension
         let stem = url.deletingPathExtension().lastPathComponent
-        for index in 2...9_999 {
+        for index in 2 ... 9999 {
             let candidate = ext.isEmpty ? "\(stem) \(index)" : "\(stem) \(index).\(ext)"
             let key = candidate.folding(
                 options: [.caseInsensitive, .diacriticInsensitive], locale: .current
             )
-            if !folded.contains(key) { return candidate }
+            if !folded.contains(key) {
+                return candidate
+            }
         }
         return nil
     }

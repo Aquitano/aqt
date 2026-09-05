@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 struct AgentPermissionCard: View {
     let pending: PendingAgentPermission
@@ -52,9 +52,15 @@ struct AgentPermissionCard: View {
         Grid(alignment: .leading, horizontalSpacing: 9, verticalSpacing: 3) {
             metadataRow("Tool", pending.request?.toolName ?? "Unknown")
             metadataRow("Operation", pending.request?.operation.rawValue.capitalized ?? "Unknown")
-            if let branch = session?.gitBranch { metadataRow("Branch", branch) }
-            if let terminal = session?.terminalName { metadataRow("Terminal", terminal) }
-            if let cwd = pending.cwd { metadataRow("Directory", cwd) }
+            if let branch = session?.gitBranch {
+                metadataRow("Branch", branch)
+            }
+            if let terminal = session?.terminalName {
+                metadataRow("Terminal", terminal)
+            }
+            if let cwd = pending.cwd {
+                metadataRow("Directory", cwd)
+            }
         }
         .font(.system(size: 10))
         .textSelection(.enabled)
@@ -118,7 +124,9 @@ struct AgentPermissionCard: View {
             Button("Jump to Terminal", action: onJump).buttonStyle(.bordered).controlSize(.small)
             Button("Copy Summary", action: onCopy).buttonStyle(.bordered).controlSize(.small)
             Spacer(minLength: 4)
-            if case .responding = pending.state { ProgressView().controlSize(.small) }
+            if case .responding = pending.state {
+                ProgressView().controlSize(.small)
+            }
             Button("Deny", action: onDeny)
                 .buttonStyle(.bordered).controlSize(.small).tint(.red)
                 .disabled(!pending.isActionable(at: now))
@@ -137,35 +145,37 @@ struct AgentPermissionCard: View {
     }
 
     private func deadlineText(_ now: Date) -> String {
-        if pending.state == .expired || now >= pending.replyDeadline { return "Continue in Terminal" }
+        if pending.state == .expired || now >= pending.replyDeadline {
+            return "Continue in Terminal"
+        }
         return "\(max(0, Int(pending.replyDeadline.timeIntervalSince(now))))s"
     }
 
     private var statusText: String? {
         switch pending.state {
-        case .pending: return nil
-        case .responding: return "Sending…"
-        case .approved: return "Approved once"
-        case .denied: return "Denied"
-        case .deliveryFailed: return "Delivery failed · Continue in Terminal"
-        case .expired: return "Continue in Terminal"
+        case .pending: nil
+        case .responding: "Sending…"
+        case .approved: "Approved once"
+        case .denied: "Denied"
+        case .deliveryFailed: "Delivery failed · Continue in Terminal"
+        case .expired: "Continue in Terminal"
         }
     }
 
     private var statusColor: Color {
         switch pending.state {
-        case .approved: return .green
-        case .denied, .deliveryFailed: return .red
-        default: return .white.opacity(0.5)
+        case .approved: .green
+        case .denied, .deliveryFailed: .red
+        default: .white.opacity(0.5)
         }
     }
 
     private var riskColor: Color {
         switch pending.risk.level {
-        case .low: return .green
-        case .medium: return .orange
-        case .high: return .red
-        case .unknown: return .yellow
+        case .low: .green
+        case .medium: .orange
+        case .high: .red
+        case .unknown: .yellow
         }
     }
 }
@@ -173,27 +183,27 @@ struct AgentPermissionCard: View {
 private extension AgentPermissionRiskReason {
     var label: String {
         switch self {
-        case .missingEvidence: return "The request does not include enough structured evidence"
-        case .truncatedInput: return "Command or input was truncated"
-        case .unsupportedTool: return "The tool or input structure is not recognized"
-        case .recursiveDeletion: return "Deletes files recursively or forcefully"
-        case .privilegeEscalation: return "Uses administrator privileges"
-        case .systemWrite: return "Writes to a system location"
-        case .outsideProjectWrite: return "Writes outside the project"
-        case .sensitiveDataMutation: return "Can modify credentials or sensitive configuration"
-        case .downloadAndExecute: return "Downloads and executes code"
-        case .broadPermissionChange: return "Broadly grants write or execute permission"
-        case .networkAccess: return "Makes a network request"
-        case .packageInstallation: return "Installs a package"
-        case .processTermination: return "Terminates a process"
-        case .gitPush: return "Pushes changes to a remote repository"
-        case .destructiveProjectChange: return "Moves or deletes project content"
-        case .userConfigurationWrite: return "Writes to user configuration"
-        case .shellAmbiguity: return "Shell syntax makes the final effect ambiguous"
-        case .ambiguousPath: return "A path cannot be verified lexically"
-        case .explicitProjectRead: return "Reads explicit paths inside the project"
-        case .explicitProjectWrite: return "Writes explicit paths inside the project"
-        case .knownLocalBuild: return "Runs a known local build or test command"
+        case .missingEvidence: "The request does not include enough structured evidence"
+        case .truncatedInput: "Command or input was truncated"
+        case .unsupportedTool: "The tool or input structure is not recognized"
+        case .recursiveDeletion: "Deletes files recursively or forcefully"
+        case .privilegeEscalation: "Uses administrator privileges"
+        case .systemWrite: "Writes to a system location"
+        case .outsideProjectWrite: "Writes outside the project"
+        case .sensitiveDataMutation: "Can modify credentials or sensitive configuration"
+        case .downloadAndExecute: "Downloads and executes code"
+        case .broadPermissionChange: "Broadly grants write or execute permission"
+        case .networkAccess: "Makes a network request"
+        case .packageInstallation: "Installs a package"
+        case .processTermination: "Terminates a process"
+        case .gitPush: "Pushes changes to a remote repository"
+        case .destructiveProjectChange: "Moves or deletes project content"
+        case .userConfigurationWrite: "Writes to user configuration"
+        case .shellAmbiguity: "Shell syntax makes the final effect ambiguous"
+        case .ambiguousPath: "A path cannot be verified lexically"
+        case .explicitProjectRead: "Reads explicit paths inside the project"
+        case .explicitProjectWrite: "Writes explicit paths inside the project"
+        case .knownLocalBuild: "Runs a known local build or test command"
         }
     }
 }

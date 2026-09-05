@@ -8,8 +8,16 @@ import Foundation
 package struct Preferences: Codable, Equatable {
     package init() {}
 
-    package init(general: General, notch: Notch, display: Display, hud: HUD,
-                 media: Media, tray: Tray, widgets: Widgets, agents: Agents) {
+    package init(
+        general: General,
+        notch: Notch,
+        display: Display,
+        hud: HUD,
+        media: Media,
+        tray: Tray,
+        widgets: Widgets,
+        agents: Agents
+    ) {
         self.general = general
         self.notch = notch
         self.display = display
@@ -19,6 +27,7 @@ package struct Preferences: Codable, Equatable {
         self.widgets = widgets
         self.agents = agents
     }
+
     package static let currentVersion = 1
 
     package var version = currentVersion
@@ -32,19 +41,17 @@ package struct Preferences: Codable, Equatable {
     package var agents = Agents()
 
     package struct General: Codable, Equatable {
-
         package init() {}
         package var launchAtLogin = false
         package var hapticFeedback = true
         package var hasCompletedOnboarding = false
         package var hotkeyEnabled = false
         /// Carbon virtual key code + modifier mask for the toggle-notch hotkey.
-        package var hotkeyKeyCode = 45       // kVK_ANSI_N
-        package var hotkeyModifiers = 6144   // controlKey | optionKey
+        package var hotkeyKeyCode = 45 // kVK_ANSI_N
+        package var hotkeyModifiers = 6144 // controlKey | optionKey
     }
 
     package struct Notch: Codable, Equatable {
-
         package init() {}
         /// Ordered home-tab widgets. Membership means enabled; order is the render
         /// order within each grid row (rows are carved out by `WidgetKind.row`).
@@ -58,7 +65,6 @@ package struct Preferences: Codable, Equatable {
     }
 
     package struct Display: Codable, Equatable {
-
         package init() {}
         package var placement = DisplayPlacement.builtIn
         package var followActive = false
@@ -67,7 +73,6 @@ package struct Preferences: Codable, Equatable {
     }
 
     package struct HUD: Codable, Equatable {
-
         package init() {}
         package var enabled = true
         /// Consume media keys and suppress the native HUD (needs Accessibility).
@@ -75,7 +80,6 @@ package struct Preferences: Codable, Equatable {
     }
 
     package struct Media: Codable, Equatable {
-
         package init() {}
         package var systemWideAdapter = true
         package var compactNowPlaying = true
@@ -85,7 +89,6 @@ package struct Preferences: Codable, Equatable {
     }
 
     package struct Tray: Codable, Equatable {
-
         package init() {}
         package var ttlDays = 7
         package var moveEnabled = false
@@ -95,7 +98,6 @@ package struct Preferences: Codable, Equatable {
     }
 
     package struct Widgets: Codable, Equatable {
-
         package init() {}
         package var temperatureUnit = WeatherSnapshot.TemperatureUnit.celsius
         /// Battery percentage that fires the low-battery alert; re-arms 5 above it.
@@ -108,7 +110,6 @@ package struct Preferences: Codable, Equatable {
     }
 
     package struct Agents: Codable, Equatable {
-
         package init() {}
         package var enabled = true
         package var claudeEnabled = false
@@ -142,18 +143,24 @@ extension Preferences {
     /// one runs the migrations in order first.
     package static func decode(_ data: Data) throws -> Preferences {
         guard var stored = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "preferences root is not an object"))
+            throw DecodingError.dataCorrupted(.init(
+                codingPath: [],
+                debugDescription: "preferences root is not an object"
+            ))
         }
         let version = stored["version"] as? Int ?? 0
-        if version < currentVersion { stored = migrate(stored, from: version) }
-        let defaults = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Preferences())) as? [String: Any] ?? [:]
+        if version < currentVersion {
+            stored = migrate(stored, from: version)
+        }
+        let defaults = try JSONSerialization
+            .jsonObject(with: JSONEncoder().encode(Preferences())) as? [String: Any] ?? [:]
         let merged = try JSONSerialization.data(withJSONObject: deepMerge(base: defaults, overlay: stored))
         var preferences = try JSONDecoder().decode(Preferences.self, from: merged)
         preferences.version = currentVersion
         return preferences.normalized
     }
 
-    private static func migrate(_ document: [String: Any], from version: Int) -> [String: Any] {
+    private static func migrate(_ document: [String: Any], from _: Int) -> [String: Any] {
         // Version 1 is the first document format; future migrations rewrite the
         // dictionary here, one `if version < N` block per step.
         document
@@ -175,7 +182,9 @@ extension Preferences {
     /// invalid, so the rest of the app never has to defend against them.
     package var normalized: Preferences {
         var copy = self
-        if !copy.notch.tabLayout.contains(.home) { copy.notch.tabLayout.insert(.home, at: 0) }
+        if !copy.notch.tabLayout.contains(.home) {
+            copy.notch.tabLayout.insert(.home, at: 0)
+        }
         copy.widgets.pomodoroFocusMinutes = PomodoroPolicy.clampedMinutes(copy.widgets.pomodoroFocusMinutes)
         copy.widgets.pomodoroBreakMinutes = PomodoroPolicy.clampedMinutes(copy.widgets.pomodoroBreakMinutes)
         copy.agents.soundStarted = AgentSound.normalizedName(copy.agents.soundStarted, fallback: .boot)
@@ -192,16 +201,24 @@ extension Preferences {
     package static func importingLegacyDefaults(_ defaults: UserDefaults) -> Preferences {
         var p = Preferences()
         func bool(_ key: String, _ target: inout Bool) {
-            if let value = defaults.object(forKey: key) as? Bool { target = value }
+            if let value = defaults.object(forKey: key) as? Bool {
+                target = value
+            }
         }
         func int(_ key: String, _ target: inout Int) {
-            if let value = defaults.object(forKey: key) as? Int { target = value }
+            if let value = defaults.object(forKey: key) as? Int {
+                target = value
+            }
         }
         func string(_ key: String, _ target: inout String) {
-            if let value = defaults.string(forKey: key) { target = value }
+            if let value = defaults.string(forKey: key) {
+                target = value
+            }
         }
         func raw<T: RawRepresentable>(_ key: String, _ target: inout T) where T.RawValue == String {
-            if let value = defaults.string(forKey: key).flatMap(T.init(rawValue:)) { target = value }
+            if let value = defaults.string(forKey: key).flatMap(T.init(rawValue:)) {
+                target = value
+            }
         }
         func json<T: Decodable>(_ key: String, _ target: inout T) {
             if let value = defaults.data(forKey: key).flatMap({ try? JSONDecoder().decode(T.self, from: $0) }) {
@@ -253,7 +270,9 @@ extension Preferences {
         int("pomodoroFocusMinutes", &p.widgets.pomodoroFocusMinutes)
         int("pomodoroBreakMinutes", &p.widgets.pomodoroBreakMinutes)
         string("clockSecondaryTimeZone", &p.widgets.clockSecondaryTimeZone)
-        if let pinned = defaults.stringArray(forKey: "pinnedShortcuts") { p.widgets.pinnedShortcuts = pinned }
+        if let pinned = defaults.stringArray(forKey: "pinnedShortcuts") {
+            p.widgets.pinnedShortcuts = pinned
+        }
 
         bool("agentsEnabled", &p.agents.enabled)
         bool("agentClaudeEnabled", &p.agents.claudeEnabled)
@@ -283,12 +302,22 @@ extension Preferences {
             defaults.object(forKey: key) as? Bool ?? fallback
         }
         var layout: [WidgetKind] = [.battery]
-        if flag("showClockWidget", default: false) { layout.append(.clock) }
+        if flag("showClockWidget", default: false) {
+            layout.append(.clock)
+        }
         layout += [.focus, .bluetooth]
-        if flag("showWeatherWidget", default: true) { layout.append(.weather) }
-        if flag("showCalendarWidget", default: true) { layout.append(.calendar) }
-        if flag("showShortcutsWidget", default: false) { layout.append(.shortcuts) }
-        if flag("showNoteWidget", default: false) { layout.append(.note) }
+        if flag("showWeatherWidget", default: true) {
+            layout.append(.weather)
+        }
+        if flag("showCalendarWidget", default: true) {
+            layout.append(.calendar)
+        }
+        if flag("showShortcutsWidget", default: false) {
+            layout.append(.shortcuts)
+        }
+        if flag("showNoteWidget", default: false) {
+            layout.append(.note)
+        }
         return layout
     }
 }
@@ -330,7 +359,10 @@ package struct PreferencesStore {
         do {
             return try Preferences.decode(data)
         } catch {
-            diagnostics?.report(source: "Preferences", message: "preferences.json is unreadable; using defaults and keeping the file as preferences.json.broken (\(error.localizedDescription))")
+            diagnostics?.report(
+                source: "Preferences",
+                message: "preferences.json is unreadable; using defaults and keeping the file as preferences.json.broken (\(error.localizedDescription))"
+            )
             try? persistence.writeBackupIfMissing(data, to: Self.fileName + ".broken")
             return Preferences()
         }

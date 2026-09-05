@@ -1,6 +1,6 @@
-import SwiftUI
-import NotchCore
 import AppKit
+import NotchCore
+import SwiftUI
 
 /// The expanded panel's tab switcher plus the gear, rendered either inside the
 /// blob (glass strip on black) or as the detached floating capsule below it —
@@ -39,20 +39,23 @@ struct NotchTabStrip: View {
             Haptics.tap(.levelChange)
             state.select(tab: tab)
         } label: {
-            PixelIcon(systemName: tab.symbol, size: 16,
-                      tint: selected ? Color.white : Color.white.opacity(0.5))
-                .frame(width: 46, height: 32)
-                .background {
-                    // One shared pill that slides between tabs as the selection
-                    // moves. A capsule so its curvature matches the capsule strip
-                    // around it instead of reading as a rounded-rect inside a pill.
-                    if selected {
-                        Capsule(style: .continuous)
-                            .fill(.white.opacity(0.18))
-                            .matchedGeometryEffect(id: "tabSelection", in: tabNamespace)
-                    }
+            PixelIcon(
+                systemName: tab.symbol,
+                size: 16,
+                tint: selected ? Color.white : Color.white.opacity(0.5)
+            )
+            .frame(width: 46, height: 32)
+            .background {
+                // One shared pill that slides between tabs as the selection
+                // moves. A capsule so its curvature matches the capsule strip
+                // around it instead of reading as a rounded-rect inside a pill.
+                if selected {
+                    Capsule(style: .continuous)
+                        .fill(.white.opacity(0.18))
+                        .matchedGeometryEffect(id: "tabSelection", in: tabNamespace)
                 }
-                .contentShape(.rect)
+            }
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tab.rawValue.capitalized)
@@ -72,10 +75,13 @@ struct NotchTabStrip: View {
             NSApp.activate(ignoringOtherApps: true)
             openSettings()
         } label: {
-            PixelIcon(systemName: "gearshape", size: 16,
-                      tint: Color.white.opacity(0.5))
-                .frame(width: 46, height: 32)
-                .contentShape(.rect)
+            PixelIcon(
+                systemName: "gearshape",
+                size: 16,
+                tint: Color.white.opacity(0.5)
+            )
+            .frame(width: 46, height: 32)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Settings")

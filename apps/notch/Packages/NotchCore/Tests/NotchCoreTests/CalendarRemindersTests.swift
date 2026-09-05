@@ -1,12 +1,11 @@
 import Foundation
-import Testing
 @testable import NotchCore
+import Testing
 
 /// `CalendarReminders.pending` is a pure filter over events + clock, so the
 /// all-day exclusion, the lead-time window, and per-occurrence fan-out are
 /// table-tested here without EventKit.
 struct CalendarRemindersTests {
-
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
     private let lead: TimeInterval = 5 * 60
 
@@ -39,7 +38,11 @@ struct CalendarRemindersTests {
     }
 
     @Test func allDayEventNeverReminds() {
-        let out = CalendarReminders.pending(events: [event("Holiday", startsInMinutes: 120, isAllDay: true)], now: now, lead: lead)
+        let out = CalendarReminders.pending(
+            events: [event("Holiday", startsInMinutes: 120, isAllDay: true)],
+            now: now,
+            lead: lead
+        )
         #expect(out.isEmpty)
     }
 

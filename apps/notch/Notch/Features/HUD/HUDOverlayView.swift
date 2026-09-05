@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// Auto-dismissing volume/brightness capsule that sits just below the notch:
 /// glyph, a quiet name, the level bar, and the percentage. Visibility and the
@@ -12,9 +12,12 @@ struct HUDOverlayView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            PixelIcon(systemName: hud.muted ? "speaker.slash.fill" : hud.kind.symbol,
-                      size: 16, tint: .white)
-                .frame(width: 20)
+            PixelIcon(
+                systemName: hud.muted ? "speaker.slash.fill" : hud.kind.symbol,
+                size: 16,
+                tint: .white
+            )
+            .frame(width: 20)
 
             Text(hud.kind.title)
                 .font(.system(size: 13, weight: .semibold))
@@ -58,18 +61,24 @@ struct HUDOverlayView: View {
     /// the bar rather than hiding it, so the level survives the state.
     private var barTint: Color {
         switch hud.kind {
-        case .brightness: return .yellow
-        case .volume: return .white
-        case .mute: return .white.opacity(0.35)
+        case .brightness: .yellow
+        case .volume: .white
+        case .mute: .white.opacity(0.35)
         }
     }
 
-    private var clampedValue: Double { min(max(hud.value, 0), 1) }
+    private var clampedValue: Double {
+        min(max(hud.value, 0), 1)
+    }
 
-    private var percent: Int { Int((clampedValue * 100).rounded()) }
+    private var percent: Int {
+        Int((clampedValue * 100).rounded())
+    }
 
     private var accessibilityLabel: String {
-        if hud.muted { return "Muted" }
+        if hud.muted {
+            return "Muted"
+        }
         return "\(hud.kind.title) \(percent) percent"
     }
 }

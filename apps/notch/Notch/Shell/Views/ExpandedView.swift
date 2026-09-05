@@ -1,6 +1,6 @@
-import SwiftUI
-import NotchCore
 import AppKit
+import NotchCore
+import SwiftUI
 
 /// The full expanded panel body. Lives inside the black notch blob, so every
 /// chrome surface here is glass-on-black (never glass on the pill itself). A
@@ -30,7 +30,8 @@ struct ExpandedView: View {
             // back to read as a consistent 12pt visible margin like the bottom;
             // using the corner radius left the sides pinched.
             .padding(.horizontal, 12 + NotchMetrics.shoulderInset(
-                width: expandedWidth, notchWidth: notchSize.width))
+                width: expandedWidth, notchWidth: notchSize.width
+            ))
             .padding(.bottom, 12)
             // Keep the tap targets well clear of the physical notch / menu-bar band,
             // which otherwise crowds the top tab row and eats clicks near the notch.
@@ -78,6 +79,6 @@ struct ExpandedView: View {
             }
             WidgetGridView()
         }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }

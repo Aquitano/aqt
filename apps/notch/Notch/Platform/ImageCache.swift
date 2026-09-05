@@ -1,22 +1,23 @@
 import AppKit
-import NotchCore
 import ImageIO
+import NotchCore
 import UniformTypeIdentifiers
 
 /// Downsamples artwork with ImageIO (never decodes full-res into an NSImage) and
 /// keeps results in a cost-limited cache. A 3000x3000 cover is ~36 MB decoded vs
 /// ~0.5 MB downsampled, so this is the single biggest RAM lever in the app.
 final class ImageCache: @unchecked Sendable {
-
     private let cache = NSCache<NSString, NSImage>()
     private let session: URLSession
 
     init() {
-        cache.totalCostLimit = 48 * 1024 * 1024   // ~48 MB of decoded thumbnails
+        cache.totalCostLimit = 48 * 1024 * 1024 // ~48 MB of decoded thumbnails
 
         let config = URLSessionConfiguration.default
-        config.urlCache = URLCache(memoryCapacity: 8 * 1024 * 1024,
-                                   diskCapacity: 64 * 1024 * 1024)
+        config.urlCache = URLCache(
+            memoryCapacity: 8 * 1024 * 1024,
+            diskCapacity: 64 * 1024 * 1024
+        )
         config.requestCachePolicy = .returnCacheDataElseLoad
         self.session = URLSession(configuration: config)
     }
@@ -52,7 +53,9 @@ final class ImageCache: @unchecked Sendable {
 
     /// Decode + cache under `key`. Safe to call off the main actor.
     func makeArtwork(from data: Data, key: String, maxDimension: CGFloat) -> NSImage? {
-        if let cached = image(forKey: key) { return cached }
+        if let cached = image(forKey: key) {
+            return cached
+        }
         guard let image = downsample(data: data, maxDimension: maxDimension) else { return nil }
         store(image, forKey: key)
         return image
@@ -61,7 +64,9 @@ final class ImageCache: @unchecked Sendable {
     /// Fetch + downsample remote artwork, fronted by the session's URLCache.
     func remoteImage(from url: URL, maxDimension: CGFloat) async -> NSImage? {
         let key = url.absoluteString
-        if let cached = image(forKey: key) { return cached }
+        if let cached = image(forKey: key) {
+            return cached
+        }
         do {
             let (data, _) = try await session.data(from: url)
             guard let image = downsample(data: data, maxDimension: maxDimension) else { return nil }

@@ -1,12 +1,11 @@
 import Foundation
-import Testing
 @testable import NotchCore
+import Testing
 
 /// `TranscriptParser` parses bytes, not a path, so these fixtures are plain
 /// JSONL strings — no transcript files on disk. The source is compiled into this
 /// logic-test target (see `project.yml`).
 struct TranscriptParserTests {
-
     /// Build a transcript blob from individual JSONL lines (oldest first, as on
     /// disk). The parser reads it back-to-front.
     private func transcript(_ lines: String...) -> Data {

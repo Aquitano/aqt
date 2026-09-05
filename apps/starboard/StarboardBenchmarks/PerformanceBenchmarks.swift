@@ -1,5 +1,5 @@
-import XCTest
 @testable import Starboard
+import XCTest
 
 final class PerformanceBenchmarks: XCTestCase {
     func testFuzzyRankingThroughput() {
@@ -18,7 +18,7 @@ final class PerformanceBenchmarks: XCTestCase {
         )
         let modifiers = ModifierState(rightCommandHeld: true)
         measure(metrics: [XCTClockMetric(), XCTCPUMetric(), XCTMemoryMetric()]) {
-            for _ in 0 ..< 10_000 {
+            for _ in 0 ..< 10000 {
                 _ = router.keyDown(0x01, modifiers: modifiers)
                 _ = router.rightCommandUp()
             }

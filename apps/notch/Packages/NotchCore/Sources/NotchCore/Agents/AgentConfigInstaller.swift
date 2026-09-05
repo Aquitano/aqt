@@ -8,7 +8,6 @@ import Foundation
 /// target so the atomic temp+rename replaces the file's contents instead of
 /// clobbering the symlink with a plain file.
 package struct AgentConfigInstaller {
-
     package enum InstallerError: Error, LocalizedError, Equatable {
         /// The file exists but could not be read or parsed as a JSON object;
         /// we refuse to overwrite it (that would destroy the user's settings).
@@ -30,7 +29,7 @@ package struct AgentConfigInstaller {
                 return "The agent's hooks configuration has an unexpected format, so it was left untouched."
             case .concurrentModification:
                 return "The agent's settings changed while Notch was updating them. Nothing was overwritten; try again."
-            case .pluginNotOurs(let path):
+            case let .pluginNotOurs(path):
                 let display = (path as NSString).abbreviatingWithTildeInPath
                 return "\(display) already exists and wasn't written by Notch, so it was left untouched. Move it aside and try again."
             }
@@ -54,41 +53,86 @@ package struct AgentConfigInstaller {
         self.beforeWrite = beforeWrite
     }
 
-    private var claudeSettingsURL: URL { home.appendingPathComponent(".claude/settings.json") }
-    private var bridgeDir: URL { home.appendingPathComponent(".notch/bin", isDirectory: true) }
-    private var bridgeURL: URL { bridgeDir.appendingPathComponent("notch-agent-hook") }
-    private var appPathCacheURL: URL { bridgeDir.appendingPathComponent(".app-path") }
-    private var statusLineURL: URL { bridgeDir.appendingPathComponent("notch-statusline") }
-    private var statusLineOrigURL: URL { bridgeDir.appendingPathComponent(".statusline-orig.json") }
+    private var claudeSettingsURL: URL {
+        home.appendingPathComponent(".claude/settings.json")
+    }
+
+    private var bridgeDir: URL {
+        home.appendingPathComponent(".notch/bin", isDirectory: true)
+    }
+
+    private var bridgeURL: URL {
+        bridgeDir.appendingPathComponent("notch-agent-hook")
+    }
+
+    private var appPathCacheURL: URL {
+        bridgeDir.appendingPathComponent(".app-path")
+    }
+
+    private var statusLineURL: URL {
+        bridgeDir.appendingPathComponent("notch-statusline")
+    }
+
+    private var statusLineOrigURL: URL {
+        bridgeDir.appendingPathComponent(".statusline-orig.json")
+    }
 
     /// Key under which we stash the user's pre-wrap statusLine inside settings.json
     /// itself, so an uninstall restores it even if the user deleted ~/.notch (and the
     /// on-disk snapshot with it). NSNull records "the user had no statusLine".
     private static let statusLineBackupKey = "notchStatusLineBackup"
 
-    private var codexHooksURL: URL { home.appendingPathComponent(".codex/hooks.json") }
-    private var openCodePluginURL: URL { home.appendingPathComponent(".config/opencode/plugins/notch.js") }
-    private var ohMyPiDir: URL { home.appendingPathComponent(".omp/agent/extensions/notch", isDirectory: true) }
-    private var ohMyPiProfilesDir: URL { home.appendingPathComponent(".omp/profiles", isDirectory: true) }
+    private var codexHooksURL: URL {
+        home.appendingPathComponent(".codex/hooks.json")
+    }
 
-    // UserPromptSubmit / PreToolUse / PostToolUse make status precise: they mark the
-    // exact start, tool-run, and tool-done transitions of a turn, so busy/idle never
-    // has to be inferred from transcript timing. Notification/Stop/SessionStart/
-    // SessionEnd cover attention, turn-end, and lifecycle. Tool events need no matcher
-    // (Claude runs a matcher-less group for every tool).
-    //
-    // The two failure events matter as much as their happy paths: a turn killed by
-    // an API error fires StopFailure and never Stop, and a failed tool fires
-    // PostToolUseFailure and never PostToolUse. Without them a dead turn leaves the
-    // last transition we saw standing, and the session reads as working forever.
-    private static let claudeHookEvents = ["Notification", "Stop", "StopFailure",
-                                           "SessionStart", "SessionEnd", "UserPromptSubmit",
-                                           "PreToolUse", "PostToolUse", "PostToolUseFailure"]
+    private var openCodePluginURL: URL {
+        home.appendingPathComponent(".config/opencode/plugins/notch.js")
+    }
+
+    private var ohMyPiDir: URL {
+        home.appendingPathComponent(".omp/agent/extensions/notch", isDirectory: true)
+    }
+
+    private var ohMyPiProfilesDir: URL {
+        home.appendingPathComponent(".omp/profiles", isDirectory: true)
+    }
+
+    /// UserPromptSubmit / PreToolUse / PostToolUse make status precise: they mark the
+    /// exact start, tool-run, and tool-done transitions of a turn, so busy/idle never
+    /// has to be inferred from transcript timing. Notification/Stop/SessionStart/
+    /// SessionEnd cover attention, turn-end, and lifecycle. Tool events need no matcher
+    /// (Claude runs a matcher-less group for every tool).
+    ///
+    /// The two failure events matter as much as their happy paths: a turn killed by
+    /// an API error fires StopFailure and never Stop, and a failed tool fires
+    /// PostToolUseFailure and never PostToolUse. Without them a dead turn leaves the
+    /// last transition we saw standing, and the session reads as working forever.
+    private static let claudeHookEvents = [
+        "Notification",
+        "Stop",
+        "StopFailure",
+        "SessionStart",
+        "SessionEnd",
+        "UserPromptSubmit",
+        "PreToolUse",
+        "PostToolUse",
+        "PostToolUseFailure",
+    ]
     /// Installed separately: PermissionRequest blocks on the user's in-notch
     /// decision, so it carries a long timeout instead of the 5s bound above.
     private static let claudePermissionEvent = "PermissionRequest"
-    private static var claudeAllHookEvents: [String] { claudeHookEvents + [claudePermissionEvent] }
-    private static let codexHookEvents = ["PermissionRequest", "PostToolUse", "SessionStart", "Stop", "UserPromptSubmit"]
+    private static var claudeAllHookEvents: [String] {
+        claudeHookEvents + [claudePermissionEvent]
+    }
+
+    private static let codexHookEvents = [
+        "PermissionRequest",
+        "PostToolUse",
+        "SessionStart",
+        "Stop",
+        "UserPromptSubmit",
+    ]
     /// Distinctive tokens in our hook commands: the stable-path launcher binary
     /// (`notch-agent-hook`) and the legacy `… --agent-hook` flag. Matching these,
     /// rather than the bare substring "agent-hook", avoids deleting an unrelated
@@ -155,8 +199,12 @@ package struct AgentConfigInstaller {
     /// predates the precise tool events). Requiring all of them lets start() upgrade
     /// an existing install in place the next time the app launches.
     package func claudeBridgeInstalled() -> Bool {
-        hasCommand(at: claudeSettingsURL, events: Self.claudeAllHookEvents,
-                   matching: { $0.contains("notch-agent-hook") }, requireAll: true)
+        hasCommand(
+            at: claudeSettingsURL,
+            events: Self.claudeAllHookEvents,
+            matching: { $0.contains("notch-agent-hook") },
+            requireAll: true
+        )
     }
 
     /// Directory to watch for third-party edits to Claude's settings. It is the
@@ -174,12 +222,20 @@ package struct AgentConfigInstaller {
         try writeBridge()
         // Bound each hook so a stalled connect (full accept backlog) can't hold up
         // the user's Claude turn to the 60s default.
-        try installHooks(at: claudeSettingsURL, events: Self.claudeHookEvents,
-                         command: launcherCommand(source: nil), timeout: 5)
+        try installHooks(
+            at: claudeSettingsURL,
+            events: Self.claudeHookEvents,
+            command: launcherCommand(source: nil),
+            timeout: 5
+        )
         // The permission hook blocks up to ~2 min on the user's decision; the
         // timeout only has to outlast the client's own 120s wait.
-        try installHooks(at: claudeSettingsURL, events: [Self.claudePermissionEvent],
-                         command: launcherCommand(source: nil), timeout: 150)
+        try installHooks(
+            at: claudeSettingsURL,
+            events: [Self.claudePermissionEvent],
+            command: launcherCommand(source: nil),
+            timeout: 150
+        )
     }
 
     package func removeClaudeHooks() throws {
@@ -194,8 +250,12 @@ package struct AgentConfigInstaller {
 
     package func installCodexHooks() throws {
         try writeBridge()
-        try installHooks(at: codexHooksURL, events: Self.codexHookEvents,
-                         command: launcherCommand(source: "codex"), timeout: 5)
+        try installHooks(
+            at: codexHooksURL,
+            events: Self.codexHookEvents,
+            command: launcherCommand(source: "codex"),
+            timeout: 5
+        )
     }
 
     package func removeCodexHooks() throws {
@@ -204,7 +264,9 @@ package struct AgentConfigInstaller {
 
     // MARK: - OpenCode (JS plugin) & oh-my-pi (extension)
 
-    package func openCodePluginInstalled() -> Bool { ownership(of: openCodePluginURL).isOurs }
+    package func openCodePluginInstalled() -> Bool {
+        ownership(of: openCodePluginURL).isOurs
+    }
 
     /// Writes the plugin when it is missing or was generated by an older build.
     /// Throws when the file is the user's own, so the toggle reports the refusal
@@ -220,7 +282,9 @@ package struct AgentConfigInstaller {
 
     /// The main agent root is the authority: profile roots are a fan-out of it,
     /// and a user with no profiles must still read as installed.
-    package func ohMyPiInstalled() -> Bool { ownership(of: ohMyPiDir.appendingPathComponent("index.js")).isOurs }
+    package func ohMyPiInstalled() -> Bool {
+        ownership(of: ohMyPiDir.appendingPathComponent("index.js")).isOurs
+    }
 
     package func installOhMyPi() throws {
         // One hand-edited root must not stop the others from being installed or
@@ -229,7 +293,9 @@ package struct AgentConfigInstaller {
         for dir in ohMyPiExtensionDirs {
             do { try installOhMyPiExtension(at: dir) } catch { refusal = refusal ?? error }
         }
-        if let refusal { throw refusal }
+        if let refusal {
+            throw refusal
+        }
     }
 
     package func removeOhMyPi() throws {
@@ -242,7 +308,11 @@ package struct AgentConfigInstaller {
         let indexURL = dir.appendingPathComponent("index.js")
         guard try shouldWrite(indexURL) else { return }
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try Self.ohMyPiPackageJSON.write(to: dir.appendingPathComponent("package.json"), atomically: true, encoding: .utf8)
+        try Self.ohMyPiPackageJSON.write(
+            to: dir.appendingPathComponent("package.json"),
+            atomically: true,
+            encoding: .utf8
+        )
         try Self.ohMyPiIndexJS.write(to: indexURL, atomically: true, encoding: .utf8)
     }
 
@@ -273,7 +343,9 @@ package struct AgentConfigInstaller {
         case stale
         case foreign
 
-        package var isOurs: Bool { self == .current || self == .stale }
+        package var isOurs: Bool {
+            self == .current || self == .stale
+        }
     }
 
     private func ownership(of url: URL) -> Ownership {
@@ -339,8 +411,11 @@ package struct AgentConfigInstaller {
             // Snapshot the original both to disk and inside settings.json, so an
             // uninstall restores it even if the user deletes ~/.notch. NSNull records
             // "there was no statusLine" so uninstall removes ours rather than guessing.
-            if let existing { try writeJSONFile(existing, to: statusLineOrigURL) }
-            else { try? FileManager.default.removeItem(at: statusLineOrigURL) }
+            if let existing {
+                try writeJSONFile(existing, to: statusLineOrigURL)
+            } else {
+                try? FileManager.default.removeItem(at: statusLineOrigURL)
+            }
             root[Self.statusLineBackupKey] = existing ?? NSNull()
             try writeStatusLineWrapper(original: currentCommand.isEmpty ? nil : currentCommand)
 
@@ -396,7 +471,9 @@ package struct AgentConfigInstaller {
     /// falling back to the copy stashed inside settings.json (survives ~/.notch
     /// deletion). Returns nil for the NSNull "no original" sentinel.
     private func savedOriginal(from root: [String: Any]) -> [String: Any]? {
-        if let fromFile = readJSONFile(statusLineOrigURL) { return fromFile }
+        if let fromFile = readJSONFile(statusLineOrigURL) {
+            return fromFile
+        }
         return root[Self.statusLineBackupKey] as? [String: Any]
     }
 
@@ -444,17 +521,29 @@ package struct AgentConfigInstaller {
             for event in events {
                 guard let groups = hooks[event] as? [[String: Any]] else { continue }
                 let pruned = pruneMarker(from: groups)
-                if pruned.isEmpty { hooks[event] = nil } else { hooks[event] = pruned }
+                if pruned.isEmpty {
+                    hooks[event] = nil
+                } else {
+                    hooks[event] = pruned
+                }
             }
-            if hooks.isEmpty { root["hooks"] = nil } else { root["hooks"] = hooks }
+            if hooks.isEmpty {
+                root["hooks"] = nil
+            } else {
+                root["hooks"] = hooks
+            }
             return true
         }
     }
 
     /// `requireAll`: every event must carry the command (used to detect a complete,
     /// up-to-date install); otherwise any single event matching is enough.
-    private func hasCommand(at url: URL, events: [String], matching predicate: @escaping (String) -> Bool,
-                            requireAll: Bool = false) -> Bool {
+    private func hasCommand(
+        at url: URL,
+        events: [String],
+        matching predicate: @escaping (String) -> Bool,
+        requireAll: Bool = false
+    ) -> Bool {
         guard case let .object(root) = readSettings(at: url),
               let hooks = root["hooks"] as? [String: Any] else { return false }
         let match: (String) -> Bool = { event in
@@ -467,7 +556,9 @@ package struct AgentConfigInstaller {
 
     private func ourGroup(_ command: String, timeout: Int? = nil) -> [String: Any] {
         var hook: [String: Any] = ["type": "command", "command": command]
-        if let timeout { hook["timeout"] = timeout }
+        if let timeout {
+            hook["timeout"] = timeout
+        }
         return ["hooks": [hook]]
     }
 
@@ -478,7 +569,9 @@ package struct AgentConfigInstaller {
         groups.compactMap { group in
             guard var inner = group["hooks"] as? [[String: Any]] else { return group }
             inner.removeAll { ($0["command"] as? String).map(Self.isOurHookCommand) ?? false }
-            if inner.isEmpty { return nil }
+            if inner.isEmpty {
+                return nil
+            }
             var pruned = group
             pruned["hooks"] = inner
             return pruned
@@ -522,12 +615,12 @@ package struct AgentConfigInstaller {
         Self.mutationLock.lock()
         defer { Self.mutationLock.unlock() }
 
-        for _ in 0..<4 {
+        for _ in 0 ..< 4 {
             let snapshot = readSnapshot(at: url)
             var root: [String: Any]
             switch snapshot.result {
             case .missing: root = [:]
-            case .object(let object): root = object
+            case let .object(object): root = object
             case .unreadable: throw InstallerError.settingsUnreadable
             }
             guard try mutation(&root) else { return }
@@ -553,7 +646,8 @@ package struct AgentConfigInstaller {
         if let expectedData {
             guard targetExists,
                   let currentData = try? Data(contentsOf: target),
-                  currentData == expectedData else {
+                  currentData == expectedData
+            else {
                 throw InstallerError.concurrentModification
             }
         } else {
@@ -570,7 +664,7 @@ package struct AgentConfigInstaller {
     private func resolvedTarget(of url: URL) -> URL {
         let fm = FileManager.default
         var current = url
-        for _ in 0..<8 {
+        for _ in 0 ..< 8 {
             guard let dest = try? fm.destinationOfSymbolicLink(atPath: current.path) else { break }
             if (dest as NSString).isAbsolutePath {
                 current = URL(fileURLWithPath: dest).standardizedFileURL

@@ -32,7 +32,8 @@ enum AXWindowActions {
                 return _AXUIElementGetWindow(element, &id) == .success && id == window.id
             }
             guard let target,
-                  let closeButton: AXUIElement = copy(target, kAXCloseButtonAttribute as CFString) else {
+                  let closeButton: AXUIElement = copy(target, kAXCloseButtonAttribute as CFString)
+            else {
                 return
             }
             AXUIElementPerformAction(closeButton, kAXPressAction as CFString)
@@ -43,7 +44,8 @@ enum AXWindowActions {
     static func closeFrontmostWindow(of app: NSRunningApplication) {
         performOffMain(pid: app.processIdentifier) { appElement in
             guard let window = frontWindow(of: appElement),
-                  let closeButton: AXUIElement = copy(window, kAXCloseButtonAttribute as CFString) else {
+                  let closeButton: AXUIElement = copy(window, kAXCloseButtonAttribute as CFString)
+            else {
                 return
             }
             AXUIElementPerformAction(closeButton, kAXPressAction as CFString)

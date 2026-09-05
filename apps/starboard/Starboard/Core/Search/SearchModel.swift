@@ -21,21 +21,21 @@ final class SearchModel {
         let subtitle: String?
         let letter: Character?
         var matchedIndices: Set<Int> = []
-        var attributedTitle: AttributedString? = nil
-        var attributedSubtitle: AttributedString? = nil
+        var attributedTitle: AttributedString?
+        var attributedSubtitle: AttributedString?
 
         var id: String {
             switch kind {
-            case .runningApp(let bundleID): return "app.\(bundleID)"
-            case .installedApp(let bundleID): return "installed.\(bundleID)"
-            case .window(let window): return "window.\(window.id)"
+            case let .runningApp(bundleID): "app.\(bundleID)"
+            case let .installedApp(bundleID): "installed.\(bundleID)"
+            case let .window(window): "window.\(window.id)"
             }
         }
 
         var iconBundleID: String? {
             switch kind {
-            case .runningApp(let bundleID), .installedApp(let bundleID): return bundleID
-            case .window(let window): return window.bundleID
+            case let .runningApp(bundleID), let .installedApp(bundleID): bundleID
+            case let .window(window): window.bundleID
             }
         }
     }
@@ -188,17 +188,17 @@ final class SearchModel {
     @discardableResult
     func focus(_ kind: Item.Kind) -> Bool {
         switch kind {
-        case .runningApp(let bundleID):
+        case let .runningApp(bundleID):
             guard let app = runningApp(bundleID) else { return false }
             app.activateReliably()
             return true
-        case .installedApp(let bundleID):
+        case let .installedApp(bundleID):
             guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
                 return false
             }
             NSWorkspace.shared.openApplication(at: url, configuration: .init())
             return true
-        case .window(let window):
+        case let .window(window):
             WindowFocuser.focus(window)
             return true
         }
@@ -221,7 +221,8 @@ final class SearchModel {
         }
         if itemID.hasPrefix("window."),
            let id = CGWindowID(itemID.dropFirst("window.".count)),
-           let window = searchWindows().first(where: { $0.id == id }) {
+           let window = searchWindows().first(where: { $0.id == id })
+        {
             return focus(.window(window))
         }
         return false
@@ -253,7 +254,7 @@ final class SearchModel {
         guard let selected = selectedItem else { return }
 
         switch (action, selected.kind) {
-        case (.close, .window(let window)):
+        case let (.close, .window(window)):
             AXWindowActions.close(window)
             removeSelected()
         case (.close, _):
@@ -355,11 +356,19 @@ final class SearchModel {
             }
         }
         .sorted { lhs, rhs in
-            if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
-            if lhs.0.isRunning != rhs.0.isRunning { return lhs.0.isRunning }
-            if lhs.0.order != rhs.0.order { return lhs.0.order < rhs.0.order }
+            if lhs.1 != rhs.1 {
+                return lhs.1 > rhs.1
+            }
+            if lhs.0.isRunning != rhs.0.isRunning {
+                return lhs.0.isRunning
+            }
+            if lhs.0.order != rhs.0.order {
+                return lhs.0.order < rhs.0.order
+            }
             let (a, b) = (lhs.0.item.title, rhs.0.item.title)
-            if a.count != b.count { return a.count < b.count }
+            if a.count != b.count {
+                return a.count < b.count
+            }
             return a < b
         }
         .map(\.2)
@@ -368,7 +377,8 @@ final class SearchModel {
     static func highlight(text: String, query: String) -> AttributedString {
         guard !query.isEmpty,
               let match = FuzzyMatcher.match(query: query, target: text),
-              !match.matchedIndices.isEmpty else {
+              !match.matchedIndices.isEmpty
+        else {
             return AttributedString(text)
         }
         var attributed = AttributedString(text)
@@ -377,8 +387,8 @@ final class SearchModel {
             guard idxVal < charsCount else { continue }
             let idx = attributed.index(attributed.startIndex, offsetByCharacters: idxVal)
             let next = attributed.index(afterCharacter: idx)
-            attributed[idx..<next].swiftUI.foregroundColor = Theme.Colors.accent
-            attributed[idx..<next].inlinePresentationIntent = .stronglyEmphasized
+            attributed[idx ..< next].swiftUI.foregroundColor = Theme.Colors.accent
+            attributed[idx ..< next].inlinePresentationIntent = .stronglyEmphasized
         }
         return attributed
     }
@@ -396,12 +406,12 @@ final class SearchModel {
 
     private func appForSelection() -> NSRunningApplication? {
         switch selectedItem?.kind {
-        case .runningApp(let bundleID):
-            return runningApp(bundleID)
-        case .window(let window):
-            return NSRunningApplication(processIdentifier: window.pid)
+        case let .runningApp(bundleID):
+            runningApp(bundleID)
+        case let .window(window):
+            NSRunningApplication(processIdentifier: window.pid)
         default:
-            return nil
+            nil
         }
     }
 

@@ -1,12 +1,11 @@
 import Foundation
-import Testing
 @testable import NotchCore
+import Testing
 
 /// `T3Wire` is the pure byte-level layer of the t3 integration, so the frame
 /// decode, the thread -> session mapping, and the event diff are table-tested
 /// here against hand-written wire fixtures (shapes taken from t3's contracts).
 struct T3WireTests {
-
     // MARK: - Frame decoding
 
     private func chunkData(items: [[String: Any]], requestId: Any = "1") -> Data {
@@ -26,10 +25,14 @@ struct T3WireTests {
             "hasPendingApprovals": approvals, "hasPendingUserInput": userInput,
             "updatedAt": "2026-08-27T10:00:00.000Z",
         ]
-        if archived { dict["archivedAt"] = "2026-08-27T09:00:00.000Z" }
+        if archived {
+            dict["archivedAt"] = "2026-08-27T09:00:00.000Z"
+        }
         if let status {
             var session: [String: Any] = ["status": status]
-            if let provider { session["providerName"] = provider }
+            if let provider {
+                session["providerName"] = provider
+            }
             dict["session"] = session
         }
         return dict
@@ -185,11 +188,11 @@ struct T3WireTests {
 
     private let environment = T3Environment(id: "env1", label: "ubuntu", baseURL: "https://ubuntu.example")
 
-    @Test func sessionMappingCarriesProjectBranchAndHostBadge() {
+    @Test func sessionMappingCarriesProjectBranchAndHostBadge() throws {
         var state = T3ShellState()
-        state.apply(.snapshot(
-            projects: [T3Project(["id": "p1", "title": "Demo", "workspaceRoot": "/tmp/demo"])!],
-            threads: [T3Thread(thread(id: "t1"))!]
+        try state.apply(.snapshot(
+            projects: [#require(T3Project(["id": "p1", "title": "Demo", "workspaceRoot": "/tmp/demo"]))],
+            threads: [#require(T3Thread(thread(id: "t1")))]
         ))
         let sessions = state.sessions(environment: environment, previous: [:], now: Date())
         let session = sessions["t3-env1-t1"]
@@ -211,12 +214,12 @@ struct T3WireTests {
         #expect(T3ThreadRef(processEnvironment: [T3ThreadRef.environmentIDKey: "env1"]) == nil)
     }
 
-    @Test func startedAtSurvivesUpdates() {
+    @Test func startedAtSurvivesUpdates() throws {
         var state = T3ShellState()
-        state.apply(.threadUpserted(T3Thread(thread(id: "t1"))!))
+        try state.apply(.threadUpserted(#require(T3Thread(thread(id: "t1")))))
         let early = Date(timeIntervalSinceNow: -100)
         let first = state.sessions(environment: environment, previous: [:], now: early)
-        state.apply(.threadUpserted(T3Thread(thread(id: "t1", status: "ready"))!))
+        try state.apply(.threadUpserted(#require(T3Thread(thread(id: "t1", status: "ready")))))
         let second = state.sessions(environment: environment, previous: first, now: Date())
         #expect(second["t3-env1-t1"]?.startedAt == early)
         #expect(second["t3-env1-t1"]?.status == .finished)
@@ -224,16 +227,16 @@ struct T3WireTests {
 
     // MARK: - Event diff
 
-    @Test func eventDiffEmitsStartedFinishedAttentionAndEnded() {
+    @Test func eventDiffEmitsStartedFinishedAttentionAndEnded() throws {
         var state = T3ShellState()
-        state.apply(.snapshot(projects: [], threads: [
-            T3Thread(thread(id: "run"))!,
-            T3Thread(thread(id: "gone"))!,
+        try state.apply(.snapshot(projects: [], threads: [
+            #require(T3Thread(thread(id: "run"))),
+            #require(T3Thread(thread(id: "gone"))),
         ]))
         let before = state.sessions(environment: environment, previous: [:], now: Date())
 
-        state.apply(.threadUpserted(T3Thread(thread(id: "run", status: "ready"))!))
-        state.apply(.threadUpserted(T3Thread(thread(id: "ask", approvals: true))!))
+        try state.apply(.threadUpserted(#require(T3Thread(thread(id: "run", status: "ready")))))
+        try state.apply(.threadUpserted(#require(T3Thread(thread(id: "ask", approvals: true)))))
         state.apply(.threadRemoved("gone"))
         let after = state.sessions(environment: environment, previous: before, now: Date())
 
@@ -244,9 +247,9 @@ struct T3WireTests {
         #expect(kinds["t3-env1-gone"] == [.ended])
     }
 
-    @Test func noEventsWhenNothingChanged() {
+    @Test func noEventsWhenNothingChanged() throws {
         var state = T3ShellState()
-        state.apply(.threadUpserted(T3Thread(thread(id: "t1"))!))
+        try state.apply(.threadUpserted(#require(T3Thread(thread(id: "t1")))))
         let sessions = state.sessions(environment: environment, previous: [:], now: Date())
         #expect(T3Wire.events(previous: sessions, current: sessions).isEmpty)
     }
@@ -267,8 +270,8 @@ struct T3WireTests {
         #expect(T3Wire.pairingLink("   ") == nil)
     }
 
-    @Test func tokenExchangeBodyRequestsReadOnlyScope() {
-        let body = String(data: T3Wire.tokenExchangeBody(credential: "abc"), encoding: .utf8)!
+    @Test func tokenExchangeBodyRequestsReadOnlyScope() throws {
+        let body = try #require(String(data: T3Wire.tokenExchangeBody(credential: "abc"), encoding: .utf8))
         #expect(body.contains("scope=orchestration:read"))
         #expect(body.contains("subject_token=abc"))
         #expect(!body.contains("operate"))

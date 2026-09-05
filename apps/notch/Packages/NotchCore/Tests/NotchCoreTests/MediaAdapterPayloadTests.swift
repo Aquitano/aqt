@@ -1,9 +1,8 @@
 import Foundation
-import Testing
 @testable import NotchCore
+import Testing
 
 struct MediaAdapterPayloadTests {
-
     @Test func decodesPinnedBridgeFrameAndConvertsMicroseconds() throws {
         let json = #"""
         {

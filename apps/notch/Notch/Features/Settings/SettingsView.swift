@@ -1,7 +1,7 @@
-import SwiftUI
-import NotchCore
 import AppKit
 import ApplicationServices
+import NotchCore
+import SwiftUI
 
 /// Content of the standard Settings window: System Settings-style toolbar tabs,
 /// each a grouped Form binding directly to the shared `Settings` object; the
@@ -77,7 +77,7 @@ struct SettingsView: View {
         }
     }
 
-    private func pane<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+    private func pane(@ViewBuilder _ content: () -> some View) -> some View {
         Form { content() }
             .formStyle(.grouped)
     }
@@ -94,9 +94,11 @@ struct SettingsView: View {
         } header: {
             Text("Layout")
         } footer: {
-            Text("Floating detaches the tab icons from the black panel into their own capsule under it. Shoulders draws them on the black band beside the cutout, in tab order, and gives the row back to the content.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Floating detaches the tab icons from the black panel into their own capsule under it. Shoulders draws them on the black band beside the cutout, in tab order, and gives the row back to the content."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -119,9 +121,11 @@ struct SettingsView: View {
         } header: {
             Text("Tabs")
         } footer: {
-            Text("Drag visible tabs to reorder them. Home always stays available — the panel falls back to it when the chosen tab is hidden.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Drag visible tabs to reorder them. Home always stays available — the panel falls back to it when the chosen tab is hidden."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -169,24 +173,24 @@ struct SettingsView: View {
                 }
                 displaySlider(
                     "Compact width", value: profileBinding(\.compactWidthAdjustment),
-                    range: display.hasPhysicalNotch ? 0...160 : -40...160, suffix: " pt"
+                    range: display.hasPhysicalNotch ? 0 ... 160 : -40 ... 160, suffix: " pt"
                 )
                 displaySlider(
                     "Compact height", value: profileBinding(\.compactHeightAdjustment),
-                    range: display.hasPhysicalNotch ? 0...20 : -6...20, suffix: " pt"
+                    range: display.hasPhysicalNotch ? 0 ... 20 : -6 ... 20, suffix: " pt"
                 )
                 displaySlider(
                     "Expanded width", value: profileBinding(\.expandedWidthAdjustment),
-                    range: -80...180, suffix: " pt"
+                    range: -80 ... 180, suffix: " pt"
                 )
                 if !display.hasPhysicalNotch {
                     displaySlider(
                         "Horizontal offset", value: profileBinding(\.horizontalOffset),
-                        range: -240...240, suffix: " pt"
+                        range: -240 ... 240, suffix: " pt"
                     )
                     displaySlider(
                         "Top offset", value: profileBinding(\.verticalOffset),
-                        range: 0...80, suffix: " pt"
+                        range: 0 ... 80, suffix: " pt"
                     )
                 }
                 Toggle("Custom widget set on this display", isOn: customWidgetLayoutBinding(display.key))
@@ -204,9 +208,11 @@ struct SettingsView: View {
         } header: {
             Text("Display")
         } footer: {
-            Text("Automatic uses pill chrome on notchless screens. Physical camera housing space is always protected, including Always mode. Built-in falls back to the main display while unavailable.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Automatic uses pill chrome on notchless screens. Physical camera housing space is always protected, including Always mode. Built-in falls back to the main display while unavailable."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -318,9 +324,11 @@ struct SettingsView: View {
                 if AgentFeatures.permissionApproval {
                     Toggle("Approve permission prompts from the notch", isOn: $settings.agents.permissionApproval)
                     if settings.agents.permissionApproval {
-                        Text("Claude waits up to 2 minutes for your decision here before falling back to the terminal prompt.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Text(
+                            "Claude waits up to 2 minutes for your decision here before falling back to the terminal prompt."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     }
                 }
                 Toggle("Claude usage limits", isOn: Binding(
@@ -359,14 +367,20 @@ struct SettingsView: View {
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 if let error = agents.integrationError {
-                    PixelLabel(title: error, systemName: "exclamationmark.triangle.fill",
-                               size: 13, tint: .orange)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-                Text("Enabling installs an agent's opt-in hooks (e.g. ~/.claude/settings.json) so the notch can watch it; disabling removes them.")
+                    PixelLabel(
+                        title: error,
+                        systemName: "exclamationmark.triangle.fill",
+                        size: 13,
+                        tint: .orange
+                    )
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.orange)
+                }
+                Text(
+                    "Enabling installs an agent's opt-in hooks (e.g. ~/.claude/settings.json) so the notch can watch it; disabling removes them."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
     }
@@ -394,7 +408,6 @@ struct SettingsView: View {
         }
     }
 
-    @ViewBuilder
     private var t3IntegrationRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             if agents.t3Environments.isEmpty {
@@ -435,7 +448,9 @@ struct SettingsView: View {
                     Task {
                         await agents.pairT3(link: link)
                         t3Pairing = false
-                        if agents.integrationError == nil { t3PairingLink = "" }
+                        if agents.integrationError == nil {
+                            t3PairingLink = ""
+                        }
                     }
                 }
                 .disabled(t3PairingLink.trimmingCharacters(in: .whitespaces).isEmpty || t3Pairing)
@@ -456,15 +471,15 @@ struct SettingsView: View {
     private func summary(_ kind: AgentKind) -> String {
         switch kind {
         case .claudeCode:
-            return "Live status, needs-you, and finished. Adds fire-and-forget hooks to ~/.claude/settings.json."
+            "Live status, needs-you, and finished. Adds fire-and-forget hooks to ~/.claude/settings.json."
         case .codex:
-            return "Live status, needs-you, and finished via ~/.codex/hooks.json (Codex asks you to trust the hook on first run)."
+            "Live status, needs-you, and finished via ~/.codex/hooks.json (Codex asks you to trust the hook on first run)."
         case .openCode:
-            return "Live status + needs-you via a small plugin in ~/.config/opencode/plugins."
+            "Live status + needs-you via a small plugin in ~/.config/opencode/plugins."
         case .ohMyPi:
-            return "Live status + needs-you via an extension in ~/.omp/agent/extensions."
+            "Live status + needs-you via an extension in ~/.omp/agent/extensions."
         case .t3code:
-            return "Read-only view of t3 server sessions, local or remote. Run t3 pair on each server and paste the link; pair several to watch them all."
+            "Read-only view of t3 server sessions, local or remote. Run t3 pair on each server and paste the link; pair several to watch them all."
         }
     }
 
@@ -504,25 +519,41 @@ struct SettingsView: View {
             if settings.media.systemWideAdapter {
                 switch media.adapterState {
                 case .starting:
-                    PixelLabel(title: "Checking the bundled adapter…", systemName: "hourglass",
-                               size: 13, tint: .primary.opacity(0.6))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    PixelLabel(
+                        title: "Checking the bundled adapter…",
+                        systemName: "hourglass",
+                        size: 13,
+                        tint: .primary.opacity(0.6)
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 case .active:
-                    PixelLabel(title: "System-wide Now Playing is active",
-                               systemName: "checkmark.circle.fill", size: 13, tint: .green)
-                        .font(.caption)
-                        .foregroundStyle(.green)
+                    PixelLabel(
+                        title: "System-wide Now Playing is active",
+                        systemName: "checkmark.circle.fill",
+                        size: 13,
+                        tint: .green
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.green)
                 case .missing:
-                    PixelLabel(title: "The bundled adapter is missing; using Music and Spotify fallback.",
-                               systemName: "exclamationmark.triangle.fill", size: 13, tint: .orange)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                case .unavailable(let reason):
-                    PixelLabel(title: reason, systemName: "exclamationmark.triangle.fill",
-                               size: 13, tint: .orange)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                    PixelLabel(
+                        title: "The bundled adapter is missing; using Music and Spotify fallback.",
+                        systemName: "exclamationmark.triangle.fill",
+                        size: 13,
+                        tint: .orange
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                case let .unavailable(reason):
+                    PixelLabel(
+                        title: reason,
+                        systemName: "exclamationmark.triangle.fill",
+                        size: 13,
+                        tint: .orange
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
                 case .notRequested:
                     EmptyView()
                 }
@@ -558,20 +589,32 @@ struct SettingsView: View {
                 .foregroundStyle(.orange)
             }
         case .starting:
-            PixelLabel(title: "Starting live audio meter…", systemName: "hourglass",
-                       size: 13, tint: .primary.opacity(0.6))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            PixelLabel(
+                title: "Starting live audio meter…",
+                systemName: "hourglass",
+                size: 13,
+                tint: .primary.opacity(0.6)
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         case .active:
-            PixelLabel(title: "Live audio meter is active", systemName: "checkmark.circle.fill",
-                       size: 13, tint: .green)
-                .font(.caption)
-                .foregroundStyle(.green)
-        case .failed(let reason):
-            PixelLabel(title: reason, systemName: "exclamationmark.triangle.fill",
-                       size: 13, tint: .orange)
-                .font(.caption)
-                .foregroundStyle(.orange)
+            PixelLabel(
+                title: "Live audio meter is active",
+                systemName: "checkmark.circle.fill",
+                size: 13,
+                tint: .green
+            )
+            .font(.caption)
+            .foregroundStyle(.green)
+        case let .failed(reason):
+            PixelLabel(
+                title: reason,
+                systemName: "exclamationmark.triangle.fill",
+                size: 13,
+                tint: .orange
+            )
+            .font(.caption)
+            .foregroundStyle(.orange)
         }
     }
 
@@ -595,19 +638,24 @@ struct SettingsView: View {
                     Button("Open") { PrivacyPane.accessibility.open() }
                         .controlSize(.small)
                 } label: {
-                    PixelLabel(title: "Allow Accessibility access",
-                               systemName: "exclamationmark.triangle.fill",
-                               size: 13, tint: .orange)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                    PixelLabel(
+                        title: "Allow Accessibility access",
+                        systemName: "exclamationmark.triangle.fill",
+                        size: 13,
+                        tint: .orange
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
                 }
             }
         } header: {
             Text("HUD")
         } footer: {
-            Text("Replacing intercepts the media keys and applies volume and brightness changes itself, so only Notch's HUD appears. Keys Notch can't drive (like external display brightness) fall back to the system.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Replacing intercepts the media keys and applies volume and brightness changes itself, so only Notch's HUD appears. Keys Notch can't drive (like external display brightness) fall back to the system."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .onAppear { accessibilityTrusted = AXIsProcessTrusted() }
     }
@@ -616,13 +664,21 @@ struct SettingsView: View {
 
     private var batterySection: some View {
         Section {
-            Stepper("Low battery alert at \(settings.widgets.lowBatteryThreshold)%",
-                    value: $settings.widgets.lowBatteryThreshold, in: 5...50, step: 5)
+            Stepper(
+                "Low battery alert at \(settings.widgets.lowBatteryThreshold)%",
+                value: $settings.widgets.lowBatteryThreshold,
+                in: 5 ... 50,
+                step: 5
+            )
             if powerMode.shortcutInstalled == true {
-                PixelLabel(title: "Low Power Mode shortcut installed",
-                           systemName: "checkmark.circle.fill", size: 13, tint: .green)
-                    .font(.caption)
-                    .foregroundStyle(.green)
+                PixelLabel(
+                    title: "Low Power Mode shortcut installed",
+                    systemName: "checkmark.circle.fill",
+                    size: 13,
+                    tint: .green
+                )
+                .font(.caption)
+                .foregroundStyle(.green)
             } else {
                 LabeledContent {
                     Button("Install…") { powerMode.installShortcut() }
@@ -634,9 +690,11 @@ struct SettingsView: View {
         } header: {
             Text("Battery")
         } footer: {
-            Text("The battery tile's leaf toggles Low Power Mode through a Shortcuts action — macOS offers no direct control. Install adds the bundled \"\(PowerModeController.shortcutName)\" shortcut; approve the one-time import in Shortcuts.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "The battery tile's leaf toggles Low Power Mode through a Shortcuts action — macOS offers no direct control. Install adds the bundled \"\(PowerModeController.shortcutName)\" shortcut; approve the one-time import in Shortcuts."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .onAppear { powerMode.refreshAvailability() }
     }
@@ -645,10 +703,16 @@ struct SettingsView: View {
 
     private var widgetsPane: some View {
         List {
-            widgetRowSection(.status, title: "Status tiles",
-                             footer: "Compact tiles along the top of the home tab. Drag to reorder. Battery and Bluetooth only appear when the hardware calls for them.")
-            widgetRowSection(.info, title: "Info panels",
-                             footer: "Taller panels below the tiles. Drag to reorder; the order here is the order on the home tab.")
+            widgetRowSection(
+                .status,
+                title: "Status tiles",
+                footer: "Compact tiles along the top of the home tab. Drag to reorder. Battery and Bluetooth only appear when the hardware calls for them."
+            )
+            widgetRowSection(
+                .info,
+                title: "Info panels",
+                footer: "Taller panels below the tiles. Drag to reorder; the order here is the order on the home tab."
+            )
 
             if settings.isWidgetEnabled(.weather) {
                 Section("Weather") {
@@ -662,8 +726,11 @@ struct SettingsView: View {
             }
             if settings.isWidgetEnabled(.clock) {
                 Section("Clock") {
-                    TextField("Second time zone", text: $settings.widgets.clockSecondaryTimeZone,
-                              prompt: Text("e.g. Europe/Berlin (optional)"))
+                    TextField(
+                        "Second time zone",
+                        text: $settings.widgets.clockSecondaryTimeZone,
+                        prompt: Text("e.g. Europe/Berlin (optional)")
+                    )
                 }
             }
             if settings.isWidgetEnabled(.shortcuts) {
@@ -745,8 +812,11 @@ struct SettingsView: View {
                     Button {
                         settings.widgets.pinnedShortcuts.removeAll { $0 == name }
                     } label: {
-                        PixelIcon(systemName: "minus.circle.fill", size: 13,
-                                  tint: .primary.opacity(0.6))
+                        PixelIcon(
+                            systemName: "minus.circle.fill",
+                            size: 13,
+                            tint: .primary.opacity(0.6)
+                        )
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
@@ -757,8 +827,10 @@ struct SettingsView: View {
             HStack {
                 Picker("Pin a shortcut", selection: $shortcutToPin) {
                     Text("Choose…").tag("")
-                    ForEach(shortcuts.available.filter { !settings.widgets.pinnedShortcuts.contains($0) },
-                            id: \.self) { name in
+                    ForEach(
+                        shortcuts.available.filter { !settings.widgets.pinnedShortcuts.contains($0) },
+                        id: \.self
+                    ) { name in
                         Text(name).tag(name)
                     }
                 }
@@ -781,7 +853,7 @@ struct SettingsView: View {
             Stepper(
                 "Keep files for \(settings.tray.ttlDays) days",
                 value: $settings.tray.ttlDays,
-                in: 1...90
+                in: 1 ... 90
             )
             Button("Apply to Existing Unpinned Items") {
                 tray.applyGlobalTTLToExistingItems()
@@ -791,9 +863,11 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Toggle("Offer new screenshots in Notch", isOn: $settings.tray.offerScreenshots)
-            Text("Watches only your configured screenshot folder and never copies a screenshot until you choose Add to Shelf.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Watches only your configured screenshot folder and never copies a screenshot until you choose Add to Shelf."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -809,9 +883,11 @@ struct SettingsView: View {
         } header: {
             Text("Sharing")
         } footer: {
-            Text("Used when you drop a file on the notch's share zone. Blip must be installed and offer a macOS share option.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Used when you drop a file on the notch's share zone. Blip must be installed and offer a macOS share option."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -838,9 +914,11 @@ struct SettingsView: View {
         } header: {
             Text("Permissions")
         } footer: {
-            Text("Opens the matching pane in System Settings so you can grant access. Input Monitoring (or Accessibility for HUD replacement) is what lets the volume and brightness keys reach Notch; a grant may need an app relaunch to take effect.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Opens the matching pane in System Settings so you can grant access. Input Monitoring (or Accessibility for HUD replacement) is what lets the volume and brightness keys reach Notch; a grant may need an app relaunch to take effect."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -872,9 +950,11 @@ struct SettingsView: View {
         } header: {
             Text("Recent problems")
         } footer: {
-            Text("Failures Notch recovered from on its own: files that would not read or write, agent hooks it could not install. Each one is also in Console under the com.aquitano.notch subsystem.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Failures Notch recovered from on its own: files that would not read or write, agent hooks it could not install. Each one is also in Console under the com.aquitano.notch subsystem."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -882,9 +962,9 @@ struct SettingsView: View {
     /// the rest (their state only shows up when the feature actually asks).
     private static func status(of pane: PrivacyPane) -> Bool? {
         switch pane {
-        case .inputMonitoring: return CGPreflightListenEventAccess()
-        case .accessibility: return AXIsProcessTrusted()
-        default: return nil
+        case .inputMonitoring: CGPreflightListenEventAccess()
+        case .accessibility: AXIsProcessTrusted()
+        default: nil
         }
     }
 }
@@ -893,7 +973,9 @@ private struct VirtualNotchPreview: View {
     let display: DisplayDescriptor
     let mode: VirtualNotchMode
 
-    private var virtual: Bool { mode.usesVirtualChrome(for: display) }
+    private var virtual: Bool {
+        mode.usesVirtualChrome(for: display)
+    }
 
     private var description: String {
         if display.hasPhysicalNotch {
@@ -957,16 +1039,18 @@ private enum PrivacyPane: String, CaseIterable, Identifiable {
     case automation
     case location
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
-        case .inputMonitoring: return "Input Monitoring"
-        case .accessibility: return "Accessibility"
-        case .screenRecording: return "Screen & System Audio Recording"
-        case .calendars: return "Calendars"
-        case .automation: return "Automation"
-        case .location: return "Location Services"
+        case .inputMonitoring: "Input Monitoring"
+        case .accessibility: "Accessibility"
+        case .screenRecording: "Screen & System Audio Recording"
+        case .calendars: "Calendars"
+        case .automation: "Automation"
+        case .location: "Location Services"
         }
     }
 

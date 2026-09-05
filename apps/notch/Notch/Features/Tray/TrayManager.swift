@@ -1,8 +1,8 @@
 import AppKit
 import NotchCore
+import QuickLookThumbnailing
 import SwiftUI
 import UniformTypeIdentifiers
-import QuickLookThumbnailing
 
 /// The file shelf. Copies dropped bytes into app storage immediately (drag temp
 /// URLs are short-lived), snapshots a Quick Look thumbnail, and persists the list
@@ -10,7 +10,6 @@ import QuickLookThumbnailing
 @MainActor
 @Observable
 final class TrayManager {
-
     private(set) var items: [DropItem] = []
     private(set) var collections: [TrayCollection] = [.shelf]
     private(set) var activeCollectionID = TrayCollection.shelfID
@@ -54,7 +53,8 @@ final class TrayManager {
 
         if let data = try? persistence.loadData(from: storeFile) {
             if let store = try? persistence.decode(TrayStore.self, from: data, file: storeFile),
-               store.schemaVersion == TrayStore.currentSchemaVersion {
+               store.schemaVersion == TrayStore.currentSchemaVersion
+            {
                 let result = TrayStoreValidation.visibleStore(
                     store, fileExists: { relativePath in
                         FileManager.default.fileExists(
@@ -102,7 +102,8 @@ final class TrayManager {
             }
         }
         if let savedID = UUID(uuidString: settings.tray.lastCollectionID),
-           collections.contains(where: { $0.id == savedID }) {
+           collections.contains(where: { $0.id == savedID })
+        {
             activeCollectionID = savedID
         }
     }
@@ -144,7 +145,9 @@ final class TrayManager {
                 self?.add(result.items, failedCount: result.failedCount)
             }
         }
-        for provider in providers { ingest(provider, batch: batch) }
+        for provider in providers {
+            ingest(provider, batch: batch)
+        }
         return true
     }
 
@@ -152,8 +155,9 @@ final class TrayManager {
         let identifiers = provider.registeredTypeIdentifiers
         guard let kind = TrayDropCapabilities.preferredKind(for: identifiers),
               let typeIdentifier = TrayDropCapabilities.preferredTypeIdentifier(
-                for: kind, in: identifiers
-              ) else {
+                  for: kind, in: identifiers
+              )
+        else {
             batch.finish(nil)
             return
         }
@@ -191,7 +195,8 @@ final class TrayManager {
         case .webURL:
             provider.loadItem(forTypeIdentifier: typeIdentifier, options: nil) { value, _ in
                 guard let url = Self.webURL(from: value),
-                      let data = Self.weblocData(for: url) else {
+                      let data = Self.weblocData(for: url)
+                else {
                     batch.finish(nil)
                     return
                 }
@@ -330,7 +335,9 @@ final class TrayManager {
         var message = newItems.count == 1
             ? newItems[0].displayName
             : "\(newItems.count) items"
-        if failedCount > 0 { message += " · \(failedCount) failed" }
+        if failedCount > 0 {
+            message += " · \(failedCount) failed"
+        }
         let destinationName = collections.first(where: {
             $0.id == newItems[0].collectionID
         })?.name ?? "Shelf"
@@ -362,7 +369,7 @@ final class TrayManager {
             let identifiers = provider.registeredTypeIdentifiers
             guard let kind = TrayDropCapabilities.preferredKind(for: identifiers),
                   let typeIdentifier = TrayDropCapabilities.preferredTypeIdentifier(
-                    for: kind, in: identifiers
+                      for: kind, in: identifiers
                   ) else { continue }
 
             group.enter()
@@ -377,13 +384,17 @@ final class TrayManager {
             case .webURL:
                 provider.loadItem(forTypeIdentifier: typeIdentifier, options: nil) { value, _ in
                     defer { group.leave() }
-                    if let url = Self.webURL(from: value) { staged.append(url) }
+                    if let url = Self.webURL(from: value) {
+                        staged.append(url)
+                    }
                 }
 
             case .plainText:
                 provider.loadItem(forTypeIdentifier: typeIdentifier, options: nil) { value, _ in
                     defer { group.leave() }
-                    if let text = Self.plainText(from: value) { staged.append(text) }
+                    if let text = Self.plainText(from: value) {
+                        staged.append(text)
+                    }
                 }
             }
         }
@@ -439,7 +450,9 @@ final class TrayManager {
         guard destination != current else { return }
         let moved = collections.remove(at: current)
         collections.insert(moved, at: destination)
-        for index in collections.indices { collections[index].sortOrder = index }
+        for index in collections.indices {
+            collections[index].sortOrder = index
+        }
         persist()
     }
 
@@ -481,8 +494,12 @@ final class TrayManager {
 
     private func finishDeletingCollection(_ id: UUID) {
         collections.removeAll { $0.id == id }
-        for index in collections.indices { collections[index].sortOrder = index }
-        if activeCollectionID == id { selectCollection(TrayCollection.shelfID) }
+        for index in collections.indices {
+            collections[index].sortOrder = index
+        }
+        if activeCollectionID == id {
+            selectCollection(TrayCollection.shelfID)
+        }
         persist()
         scheduleNearestExpiry()
     }
@@ -506,7 +523,7 @@ final class TrayManager {
             items[index].isPinned = false
             items[index].cleanupError = nil
             let base = max(items[index].expiresAt ?? now, now)
-            items[index].expiresAt = base.addingTimeInterval(Double(days) * 86_400)
+            items[index].expiresAt = base.addingTimeInterval(Double(days) * 86400)
         }
         persist()
         scheduleNearestExpiry()
@@ -528,7 +545,7 @@ final class TrayManager {
         let collectionItems = items.filter { $0.collectionID == collectionID }
         guard let item = collectionItems.filter({ !$0.isPinned }).min(by: {
             ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture)
-        }), let expiry = item.expiresAt, expiry.timeIntervalSince(now) < 86_400 else { return nil }
+        }), let expiry = item.expiresAt, expiry.timeIntervalSince(now) < 86400 else { return nil }
         return expiryPresentation(for: item, now: now)
     }
 
@@ -601,9 +618,9 @@ final class TrayManager {
     func copyContent(_ selected: [TrayItem]) {
         let values = selected.compactMap { item -> String? in
             switch item.kind {
-            case .text: return item.text
-            case .url: return item.sourceURL
-            case .file, .image: return nil
+            case .text: item.text
+            case .url: item.sourceURL
+            case .file, .image: nil
             }
         }
         guard !values.isEmpty else { return }
@@ -665,7 +682,7 @@ final class TrayManager {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 switch result {
-                case .success(let relativePath):
+                case let .success(relativePath):
                     guard let index = self.items.firstIndex(where: { $0.id == item.id }) else { return }
                     self.items[index].displayName = name
                     self.items[index].relativePath = relativePath
@@ -739,7 +756,8 @@ final class TrayManager {
                    let movedItem = Self.coordinateSameVolumeMove(
                        source: source, coordinator: coordinator,
                        pipeline: pipeline, context: context
-                   ) {
+                   )
+                {
                     result.items.append(movedItem)
                     continue
                 }
@@ -757,7 +775,8 @@ final class TrayManager {
                     )
                 }
                 guard coordinationError == nil, let item,
-                      Self.verifyManaged(item: item, root: root) else {
+                      Self.verifyManaged(item: item, root: root)
+                else {
                     if let item {
                         try? FileManager.default.removeItem(at: root.appendingPathComponent(
                             item.id.uuidString, isDirectory: true
@@ -780,7 +799,9 @@ final class TrayManager {
                     }
                 }
                 result.items.append(item)
-                if !removed || deletionError != nil { result.originalsRetained += 1 }
+                if !removed || deletionError != nil {
+                    result.originalsRetained += 1
+                }
             }
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -889,8 +910,11 @@ final class TrayManager {
     /// Staged share copies are transient; clear any left over from a prior run.
     private func clearStaging() {
         let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(at: shareStagingRoot, includingPropertiesForKeys: nil) else { return }
-        for entry in entries { try? fm.removeItem(at: entry) }
+        guard let entries = try? fm.contentsOfDirectory(at: shareStagingRoot, includingPropertiesForKeys: nil)
+        else { return }
+        for entry in entries {
+            try? fm.removeItem(at: entry)
+        }
     }
 
     /// Release temporary share-on-drop copies as soon as the picker completes.
@@ -922,7 +946,7 @@ final class TrayManager {
 
     // MARK: - Off-main file work
 
-    nonisolated private static func stageCopy(_ source: URL, root: URL) -> URL? {
+    private nonisolated static func stageCopy(_ source: URL, root: URL) -> URL? {
         let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let destination = folder.appendingPathComponent(source.lastPathComponent)
         do {
@@ -935,9 +959,10 @@ final class TrayManager {
         }
     }
 
-    nonisolated private static func inferredTypeIdentifier(for url: URL) -> String {
+    private nonisolated static func inferredTypeIdentifier(for url: URL) -> String {
         if let values = try? url.resourceValues(forKeys: [.contentTypeKey]),
-           let type = values.contentType {
+           let type = values.contentType
+        {
             return type.identifier
         }
         return UTType(filenameExtension: url.pathExtension)?.identifier
@@ -947,7 +972,7 @@ final class TrayManager {
     nonisolated static func moveEligibility(for source: URL) -> TrayMoveEligibility {
         let values = try? source.resourceValues(forKeys: [
             .volumeIsReadOnlyKey, .isUbiquitousItemKey,
-            .ubiquitousItemDownloadingStatusKey
+            .ubiquitousItemDownloadingStatusKey,
         ])
         let descriptor = TrayMoveSourceDescriptor(
             isFileURL: source.isFileURL,
@@ -962,7 +987,7 @@ final class TrayManager {
         return TrayMoveEligibility.evaluate(descriptor)
     }
 
-    nonisolated private static func isSameVolume(_ source: URL, _ destinationRoot: URL) -> Bool {
+    private nonisolated static func isSameVolume(_ source: URL, _ destinationRoot: URL) -> Bool {
         let sourceID = try? source.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier
         let destinationID = try? destinationRoot.resourceValues(
             forKeys: [.volumeIdentifierKey]
@@ -971,7 +996,7 @@ final class TrayManager {
         return String(describing: sourceID) == String(describing: destinationID)
     }
 
-    nonisolated private static func coordinateSameVolumeMove(
+    private nonisolated static func coordinateSameVolumeMove(
         source: URL,
         coordinator: NSFileCoordinator,
         pipeline: TrayIngestionPipeline,
@@ -991,7 +1016,7 @@ final class TrayManager {
         return coordinationError == nil ? item : nil
     }
 
-    nonisolated private static func verifyManaged(item: TrayItem, root: URL) -> Bool {
+    private nonisolated static func verifyManaged(item: TrayItem, root: URL) -> Bool {
         let url = item.url(relativeTo: root)
         guard FileManager.default.isReadableFile(atPath: url.path),
               let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
@@ -999,37 +1024,48 @@ final class TrayManager {
         return values.isDirectory == true || Int64(values.fileSize ?? -1) == item.byteSize
     }
 
-    nonisolated private static func webURL(from value: NSSecureCoding?) -> URL? {
-        if let url = value as? URL { return url }
-        if let string = value as? String { return URL(string: string) }
+    private nonisolated static func webURL(from value: NSSecureCoding?) -> URL? {
+        if let url = value as? URL {
+            return url
+        }
+        if let string = value as? String {
+            return URL(string: string)
+        }
         if let data = value as? Data,
-           let string = String(data: data, encoding: .utf8) {
+           let string = String(data: data, encoding: .utf8)
+        {
             return URL(string: string.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         return nil
     }
 
-    nonisolated private static func plainText(from value: NSSecureCoding?) -> String? {
-        if let string = value as? String { return string }
-        if let data = value as? Data { return String(data: data, encoding: .utf8) }
-        if let url = value as? URL { return url.absoluteString }
+    private nonisolated static func plainText(from value: NSSecureCoding?) -> String? {
+        if let string = value as? String {
+            return string
+        }
+        if let data = value as? Data {
+            return String(data: data, encoding: .utf8)
+        }
+        if let url = value as? URL {
+            return url.absoluteString
+        }
         return nil
     }
 
-    nonisolated private static func weblocData(for url: URL) -> Data? {
+    private nonisolated static func weblocData(for url: URL) -> Data? {
         try? PropertyListSerialization.data(
             fromPropertyList: ["URL": url.absoluteString],
             format: .xml, options: 0
         )
     }
 
-    nonisolated private static func pngData(from image: NSImage) -> Data? {
+    private nonisolated static func pngData(from image: NSImage) -> Data? {
         guard let tiff = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiff) else { return nil }
         return bitmap.representation(using: .png, properties: [:])
     }
 
-    nonisolated private static func renameTransaction(
+    private nonisolated static func renameTransaction(
         item: TrayItem,
         to name: String,
         root: URL
@@ -1042,7 +1078,8 @@ final class TrayManager {
         do {
             try FileManager.default.moveItem(at: oldURL, to: newURL)
             if FileManager.default.fileExists(atPath: oldThumbnail.path),
-               oldThumbnail != newThumbnail {
+               oldThumbnail != newThumbnail
+            {
                 do {
                     if FileManager.default.fileExists(atPath: newThumbnail.path) {
                         try FileManager.default.removeItem(at: newThumbnail)
@@ -1059,7 +1096,7 @@ final class TrayManager {
         }
     }
 
-    nonisolated private static func makeArchiveWorkspace(
+    private nonisolated static func makeArchiveWorkspace(
         urls: [URL],
         stagingRoot: URL
     ) -> TrayArchiveWorkspace? {
@@ -1090,14 +1127,15 @@ final class TrayManager {
             process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
             process.arguments = [
                 "-c", "-k", "--sequesterRsrc", "--keepParent",
-                source.path, archive.path
+                source.path, archive.path,
             ]
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice
             try process.run()
             process.waitUntilExit()
             guard process.terminationStatus == 0,
-                  FileManager.default.isReadableFile(atPath: archive.path) else {
+                  FileManager.default.isReadableFile(atPath: archive.path)
+            else {
                 try? FileManager.default.removeItem(at: folder)
                 return nil
             }
@@ -1108,7 +1146,7 @@ final class TrayManager {
         }
     }
 
-    nonisolated private static func makeThumbnail(
+    private nonisolated static func makeThumbnail(
         for item: DropItem,
         root: URL,
         completion: @escaping @Sendable (NSImage?) -> Void
@@ -1171,13 +1209,19 @@ private final class TrayProviderIngestionBatch: @unchecked Sendable {
 
     func finish(_ item: TrayItem?) {
         lock.lock()
-        if let item { items.append(item) } else { failedCount += 1 }
+        if let item {
+            items.append(item)
+        } else {
+            failedCount += 1
+        }
         remaining -= 1
         let result = remaining == 0
             ? TrayProviderIngestionResult(items: items, failedCount: failedCount)
             : nil
         lock.unlock()
-        if let result { completion(result) }
+        if let result {
+            completion(result)
+        }
     }
 }
 

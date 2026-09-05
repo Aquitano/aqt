@@ -1,11 +1,13 @@
-import SwiftUI
 import ServiceManagement
+import SwiftUI
 import UniformTypeIdentifiers
 
 struct SettingsView: View {
     /// The store is @Observable; reading and mutating through it keeps this
     /// view live and persists on every change.
-    private var model: SettingsStore.Model { SettingsStore.shared.model }
+    private var model: SettingsStore.Model {
+        SettingsStore.shared.model
+    }
 
     /// Every control edits the store directly — no cached copy to go stale when
     /// an import replaces the whole model.
@@ -203,7 +205,9 @@ struct SettingsView: View {
         }
     }
 
-    private var usesDirectEngine: Bool { model.spacesStrategy == .direct }
+    private var usesDirectEngine: Bool {
+        model.spacesStrategy == .direct
+    }
 
     // MARK: - Stages
 
@@ -257,9 +261,11 @@ struct SettingsView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            Text("Hold \(model.primaryModifier.shortName) + \(model.primaryModifier.secondaryShortName) and press a letter to pin the frontmost app to it.")
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+            Text(
+                "Hold \(model.primaryModifier.shortName) + \(model.primaryModifier.secondaryShortName) and press a letter to pin the frontmost app to it."
+            )
+            .font(.system(size: 11))
+            .foregroundStyle(.tertiary)
 
             if rows.isEmpty {
                 Text("No running apps yet.")
@@ -318,7 +324,9 @@ struct SettingsView: View {
         }
 
         return result.sorted {
-            if $0.custom != $1.custom { return $0.custom }
+            if $0.custom != $1.custom {
+                return $0.custom
+            }
             return $0.letter < $1.letter
         }
     }
@@ -502,16 +510,20 @@ struct AssignmentRowModel: Identifiable {
     let bundleID: String
     let custom: Bool
 
-    var id: String { "\(letter)-\(bundleID)" }
+    var id: String {
+        "\(letter)-\(bundleID)"
+    }
 
     @MainActor
-    var icon: NSImage? { AppIcons.icon(for: bundleID) }
+    var icon: NSImage? {
+        AppIcons.icon(for: bundleID)
+    }
 }
 
 struct AssignmentRow: View {
     let row: AssignmentRowModel
     let onClear: () -> Void
-    var onExclude: (() -> Void)? = nil
+    var onExclude: (() -> Void)?
 
     var body: some View {
         HStack(spacing: Theme.Metrics.grid * 1.5) {

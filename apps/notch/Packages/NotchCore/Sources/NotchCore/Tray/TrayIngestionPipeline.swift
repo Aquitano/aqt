@@ -61,7 +61,7 @@ package struct TrayIngestionPipeline: Sendable {
             )
 
             switch input {
-            case .file(let source, let typeIdentifier):
+            case let .file(source, typeIdentifier):
                 let name = try Self.validatedName(source.lastPathComponent)
                 let destination = folder.appendingPathComponent(name)
                 try FileManager.default.copyItem(at: source, to: destination)
@@ -71,9 +71,9 @@ package struct TrayIngestionPipeline: Sendable {
                     name, destination, typeIdentifier, nil, nil
                 )
 
-            case .bytes(
-                let data, let kind, let displayName, let typeIdentifier,
-                let sourceURL, let text
+            case let .bytes(
+                data, kind, displayName, typeIdentifier,
+                sourceURL, text
             ):
                 let name = try Self.validatedName(displayName)
                 let destination = folder.appendingPathComponent(name)
@@ -145,7 +145,8 @@ package struct TrayIngestionPipeline: Sendable {
     private static func validatedName(_ proposed: String) throws -> String {
         let name = proposed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name != ".", name != "..",
-              !name.contains("/"), !name.contains(":") else {
+              !name.contains("/"), !name.contains(":")
+        else {
             throw TrayIngestionError.invalidName
         }
         return name
@@ -153,7 +154,9 @@ package struct TrayIngestionPipeline: Sendable {
 
     private static func byteSize(of url: URL) throws -> Int64 {
         let values = try url.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
-        if values.isDirectory != true { return Int64(values.fileSize ?? 0) }
+        if values.isDirectory != true {
+            return Int64(values.fileSize ?? 0)
+        }
         guard let enumerator = FileManager.default.enumerator(
             at: url, includingPropertiesForKeys: [.fileSizeKey]
         ) else { return 0 }

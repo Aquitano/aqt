@@ -1,14 +1,13 @@
-import CoreLocation
-import NotchCore
-import MapKit
 import AppKit
+import CoreLocation
+import MapKit
+import NotchCore
 
 /// Weather from Open-Meteo (no key, no account). Location via CoreLocation;
 /// fetched on location update and when the unit preference changes.
 @MainActor
 @Observable
 final class WeatherManager: NSObject, CLLocationManagerDelegate {
-
     private(set) var snapshot: WeatherSnapshot?
     private(set) var authorization: CLAuthorizationStatus = .notDetermined
     /// The last fetch failed and there is no snapshot to show — distinguishes
@@ -78,7 +77,9 @@ final class WeatherManager: NSObject, CLLocationManagerDelegate {
         case .notDetermined:
             manager.requestWhenInUseAuthorization()
         case .denied, .restricted:
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices") {
+            if let url =
+                URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices")
+            {
                 NSWorkspace.shared.open(url)
             }
         default:
@@ -88,9 +89,9 @@ final class WeatherManager: NSObject, CLLocationManagerDelegate {
 
     // MARK: - CLLocationManagerDelegate
 
-    // CLLocationManager delivers callbacks on the thread that created it (main,
-    // since init runs on the main actor), so asserting isolation is safe and lets
-    // the delegate conformance stay off the main actor.
+    /// CLLocationManager delivers callbacks on the thread that created it (main,
+    /// since init runs on the main actor), so asserting isolation is safe and lets
+    /// the delegate conformance stay off the main actor.
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
         Task { @MainActor [weak self] in
@@ -102,7 +103,7 @@ final class WeatherManager: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    nonisolated func locationManager(_: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         MainActor.assumeIsolated {
             lastLocation = location
@@ -110,7 +111,7 @@ final class WeatherManager: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    nonisolated func locationManager(_: CLLocationManager, didFailWithError error: Error) {
         Log.widgets.error("Location error: \(error.localizedDescription)")
     }
 
@@ -134,7 +135,7 @@ final class WeatherManager: NSObject, CLLocationManagerDelegate {
 
         do {
             let (data, response) = try await session.data(from: url)
-            guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+            guard let http = response as? HTTPURLResponse, 200 ..< 300 ~= http.statusCode else {
                 throw URLError(.badServerResponse)
             }
             let forecast = try JSONDecoder().decode(OpenMeteoResponse.self, from: data)
@@ -176,9 +177,13 @@ final class WeatherManager: NSObject, CLLocationManagerDelegate {
         // weather_code / min / max array (partial data, API change) would otherwise
         // be an out-of-bounds crash on untrusted network input.
         let daily = response.daily
-        let count = min(daily.time.count, daily.weather_code.count,
-                        daily.temperature_2m_max.count, daily.temperature_2m_min.count)
-        let days: [WeatherDay] = (0..<count).compactMap { index in
+        let count = min(
+            daily.time.count,
+            daily.weather_code.count,
+            daily.temperature_2m_max.count,
+            daily.temperature_2m_min.count
+        )
+        let days: [WeatherDay] = (0 ..< count).compactMap { index in
             guard let date = dayFormatter.date(from: daily.time[index]) else { return nil }
             let code = daily.weather_code[index]
             return WeatherDay(
@@ -203,7 +208,7 @@ final class WeatherManager: NSObject, CLLocationManagerDelegate {
         )
     }
 
-    nonisolated private static func hasLocationAccess(_ status: CLAuthorizationStatus) -> Bool {
+    private nonisolated static func hasLocationAccess(_ status: CLAuthorizationStatus) -> Bool {
         status == .authorizedAlways
     }
 }
@@ -218,6 +223,7 @@ private struct OpenMeteoResponse: Decodable {
         let weather_code: Int
         let is_day: Int
     }
+
     struct Daily: Decodable {
         let time: [String]
         let weather_code: [Int]
@@ -230,37 +236,37 @@ private struct OpenMeteoResponse: Decodable {
 enum WMO {
     static func symbol(for code: Int, isDay: Bool) -> String {
         switch code {
-        case 0: return isDay ? "sun.max.fill" : "moon.stars.fill"
-        case 1, 2: return isDay ? "cloud.sun.fill" : "cloud.moon.fill"
-        case 3: return "cloud.fill"
-        case 45, 48: return "cloud.fog.fill"
-        case 51, 53, 55, 56, 57: return "cloud.drizzle.fill"
-        case 61, 63, 65, 66, 67: return "cloud.rain.fill"
-        case 71, 73, 75, 77: return "cloud.snow.fill"
-        case 80, 81, 82: return "cloud.heavyrain.fill"
-        case 85, 86: return "cloud.snow.fill"
-        case 95: return "cloud.bolt.fill"
-        case 96, 99: return "cloud.bolt.rain.fill"
-        default: return "cloud.fill"
+        case 0: isDay ? "sun.max.fill" : "moon.stars.fill"
+        case 1, 2: isDay ? "cloud.sun.fill" : "cloud.moon.fill"
+        case 3: "cloud.fill"
+        case 45, 48: "cloud.fog.fill"
+        case 51, 53, 55, 56, 57: "cloud.drizzle.fill"
+        case 61, 63, 65, 66, 67: "cloud.rain.fill"
+        case 71, 73, 75, 77: "cloud.snow.fill"
+        case 80, 81, 82: "cloud.heavyrain.fill"
+        case 85, 86: "cloud.snow.fill"
+        case 95: "cloud.bolt.fill"
+        case 96, 99: "cloud.bolt.rain.fill"
+        default: "cloud.fill"
         }
     }
 
     static func text(for code: Int) -> String {
         switch code {
-        case 0: return "Clear"
-        case 1, 2: return "Partly cloudy"
-        case 3: return "Overcast"
-        case 45, 48: return "Fog"
-        case 51, 53, 55: return "Drizzle"
-        case 56, 57: return "Freezing drizzle"
-        case 61, 63, 65: return "Rain"
-        case 66, 67: return "Freezing rain"
-        case 71, 73, 75, 77: return "Snow"
-        case 80, 81, 82: return "Rain showers"
-        case 85, 86: return "Snow showers"
-        case 95: return "Thunderstorm"
-        case 96, 99: return "Thunderstorm, hail"
-        default: return "—"
+        case 0: "Clear"
+        case 1, 2: "Partly cloudy"
+        case 3: "Overcast"
+        case 45, 48: "Fog"
+        case 51, 53, 55: "Drizzle"
+        case 56, 57: "Freezing drizzle"
+        case 61, 63, 65: "Rain"
+        case 66, 67: "Freezing rain"
+        case 71, 73, 75, 77: "Snow"
+        case 80, 81, 82: "Rain showers"
+        case 85, 86: "Snow showers"
+        case 95: "Thunderstorm"
+        case 96, 99: "Thunderstorm, hail"
+        default: "—"
         }
     }
 }

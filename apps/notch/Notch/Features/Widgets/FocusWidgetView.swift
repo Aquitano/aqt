@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// At-a-glance Focus badge for the expanded home surface. Owns its own glass
 /// chrome and tints up when a Focus is active. Lives inside the expanded panel,
@@ -24,8 +24,11 @@ struct FocusWidgetView: View {
 
     private var status: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PixelIcon(systemName: focus.isOn ? "moon.fill" : "moon", size: 17,
-                      tint: focus.isOn ? .accentColor : .white.opacity(0.7))
+            PixelIcon(
+                systemName: focus.isOn ? "moon.fill" : "moon",
+                size: 17,
+                tint: focus.isOn ? .accentColor : .white.opacity(0.7)
+            )
 
             Spacer(minLength: 4)
 
@@ -45,8 +48,11 @@ struct FocusWidgetView: View {
     /// confidently show "Off" for an unknown state, unfixable from the UI.
     private var accessPrompt: some View {
         VStack(alignment: .leading, spacing: 4) {
-            PixelIcon(systemName: "moon.zzz", size: 17,
-                      tint: .white.opacity(0.7))
+            PixelIcon(
+                systemName: "moon.zzz",
+                size: 17,
+                tint: .white.opacity(0.7)
+            )
 
             Spacer(minLength: 4)
 

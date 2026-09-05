@@ -1,6 +1,7 @@
 import AppKit
-import NotchCore
 import Foundation
+import NotchCore
+
 @MainActor
 enum AgentSoundPlayer {
     /// Retain the sound for the duration of playback. Agent events are already

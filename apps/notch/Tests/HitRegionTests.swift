@@ -1,14 +1,13 @@
 import CoreGraphics
-import Testing
 import NotchCore
+import Testing
 
 /// `HitRegion.rect` is a pure function of a `LayoutSnapshot`, so the sizing and
 /// the centered-and-pinned-to-top positioning are table-tested here without a
 /// live window, panel, or `AppEnvironment`.
 struct HitRegionTests {
-
     private let notch = CGSize(width: 200, height: 32)
-    // midX = 500, maxY = 600.
+    /// midX = 500, maxY = 600.
     private let panel = CGRect(x: 100, y: 200, width: 800, height: 400)
 
     private func snapshot(

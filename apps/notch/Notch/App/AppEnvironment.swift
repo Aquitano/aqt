@@ -8,7 +8,6 @@ import SwiftUI
 @MainActor
 @Observable
 final class AppEnvironment {
-
     let settings: Settings
     let notch: NotchCoordinator
 
@@ -69,12 +68,21 @@ final class AppEnvironment {
         self.media = MediaManager(activities: activities, imageCache: imageCache, settings: settings)
         self.audioVisualizer = AudioVisualizerManager()
         self.hud = HUDManager(settings: settings, audio: audio)
-        let tray = TrayManager(persistence: persistence, imageCache: imageCache, settings: settings, activities: activities)
+        let tray = TrayManager(
+            persistence: persistence,
+            imageCache: imageCache,
+            settings: settings,
+            activities: activities
+        )
         self.tray = tray
         self.screenshots = ScreenshotMonitor(settings: settings, activities: activities, tray: tray)
         self.timer = TimerManager(activities: activities)
-        self.agents = AgentManager(activities: activities, settings: settings,
-                                   persistence: persistence, diagnostics: diagnostics)
+        self.agents = AgentManager(
+            activities: activities,
+            settings: settings,
+            persistence: persistence,
+            diagnostics: diagnostics
+        )
         self.battery = BatteryManager(activities: activities, settings: settings)
         self.powerMode = PowerModeController(activities: activities)
         self.calendar = CalendarManager(activities: activities)
@@ -89,8 +97,12 @@ final class AppEnvironment {
     func start() {
         audio.onRouteChange = { [activities] name, symbol in
             MainActor.assumeIsolated {
-                activities.publish(Activity(kind: .audioRoute(name: name, symbol: symbol),
-                                            priority: .normal, createdAt: Date(), ttl: 3))
+                activities.publish(Activity(
+                    kind: .audioRoute(name: name, symbol: symbol),
+                    priority: .normal,
+                    createdAt: Date(),
+                    ttl: 3
+                ))
             }
         }
         audio.start()
@@ -111,7 +123,9 @@ final class AppEnvironment {
         guard renderingActive != active else { return }
         renderingActive = active
         media.setRenderingActive(active)
-        if !active { audioVisualizer.setActive(false) }
+        if !active {
+            audioVisualizer.setActive(false)
+        }
     }
 
     /// Open the AirDrop sheet pre-loaded with the given tray items, anchored to
@@ -158,7 +172,8 @@ final class AppEnvironment {
             switch method {
             case .airdrop:
                 guard let service = NSSharingService(named: .sendViaAirDrop),
-                      service.canPerform(withItems: items) else {
+                      service.canPerform(withItems: items)
+                else {
                     Log.tray.error("AirDrop is unavailable for these items")
                     coordinator.finish()
                     return
@@ -180,12 +195,16 @@ final class AppEnvironment {
 /// Keeps the overlay panel key for the whole async AirDrop interaction, restoring
 /// the passive-overlay state only when the share finishes, fails, or is cancelled.
 @MainActor
-private final class ShareCoordinator: NSObject, NSSharingServiceDelegate, @preconcurrency NSSharingServicePickerDelegate {
+private final class ShareCoordinator: NSObject, NSSharingServiceDelegate,
+    @preconcurrency NSSharingServicePickerDelegate
+{
     private let onFinish: () -> Void
     private var picker: NSSharingServicePicker?
     private var serviceMatch: String?
     private var didFinish = false
-    init(onFinish: @escaping () -> Void) { self.onFinish = onFinish }
+    init(onFinish: @escaping () -> Void) {
+        self.onFinish = onFinish
+    }
 
     func presentPicker(items: [Any], matching serviceMatch: String, in view: NSView) {
         self.serviceMatch = serviceMatch
@@ -196,8 +215,8 @@ private final class ShareCoordinator: NSObject, NSSharingServiceDelegate, @preco
     }
 
     func sharingServicePicker(
-        _ sharingServicePicker: NSSharingServicePicker,
-        sharingServicesForItems items: [Any],
+        _: NSSharingServicePicker,
+        sharingServicesForItems _: [Any],
         proposedSharingServices proposedServices: [NSSharingService]
     ) -> [NSSharingService] {
         guard let serviceMatch else { return proposedServices }
@@ -205,24 +224,26 @@ private final class ShareCoordinator: NSObject, NSSharingServiceDelegate, @preco
     }
 
     func sharingServicePicker(
-        _ sharingServicePicker: NSSharingServicePicker,
-        delegateFor sharingService: NSSharingService
+        _: NSSharingServicePicker,
+        delegateFor _: NSSharingService
     ) -> (any NSSharingServiceDelegate)? {
         self
     }
 
     func sharingServicePicker(
-        _ sharingServicePicker: NSSharingServicePicker,
+        _: NSSharingServicePicker,
         didChoose sharingService: NSSharingService?
     ) {
-        if sharingService == nil { finish() }
+        if sharingService == nil {
+            finish()
+        }
     }
 
-    func sharingService(_ sharingService: NSSharingService, didShareItems items: [Any]) {
+    func sharingService(_: NSSharingService, didShareItems _: [Any]) {
         finish()
     }
 
-    func sharingService(_ sharingService: NSSharingService, didFailToShareItems items: [Any], error: Error) {
+    func sharingService(_: NSSharingService, didFailToShareItems _: [Any], error _: Error) {
         finish()
     }
 

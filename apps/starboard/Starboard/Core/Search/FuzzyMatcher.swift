@@ -47,7 +47,7 @@ enum FuzzyMatcher {
     }
 
     private static func firstOccurrence(_ char: Character, in chars: [Character], after start: Int) -> Int? {
-        for i in start..<chars.count where chars[i] == char {
+        for i in start ..< chars.count where chars[i] == char {
             return i
         }
         return nil

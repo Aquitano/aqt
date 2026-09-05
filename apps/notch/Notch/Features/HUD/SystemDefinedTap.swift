@@ -1,7 +1,7 @@
 import AppKit
-import NotchCore
 import ApplicationServices
 import CoreGraphics
+import NotchCore
 
 /// Event tap on NX_SYSDEFINED media keys, in one of two modes:
 ///
@@ -16,7 +16,6 @@ import CoreGraphics
 /// The run-loop source lives on the main run loop, so events are handled on the
 /// main thread and the handler's decision is synchronous.
 final class SystemDefinedTap: @unchecked Sendable {
-
     enum MediaKey { case volumeUp, volumeDown, mute, brightnessUp, brightnessDown }
 
     /// Called on the main thread for every media key-down, auto-repeats
@@ -104,24 +103,23 @@ final class SystemDefinedTap: @unchecked Sendable {
     private func handle(_ cgEvent: CGEvent) -> Bool {
         guard let event = NSEvent(cgEvent: cgEvent), event.subtype.rawValue == 8 else { return false }
         let data1 = event.data1
-        let keyCode = (data1 & 0xFFFF0000) >> 16
+        let keyCode = (data1 & 0xFFFF_0000) >> 16
         let keyState = (data1 & 0xFF00) >> 8
 
-        let key: MediaKey?
-        switch keyCode {
-        case 0: key = .volumeUp       // NX_KEYTYPE_SOUND_UP
-        case 1: key = .volumeDown     // NX_KEYTYPE_SOUND_DOWN
-        case 7: key = .mute           // NX_KEYTYPE_MUTE
-        case 2: key = .brightnessUp   // NX_KEYTYPE_BRIGHTNESS_UP
-        case 3: key = .brightnessDown // NX_KEYTYPE_BRIGHTNESS_DOWN
-        default: key = nil
+        let key: MediaKey? = switch keyCode {
+        case 0: .volumeUp // NX_KEYTYPE_SOUND_UP
+        case 1: .volumeDown // NX_KEYTYPE_SOUND_DOWN
+        case 7: .mute // NX_KEYTYPE_MUTE
+        case 2: .brightnessUp // NX_KEYTYPE_BRIGHTNESS_UP
+        case 3: .brightnessDown // NX_KEYTYPE_BRIGHTNESS_DOWN
+        default: nil
         }
         guard let key else { return false }
 
-        if keyState == 0x0B {   // key up: swallow iff its key-down was swallowed
+        if keyState == 0x0B { // key up: swallow iff its key-down was swallowed
             return consuming && swallowedKeyCodes.remove(keyCode) != nil
         }
-        guard keyState == 0x0A else { return false }   // key down only
+        guard keyState == 0x0A else { return false } // key down only
 
         let fine = event.modifierFlags.isSuperset(of: [.shift, .option])
         let swallow = onMediaKey?(key, fine) ?? false

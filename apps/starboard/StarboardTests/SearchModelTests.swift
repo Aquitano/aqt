@@ -1,12 +1,26 @@
-import XCTest
 @testable import Starboard
+import XCTest
 
 @MainActor
 final class SearchModelTests: XCTestCase {
     private let windows = [
-        WindowInfo(id: 1, pid: 101, appName: "Safari", bundleID: "com.apple.Safari", title: "Release notes", isOnScreen: true),
+        WindowInfo(
+            id: 1,
+            pid: 101,
+            appName: "Safari",
+            bundleID: "com.apple.Safari",
+            title: "Release notes",
+            isOnScreen: true
+        ),
         WindowInfo(id: 2, pid: 102, appName: "Notes", bundleID: "com.apple.Notes", title: "Roadmap", isOnScreen: false),
-        WindowInfo(id: 3, pid: 103, appName: "Terminal", bundleID: "com.apple.Terminal", title: "starboard", isOnScreen: true),
+        WindowInfo(
+            id: 3,
+            pid: 103,
+            appName: "Terminal",
+            bundleID: "com.apple.Terminal",
+            title: "starboard",
+            isOnScreen: true
+        ),
     ]
 
     private let apps = [
@@ -158,14 +172,14 @@ final class SearchModelTests: XCTestCase {
                 target: "Safari",
                 isRunning: true,
                 order: 0
-            )
+            ),
         ]
         let ranked = SearchModel.rank("saf", candidates: candidates)
         XCTAssertEqual(ranked.first?.matchedIndices, [0, 1, 2])
         XCTAssertNotNil(ranked.first?.attributedTitle)
     }
 
-    func testAttributedTitleHandlesCompoundTargetsWithoutTitleMatch() {
+    func testAttributedTitleHandlesCompoundTargetsWithoutTitleMatch() throws {
         let window = WindowInfo(
             id: 10,
             pid: 101,
@@ -190,9 +204,9 @@ final class SearchModelTests: XCTestCase {
         XCTAssertEqual(ranked.count, 1)
         // Attributed title should be plain "Roadmap", never crash or misalign
         XCTAssertNotNil(ranked.first?.attributedTitle)
-        XCTAssertEqual(String(ranked.first!.attributedTitle!.characters), "Roadmap")
+        XCTAssertEqual(try String(XCTUnwrap(ranked.first?.attributedTitle?.characters)), "Roadmap")
         // Attributed subtitle matches "saf" in "Safari"
         XCTAssertNotNil(ranked.first?.attributedSubtitle)
-        XCTAssertEqual(String(ranked.first!.attributedSubtitle!.characters), "Safari")
+        XCTAssertEqual(try String(XCTUnwrap(ranked.first?.attributedSubtitle?.characters)), "Safari")
     }
 }

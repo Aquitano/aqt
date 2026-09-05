@@ -6,7 +6,6 @@ import NotchCore
 @MainActor
 @Observable
 final class NoteManager {
-
     var text: String {
         didSet { scheduleSave() }
     }

@@ -5,7 +5,6 @@ import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-
     let env = AppEnvironment()
 
     private var windowController: NotchWindowController!
@@ -21,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil
     )
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    func applicationDidFinishLaunching(_: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
         windowController = NotchWindowController(env: env)
@@ -43,9 +42,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.app.info("Notch launched")
     }
 
-    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
+    func applicationSupportsSecureRestorableState(_: NSApplication) -> Bool {
+        true
+    }
 
-    func applicationWillTerminate(_ notification: Notification) {
+    func applicationWillTerminate(_: Notification) {
         windowController?.stop()
         env.agents.stop()
         env.screenshots.stop()
@@ -61,7 +62,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // toggling the notch mid-recording.
         let settings = env.settings
         hotkeyObserver = watch({
-            (settings.general.hotkeyEnabled, settings.general.hotkeyKeyCode, settings.general.hotkeyModifiers, settings.isRecordingHotkey)
+            (
+                settings.general.hotkeyEnabled,
+                settings.general.hotkeyKeyCode,
+                settings.general.hotkeyModifiers,
+                settings.isRecordingHotkey
+            )
         }) { [weak self] enabled, keyCode, modifiers, recording in
             guard let self else { return }
             if enabled, !recording {

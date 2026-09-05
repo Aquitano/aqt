@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// Battery status tile: a drawn level indicator, a one-tap Low Power Mode leaf,
 /// the percentage, and a status line (charging / time remaining). Static by
@@ -46,10 +46,13 @@ struct BatteryWidgetView: View {
             Haptics.tap(.levelChange)
             powerMode.toggle()
         } label: {
-            PixelIcon(systemName: "leaf.fill", size: 12,
-                      tint: battery.lowPowerMode ? .yellow : .white.opacity(0.35))
-                .padding(4)
-                .contentShape(.rect)
+            PixelIcon(
+                systemName: "leaf.fill",
+                size: 12,
+                tint: battery.lowPowerMode ? .yellow : .white.opacity(0.35)
+            )
+            .padding(4)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .frame(height: 14)
@@ -62,15 +65,25 @@ struct BatteryWidgetView: View {
     // MARK: - Derived content
 
     private var indicatorTint: Color {
-        if battery.isCharging || battery.isFullyCharged { return .green }
-        if battery.percent <= 20 { return .red }
+        if battery.isCharging || battery.isFullyCharged {
+            return .green
+        }
+        if battery.percent <= 20 {
+            return .red
+        }
         return .white
     }
 
     private var statusLine: String? {
-        if battery.isCharging { return "Charging" }
-        if battery.isFullyCharged { return "Charged" }
-        if let minutes = battery.timeToEmpty { return Self.timeLeft(minutes: minutes) }
+        if battery.isCharging {
+            return "Charging"
+        }
+        if battery.isFullyCharged {
+            return "Charged"
+        }
+        if let minutes = battery.timeToEmpty {
+            return Self.timeLeft(minutes: minutes)
+        }
         return nil
     }
 

@@ -1,5 +1,5 @@
-import XCTest
 @testable import Starboard
+import XCTest
 
 @MainActor
 final class StageRestoreTests: XCTestCase {

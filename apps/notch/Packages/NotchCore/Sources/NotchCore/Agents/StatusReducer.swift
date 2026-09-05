@@ -9,14 +9,20 @@ package struct HookSnapshot: Equatable, Sendable {
     package let message: String?
     package let tool: String?
     /// Set on PermissionRequest hooks: the id the decision reply must carry.
-    package var requestId: String? = nil
+    package var requestId: String?
     /// `notification_type` on a Notification hook (`idle_prompt`,
     /// `permission_prompt`, `agent_needs_input`, …). Claude classifies its own
     /// notifications, so this replaces guessing from the message text.
-    package var notificationType: String? = nil
+    package var notificationType: String?
 
-    package init(name: String, time: Date, message: String?, tool: String?,
-                 requestId: String? = nil, notificationType: String? = nil) {
+    package init(
+        name: String,
+        time: Date,
+        message: String?,
+        tool: String?,
+        requestId: String? = nil,
+        notificationType: String? = nil
+    ) {
         self.name = name
         self.time = time
         self.message = message
@@ -36,7 +42,6 @@ package struct HookSnapshot: Equatable, Sendable {
 /// back into the provider's reconcile loop would scatter that logic across the
 /// app's most-edited file, which is exactly what makes it earn its keep.
 package enum StatusReducer {
-
     /// The scan-derived facts the decision needs: when the transcript last
     /// changed (to race against the hook time) and what its structure implies.
     package struct Scan: Equatable, Sendable {
@@ -82,7 +87,9 @@ package enum StatusReducer {
                 // Only the first is a real needs-you; an idle nudge is the opposite —
                 // positive evidence that the session is waiting, which used to fall
                 // through and be re-inferred as running from the transcript.
-                if let resolved = notificationStatus(hook) { return resolved }
+                if let resolved = notificationStatus(hook) {
+                    return resolved
+                }
             case "StopFailure":
                 // The turn died on an API error (rate limit, overload, auth) instead
                 // of finishing: no Stop hook ever fires, and the work the user asked

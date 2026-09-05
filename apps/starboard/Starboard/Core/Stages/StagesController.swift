@@ -68,7 +68,9 @@ final class StagesController {
         var stage = Stage(name: name, letter: String(letter).lowercased(), apps: apps)
         // A letter names exactly one Stage; saving to a taken letter replaces.
         settings.model.stages.removeAll { $0.letter == stage.letter }
-        if stage.name.isEmpty { stage.name = "Stage \(stage.letter.uppercased())" }
+        if stage.name.isEmpty {
+            stage.name = "Stage \(stage.letter.uppercased())"
+        }
         settings.model.stages.append(stage)
         activeStageID = stage.id
         ToastHUD.shared.show(message: "Saved \(stage.name) — leader+\(stage.letter.uppercased()) restores it")
@@ -127,8 +129,9 @@ final class StagesController {
 
         let stageIDs = Set(stage.apps.map(\.bundleID))
         for app in NSWorkspace.shared.runningApplications
-        where app.activationPolicy == .regular
-            && !stageIDs.contains(app.bundleIdentifier ?? "") {
+            where app.activationPolicy == .regular
+            && !stageIDs.contains(app.bundleIdentifier ?? "")
+        {
             app.hide()
         }
 
@@ -141,7 +144,8 @@ final class StagesController {
     /// leader+`-`: close only the active Stage's windows (never terminate).
     func closeActive() {
         guard let activeStageID,
-              let stage = settings.model.stages.first(where: { $0.id == activeStageID }) else {
+              let stage = settings.model.stages.first(where: { $0.id == activeStageID })
+        else {
             return
         }
         for stageApp in stage.apps {

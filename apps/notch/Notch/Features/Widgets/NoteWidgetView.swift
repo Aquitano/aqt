@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// One persistent scratch note. The overlay panel is non-activating and only
 /// key-capable on demand, so the editor latches the panel key while focused
@@ -12,8 +12,11 @@ struct NoteWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                PixelIcon(systemName: "note.text", size: 15,
-                          tint: .white.opacity(0.7))
+                PixelIcon(
+                    systemName: "note.text",
+                    size: 15,
+                    tint: .white.opacity(0.7)
+                )
                 Text("Note")
                     .font(.headline)
                     .foregroundStyle(.white)
@@ -26,7 +29,7 @@ struct NoteWidgetView: View {
                 .scrollContentBackground(.hidden)
                 .focused($focused)
                 .overlay(alignment: .topLeading) {
-                    if note.text.isEmpty && !focused {
+                    if note.text.isEmpty, !focused {
                         Text("Jot something down…")
                             .font(.callout)
                             .foregroundStyle(.white.opacity(0.35))

@@ -5,7 +5,6 @@ import NotchCore
 /// "Haptic feedback" preference into `isEnabled`, so call sites stay one line.
 @MainActor
 enum Haptics {
-
     static var isEnabled = true
 
     static func tap(_ pattern: NSHapticFeedbackManager.FeedbackPattern = .generic) {

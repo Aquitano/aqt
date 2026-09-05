@@ -11,7 +11,6 @@ import Foundation
 /// table-tested; the provider is left with only the side effects (publish,
 /// emit, purge its dictionaries).
 package enum SessionReconciler {
-
     package struct Inputs {
         package var scan: [ScannedSession] = []
         package var hookState: [String: HookSnapshot] = [:]
@@ -24,10 +23,16 @@ package enum SessionReconciler {
         package var now: Date
         package var graceWindow: TimeInterval = 30
 
-        package init(scan: [ScannedSession] = [], hookState: [String: HookSnapshot] = [:],
-                     hookCwd: [String: String] = [:], endedSessionIDs: Set<String> = [],
-                     previous: [String: AgentSession] = [:], emittedAttentionAt: [String: Date] = [:],
-                     now: Date, graceWindow: TimeInterval = 30) {
+        package init(
+            scan: [ScannedSession] = [],
+            hookState: [String: HookSnapshot] = [:],
+            hookCwd: [String: String] = [:],
+            endedSessionIDs: Set<String> = [],
+            previous: [String: AgentSession] = [:],
+            emittedAttentionAt: [String: Date] = [:],
+            now: Date,
+            graceWindow: TimeInterval = 30
+        ) {
             self.scan = scan
             self.hookState = hookState
             self.hookCwd = hookCwd
@@ -73,7 +78,9 @@ package enum SessionReconciler {
         // session that never sent SessionEnd — expire it instead of resurrecting
         // a phantom (e.g. a stuck "needs you") on every rebuild.
         for sid in input.hookState.keys where sessions[sid] == nil {
-            if input.endedSessionIDs.contains(sid) { continue }
+            if input.endedSessionIDs.contains(sid) {
+                continue
+            }
             guard let hook = input.hookState[sid] else { continue }
             let withinGrace = input.now.timeIntervalSince(hook.time) <= input.graceWindow
             guard let cwd = input.hookCwd[sid] else {
@@ -158,7 +165,8 @@ package enum SessionReconciler {
             if session.status == .needsAttention,
                let attentionTime = hookState[sid].flatMap({
                    attentionHooks.contains($0.name) ? $0.time : nil
-               }) {
+               })
+            {
                 if emittedAttentionAt[sid] != attentionTime {
                     emittedAttentionAt[sid] = attentionTime
                     events.append(AgentEvent(kind: .needsAttention, session: session, message: session.detail))

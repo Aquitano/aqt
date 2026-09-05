@@ -11,11 +11,13 @@ package struct Activity: Identifiable, Equatable {
     /// nil = sticky until explicitly removed (e.g. now playing while audio plays).
     package var ttl: TimeInterval?
 
-    package init(id: UUID = UUID(),
-         kind: Kind,
-         priority: Priority,
-         createdAt: Date,
-         ttl: TimeInterval? = nil) {
+    package init(
+        id: UUID = UUID(),
+        kind: Kind,
+        priority: Priority,
+        createdAt: Date,
+        ttl: TimeInterval? = nil
+    ) {
         self.id = id
         self.kind = kind
         self.priority = priority
@@ -24,12 +26,14 @@ package struct Activity: Identifiable, Equatable {
     }
 
     package enum Priority: Int, Comparable {
-        case ambient = 0      // now playing
-        case low = 10         // focus badge
-        case normal = 20      // device connect, route change
-        case high = 30        // charging / power
-        case urgent = 40      // low battery, user peeks
-        package static func < (lhs: Priority, rhs: Priority) -> Bool { lhs.rawValue < rhs.rawValue }
+        case ambient = 0 // now playing
+        case low = 10 // focus badge
+        case normal = 20 // device connect, route change
+        case high = 30 // charging / power
+        case urgent = 40 // low battery, user peeks
+        package static func < (lhs: Priority, rhs: Priority) -> Bool {
+            lhs.rawValue < rhs.rawValue
+        }
     }
 
     package enum Kind: Equatable {
@@ -77,13 +81,17 @@ package struct Activity: Identifiable, Equatable {
     /// Now Playing owns a dedicated compact presentation (artwork + meter), so
     /// its bookkeeping entry never appears as a generic pill.
     package var showsInPill: Bool {
-        if case .nowPlaying = kind { return false }
+        if case .nowPlaying = kind {
+            return false
+        }
         return true
     }
 
     /// Active session count when this is the aggregate agent entry, else nil.
     package var agentCount: Int? {
-        if case let .agent(count, _, _, _) = kind { return count }
+        if case let .agent(count, _, _, _) = kind {
+            return count
+        }
         return nil
     }
 }

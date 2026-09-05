@@ -6,7 +6,6 @@ import NotchCore
 @MainActor
 @Observable
 final class ShortcutsManager {
-
     /// Names from `shortcuts list`, for the Settings picker.
     private(set) var available: [String] = []
 
@@ -34,10 +33,12 @@ final class ShortcutsManager {
             let detail = result?.errorOutput.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             await MainActor.run {
                 self.activities.publish(Activity(
-                    kind: .peek(title: "Shortcut failed",
-                                message: detail.isEmpty ? name : detail,
-                                symbol: "exclamationmark.triangle",
-                                tint: .warning),
+                    kind: .peek(
+                        title: "Shortcut failed",
+                        message: detail.isEmpty ? name : detail,
+                        symbol: "exclamationmark.triangle",
+                        tint: .warning
+                    ),
                     priority: .urgent, createdAt: Date(), ttl: 4
                 ))
             }
@@ -47,7 +48,8 @@ final class ShortcutsManager {
     /// Shared `shortcuts` CLI runner; also used by `PowerModeController` for
     /// the Low Power Mode bridge.
     nonisolated static func execute(_ arguments: [String])
-        -> (status: Int32, output: String, errorOutput: String)? {
+        -> (status: Int32, output: String, errorOutput: String)?
+    {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
         process.arguments = arguments
@@ -78,9 +80,11 @@ final class ShortcutsManager {
         }
         process.waitUntilExit()
         group.wait()
-        return (process.terminationStatus,
-                String(data: outCapture.data, encoding: .utf8) ?? "",
-                String(data: errCapture.data, encoding: .utf8) ?? "")
+        return (
+            process.terminationStatus,
+            String(data: outCapture.data, encoding: .utf8) ?? "",
+            String(data: errCapture.data, encoding: .utf8) ?? ""
+        )
     }
 }
 

@@ -5,7 +5,6 @@ import Security
 /// Minimal generic-password store for the few secrets the app holds (currently
 /// the T3 Code access token). Tokens never touch UserDefaults.
 enum KeychainStore {
-
     private static let service = "com.aquitano.notch"
 
     struct Failure: LocalizedError {

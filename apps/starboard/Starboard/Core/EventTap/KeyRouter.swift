@@ -93,7 +93,9 @@ final class KeyRouter {
             keyWasResolved: true
         )
         let consume = !intents.isEmpty || session.cancelled
-        if consume { consumedKeys.insert(keyCode) }
+        if consume {
+            consumedKeys.insert(keyCode)
+        }
         return (intents, consume)
     }
 

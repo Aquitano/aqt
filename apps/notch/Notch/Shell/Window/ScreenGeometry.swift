@@ -56,13 +56,13 @@ struct ScreenGeometry: Equatable {
         let minimumHeight = hasRealNotch ? display.safeAreaTop : 24
         let notchHeight = max(minimumHeight, baseHeight + profile.compactHeightAdjustment)
 
-        let measuredWidth: CGFloat
-        if hasRealNotch,
-           let left = display.auxiliaryLeftWidth,
-           let right = display.auxiliaryRightWidth {
-            measuredWidth = display.frame.width - left - right
+        let measuredWidth: CGFloat = if hasRealNotch,
+                                        let left = display.auxiliaryLeftWidth,
+                                        let right = display.auxiliaryRightWidth
+        {
+            display.frame.width - left - right
         } else {
-            measuredWidth = NotchMetrics.fallbackNotchSize.width
+            NotchMetrics.fallbackNotchSize.width
         }
         let minimumWidth = hasRealNotch ? measuredWidth : 160
         let notchWidth = max(minimumWidth, measuredWidth + profile.compactWidthAdjustment)
@@ -73,7 +73,7 @@ struct ScreenGeometry: Equatable {
         let verticalOffset = hasRealNotch ? 0 : profile.verticalOffset
         let requestedExpandedWidth = CGFloat(
             (Double(NotchMetrics.expandedWidth) + profile.expandedWidthAdjustment)
-                .clamped(to: 460...720)
+                .clamped(to: 460 ... 720)
         )
         let expandedWidth = min(requestedExpandedWidth, max(420, frame.width - 24))
         let panelWidth = min(frame.width, max(
@@ -83,7 +83,7 @@ struct ScreenGeometry: Equatable {
         let panelHeight = notchHeight + NotchMetrics.verticalDrop
         let requestedCenterX = frame.midX + horizontalOffset
         let panelCenterX = requestedCenterX.clamped(
-            to: (frame.minX + panelWidth / 2)...(frame.maxX - panelWidth / 2)
+            to: (frame.minX + panelWidth / 2) ... (frame.maxX - panelWidth / 2)
         )
         // SwiftUI centers the visible notch inside the panel, so both frames must
         // share the clamped center or drawing and hit-testing diverge near an edge.

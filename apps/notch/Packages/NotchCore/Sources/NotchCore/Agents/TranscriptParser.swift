@@ -22,7 +22,6 @@ package struct TranscriptState: Equatable, Sendable {
 /// no dependency on a live session on disk. The file I/O that produces those
 /// bytes lives in `SessionProbe`.
 package enum TranscriptParser {
-
     /// One reverse pass over the transcript tail collecting branch, busy status,
     /// the latest user prompt, and the latest assistant reply. Lines that aren't
     /// valid JSON objects are skipped.
@@ -42,7 +41,9 @@ package enum TranscriptParser {
 
         for line in data.split(separator: 0x0A).reversed() {
             guard let obj = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { continue }
-            if branch == nil { branch = obj["gitBranch"] as? String }
+            if branch == nil {
+                branch = obj["gitBranch"] as? String
+            }
             // Reverse pass, so the first timestamp we meet is the newest.
             if lastEntryAt == nil, let stamp = obj["timestamp"] as? String {
                 lastEntryAt = timestamp(stamp)
@@ -54,7 +55,8 @@ package enum TranscriptParser {
                       let content = message["content"] as? [[String: Any]] else { break }
                 if !foundStatus {
                     if let tool = content.last(where: { ($0["type"] as? String) == "tool_use" }),
-                       let name = tool["name"] as? String {
+                       let name = tool["name"] as? String
+                    {
                         // A pending tool_use is the last thing emitted: the turn is in
                         // progress (running it / awaiting its result).
                         status = agentEditTools.contains(name) ? .editing : .tool
@@ -78,7 +80,9 @@ package enum TranscriptParser {
                     let text = content
                         .compactMap { ($0["type"] as? String) == "text" ? $0["text"] as? String : nil }
                         .joined(separator: " ")
-                    if !text.isEmpty { response = agentClip(text) }
+                    if !text.isEmpty {
+                        response = agentClip(text)
+                    }
                 }
             case "user":
                 guard let message = obj["message"] as? [String: Any] else { break }
@@ -86,7 +90,9 @@ package enum TranscriptParser {
                 // and `/clear` writes them into a brand-new one. They start no turn:
                 // counting them as a prompt made every fresh chat read as running,
                 // with "<command-name>/clear</command-name>" as its preview.
-                if isLocalCommand(message) { break }
+                if isLocalCommand(message) {
+                    break
+                }
                 if !foundStatus {
                     // Esc writes a "[Request interrupted by user]" user entry and no
                     // Stop hook ever fires, so without this the session lingers busy
@@ -106,7 +112,9 @@ package enum TranscriptParser {
             default:
                 break
             }
-            if branch != nil && foundStatus && prompt != nil && response != nil && lastEntryAt != nil { break }
+            if branch != nil, foundStatus, prompt != nil, response != nil, lastEntryAt != nil {
+                break
+            }
         }
         return TranscriptState(
             branch: branch, busy: status, verb: verb,
@@ -148,7 +156,9 @@ package enum TranscriptParser {
             return string.isEmpty ? nil : string
         }
         guard let content = message["content"] as? [[String: Any]] else { return nil }
-        if content.contains(where: { ($0["type"] as? String) == "tool_result" }) { return nil }
+        if content.contains(where: { ($0["type"] as? String) == "tool_result" }) {
+            return nil
+        }
         let text = content
             .compactMap { ($0["type"] as? String) == "text" ? $0["text"] as? String : nil }
             .joined(separator: " ")

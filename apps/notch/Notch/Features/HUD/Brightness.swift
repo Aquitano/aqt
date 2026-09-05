@@ -1,12 +1,11 @@
 import CoreGraphics
-import NotchCore
 import Foundation
+import NotchCore
 
 /// Reads and writes built-in display brightness via the private DisplayServices
 /// framework. dlopen + declared symbols so there's no link dependency; degrades
 /// to nil if Apple ever moves a symbol (isolated here per the risk register).
 final class Brightness {
-
     private typealias GetBrightness = @convention(c) (UInt32, UnsafeMutablePointer<Float>) -> Int32
     private typealias SetBrightness = @convention(c) (UInt32, Float) -> Int32
 
@@ -33,7 +32,9 @@ final class Brightness {
         }
     }
 
-    var isAvailable: Bool { getBrightness != nil }
+    var isAvailable: Bool {
+        getBrightness != nil
+    }
 
     /// Current brightness 0...1 for the main display, or nil if unreadable.
     func current() -> Float? {

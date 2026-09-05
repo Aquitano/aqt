@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// Ordered priority queue of live activities. The top entry renders in the
 /// compact pill; the rest cycle (swipe-down / middle-click). TTLs are one-shot
@@ -8,7 +8,6 @@ import NotchCore
 @MainActor
 @Observable
 final class ActivityManager {
-
     private(set) var activities: [Activity] = []
     /// Bumps on every new activity so views can fire a one-shot "pop".
     private(set) var lastEventID = UUID()
@@ -40,7 +39,9 @@ final class ActivityManager {
         return list[cycleOffset % list.count]
     }
 
-    var compactActivityCount: Int { pillCandidates.count }
+    var compactActivityCount: Int {
+        pillCandidates.count
+    }
 
     func contains(channel: Activity.Channel) -> Bool {
         activities.contains { $0.channel == channel }
@@ -64,20 +65,28 @@ final class ActivityManager {
 
     /// Push a generic Quick Peek from any internal source. Peeks have no channel,
     /// so they stack rather than replace, and always auto-expire.
-    func peek(title: String,
-              message: String = "",
-              symbol: String,
-              tint: Activity.PeekTint = .neutral,
-              ttl: TimeInterval = 4) {
-        publish(Activity(kind: .peek(title: title, message: message, symbol: symbol, tint: tint),
-                         priority: .urgent, createdAt: Date(), ttl: ttl))
+    func peek(
+        title: String,
+        message: String = "",
+        symbol: String,
+        tint: Activity.PeekTint = .neutral,
+        ttl: TimeInterval = 4
+    ) {
+        publish(Activity(
+            kind: .peek(title: title, message: message, symbol: symbol, tint: tint),
+            priority: .urgent,
+            createdAt: Date(),
+            ttl: ttl
+        ))
     }
 
     func remove(id: UUID) {
         ttlTasks[id]?.cancel()
         ttlTasks[id] = nil
         activities.removeAll { $0.id == id }
-        if cycleOffset >= max(activities.count, 1) { cycleOffset = 0 }
+        if cycleOffset >= max(activities.count, 1) {
+            cycleOffset = 0
+        }
     }
 
     func remove(channel: Activity.Channel) {

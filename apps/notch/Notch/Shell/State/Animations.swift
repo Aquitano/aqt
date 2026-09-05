@@ -1,12 +1,11 @@
-import SwiftUI
-import NotchCore
 import AppKit
+import NotchCore
+import SwiftUI
 
 /// The "Apple feel" lives here: one asymmetric spring set, ~0.4s each.
 /// Open bounces, close settles, compact<->expanded snaps. Reduce Motion
 /// swaps every curve for a non-bouncy `.smooth`.
 enum NotchAnimation {
-
     static func open(reduceMotion: Bool) -> Animation {
         reduceMotion ? .smooth(duration: 0.35) : .bouncy(duration: 0.4)
     }
@@ -15,7 +14,7 @@ enum NotchAnimation {
     /// stays mounted (fading, clipped by the blob) before it is dropped.
     static let closeDuration: TimeInterval = 0.4
 
-    static func close(reduceMotion: Bool) -> Animation {
+    static func close(reduceMotion _: Bool) -> Animation {
         .smooth(duration: closeDuration)
     }
 
@@ -93,8 +92,10 @@ enum NotchLayout {
     /// width is the live (animating) blob width, so the icon stays clear of the
     /// corner through every transition instead of only at rest.
     static func compactOuterPadding(width: CGFloat, notchWidth: CGFloat) -> CGFloat {
-        max(compactHorizontalPadding,
-            NotchMetrics.shoulderInset(width: width, notchWidth: notchWidth) + compactShoulderGap)
+        max(
+            compactHorizontalPadding,
+            NotchMetrics.shoulderInset(width: width, notchWidth: notchWidth) + compactShoulderGap
+        )
     }
 
     /// Breathing room added inside each slot beyond its content's measured width.
@@ -123,9 +124,15 @@ enum NotchLayout {
         activityLabel: String?,
         trayItemCount: Int = 0
     ) -> CompactContent {
-        if hasMedia { return .media }
-        if let agentCount { return .agent(count: agentCount) }
-        if let label = activityLabel { return .activity(label: label) }
+        if hasMedia {
+            return .media
+        }
+        if let agentCount {
+            return .agent(count: agentCount)
+        }
+        if let label = activityLabel {
+            return .activity(label: label)
+        }
         if trayItemCount > 0 {
             return .activity(label: trayItemCount == 1 ? "1 item" : "\(trayItemCount) items")
         }
@@ -194,11 +201,11 @@ enum NotchLayout {
     /// fits its own content instead of one fixed box.
     static func expandedBodyHeight(tab: NotchState.ExpandedTab, hasInfoRow: Bool, trayEmpty: Bool) -> CGFloat {
         switch tab {
-        case .home: return hasInfoRow ? 296 : 175
-        case .agents: return 320
-        case .media: return 220
-        case .timer: return 240
-        case .tray: return trayEmpty ? 204 : 286
+        case .home: hasInfoRow ? 296 : 175
+        case .agents: 320
+        case .media: 220
+        case .timer: 240
+        case .tray: trayEmpty ? 204 : 286
         }
     }
 
@@ -219,26 +226,30 @@ enum NotchLayout {
     /// this is the one number to nudge if they turn out flaky.
     static let shoulderRowTopInset: CGFloat = 0
 
-    static func contentSize(presentation: NotchState.Presentation,
-                            notch: CGSize,
-                            expandedWidth: CGFloat = NotchMetrics.expandedWidth,
-                            tab: NotchState.ExpandedTab,
-                            hasInfoRow: Bool,
-                            trayEmpty: Bool,
-                            compact: CompactContent,
-                            dropActive: Bool = false,
-                            tabBarStyle: TabBarStyle = .inside) -> CGSize {
+    static func contentSize(
+        presentation: NotchState.Presentation,
+        notch: CGSize,
+        expandedWidth: CGFloat = NotchMetrics.expandedWidth,
+        tab: NotchState.ExpandedTab,
+        hasInfoRow: Bool,
+        trayEmpty: Bool,
+        compact: CompactContent,
+        dropActive: Bool = false,
+        tabBarStyle: TabBarStyle = .inside
+    ) -> CGSize {
         switch presentation {
         case .hidden:
             return notch
         case .compact:
-            return CGSize(width: notch.width + compactExtraWidth(compact),
-                          height: notch.height + (compact == .none ? 0 : 4))
+            return CGSize(
+                width: notch.width + compactExtraWidth(compact),
+                height: notch.height + (compact == .none ? 0 : 4)
+            )
         case .expanded:
             let body = dropActive
                 ? dropChooserHeight
                 : expandedBodyHeight(tab: tab, hasInfoRow: hasInfoRow, trayEmpty: trayEmpty)
-                    - (tabBarStyle == .inside ? 0 : tabStripAllowance)
+                - (tabBarStyle == .inside ? 0 : tabStripAllowance)
             return CGSize(width: expandedWidth, height: body + notch.height)
         }
     }

@@ -1,10 +1,10 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// The two fields shown while a file is dragged onto the notch.
 enum DropZone: Hashable {
-    case keep   // stage on the shelf
-    case share  // share immediately via the configured method
+    case keep // stage on the shelf
+    case share // share immediately via the configured method
 }
 
 /// What one display's notch is showing right now: the presentation phase, the
@@ -14,11 +14,10 @@ enum DropZone: Hashable {
 @MainActor
 @Observable
 final class NotchState {
-
     enum Presentation: Equatable {
-        case hidden     // panel ordered out, fully click-through
-        case compact    // the pill / now-playing sliver hugging the bezel
-        case expanded   // full panel
+        case hidden // panel ordered out, fully click-through
+        case compact // the pill / now-playing sliver hugging the bezel
+        case expanded // full panel
     }
 
     typealias ExpandedTab = NotchTab
@@ -56,8 +55,13 @@ final class NotchState {
     /// transition helpers (which run outside the SwiftUI environment) can react.
     var reduceMotion: Bool = false
 
-    var isExpanded: Bool { presentation == .expanded }
-    var isVisible: Bool { presentation != .hidden }
+    var isExpanded: Bool {
+        presentation == .expanded
+    }
+
+    var isVisible: Bool {
+        presentation != .hidden
+    }
 
     /// Every grace period sleeps on this clock, so tests drive them by hand.
     @ObservationIgnored private let clock: any Clock<Duration>

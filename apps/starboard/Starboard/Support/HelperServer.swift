@@ -24,7 +24,7 @@ enum HelperRequest: Decodable {
         case "status":
             self = .status
         case "setEnabled":
-            self = .setEnabled(try container.decode(Bool.self, forKey: .enabled))
+            self = try .setEnabled(container.decode(Bool.self, forKey: .enabled))
         case "visibleApps":
             self = .visibleApps
         case "restoreStage":
@@ -38,11 +38,11 @@ enum HelperRequest: Decodable {
         case "overlay":
             self = .overlay
         case "focus":
-            self = .focus(itemID: try container.decode(String.self, forKey: .id))
+            self = try .focus(itemID: container.decode(String.self, forKey: .id))
         case "search":
             let windows = try container.decodeIfPresent(String.self, forKey: .scope) == "windows"
-            self = .search(
-                query: try container.decodeIfPresent(String.self, forKey: .query) ?? "",
+            self = try .search(
+                query: container.decodeIfPresent(String.self, forKey: .query) ?? "",
                 scope: windows ? .windows : .apps
             )
         default:
@@ -106,7 +106,13 @@ struct OverlaySnapshot: Encodable {
                 subtitle: item.subtitle,
                 letter: item.letter.map(String.init),
                 appPath: item.iconBundleID.flatMap(AppIcons.path(for:)),
-                isWindow: { if case .window = item.kind { return true } else { return false } }()
+                isWindow: {
+                    if case .window = item.kind {
+                        true
+                    } else {
+                        false
+                    }
+                }()
             )
         }
     }
@@ -127,21 +133,21 @@ enum HelperResponse: Encodable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case .status(let status):
+        case let .status(status):
             try status.encode(to: encoder)
             try container.encode(true, forKey: .ok)
-        case .overlay(let snapshot):
+        case let .overlay(snapshot):
             try snapshot.encode(to: encoder)
             try container.encode(true, forKey: .ok)
-        case .apps(let apps):
+        case let .apps(apps):
             try container.encode(true, forKey: .ok)
             try container.encode(apps, forKey: .apps)
-        case .items(let items):
+        case let .items(items):
             try container.encode(true, forKey: .ok)
             try container.encode(items, forKey: .items)
         case .done:
             try container.encode(true, forKey: .ok)
-        case .error(let message):
+        case let .error(message):
             try container.encode(false, forKey: .ok)
             try container.encode(message, forKey: .error)
         }
@@ -181,7 +187,7 @@ final class HelperServer: @unchecked Sendable {
                 // focus, so the socket is owner-only. The bind itself honours
                 // the umask; the 0700 directory covers that gap.
                 chmod(socketPath, 0o600)
-            case .failed(let error):
+            case let .failed(error):
                 NSLog("Starboard: helper socket failed: \(error)")
             default:
                 break
@@ -220,7 +226,9 @@ final class HelperServer: @unchecked Sendable {
                 return
             }
             var buffer = buffered
-            if let data { buffer.append(data) }
+            if let data {
+                buffer.append(data)
+            }
             if let newline = buffer.firstIndex(of: UInt8(ascii: "\n")) {
                 self.respond(to: buffer[..<newline], on: connection)
             } else if complete {

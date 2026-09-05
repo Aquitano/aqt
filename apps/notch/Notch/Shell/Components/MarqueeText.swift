@@ -1,5 +1,5 @@
-import SwiftUI
 import NotchCore
+import SwiftUI
 
 /// Single-line label that gently scrolls when its text is wider than the space
 /// it's given. Scrolling only happens while `isActive` (the caller gates this on
@@ -25,7 +25,9 @@ struct MarqueeText: View {
     private let endPause: Double = 1.0
     private let startPause: Double = 1.2
 
-    private var overflow: CGFloat { max(0, textWidth - containerWidth) }
+    private var overflow: CGFloat {
+        max(0, textWidth - containerWidth)
+    }
 
     private var shouldScroll: Bool {
         isActive && !reduceMotion && overflow > 0.5
@@ -93,11 +95,15 @@ struct MarqueeText: View {
 
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(startPause))
-            if Task.isCancelled { break }
+            if Task.isCancelled {
+                break
+            }
             withAnimation(curve) { offset = -distance }
 
             try? await Task.sleep(for: .seconds(duration + endPause))
-            if Task.isCancelled { break }
+            if Task.isCancelled {
+                break
+            }
             withAnimation(curve) { offset = 0 }
 
             try? await Task.sleep(for: .seconds(duration + endPause))

@@ -1,6 +1,6 @@
 import Darwin
-import NotchCore
 import Foundation
+import NotchCore
 
 /// System-wide Now Playing via the pinned `mediaremote-adapter` Perl bridge.
 ///
@@ -9,7 +9,6 @@ import Foundation
 /// platform Perl process rather than this unentitled app.
 @MainActor
 final class AdapterMediaController: MediaControlling {
-
     enum ProbeResult: Sendable, Equatable {
         case available
         case unavailable(String)
@@ -31,7 +30,7 @@ final class AdapterMediaController: MediaControlling {
         static let repeatMode = "toggle_repeat"
     }
 
-    nonisolated private static let perlPath = "/usr/bin/perl"
+    private nonisolated static let perlPath = "/usr/bin/perl"
     private let scriptPath: String
     private let frameworkExecutablePath: String
 
@@ -56,7 +55,7 @@ final class AdapterMediaController: MediaControlling {
         let frameworkExecutable: URL
     }
 
-    nonisolated private static func locateBundledArtifacts() -> Artifacts? {
+    private nonisolated static func locateBundledArtifacts() -> Artifacts? {
         guard let script = Bundle.main.url(
             forResource: "mediaremote-adapter",
             withExtension: "pl"
@@ -95,7 +94,9 @@ final class AdapterMediaController: MediaControlling {
             return .unavailable("The bundled adapter exited with status \(result.status).\(suffix)")
         }
         for line in result.stdout.split(whereSeparator: { $0.isNewline }) {
-            if line == "NIL" { return .available }
+            if line == "NIL" {
+                return .available
+            }
             guard let data = String(line).data(using: .utf8),
                   let envelope = try? JSONDecoder().decode(MediaAdapterEnvelope.self, from: data),
                   envelope.type == "data",
@@ -166,27 +167,29 @@ final class AdapterMediaController: MediaControlling {
         streamInput = nil
         streamOutput = nil
         buffer.removeAll(keepingCapacity: false)
-        if process?.isRunning == true { process?.terminate() }
+        if process?.isRunning == true {
+            process?.terminate()
+        }
         Log.media.notice("mediaremote-adapter stream ended; falling back")
         onStreamEnded?()
     }
 
     func send(_ command: MediaCommand) {
-        let arguments: [String]
-        switch command {
-        case .playPause: arguments = [Command.playPause]
-        case .next: arguments = [Command.next]
-        case .previous: arguments = [Command.previous]
-        case let .seek(position): arguments = [Command.seek, String(position)]
-        case .toggleShuffle: arguments = [Command.shuffle]
-        case .toggleRepeat: arguments = [Command.repeatMode]
+        let arguments: [String] = switch command {
+        case .playPause: [Command.playPause]
+        case .next: [Command.next]
+        case .previous: [Command.previous]
+        case let .seek(position): [Command.seek, String(position)]
+        case .toggleShuffle: [Command.shuffle]
+        case .toggleRepeat: [Command.repeatMode]
         }
 
         let line = arguments.joined(separator: " ") + "\n"
         if let process = streamProcess,
            process.isRunning,
            let data = line.data(using: .utf8),
-           let handle = streamInput?.fileHandleForWriting {
+           let handle = streamInput?.fileHandleForWriting
+        {
             do {
                 try handle.write(contentsOf: data)
                 return
@@ -207,8 +210,8 @@ final class AdapterMediaController: MediaControlling {
         buffer.append(chunk)
         let newline = UInt8(ascii: "\n")
         while let index = buffer.firstIndex(of: newline) {
-            let line = buffer.subdata(in: buffer.startIndex..<index)
-            buffer.removeSubrange(buffer.startIndex...index)
+            let line = buffer.subdata(in: buffer.startIndex ..< index)
+            buffer.removeSubrange(buffer.startIndex ... index)
             guard !line.isEmpty else { continue }
             decodeLine(line)
         }
@@ -230,7 +233,8 @@ final class AdapterMediaController: MediaControlling {
         }
         guard let envelope = try? decoder.decode(MediaAdapterEnvelope.self, from: data),
               envelope.type == "data",
-              let payload = envelope.payload else {
+              let payload = envelope.payload
+        else {
             Log.media.error("Adapter emitted an invalid protocol frame")
             return
         }
@@ -260,7 +264,7 @@ final class AdapterMediaController: MediaControlling {
         let timedOut: Bool
     }
 
-    nonisolated private static func runOneShot(
+    private nonisolated static func runOneShot(
         arguments: [String],
         timeout: TimeInterval
     ) -> ProcessResult {
@@ -299,13 +303,19 @@ final class AdapterMediaController: MediaControlling {
         }
 
         let deadline = Date().addingTimeInterval(timeout)
-        while process.isRunning, Date() < deadline { usleep(20_000) }
+        while process.isRunning, Date() < deadline {
+            usleep(20000)
+        }
         let timedOut = process.isRunning
         if timedOut {
             process.terminate()
             let killDeadline = Date().addingTimeInterval(0.5)
-            while process.isRunning, Date() < killDeadline { usleep(20_000) }
-            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            while process.isRunning, Date() < killDeadline {
+                usleep(20000)
+            }
+            if process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
         }
         process.waitUntilExit()
         _ = readers.wait(timeout: .now() + 1)

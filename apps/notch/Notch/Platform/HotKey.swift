@@ -1,12 +1,11 @@
 import Carbon.HIToolbox
-import NotchCore
 import Foundation
+import NotchCore
 
 /// One global hotkey via Carbon `RegisterEventHotKey`. Unlike an event tap this
 /// needs no Input Monitoring grant and consumes the chord system-wide, which is
 /// exactly right for a "toggle the notch" shortcut.
 final class HotKey: @unchecked Sendable {
-
     /// Fired on the main queue.
     var onPress: (() -> Void)?
 
@@ -35,15 +34,23 @@ final class HotKey: @unchecked Sendable {
 
     private func installHandlerIfNeeded() {
         guard eventHandler == nil else { return }
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
-                                      eventKind: UInt32(kEventHotKeyPressed))
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         InstallEventHandler(GetApplicationEventTarget(), { _, event, refcon in
             guard let event, let refcon else { return noErr }
             var id = EventHotKeyID()
-            GetEventParameter(event, EventParamName(kEventParamDirectObject),
-                              EventParamType(typeEventHotKeyID), nil,
-                              MemoryLayout<EventHotKeyID>.size, nil, &id)
+            GetEventParameter(
+                event,
+                EventParamName(kEventParamDirectObject),
+                EventParamType(typeEventHotKeyID),
+                nil,
+                MemoryLayout<EventHotKeyID>.size,
+                nil,
+                &id
+            )
             guard id.signature == HotKey.signature else { return noErr }
             let hotKey = Unmanaged<HotKey>.fromOpaque(refcon).takeUnretainedValue()
             DispatchQueue.main.async { hotKey.onPress?() }
@@ -53,6 +60,8 @@ final class HotKey: @unchecked Sendable {
 
     deinit {
         unregister()
-        if let handler = eventHandler { RemoveEventHandler(handler) }
+        if let handler = eventHandler {
+            RemoveEventHandler(handler)
+        }
     }
 }

@@ -12,7 +12,9 @@ enum AppIcons {
     private static var paths: [String: String?] = [:]
 
     static func icon(for bundleID: String) -> NSImage? {
-        if let cached = icons[bundleID] { return cached }
+        if let cached = icons[bundleID] {
+            return cached
+        }
         let icon = lookupIcon(bundleID)
         icons[bundleID] = icon
         return icon
@@ -20,7 +22,9 @@ enum AppIcons {
 
     /// Localized app name, nil when the app isn't installed.
     static func name(for bundleID: String) -> String? {
-        if let cached = names[bundleID] { return cached }
+        if let cached = names[bundleID] {
+            return cached
+        }
         let name = lookupName(bundleID)
         names[bundleID] = name
         return name
@@ -29,7 +33,9 @@ enum AppIcons {
     /// Bundle path, nil when the app isn't installed. Raycast renders icons
     /// from paths, and the mirror asks for every row on every poll.
     static func path(for bundleID: String) -> String? {
-        if let cached = paths[bundleID] { return cached }
+        if let cached = paths[bundleID] {
+            return cached
+        }
         let path = lookupPath(bundleID)
         paths[bundleID] = path
         return path
@@ -39,13 +45,17 @@ enum AppIcons {
     /// and every running row resolve without a LaunchServices round trip.
     private static func lookupPath(_ bundleID: String) -> String? {
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        if let url = running.first?.bundleURL { return url.path }
+        if let url = running.first?.bundleURL {
+            return url.path
+        }
         return NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)?.path
     }
 
     private static func lookupIcon(_ bundleID: String) -> NSImage? {
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        if let icon = running.first?.icon { return icon }
+        if let icon = running.first?.icon {
+            return icon
+        }
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
             return nil
         }
@@ -54,7 +64,9 @@ enum AppIcons {
 
     private static func lookupName(_ bundleID: String) -> String? {
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        if let name = running.first?.localizedName { return name }
+        if let name = running.first?.localizedName {
+            return name
+        }
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID),
               let bundle = Bundle(url: url) else { return nil }
         return bundle.object(forInfoDictionaryKey: kCFBundleNameKey as String) as? String

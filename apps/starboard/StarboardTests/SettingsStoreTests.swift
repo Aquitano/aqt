@@ -1,5 +1,5 @@
-import XCTest
 @testable import Starboard
+import XCTest
 
 final class SettingsStoreTests: XCTestCase {
     private func makeStore() -> (SettingsStore, UserDefaults) {
@@ -8,7 +8,7 @@ final class SettingsStoreTests: XCTestCase {
         return (SettingsStore(defaults: defaults), defaults)
     }
 
-    func testDefaultsRoundTrip() throws {
+    func testDefaultsRoundTrip() {
         let (store, defaults) = makeStore()
         store.model.customAssignments["k"] = "com.tinyspeck.slackmacgap"
         store.model.repeatPress = .hide
@@ -21,7 +21,7 @@ final class SettingsStoreTests: XCTestCase {
 
     func testUnknownFieldsDecodeGracefully() throws {
         let suite = "test.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         // A model persisted by a newer version with extra fields still loads.
         let futureJSON = #"{"repeatPress":"cycleWindows","launchIfNotRunning":false,"customAssignments":{"s":"com.apple.Safari"},"someFutureField":42}"#
         defaults.set(Data(futureJSON.utf8), forKey: "starboard.settings")
@@ -32,7 +32,7 @@ final class SettingsStoreTests: XCTestCase {
 
     func testMissingFieldsDecodeToDefaults() throws {
         let suite = "test.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         // A model persisted before newer fields existed still loads, keeping
         // the user's data and defaulting the rest (no silent settings wipe).
         let oldJSON = #"{"customAssignments":{"s":"com.apple.Safari"}}"#
@@ -44,7 +44,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertFalse(store.model.windowJumpEnabled)
     }
 
-    func testWritesAreCoalescedUntilFlush() throws {
+    func testWritesAreCoalescedUntilFlush() {
         let (store, defaults) = makeStore()
         store.model.windowJumpEnabled = true
         XCTAssertNil(defaults.data(forKey: "starboard.settings"))
@@ -53,7 +53,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertNotNil(defaults.data(forKey: "starboard.settings"))
     }
 
-    func testNewSettingsFieldsRoundTripAndDefault() throws {
+    func testNewSettingsFieldsRoundTripAndDefault() {
         let (store, defaults) = makeStore()
         XCTAssertEqual(store.model.primaryModifier, .rightCommand)
         XCTAssertEqual(store.model.holdOverlayDelayMs, 300)
@@ -70,12 +70,12 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.model.excludedBundleIDs, ["com.docker.docker", "com.tinyspeck.slackmacgap"])
     }
 
-    func testHoldOverlayDelayMsIsClamped() throws {
+    func testHoldOverlayDelayMsIsClamped() {
         let (store, defaults) = makeStore()
         store.model.holdOverlayDelayMs = -50
         XCTAssertEqual(store.model.holdOverlayDelayMs, 50)
 
-        store.model.holdOverlayDelayMs = 50_000
+        store.model.holdOverlayDelayMs = 50000
         XCTAssertEqual(store.model.holdOverlayDelayMs, 2000)
 
         let badJSON = #"{"holdOverlayDelayMs": -999}"#

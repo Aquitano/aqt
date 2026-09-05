@@ -36,9 +36,19 @@ package struct AgentSessionBinding: Codable, Sendable, Equatable {
     package var terminalBundleID: String?
     package var terminalResolved = false
 
-    package init(sessionId: String, pid: pid_t, startedAt: TimeInterval, cwd: String, transcriptPath: String,
-                 focusURL: String? = nil, terminalName: String? = nil, herdrPaneID: String? = nil,
-                 t3Thread: T3ThreadRef? = nil, terminalBundleID: String? = nil, terminalResolved: Bool = false) {
+    package init(
+        sessionId: String,
+        pid: pid_t,
+        startedAt: TimeInterval,
+        cwd: String,
+        transcriptPath: String,
+        focusURL: String? = nil,
+        terminalName: String? = nil,
+        herdrPaneID: String? = nil,
+        t3Thread: T3ThreadRef? = nil,
+        terminalBundleID: String? = nil,
+        terminalResolved: Bool = false
+    ) {
         self.sessionId = sessionId
         self.pid = pid
         self.startedAt = startedAt
@@ -52,5 +62,7 @@ package struct AgentSessionBinding: Codable, Sendable, Equatable {
         self.terminalResolved = terminalResolved
     }
 
-    package var isHerdrHosted: Bool { herdrPaneID != nil }
+    package var isHerdrHosted: Bool {
+        herdrPaneID != nil
+    }
 }

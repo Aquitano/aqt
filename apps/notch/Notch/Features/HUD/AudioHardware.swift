@@ -1,7 +1,7 @@
-import CoreAudio
-import NotchCore
 import AudioToolbox
+import CoreAudio
 import Foundation
+import NotchCore
 
 /// Reads system output volume + mute and pushes changes (no polling) via
 /// CoreAudio property listeners. Re-binds when the default output device changes.
@@ -10,7 +10,6 @@ import Foundation
 /// (listener blocks dispatch there too), so the synchronous `snapshot()` reads
 /// can't race the rebind that the default-device listener performs.
 final class AudioHardware: @unchecked Sendable {
-
     /// volume 0...1, muted flag. Always delivered on the main queue.
     var onChange: ((Float, Bool) -> Void)?
 
@@ -74,10 +73,18 @@ final class AudioHardware: @unchecked Sendable {
             var settable = DarwinBoolean(false)
             guard AudioObjectIsPropertySettable(deviceID, &volumeAddress, &settable) == noErr,
                   settable.boolValue,
-                  AudioObjectSetPropertyData(deviceID, &volumeAddress, 0, nil,
-                                             UInt32(MemoryLayout<Float32>.size), &target) == noErr
+                  AudioObjectSetPropertyData(
+                      deviceID,
+                      &volumeAddress,
+                      0,
+                      nil,
+                      UInt32(MemoryLayout<Float32>.size),
+                      &target
+                  ) == noErr
             else { return nil }
-            if delta > 0, readMutedLocked() { _ = setMutedLocked(false) }
+            if delta > 0, readMutedLocked() {
+                _ = setMutedLocked(false)
+            }
             return (readVolumeLocked(), readMutedLocked())
         }
     }
@@ -96,8 +103,14 @@ final class AudioHardware: @unchecked Sendable {
         guard AudioObjectIsPropertySettable(deviceID, &muteAddress, &settable) == noErr,
               settable.boolValue else { return false }
         var value: UInt32 = muted ? 1 : 0
-        return AudioObjectSetPropertyData(deviceID, &muteAddress, 0, nil,
-                                          UInt32(MemoryLayout<UInt32>.size), &value) == noErr
+        return AudioObjectSetPropertyData(
+            deviceID,
+            &muteAddress,
+            0,
+            nil,
+            UInt32(MemoryLayout<UInt32>.size),
+            &value
+        ) == noErr
     }
 
     private func readVolumeLocked() -> Float {
@@ -143,11 +156,21 @@ final class AudioHardware: @unchecked Sendable {
     /// transport type for everything else.
     private static func routeSymbol(name: String, transport: UInt32) -> String {
         let lowered = name.lowercased()
-        if lowered.contains("airpods max") { return "airpods.max" }
-        if lowered.contains("airpods pro") { return "airpods.pro" }
-        if lowered.contains("airpods") { return "airpods" }
-        if lowered.contains("homepod") { return "homepod.fill" }
-        if lowered.contains("headphone") { return "headphones" }
+        if lowered.contains("airpods max") {
+            return "airpods.max"
+        }
+        if lowered.contains("airpods pro") {
+            return "airpods.pro"
+        }
+        if lowered.contains("airpods") {
+            return "airpods"
+        }
+        if lowered.contains("homepod") {
+            return "homepod.fill"
+        }
+        if lowered.contains("headphone") {
+            return "headphones"
+        }
 
         switch transport {
         case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:

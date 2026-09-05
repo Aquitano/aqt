@@ -137,7 +137,7 @@ package enum TrayStoreMigration {
             let type = UTType(old.typeIdentifier)
             let kind: TrayItemKind = type?.conforms(to: .image) == true ? .image : .file
             let expiry = ttlDays > 0
-                ? old.addedAt.addingTimeInterval(Double(ttlDays) * 86_400)
+                ? old.addedAt.addingTimeInterval(Double(ttlDays) * 86400)
                 : nil
             return TrayItem(
                 id: old.id, kind: kind, displayName: old.fileName,
@@ -166,7 +166,8 @@ package enum TrayStoreValidation {
         var quarantined = 0
         let visible = normalized.items.filter { item in
             guard let relativePath = item.relativePath,
-                  fileExists(relativePath) else {
+                  fileExists(relativePath)
+            else {
                 quarantined += 1
                 return false
             }

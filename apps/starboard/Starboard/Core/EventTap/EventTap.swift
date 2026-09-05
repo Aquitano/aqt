@@ -36,8 +36,8 @@ final class EventTap {
     func start() throws {
         let mask: CGEventMask =
             (1 << CGEventType.keyDown.rawValue)
-            | (1 << CGEventType.keyUp.rawValue)
-            | (1 << CGEventType.flagsChanged.rawValue)
+                | (1 << CGEventType.keyUp.rawValue)
+                | (1 << CGEventType.flagsChanged.rawValue)
 
         let callback: CGEventTapCallBack = { _, type, event, userInfo in
             let tap = Unmanaged<EventTap>.fromOpaque(userInfo!).takeUnretainedValue()
@@ -49,7 +49,9 @@ final class EventTap {
             // signpost is only paid for while Instruments is recording.
             let interval = Perf.signpostsEnabled ? Perf.beginEventRouting() : nil
             let consumed = tap.handler(type, event)
-            if let interval { Perf.endEventRouting(interval) }
+            if let interval {
+                Perf.endEventRouting(interval)
+            }
             return consumed ? nil : Unmanaged.passUnretained(event)
         }
 

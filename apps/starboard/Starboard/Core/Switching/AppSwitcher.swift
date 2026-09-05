@@ -59,15 +59,15 @@ final class AppSwitcher {
 
     func handle(_ intent: Intent) {
         switch intent {
-        case .switchToLetter(let letter):
+        case let .switchToLetter(letter):
             switchTo(letter: letter)
-        case .cycleLetter(let letter):
+        case let .cycleLetter(letter):
             cycle(letter: letter)
-        case .assignLetter(let letter):
+        case let .assignLetter(letter):
             assign(letter: letter)
-        case .searchQuery(let query):
+        case let .searchQuery(query):
             searchModel.setQuery(query)
-        case .moveSelection(let delta):
+        case let .moveSelection(delta):
             searchModel.moveSelection(delta)
         case .commitSearch:
             searchModel.commit()
@@ -76,7 +76,7 @@ final class AppSwitcher {
             // must not revive it while rcmd is still down.
             cancelHoldTimer()
             searchModel.cancel()
-        case .itemAction(let action):
+        case let .itemAction(action):
             searchModel.perform(action)
         case .beginWindowCycle:
             searchModel.beginWindowCycle()
@@ -84,19 +84,19 @@ final class AppSwitcher {
             searchModel.beginWindowSearch()
         case .cycleAppWindows:
             WindowFocuser.cycleFrontmostAppWindows()
-        case .jumpAppWindows(let letter):
+        case let .jumpAppWindows(letter):
             jumpWindows(letter: letter)
-        case .jumpToSpace(let index):
+        case let .jumpToSpace(index):
             spaces.jump(to: index)
-        case .adjacentSpace(let direction):
+        case let .adjacentSpace(direction):
             spaces.jumpAdjacent(direction)
-        case .moveWindowToSpace(let index):
+        case let .moveWindowToSpace(index):
             spaces.moveFocusedWindow(to: index)
         case .stagesArmed:
             ToastHUD.shared.show(message: "Stages — letter: restore · =: save · –: close")
         case .stageBeginSave:
             stages.beginSave()
-        case .stageRestore(let letter):
+        case let .stageRestore(letter):
             stages.restore(letter: letter)
         case .stageClose:
             stages.closeActive()
@@ -108,7 +108,8 @@ final class AppSwitcher {
     private func jumpWindows(letter: Character) {
         let pairs = runningPairs()
         guard let target = assigner.apps(for: letter, in: pairs.map(\.candidate)).first,
-              let app = pairs.first(where: { $0.candidate.bundleID == target.bundleID })?.app else {
+              let app = pairs.first(where: { $0.candidate.bundleID == target.bundleID })?.app
+        else {
             return
         }
         WindowFocuser.cycleWindows(of: app)
@@ -230,7 +231,9 @@ final class AppSwitcher {
     /// folding the settings dictionary on each key press is pure overhead.
     private var assigner: LetterAssigner {
         let pins = settings.model.customAssignments
-        if let cachedAssigner, cachedPins == pins { return cachedAssigner }
+        if let cachedAssigner, cachedPins == pins {
+            return cachedAssigner
+        }
         let built = LetterAssigner(
             customAssignments: Dictionary(
                 uniqueKeysWithValues: pins.compactMap { key, value in
@@ -316,7 +319,8 @@ final class AppSwitcher {
         let excluded = settings.model.excludedBundleIDSet
         return registry.runningApps.compactMap { app in
             guard let bundleID = app.bundleIdentifier, let name = app.localizedName,
-                  !excluded.contains(bundleID) else {
+                  !excluded.contains(bundleID)
+            else {
                 return nil
             }
             return (app, AppCandidate(bundleID: bundleID, name: name, launchedAt: app.launchDate))

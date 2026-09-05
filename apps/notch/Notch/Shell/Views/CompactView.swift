@@ -1,6 +1,6 @@
-import SwiftUI
-import NotchCore
 import AppKit
+import NotchCore
+import SwiftUI
 
 /// The compact pill content hugging the bezel: a leading slot, the physical
 /// notch gap, and a trailing slot. The host already draws the black blob, so
@@ -31,7 +31,7 @@ struct CompactView: View {
     /// One-shot attention pop on a new event. Applied to each slot's content (not
     /// the full-width pill) so the icon/label scale about their own centers and
     /// stay put — scaling the whole pill pushed the leading icon under the corner.
-    private func popping<V: View>(_ view: V) -> some View {
+    private func popping(_ view: some View) -> some View {
         view.phaseAnimator([0, 1, 2], trigger: activities.lastEventID) { content, phase in
             content.scaleEffect(popScale(phase))
         } animation: { _ in
@@ -78,9 +78,9 @@ struct CompactView: View {
     /// growing blob and clip against the rounded corners mid-transition. The
     /// horizontal padding tracks the blob's shoulder so the leading icon keeps a
     /// constant gap from the *visible* edge at every width, not just at rest.
-    private func pill<Leading: View, Trailing: View>(
-        leading: Leading,
-        trailing: Trailing
+    private func pill(
+        leading: some View,
+        trailing: some View
     ) -> some View {
         GeometryReader { geo in
             HStack(spacing: 0) {
@@ -136,8 +136,11 @@ struct CompactView: View {
             } else {
                 ZStack {
                     Rectangle().fill(.white.opacity(0.12))
-                    PixelIcon(systemName: "music.note", size: artSize * 0.55,
-                              tint: .white.opacity(0.8))
+                    PixelIcon(
+                        systemName: "music.note",
+                        size: artSize * 0.55,
+                        tint: .white.opacity(0.8)
+                    )
                 }
             }
         }
@@ -183,16 +186,19 @@ struct CompactView: View {
         switch status {
         // Attention/finished share the canonical palette; busy sessions render
         // in the spinner's retro working green.
-        case .needsAttention, .finished: return ActivityPresenter.agentTint(status)
-        default: return ActivityPresenter.agentWorkingTint
+        case .needsAttention, .finished: ActivityPresenter.agentTint(status)
+        default: ActivityPresenter.agentWorkingTint
         }
     }
 
     // MARK: - Activity slots
 
     private func activityIcon(_ activity: Activity) -> some View {
-        PixelIcon(systemName: ActivityPresenter.symbol(for: activity.kind),
-                  size: 15, tint: .white)
+        PixelIcon(
+            systemName: ActivityPresenter.symbol(for: activity.kind),
+            size: 15,
+            tint: .white
+        )
     }
 
     @ViewBuilder
@@ -248,14 +254,22 @@ private struct CompactAudioVisualizer: View {
     var body: some View {
         LiveAudioVisualizer(levels: visualizer.levels)
             .onChange(of: requested, initial: true) { _, active in
-                if controlsCapture { visualizer.setActive(active) }
+                if controlsCapture {
+                    visualizer.setActive(active)
+                }
             }
             .onChange(of: controlsCapture) { wasControlling, isControlling in
-                if wasControlling { visualizer.setActive(false) }
-                if isControlling { visualizer.setActive(requested) }
+                if wasControlling {
+                    visualizer.setActive(false)
+                }
+                if isControlling {
+                    visualizer.setActive(requested)
+                }
             }
             .onDisappear {
-                if controlsCapture { visualizer.setActive(false) }
+                if controlsCapture {
+                    visualizer.setActive(false)
+                }
             }
     }
 }
@@ -272,7 +286,7 @@ private struct LiveAudioVisualizer: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 2) {
-            ForEach(0..<barCount, id: \.self) { index in
+            ForEach(0 ..< barCount, id: \.self) { index in
                 Rectangle()
                     .fill(.white)
                     .frame(width: barWidth, height: height(for: level(at: index)))

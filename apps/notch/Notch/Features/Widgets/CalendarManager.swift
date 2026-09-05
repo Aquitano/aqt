@@ -1,13 +1,12 @@
+import AppKit
 import EventKit
 import NotchCore
-import AppKit
 
 /// Upcoming events from a single EKEventStore. Reloads on `.EKEventStoreChanged`
 /// (no polling). Flattens EKEvent into our value type so views never see EventKit.
 @MainActor
 @Observable
 final class CalendarManager {
-
     private(set) var events: [CalendarEvent] = []
     private(set) var authorization: EKAuthorizationStatus = .notDetermined
 
@@ -42,11 +41,15 @@ final class CalendarManager {
         }
         // Don't trigger the TCC prompt at launch; that stacks dialogs on top of the
         // location prompt and feels like a freeze. The widget's "Enable" button asks.
-        if authorization == .fullAccess { reload() }
+        if authorization == .fullAccess {
+            reload()
+        }
     }
 
     /// Pull fresh events now — used when the home surface appears.
-    func refresh() { reload() }
+    func refresh() {
+        reload()
+    }
 
     func requestAccess() async {
         // Accessory apps don't auto-foreground, so the system prompt can appear
@@ -97,8 +100,13 @@ final class CalendarManager {
                 // A sleeping Mac may resume after the meeting already started. Do
                 // not announce a stale reminder in that case.
                 guard !Task.isCancelled, Date() < startsAt else { return }
-                self?.activities.peek(title: title, message: "Starts in \(leadMinutes) min",
-                                      symbol: "calendar", tint: .accent, ttl: 6)
+                self?.activities.peek(
+                    title: title,
+                    message: "Starts in \(leadMinutes) min",
+                    symbol: "calendar",
+                    tint: .accent,
+                    ttl: 6
+                )
             })
         }
     }

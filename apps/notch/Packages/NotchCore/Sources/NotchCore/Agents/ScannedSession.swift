@@ -27,7 +27,23 @@ package struct ScannedSession: Sendable {
     package let response: String?
     package let verb: String?
 
-    package init(sessionId: String, cwd: String, pid: pid_t, lastActivity: Date, gitBranch: String? = nil, busyStatus: AgentStatus, focusURL: String? = nil, terminalName: String? = nil, herdrPaneID: String? = nil, t3Thread: T3ThreadRef? = nil, terminalBundleID: String? = nil, isDetached: Bool, prompt: String? = nil, response: String? = nil, verb: String? = nil) {
+    package init(
+        sessionId: String,
+        cwd: String,
+        pid: pid_t,
+        lastActivity: Date,
+        gitBranch: String? = nil,
+        busyStatus: AgentStatus,
+        focusURL: String? = nil,
+        terminalName: String? = nil,
+        herdrPaneID: String? = nil,
+        t3Thread: T3ThreadRef? = nil,
+        terminalBundleID: String? = nil,
+        isDetached: Bool,
+        prompt: String? = nil,
+        response: String? = nil,
+        verb: String? = nil
+    ) {
         self.sessionId = sessionId
         self.cwd = cwd
         self.pid = pid

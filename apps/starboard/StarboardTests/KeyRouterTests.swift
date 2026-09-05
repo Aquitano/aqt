@@ -1,5 +1,5 @@
-import XCTest
 @testable import Starboard
+import XCTest
 
 final class KeyRouterTests: XCTestCase {
     private let rcmdHeld = ModifierState(rightCommandHeld: true)

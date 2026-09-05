@@ -1,9 +1,9 @@
 import Foundation
-import Testing
 @testable import NotchCore
+import Testing
 
 struct AgentPermissionExtractionTests {
-    private let now = Date(timeIntervalSince1970: 1_000)
+    private let now = Date(timeIntervalSince1970: 1000)
 
     @Test func bashExtractionPreservesCommandAndMarksPathsAsInferred() {
         let request = AgentPermissionExtractor.makeRequest(
@@ -87,7 +87,7 @@ struct AgentPermissionExtractionTests {
     }
 
     @Test func pathArrayIsCappedAndMarksInputTruncated() {
-        let values = (0..<40).map { "Sources/\($0).swift" }
+        let values = (0 ..< 40).map { "Sources/\($0).swift" }
         let request = AgentPermissionExtractor.makeRequest(
             toolName: "Read", input: ["paths": values], requestId: "r8"
         )
@@ -121,7 +121,7 @@ struct AgentPermissionExtractionTests {
     }
 
     @Test func maximumExtractedPermissionFitsEnvelopeCap() throws {
-        let paths = (0..<AgentPermissionLimits.maximumPathCount).map {
+        let paths = (0 ..< AgentPermissionLimits.maximumPathCount).map {
             String(repeating: "p", count: AgentPermissionLimits.maximumStringBytes - 16) + "\($0)"
         }
         let permission = AgentPermissionExtractor.makeRequest(
@@ -129,7 +129,7 @@ struct AgentPermissionExtractionTests {
             input: [
                 "command": String(repeating: "x", count: AgentPermissionLimits.maximumCommandBytes),
                 "paths": paths,
-                "description": String(repeating: "d", count: AgentPermissionLimits.maximumStringBytes)
+                "description": String(repeating: "d", count: AgentPermissionLimits.maximumStringBytes),
             ],
             requestId: "bounded"
         )
@@ -223,28 +223,48 @@ struct PermissionRiskClassifierTests {
     private let home = "/Users/test"
 
     @Test func recursiveDeletionIsHigh() {
-        expectRisk(tool: "Bash", input: ["command": "rm -rf ./build"], level: .high,
-                   reason: .recursiveDeletion)
+        expectRisk(
+            tool: "Bash",
+            input: ["command": "rm -rf ./build"],
+            level: .high,
+            reason: .recursiveDeletion
+        )
     }
 
     @Test func privilegeEscalationIsHigh() {
-        expectRisk(tool: "Bash", input: ["command": "sudo make install"], level: .high,
-                   reason: .privilegeEscalation)
+        expectRisk(
+            tool: "Bash",
+            input: ["command": "sudo make install"],
+            level: .high,
+            reason: .privilegeEscalation
+        )
     }
 
     @Test func systemWriteIsHigh() {
-        expectRisk(tool: "Write", input: ["file_path": "/Library/LaunchDaemons/x.plist"],
-                   level: .high, reason: .systemWrite)
+        expectRisk(
+            tool: "Write",
+            input: ["file_path": "/Library/LaunchDaemons/x.plist"],
+            level: .high,
+            reason: .systemWrite
+        )
     }
 
     @Test func writeOutsideProjectIsHigh() {
-        expectRisk(tool: "Write", input: ["file_path": "/tmp/output.txt"], level: .high,
-                   reason: .outsideProjectWrite)
+        expectRisk(
+            tool: "Write",
+            input: ["file_path": "/tmp/output.txt"],
+            level: .high,
+            reason: .outsideProjectWrite
+        )
     }
 
     @Test func sensitiveCredentialMutationIsHigh() {
-        expectRisk(tool: "Write", input: ["file_path": "~/.ssh/config"], level: .high,
-                   reason: .sensitiveDataMutation)
+        expectRisk(
+            tool: "Write",
+            input: ["file_path": "~/.ssh/config"],
+            level: .high,
+            reason: .sensitiveDataMutation
+        )
     }
 
     @Test func downloadAndExecuteIsHighDespiteMediumAmbiguity() {
@@ -254,18 +274,30 @@ struct PermissionRiskClassifierTests {
     }
 
     @Test func broadPermissionGrantIsHigh() {
-        expectRisk(tool: "Bash", input: ["command": "chmod -R 777 ./Scripts"], level: .high,
-                   reason: .broadPermissionChange)
+        expectRisk(
+            tool: "Bash",
+            input: ["command": "chmod -R 777 ./Scripts"],
+            level: .high,
+            reason: .broadPermissionChange
+        )
     }
 
     @Test func networkRequestIsMedium() {
-        expectRisk(tool: "WebFetch", input: ["url": "https://example.com"], level: .medium,
-                   reason: .networkAccess)
+        expectRisk(
+            tool: "WebFetch",
+            input: ["url": "https://example.com"],
+            level: .medium,
+            reason: .networkAccess
+        )
     }
 
     @Test func packageInstallIsMedium() {
-        expectRisk(tool: "Bash", input: ["command": "npm install lodash"], level: .medium,
-                   reason: .packageInstallation)
+        expectRisk(
+            tool: "Bash",
+            input: ["command": "npm install lodash"],
+            level: .medium,
+            reason: .packageInstallation
+        )
     }
 
     @Test func processTerminationAndGitPushAreMedium() {
@@ -274,8 +306,12 @@ struct PermissionRiskClassifierTests {
     }
 
     @Test func moveInsideProjectIsMedium() {
-        expectRisk(tool: "Move", input: ["source_path": "A", "destination_path": "B"],
-                   level: .medium, reason: .destructiveProjectChange)
+        expectRisk(
+            tool: "Move",
+            input: ["source_path": "A", "destination_path": "B"],
+            level: .medium,
+            reason: .destructiveProjectChange
+        )
     }
 
     @Test func shellAmbiguitySignalsAreMedium() {
@@ -287,15 +323,27 @@ struct PermissionRiskClassifierTests {
     }
 
     @Test func explicitProjectReadAndWriteAreLow() {
-        expectRisk(tool: "Read", input: ["file_path": "README.md"], level: .low,
-                   reason: .explicitProjectRead)
-        expectRisk(tool: "Edit", input: ["file_path": "Sources/App.swift"], level: .low,
-                   reason: .explicitProjectWrite)
+        expectRisk(
+            tool: "Read",
+            input: ["file_path": "README.md"],
+            level: .low,
+            reason: .explicitProjectRead
+        )
+        expectRisk(
+            tool: "Edit",
+            input: ["file_path": "Sources/App.swift"],
+            level: .low,
+            reason: .explicitProjectWrite
+        )
     }
 
     @Test func knownLocalBuildIsLow() {
-        expectRisk(tool: "Bash", input: ["command": "swift test"], level: .low,
-                   reason: .knownLocalBuild)
+        expectRisk(
+            tool: "Bash",
+            input: ["command": "swift test"],
+            level: .low,
+            reason: .knownLocalBuild
+        )
     }
 
     @Test func truncatedEvidenceIsUnknownUnlessHighSignalExists() {
@@ -336,13 +384,13 @@ struct PermissionRiskClassifierTests {
 }
 
 struct AgentPermissionStateMachineTests {
-    @Test func pendingAcceptsExactlyOneDecision() {
+    @Test func pendingAcceptsExactlyOneDecision() throws {
         let responding = AgentPermissionStateMachine.transition(
             from: .pending, event: .respond(.allow)
         )
         #expect(responding == .responding(.allow))
-        #expect(AgentPermissionStateMachine.transition(
-            from: responding!, event: .respond(.deny)
+        #expect(try AgentPermissionStateMachine.transition(
+            from: #require(responding), event: .respond(.deny)
         ) == nil)
     }
 
@@ -355,13 +403,13 @@ struct AgentPermissionStateMachineTests {
         ) == .denied)
     }
 
-    @Test func deliveryFailureAndExpiryAreTerminal() {
+    @Test func deliveryFailureAndExpiryAreTerminal() throws {
         let failed = AgentPermissionStateMachine.transition(
             from: .responding(.allow), event: .deliveryFailed
         )
         #expect(failed == .deliveryFailed)
-        #expect(AgentPermissionStateMachine.transition(
-            from: failed!, event: .expire
+        #expect(try AgentPermissionStateMachine.transition(
+            from: #require(failed), event: .expire
         ) == .expired)
         #expect(AgentPermissionStateMachine.transition(
             from: .expired, event: .delivered
@@ -370,13 +418,13 @@ struct AgentPermissionStateMachineTests {
 
     @Test func unsupportedProviderCannotBecomeActionable() {
         let pending = fixture(canRespond: false, state: .pending)
-        #expect(!pending.isActionable(at: Date(timeIntervalSince1970: 1_001)))
+        #expect(!pending.isActionable(at: Date(timeIntervalSince1970: 1001)))
     }
 
     @Test func deadlineDisablesPendingRequest() {
         let pending = fixture(canRespond: true, state: .pending)
-        #expect(pending.isActionable(at: Date(timeIntervalSince1970: 1_001)))
-        #expect(!pending.isActionable(at: Date(timeIntervalSince1970: 1_121)))
+        #expect(pending.isActionable(at: Date(timeIntervalSince1970: 1001)))
+        #expect(!pending.isActionable(at: Date(timeIntervalSince1970: 1121)))
     }
 
     @Test func auditSummaryIncludesEvidenceAndActionability() {
@@ -391,7 +439,7 @@ struct AgentPermissionStateMachineTests {
         canRespond: Bool = true,
         state: AgentPermissionRequestState = .pending
     ) -> PendingAgentPermission {
-        let requested = Date(timeIntervalSince1970: 1_000)
+        let requested = Date(timeIntervalSince1970: 1000)
         let request = AgentPermissionRequest(
             schemaVersion: 1, requestId: "r", toolName: "Bash", operation: .execute,
             command: "swift test", paths: ["Package.swift"], pathSource: .explicit,

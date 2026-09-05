@@ -1,7 +1,7 @@
 import AppKit
-import NotchCore
 import Darwin
 import Foundation
+import NotchCore
 
 /// Event-driven agent provider: builds and reconciles sessions purely from
 /// socket envelopes (Codex hooks, the OpenCode plugin, the oh-my-pi extension),
@@ -11,7 +11,6 @@ import Foundation
 /// three (and future ones).
 @MainActor
 final class SocketAgentProvider: AgentProviding {
-
     enum Liveness { case processPid, staleness }
 
     let kind: AgentKind
@@ -31,12 +30,14 @@ final class SocketAgentProvider: AgentProviding {
     /// a process killed mid-turn (no "ended" envelope) is dropped promptly.
     private static let livenessRecheck: TimeInterval = 8
 
-    init(kind: AgentKind,
-         liveness: Liveness,
-         settings: Settings,
-         enabledKey: ReferenceWritableKeyPath<Settings, Bool>,
-         install: @escaping () throws -> Void,
-         uninstall: @escaping () throws -> Void) {
+    init(
+        kind: AgentKind,
+        liveness: Liveness,
+        settings: Settings,
+        enabledKey: ReferenceWritableKeyPath<Settings, Bool>,
+        install: @escaping () throws -> Void,
+        uninstall: @escaping () throws -> Void
+    ) {
         self.kind = kind
         self.liveness = liveness
         self.settings = settings
@@ -45,7 +46,9 @@ final class SocketAgentProvider: AgentProviding {
         self.uninstall = uninstall
     }
 
-    var isEnabled: Bool { settings[keyPath: enabledKey] }
+    var isEnabled: Bool {
+        settings[keyPath: enabledKey]
+    }
 
     // MARK: - Lifecycle
 
@@ -114,14 +117,27 @@ final class SocketAgentProvider: AgentProviding {
         session.activityVerb = session.status.isBusy
             ? (envelope.tool.map(agentToolVerb) ?? (session.status == .running ? "Thinking" : nil))
             : nil
-        if let cwd = envelope.cwd { session.cwd = cwd; session.project = agentProjectName(cwd) }
-        else if let project = envelope.project { session.project = project }
+        if let cwd = envelope.cwd {
+            session.cwd = cwd; session.project = agentProjectName(cwd)
+        } else if let project = envelope.project {
+            session.project = project
+        }
         session.lastActivity = Date()
-        if liveness == .processPid, pid > 0 { session.pid = pid }
-        if let prompt = envelope.prompt, !prompt.isEmpty { session.lastPrompt = agentClip(prompt) }
-        if let response = envelope.response, !response.isEmpty { session.lastResponse = agentClip(response) }
-        if let model = envelope.model, !model.isEmpty { session.detail = model }
-        if let parent = envelope.parent, !parent.isEmpty { session.parentSessionID = parent }
+        if liveness == .processPid, pid > 0 {
+            session.pid = pid
+        }
+        if let prompt = envelope.prompt, !prompt.isEmpty {
+            session.lastPrompt = agentClip(prompt)
+        }
+        if let response = envelope.response, !response.isEmpty {
+            session.lastResponse = agentClip(response)
+        }
+        if let model = envelope.model, !model.isEmpty {
+            session.detail = model
+        }
+        if let parent = envelope.parent, !parent.isEmpty {
+            session.parentSessionID = parent
+        }
 
         emitEvents(sid: sid, previous: previous, session: session, message: envelope.message)
         sessions[sid] = session
@@ -134,22 +150,22 @@ final class SocketAgentProvider: AgentProviding {
 
     private func mapStatus(_ raw: String, tool: String?) -> AgentStatus {
         switch raw {
-        case "started", "busy": return tool.map(Self.toolStatus) ?? .running
-        case "tool": return tool.map(Self.toolStatus) ?? .tool
-        case "editing": return .editing
-        case "idle": return .idle
-        case "finished": return .finished
-        case "waiting", "needs_attention": return .needsAttention
-        default: return .running
+        case "started", "busy": tool.map(Self.toolStatus) ?? .running
+        case "tool": tool.map(Self.toolStatus) ?? .tool
+        case "editing": .editing
+        case "idle": .idle
+        case "finished": .finished
+        case "waiting", "needs_attention": .needsAttention
+        default: .running
         }
     }
 
     private static func toolStatus(_ tool: String) -> AgentStatus {
-        let edit: Set<String> = ["edit", "write", "apply_patch", "multiedit", "str_replace_editor", "notebookedit"]
+        let edit: Set = ["edit", "write", "apply_patch", "multiedit", "str_replace_editor", "notebookedit"]
         return edit.contains(tool.lowercased()) ? .editing : .tool
     }
 
-    private func emitEvents(sid: String, previous: AgentSession?, session: AgentSession, message: String?) {
+    private func emitEvents(sid _: String, previous: AgentSession?, session: AgentSession, message: String?) {
         if session.status == .needsAttention {
             // Fire on entering attention (consecutive permission asks are separated
             // by activity, so each transition is distinct; the notifier rate-limits).
@@ -175,14 +191,18 @@ final class SocketAgentProvider: AgentProviding {
             switch liveness {
             case .processPid:
                 if let pid = session.pid {
-                    if !Self.isAlive(pid) { remove(sid, session) }
+                    if !Self.isAlive(pid) {
+                        remove(sid, session)
+                    }
                 } else if now.timeIntervalSince(session.lastActivity) > Self.staleAfter {
                     // No pid to check (peer pid was 0): fall back to staleness so it
                     // can't live forever.
                     remove(sid, session)
                 }
             case .staleness:
-                if now.timeIntervalSince(session.lastActivity) > Self.staleAfter { remove(sid, session) }
+                if now.timeIntervalSince(session.lastActivity) > Self.staleAfter {
+                    remove(sid, session)
+                }
             }
         }
     }
@@ -221,11 +241,11 @@ final class SocketAgentProvider: AgentProviding {
         }
     }
 
-    private func publish() { onSessions?(Array(sessions.values)) }
+    private func publish() {
+        onSessions?(Array(sessions.values))
+    }
 
     private static func isAlive(_ pid: pid_t) -> Bool {
         kill(pid, 0) == 0 || errno == EPERM
     }
-
-
 }

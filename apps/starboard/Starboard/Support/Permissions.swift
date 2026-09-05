@@ -4,7 +4,7 @@ enum Permissions {
     /// Whether we can create an event tap; shows the system prompt on first ask.
     static func requestAccessibility() -> Bool {
         let options = [
-            "AXTrustedCheckOptionPrompt": true
+            "AXTrustedCheckOptionPrompt": true,
         ] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)
     }

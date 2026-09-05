@@ -6,21 +6,20 @@ import NotchCore
 /// locations and the agent's config/state directory (a GUI app's PATH is too
 /// sparse to rely on `which`).
 struct CLIDetector {
-
     func isInstalled(_ kind: AgentKind) -> Bool {
         switch kind {
         case .claudeCode:
-            return exists(bin("claude") + [home(".local/share/claude"), home(".claude")])
+            exists(bin("claude") + [home(".local/share/claude"), home(".claude")])
         case .codex:
-            return exists(bin("codex") + [home(".codex"), "/Applications/Codex.app"])
+            exists(bin("codex") + [home(".codex"), "/Applications/Codex.app"])
         case .openCode:
-            return exists(bin("opencode") + [home(".config/opencode"), home(".opencode/bin/opencode")])
+            exists(bin("opencode") + [home(".config/opencode"), home(".opencode/bin/opencode")])
         case .ohMyPi:
-            return exists(bin("omp") + [home(".omp")])
+            exists(bin("omp") + [home(".omp")])
         case .t3code:
             // Also runnable install-free via `npx t3`, so the Settings row never
             // gates on this — pairing succeeding is the real proof.
-            return exists(bin("t3") + [home(".t3"), "/Applications/T3 Code.app"])
+            exists(bin("t3") + [home(".t3"), "/Applications/T3 Code.app"])
         }
     }
 
@@ -29,9 +28,16 @@ struct CLIDetector {
     }
 
     private func bin(_ name: String) -> [String] {
-        ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin",
-         home(".local/bin"), home(".bun/bin"), home("Library/pnpm"), home(".opencode/bin")]
-            .map { "\($0)/\(name)" }
+        [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            home(".local/bin"),
+            home(".bun/bin"),
+            home("Library/pnpm"),
+            home(".opencode/bin"),
+        ]
+        .map { "\($0)/\(name)" }
     }
 
     private func home(_ path: String) -> String {

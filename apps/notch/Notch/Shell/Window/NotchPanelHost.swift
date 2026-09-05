@@ -69,13 +69,17 @@ final class NotchPanelHost {
             contentView.frame = NSRect(origin: .zero, size: geometry.panelFrame.size)
             hostingView.frame = contentView.bounds
         }
-        if geometryChanged || roleChanged { rebuildRoot() }
+        if geometryChanged || roleChanged {
+            rebuildRoot()
+        }
     }
 
     func applyVisibility(hudVisible: Bool) {
         let shouldShow = state.presentation != .hidden || (showsHUD && hudVisible)
         if shouldShow {
-            if !panel.isVisible { panel.orderFrontRegardless() }
+            if !panel.isVisible {
+                panel.orderFrontRegardless()
+            }
         } else {
             panel.orderOut(nil)
         }
@@ -108,7 +112,9 @@ private final class NotchContentView: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        for area in trackingAreas { removeTrackingArea(area) }
+        for area in trackingAreas {
+            removeTrackingArea(area)
+        }
         addTrackingArea(NSTrackingArea(
             rect: bounds,
             options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
@@ -116,7 +122,15 @@ private final class NotchContentView: NSView {
         ))
     }
 
-    override func mouseEntered(with event: NSEvent) { onPointerEvent?() }
-    override func mouseMoved(with event: NSEvent) { onPointerEvent?() }
-    override func mouseExited(with event: NSEvent) { onPointerEvent?() }
+    override func mouseEntered(with _: NSEvent) {
+        onPointerEvent?()
+    }
+
+    override func mouseMoved(with _: NSEvent) {
+        onPointerEvent?()
+    }
+
+    override func mouseExited(with _: NSEvent) {
+        onPointerEvent?()
+    }
 }
