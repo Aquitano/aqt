@@ -54,7 +54,7 @@ enum AXWindowActions {
 
     private static func performOffMain(
         pid: pid_t,
-        _ body: @escaping (AXUIElement) -> Void
+        _ body: @escaping @Sendable (AXUIElement) -> Void
     ) {
         DispatchQueue.global(qos: .userInitiated).async {
             let element = AXUIElementCreateApplication(pid)

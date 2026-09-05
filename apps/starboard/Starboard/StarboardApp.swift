@@ -3,6 +3,7 @@ import Observation
 import SwiftUI
 
 /// Shared UI-facing state. AppDelegate writes it; menu bar and onboarding read it.
+@MainActor
 final class AppState: ObservableObject {
     static let shared = AppState()
 

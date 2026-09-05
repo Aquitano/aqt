@@ -3,6 +3,7 @@ import Foundation
 /// Fires on the main queue whenever the file at `url` changes. Editors and
 /// atomic writers replace the inode, so a delete or rename re-opens the path
 /// instead of going quiet.
+@MainActor
 final class FileWatcher {
     private let url: URL
     private let onChange: () -> Void

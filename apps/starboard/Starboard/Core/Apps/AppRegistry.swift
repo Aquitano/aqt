@@ -23,10 +23,10 @@ final class AppRegistry {
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil, queue: .main
         ) { [weak self] notification in
+            let activated = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            let id = activated?.bundleIdentifier
             MainActor.assumeIsolated {
-                guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
-                        as? NSRunningApplication,
-                      let id = app.bundleIdentifier else { return }
+                guard let id else { return }
                 self?.lastActivated[id] = Date()
                 self?.refresh()
             }

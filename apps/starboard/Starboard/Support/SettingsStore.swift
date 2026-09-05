@@ -99,6 +99,7 @@ enum PrimaryModifier: String, Codable, CaseIterable, Identifiable {
 }
 
 @Observable
+@MainActor
 final class SettingsStore {
     struct Model: Codable, Equatable {
         var primaryModifier = PrimaryModifier.rightCommand

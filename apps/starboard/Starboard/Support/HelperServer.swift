@@ -153,7 +153,9 @@ enum HelperServerError: Error {
     case socketPathOccupied(String)
 }
 
-final class HelperServer {
+/// All mutable state is touched only on `queue`, which is what makes the
+/// unchecked conformance sound.
+final class HelperServer: @unchecked Sendable {
     typealias Handler = @MainActor (HelperRequest) -> HelperResponse
 
     private let listener: NWListener

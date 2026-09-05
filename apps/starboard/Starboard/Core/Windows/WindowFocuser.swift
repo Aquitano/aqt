@@ -53,7 +53,7 @@ enum WindowFocuser {
     /// Activates the app on main, then runs `body` against its AX element on a
     /// background queue — AX calls must stay off the main thread, and the
     /// nesting guarantees they are issued after activation.
-    private static func activateThenOnAppElement(pid: pid_t, _ body: @escaping (AXUIElement) -> Void) {
+    private static func activateThenOnAppElement(pid: pid_t, _ body: @escaping @Sendable (AXUIElement) -> Void) {
         DispatchQueue.main.async {
             NSRunningApplication(processIdentifier: pid)?.activateReliably()
             DispatchQueue.global(qos: .userInitiated).async {

@@ -28,7 +28,7 @@ enum WindowEnumerator {
     }
 
     private static let lock = NSLock()
-    private static var cache: Cache?
+    nonisolated(unsafe) private static var cache: Cache?
     /// Long enough that priming at the start of a hold still pays off on the
     /// first Tab. Anything that reorders windows — Space changes, app
     /// activation, launches and quits — invalidates the cache outright.

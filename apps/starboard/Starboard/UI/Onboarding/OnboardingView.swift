@@ -6,23 +6,21 @@ import SwiftUI
 final class PermissionWatcher: ObservableObject {
     @Published var granted: Bool
 
-    private var timer: Timer?
+    private var poll: Task<Void, Never>?
 
     init() {
         granted = Permissions.hasAccessibility
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] timer in
-            Task { @MainActor [weak self] in
-                guard let self else {
-                    timer.invalidate()
-                    return
-                }
+        poll = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard let self else { return }
                 let now = Permissions.hasAccessibility
                 if now != self.granted { self.granted = now }
             }
         }
     }
 
-    deinit { timer?.invalidate() }
+    deinit { poll?.cancel() }
 }
 
 struct OnboardingView: View {

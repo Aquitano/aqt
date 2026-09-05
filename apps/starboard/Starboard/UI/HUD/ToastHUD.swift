@@ -96,6 +96,7 @@ struct KeyTag: View {
 
 /// Transient confirmation toast, bottom-center of the main screen. Used to
 /// confirm letter pinning ("Pinned Slack to K"). Auto-dismisses.
+@MainActor
 final class ToastHUD {
     static let shared = ToastHUD()
 
@@ -162,7 +163,7 @@ final class ToastHUD {
 }
 
 private struct ToastDismissKey: EnvironmentKey {
-    static let defaultValue: () -> Void = {}
+    nonisolated(unsafe) static let defaultValue: () -> Void = {}
 }
 
 private extension EnvironmentValues {

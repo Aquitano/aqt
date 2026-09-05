@@ -19,7 +19,7 @@ final class AppSwitcher {
 
     /// Set when the Raycast extension runs Starboard: the hold overlay is
     /// mirrored into a Raycast list instead of the native panel.
-    private let raycastSearch = HelperMode.current?.searchDeeplink.map(RaycastSearch.init)
+    private let raycastSearch = HelperMode.current?.searchDeeplink.map { RaycastSearch(deeplink: $0) }
 
     private lazy var searchPanel: SearchPanelController = {
         let hosting = NSHostingView(rootView: SearchOverlayContent(model: searchModel))
