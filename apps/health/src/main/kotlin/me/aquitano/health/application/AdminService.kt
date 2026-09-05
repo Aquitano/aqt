@@ -84,8 +84,7 @@ class AdminService(
         }
     }
 
-    suspend fun listFailures(params: QueryParams): IngestionBatchesResponse =
-        listBatches(QueryParams(params.asMap() + ("status" to "failed")))
+    suspend fun listFailures(params: QueryParams): IngestionBatchesResponse = listBatches(QueryParams(params.asMap() + ("status" to "failed")))
 
     suspend fun getBatchDetail(
         batchIdValue: String?,

@@ -362,8 +362,7 @@ class IngestionRepository {
             .associate { it[IngestionRecordsTable.batchId] to it[countExpression].toInt() }
     }
 
-    private fun combineConditions(conditions: List<Op<Boolean>>): Op<Boolean> =
-        conditions.reduceOrNull { left, right -> left and right } ?: Op.TRUE
+    private fun combineConditions(conditions: List<Op<Boolean>>): Op<Boolean> = conditions.reduceOrNull { left, right -> left and right } ?: Op.TRUE
 
     private fun toExistingBatch(row: ResultRow): ExistingBatch =
         ExistingBatch(

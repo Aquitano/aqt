@@ -81,11 +81,9 @@ abstract class BaseMetricReadRepository : MetricReadRepository {
 
     protected fun <T> emptyLatestResult(): Pair<T?, Map<Int, SourceMetadata>> = null to emptyMap()
 
-    protected fun <T, S> emptyTripleReadResult(): Triple<List<T>, Map<Int, List<S>>, Map<Int, SourceMetadata>> =
-        Triple(emptyList(), emptyMap(), emptyMap())
+    protected fun <T, S> emptyTripleReadResult(): Triple<List<T>, Map<Int, List<S>>, Map<Int, SourceMetadata>> = Triple(emptyList(), emptyMap(), emptyMap())
 
-    protected fun <T, S> emptyTripleLatestResult(): Triple<T?, Map<Int, List<S>>, Map<Int, SourceMetadata>> =
-        Triple(null, emptyMap(), emptyMap())
+    protected fun <T, S> emptyTripleLatestResult(): Triple<T?, Map<Int, List<S>>, Map<Int, SourceMetadata>> = Triple(null, emptyMap(), emptyMap())
 
     protected fun timestampConditions(
         filters: ReadFilters,
@@ -217,8 +215,7 @@ abstract class BaseMetricReadRepository : MetricReadRepository {
      *
      * Returns [Op.TRUE] when the list is empty.
      */
-    protected fun combineConditions(conditions: List<Op<Boolean>>): Op<Boolean> =
-        conditions.reduceOrNull { left, right -> left and right } ?: Op.TRUE
+    protected fun combineConditions(conditions: List<Op<Boolean>>): Op<Boolean> = conditions.reduceOrNull { left, right -> left and right } ?: Op.TRUE
 
     /**
      * Keyset predicate for cursor pagination over a timestamp sort column:

@@ -430,5 +430,4 @@ private fun Operation.Builder.timezoneParameter(
     }
 }
 
-private fun defaultLimitDescription(spec: LimitParamSpec): String =
-    "Maximum number of items. Defaults to ${spec.default} and cannot exceed ${spec.max}."
+private fun defaultLimitDescription(spec: LimitParamSpec): String = "Maximum number of items. Defaults to ${spec.default} and cannot exceed ${spec.max}."

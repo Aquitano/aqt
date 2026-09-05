@@ -20,7 +20,7 @@ ktlint_code_style = ktlint_official
 ktlint_standard_no-wildcard-imports = disabled
 ktlint_standard_property-naming = disabled
 ktlint_standard_filename = disabled
-max_line_length = 160
+max_line_length = off
 
 [Makefile]
 indent_style = tab

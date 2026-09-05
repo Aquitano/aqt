@@ -141,6 +141,5 @@ class DashboardQueryService(
                 sleep?.toResponse(sleepStagesBySession, sleepSourceMetadata)
             }
 
-    private fun Set<Int>.singleSource(sourceMetadata: Map<Int, SourceMetadata>) =
-        if (size == 1) sourceMetadata[first()].toResponse() else null
+    private fun Set<Int>.singleSource(sourceMetadata: Map<Int, SourceMetadata>) = if (size == 1) sourceMetadata[first()].toResponse() else null
 }

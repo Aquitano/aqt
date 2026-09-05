@@ -16,8 +16,7 @@ import java.util.Locale
  * null (or nothing) for invalid input so the caller can keep collecting issues.
  */
 
-internal fun IngestionRecord.toNormalizedJsonObject(): JsonObject =
-    AppJson.encodeToJsonElement(IngestionRecord.serializer(), this).jsonObject
+internal fun IngestionRecord.toNormalizedJsonObject(): JsonObject = AppJson.encodeToJsonElement(IngestionRecord.serializer(), this).jsonObject
 
 internal fun normalizeProvider(
     value: String?,
