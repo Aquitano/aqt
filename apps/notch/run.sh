@@ -44,7 +44,10 @@ if ! command -v xcodegen >/dev/null 2>&1; then
     exit 1
 fi
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# Use the filesystem's canonical path spelling. A differently-cased logical PWD
+# (for example, /code instead of /Code) makes Xcode treat cached outputs as
+# outside the build sandbox's allowed roots on case-insensitive filesystems.
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && /bin/pwd -P)
 derived_data="$script_dir/DerivedData"
 app="$derived_data/Build/Products/Debug/Notch.app"
 
@@ -86,7 +89,10 @@ if [ "$launch_app" = true ]; then
     fi
 
     echo "Starting Notch..."
-    /usr/bin/open "$app"
+    # Multiple local builds share the same bundle identifier. Without -n,
+    # Launch Services may reuse a previously registered (and differently
+    # signed) Notch.app instead of launching the app built above.
+    /usr/bin/open -n "$app"
 
     attempts=0
     while ! pgrep -x Notch >/dev/null 2>&1 && [ "$attempts" -lt 50 ]; do

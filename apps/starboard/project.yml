@@ -7,11 +7,11 @@ options:
 
 settings:
   base:
-    SWIFT_VERSION: "5.10"
+    SWIFT_VERSION: "6.0"
     # Ad-hoc signing ("-") invalidates TCC (Accessibility) grants on every
     # rebuild because the CDHash changes. A real identity keeps grants sticky.
-    CODE_SIGN_IDENTITY: "Apple Development"
-    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
     ENABLE_HARDENED_RUNTIME: false
 
 targets:

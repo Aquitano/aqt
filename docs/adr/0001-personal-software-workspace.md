@@ -43,6 +43,17 @@ Out: aqt-sync (licensed product with an audience), chill-flow, aqt-aura, codebur
 
 Gallery (Bun, Postgres, tRPC, Base UI, zod) and img (Cloudflare Worker, D1, R2, Radix, ArkType) keep their stacks. Shared TypeScript packages are therefore limited to what is stack-free: config, theme tokens, the `cn` helper, and later MCP wrappers. New shared UI components use Base UI. New validation uses ArkType.
 
+## Applied after the initial import (2026-09-05)
+
+- Every tsconfig extends `@aqt/config` (base, app, bun). Apps that fail the stricter base flags carry a local override, to be removed when cleaned: img and gallery web (`noUncheckedIndexedAccess`), health frontend (`noUncheckedIndexedAccess`, unused locals and parameters).
+- Packages renamed to `@aqt/*`: gallery-web, gallery-server, gallery-auth, gallery-db, gallery-env, gallery-ui, img, img-cli, health-frontend, bank-webui, stack. Path alias is `@/` everywhere.
+- Bank's Go module is `github.com/aquitano/aqt/apps/bank`. CI runs the race detector.
+- Health runs ktlint through the Gradle plugin, ktlint_official style, property naming disabled for build scripts.
+- Starboard moved to Swift 6 language mode and automatic signing. Notch's run script gained starboard's path and Launch Services fixes.
+- Workflows live at the root with path filters: bank, health, ts, notch-release (tags `notch/v*`). Dependabot at the root covers bun, Go, Gradle, Swift and actions.
+- Per-app agent files removed; notch's lessons-learned moved to `apps/notch/docs/notes.md`. Root CLAUDE.md is the only agent file.
+- Test runners stay as they are per app. React Compiler is on for new apps and packages only. Starboard remains a local build; only notch releases.
+
 ## Deferred
 
 - Revisit gallery's ten biome style rules (no parameter reassignment, self-closing elements, no useless else, and the rest) and port the ones worth keeping to oxlint for every app.
