@@ -40,5 +40,4 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      - run: chmod +x ./gradlew
       - run: ./gradlew check --continue

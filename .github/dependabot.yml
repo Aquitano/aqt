@@ -10,8 +10,11 @@ updates:
   - package-ecosystem: gradle
     directory: /apps/health
     schedule: { interval: weekly }
-  - package-ecosystem: swift
-    directory: /apps/notch
+  - package-ecosystem: docker
+    directory: /apps/bank
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: /apps/health
     schedule: { interval: weekly }
   - package-ecosystem: github-actions
     directory: /

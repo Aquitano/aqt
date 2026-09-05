@@ -1,5 +1,6 @@
 node_modules/
 dist/
+!apps/bank/internal/webui/app/dist/
 build/
 DerivedData/
 .DS_Store
@@ -13,3 +14,14 @@ perf-results/
 graphify-out/
 .claude/worktrees/
 coverage/
+.build/
+.swiftpm/
+.next/
+.turbo/
+.wrangler/
+*.tsbuildinfo
+*.p12
+*.provisionprofile
+*.mobileprovision
+ExportOptions.plist
+.claude/settings.local.json

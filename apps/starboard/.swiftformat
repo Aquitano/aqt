@@ -1,8 +1,0 @@
---swiftversion 5.10
---indent 4
---linebreaks lf
---maxwidth 120
---wraparguments before-first
---wrapcollections before-first
---commas always
---disable redundantSelf
