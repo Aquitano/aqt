@@ -1,0 +1,2 @@
+ALTER TABLE "art_group" ADD COLUMN "cover_artwork_id" text;--> statement-breakpoint
+ALTER TABLE "art_group" ADD CONSTRAINT "art_group_cover_artwork_id_artwork_id_fk" FOREIGN KEY ("cover_artwork_id") REFERENCES "public"."artwork"("id") ON DELETE set null ON UPDATE no action;
