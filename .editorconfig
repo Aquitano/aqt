@@ -8,12 +8,15 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 2
 
-[*.{go,swift,kt,kts}]
+[*.go]
 indent_style = tab
 indent_size = 4
 
-[*.swift]
-indent_style = space
+[*.{swift,kt,kts}]
+indent_size = 4
+
+[*.{kt,kts}]
+ktlint_code_style = ktlint_official
 
 [Makefile]
 indent_style = tab
