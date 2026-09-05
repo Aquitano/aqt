@@ -1,0 +1,5 @@
+build/
+DerivedData/
+Starboard.xcodeproj/
+.DS_Store
+xcuserdata/
