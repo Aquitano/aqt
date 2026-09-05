@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -95,7 +96,7 @@ func TestRefIsStableAndAddressable(t *testing.T) {
 		if d.ID != m.ID {
 			t.Fatalf("ref resolved to message %d, want %d", d.ID, m.ID)
 		}
-		if _, err := st.GetMessageDetailByRef(ctx, "000000000000"); err != store.ErrNotFound {
+		if _, err := st.GetMessageDetailByRef(ctx, "000000000000"); !errors.Is(err, store.ErrNotFound) {
 			t.Fatalf("err = %v, want ErrNotFound", err)
 		}
 		if _, err := st.GetMessageDetailByRef(ctx, "not-a-ref"); err == nil {

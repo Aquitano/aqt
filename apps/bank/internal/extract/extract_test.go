@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -254,7 +255,7 @@ func TestPDFTextHonorsContext(t *testing.T) {
 	path := write(t, "small.pdf", onePagePDF(t, []byte("q Q")))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := pdfText(ctx, path, DefaultOptions()); err != context.Canceled {
+	if _, err := pdfText(ctx, path, DefaultOptions()); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -233,7 +234,7 @@ func (v *verifier) recoverPart(m store.ArchivedMessage, digest string) []byte {
 			}
 			return nil
 		})
-		if err == nil || err == errFoundPart {
+		if err == nil || errors.Is(err, errFoundPart) {
 			return found
 		}
 	}

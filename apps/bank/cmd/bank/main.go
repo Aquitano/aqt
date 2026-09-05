@@ -2026,7 +2026,7 @@ func contactImport(ctx context.Context, b backend, args []string) error {
 func decodeJSONEntries[T any](input []byte) ([]T, error) {
 	dec := json.NewDecoder(bytes.NewReader(input))
 	tok, err := dec.Token()
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		return nil, nil
 	}
 	if err != nil {

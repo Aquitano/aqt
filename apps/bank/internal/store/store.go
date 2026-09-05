@@ -307,14 +307,14 @@ func scanMessageInsert(row pgx.Row, o InsertMessagesOpts) (int64, error) {
 	var id int64
 	if !o.Rethread {
 		err := row.Scan(&id)
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, nil
 		}
 		return id, err
 	}
 	var inserted bool
 	err := row.Scan(&id, &inserted)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, nil
 	}
 	if err != nil || !inserted {
@@ -405,7 +405,7 @@ func TrimmedBodyLen(s string) int { return len(strings.Trim(s, bodyTrimChars)) }
 func (s *Store) MessageBody(ctx context.Context, id int64) (string, error) {
 	var body string
 	err := s.pool.QueryRow(ctx, `select body from messages where id = $1`, id).Scan(&body)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrNotFound
 	}
 	return body, err
@@ -440,7 +440,7 @@ func (s *Store) FindMessageID(ctx context.Context, source, externalID string) (i
 	var id int64
 	err := s.pool.QueryRow(ctx,
 		`select id from messages where source = $1 and external_id = $2`, source, cleanText(externalID)).Scan(&id)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, nil
 	}
 	return id, err
@@ -458,7 +458,7 @@ func (s *Store) FindByEmailMessageID(ctx context.Context, source, messageID stri
 	err := s.pool.QueryRow(ctx,
 		`select id from messages where source = $1 and message_id = $2 order by id limit 1`,
 		source, messageID).Scan(&id)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, nil
 	}
 	return id, err
@@ -520,7 +520,7 @@ func (s *Store) GetSyncState(ctx context.Context, source string) ([]byte, error)
 	var state []byte
 	err := s.pool.QueryRow(ctx,
 		`select state from sync_state where source = $1`, source).Scan(&state)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	return state, err
@@ -647,7 +647,7 @@ func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Messa
 	if o.Person != "" {
 		c, err := s.GetContact(ctx, o.Person)
 		if err != nil {
-			if err == ErrNotFound {
+			if errors.Is(err, ErrNotFound) {
 				return nil, &ErrNoContact{Name: o.Person}
 			}
 			return nil, err
@@ -717,7 +717,7 @@ func (s *Store) GetMessage(ctx context.Context, id int64) (Message, []Attachment
 	var m Message
 	err := m.scanFull(s.pool.QueryRow(ctx,
 		`select `+messageColumns+` from messages m where m.id = $1`, id))
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return m, nil, ErrNotFound
 	}
 	if err != nil {
@@ -738,7 +738,7 @@ func (s *Store) GetMessageByRef(ctx context.Context, ref string) (Message, []Att
 	}
 	err := m.scanFull(s.pool.QueryRow(ctx,
 		`select `+messageColumns+` from messages m where `+refSQL("m")+` = $1 order by m.id limit 1`, ref))
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return m, nil, ErrNotFound
 	}
 	if err != nil {

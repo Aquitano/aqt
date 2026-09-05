@@ -17,6 +17,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -229,7 +230,7 @@ func parseEntries(input []byte) ([]entry, error) {
 	dec := json.NewDecoder(bytes.NewReader(input))
 	dec.UseNumber()
 	tok, err := dec.Token()
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		return nil, nil
 	}
 	if err != nil {
@@ -257,7 +258,7 @@ func parseEntries(input []byte) ([]entry, error) {
 	var out []entry
 	for {
 		var e entry
-		if err := dec.Decode(&e); err == io.EOF {
+		if err := dec.Decode(&e); errors.Is(err, io.EOF) {
 			return out, nil
 		} else if err != nil {
 			return nil, err
@@ -271,7 +272,7 @@ func parseEntries(input []byte) ([]entry, error) {
 // importing its first half and reporting success would hide the rest.
 func expectEOF(dec *json.Decoder) error {
 	tok, err := dec.Token()
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		return nil
 	}
 	if err != nil {

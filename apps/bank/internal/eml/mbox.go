@@ -3,6 +3,7 @@ package eml
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -81,7 +82,7 @@ func SplitMbox(r io.Reader, fn func(raw []byte) error) error {
 				return fmt.Errorf("a single message grew past %d MB without an mbox separator — not a recognised mbox dialect?", maxMboxMessage>>20)
 			}
 		}
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return flush()
 		}
 		if err != nil {

@@ -362,7 +362,7 @@ func TestThreads(t *testing.T) {
 	})
 
 	t.Run("empty", func(t *testing.T) {
-		if _, err := st.GetThread(ctx, "", "no-such-thread", 0); err != store.ErrNotFound {
+		if _, err := st.GetThread(ctx, "", "no-such-thread", 0); !errors.Is(err, store.ErrNotFound) {
 			t.Fatalf("err = %v, want ErrNotFound", err)
 		}
 	})

@@ -3,6 +3,7 @@ package discord
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,7 +74,7 @@ func TestImportReportsSkippedChannels(t *testing.T) {
 	if len(th.Messages) != 1 || th.Messages[0].Subject != "general" {
 		t.Errorf("thread 3 = %+v, want the one message carrying the channel name as subject", th.Messages)
 	}
-	if _, err := st.GetThread(ctx, "discord", "general", 0); err != store.ErrNotFound {
+	if _, err := st.GetThread(ctx, "discord", "general", 0); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("the channel name is still a thread: %v", err)
 	}
 }
@@ -110,7 +111,7 @@ func TestImportRekeysStoredMessages(t *testing.T) {
 	if len(th.Messages) != 1 || th.Messages[0].Subject != "general" {
 		t.Errorf("thread 3 = %+v, want the one message carrying the channel name as subject", th.Messages)
 	}
-	if _, err := st.GetThread(ctx, "discord", "general", 0); err != store.ErrNotFound {
+	if _, err := st.GetThread(ctx, "discord", "general", 0); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("the old name-keyed thread survived: %v", err)
 	}
 }
