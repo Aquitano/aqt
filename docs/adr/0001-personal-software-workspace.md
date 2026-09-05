@@ -12,7 +12,7 @@ One repository, `aqt`, for software built for personal use. It is a workspace, n
 
 - `apps/<name>`: each product keeps its native build and never imports another app.
 - `packages/<language>/<name>`: shared code, created only once two apps need it. No `utils` or `core` package.
-- `ops/`: compose and deploy for VPS services. Deploy is one manual script over ssh.
+- `ops/`: the deploy script for VPS services, one manual script over ssh. Compose files stay next to each app's Dockerfile.
 - `tools/`: development tooling. `aqt-stack` moves here and is retargeted later.
 - Root: mise pins toolchains. No orchestrator (no Nx, no turbo).
 - History is preserved by `git subtree add`. The repo starts private and goes public after a secrets sweep. License is AGPL-3.0.

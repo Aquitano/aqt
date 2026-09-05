@@ -9,4 +9,4 @@ ops/deploy.sh bank
 ops/deploy.sh health
 ```
 
-`deploy.sh` pulls the checkout on the VPS and runs `docker compose up -d --build` in the app's directory. Bank's data volume is LUKS and unlocked by hand, so it never auto-restarts.
+`deploy.sh` pulls the checkout on the VPS, requires `apps/<app>/.env` to exist there, and runs `docker compose up -d --build --wait` in the app's directory. Compose files live next to each app's Dockerfile, not here. Bank's data volume is LUKS and unlocked by hand, so it never auto-restarts.

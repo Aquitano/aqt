@@ -7,9 +7,13 @@ on:
         "packages/ts/**",
         "apps/gallery/**",
         "apps/img/**",
+        "apps/health/frontend/**",
+        "apps/bank/internal/webui/app/**",
+        "tools/**",
         ".oxlintrc.json",
         ".oxfmtrc.json",
         "package.json",
+        "bun.lock",
         ".github/workflows/ts.yml",
       ]
   pull_request:
@@ -18,9 +22,13 @@ on:
         "packages/ts/**",
         "apps/gallery/**",
         "apps/img/**",
+        "apps/health/frontend/**",
+        "apps/bank/internal/webui/app/**",
+        "tools/**",
         ".oxlintrc.json",
         ".oxfmtrc.json",
         "package.json",
+        "bun.lock",
         ".github/workflows/ts.yml",
       ]
 permissions:
@@ -41,3 +49,4 @@ jobs:
       - run: bun run fmt:check
       - run: bun run typecheck
       - run: bun run --filter @aqt/health-frontend test
+      - run: bun run --filter @aqt/stack test

@@ -16,6 +16,8 @@ on:
   push:
     tags: ["notch/v*"]
 
+concurrency:
+  group: notch-release-${{ github.ref }}
 jobs:
   release:
     runs-on: macos-26
@@ -78,6 +80,7 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           SPARKLE_BIN=$(find ~/Library/Developer/Xcode/DerivedData -path '*artifacts/sparkle/Sparkle/bin' -type d | head -1)
+          [ -n "$SPARKLE_BIN" ] || { echo "sparkle bin not found" >&2; exit 1; }
           mkdir -p build/appcast && cp build/Notch.zip "build/appcast/Notch-${VERSION#notch/v}.zip"
           echo "$SPARKLE_PRIVATE_ED_KEY" > $RUNNER_TEMP/ed.key
           "$SPARKLE_BIN/generate_appcast" --ed-key-file $RUNNER_TEMP/ed.key \
