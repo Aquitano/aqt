@@ -2,7 +2,6 @@
   "extends": "@aqt/config/tsconfig.app.json",
   "compilerOptions": {
     "types": [],
-    "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src"]
