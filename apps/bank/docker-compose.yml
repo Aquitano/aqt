@@ -95,7 +95,16 @@ services:
       target: ocr
     image: aqt-bank-ocr:local
     mem_limit: 2g
-    command: ["extract", "--ocr", "--lang", "${BANK_OCR_LANG:-eng}", "--watch", "--interval", "${BANK_OCR_INTERVAL:-30m}"]
+    command:
+      [
+        "extract",
+        "--ocr",
+        "--lang",
+        "${BANK_OCR_LANG:-eng}",
+        "--watch",
+        "--interval",
+        "${BANK_OCR_INTERVAL:-30m}",
+      ]
     depends_on:
       db:
         condition: service_healthy

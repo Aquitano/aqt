@@ -4,13 +4,13 @@ Personal software workspace: the things I build for myself, in one repository.
 
 Every app under `apps/` is a self-contained project with its own native build. The root only adds toolchain pins, lint and format configuration, shared packages, and ops.
 
-| Path | What |
-|---|---|
-| `apps/` | Products, one directory each, each with its own build system |
+| Path                                           | What                                                                        |
+| ---------------------------------------------- | --------------------------------------------------------------------------- |
+| `apps/`                                        | Products, one directory each, each with its own build system                |
 | `packages/ts`, `packages/go`, `packages/swift` | Shared code, one directory per language, created only when two apps need it |
-| `ops/` | Compose files and the deploy script for the VPS services |
-| `tools/` | Development tooling, including the lint plugin |
-| `docs/adr/` | Decisions |
+| `ops/`                                         | Compose files and the deploy script for the VPS services                    |
+| `tools/`                                       | Development tooling, including the lint plugin                              |
+| `docs/adr/`                                    | Decisions                                                                   |
 
 ## Setup
 

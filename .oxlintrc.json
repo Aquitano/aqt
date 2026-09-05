@@ -12,10 +12,6 @@
     "**/*.gen.ts",
     "**/worker-configuration.d.ts",
     "**/drizzle/**",
-    "apps/bank/**",
-    "apps/health/**",
-    "apps/starboard/**",
-    "apps/notch/**",
     ".claude/**",
     "tools/oxlint/anti-slop/**"
   ],

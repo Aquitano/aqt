@@ -1,16 +1,16 @@
-import { useQuery } from "@tanstack/react-query"
-import { Inbox, ShieldAlert } from "lucide-react"
-import { getContactMessages, getMessage, getThread } from "@/lib/api"
-import { SourceBadge } from "@/lib/format"
+import { useQuery } from "@tanstack/react-query";
+import { Inbox, ShieldAlert } from "lucide-react";
+import { getContactMessages, getMessage, getThread } from "@/lib/api";
+import { SourceBadge } from "@/lib/format";
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty"
-import { Spinner } from "@/components/ui/spinner"
-import { Conversation } from "@/components/conversation"
+} from "@/components/ui/empty";
+import { Spinner } from "@/components/ui/spinner";
+import { Conversation } from "@/components/conversation";
 
 // What the right-hand pane is showing. A thread selection carries the id of
 // the message that triggered it so the pane can scroll to and highlight it.
@@ -18,17 +18,17 @@ export type Selection =
   | { kind: "thread"; source: string; threadId: string; title?: string; flashId?: number }
   | { kind: "message"; id: number }
   | { kind: "contact"; name: string }
-  | null
+  | null;
 
 export function DetailPane({ selection }: { selection: Selection }) {
   const q = useQuery({
     queryKey: ["detail", selection],
     enabled: selection !== null,
     queryFn: async () => {
-      if (!selection) return null
+      if (!selection) return null;
       switch (selection.kind) {
         case "thread": {
-          const t = await getThread(selection.source, selection.threadId)
+          const t = await getThread(selection.source, selection.threadId);
           return {
             title: (
               <span className="flex items-baseline gap-2">
@@ -39,10 +39,10 @@ export function DetailPane({ selection }: { selection: Selection }) {
             meta: `${t.messages.length} messages${t.truncated ? " (truncated)" : ""}`,
             messages: t.messages,
             flashId: selection.flashId ?? null,
-          }
+          };
         }
         case "message": {
-          const m = await getMessage(selection.id)
+          const m = await getMessage(selection.id);
           return {
             title: (
               <span className="flex items-baseline gap-2">
@@ -53,20 +53,20 @@ export function DetailPane({ selection }: { selection: Selection }) {
             meta: new Date(m.sent_at).toLocaleDateString("en-GB", { dateStyle: "long" }),
             messages: [m],
             flashId: null,
-          }
+          };
         }
         case "contact": {
-          const msgs = await getContactMessages(selection.name)
+          const msgs = await getContactMessages(selection.name);
           return {
             title: <span>{selection.name}</span>,
             meta: `${msgs.length} messages across sources`,
             messages: [...msgs].reverse(),
             flashId: null,
-          }
+          };
         }
       }
     },
-  })
+  });
 
   if (!selection)
     return (
@@ -79,13 +79,13 @@ export function DetailPane({ selection }: { selection: Selection }) {
           <EmptyDescription>Pick a message or thread from the list</EmptyDescription>
         </EmptyHeader>
       </Empty>
-    )
+    );
   if (q.isLoading)
     return (
       <div className="flex h-full items-center justify-center">
         <Spinner className="size-5 text-muted-foreground" />
       </div>
-    )
+    );
   if (q.isError)
     return (
       <Empty className="h-full">
@@ -97,8 +97,8 @@ export function DetailPane({ selection }: { selection: Selection }) {
           <EmptyDescription>{(q.error as Error).message}</EmptyDescription>
         </EmptyHeader>
       </Empty>
-    )
-  if (!q.data) return null
+    );
+  if (!q.data) return null;
   return (
     <Conversation
       title={q.data.title}
@@ -106,5 +106,5 @@ export function DetailPane({ selection }: { selection: Selection }) {
       messages={q.data.messages}
       flashId={q.data.flashId}
     />
-  )
+  );
 }

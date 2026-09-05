@@ -9,11 +9,6 @@
     "./styles/globals.css": "./src/styles/globals.css",
     "./components/*": "./src/components/*.tsx"
   },
-  "peerDependencies": {
-    "@base-ui/react": "*",
-    "react": "^19",
-    "react-dom": "^19"
-  },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -24,5 +19,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "typescript": "7.0.2"
+  },
+  "peerDependencies": {
+    "@base-ui/react": "*",
+    "react": "^19",
+    "react-dom": "^19"
   }
 }

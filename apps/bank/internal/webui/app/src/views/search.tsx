@@ -1,23 +1,23 @@
-import { useState } from "react"
-import { useInfiniteQuery } from "@tanstack/react-query"
-import { Search as SearchIcon } from "lucide-react"
-import { search, SEARCH_PAGE, type Message, type SourceStat } from "@/lib/api"
-import { fmtDate, Highlight, SourceBadge } from "@/lib/format"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Kbd } from "@/components/ui/kbd"
+import { useState } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { Search as SearchIcon } from "lucide-react";
+import { search, SEARCH_PAGE, type Message, type SourceStat } from "@/lib/api";
+import { fmtDate, Highlight, SourceBadge } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Kbd } from "@/components/ui/kbd";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Skeleton } from "@/components/ui/skeleton"
-import type { Selection } from "@/components/detail-pane"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { Selection } from "@/components/detail-pane";
+import { cn } from "@/lib/utils";
 
-const ALL = "__all__"
+const ALL = "__all__";
 
 export function selectMessage(m: Message): Selection {
   return m.thread_id
@@ -28,7 +28,7 @@ export function selectMessage(m: Message): Selection {
         title: m.subject || m.thread_id,
         flashId: m.id,
       }
-    : { kind: "message", id: m.id }
+    : { kind: "message", id: m.id };
 }
 
 export function HitRow({
@@ -37,10 +37,10 @@ export function HitRow({
   selected,
   onClick,
 }: {
-  m: Message
-  query?: string
-  selected: boolean
-  onClick: () => void
+  m: Message;
+  query?: string;
+  selected: boolean;
+  onClick: () => void;
 }) {
   return (
     <button
@@ -71,7 +71,7 @@ export function HitRow({
         <Highlight text={m.attachment_snippet || m.snippet || m.body || ""} query={query} />
       </div>
     </button>
-  )
+  );
 }
 
 export function ListSkeleton() {
@@ -85,7 +85,7 @@ export function ListSkeleton() {
         </div>
       ))}
     </div>
-  )
+  );
 }
 
 export function SearchView({
@@ -94,23 +94,23 @@ export function SearchView({
   onSelect,
   searchRef,
 }: {
-  stats: SourceStat[]
-  selection: Selection
-  onSelect: (s: Selection) => void
-  searchRef: React.RefObject<HTMLInputElement | null>
+  stats: SourceStat[];
+  selection: Selection;
+  onSelect: (s: Selection) => void;
+  searchRef: React.RefObject<HTMLInputElement | null>;
 }) {
-  const [input, setInput] = useState("")
-  const [source, setSource] = useState(ALL)
-  const [from, setFrom] = useState("")
-  const [since, setSince] = useState("")
-  const [until, setUntil] = useState("")
+  const [input, setInput] = useState("");
+  const [source, setSource] = useState(ALL);
+  const [from, setFrom] = useState("");
+  const [since, setSince] = useState("");
+  const [until, setUntil] = useState("");
   const [params, setParams] = useState<{
-    q: string
-    source?: string
-    from?: string
-    since?: string
-    until?: string
-  } | null>(null)
+    q: string;
+    source?: string;
+    from?: string;
+    since?: string;
+    until?: string;
+  } | null>(null);
 
   const q = useInfiniteQuery({
     queryKey: ["search", params],
@@ -119,23 +119,28 @@ export function SearchView({
     queryFn: ({ pageParam }) => search({ ...params!, offset: pageParam }),
     getNextPageParam: (last, pages) =>
       last.length === SEARCH_PAGE ? pages.length * SEARCH_PAGE : undefined,
-  })
+  });
 
   const submit = (over?: { source?: string; from?: string; since?: string; until?: string }) => {
-    const query = input.trim()
-    if (!query) return
-    const p = { source: source === ALL ? "" : source, from, since, until, ...over }
+    const query = input.trim();
+    if (!query) return;
+    const p = { source: source === ALL ? "" : source, from, since, until, ...over };
     setParams({
       q: query,
       source: p.source || undefined,
       from: p.from || undefined,
       since: p.since || undefined,
       until: p.until || undefined,
-    })
-  }
+    });
+  };
 
-  const hits = q.data?.pages.flat() ?? []
-  const selectedId = selection?.kind === "thread" ? selection.flashId : selection?.kind === "message" ? selection.id : undefined
+  const hits = q.data?.pages.flat() ?? [];
+  const selectedId =
+    selection?.kind === "thread"
+      ? selection.flashId
+      : selection?.kind === "message"
+        ? selection.id
+        : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -157,8 +162,8 @@ export function SearchView({
           <Select
             value={source}
             onValueChange={(v) => {
-              setSource(v)
-              submit({ source: v === ALL ? "" : v })
+              setSource(v);
+              submit({ source: v === ALL ? "" : v });
             }}
           >
             <SelectTrigger size="sm" className="flex-1 text-xs">
@@ -184,8 +189,8 @@ export function SearchView({
             type="date"
             value={since}
             onChange={(e) => {
-              setSince(e.target.value)
-              submit({ since: e.target.value })
+              setSince(e.target.value);
+              submit({ since: e.target.value });
             }}
             className="h-8 flex-1 text-xs [color-scheme:dark]"
           />
@@ -193,8 +198,8 @@ export function SearchView({
             type="date"
             value={until}
             onChange={(e) => {
-              setUntil(e.target.value)
-              submit({ until: e.target.value })
+              setUntil(e.target.value);
+              submit({ until: e.target.value });
             }}
             className="h-8 flex-1 text-xs [color-scheme:dark]"
           />
@@ -235,5 +240,5 @@ export function SearchView({
         )}
       </div>
     </div>
-  )
+  );
 }

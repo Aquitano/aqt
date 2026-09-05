@@ -1,37 +1,37 @@
-import { useState } from "react"
-import { useInfiniteQuery } from "@tanstack/react-query"
-import { MessagesSquare } from "lucide-react"
-import { browseThreads, BROWSE_PAGE, type SourceStat, type ThreadGroup } from "@/lib/api"
-import { fmtDate, SourceBadge } from "@/lib/format"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { useState } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { MessagesSquare } from "lucide-react";
+import { browseThreads, BROWSE_PAGE, type SourceStat, type ThreadGroup } from "@/lib/api";
+import { fmtDate, SourceBadge } from "@/lib/format";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import type { Selection } from "@/components/detail-pane"
-import { ListSkeleton } from "@/views/search"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/select";
+import type { Selection } from "@/components/detail-pane";
+import { ListSkeleton } from "@/views/search";
+import { cn } from "@/lib/utils";
 
-export const ALL_SOURCES = "__all__"
+export const ALL_SOURCES = "__all__";
 
 // Raw WhatsApp JIDs make useless titles; unnamed group chats are titled by
 // their participants instead, the way messengers do it.
-const JID = /@(g\.us|s\.whatsapp\.net)$/
+const JID = /@(g\.us|s\.whatsapp\.net)$/;
 
 function groupTitle(g: ThreadGroup) {
-  if (g.subject) return g.subject
-  if (JID.test(g.gid) && g.members) return g.members
-  return g.gid.startsWith("msg:") ? g.sender || "—" : g.gid
+  if (g.subject) return g.subject;
+  if (JID.test(g.gid) && g.members) return g.members;
+  return g.gid.startsWith("msg:") ? g.sender || "—" : g.gid;
 }
 
 function groupSelection(g: ThreadGroup): Selection {
   return g.gid.startsWith("msg:")
     ? { kind: "message", id: g.last_id }
-    : { kind: "thread", source: g.source, threadId: g.gid, title: groupTitle(g) }
+    : { kind: "thread", source: g.source, threadId: g.gid, title: groupTitle(g) };
 }
 
 function GroupRow({
@@ -39,12 +39,12 @@ function GroupRow({
   selected,
   onClick,
 }: {
-  g: ThreadGroup
-  selected: boolean
-  onClick: () => void
+  g: ThreadGroup;
+  selected: boolean;
+  onClick: () => void;
 }) {
-  const threaded = !g.gid.startsWith("msg:")
-  const title = groupTitle(g)
+  const threaded = !g.gid.startsWith("msg:");
+  const title = groupTitle(g);
   return (
     <button
       onClick={onClick}
@@ -75,7 +75,7 @@ function GroupRow({
         {g.preview}
       </div>
     </button>
-  )
+  );
 }
 
 export function BrowseView({
@@ -85,13 +85,13 @@ export function BrowseView({
   source,
   onSourceChange,
 }: {
-  stats: SourceStat[]
-  selection: Selection
-  onSelect: (s: Selection) => void
-  source: string
-  onSourceChange: (s: string) => void
+  stats: SourceStat[];
+  selection: Selection;
+  onSelect: (s: Selection) => void;
+  source: string;
+  onSourceChange: (s: string) => void;
 }) {
-  const [order, setOrder] = useState<"asc" | "desc">("desc")
+  const [order, setOrder] = useState<"asc" | "desc">("desc");
 
   const q = useInfiniteQuery({
     queryKey: ["browse", source, order],
@@ -104,15 +104,15 @@ export function BrowseView({
       }),
     getNextPageParam: (last, pages) =>
       last.length === BROWSE_PAGE ? pages.length * BROWSE_PAGE : undefined,
-  })
+  });
 
-  const groups = q.data?.pages.flat() ?? []
+  const groups = q.data?.pages.flat() ?? [];
   const selectedKey =
     selection?.kind === "thread"
       ? `${selection.source}/${selection.threadId}`
       : selection?.kind === "message"
         ? `msg/${selection.id}`
-        : null
+        : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -150,9 +150,9 @@ export function BrowseView({
         ) : (
           <>
             {groups.map((g) => {
-              const sel = groupSelection(g)
+              const sel = groupSelection(g);
               const key =
-                sel?.kind === "thread" ? `${sel.source}/${sel.threadId}` : `msg/${g.last_id}`
+                sel?.kind === "thread" ? `${sel.source}/${sel.threadId}` : `msg/${g.last_id}`;
               return (
                 <GroupRow
                   key={`${g.source}/${g.gid}`}
@@ -160,7 +160,7 @@ export function BrowseView({
                   selected={key === selectedKey}
                   onClick={() => onSelect(sel)}
                 />
-              )
+              );
             })}
             {q.hasNextPage && (
               <Button
@@ -177,5 +177,5 @@ export function BrowseView({
         )}
       </div>
     </div>
-  )
+  );
 }

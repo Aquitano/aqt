@@ -2,9 +2,27 @@ name: ts
 on:
   push:
     branches: [main]
-    paths: ["packages/ts/**", "apps/gallery/**", "apps/img/**", ".oxlintrc.json", ".oxfmtrc.json", "package.json", ".github/workflows/ts.yml"]
+    paths:
+      [
+        "packages/ts/**",
+        "apps/gallery/**",
+        "apps/img/**",
+        ".oxlintrc.json",
+        ".oxfmtrc.json",
+        "package.json",
+        ".github/workflows/ts.yml",
+      ]
   pull_request:
-    paths: ["packages/ts/**", "apps/gallery/**", "apps/img/**", ".oxlintrc.json", ".oxfmtrc.json", "package.json", ".github/workflows/ts.yml"]
+    paths:
+      [
+        "packages/ts/**",
+        "apps/gallery/**",
+        "apps/img/**",
+        ".oxlintrc.json",
+        ".oxfmtrc.json",
+        "package.json",
+        ".github/workflows/ts.yml",
+      ]
 permissions:
   contents: read
 concurrency:

@@ -1,44 +1,47 @@
-import { useState } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { UserPlus } from "lucide-react"
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { UserPlus } from "lucide-react";
 import {
   createContactWithAlias,
   getContacts,
   suggestContacts,
   type ContactSuggestion,
-} from "@/lib/api"
-import { isMe, SourceBadge } from "@/lib/format"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Spinner } from "@/components/ui/spinner"
-import type { Selection } from "@/components/detail-pane"
-import { ListSkeleton } from "@/views/search"
-import { cn } from "@/lib/utils"
+} from "@/lib/api";
+import { isMe, SourceBadge } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import type { Selection } from "@/components/detail-pane";
+import { ListSkeleton } from "@/views/search";
+import { cn } from "@/lib/utils";
 
 // "Pocket" <team@x.com> -> Pocket; bare identities get title-cased words
 function suggestedName(s: ContactSuggestion) {
   for (const sample of s.samples) {
-    const display = sample.replace(/<[^>]*>/, "").replace(/"/g, "").trim()
-    if (display && display !== s.identity) return display
+    const display = sample
+      .replace(/<[^>]*>/, "")
+      .replace(/"/g, "")
+      .trim();
+    if (display && display !== s.identity) return display;
   }
-  if (s.identity.includes("@")) return s.identity
-  return s.identity.replace(/\b\p{L}/gu, (c) => c.toUpperCase())
+  if (s.identity.includes("@")) return s.identity;
+  return s.identity.replace(/\b\p{L}/gu, (c) => c.toUpperCase());
 }
 
 // identities that are the owner or an AI counterpart make no sense as contacts
 function isContactable(s: ContactSuggestion) {
-  return !isMe(s.identity) && s.identity !== "assistant"
+  return !isMe(s.identity) && s.identity !== "assistant";
 }
 
 function SuggestionRow({ s }: { s: ContactSuggestion }) {
-  const qc = useQueryClient()
+  const qc = useQueryClient();
   const add = useMutation({
     mutationFn: () => createContactWithAlias(suggestedName(s), s.identity),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["contacts"] })
-      qc.invalidateQueries({ queryKey: ["contact-suggestions"] })
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      qc.invalidateQueries({ queryKey: ["contact-suggestions"] });
     },
-  })
+  });
   return (
     <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5">
       <div className="min-w-0 flex-1">
@@ -67,37 +70,37 @@ function SuggestionRow({ s }: { s: ContactSuggestion }) {
         Add
       </Button>
     </div>
-  )
+  );
 }
 
 export function ContactsView({
   selection,
   onSelect,
 }: {
-  selection: Selection
-  onSelect: (s: Selection) => void
+  selection: Selection;
+  onSelect: (s: Selection) => void;
 }) {
-  const [filter, setFilter] = useState("")
-  const q = useQuery({ queryKey: ["contacts"], queryFn: getContacts })
-  const sugg = useQuery({ queryKey: ["contact-suggestions"], queryFn: () => suggestContacts(40) })
+  const [filter, setFilter] = useState("");
+  const q = useQuery({ queryKey: ["contacts"], queryFn: getContacts });
+  const sugg = useQuery({ queryKey: ["contact-suggestions"], queryFn: () => suggestContacts(40) });
 
-  const f = filter.toLowerCase()
+  const f = filter.toLowerCase();
   const contacts = (q.data ?? []).filter(
     (c) =>
       !f ||
       c.name.toLowerCase().includes(f) ||
       (c.aliases ?? []).some((a) => a.value.toLowerCase().includes(f)),
-  )
+  );
   const known = new Set(
     (q.data ?? []).flatMap((c) => [
       c.name.toLowerCase(),
       ...(c.aliases ?? []).map((a) => a.value.toLowerCase()),
     ]),
-  )
+  );
   const suggestions = (sugg.data ?? [])
     .filter(isContactable)
     .filter((s) => !known.has(s.identity.toLowerCase()))
-    .filter((s) => !f || s.identity.includes(f) || suggestedName(s).toLowerCase().includes(f))
+    .filter((s) => !f || s.identity.includes(f) || suggestedName(s).toLowerCase().includes(f));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -140,9 +143,7 @@ export function ContactsView({
               </button>
             ))}
             {contacts.length === 0 && !suggestions.length && !sugg.isLoading && (
-              <div className="py-12 text-center text-sm text-muted-foreground">
-                No contacts yet
-              </div>
+              <div className="py-12 text-center text-sm text-muted-foreground">No contacts yet</div>
             )}
             {suggestions.length > 0 && (
               <>
@@ -158,5 +159,5 @@ export function ContactsView({
         )}
       </div>
     </div>
-  )
+  );
 }
