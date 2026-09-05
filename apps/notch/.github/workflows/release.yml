@@ -1,0 +1,90 @@
+name: Release
+
+# Tag a commit `vX.Y.Z` to build, sign, notarize and publish Notch with a
+# Sparkle appcast. Required repository secrets:
+#   DEVELOPER_ID_P12          base64 of the Developer ID Application .p12
+#   DEVELOPER_ID_P12_PASSWORD password of that .p12
+#   DEVELOPMENT_TEAM          10-character team id
+#   APPLE_ID                  Apple ID used for notarytool
+#   APPLE_APP_PASSWORD        app-specific password for that Apple ID
+#   SPARKLE_PRIVATE_ED_KEY    output of Sparkle's generate_keys -x
+#   SPARKLE_PUBLIC_ED_KEY     the matching public key
+# The appcast is served from the latest release's assets, so SUFeedURL is
+# https://github.com/<owner>/<repo>/releases/latest/download/appcast.xml.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: macos-26
+    permissions:
+      contents: write
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      FEED_URL: https://github.com/${{ github.repository }}/releases/latest/download/appcast.xml
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tooling
+        run: brew install xcodegen
+
+      - name: Import signing certificate
+        env:
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          KEYCHAIN=$RUNNER_TEMP/signing.keychain-db
+          echo "$P12_BASE64" | base64 --decode > $RUNNER_TEMP/cert.p12
+          security create-keychain -p "" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "" "$KEYCHAIN"
+          security import $RUNNER_TEMP/cert.p12 -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
+
+      - name: Build and archive
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          xcodegen generate
+          xcodebuild -project Notch.xcodeproj -scheme Notch -configuration Release \
+            -archivePath build/Notch.xcarchive \
+            DEVELOPMENT_TEAM="${{ secrets.DEVELOPMENT_TEAM }}" \
+            MARKETING_VERSION="${VERSION#v}" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            SPARKLE_FEED_URL="$FEED_URL" \
+            SPARKLE_PUBLIC_ED_KEY="${{ secrets.SPARKLE_PUBLIC_ED_KEY }}" \
+            archive
+          ditto -c -k --keepParent build/Notch.xcarchive/Products/Applications/Notch.app build/Notch.zip
+
+      - name: Notarize and staple
+        run: |
+          xcrun notarytool submit build/Notch.zip --wait \
+            --apple-id "${{ secrets.APPLE_ID }}" \
+            --password "${{ secrets.APPLE_APP_PASSWORD }}" \
+            --team-id "${{ secrets.DEVELOPMENT_TEAM }}"
+          xcrun stapler staple build/Notch.xcarchive/Products/Applications/Notch.app
+          rm build/Notch.zip
+          ditto -c -k --keepParent build/Notch.xcarchive/Products/Applications/Notch.app build/Notch.zip
+
+      - name: Sign update and write appcast
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          SPARKLE_BIN=$(find ~/Library/Developer/Xcode/DerivedData -path '*artifacts/sparkle/Sparkle/bin' -type d | head -1)
+          mkdir -p build/appcast && cp build/Notch.zip "build/appcast/Notch-${VERSION#v}.zip"
+          echo "$SPARKLE_PRIVATE_ED_KEY" > $RUNNER_TEMP/ed.key
+          "$SPARKLE_BIN/generate_appcast" --ed-key-file $RUNNER_TEMP/ed.key \
+            --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/${VERSION}/" \
+            build/appcast
+          rm $RUNNER_TEMP/ed.key
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/appcast/Notch-*.zip
+            build/appcast/appcast.xml

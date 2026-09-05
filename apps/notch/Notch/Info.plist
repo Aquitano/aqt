@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Notch</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>LSMultipleInstancesProhibited</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Personal use.</string>
+	<key>SUFeedURL</key>
+	<string>$(SPARKLE_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(SPARKLE_PUBLIC_ED_KEY)</string>
+
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Notch controls Music and Spotify to show and drive Now Playing when the system-wide media bridge is unavailable.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Notch shows your upcoming events in the calendar widget.</string>
+	<key>NSFocusStatusUsageDescription</key>
+	<string>Notch shows whether a Focus is active.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Notch reads AirPods and Bluetooth device battery levels.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Notch uses your location to show local weather.</string>
+</dict>
+</plist>

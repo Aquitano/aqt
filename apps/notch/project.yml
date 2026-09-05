@@ -1,0 +1,154 @@
+name: Notch
+options:
+  bundleIdPrefix: com.aquitano
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    DEVELOPMENT_TEAM: "" # set your Developer-ID team for local signing
+    SWIFT_STRICT_CONCURRENCY: complete
+    # Lets app targets use NotchCore's `package` declarations (same package group).
+    SWIFT_PACKAGE_NAME: notchcore
+    CLANG_ENABLE_MODULES: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+targets:
+  Notch:
+    type: application
+    platform: macOS
+    sources:
+      - path: Notch
+        excludes:
+          - "**/*.md"
+          - "Resources/mediaremote-adapter.pl"
+      - path: Notch/Resources/mediaremote-adapter.pl
+        buildPhase: resources
+    dependencies:
+      # Embed the standalone hook tool so the launcher can exec it instead of
+      # the full app (a few ms vs. loading AppKit/SwiftUI per hook).
+      - target: notch-hook
+        link: false
+        embed: true
+        codeSign: true
+        copy:
+          destination: resources
+      # Build and embed the pinned dynamic bridge, but deliberately do not link it
+      # into Notch. /usr/bin/perl loads its executable at runtime so mediaremoted
+      # sees a platform-binary client; linking it from the app breaks that model.
+      - package: mediaremote-adapter
+        product: MediaRemoteAdapter
+        embed: true
+        link: false
+        codeSign: true
+      - package: NotchCore
+      - package: Sparkle
+    settings:
+      base:
+        PRODUCT_NAME: Notch
+        PRODUCT_BUNDLE_IDENTIFIER: com.aquitano.notch
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Notch/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Notch/Notch.entitlements
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Developer ID Application"
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        COMBINE_HIDPI_IMAGES: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        # Sparkle reads these through Info.plist. Empty in local builds, which
+        # keeps the updater off; the release workflow passes the real values.
+        SPARKLE_FEED_URL: ""
+        SPARKLE_PUBLIC_ED_KEY: ""
+      # Debug signs with a personal-team Apple Development cert so Xcode's Run works
+      # without a Developer-ID cert, and TCC grants (Location, Calendar, Focus)
+      # persist across rebuilds (stable identity); Release keeps Developer ID above.
+      configs:
+        Debug:
+          CODE_SIGN_STYLE: Automatic
+          DEVELOPMENT_TEAM: KRZZXX9G3M
+          CODE_SIGN_IDENTITY: "Apple Development"
+    postBuildScripts:
+      - path: Scripts/verify_media_adapter.sh
+        name: Verify bundled media adapter
+        basedOnDependencyAnalysis: false
+
+  # Standalone agent hook client. Foundation-only, no AppKit — the launcher in
+  # ~/.notch/bin execs this per hook. Shares HookClient/HookEnvelope with the app.
+  notch-hook:
+    type: tool
+    platform: macOS
+    sources:
+      - path: HookTool
+    dependencies:
+      - package: NotchCore
+    settings:
+      base:
+        PRODUCT_NAME: notch-hook
+        PRODUCT_BUNDLE_IDENTIFIER: com.aquitano.notch.hook
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Developer ID Application"
+        ENABLE_HARDENED_RUNTIME: YES
+      configs:
+        Debug:
+          CODE_SIGN_STYLE: Automatic
+          DEVELOPMENT_TEAM: KRZZXX9G3M
+          CODE_SIGN_IDENTITY: "Apple Development"
+
+  # Logic tests for the agent-watch pure modules. Host-less: the modules under
+  # test are Foundation-only and compiled straight into the bundle (same pattern
+  # as notch-hook reusing AgentModels), so the suite runs without launching the
+  # app — no AppKit, no TCC prompts.
+  NotchTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: Notch/Shell/Window/HitRegion.swift
+      - path: Notch/Shell/State/Animations.swift
+      - path: Notch/Shell/State/NotchState.swift
+      - path: Notch/Shell/State/NotchCoordinator.swift
+    dependencies:
+      - package: NotchCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aquitano.notch.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGNING_ALLOWED: NO
+
+schemes:
+  Notch:
+    build:
+      targets:
+        Notch: all
+    run:
+      config: Debug
+  NotchTests:
+    build:
+      targets:
+        NotchTests: [test]
+    test:
+      targets:
+        - NotchTests
+
+packages:
+  NotchCore:
+    path: Packages/NotchCore
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.9.6"
+  mediaremote-adapter:
+    url: https://github.com/ejbills/mediaremote-adapter
+    revision: cf30c4f1af29b5829d859f088f8dbdf12611a046
