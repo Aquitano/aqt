@@ -27,7 +27,13 @@ Out: aqt-sync (licensed product with an audience), chill-flow, aqt-aura, codebur
 
 ## Tooling
 
-- TypeScript: oxlint with the anti-slop plugin, oxfmt. Biome and eslint are removed from every app. Tailwind class sorting in oxfmt is verified on first use; prettier with the Tailwind plugin is the fallback.
+- TypeScript: oxlint and oxfmt, configured once at the root. Oxlint finds the root config from any app directory, so agents lint from wherever they are. Nested `.oxlintrc.json` files exist only for overrides.
+  - Format: 2 spaces, double quotes, semicolons, width 100. oxfmt sorts imports, Tailwind classes (per-app stylesheet overrides for Tailwind v4) and package.json keys.
+  - Lint: correctness as error, suspicious and perf as warning; plugins typescript, react, import, unicorn, promise; nextjs in health's frontend only.
+  - anti-slop rules are errors in `packages/` and warnings in existing apps, fixed as files are touched. Legacy React findings (set-state-in-effect, refs, exhaustive-deps) are likewise warnings in apps.
+  - Type-aware rules (floating and misused promises, await-thenable, switch exhaustiveness) run on `packages/ts` only.
+  - Biome and eslint are removed from every app. Turbo stays inside gallery.
+  - `cn` from shadcn replaces clsx and tailwind-merge, starting with `@aqt/ui`; apps migrate with `shadcn migrate cn` when cleaned up.
 - Go: gofmt, golangci-lint v2.
 - Kotlin: ktlint via Gradle.
 - Swift: swiftformat and swiftlint, configuration from starboard extended to notch.
@@ -38,6 +44,9 @@ Out: aqt-sync (licensed product with an audience), chill-flow, aqt-aura, codebur
 Gallery (Bun, Postgres, tRPC, Base UI, zod) and img (Cloudflare Worker, D1, R2, Radix, ArkType) keep their stacks. Shared TypeScript packages are therefore limited to what is stack-free: config, theme tokens, the `cn` helper, and later MCP wrappers. New shared UI components use Base UI. New validation uses ArkType.
 
 ## Deferred
+
+- Revisit gallery's ten biome style rules (no parameter reassignment, self-closing elements, no useless else, and the rest) and port the ones worth keeping to oxlint for every app.
+- Fix the React and anti-slop warnings in apps and promote them to errors app by app.
 
 - Unified logging to OpenObserve: one package per server language plus a written contract, after the migration.
 - Auth model as a written contract: private services behind Tailscale, public web on Clerk.
