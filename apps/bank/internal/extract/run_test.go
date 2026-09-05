@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aquitano/aqt-bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 // fakeArchive stands in for Postgres plus the blob store, so the pass itself

@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/aquitano/aqt-bank/internal/blob"
-	"github.com/aquitano/aqt-bank/internal/fail"
-	"github.com/aquitano/aqt-bank/internal/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
 // A database outage has to reach the caller as an operational failure from

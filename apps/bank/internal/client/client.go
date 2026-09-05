@@ -17,8 +17,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/aquitano/aqt-bank/internal/generic"
-	"github.com/aquitano/aqt-bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/generic"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 type Client struct {

@@ -9,7 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/aquitano/aqt-bank/internal/eml"
+	"github.com/aquitano/aqt/apps/bank/internal/eml"
 )
 
 // readLimit bounds what any extractor pulls off disk. MaxChars caps what is

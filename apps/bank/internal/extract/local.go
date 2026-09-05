@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/aquitano/aqt-bank/internal/blob"
-	"github.com/aquitano/aqt-bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 // Local is an Archive backed by Postgres and the blob store on the same box.

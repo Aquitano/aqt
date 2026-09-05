@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aquitano/aqt-bank/internal/store"
-	"github.com/aquitano/aqt-bank/internal/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
 // seedStub archives raw under source and inserts the row an older parser would

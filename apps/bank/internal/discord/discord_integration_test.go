@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aquitano/aqt-bank/internal/store"
-	"github.com/aquitano/aqt-bank/internal/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
 // packageDir writes a minimal unpacked Discord data package.

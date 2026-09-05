@@ -12,11 +12,11 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/aquitano/aqt-bank/internal/archive"
-	"github.com/aquitano/aqt-bank/internal/blob"
-	"github.com/aquitano/aqt-bank/internal/eml"
-	"github.com/aquitano/aqt-bank/internal/fail"
-	"github.com/aquitano/aqt-bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/eml"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 type SyncResult struct {

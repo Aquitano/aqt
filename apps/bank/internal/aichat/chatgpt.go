@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt-bank/internal/blob"
-	"github.com/aquitano/aqt-bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 // ChatGPT data export (chatgpt.com → Settings → Data controls → Export data):

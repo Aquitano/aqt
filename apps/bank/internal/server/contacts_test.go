@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aquitano/aqt-bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 func TestContactRoutes(t *testing.T) {

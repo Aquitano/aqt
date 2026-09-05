@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aquitano/aqt-bank/internal/blob"
-	"github.com/aquitano/aqt-bank/internal/fail"
-	"github.com/aquitano/aqt-bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 // fakeReader stands in for the database so handler tests need no Postgres.

@@ -1,4 +1,4 @@
-module github.com/aquitano/aqt-bank
+module github.com/aquitano/aqt/apps/bank
 
 go 1.26.6
 

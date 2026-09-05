@@ -13,16 +13,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt-bank/internal/aichat"
-	"github.com/aquitano/aqt-bank/internal/archive"
-	"github.com/aquitano/aqt-bank/internal/discord"
-	"github.com/aquitano/aqt-bank/internal/eml"
-	"github.com/aquitano/aqt-bank/internal/extract"
-	"github.com/aquitano/aqt-bank/internal/fail"
-	"github.com/aquitano/aqt-bank/internal/generic"
-	"github.com/aquitano/aqt-bank/internal/linkedin"
-	"github.com/aquitano/aqt-bank/internal/whatsapp"
-	"github.com/aquitano/aqt-bank/internal/youtube"
+	"github.com/aquitano/aqt/apps/bank/internal/aichat"
+	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/discord"
+	"github.com/aquitano/aqt/apps/bank/internal/eml"
+	"github.com/aquitano/aqt/apps/bank/internal/extract"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/generic"
+	"github.com/aquitano/aqt/apps/bank/internal/linkedin"
+	"github.com/aquitano/aqt/apps/bank/internal/whatsapp"
+	"github.com/aquitano/aqt/apps/bank/internal/youtube"
 )
 
 // Uploads are always single files: directory inputs stay a client concern, the

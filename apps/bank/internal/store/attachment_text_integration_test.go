@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aquitano/aqt-bank/internal/store"
-	"github.com/aquitano/aqt-bank/internal/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
 const (

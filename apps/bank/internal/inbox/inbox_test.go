@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aquitano/aqt-bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
 )
 
 // drop writes a file into inbox/<kind>/ and returns its path. The mtime is

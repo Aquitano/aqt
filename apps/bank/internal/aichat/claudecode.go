@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt-bank/internal/archive"
-	"github.com/aquitano/aqt-bank/internal/fail"
-	"github.com/aquitano/aqt-bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 // Claude Code session transcripts: the .jsonl files under

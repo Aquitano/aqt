@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/aquitano/aqt-bank/internal/archive"
-	"github.com/aquitano/aqt-bank/internal/blob"
-	"github.com/aquitano/aqt-bank/internal/eml"
-	"github.com/aquitano/aqt-bank/internal/store"
-	"github.com/aquitano/aqt-bank/internal/storetest"
-	"github.com/aquitano/aqt-bank/internal/whatsapp"
+	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/eml"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/whatsapp"
 )
 
 const mailWithAttachments = "From: a@example.com\r\n" +

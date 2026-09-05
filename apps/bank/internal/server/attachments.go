@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aquitano/aqt-bank/internal/blob"
-	"github.com/aquitano/aqt-bank/internal/extract"
-	"github.com/aquitano/aqt-bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/extract"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 // Attachment text is writable over HTTP, not just readable, because the

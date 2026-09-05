@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aquitano/aqt-bank/internal/store"
-	"github.com/aquitano/aqt-bank/internal/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
 // goldenRef is a ref the live archive already hands out. The formula is a

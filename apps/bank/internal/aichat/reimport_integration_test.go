@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aquitano/aqt-bank/internal/archive"
-	"github.com/aquitano/aqt-bank/internal/store"
-	"github.com/aquitano/aqt-bank/internal/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
 // The full bank reimport round trip: an export already in the archive is

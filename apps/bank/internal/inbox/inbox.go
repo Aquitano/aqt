@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt-bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
 )
 
 // Kinds are the importer names that double as inbox subdirectory names.

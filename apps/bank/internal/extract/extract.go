@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt-bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 // Status is what an extraction attempt concluded. It is stored per blob so a

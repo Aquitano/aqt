@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aquitano/aqt-bank/internal/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
 func TestImportClaudeCodeContinuesPastABadSession(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/aquitano/aqt-bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 // Archive is the part of the archive an extraction run touches. The local
