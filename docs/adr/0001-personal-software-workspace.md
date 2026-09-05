@@ -54,6 +54,12 @@ Gallery (Bun, Postgres, tRPC, Base UI, zod) and img (Cloudflare Worker, D1, R2, 
 - Per-app agent files removed; notch's lessons-learned moved to `apps/notch/docs/notes.md`. Root CLAUDE.md is the only agent file.
 - Test runners stay as they are per app. React Compiler is on for new apps and packages only. Starboard remains a local build; only notch releases.
 
+## Toolchain versions (2026-09-05)
+
+mise pins bun 1.4.2, Go 1.27.1, Temurin 25, golangci-lint 2.13.2, swiftformat 0.63.0, swiftlint 0.65.1, xcodegen 2.46.0. Node is not managed by mise; `.node-version` says 26 for fnm. Go and Java are pinned identically in go.mod, go.work, the Dockerfiles, CI and mise; bump all of them together.
+
+swiftformat runs with the keypath rule disabled because it broke type inference in starboard. swiftlint uses a committed baseline so only new violations fail; the backlog of 264 findings burns down as files are touched. golangci-lint excludes unchecked deferred Close calls and errcheck in tests; everything else in bank is clean.
+
 ## Deferred
 
 - Revisit gallery's ten biome style rules (no parameter reassignment, self-closing elements, no useless else, and the rest) and port the ones worth keeping to oxlint for every app.
