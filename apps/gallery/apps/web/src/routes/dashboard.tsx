@@ -8,7 +8,7 @@ import { ArchiveControls, type ArchiveSort } from "@/components/gallery/archive-
 import { BulkActionBar } from "@/components/gallery/bulk-action-bar";
 import { CosmosShell } from "@/components/gallery/cosmos-shell";
 import { MasonryWall } from "@/components/gallery/masonry-wall";
-import type { ArtworkCard, ArtworkType } from "@/components/gallery/types";
+import type { ArtworkType } from "@/components/gallery/types";
 import { getUser } from "@/functions/get-user";
 import { useTRPC } from "@/utils/trpc";
 
@@ -44,7 +44,7 @@ function RouteComponent() {
       tagId: tagId === "all" ? undefined : tagId,
     }),
   );
-  const cards = (artworks.data ?? []) as ArtworkCard[];
+  const cards = artworks.data ?? [];
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {

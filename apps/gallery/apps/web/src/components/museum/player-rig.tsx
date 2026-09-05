@@ -89,12 +89,16 @@ export function PlayerRig({
   }, []);
 
   const computeInspectPose = (layout: PaintingLayout): Pose => {
+    // Fitting a painting to the viewport needs a field of view; without one
+    // (never the case for the museum canvas) the camera simply stays put.
+    if (!(camera instanceof THREE.PerspectiveCamera)) {
+      return { position: camera.position.clone(), quaternion: camera.quaternion.clone() };
+    }
     const p = new THREE.Vector3(...layout.position);
     const n = new THREE.Vector3(...layout.normal);
-    const persp = camera as THREE.PerspectiveCamera;
-    const vFov = THREE.MathUtils.degToRad(persp.fov);
+    const vFov = THREE.MathUtils.degToRad(camera.fov);
     const tanV = Math.tan(vFov / 2);
-    const tanH = tanV * persp.aspect;
+    const tanH = tanV * camera.aspect;
     const distV = layout.height / 2 / (tanV * FIT_V);
     const distH = layout.width / 2 / (tanH * FIT_H);
     let dist = Math.max(distV, distH, 1.15) + 0.12;

@@ -19,7 +19,8 @@ async function bestEffortUnlink(filePath: string): Promise<void> {
   try {
     await unlink(filePath);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    const alreadyGone = error instanceof Error && "code" in error && error.code === "ENOENT";
+    if (!alreadyGone) {
       console.error(`Failed to remove file ${filePath}:`, error);
     }
   }

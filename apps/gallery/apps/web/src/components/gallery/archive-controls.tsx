@@ -80,7 +80,10 @@ export function ArchiveControls({
         <DropdownMenuContent align="start" className="min-w-40">
           <DropdownMenuRadioGroup
             value={sort}
-            onValueChange={(value) => onSort(value as ArchiveSort)}
+            onValueChange={(value) => {
+              const option = SORTS.find((candidate) => candidate.value === value);
+              if (option) onSort(option.value);
+            }}
           >
             {SORTS.map((option) => (
               <DropdownMenuRadioItem key={option.value} value={option.value}>
@@ -103,7 +106,10 @@ export function ArchiveControls({
           <DropdownMenuContent align="start" className="min-w-40">
             <DropdownMenuRadioGroup
               value={artworkType}
-              onValueChange={(value) => onArtworkType(value as ArtworkType | "all")}
+              onValueChange={(value) => {
+                const option = TYPES.find((candidate) => candidate.value === value);
+                if (option) onArtworkType(option.value);
+              }}
             >
               {TYPES.map((option) => (
                 <DropdownMenuRadioItem key={option.value} value={option.value}>

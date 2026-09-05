@@ -16,7 +16,7 @@ export const Route = createFileRoute("/museum/$kind/$slug")({
       if (params.kind !== "m" && params.kind !== "g") {
         throw new Error(`Unknown gallery kind: ${params.kind}`);
       }
-      return params as { kind: "m" | "g"; slug: string };
+      return { kind: params.kind, slug: params.slug };
     },
   },
   head: () => ({

@@ -5,6 +5,10 @@ import type { CSSProperties } from "react";
 
 import type { ArtworkCard } from "./types";
 
+/** The tile's aspect ratio reaches CSS as a custom property, which React's
+ * CSSProperties does not cover. */
+type TileStyle = CSSProperties & Record<`--${string}`, string>;
+
 export function ArtworkTile({
   artwork,
   index = 0,
@@ -21,7 +25,7 @@ export function ArtworkTile({
   const imageUrl = artwork.thumbnailUrl ? `${env.VITE_SERVER_URL}${artwork.thumbnailUrl}` : null;
   const ratio =
     artwork.width && artwork.height ? artwork.width / artwork.height : 0.78 + (index % 4) * 0.12;
-  const style = { "--tile-ratio": String(ratio) } as CSSProperties;
+  const style: TileStyle = { "--tile-ratio": String(ratio) };
 
   const media = imageUrl ? (
     <img src={imageUrl} alt={[artwork.title, artwork.artist].filter(Boolean).join(" by ")} />

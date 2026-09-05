@@ -1,5 +1,18 @@
 /** Mirrors `artworkTypes` in apps/server's gallery-helpers. */
-export type ArtworkType = "painting" | "photo" | "sculpture" | "print" | "object" | "other";
+export const ARTWORK_TYPES = [
+  "painting",
+  "photo",
+  "sculpture",
+  "print",
+  "object",
+  "other",
+] as const;
+
+export type ArtworkType = (typeof ARTWORK_TYPES)[number];
+
+export function isArtworkType(value: string): value is ArtworkType {
+  return ARTWORK_TYPES.some((type) => type === value);
+}
 
 export type ArtworkCard = {
   id: string;

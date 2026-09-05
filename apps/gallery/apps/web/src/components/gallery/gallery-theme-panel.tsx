@@ -10,6 +10,12 @@ import { LIGHT_COLORS, type ThemeValue, withThemeDefaults } from "../museum/them
  * the shared theme module. */
 export type GalleryThemeValue = ThemeValue;
 
+const LIGHT_TEMPERATURES = [
+  "warm",
+  "neutral",
+  "cool",
+] as const satisfies readonly Required<ThemeValue>["lightTemperature"][];
+
 function shallowEqual(a: Required<ThemeValue>, b: Required<ThemeValue>) {
   return (
     a.wallColor === b.wallColor &&
@@ -130,12 +136,10 @@ export function GalleryThemePanel({
             <FieldLabel>Light temperature</FieldLabel>
             <select
               value={draft.lightTemperature}
-              onChange={(e) =>
-                set(
-                  "lightTemperature",
-                  e.target.value as GalleryThemeValue["lightTemperature"] & string,
-                )
-              }
+              onChange={(e) => {
+                const temperature = LIGHT_TEMPERATURES.find((option) => option === e.target.value);
+                if (temperature) set("lightTemperature", temperature);
+              }}
               className="h-8 w-full rounded-none border border-input bg-transparent px-2.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 dark:bg-input/30"
             >
               <option value="warm">Warm</option>

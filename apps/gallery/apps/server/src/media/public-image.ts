@@ -24,12 +24,12 @@ type Entity = (typeof ENTITIES)[number];
 const VARIANTS = ["full", "thumb", "cover"] as const;
 type Variant = (typeof VARIANTS)[number];
 
-const EXT_BY_TYPE: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/gif": "gif",
-};
+const EXT_BY_TYPE = new Map([
+  ["image/jpeg", "jpg"],
+  ["image/png", "png"],
+  ["image/webp", "webp"],
+  ["image/gif", "gif"],
+]);
 
 /** Where an image comes from: a remote source URL (proxied + cached) or a
  * file already on disk (user-uploaded media asset). */
@@ -112,11 +112,11 @@ async function sourceFor(
 }
 
 export function isEntity(value: string): value is Entity {
-  return (ENTITIES as readonly string[]).includes(value);
+  return ENTITIES.some((entity) => entity === value);
 }
 
 export function isVariant(value: string): value is Variant {
-  return (VARIANTS as readonly string[]).includes(value);
+  return VARIANTS.some((variant) => variant === value);
 }
 
 /** The cache file base for one entity image, sans extension:
@@ -133,7 +133,7 @@ function cacheBaseFor(uploadRoot: string, entity: Entity, id: string, variant: V
  * variants and stored content types. Used to purge the cache when the entity
  * is deleted, so removed images don't linger on disk forever. */
 export function publicImageCacheTargets(uploadRoot: string, entity: Entity, id: string): string[] {
-  const exts = Object.values(EXT_BY_TYPE);
+  const exts = [...EXT_BY_TYPE.values()];
   return VARIANTS.flatMap((variant) =>
     exts.map((ext) => `${cacheBaseFor(uploadRoot, entity, id, variant)}.${ext}`),
   );
@@ -233,7 +233,7 @@ export async function servePublicImage(options: {
   }
 
   // Serve from disk cache when present (extension records content type).
-  for (const [type, ext] of Object.entries(EXT_BY_TYPE)) {
+  for (const [type, ext] of EXT_BY_TYPE) {
     const file = Bun.file(`${cacheBase}.${ext}`);
     if (await file.exists()) {
       return new Response(file.stream(), {
@@ -250,7 +250,7 @@ export async function servePublicImage(options: {
     return new Response("Upstream image unavailable", { status: 502 });
   }
 
-  const ext = EXT_BY_TYPE[upstream.contentType] ?? "jpg";
+  const ext = EXT_BY_TYPE.get(upstream.contentType) ?? "jpg";
   await Bun.write(`${cacheBase}.${ext}`, upstream.bytes, { createPath: true });
 
   return new Response(upstream.bytes, {

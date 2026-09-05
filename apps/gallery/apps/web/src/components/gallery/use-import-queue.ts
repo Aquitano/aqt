@@ -1,8 +1,15 @@
 import { env } from "@aqt/gallery-env/web";
 import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { z } from "zod";
 
 import { useTRPC } from "@/utils/trpc";
+
+/** What `POST /media/upload` answers with, parsed before it is read. */
+const uploadResponse = z.object({
+  uploaded: z.array(z.object({ artworkId: z.string() })).optional(),
+  error: z.string().optional(),
+});
 
 /** The server accepts at most this many files/URLs per request. */
 const MAX_PER_REQUEST = 25;
@@ -153,7 +160,7 @@ export function useImportQueue() {
     if (urls.length === 0) return 0;
     let added = 0;
     setItems((prev) => {
-      const seen = new Set(prev.filter((item) => item.url).map((item) => item.url as string));
+      const seen = new Set(prev.flatMap((item) => (item.url ? [item.url] : [])));
       const next: ImportItem[] = [];
       for (const url of urls) {
         if (seen.has(url)) continue;
@@ -218,7 +225,9 @@ export function useImportQueue() {
       setProgress((prev) => (prev ? { done: prev.done + by, total: prev.total } : prev));
 
     const fileItems = pending.filter((item) => item.source === "file");
-    const urlItems = pending.filter((item) => item.source === "url");
+    const urlItems = pending.flatMap((item) =>
+      item.source === "url" && item.url ? [{ id: item.id, url: item.url, title: item.title }] : [],
+    );
 
     const postUpload = async (group: ImportItem[]) => {
       const body = new FormData();
@@ -233,17 +242,12 @@ export function useImportQueue() {
         body,
         credentials: "include",
       });
-      const data = (await response.json().catch(() => null)) as {
-        uploaded?: { artworkId: string }[];
-        error?: string;
-      } | null;
+      const parsed = uploadResponse.safeParse(await response.json().catch(() => null));
+      const payload = parsed.success ? parsed.data : null;
       if (!response.ok) {
-        return {
-          ok: false as const,
-          message: typeof data?.error === "string" ? data.error : "Upload failed",
-        };
+        return { ok: false as const, message: payload?.error ?? "Upload failed" };
       }
-      return { ok: true as const, uploaded: data?.uploaded ?? [] };
+      return { ok: true as const, uploaded: payload?.uploaded ?? [] };
     };
 
     // Uploads a group of files; on a batch failure or a result-count
@@ -307,7 +311,7 @@ export function useImportQueue() {
         patch(item.id, { status: "uploading", error: undefined });
         try {
           const result = await importFromUrl.mutateAsync({
-            items: [{ url: item.url as string, title: item.title || undefined }],
+            items: [{ url: item.url, title: item.title || undefined }],
           });
           const artworkId = result.imported[0]?.artworkId;
           if (artworkId) {

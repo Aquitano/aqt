@@ -132,10 +132,10 @@ function filesFromFormData(formData: FormData) {
   const rawTitles = formData.getAll("titles");
   const entries = formData
     .getAll("files")
-    .map((value, index) => ({
-      value,
-      title: typeof rawTitles[index] === "string" ? (rawTitles[index] as string) : undefined,
-    }))
+    .map((value, index) => {
+      const rawTitle = rawTitles[index];
+      return { value, title: typeof rawTitle === "string" ? rawTitle : undefined };
+    })
     .filter(
       (entry): entry is { value: File; title: string | undefined } =>
         entry.value instanceof File && entry.value.size > 0,

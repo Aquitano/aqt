@@ -622,13 +622,14 @@ export const museumRouter = router({
       }
       const rows = await db
         .update(artGroup)
+        // drizzle drops undefined values, so an omitted input leaves its column untouched.
         .set({
-          ...(input.name !== undefined ? { name: input.name } : {}),
-          ...(input.tagline !== undefined ? { tagline: input.tagline } : {}),
-          ...(input.description !== undefined ? { description: input.description } : {}),
-          ...(input.theme !== undefined ? { theme: input.theme } : {}),
-          ...(input.coverArtworkId !== undefined ? { coverArtworkId: input.coverArtworkId } : {}),
-          ...(input.isPublished !== undefined ? { isPublished: input.isPublished } : {}),
+          name: input.name,
+          tagline: input.tagline,
+          description: input.description,
+          theme: input.theme,
+          coverArtworkId: input.coverArtworkId,
+          isPublished: input.isPublished,
         })
         .where(eq(artGroup.id, input.id))
         .returning();
@@ -703,7 +704,8 @@ export const museumRouter = router({
         .update(artGroup)
         .set({
           updatedAt: new Date(),
-          ...(coverRemoved ? { coverArtworkId: null } : {}),
+          // drizzle drops undefined, so the cover only changes when it was removed.
+          coverArtworkId: coverRemoved ? null : undefined,
         })
         .where(eq(artGroup.id, input.groupId));
 
@@ -1076,7 +1078,8 @@ export const museumRouter = router({
         .update(museum)
         .set({
           updatedAt: new Date(),
-          ...(clearCover ? { coverArtworkId: null } : {}),
+          // drizzle drops undefined, so the cover only changes when it was cleared.
+          coverArtworkId: clearCover ? null : undefined,
         })
         .where(eq(museum.id, ownerMuseum.id));
 

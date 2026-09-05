@@ -88,15 +88,15 @@ function agentImageUrl(relative: string | null, artworkId: string): string | nul
   return relative.startsWith("/") ? `${PUBLIC_IMAGE_BASE}${relative}` : relative;
 }
 
-function json(data: unknown): CallToolResult {
+function json<TResult>(result: TResult): CallToolResult {
   return {
-    content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
   };
 }
 
 /** Runs a tool body, turning a thrown tRPC/validation error into a readable
  * tool error result instead of crashing the JSON-RPC request. */
-async function run(fn: () => Promise<unknown>): Promise<CallToolResult> {
+async function run<TResult>(fn: () => Promise<TResult>): Promise<CallToolResult> {
   try {
     return json(await fn());
   } catch (error) {
@@ -112,7 +112,7 @@ async function run(fn: () => Promise<unknown>): Promise<CallToolResult> {
   }
 }
 
-const themeShape = {
+const themeFields = {
   wallColor: z.string().optional(),
   accentWallColor: z.string().optional(),
   floorColor: z.string().optional(),
@@ -403,7 +403,7 @@ export function createGalleryMcpServer(session: Session): McpServer {
         name: z.string().min(1).max(120).optional(),
         tagline: z.string().max(200).nullable().optional(),
         description: z.string().max(2000).nullable().optional(),
-        theme: z.object(themeShape).nullable().optional(),
+        theme: z.object(themeFields).nullable().optional(),
         coverArtworkId: z.string().min(1).nullable().optional(),
       },
       annotations: { idempotentHint: true },
@@ -485,7 +485,7 @@ export function createGalleryMcpServer(session: Session): McpServer {
         name: z.string().min(1).max(120).optional(),
         tagline: z.string().max(200).nullable().optional(),
         description: z.string().max(2000).nullable().optional(),
-        theme: z.object(themeShape).nullable().optional(),
+        theme: z.object(themeFields).nullable().optional(),
         coverArtworkId: z.string().min(1).nullable().optional(),
       },
       annotations: { idempotentHint: true },

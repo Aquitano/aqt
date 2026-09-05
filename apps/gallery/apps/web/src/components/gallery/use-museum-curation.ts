@@ -246,7 +246,7 @@ export function useMuseumCuration(museumId: string): MuseumCuration {
     if (index === -1) return;
     const swapWith = direction === "up" ? index - 1 : index + 1;
     if (swapWith < 0 || swapWith >= ids.length) return;
-    [ids[index], ids[swapWith]] = [ids[swapWith] as string, ids[index] as string];
+    [ids[index], ids[swapWith]] = [ids[swapWith], ids[index]];
     void (async () => {
       await reorderRoomsMut.mutateAsync({ museumId: museum.id, roomIds: ids });
       await refresh();

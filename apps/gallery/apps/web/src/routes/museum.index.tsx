@@ -13,12 +13,12 @@ export const Route = createFileRoute("/museum/")({
   }),
 });
 
-const GROUP_KIND_LABEL: Record<string, string> = {
-  exhibition: "Exhibition",
-  artist_collection: "Artist collection",
-  collection: "Collection",
-  custom: "Collection",
-};
+const GROUP_KIND_LABEL = new Map([
+  ["exhibition", "Exhibition"],
+  ["artist_collection", "Artist collection"],
+  ["collection", "Collection"],
+  ["custom", "Collection"],
+]);
 
 function MuseumPanel({ museum, index }: { museum: LobbyMuseum; index: number }) {
   return (
@@ -90,7 +90,7 @@ function GroupCard({ group }: { group: LobbyGroup }) {
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-[#12100d] to-transparent" />
         <span className="absolute top-4 left-4 rounded-full border border-white/15 bg-black/45 px-3 py-1 text-[10px] tracking-[0.22em] text-white/75 uppercase backdrop-blur">
-          {GROUP_KIND_LABEL[group.kind] ?? "Collection"}
+          {GROUP_KIND_LABEL.get(group.kind) ?? "Collection"}
         </span>
       </div>
       <div className="px-6 pt-2 pb-7">

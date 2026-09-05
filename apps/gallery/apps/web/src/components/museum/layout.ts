@@ -85,10 +85,7 @@ export function parsePhysicalSize(
 
 /** Display size in meters: real dimensions when parseable (scaled by
  * curatorial placement.scale), otherwise derived from image aspect. */
-export function displaySize(artwork: ArtworkData): {
-  width: number;
-  height: number;
-} {
+export function displaySize(artwork: ArtworkData) {
   const scale = artwork.placement?.scale ?? 1;
   const physical = parsePhysicalSize(artwork.dimensions);
   if (physical) {
@@ -140,7 +137,7 @@ function planRoom(
     ...displaySize(artwork),
   }));
 
-  const wallSlots: Record<WallId, Slot[]> = {
+  const wallSlots: RoomPlan["wallSlots"] = {
     north: [],
     south: [],
     east: [],
@@ -148,7 +145,7 @@ function planRoom(
   };
   const unassigned: Slot[] = [];
   for (const slot of slots) {
-    const wall = slot.artwork.placement?.wall as WallId | null | undefined;
+    const wall = slot.artwork.placement?.wall;
     if (wall && wall in wallSlots) {
       wallSlots[wall].push(slot);
     } else {
@@ -462,7 +459,7 @@ export function collideAndSlide(
   from: { x: number; z: number },
   to: { x: number; z: number },
   colliders: Box[],
-): { x: number; z: number } {
+) {
   const r = PLAYER_RADIUS;
   const blocked = (x: number, z: number) =>
     colliders.some((c) => {

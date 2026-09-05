@@ -26,13 +26,34 @@ import { toast } from "sonner";
 import { useTRPC } from "@/utils/trpc";
 
 import { ArtistDialog, type ArtistRow } from "./artist-dialog";
-import type { ArtworkType } from "./types";
+import { type ArtworkType, isArtworkType } from "./types";
 
 type CustomField = {
   id: string;
   label: string;
   value: string;
   position: number;
+};
+
+/** The editor's working copy: every field bound to an input, so all of them
+ * are strings apart from the rating and the artwork type. */
+type ArtworkDraft = {
+  title: string;
+  artist: string;
+  artistId: string;
+  artworkType: ArtworkType;
+  year: string;
+  medium: string;
+  dimensions: string;
+  seenAt: string;
+  rating: number;
+  review: string;
+  thoughts: string;
+  description: string;
+  story: string;
+  funFacts: string;
+  sourceUrl: string;
+  tags: string;
 };
 
 export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
@@ -45,11 +66,11 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
   const setTags = useMutation(trpc.tags.setArtworkTags.mutationOptions());
   const deleteArtwork = useMutation(trpc.artworks.delete.mutationOptions());
   const artists = useQuery(trpc.artists.list.queryOptions());
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<ArtworkDraft>({
     title: "",
     artist: "",
     artistId: "",
-    artworkType: "other" as ArtworkType,
+    artworkType: "other",
     year: "",
     medium: "",
     dimensions: "",
@@ -81,7 +102,7 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
       title: data.artwork.title,
       artist: data.artwork.artist ?? "",
       artistId: data.artwork.artistId ?? "",
-      artworkType: data.artwork.artworkType as ArtworkType,
+      artworkType: isArtworkType(data.artwork.artworkType) ? data.artwork.artworkType : "other",
       year: data.artwork.year ?? "",
       medium: data.artwork.medium ?? "",
       dimensions: data.artwork.dimensions ?? "",
@@ -212,12 +233,12 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
               <span>Type</span>
               <select
                 value={form.artworkType}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    artworkType: event.target.value as ArtworkType,
-                  })
-                }
+                onChange={(event) => {
+                  const nextType = event.target.value;
+                  if (isArtworkType(nextType)) {
+                    setForm({ ...form, artworkType: nextType });
+                  }
+                }}
               >
                 <option value="painting">Painting</option>
                 <option value="photo">Photo</option>
