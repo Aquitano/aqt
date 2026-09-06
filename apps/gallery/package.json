@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "turbo dev",
-    "build": "turbo build",
-    "check-types": "turbo check-types",
+    "dev": "turbo dev -F '@aqt/gallery-*'",
+    "build": "turbo build -F '@aqt/gallery-*'",
+    "check-types": "turbo check-types -F '@aqt/gallery-*'",
     "dev:web": "turbo -F @aqt/gallery-web dev",
     "dev:server": "turbo -F @aqt/gallery-server dev",
     "db:push": "turbo -F @aqt/gallery-db db:push",
@@ -22,7 +22,6 @@
   "devDependencies": {
     "@aqt/config": "workspace:*",
     "@types/bun": "catalog:",
-    "turbo": "^2.8.12",
     "typescript": "catalog:"
   }
 }

@@ -9,6 +9,7 @@
         "oxfmt": "0.66.0",
         "oxlint": "1.81.0",
         "oxlint-tsgolint": "7.0.2001",
+        "turbo": "2.10.12",
         "typescript": "7.0.2",
       },
     },
@@ -62,7 +63,6 @@
       "devDependencies": {
         "@aqt/config": "workspace:*",
         "@types/bun": "catalog:",
-        "turbo": "^2.8.12",
         "typescript": "catalog:",
       },
     },
