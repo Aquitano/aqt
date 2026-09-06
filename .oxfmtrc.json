@@ -19,74 +19,47 @@
     "apps/gallery/packages/db/src/migrations/**",
     ".claude/**",
     "apps/bank/internal/webui/app/dist/**",
-    "apps/bank/internal/webui/app/dist/"
+    "apps/bank/internal/webui/app/dist/",
+    ".swiftlint-baseline.json"
   ],
   "sortImports": true,
   "sortPackageJson": true,
   "sortTailwindcss": {
-    "functions": [
-      "cn",
-      "cva",
-      "clsx"
-    ]
+    "functions": ["cn", "cva", "clsx"]
   },
   "overrides": [
     {
-      "files": [
-        "apps/bank/**"
-      ],
+      "files": ["apps/bank/**"],
       "options": {
         "sortTailwindcss": {
-          "functions": [
-            "cn",
-            "cva",
-            "clsx"
-          ],
+          "functions": ["cn", "cva", "clsx"],
           "stylesheet": "apps/bank/internal/webui/app/src/index.css"
         }
       }
     },
     {
-      "files": [
-        "apps/gallery/**"
-      ],
+      "files": ["apps/gallery/**"],
       "options": {
         "sortTailwindcss": {
-          "functions": [
-            "cn",
-            "cva",
-            "clsx"
-          ],
+          "functions": ["cn", "cva", "clsx"],
           "stylesheet": "apps/gallery/packages/ui/src/styles/globals.css"
         }
       }
     },
     {
-      "files": [
-        "apps/img/**"
-      ],
+      "files": ["apps/img/**"],
       "options": {
         "sortTailwindcss": {
-          "functions": [
-            "cn",
-            "cva",
-            "clsx"
-          ],
+          "functions": ["cn", "cva", "clsx"],
           "stylesheet": "apps/img/src/styles.css"
         }
       }
     },
     {
-      "files": [
-        "packages/ts/ui/**"
-      ],
+      "files": ["packages/ts/ui/**"],
       "options": {
         "sortTailwindcss": {
-          "functions": [
-            "cn",
-            "cva",
-            "clsx"
-          ],
+          "functions": ["cn", "cva", "clsx"],
           "stylesheet": "packages/ts/ui/src/styles/globals.css"
         }
       }

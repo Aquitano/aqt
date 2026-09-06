@@ -6,3 +6,111 @@ golangci-lint = "2.13.2"
 swiftformat = "0.63.0"
 swiftlint = "0.65.1"
 xcodegen = "2.46.0"
+
+[tasks.check]
+description = "Every app's checks"
+depends = [
+  "ts:check",
+  "stack:check",
+  "bank:check",
+  "health:check",
+  "gallery:check",
+  "img:check",
+  "notch:check",
+  "starboard:check",
+]
+
+[tasks."ts:check"]
+description = "Lint, format check and typecheck every TypeScript project"
+run = ["bun run lint", "bun run fmt:check", "bun run typecheck"]
+
+[tasks."stack:check"]
+wait_for = ["ts:check"]
+dir = "tools/stack"
+run = ["bun run typecheck", "bun test"]
+
+[tasks."bank:check"]
+wait_for = ["ts:check"]
+dir = "apps/bank"
+run = [
+  "go vet ./...",
+  "go test -race ./...",
+  "golangci-lint run",
+  "bun run --cwd internal/webui/app check",
+]
+
+[tasks."bank:dev"]
+dir = "apps/bank"
+run = "go run ./cmd/bank serve"
+
+[tasks."health:check"]
+wait_for = ["ts:check"]
+description = "Needs Docker or AQT_HEALTH_TEST_JDBC_URL"
+dir = "apps/health"
+run = [
+  "./gradlew check --continue",
+  "bun run --cwd frontend lint",
+  "bun run --cwd frontend typecheck",
+  "bun run --cwd frontend test",
+]
+
+[tasks."health:dev"]
+depends = ["health:dev:api", "health:dev:web"]
+
+[tasks."health:dev:api"]
+dir = "apps/health"
+run = "./gradlew run"
+
+[tasks."health:dev:web"]
+dir = "apps/health/frontend"
+run = "bun run dev"
+
+[tasks."gallery:check"]
+wait_for = ["ts:check"]
+dir = "apps/gallery"
+run = ["bun run typecheck", "bun run check"]
+
+[tasks."gallery:dev"]
+dir = "apps/gallery"
+run = "bun run dev"
+
+[tasks."img:check"]
+wait_for = ["ts:check"]
+dir = "apps/img"
+run = ["bun run typecheck", "bun run --cwd cli typecheck", "bun run lint"]
+
+[tasks."img:dev"]
+dir = "apps/img"
+run = "bun run dev"
+
+[tasks."notch:check"]
+depends = ["notch:lint", "notch:test"]
+
+[tasks."notch:lint"]
+run = ["swiftformat --lint apps/notch", "swiftlint lint --strict --quiet apps/notch"]
+
+[tasks."notch:test"]
+dir = "apps/notch"
+run = [
+  "xcodegen generate",
+  "xcodebuild -project Notch.xcodeproj -scheme NotchTests -destination platform=macOS -derivedDataPath DerivedData -quiet test",
+  "swift test --package-path Packages/NotchCore",
+]
+
+[tasks."notch:dev"]
+dir = "apps/notch"
+run = "./run.sh --run"
+
+[tasks."starboard:check"]
+depends = ["starboard:lint", "starboard:test"]
+
+[tasks."starboard:lint"]
+run = ["swiftformat --lint apps/starboard", "swiftlint lint --strict --quiet apps/starboard"]
+
+[tasks."starboard:test"]
+dir = "apps/starboard"
+run = "make test"
+
+[tasks."starboard:dev"]
+dir = "apps/starboard"
+run = "./run.sh --run"

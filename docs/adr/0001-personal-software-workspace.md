@@ -55,6 +55,13 @@ Gallery (Bun, Postgres, tRPC, Base UI, zod) and img (Cloudflare Worker, D1, R2, 
 - Gallery keeps turbo. Turbo takes the workspace manifest as the repository root, so `turbo.json` lives at the root and turbo is installed there; only gallery's scripts invoke it, filtered to `@aqt/gallery-*`. Nothing else is orchestrated.
 - Test runners stay as they are per app. React Compiler is on for new apps and packages only. Starboard remains a local build; only notch releases.
 
+## Applied 2026-09-06: task entry points
+
+- mise tasks are the discoverable entry points for every app: `mise run <app>:check`, `mise run <app>:dev`, `mise run check` for everything, `mise tasks` to list them. Each task is a short list of the app's native commands with `dir` set to the app; TypeScript steps call the package's own scripts. No caching layer, no package.json for Go or Swift apps. Swift lint tasks run from the root because the swiftlint config and baseline live there.
+- Every TypeScript package has a `typecheck` script (gallery's `check-types` renamed); the root `typecheck` is `bun run --filter '*' typecheck` instead of a hand-maintained list of tsconfig paths. Bun skips packages without the script, so a new package is unchecked until it adds one.
+- All tasks live in the root `mise.toml`. mise's monorepo mode (per-app `mise.toml` files addressed as `//apps/bank:check`) is the path if the block outgrows one file.
+- The check workflows keep calling native tools directly for their setup-action caching and annotations; only the notch release workflow installs mise.
+
 ## Toolchain versions (2026-09-05)
 
 mise pins bun 1.4.2, Go 1.27.1, Temurin 25, golangci-lint 2.13.2, swiftformat 0.63.0, swiftlint 0.65.1, xcodegen 2.46.0. Node is not managed by mise; `.node-version` says 26 for fnm. Go and Java are pinned identically in go.mod, go.work, the Dockerfiles, CI and mise; bump all of them together.

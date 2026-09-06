@@ -24,6 +24,8 @@ make benchmark     # explicit Release microbenchmarks
 make profile-build # instrumentable Release build
 ```
 
+From the workspace root, `mise run starboard:check` runs lint and tests, `mise run starboard:dev` builds and launches.
+
 The repeatable performance workflow and signpost budgets are documented in
 [docs/PROFILING.md](docs/PROFILING.md).
 

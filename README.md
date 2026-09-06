@@ -25,8 +25,10 @@ mise pins bun, go, java, golangci-lint, swiftformat, swiftlint and xcodegen. Act
 ## Checks
 
 ```sh
-bun run lint
-bun run fmt:check
+mise tasks            # list every entry point
+mise run <app>:check  # one app's lint, typecheck and tests, with its native tools
+mise run <app>:dev    # run one app locally
+mise run check        # everything
 ```
 
-Each app's own tests run from its directory with its native tool: `go test ./...`, `./gradlew check` (needs Docker or `AQT_HEALTH_TEST_JDBC_URL`), `bun run test`, `make test`.
+Each task is a thin wrapper over the app's own tooling (`go test`, `./gradlew check`, `turbo`, `xcodebuild`), defined in `mise.toml`. `ts:check` lints, format-checks and typechecks every TypeScript project at once; `health:check` needs Docker or `AQT_HEALTH_TEST_JDBC_URL`.
