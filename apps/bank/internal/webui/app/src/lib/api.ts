@@ -1,44 +1,57 @@
 // Thin typed client for the /v1 API proxied by `bank ui`.
+import { type, type Type } from "arktype";
 
-export interface Attachment {
-  filename: string;
-  mime_type?: string;
-  size_bytes?: number;
-  sha256: string;
-}
+const attachment = type({
+  filename: "string",
+  "mime_type?": "string",
+  "size_bytes?": "number",
+  sha256: "string",
+});
+export type Attachment = typeof attachment.infer;
 
-export interface Message {
-  id: number;
-  source: string;
-  thread_id?: string | null;
-  sender?: string;
-  recipients?: string[];
-  subject?: string;
-  body?: string;
-  snippet?: string;
-  attachment_snippet?: string;
-  sent_at: string;
-  attachments?: Attachment[];
-}
+const message = type({
+  id: "number",
+  source: "string",
+  "thread_id?": "string | null",
+  "sender?": "string",
+  "recipients?": "string[] | null",
+  "subject?": "string",
+  "body?": "string",
+  "snippet?": "string",
+  "attachment_snippet?": "string",
+  sent_at: "string",
+  "attachments?": attachment.array().or("null"),
+});
+export type Message = typeof message.infer;
 
-export interface Thread {
-  messages: Message[];
-  truncated?: boolean;
-}
+const thread = type({ messages: message.array(), "truncated?": "boolean" });
+export type Thread = typeof thread.infer;
 
-export interface Contact {
-  name: string;
-  note?: string;
-  aliases?: { source?: string; value: string }[];
-}
+const contact = type({
+  name: "string",
+  "note?": "string",
+  "aliases?": type({ "source?": "string", value: "string" }).array().or("null"),
+});
+export type Contact = typeof contact.infer;
 
-export interface SourceStat {
-  source: string;
-  messages: number;
-  earliest: string;
-  latest: string;
-  last_ingest: string;
-}
+const sourceStat = type({
+  source: "string",
+  messages: "number",
+  earliest: "string",
+  latest: "string",
+  last_ingest: "string",
+});
+export type SourceStat = typeof sourceStat.infer;
+
+const contactSuggestion = type({
+  identity: "string",
+  messages: "number",
+  sources: "string[]",
+  samples: "string[]",
+});
+export type ContactSuggestion = typeof contactSuggestion.infer;
+
+const queryResult = type({ columns: "string[]", rows: "unknown[][]" });
 
 // One row in the thread-grouped browse list. Unthreaded messages appear as
 // singleton groups (gid = "msg:<id>").
@@ -56,15 +69,26 @@ export interface ThreadGroup {
 }
 
 // Failed /v1 requests answer with `{"error": "..."}` in place of the payload.
-interface ErrorBody {
-  error?: string;
+const errorBody = type({ error: "string" });
+
+async function send(path: string, init?: RequestInit) {
+  const r = await fetch(path, init);
+  const body: unknown = await r.json().catch(() => undefined);
+  if (r.ok) return body;
+  const failure = errorBody(body);
+  throw new Error(failure instanceof type.errors ? r.statusText : failure.error || r.statusText);
 }
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(path, init);
-  const body: T & ErrorBody = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(body.error || r.statusText);
-  return body;
+async function api<T extends Type>(
+  path: string,
+  schema: T,
+  init?: RequestInit,
+): Promise<T["infer"]> {
+  const parsed = schema(await send(path, init));
+  if (parsed instanceof type.errors) {
+    throw new Error(`Unexpected response from ${path}: ${parsed.summary}`);
+  }
+  return parsed;
 }
 
 export interface SearchParams {
@@ -82,62 +106,51 @@ export function search({ q, source, from, since, until, offset = 0 }: SearchPara
   if (from) p.set("from", from);
   if (since) p.set("since", since);
   if (until) p.set("until", until);
-  return api<Message[]>(`/v1/search?${p}`);
+  return api(`/v1/search?${p}`, message.array());
 }
 
 export function getMessage(id: number) {
-  return api<Message>(`/v1/messages/${id}`);
+  return api(`/v1/messages/${id}`, message);
 }
 
 export function getThread(source: string, threadId: string) {
-  return api<Thread>(
+  return api(
     `/v1/threads/${encodeURIComponent(threadId)}?source=${encodeURIComponent(source)}&limit=2000`,
+    thread,
   );
 }
 
 export function getStats() {
-  return api<SourceStat[]>("/v1/stats");
+  return api("/v1/stats", sourceStat.array());
 }
 
 export function getContacts() {
-  return api<Contact[]>("/v1/contacts");
+  return api("/v1/contacts", contact.array());
 }
 
 export function getContactMessages(name: string) {
-  return api<Message[]>(`/v1/contacts/${encodeURIComponent(name)}/messages?limit=500`);
-}
-
-export interface ContactSuggestion {
-  identity: string;
-  messages: number;
-  sources: string[];
-  samples: string[];
+  return api(`/v1/contacts/${encodeURIComponent(name)}/messages?limit=500`, message.array());
 }
 
 export function suggestContacts(limit = 40) {
-  return api<ContactSuggestion[]>(`/v1/contacts/suggest?limit=${limit}`);
+  return api(`/v1/contacts/suggest?limit=${limit}`, contactSuggestion.array());
 }
 
 export async function createContactWithAlias(name: string, alias: string) {
-  await api("/v1/contacts", {
+  await send("/v1/contacts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
   });
-  await api(`/v1/contacts/${encodeURIComponent(name)}/aliases`, {
+  await send(`/v1/contacts/${encodeURIComponent(name)}/aliases`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ source: "", value: alias }),
   });
 }
 
-interface QueryResult {
-  columns: string[];
-  rows: unknown[][];
-}
-
 function query(sql: string, limit: number) {
-  return api<QueryResult>("/v1/query", {
+  return api("/v1/query", queryResult, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sql, limit }),
@@ -158,7 +171,7 @@ function toThreadGroup(columns: string[], row: unknown[]): ThreadGroup {
     sender: String(cell("sender")),
     subject: String(cell("subject")),
     preview: String(cell("preview")),
-    members: members === null || members === undefined ? null : String(members),
+    members: typeof members === "string" ? members : null,
   };
 }
 

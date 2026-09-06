@@ -20,6 +20,7 @@
         "@shadcn/react": "^0.3.0",
         "@tailwindcss/vite": "^4.3.3",
         "@tanstack/react-query": "^5.102.2",
+        "arktype": "^2.2.3",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "lucide-react": "^1.33.0",
