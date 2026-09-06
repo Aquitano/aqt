@@ -40,8 +40,8 @@ format:
 	swiftformat Starboard StarboardTests StarboardBenchmarks Scripts
 
 lint:
-	swiftformat --lint Starboard StarboardTests StarboardBenchmarks Scripts
-	swiftlint lint --strict
+	swiftformat Starboard StarboardTests StarboardBenchmarks Scripts --lint
+	cd ../.. && swiftlint lint --strict --quiet apps/starboard
 
 clean:
 	rm -rf $(BUILD_DIR) $(APP).xcodeproj
