@@ -25,3 +25,4 @@ coverage/
 *.mobileprovision
 ExportOptions.plist
 .claude/settings.local.json
+go.work.sum
