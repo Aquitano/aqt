@@ -1,6 +1,6 @@
 # aqt
 
-Personal software workspace. Each directory under `apps/` is an independent product with its own build; read its README before working in it. Apps never import each other. Shared code lives under `packages/<language>/` and is created only when two apps need it.
+Personal software workspace. Each directory under `apps/` is an independent product with its own build; read its README, and its AGENTS.md where one exists, before working in it. Apps never import each other. Shared code lives under `packages/<language>/` and is created only when two apps need it.
 
 ## Tooling
 

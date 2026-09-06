@@ -51,7 +51,7 @@ Gallery (Bun, Postgres, tRPC, Base UI, zod) and img (Cloudflare Worker, D1, R2, 
 - Health runs ktlint through the Gradle plugin, ktlint_official style, property naming disabled for build scripts.
 - Starboard moved to Swift 6 language mode and automatic signing. Notch's run script gained starboard's path and Launch Services fixes.
 - Workflows live at the root with path filters: bank, health, ts, notch-release (tags `notch/v*`). Dependabot at the root covers bun, Go, Gradle, Swift and actions.
-- Per-app agent files removed; notch's lessons-learned moved to `apps/notch/docs/notes.md`. Root CLAUDE.md is the only agent file.
+- Apps that had an agent file keep it: `apps/health/AGENTS.md` and `apps/notch/AGENTS.md`, each with a one-line `CLAUDE.md` that imports it. `tools/stack` keeps its Cursor rule. Root CLAUDE.md holds workspace conventions only.
 - Gallery keeps turbo. Turbo takes the workspace manifest as the repository root, so `turbo.json` lives at the root and turbo is installed there; only gallery's scripts invoke it, filtered to `@aqt/gallery-*`. Nothing else is orchestrated.
 - Test runners stay as they are per app. React Compiler is on for new apps and packages only. Starboard remains a local build; only notch releases.
 
