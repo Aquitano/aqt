@@ -2,6 +2,9 @@
   "name": "@aqt/bank-scripts",
   "private": true,
   "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "devDependencies": {
     "@aqt/config": "workspace:*",
     "@types/bun": "catalog:"

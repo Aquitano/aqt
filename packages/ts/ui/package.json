@@ -9,6 +9,9 @@
     "./styles/globals.css": "./src/styles/globals.css",
     "./components/*": "./src/components/*.tsx"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
     "cn": "^0.2.5"

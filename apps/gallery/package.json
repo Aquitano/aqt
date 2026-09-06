@@ -5,14 +5,14 @@
   "scripts": {
     "dev": "turbo dev -F '@aqt/gallery-*'",
     "build": "turbo build -F '@aqt/gallery-*'",
-    "check-types": "turbo check-types -F '@aqt/gallery-*'",
     "dev:web": "turbo -F @aqt/gallery-web dev",
     "dev:server": "turbo -F @aqt/gallery-server dev",
     "db:push": "turbo -F @aqt/gallery-db db:push",
     "db:studio": "turbo -F @aqt/gallery-db db:studio",
     "db:generate": "turbo -F @aqt/gallery-db db:generate",
     "db:migrate": "turbo -F @aqt/gallery-db db:migrate",
-    "check": "oxlint --type-aware"
+    "check": "oxlint --type-aware",
+    "typecheck": "turbo typecheck -F '@aqt/gallery-*'"
   },
   "dependencies": {
     "@aqt/gallery-env": "workspace:*",

@@ -6,13 +6,14 @@
     "dev": "vite dev --port 3000",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit && bun run --cwd cli typecheck",
+    "typecheck": "tsc --noEmit",
     "generate-routes": "tsr generate",
     "cf-typegen": "wrangler types",
     "deploy": "wrangler deploy",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply album --local",
-    "db:migrate:remote": "wrangler d1 migrations apply album --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply album --remote",
+    "lint": "oxlint --type-aware"
   },
   "dependencies": {
     "@clerk/tanstack-react-start": "^1.5.8",

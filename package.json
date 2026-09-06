@@ -30,7 +30,7 @@
     "lint": "oxlint --type-aware",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "typecheck": "for p in apps/gallery/apps/web apps/gallery/apps/server apps/gallery/packages/db apps/gallery/packages/auth apps/gallery/packages/env apps/gallery/packages/ui apps/img apps/img/cli apps/health/frontend tools/stack packages/ts/ui apps/bank/scripts; do tsc --noEmit -p $p || exit 1; done && tsc -b apps/bank/internal/webui/app"
+    "typecheck": "bun run --filter '*' --filter '!aqt-gallery' typecheck"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.81.0",
