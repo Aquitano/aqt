@@ -12,7 +12,7 @@
     "db:studio": "turbo -F @aqt/gallery-db db:studio",
     "db:generate": "turbo -F @aqt/gallery-db db:generate",
     "db:migrate": "turbo -F @aqt/gallery-db db:migrate",
-    "check": "oxlint"
+    "check": "oxlint --type-aware"
   },
   "dependencies": {
     "@aqt/gallery-env": "workspace:*",

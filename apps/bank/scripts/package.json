@@ -1,0 +1,9 @@
+{
+  "name": "@aqt/bank-scripts",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@aqt/config": "workspace:*",
+    "@types/bun": "catalog:"
+  }
+}

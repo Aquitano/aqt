@@ -8,7 +8,7 @@
     "generate:api": "openapi-typescript ../build/openapi/openapi.json -o src/lib/generated/aqtHealthApiTypes.ts",
     "build": "next build",
     "start": "next start",
-    "lint": "oxlint",
+    "lint": "oxlint --type-aware",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

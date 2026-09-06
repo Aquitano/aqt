@@ -1,13 +1,37 @@
 {
-  "extends": [
-    "../../.oxlintrc.json"
-  ],
+  "extends": ["../../.oxlintrc.json"],
   "rules": {
-    "typescript/no-floating-promises": "error",
-    "typescript/no-misused-promises": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-misused-promises": [
+      "error",
+      {
+        "checksVoidReturn": {
+          "attributes": false
+        }
+      }
+    ],
     "typescript/await-thenable": "error",
-    "typescript/no-unnecessary-condition": "warn",
     "typescript/switch-exhaustiveness-check": "error",
+    "typescript/only-throw-error": [
+      "error",
+      {
+        "allow": [
+          {
+            "from": "lib",
+            "name": "Response"
+          }
+        ]
+      }
+    ],
+    "typescript/use-unknown-in-catch-callback-variable": "error",
+    "typescript/no-unnecessary-condition": "warn",
+    "typescript/no-floating-promises": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-known-value-widening": "error",

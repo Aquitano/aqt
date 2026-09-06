@@ -45,7 +45,7 @@ elements inside its own bounds; the spread's gutter is the shared edge at x = 0 
 Workflow: import_photos -> list_photos (ids, sizes, dates) -> create_album -> put_book. Re-read
 with get_book before editing an existing album so you keep spread ids.`;
 
-const text = <T>(value: T) => ({
+const text = (value: unknown) => ({
   content: [
     {
       type: "text" as const,

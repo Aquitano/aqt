@@ -1,0 +1,4 @@
+{
+  "extends": "@aqt/config/tsconfig.bun.json",
+  "include": ["*.ts"]
+}

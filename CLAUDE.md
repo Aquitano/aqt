@@ -5,7 +5,7 @@ Personal software workspace. Each directory under `apps/` is an independent prod
 ## Tooling
 
 - mise pins every toolchain, including swiftformat, swiftlint, xcodegen and golangci-lint (`mise install`, then `mise exec --` or shell activation). Root `bun install` covers every TypeScript project.
-- TypeScript: `bun run lint`, `bun run fmt`, `bun run typecheck` from the root. From inside an app run `oxlint` and `oxfmt` directly; they find the root config from anywhere. Nested `.oxlintrc.json` files only hold overrides. anti-slop and legacy React rules are warnings in apps and errors in `packages/`; fix them in files you touch.
+- TypeScript: `bun run lint`, `bun run fmt`, `bun run typecheck` from the root. From inside an app run `oxlint --type-aware` and `oxfmt` directly; they find the root config from anywhere. Nested `.oxlintrc.json` files only hold overrides. anti-slop, type-aware `typescript/*` and legacy React rules are warnings in apps and errors in `packages/`; fix them in files you touch. Decode `unknown` at the boundary (ArkType) instead of asserting or widening past a rule.
 - Go: `go build ./...`, `go test -race ./...`, `golangci-lint run` inside the app.
 - Kotlin: `./gradlew check` (needs Docker or `AQT_HEALTH_TEST_JDBC_URL`), `./gradlew ktlintFormat` inside `apps/health`. `apps/health/frontend` is part of health, not a separate product.
 - Swift: `swiftformat .` and `swiftlint` from the root; build with `apps/<app>/run.sh`.

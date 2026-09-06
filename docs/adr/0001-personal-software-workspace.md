@@ -31,7 +31,7 @@ Out: aqt-sync (licensed product with an audience), chill-flow, aqt-aura, codebur
   - Format: 2 spaces, double quotes, semicolons, width 100. oxfmt sorts imports, Tailwind classes (per-app stylesheet overrides for Tailwind v4) and package.json keys.
   - Lint: correctness as error, suspicious and perf as warning; plugins typescript, react, import, unicorn, promise; nextjs in health's frontend only.
   - anti-slop rules are errors in `packages/` and warnings in existing apps, fixed as files are touched. Legacy React findings (set-state-in-effect, refs, exhaustive-deps) are likewise warnings in apps.
-  - Type-aware rules (floating and misused promises, await-thenable, switch exhaustiveness) run on `packages/ts` only.
+  - Lint is type-aware everywhere (`oxlint --type-aware`, a few seconds for the whole workspace). The `no-unsafe-*` family, `no-explicit-any`, `no-non-null-assertion`, `no-unnecessary-condition`, floating and misused promises, `await-thenable`, `switch-exhaustiveness-check` and `only-throw-error` are errors in `packages/` and warnings in apps, so an `any` from `Response.json()` or a bare `!` is visible instead of silently typed.
   - Biome and eslint are removed from every app. Turbo stays inside gallery.
   - `cn` from shadcn replaces clsx and tailwind-merge, starting with `@aqt/ui`; apps migrate with `shadcn migrate cn` when cleaned up.
 - Go: gofmt, golangci-lint v2.

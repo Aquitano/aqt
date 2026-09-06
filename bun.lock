@@ -45,6 +45,13 @@
         "vite": "^8.2.0",
       },
     },
+    "apps/bank/scripts": {
+      "name": "@aqt/bank-scripts",
+      "devDependencies": {
+        "@aqt/config": "workspace:*",
+        "@types/bun": "catalog:",
+      },
+    },
     "apps/gallery": {
       "name": "aqt-gallery",
       "dependencies": {
@@ -335,6 +342,8 @@
     "@adobe/css-tools": ["@adobe/css-tools@4.5.0", "", {}, "sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q=="],
 
     "@antfu/ni": ["@antfu/ni@25.0.0", "", { "dependencies": { "ansis": "^4.0.0", "fzf": "^0.5.2", "package-manager-detector": "^1.3.0", "tinyexec": "^1.0.1" }, "bin": { "na": "bin/na.mjs", "ni": "bin/ni.mjs", "nr": "bin/nr.mjs", "nci": "bin/nci.mjs", "nlx": "bin/nlx.mjs", "nun": "bin/nun.mjs", "nup": "bin/nup.mjs" } }, "sha512-9q/yCljni37pkMr4sPrI3G4jqdIk074+iukc5aFJl7kmDCCsiJrbZ6zKxnES1Gwg+i9RcDZwvktl23puGslmvA=="],
+
+    "@aqt/bank-scripts": ["@aqt/bank-scripts@workspace:apps/bank/scripts"],
 
     "@aqt/bank-webui": ["@aqt/bank-webui@workspace:apps/bank/internal/webui/app"],
 

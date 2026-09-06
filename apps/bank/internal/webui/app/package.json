@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "check": "tsc -b && oxlint src"
+    "check": "tsc -b && oxlint --type-aware src"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
