@@ -21,11 +21,10 @@ export async function GET(request: Request, context: RouteContext) {
 
 export async function PUT(request: Request, context: RouteContext) {
   const { providerCode, providerInstanceId } = await context.params;
-  const result = await updateScheduledSyncConfig(
-    providerCode,
-    providerInstanceId,
-    await readScheduledSyncConfigUpdate(request),
-  );
+  const body = await readScheduledSyncConfigUpdate(request);
+  if (!body.ok) return NextResponse.json(body, { status: 400 });
+
+  const result = await updateScheduledSyncConfig(providerCode, providerInstanceId, body.data);
 
   return NextResponse.json(result, {
     status: result.ok ? 200 : (result.status ?? 500),

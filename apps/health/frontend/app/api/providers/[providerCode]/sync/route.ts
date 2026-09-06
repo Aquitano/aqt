@@ -13,7 +13,10 @@ type RouteContext = {
 
 export async function POST(request: Request, context: RouteContext) {
   const { providerCode } = await context.params;
-  const result = await syncProvider(providerCode, await readProviderSyncRequest(request));
+  const body = await readProviderSyncRequest(request);
+  if (!body.ok) return NextResponse.json(body, { status: 400 });
+
+  const result = await syncProvider(providerCode, body.data);
 
   return NextResponse.json(result, {
     status: result.ok ? 200 : (result.status ?? 500),
