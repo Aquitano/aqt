@@ -44,7 +44,7 @@ export default function UserMenu() {
             variant="destructive"
             onClick={async () => {
               await signOut();
-              navigate({ to: "/" });
+              await navigate({ to: "/" });
             }}
           >
             Sign Out

@@ -26,7 +26,7 @@ function RouteComponent() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<ArchiveSort>("rating");
   const [artworkType, setArtworkType] = useState<ArtworkType | "all">("all");
-  const [tagId, setTagId] = useState<string | "all">("all");
+  const [tagId, setTagId] = useState("all");
   const artworks = useQuery(
     trpc.artworks.list.queryOptions({
       query: search,

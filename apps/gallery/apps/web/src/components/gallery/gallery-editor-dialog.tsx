@@ -50,7 +50,7 @@ export function GalleryEditorDialog({
     reset();
     onOpenChange(false);
     if (created) {
-      navigate({
+      await navigate({
         to: "/galleries/$galleryId",
         params: { galleryId: created.id },
       });

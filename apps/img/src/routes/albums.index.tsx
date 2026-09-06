@@ -157,7 +157,7 @@ function CreateAlbumDialog() {
         data: { title: title.trim(), cover: { material, color: COVER_COLORS[color] } },
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries(albumsQuery());
+      void queryClient.invalidateQueries(albumsQuery());
       setOpen(false);
       setTitle("");
     },

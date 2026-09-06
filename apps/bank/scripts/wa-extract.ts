@@ -22,7 +22,13 @@ const MEDIA_KIND = new Map<number, string>([
   [15, "sticker"],
 ]);
 
-const db = new Database(process.argv[2], { readonly: true });
+const chatPath = process.argv[2];
+if (chatPath === undefined) {
+  console.error("Usage: bun wa-extract.ts <chatstorage-copy.sqlite> > whatsapp.ndjson");
+  process.exit(1);
+}
+
+const db = new Database(chatPath, { readonly: true });
 
 // JID -> display name (contact push names; group members resolve through this too)
 const pushnames = new Map<string, string>(
@@ -38,9 +44,9 @@ const pushnames = new Map<string, string>(
 // book, keyed by the same lid the message carries. That file sits next to
 // ChatStorage.sqlite; without it (or on an older schema without ZLID) those
 // senders stay raw jids, which is what they were before.
-function lidNames(chatPath: string): Map<string, string> {
+function lidNames(storagePath: string): Map<string, string> {
   const out = new Map<string, string>();
-  const path = join(dirname(chatPath), "ContactsV2.sqlite");
+  const path = join(dirname(storagePath), "ContactsV2.sqlite");
   if (!existsSync(path)) return out;
   try {
     const rows = new Database(path, { readonly: true })
@@ -50,15 +56,17 @@ function lidNames(chatPath: string): Map<string, string> {
       .all();
     for (const r of rows) {
       out.set(r.ZLID, r.ZFULLNAME);
-      out.set(r.ZLID.split("@")[0]!, r.ZFULLNAME); // messages may carry the bare number
+      out.set(r.ZLID.split("@")[0] ?? r.ZLID, r.ZFULLNAME); // messages may carry the bare number
     }
   } catch (err) {
-    console.error(`ContactsV2.sqlite unreadable (${err}); group senders stay raw jids`);
+    console.error(
+      `ContactsV2.sqlite unreadable (${err instanceof Error ? err.message : String(err)}); group senders stay raw jids`,
+    );
   }
   return out;
 }
 
-const addressBook = lidNames(process.argv[2]);
+const addressBook = lidNames(chatPath);
 
 const rows = db
   .query<
@@ -92,7 +100,7 @@ const rows = db
 // A group member's display name: their pushname, else the address book, else
 // nothing and the caller keeps the raw jid.
 function memberName(jid: string) {
-  return pushnames.get(jid) || addressBook.get(jid) || addressBook.get(jid.split("@")[0]!);
+  return pushnames.get(jid) || addressBook.get(jid) || addressBook.get(jid.split("@")[0] ?? jid);
 }
 
 function mediaBody(r: { msg_type: number; media_title: string | null; vcard_name: string | null }) {

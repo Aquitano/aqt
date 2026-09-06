@@ -150,7 +150,7 @@ function StudioBody({ galleryId, search }: { galleryId: string; search: string }
                 return;
               }
               await curation.deleteGroup();
-              navigate({ to: "/galleries" });
+              await navigate({ to: "/galleries" });
             }}
           >
             <Trash2 />

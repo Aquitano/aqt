@@ -10,16 +10,12 @@ import {
 import { useTheme } from "next-themes";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
-const THEMES = ["light", "dark", "system"] as const satisfies readonly NonNullable<
-  ToasterProps["theme"]
->[];
-
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme } = useTheme();
 
   return (
     <Sonner
-      theme={THEMES.find((option) => option === theme) ?? "system"}
+      theme={theme === "light" || theme === "dark" ? theme : "system"}
       className="toaster group"
       icons={{
         success: <CircleCheckIcon className="size-4" />,

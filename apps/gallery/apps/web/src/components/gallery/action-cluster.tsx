@@ -64,7 +64,7 @@ export function ActionCluster() {
                 variant="destructive"
                 onClick={async () => {
                   await signOut();
-                  navigate({ to: "/" });
+                  await navigate({ to: "/" });
                 }}
               >
                 Sign out

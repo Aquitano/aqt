@@ -202,7 +202,7 @@ function StudioBody({ museumId, search }: { museumId: string; search: string }) 
                 return;
               }
               await curation.deleteMuseum();
-              navigate({ to: "/museums" });
+              await navigate({ to: "/museums" });
             }}
           >
             <Trash2 />

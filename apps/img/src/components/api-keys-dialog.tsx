@@ -30,7 +30,7 @@ export function ApiKeysDialog() {
     onSuccess: (created) => {
       setFresh({ name: created.name, key: created.key });
       setName("");
-      queryClient.invalidateQueries(apiKeysQuery());
+      void queryClient.invalidateQueries(apiKeysQuery());
     },
     onError: () => toast.error("Could not create that key"),
   });

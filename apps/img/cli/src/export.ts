@@ -30,7 +30,7 @@ async function launchChromium() {
     return await chromium.launch();
   } catch (cause) {
     throw new Error(
-      `Could not start Chromium. Run \`bunx playwright install chromium\` once.\n${cause instanceof Error ? cause.message : cause}`,
+      `Could not start Chromium. Run \`bunx playwright install chromium\` once.\n${cause instanceof Error ? cause.message : String(cause)}`,
       { cause },
     );
   }

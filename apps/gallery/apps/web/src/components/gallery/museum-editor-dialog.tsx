@@ -50,7 +50,7 @@ export function MuseumEditorDialog({
     reset();
     onOpenChange(false);
     if (created) {
-      navigate({
+      await navigate({
         to: "/museums/$museumId",
         params: { museumId: created.id },
       });

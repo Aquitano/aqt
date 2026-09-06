@@ -63,8 +63,8 @@ function Title() {
   const rename = useMutation({
     mutationFn: (title: string) => albumFns.update({ data: { albumId: album.id, title } }),
     onSuccess: () => {
-      queryClient.invalidateQueries(albumsQuery());
-      queryClient.invalidateQueries(albumQuery(album.id));
+      void queryClient.invalidateQueries(albumsQuery());
+      void queryClient.invalidateQueries(albumQuery(album.id));
     },
     onError: () => toast.error("Could not rename the album"),
   });
@@ -122,7 +122,7 @@ function SharePopover() {
     },
     onSuccess: (shareSlug) => {
       updateAlbum({ shareSlug });
-      queryClient.invalidateQueries(albumQuery(album.id));
+      void queryClient.invalidateQueries(albumQuery(album.id));
     },
     onError: () => toast.error("Could not change sharing"),
   });

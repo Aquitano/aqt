@@ -189,7 +189,7 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
     setConfirmDelete(false);
     await queryClient.invalidateQueries();
     toast.success("Artwork deleted");
-    navigate({ to: "/dashboard" });
+    await navigate({ to: "/dashboard" });
   };
 
   return (

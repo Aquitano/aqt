@@ -39,8 +39,8 @@ function SuggestionRow({ s }: { s: ContactSuggestion }) {
   const add = useMutation({
     mutationFn: () => createContactWithAlias(suggestedName(s), s.identity),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["contacts"] });
-      qc.invalidateQueries({ queryKey: ["contact-suggestions"] });
+      void qc.invalidateQueries({ queryKey: ["contacts"] });
+      void qc.invalidateQueries({ queryKey: ["contact-suggestions"] });
     },
   });
   return (

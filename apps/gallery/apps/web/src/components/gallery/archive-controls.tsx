@@ -54,8 +54,8 @@ export function ArchiveControls({
   onSort: (value: ArchiveSort) => void;
   artworkType: ArtworkType | "all";
   onArtworkType: (value: ArtworkType | "all") => void;
-  tagId: string | "all";
-  onTagId: (value: string | "all") => void;
+  tagId: string;
+  onTagId: (value: string) => void;
   count?: number;
   action?: ReactNode;
   showType?: boolean;
