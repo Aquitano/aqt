@@ -32,7 +32,7 @@ Out: aqt-sync (licensed product with an audience), chill-flow, aqt-aura, codebur
   - Lint: correctness as error, suspicious and perf as warning; plugins typescript, react, import, unicorn, promise; nextjs in health's frontend only.
   - anti-slop rules are errors in `packages/` and warnings in existing apps, fixed as files are touched. Legacy React findings (set-state-in-effect, refs, exhaustive-deps) are likewise warnings in apps.
   - Lint is type-aware everywhere (`oxlint --type-aware`, a few seconds for the whole workspace). The `no-unsafe-*` family, `no-explicit-any`, `no-non-null-assertion`, `no-unnecessary-condition`, floating and misused promises, `await-thenable`, `switch-exhaustiveness-check` and `only-throw-error` are errors in `packages/` and warnings in apps, so an `any` from `Response.json()` or a bare `!` is visible instead of silently typed.
-  - Biome and eslint are removed from every app. Turbo stays inside gallery.
+  - Biome and eslint are removed from every app. Gallery's biome style rules are ported for every app (no-param-reassign, prefer-as-const, default-param-last, prefer-enum-initializers, self-closing-comp, one-var never, no-inferrable-types, no-else-return, prefer-number-properties); biome's unused-template-literal rule has no oxlint counterpart. Tailwind class sorting moved to oxfmt. Health's eslint-config-next is covered by oxlint's nextjs plugin.
   - `cn` from shadcn replaces clsx and tailwind-merge, starting with `@aqt/ui`; apps migrate with `shadcn migrate cn` when cleaned up.
 - Go: gofmt, golangci-lint v2.
 - Kotlin: ktlint via Gradle.
@@ -63,7 +63,6 @@ swiftformat runs with the keypath rule disabled because it broke type inference 
 
 ## Deferred
 
-- Revisit gallery's ten biome style rules (no parameter reassignment, self-closing elements, no useless else, and the rest) and port the ones worth keeping to oxlint for every app.
 - Re-enable ktlint's property-naming and filename rules in health after renaming its 32 constants and 4 files, and bring max line length back to 140.
 - Fix the React and anti-slop warnings in apps and promote them to errors app by app.
 

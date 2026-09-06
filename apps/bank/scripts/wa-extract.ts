@@ -110,9 +110,9 @@ function mediaBody(r: { msg_type: number; media_title: string | null; vcard_name
   return r.media_title ? `[${label}] ${r.media_title}` : `[${label}]`;
 }
 
-let out = 0,
-  media = 0,
-  skipped = 0;
+let out = 0;
+let media = 0;
+let skipped = 0;
 for (const r of rows) {
   let body = r.text;
   if (!body) {

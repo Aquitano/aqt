@@ -54,6 +54,15 @@
     "react-hooks/exhaustive-deps": "error",
     "unicorn/no-useless-spread": "error",
     "unicorn/no-useless-fallback-in-spread": "error",
-    "no-useless-escape": "error"
+    "no-useless-escape": "error",
+    "no-param-reassign": "error",
+    "typescript/prefer-as-const": "error",
+    "default-param-last": "error",
+    "typescript/prefer-enum-initializers": "error",
+    "react/self-closing-comp": "error",
+    "one-var": ["error", "never"],
+    "typescript/no-inferrable-types": "error",
+    "no-else-return": "error",
+    "unicorn/prefer-number-properties": "error"
   }
 }

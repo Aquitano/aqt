@@ -215,8 +215,8 @@ export async function pageGeom(page: Page, side: "left" | "right"): Promise<Geom
       // offsetLeft/Top round to whole pixels, which is coarser than a 5-unit nudge.
       return {
         id: el.dataset.element!,
-        x: parseFloat(style.left) / scale,
-        y: parseFloat(style.top) / scale,
+        x: Number.parseFloat(style.left) / scale,
+        y: Number.parseFloat(style.top) / scale,
         w: el.offsetWidth / scale,
         h: el.offsetHeight / scale,
         rot: Math.round((Math.atan2(m.b, m.a) * 180) / Math.PI),

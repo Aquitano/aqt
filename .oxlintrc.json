@@ -88,7 +88,16 @@
     "react-hooks/exhaustive-deps": "warn",
     "unicorn/no-useless-spread": "warn",
     "unicorn/no-useless-fallback-in-spread": "warn",
-    "no-useless-escape": "warn"
+    "no-useless-escape": "warn",
+    "no-param-reassign": "warn",
+    "typescript/prefer-as-const": "warn",
+    "default-param-last": "warn",
+    "typescript/prefer-enum-initializers": "warn",
+    "react/self-closing-comp": "warn",
+    "one-var": ["warn", "never"],
+    "typescript/no-inferrable-types": "warn",
+    "no-else-return": "warn",
+    "unicorn/prefer-number-properties": "warn"
   },
   "overrides": [
     {
