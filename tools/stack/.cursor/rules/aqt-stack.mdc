@@ -1,0 +1,17 @@
+---
+description: AQT workspace conventions for the stack generator and its output.
+globs: "*.ts, *.tsx, package.json"
+alwaysApply: false
+---
+
+Follow the workspace conventions in the root CLAUDE.md.
+
+- Run the generator and its tests with Bun. Use `bun run --filter @aqt/stack test`.
+- Generate apps under `apps/<name>` with package names `@aqt/<name>` and the root
+  Bun workspace lockfile. Never initialize Git, stage files, or commit from the generator.
+- Generated apps use Next.js, React Compiler, ArkType, and shared `@aqt/config`.
+- Use root Oxlint and Oxfmt. shadcn components use Base UI and the `cn` package.
+- Keep the optional Vitest and Testing Library setup for generated React apps.
+- Put generated GitHub Actions workflows at the workspace root, with app path filters.
+- Verify changes with a real generated app's checks and build, including a minimal
+  app without optional features when changing conditional templates.

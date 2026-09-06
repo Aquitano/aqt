@@ -6,10 +6,10 @@ import { promptConfig } from "./src/prompts.ts";
 import { BunShellRunner } from "./src/shell.ts";
 
 async function main(): Promise<void> {
-  const args = Bun.argv.slice(2);
-  if (args.includes("--help") || args.includes("-h")) {
+  const wantsHelp = Bun.argv.slice(2).some((arg) => arg === "--help" || arg === "-h");
+  if (wantsHelp) {
     console.log(
-      `\n  AQT Stack · App Bootstrapper\n\n  An interactive CLI to scaffold Next.js + Tailwind + shadcn/ui + Hono.js projects.\n\n  Usage: bun run index.ts\n`,
+      `\n  AQT Stack · App Bootstrapper\n\n  An interactive CLI to scaffold Next.js + Tailwind + shadcn/ui + Hono.js apps under apps/<name>.\n\n  Usage: bun run tools/stack/index.ts\n`,
     );
     process.exit(0);
   }
@@ -22,8 +22,8 @@ async function main(): Promise<void> {
   log.info(`  Project:   ${config.projectName}`);
   log.info(`  TypeScript: yes`);
   log.info(`  Tailwind:   yes`);
-  log.info(`  ESLint:     ${config.eslint ? "yes" : "no"}`);
-  log.info(`  Prettier:   ${config.prettier ? config.prettierPreset : "no"}`);
+  log.info("  Tooling:    workspace Oxlint, Oxfmt, TypeScript");
+  log.info("  Validation: ArkType");
   log.info(
     `  shadcn/ui:  ${config.shadcn ? `${config.shadcnComponents.length} components` : "no"}`,
   );
@@ -45,8 +45,8 @@ async function main(): Promise<void> {
 
   await scaffold(config, new BunShellRunner(), step);
 
-  outro(`Done! Your project is ready at ./${config.projectName}`);
-  log.info(`  cd ${config.projectName}`);
+  outro(`Done! Your project is ready at apps/${config.projectName}`);
+  log.info(`  cd apps/${config.projectName}`);
   log.info("  bun dev\n");
 }
 

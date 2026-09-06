@@ -1,13 +1,25 @@
+import { lstat, mkdir } from "node:fs/promises";
+
+import { type } from "arktype";
 import { $ } from "bun";
 
 // ── Port ─────────────────────────────────────────────────────────
 
 /** The slice of a project's package.json this scaffolder reads and rewrites. */
-export interface PackageManifest {
-  scripts?: Record<string, string>;
-}
+export const packageManifest = type({
+  "name?": "string",
+  "private?": "boolean",
+  "type?": "'module' | 'commonjs'",
+  "packageManager?": "string",
+  "scripts?": "Record<string, string>",
+  "dependencies?": "Record<string, string>",
+  "devDependencies?": "Record<string, string>",
+});
+export type PackageManifest = typeof packageManifest.infer;
 
 export interface ShellRunner {
+  exists(path: string): Promise<boolean>;
+  reserveDirectory(path: string): Promise<void>;
   /** Spawn a command with inherited stdio. Throws on non-zero exit. */
   spawn(command: string, args: string[], opts: { cwd: string }): Promise<void>;
 
@@ -20,9 +32,6 @@ export interface ShellRunner {
   /** Write string content to a file. */
   writeFile(path: string, content: string): Promise<void>;
 
-  /** Read a file as text. */
-  readFile(path: string): Promise<string>;
-
   /** Read a project's package.json. */
   readPackageJson(path: string): Promise<PackageManifest>;
 }
@@ -30,6 +39,20 @@ export interface ShellRunner {
 // ── Bun adapter ──────────────────────────────────────────────────
 
 export class BunShellRunner implements ShellRunner {
+  async exists(path: string): Promise<boolean> {
+    try {
+      await lstat(path);
+      return true;
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+      throw error;
+    }
+  }
+
+  async reserveDirectory(path: string): Promise<void> {
+    await mkdir(path);
+  }
+
   async spawn(command: string, args: string[], opts: { cwd: string }): Promise<void> {
     const proc = Bun.spawn([command, ...args], {
       stdio: ["inherit", "inherit", "inherit"],
@@ -53,11 +76,7 @@ export class BunShellRunner implements ShellRunner {
     await Bun.write(path, content);
   }
 
-  async readFile(path: string): Promise<string> {
-    return Bun.file(path).text();
-  }
-
   async readPackageJson(path: string): Promise<PackageManifest> {
-    return Bun.file(path).json();
+    return packageManifest.assert(await Bun.file(path).json());
   }
 }

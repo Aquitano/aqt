@@ -8,13 +8,12 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@clack/prompts": "^1.5.1"
+    "@clack/prompts": "^1.5.1",
+    "arktype": "^2.2.3"
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "@types/bun": "latest",
+    "typescript": "7.0.2"
   }
 }

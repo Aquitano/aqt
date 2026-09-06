@@ -1,34 +1,3 @@
-// ── Prettier presets ──────────────────────────────────────────────
-
-export const PRETTIER_PRESETS = {
-  default: {
-    semi: true,
-    singleQuote: true,
-    trailingComma: "all",
-    tabWidth: 2,
-    printWidth: 100,
-    plugins: ["prettier-plugin-tailwindcss"],
-  },
-  relaxed: {
-    semi: false,
-    singleQuote: true,
-    trailingComma: "none",
-    tabWidth: 2,
-    printWidth: 120,
-    plugins: ["prettier-plugin-tailwindcss"],
-  },
-  strict: {
-    semi: true,
-    singleQuote: true,
-    trailingComma: "all",
-    tabWidth: 2,
-    printWidth: 80,
-    plugins: ["prettier-plugin-tailwindcss"],
-  },
-} as const;
-
-export type PrettierPreset = keyof typeof PRETTIER_PRESETS;
-
 // ── shadcn/ui component catalog ──────────────────────────────────
 
 export const SHADCN_COMPONENTS = [
@@ -39,10 +8,10 @@ export const SHADCN_COMPONENTS = [
   { value: "separator", label: "Separator", hint: "Visual divider" },
   { value: "dialog", label: "Dialog", hint: "Modal dialog" },
   { value: "dropdown-menu", label: "Dropdown Menu", hint: "Context menu" },
-  { value: "form", label: "Form", hint: "Form with validation" },
+  { value: "field", label: "Field", hint: "Form fields and validation states" },
   { value: "select", label: "Select", hint: "Dropdown select" },
   { value: "sheet", label: "Sheet", hint: "Slide-out panel" },
-  { value: "sonner", label: "Sonner", hint: "Toast notifications" },
+  { value: "toast", label: "Toast", hint: "Toast notifications" },
   { value: "table", label: "Table", hint: "Data table" },
   { value: "tabs", label: "Tabs", hint: "Tab navigation" },
   { value: "textarea", label: "Textarea", hint: "Multi-line input" },
@@ -61,15 +30,12 @@ export const DEFAULT_SHADCN_COMPONENTS = ["button", "input", "label", "card", "s
  * are force-installed (unioned with the user's selection) so the landing page
  * always compiles, regardless of which components were ticked.
  */
-export const REQUIRED_LANDING_COMPONENTS = ["button", "card", "badge", "separator"];
+export const REQUIRED_LANDING_COMPONENTS = ["card"];
 
 // ── Config type ──────────────────────────────────────────────────
 
 export interface Config {
   projectName: string;
-  eslint: boolean;
-  prettier: boolean;
-  prettierPreset: PrettierPreset;
   shadcn: boolean;
   shadcnComponents: string[];
   hono: boolean;
@@ -79,4 +45,11 @@ export interface Config {
   testing: boolean;
   /** GitHub Actions CI workflow. */
   ci: boolean;
+}
+
+export function validateProjectName(value: string): string | undefined {
+  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(value)) {
+    return "Use a lowercase app name with letters, numbers, and single hyphens, starting with a letter.";
+  }
+  return undefined;
 }

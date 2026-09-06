@@ -27,20 +27,20 @@ export const healthRoute = new Hono().get("/health", (c) =>
 `;
 
 const USERS_ROUTE = `import { Hono } from "hono";
-import { vValidator } from "@hono/valibot-validator";
-import * as v from "valibot";
+import { sValidator } from "@hono/standard-validator";
+import { type } from "arktype";
 
 // In-memory store – replace with your database
 const users = new Map<string, { id: string; name: string; email: string }>();
 
-const createUserSchema = v.object({
-  name: v.pipe(v.string(), v.minLength(1, "Name is required")),
-  email: v.pipe(v.string(), v.email("Invalid email")),
+const createUserSchema = type({
+  name: "string > 0",
+  email: "string.email",
 });
 
 export const usersRoute = new Hono()
   .get("/users", (c) => c.json({ users: [...users.values()] }))
-  .post("/users", vValidator("json", createUserSchema), (c) => {
+  .post("/users", sValidator("json", createUserSchema), (c) => {
     const body = c.req.valid("json");
     const id = crypto.randomUUID();
     const user = { id, ...body };
@@ -94,17 +94,14 @@ export const api = client.api;
 `;
 
 const ENV_FILE = `import { createEnv } from "@t3-oss/env-nextjs";
-import * as v from "valibot";
+import { type } from "arktype";
 
 export const env = createEnv({
   server: {
-    NODE_ENV: v.optional(
-      v.picklist(["development", "test", "production"]),
-      "development",
-    ),
+    NODE_ENV: type("'development' | 'test' | 'production' | undefined").pipe((value) => value ?? "development"),
   },
   client: {
-    NEXT_PUBLIC_APP_URL: v.optional(v.pipe(v.string(), v.url())),
+    NEXT_PUBLIC_APP_URL: type("string.url | undefined"),
   },
   // Destructure manually so Next.js can inline NEXT_PUBLIC_* at build time.
   runtimeEnv: {
@@ -175,18 +172,6 @@ export default defineConfig({
 const VITEST_SETUP = `import "@testing-library/jest-dom/vitest";
 `;
 
-const PAGE_TEST = `import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import Home from "./page";
-
-describe("Home", () => {
-  it("renders the stack name", () => {
-    render(<Home />);
-    expect(screen.getByText("AQT Stack")).toBeInTheDocument();
-  });
-});
-`;
-
 const HEALTH_TEST = `import { describe, expect, it } from "vitest";
 import app from "@/lib/hono";
 
@@ -194,260 +179,236 @@ describe("health route", () => {
   it("returns ok", async () => {
     const res = await app.request("/api/health");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { status: string };
-    expect(body.status).toBe("ok");
+    expect(await res.json()).toMatchObject({ status: "ok" });
   });
 });
 `;
 
-// ── Landing page ─────────────────────────────────────────────────
+const USERS_TEST = `import { describe, expect, it } from "vitest";
+import app from "@/lib/hono";
 
-interface LandingOptions {
-  hono: boolean;
-  shadcn: boolean;
-  themes: boolean;
-}
+describe("user validation", () => {
+  it("accepts valid input", async () => {
+    const response = await app.request("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Ada", email: "ada@example.com" }),
+    });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ user: { name: "Ada", email: "ada@example.com" } });
+  });
 
-const TECH_STACK_ENTRIES = `const techStack = [
-  { name: "Next.js 16", desc: "React framework with App Router" },
-  { name: "React 19", desc: "With React Compiler enabled" },
-  { name: "Tailwind CSS v4", desc: "Utility-first, no PostCSS config needed" },
-  { name: "Hono", desc: "Lightweight, type-safe API routes" },
-  { name: "Valibot", desc: "Tiny schema validation" },
-  { name: "TypeScript", desc: "End-to-end type safety" },
-] as const;`;
-
-const API_ENDPOINT_ENTRIES = `const apiEndpoints = [
-  { method: "GET", path: "/api/health", desc: "Health check" },
-  { method: "GET", path: "/api/users", desc: "List users" },
-  { method: "POST", path: "/api/users", desc: "Create user" },
-  { method: "GET", path: "/api/users/:id", desc: "Get user" },
-  { method: "DELETE", path: "/api/users/:id", desc: "Delete user" },
-] as const;`;
-
-function buildRichLanding(opts: LandingOptions): string {
-  const themeImport = opts.themes
-    ? `import { ThemeToggle } from "@/components/theme-toggle";\n`
-    : "";
-  const themeSlot = opts.themes
-    ? `      <div className="absolute right-4 top-4">\n        <ThemeToggle />\n      </div>\n`
-    : "";
-
-  const apiCard = opts.hono
-    ? `
-
-        <Card>
-          <CardHeader>
-            <CardTitle>API Routes</CardTitle>
-            <CardDescription>
-              Hono-powered endpoints at{" "}
-              <code className="bg-muted rounded px-1.5 py-0.5 text-sm">
-                /api/*
-              </code>
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {apiEndpoints.map((ep) => (
-                <div
-                  key={\`\${ep.method}-\${ep.path}\`}
-                  className="flex items-center gap-3 rounded-md border px-3 py-2"
-                >
-                  <Badge
-                    variant="secondary"
-                    className={\`\${methodColors[ep.method]} border-0 font-mono text-xs\`}
-                  >
-                    {ep.method}
-                  </Badge>
-                  <code className="text-sm">{ep.path}</code>
-                  <span className="text-muted-foreground ml-auto text-sm">
-                    {ep.desc}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>`
-    : "";
-
-  const apiButton = opts.hono
-    ? `
-          <a href="/api/health" className={buttonVariants()}>
-            Test API
-          </a>`
-    : "";
-
-  return `import { buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-${themeImport}
-${TECH_STACK_ENTRIES}
-
-${API_ENDPOINT_ENTRIES}
-
-const methodColors = {
-  GET: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
-  POST: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  DELETE: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-} as const;
-
-export default function Home() {
-  return (
-    <div className="relative flex flex-1 flex-col items-center justify-center p-6 md:p-12">
-${themeSlot}      <div className="w-full max-w-2xl space-y-8">
-        <div className="space-y-2 text-center">
-          <h1 className="text-4xl font-bold tracking-tight">AQT Stack</h1>
-          <p className="text-muted-foreground text-lg">
-            Next.js &middot; Hono &middot; Tailwind &middot; shadcn/ui
-          </p>
-        </div>
-
-        <Separator />
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Tech Stack</CardTitle>
-            <CardDescription>
-              Everything wired up and ready to go.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {techStack.map((t) => (
-                <div key={t.name} className="flex items-start gap-3">
-                  <div className="bg-primary text-primary-foreground mt-0.5 flex size-6 shrink-0 items-center justify-center rounded text-xs font-medium">
-                    {t.name[0]}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{t.name}</p>
-                    <p className="text-muted-foreground text-sm">{t.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>${apiCard}
-
-        <div className="flex justify-center gap-3">${apiButton}
-          <a
-            href="https://nextjs.org/docs"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={buttonVariants({ variant: "outline" })}
-          >
-            Next.js Docs
-          </a>
-        </div>
-      </div>
-    </div>
-  );
-}
+  it.each([
+    { name: "", email: "ada@example.com" },
+    { name: "Ada", email: "invalid" },
+    { name: 42, email: "ada@example.com" },
+  ])("rejects invalid input %j", async (input) => {
+    const response = await app.request("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    expect(response.status).toBe(400);
+  });
+});
 `;
-}
-
-function buildPlainLanding(opts: LandingOptions): string {
-  const themeImport = opts.themes
-    ? `import { ThemeToggle } from "@/components/theme-toggle";\n\n`
-    : "";
-  const themeSlot = opts.themes
-    ? `      <div className="absolute right-4 top-4">\n        <ThemeToggle />\n      </div>\n`
-    : "";
-
-  return `${themeImport}${TECH_STACK_ENTRIES}
-
-export default function Home() {
-  return (
-    <div className="relative flex flex-1 flex-col items-center justify-center p-6 md:p-12">
-${themeSlot}      <div className="w-full max-w-2xl space-y-8">
-        <div className="space-y-2 text-center">
-          <h1 className="text-4xl font-bold tracking-tight">AQT Stack</h1>
-          <p className="text-muted-foreground text-lg">
-            Next.js &middot; Tailwind &middot; TypeScript
-          </p>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          {techStack.map((t) => (
-            <div key={t.name} className="rounded-lg border p-4">
-              <p className="text-sm font-medium">{t.name}</p>
-              <p className="text-muted-foreground text-sm">{t.desc}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-`;
-}
-
-function buildLanding(opts: LandingOptions): string {
-  return opts.shadcn ? buildRichLanding(opts) : buildPlainLanding(opts);
-}
-
-// ── CI workflow ──────────────────────────────────────────────────
-
-function buildCi(opts: TemplateOptions): string {
-  const steps = [
-    "      - uses: actions/checkout@v4",
-    "      - uses: oven-sh/setup-bun@v2",
-    "      - run: bun install --frozen-lockfile",
-    "      - run: bun run typecheck",
-  ];
-  if (opts.eslint) steps.push("      - run: bun run lint");
-  if (opts.prettier) steps.push("      - run: bun run format:check");
-  if (opts.testing) steps.push("      - run: bun run test");
-  steps.push("      - run: bun run build");
-
-  return `name: CI
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-${steps.join("\n")}
-`;
-}
-
-// ── Template assembly ────────────────────────────────────────────
 
 export interface TemplateOptions {
+  projectName: string;
   hono: boolean;
   shadcn: boolean;
   themes: boolean;
   testing: boolean;
-  ci: boolean;
-  eslint: boolean;
-  prettier: boolean;
 }
 
-/** Generated file contents, keyed by path relative to the project root. */
+function buildPageTest(opts: TemplateOptions): string {
+  return `import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import Home from "./page";
+
+describe("Home", () => {
+  it("renders the app name", () => {
+    render(<Home />);
+    expect(screen.getByText("${opts.projectName}")).toBeInTheDocument();
+  });
+});
+`;
+}
+
+function buildLanding(opts: TemplateOptions): string {
+  const imports = [];
+  if (opts.themes) imports.push('import { ThemeToggle } from "@/components/theme-toggle";');
+  if (opts.shadcn)
+    imports.push(
+      'import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";',
+    );
+  const content = opts.shadcn
+    ? `<Card>
+        <CardHeader>
+          <CardTitle>${opts.projectName}</CardTitle>
+          <CardDescription>Your new app.</CardDescription>
+        </CardHeader>
+        <CardContent><p>Edit src/app/page.tsx to get started.</p></CardContent>
+      </Card>`
+    : `<h1 className="text-3xl font-semibold">${opts.projectName}</h1>
+      <p>Edit src/app/page.tsx to get started.</p>`;
+  return `${imports.join("\n")}
+
+export default function Home() {
+  return (
+    <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 p-6">
+      ${opts.themes ? "<ThemeToggle />" : ""}
+      ${content}
+      ${opts.hono ? "<p>API health: <code>/api/health</code></p>" : ""}
+    </main>
+  );
+}
+`;
+}
+
+function buildLayout(opts: TemplateOptions): string {
+  return `import type { Metadata } from "next";
+import type { ReactNode } from "react";
+import "./globals.css";
+${opts.themes ? 'import { ThemeProvider } from "@/components/theme-provider";' : ""}
+
+export const metadata: Metadata = {
+  title: "${opts.projectName}",
+  description: "Personal app in the aqt workspace",
+};
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en"${opts.themes ? " suppressHydrationWarning" : ""}>
+      <body className="min-h-screen antialiased">
+        ${opts.themes ? '<ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>{children}</ThemeProvider>' : "{children}"}
+      </body>
+    </html>
+  );
+}
+`;
+}
+
+export function buildCi(opts: TemplateOptions): string {
+  return `name: ${opts.projectName}
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - "apps/${opts.projectName}/**"
+      - "packages/ts/config/**"
+      - "tools/oxlint/**"
+      - "package.json"
+      - "bun.lock"
+      - "mise.toml"
+      - ".oxlintrc.json"
+      - ".oxfmtrc.json"
+      - ".github/workflows/${opts.projectName}.yml"
+  pull_request:
+    paths: *paths
+permissions:
+  contents: read
+concurrency:
+  group: ${opts.projectName}-\${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+        with:
+          install_args: bun
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+        working-directory: apps/${opts.projectName}
+      - run: bun run build
+        working-directory: apps/${opts.projectName}
+`;
+}
+
+function buildReadme(opts: TemplateOptions): string {
+  return `# ${opts.projectName}
+
+Personal Next.js app in the aqt workspace.
+
+Run from the workspace root:
+
+\`\`\`sh
+mise install
+bun install
+cd apps/${opts.projectName}
+bun run dev
+\`\`\`
+
+Open http://localhost:3000. Optional environment variables are in .env.example.
+
+- \`bun run check\`: lint, format check, types${opts.testing ? ", and tests" : ""}.
+- \`bun run build\`: production build. \`bun run start\`: serve that build.
+- \`bun run fmt\`: format with the workspace Oxfmt configuration.
+${opts.testing ? "- `bun run test:watch`: run Vitest interactively.\n" : ""}
+TypeScript extends \`@aqt/config\`. Validation uses ArkType. React Compiler is enabled.
+${opts.shadcn ? "Components use shadcn Base UI and the `cn` package. Add components with `bunx --bun shadcn add <component>` from this directory.\n" : ""}
+${opts.hono ? "Hono exposes `/api/health` and example `/api/users` routes. The example user store is in memory and has no authentication; replace it before deploying.\n" : ""}
+Deployment is not configured. Add app-specific deployment instructions here.
+`;
+}
+
 export interface ProjectFiles {
   [path: string]: string;
 }
 
-/**
- * Returns the file templates for a scaffolded project, gated by config flags.
- */
 export function getTemplates(opts: TemplateOptions): ProjectFiles {
   const files: ProjectFiles = {
     "src/app/page.tsx": buildLanding(opts),
+    "src/app/layout.tsx": buildLayout(opts),
+    "src/app/globals.css": '@import "tailwindcss";\n',
     "src/lib/env.ts": ENV_FILE,
     ".env.example": ENV_EXAMPLE,
-  };
+    ".gitignore":
+      "node_modules/\n.next/\nout/\n.env*\n!.env.example\n*.tsbuildinfo\nnext-env.d.ts\n",
+    "README.md": buildReadme(opts),
+    "next.config.ts": `import type { NextConfig } from "next";
+import "./src/lib/env";
 
+const nextConfig: NextConfig = { reactCompiler: true };
+export default nextConfig;
+`,
+    "tsconfig.json":
+      JSON.stringify(
+        {
+          extends: "@aqt/config/tsconfig.base.json",
+          compilerOptions: {
+            lib: ["DOM", "DOM.Iterable", "ESNext"],
+            allowJs: true,
+            jsx: "react-jsx",
+            incremental: true,
+            plugins: [{ name: "next" }],
+            paths: { "@/*": ["./src/*"] },
+          },
+          include: [
+            "next-env.d.ts",
+            "**/*.ts",
+            "**/*.tsx",
+            ".next/types/**/*.ts",
+            ".next/dev/types/**/*.ts",
+          ],
+          exclude: ["node_modules"],
+        },
+        null,
+        2,
+      ) + "\n",
+    "src/styles.d.ts": 'declare module "*.css";\n',
+    ".oxlintrc.json":
+      JSON.stringify(
+        {
+          extends: ["../../.oxlintrc.json"],
+          plugins: ["nextjs"],
+        },
+        null,
+        2,
+      ) + "\n",
+  };
   if (opts.hono) {
     files["src/lib/hono/index.ts"] = HONO_INDEX;
     files["src/lib/hono/routes/health.ts"] = HEALTH_ROUTE;
@@ -455,24 +416,18 @@ export function getTemplates(opts: TemplateOptions): ProjectFiles {
     files["src/lib/hono/client.ts"] = HONO_CLIENT;
     files["src/app/api/[[...route]]/route.ts"] = API_ROUTE;
   }
-
   if (opts.themes) {
     files["src/components/theme-provider.tsx"] = THEME_PROVIDER;
     files["src/components/theme-toggle.tsx"] = THEME_TOGGLE;
   }
-
   if (opts.testing) {
     files["vitest.config.ts"] = VITEST_CONFIG;
     files["vitest.setup.ts"] = VITEST_SETUP;
-    files["src/app/page.test.tsx"] = PAGE_TEST;
+    files["src/app/page.test.tsx"] = buildPageTest(opts);
     if (opts.hono) {
       files["src/lib/hono/routes/health.test.ts"] = HEALTH_TEST;
+      files["src/lib/hono/routes/users.test.ts"] = USERS_TEST;
     }
   }
-
-  if (opts.ci) {
-    files[".github/workflows/ci.yml"] = buildCi(opts);
-  }
-
   return files;
 }
