@@ -1,0 +1,503 @@
+import { type } from "arktype";
+import { browser, type Browser } from "wxt/browser";
+
+import {
+  checkHealth,
+  fetchRules,
+  isPermanentFailure,
+  postCapture,
+  postEvents,
+  type Result,
+} from "./api.ts";
+import { errorMessage } from "./errors.ts";
+import type {
+  CaptureMeta,
+  CaptureReason,
+  EndReason,
+  PageViewEvent,
+  TrackerEvent,
+} from "./events.ts";
+import {
+  SerializeReply,
+  type BackgroundMessage,
+  type CaptureNowReply,
+  type SerializeRequest,
+  type StatusReply,
+} from "./messages.ts";
+import {
+  dueCaptures,
+  dueEvents,
+  enqueueCapture,
+  enqueueEvent,
+  markFailed,
+  pendingCounts,
+  removeRows,
+} from "./outbox.ts";
+import { isNewPageView, navigationTypeFor, spaNavigationType } from "./page-view.ts";
+import { isPrivateHost, privateUrl } from "./privacy.ts";
+import { matchRule, type Rule } from "./rules.ts";
+import {
+  countDropped,
+  deviceIdStore,
+  diag,
+  diagnostics,
+  loadSettings,
+  openSpanStore,
+  rulesStore,
+  syncStore,
+  tabStore,
+  updateSync,
+  type OpenSpan,
+  type PageViewState,
+} from "./storage.ts";
+import { uuidv7 } from "./uuid.ts";
+
+const HEARTBEAT_ALARM = "heartbeat";
+const RULES_ALARM = "rules";
+const CAPTURE_ALARM_PREFIX = "capture:";
+export const IDLE_SECONDS = 60;
+const FLUSH_DELAY_MS = 10_000;
+const FLUSH_BATCH = 100;
+const STALE_SPAN_MS = 90_000;
+
+const now = () => new Date().toISOString();
+const failure = (error: string): CaptureNowReply => ({ ok: false, error });
+const captureAlarm = (tabId: number, pageViewId: string) =>
+  `${CAPTURE_ALARM_PREFIX}${tabId}:${pageViewId}`;
+
+let chain: Promise<void> = Promise.resolve();
+
+// Every handler runs through one queue so storage read-modify-write cycles never interleave.
+export function serialized<T>(task: () => Promise<T>): Promise<T | undefined> {
+  const run = chain.then(async () => {
+    try {
+      return await task();
+    } catch (error) {
+      await diag(`error: ${errorMessage(error)}`);
+      return undefined;
+    }
+  });
+  chain = run.then(() => undefined);
+  return run;
+}
+
+async function deviceId(): Promise<string> {
+  const existing = await deviceIdStore.get();
+  if (existing) return existing;
+  const fresh = uuidv7();
+  await deviceIdStore.set(fresh);
+  await diag(`device id ${fresh}`);
+  return fresh;
+}
+
+async function ensureAlarms(): Promise<void> {
+  if (!(await browser.alarms.get(HEARTBEAT_ALARM))) {
+    await browser.alarms.create(HEARTBEAT_ALARM, { periodInMinutes: 0.5 });
+  }
+  if (!(await browser.alarms.get(RULES_ALARM))) {
+    await browser.alarms.create(RULES_ALARM, { periodInMinutes: 60 });
+  }
+}
+
+export async function refreshRules(): Promise<void> {
+  const settings = await loadSettings();
+  const result = await fetchRules(settings.serverUrl);
+  if (!result.ok) {
+    await updateSync({ lastError: result.error });
+    await diag(`rules: ${result.error}`);
+    return;
+  }
+  await rulesStore.set({ fetchedAt: now(), rules: result.value });
+  await diag(`rules: ${result.value.length} cached`);
+}
+
+async function cachedRules(): Promise<Rule[]> {
+  return (await rulesStore.get())?.rules ?? [];
+}
+
+function ruleFor(rules: readonly Rule[], url: string): Rule | undefined {
+  const parsed = URL.parse(url);
+  return parsed ? matchRule(rules, parsed) : undefined;
+}
+
+async function pollHealth(): Promise<void> {
+  const settings = await loadSettings();
+  const before = (await syncStore.get())?.connected ?? false;
+  const result = await checkHealth(settings.serverUrl);
+  const connected = result.ok && result.value.ok;
+  if (connected) await updateSync({ connected });
+  else
+    await updateSync({ connected, lastError: result.ok ? "healthz reports not ok" : result.error });
+  if (connected && !before) {
+    await diag("server reachable");
+    await armCapture();
+  }
+  if (!connected && before) await diag("server unreachable, capture paused");
+}
+
+let flushTimer: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleFlush(): void {
+  flushTimer ??= setTimeout(() => {
+    flushTimer = undefined;
+    void serialized(flushEvents);
+  }, FLUSH_DELAY_MS);
+}
+
+async function emit(event: TrackerEvent): Promise<void> {
+  await enqueueEvent(event);
+  const { events } = await pendingCounts();
+  if (events >= FLUSH_BATCH) await flushEvents();
+  else scheduleFlush();
+}
+
+export async function flushEvents(): Promise<void> {
+  const batch = await dueEvents(FLUSH_BATCH);
+  if (batch.length === 0) return;
+  const settings = await loadSettings();
+  const result = await postEvents(
+    settings.serverUrl,
+    await deviceId(),
+    batch.map((row) => row.payload),
+  );
+  const ids = batch.map((row) => row.id);
+  if (!result.ok) {
+    if (isPermanentFailure(result.status)) {
+      await removeRows("events", ids);
+      await countDropped(batch.length);
+      await diag(`events batch dropped (${batch.length} events): ${result.error}`);
+    } else {
+      await markFailed("events", batch);
+    }
+    await updateSync({ lastError: result.error });
+    return;
+  }
+  await removeRows("events", ids);
+  await updateSync({ lastSyncAt: now() });
+  if (batch.length === FLUSH_BATCH) return flushEvents();
+}
+
+export async function uploadCaptures(): Promise<void> {
+  const [head] = await dueCaptures();
+  if (!head) return;
+  const settings = await loadSettings();
+  const result = await postCapture(settings.serverUrl, head.payload);
+  if (!result.ok) {
+    if (isPermanentFailure(result.status)) {
+      await removeRows("captures", [head.id]);
+      await countDropped(1);
+      await diag(`capture dropped ${head.payload.meta.extractor}: ${result.error}`);
+    } else {
+      await markFailed("captures", [head]);
+      await diag(`capture upload failed: ${result.error}`);
+    }
+    await updateSync({ lastError: result.error });
+    return;
+  }
+  await removeRows("captures", [head.id]);
+  await updateSync({ lastSyncAt: now() });
+  await diag(
+    `capture uploaded ${head.payload.meta.extractor}${result.value.deduplicated ? " (dedup)" : ""}`,
+  );
+  return uploadCaptures();
+}
+
+type FocusTarget = { tabId: number; pageView: PageViewState };
+
+async function focusedTarget(): Promise<FocusTarget | undefined> {
+  const focusedWindow = await browser.windows.getLastFocused().catch(() => undefined);
+  if (!focusedWindow?.focused || focusedWindow.id === undefined) return undefined;
+  const [tab] = await browser.tabs.query({ active: true, windowId: focusedWindow.id });
+  if (tab?.id === undefined) return undefined;
+  if ((await browser.idle.queryState(IDLE_SECONDS)) !== "active") return undefined;
+  const pageView = (await tabStore(tab.id).get())?.pageView;
+  return pageView ? { tabId: tab.id, pageView } : undefined;
+}
+
+export async function reconcile(reason: EndReason): Promise<void> {
+  const target = await focusedTarget();
+  const open = await openSpanStore.get();
+  if (open && target && open.pageViewId === target.pageView.event.id) return;
+  if (open) await closeSpan(open, reason, now());
+  if (target) await startSpan(target);
+}
+
+async function closeSpan(open: OpenSpan, reason: EndReason, endedAt: string): Promise<void> {
+  await browser.alarms.clear(captureAlarm(open.tabId, open.pageViewId));
+  await openSpanStore.remove();
+  await emit({ type: "span_end", id: open.id, ended_at: endedAt, reason });
+  await diag(`span closed (${reason})`);
+}
+
+async function startSpan(target: FocusTarget): Promise<void> {
+  const startedAt = now();
+  const span: OpenSpan = {
+    id: uuidv7(),
+    pageViewId: target.pageView.event.id,
+    tabId: target.tabId,
+    startedAt,
+    lastHeartbeatAt: startedAt,
+  };
+  await openSpanStore.set(span);
+  await emit({
+    type: "span_start",
+    id: span.id,
+    page_view_id: span.pageViewId,
+    started_at: startedAt,
+  });
+  await diag(`span open ${target.pageView.event.url}`);
+  await armCapture();
+}
+
+async function armCapture(): Promise<void> {
+  const open = await openSpanStore.get();
+  if (!open) return;
+  const pageView = (await tabStore(open.tabId).get())?.pageView;
+  if (!pageView || pageView.event.id !== open.pageViewId) return;
+  if (pageView.captured || pageView.event.private) return;
+  const settings = await loadSettings();
+  if (!settings.captureEnabled) return;
+  if (!(await syncStore.get())?.connected) return;
+  const rule = ruleFor(await cachedRules(), pageView.event.url);
+  if (!rule) return;
+  await browser.alarms.create(captureAlarm(open.tabId, open.pageViewId), {
+    when: Date.now() + rule.dwell_ms,
+  });
+}
+
+async function heartbeat(): Promise<void> {
+  await reconcile("unknown");
+  const open = await openSpanStore.get();
+  if (!open) return;
+  const at = now();
+  await openSpanStore.set({ ...open, lastHeartbeatAt: at });
+  await emit({ type: "span_heartbeat", id: open.id, at });
+}
+
+async function closeStaleSpan(maxAgeMs: number): Promise<void> {
+  const open = await openSpanStore.get();
+  if (!open) return;
+  if (Date.now() - Date.parse(open.lastHeartbeatAt) > maxAgeMs) {
+    await closeSpan(open, "unknown", open.lastHeartbeatAt);
+  }
+}
+
+export async function onWorkerStart(): Promise<void> {
+  await ensureAlarms();
+  await closeStaleSpan(STALE_SPAN_MS);
+  if (!(await rulesStore.get())) await refreshRules();
+  await pollHealth();
+  await reconcile("unknown");
+  await flushEvents();
+  await uploadCaptures();
+}
+
+export async function onInstalled(): Promise<void> {
+  await deviceId();
+  await diag("installed");
+  await refreshRules();
+}
+
+export async function onBrowserStartup(): Promise<void> {
+  await closeStaleSpan(0);
+  await refreshRules();
+}
+
+export async function onSettingsChanged(): Promise<void> {
+  await refreshRules();
+  await pollHealth();
+}
+
+export async function onCommitted(
+  details: Browser.webNavigation.WebNavigationTransitionCallbackDetails,
+): Promise<void> {
+  await beginPageView(
+    details.tabId,
+    details.url,
+    navigationTypeFor(details.transitionType, details.transitionQualifiers),
+  );
+}
+
+export async function onHistoryStateUpdated(
+  details: Browser.webNavigation.WebNavigationTransitionCallbackDetails,
+): Promise<void> {
+  await onSpaChange(details.tabId, details.url, spaNavigationType(details.transitionQualifiers));
+}
+
+async function onSpaChange(
+  tabId: number,
+  url: string,
+  navigationType: "spa" | "back_forward",
+): Promise<void> {
+  const current = (await tabStore(tabId).get())?.pageView;
+  if (current) {
+    const parsed = URL.parse(url);
+    const settings = await loadSettings();
+    const next =
+      parsed && isPrivateHost(parsed.hostname, settings.privateHosts) ? privateUrl(parsed) : url;
+    const rule = parsed ? matchRule(await cachedRules(), parsed) : undefined;
+    if (!isNewPageView(current.event.url, next, rule)) return;
+  }
+  await beginPageView(tabId, url, navigationType);
+}
+
+async function beginPageView(
+  tabId: number,
+  url: string,
+  navigationType: PageViewEvent["navigation_type"],
+): Promise<void> {
+  const tab = await browser.tabs.get(tabId).catch(() => undefined);
+  if (!tab || tab.incognito) return;
+  const store = tabStore(tabId);
+  const previous = await store.get();
+  const tabSessionId = previous?.tabSessionId ?? uuidv7();
+  const parsed = URL.parse(url);
+  if (!parsed || (parsed.protocol !== "http:" && parsed.protocol !== "https:")) {
+    await store.set({ tabSessionId });
+    await reconcile("navigation");
+    return;
+  }
+  const settings = await loadSettings();
+  const isPrivate = isPrivateHost(parsed.hostname, settings.privateHosts);
+  const event: PageViewEvent = {
+    type: "page_view",
+    id: uuidv7(),
+    url: isPrivate ? privateUrl(parsed) : parsed.href,
+    started_at: now(),
+    navigation_type: navigationType,
+    tab_session_id: tabSessionId,
+    private: isPrivate,
+  };
+  if (previous?.pageView) event.referrer = previous.pageView.event.url;
+  if (!isPrivate && tab.title) event.title = tab.title;
+  await store.set({ tabSessionId, pageView: { event, titled: false, captured: false } });
+  await emit(event);
+  await diag(`page view ${event.url} (${navigationType})`);
+  await reconcile("navigation");
+}
+
+export async function onTitleChanged(tabId: number, title: string): Promise<void> {
+  const store = tabStore(tabId);
+  const state = await store.get();
+  const pageView = state?.pageView;
+  if (!state || !pageView || pageView.titled || pageView.event.private) return;
+  if (pageView.event.title === title) return;
+  const event = { ...pageView.event, title };
+  await store.set({ ...state, pageView: { ...pageView, event, titled: true } });
+  await emit(event);
+}
+
+export async function onTabRemoved(tabId: number): Promise<void> {
+  const open = await openSpanStore.get();
+  if (open?.tabId === tabId) await closeSpan(open, "tab_closed", now());
+  await tabStore(tabId).remove();
+  await reconcile("tab_closed");
+}
+
+export async function onAlarm(alarm: Browser.alarms.Alarm): Promise<void> {
+  if (alarm.name === HEARTBEAT_ALARM) {
+    await heartbeat();
+    await pollHealth();
+    await flushEvents();
+    await uploadCaptures();
+    return;
+  }
+  if (alarm.name === RULES_ALARM) {
+    await refreshRules();
+    return;
+  }
+  if (alarm.name.startsWith(CAPTURE_ALARM_PREFIX)) await onCaptureAlarm(alarm.name);
+}
+
+async function onCaptureAlarm(name: string): Promise<void> {
+  const [tabId, pageViewId] = name.slice(CAPTURE_ALARM_PREFIX.length).split(":");
+  const open = await openSpanStore.get();
+  if (!tabId || !pageViewId || open?.pageViewId !== pageViewId) return;
+  const outcome = await captureTab(Number(tabId), "initial");
+  if (!outcome.ok) await diag(`capture skipped: ${outcome.error}`);
+}
+
+async function requestHtml(tabId: number): Promise<Result<SerializeReply>> {
+  const request: SerializeRequest = { type: "serialize" };
+  try {
+    const reply = await browser.tabs.sendMessage<SerializeRequest, unknown>(tabId, request);
+    const decoded = SerializeReply(reply);
+    return decoded instanceof type.errors
+      ? { ok: false, error: `content script replied badly: ${decoded.summary}` }
+      : { ok: true, value: decoded };
+  } catch (error) {
+    return { ok: false, error: `content script unreachable: ${errorMessage(error)}` };
+  }
+}
+
+export async function captureTab(tabId: number, reason: CaptureReason): Promise<CaptureNowReply> {
+  const store = tabStore(tabId);
+  const state = await store.get();
+  const pageView = state?.pageView;
+  if (!state || !pageView) return failure("no page view for this tab");
+  if (pageView.event.private) return failure("private host");
+  const settings = await loadSettings();
+  if (!settings.captureEnabled) return failure("capture is disabled in options");
+  if (!(await syncStore.get())?.connected) return failure("server unreachable, capture paused");
+  const rule = ruleFor(await cachedRules(), pageView.event.url);
+  if (!rule) return failure("no capture rule matches this page");
+  const page = await requestHtml(tabId);
+  if (!page.ok) return page;
+  const { html, title, url, dirty } = page.value;
+  const bytes = new Blob([html]).size;
+  if (bytes > rule.max_bytes) {
+    return failure(`page is ${bytes} bytes, ${rule.extractor} allows ${rule.max_bytes}`);
+  }
+  const meta: CaptureMeta = {
+    capture_id: uuidv7(),
+    page_view_id: pageView.event.id,
+    device_id: await deviceId(),
+    captured_at: now(),
+    url,
+    extractor: rule.extractor,
+    reason,
+    raw_char_count: html.length,
+  };
+  if (title) meta.title = title;
+  await enqueueCapture({ meta, html });
+  await store.set({ ...state, pageView: { ...pageView, captured: true } });
+  await diag(`capture queued ${rule.extractor} ${reason} ${bytes} bytes${dirty ? " (dirty)" : ""}`);
+  await uploadCaptures();
+  return { ok: true };
+}
+
+async function captureActiveTab(): Promise<CaptureNowReply> {
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id === undefined) return failure("no active tab");
+  return captureTab(tab.id, "manual");
+}
+
+async function status(): Promise<StatusReply> {
+  const [counts, sync, lines] = await Promise.all([
+    pendingCounts(),
+    syncStore.get(),
+    diagnostics(),
+  ]);
+  return {
+    connected: sync?.connected ?? false,
+    pendingEvents: counts.events,
+    pendingCaptures: counts.captures,
+    lastSyncAt: sync?.lastSyncAt,
+    lastError: sync?.lastError,
+    dropped: sync?.dropped ?? 0,
+    diagnostics: lines,
+  };
+}
+
+export async function handleMessage(
+  message: BackgroundMessage,
+  sender: Browser.runtime.MessageSender,
+): Promise<StatusReply | CaptureNowReply | undefined> {
+  if (message.type === "status") return status();
+  if (message.type === "capture_now") return captureActiveTab();
+  const tabId = sender.tab?.id;
+  if (tabId !== undefined && sender.frameId === 0) {
+    await onSpaChange(tabId, message.url, message.navigation_type);
+  }
+  return undefined;
+}

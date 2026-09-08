@@ -1,0 +1,17 @@
+["tracker:check"]
+depends = ["shared:ts", "tracker:ts", "tracker:go"]
+
+["tracker:ts"]
+run = [
+  "bunx --no-install oxlint --type-aware apps/tracker/extension",
+  "bunx --no-install oxfmt --check apps/tracker",
+  "bun run --cwd apps/tracker/extension typecheck",
+]
+
+["tracker:go"]
+dir = "apps/tracker"
+run = ["go vet ./...", "go test -race ./...", "golangci-lint run"]
+
+["tracker:dev"]
+dir = "apps/tracker"
+run = "go run ./cmd/tracker serve"

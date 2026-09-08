@@ -1,0 +1,29 @@
+name: tracker
+on:
+  push:
+    branches: [main]
+    paths: ["apps/tracker/**", ".golangci.yml", ".github/workflows/tracker.yml"]
+  pull_request:
+    paths: ["apps/tracker/**", ".golangci.yml", ".github/workflows/tracker.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: tracker-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/tracker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/tracker/go.mod
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.13.2
+          working-directory: apps/tracker
+      - run: go vet ./...
+      - run: go test -race ./...

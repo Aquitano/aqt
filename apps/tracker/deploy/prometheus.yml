@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: tracker
+    # The binary runs on the host; host.docker.internal is aliased to the
+    # host gateway in docker-compose.yml.
+    static_configs:
+      - targets: ["host.docker.internal:8490"]

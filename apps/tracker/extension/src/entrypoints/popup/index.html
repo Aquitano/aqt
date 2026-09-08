@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>aqt tracker</title>
+    <style>
+      body {
+        width: 320px;
+        margin: 0;
+        padding: 12px;
+        font:
+          13px/1.4 system-ui,
+          sans-serif;
+        color: #222;
+        background: #fff;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      #connection {
+        font-weight: 600;
+      }
+      #connection[data-state="connected"] {
+        color: #1a7f37;
+      }
+      #connection[data-state="unreachable"] {
+        color: #b42318;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 2px 12px;
+        margin: 0 0 8px;
+      }
+      dt {
+        color: #666;
+      }
+      dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+      pre {
+        max-height: 180px;
+        overflow: auto;
+        margin: 0 0 8px;
+        padding: 6px;
+        font-size: 11px;
+        background: #f4f4f4;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      #outcome {
+        min-height: 1.4em;
+        margin: 4px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span id="connection" data-state="unknown">checking</span>
+      <button id="capture" type="button">Capture now</button>
+    </header>
+    <dl>
+      <dt>Pending events</dt>
+      <dd id="pending-events">-</dd>
+      <dt>Pending captures</dt>
+      <dd id="pending-captures">-</dd>
+      <dt>Last sync</dt>
+      <dd id="last-sync">-</dd>
+      <dt>Last error</dt>
+      <dd id="last-error">-</dd>
+      <dt>Dropped</dt>
+      <dd id="dropped">-</dd>
+    </dl>
+    <p id="outcome"></p>
+    <pre id="log"></pre>
+    <a id="options" href="#">Options</a>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

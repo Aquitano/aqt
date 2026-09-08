@@ -1,0 +1,166 @@
+package processor
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/aquitano/aqt/apps/tracker/internal/blob"
+	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
+	"github.com/aquitano/aqt/apps/tracker/internal/extractor/fake"
+	"github.com/aquitano/aqt/apps/tracker/internal/metrics"
+	"github.com/aquitano/aqt/apps/tracker/internal/store"
+	"github.com/aquitano/aqt/apps/tracker/internal/storetest"
+	"github.com/aquitano/aqt/apps/tracker/internal/urlnorm"
+)
+
+const fakeVersion = 1
+
+func init() {
+	extractor.Register(fake.Extractor{Version: fakeVersion})
+}
+
+const pageHTML = `<html><head><title>Bun ORM</title></head><body><h1>Bun</h1><p>SQL-first Golang ORM for PostgreSQL.</p></body></html>`
+
+func newProcessor(t *testing.T) (*Processor, *store.Store, string) {
+	t.Helper()
+	st, schema := storetest.NewNamed(t)
+	return New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), 1), st, schema
+}
+
+func ingest(t *testing.T, st *store.Store, pageURL, html string) store.CaptureResult {
+	t.Helper()
+	ctx := context.Background()
+	normalized, host, err := urlnorm.Normalize(pageURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := store.URLKey{Hash: urlnorm.Hash(normalized), Normalized: normalized, Host: host}
+	device := uuid.Must(uuid.NewV7())
+	pv := uuid.Must(uuid.NewV7())
+	if _, err := st.ApplyEvents(ctx, device, store.Events{PageViews: []store.PageViewEvent{
+		{ID: pv, URL: key, StartedAt: time.Now(), NavigationType: "load"}}}); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(html)
+	hash := blob.Hash(raw)
+	payload := blob.Compress(raw)
+	res, err := st.InsertCapture(ctx, store.CaptureInput{
+		Capture: store.Capture{ID: uuid.Must(uuid.NewV7()), PageViewID: pv, DeviceID: device, RawHash: hash[:],
+			Extractor: fake.Name, CapturedAt: time.Now(), Reason: "initial", URL: pageURL},
+		URL:     key,
+		Blob:    store.RawHTMLBlob{Hash: hash[:], Codec: blob.CodecZstd, RawBytes: len(raw), StoredBytes: len(payload), Payload: payload},
+		Version: fakeVersion,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res
+}
+
+func drain(t *testing.T, p *Processor) int {
+	t.Helper()
+	n := 0
+	for {
+		busy, err := p.RunOnce(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !busy {
+			return n
+		}
+		n++
+	}
+}
+
+func TestSameHTMLTwiceYieldsOneBlobOneDerivationOneRecord(t *testing.T) {
+	p, st, _ := newProcessor(t)
+	first := ingest(t, st, "https://example.com/bun?utm_source=x", pageHTML)
+	second := ingest(t, st, "https://example.com/bun", pageHTML)
+	if first.Deduplicated || !second.Deduplicated {
+		t.Fatalf("dedup flags: first=%v second=%v", first.Deduplicated, second.Deduplicated)
+	}
+	if n := drain(t, p); n != 1 {
+		t.Errorf("processed %d derivations, want 1", n)
+	}
+	stats, err := st.Stats(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Blobs != 1 || stats.Captures != 2 || stats.Derivations[store.StatusDone] != 1 || stats.Records[fake.Name] != 1 {
+		t.Errorf("blobs=%d captures=%d derivations=%v records=%v", stats.Blobs, stats.Captures, stats.Derivations, stats.Records)
+	}
+	hits, err := st.Search(context.Background(), store.SearchOpts{Query: "postgresql", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0].Title != "Bun ORM" || !strings.Contains(hits[0].Snippet, "PostgreSQL") {
+		t.Errorf("search hits = %+v", hits)
+	}
+}
+
+func TestReprocessAllRebuildsDerivedTablesFromSource(t *testing.T) {
+	p, st, schema := newProcessor(t)
+	ingest(t, st, "https://example.com/bun", pageHTML)
+	ingest(t, st, "https://example.com/other", strings.Replace(pageHTML, "Bun ORM", "Other", 1))
+	drain(t, p)
+	before := storetest.QueryInt(t, schema, `select min(id) from records where title = 'Bun ORM'`)
+
+	ctx := context.Background()
+	queued, err := st.Reprocess(ctx, store.ReprocessOpts{All: true, Targets: []store.ExtractorVersion{{Name: fake.Name, Version: fakeVersion}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued != 2 {
+		t.Errorf("queued %d, want 2", queued)
+	}
+	if n := storetest.QueryInt(t, schema, `select count(*) from records`); n != 0 {
+		t.Fatalf("%d records survived the wipe", n)
+	}
+	if n := drain(t, p); n != 2 {
+		t.Errorf("processed %d, want 2", n)
+	}
+	stats, err := st.Stats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Derivations[store.StatusDone] != 2 || stats.Records[fake.Name] != 2 {
+		t.Errorf("derivations=%v records=%v", stats.Derivations, stats.Records)
+	}
+	after := storetest.QueryInt(t, schema, `select min(id) from records where title = 'Bun ORM'`)
+	if after == before {
+		t.Error("the record was not rebuilt")
+	}
+	if n := storetest.QueryInt(t, schema, `select count(*) from derivations d join records r on r.id = d.record_id
+		where r.record_hash = (select record_hash from records where title = 'Bun ORM')`); n != 1 {
+		t.Errorf("rebuilt derivation does not point at the rebuilt record (%d)", n)
+	}
+}
+
+func TestFailuresAreClassifiedAndRetriedByPolicy(t *testing.T) {
+	p, st, schema := newProcessor(t)
+	ingest(t, st, "https://example.com/empty", `<html><body>no title here</body></html>`)
+	ingest(t, st, "https://example.com/boom", `<html><head><title>panic</title></head></html>`)
+
+	for range store.MaxAttempts {
+		drain(t, p)
+	}
+	if n := storetest.QueryInt(t, schema,
+		`select count(*) from derivations where status = 'failed' and error_class = 'no_match' and attempts = 1`); n != 1 {
+		t.Errorf("no_match should fail on the first attempt without retries (%d rows)", n)
+	}
+	if n := storetest.QueryInt(t, schema,
+		`select count(*) from derivations where status = 'failed' and error_class = 'panic' and attempts = $1`, store.MaxAttempts); n != 1 {
+		t.Errorf("panic should be retried up to %d attempts and then fail (%d rows)", store.MaxAttempts, n)
+	}
+	queued, err := st.Reprocess(context.Background(), store.ReprocessOpts{Failed: true,
+		Targets: []store.ExtractorVersion{{Name: fake.Name, Version: fakeVersion}}})
+	if err != nil || queued != 2 {
+		t.Errorf("reprocess --failed queued %d (%v), want 2", queued, err)
+	}
+}

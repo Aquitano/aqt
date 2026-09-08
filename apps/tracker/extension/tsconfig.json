@@ -1,0 +1,9 @@
+{
+  "extends": "@aqt/config/tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["bun"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", ".output", ".wxt"]
+}

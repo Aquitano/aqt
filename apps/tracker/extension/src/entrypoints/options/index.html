@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>aqt tracker options</title>
+    <style>
+      body {
+        max-width: 560px;
+        margin: 32px auto;
+        padding: 0 16px;
+        font:
+          14px/1.5 system-ui,
+          sans-serif;
+        color: #222;
+        background: #fff;
+      }
+      label {
+        display: block;
+        margin-bottom: 16px;
+      }
+      input[type="url"],
+      textarea {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 4px;
+        padding: 6px;
+        font: inherit;
+      }
+      small {
+        color: #666;
+      }
+      #saved {
+        margin-left: 8px;
+        color: #1a7f37;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>aqt tracker</h1>
+    <form id="form">
+      <label>
+        Server URL
+        <input id="server-url" type="url" required placeholder="http://127.0.0.1:8490" />
+      </label>
+      <label>
+        Private hosts, one per line
+        <textarea
+          id="private-hosts"
+          rows="6"
+          placeholder="bank.example&#10;mail.example.com"
+        ></textarea>
+        <small
+          >Page views on these hosts and their subdomains record the host only, never a title or
+          HTML.</small
+        >
+      </label>
+      <label>
+        <input id="capture-enabled" type="checkbox" />
+        Capture HTML on pages that match a server rule
+      </label>
+      <button type="submit">Save</button>
+      <span id="saved"></span>
+    </form>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

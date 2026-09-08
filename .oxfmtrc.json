@@ -16,6 +16,7 @@
     "**/.turbo/**",
     "**/.wrangler/**",
     "**/.output/**",
+    "apps/tracker/**/testdata/**",
     "apps/gallery/packages/db/src/migrations/**",
     ".claude/**",
     "apps/bank/internal/webui/app/dist/**",

@@ -1,0 +1,275 @@
+{
+  "uid": "tracker",
+  "title": "tracker",
+  "tags": ["tracker"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "editable": true,
+  "refresh": "1m",
+  "time": { "from": "now-30d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Active minutes per host per day (top 15)",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "select\n  date_trunc('day', s.started_at) as time,\n  u.host as metric,\n  sum(extract(epoch from s.ended_at - s.started_at)) / 60 as active_minutes\nfrom activity_spans s\njoin page_views p on p.id = s.page_view_id\njoin urls u on u.id = p.url_id\nwhere $__timeFilter(s.started_at)\n  and u.host in (\n    select u2.host\n    from activity_spans s2\n    join page_views p2 on p2.id = s2.page_view_id\n    join urls u2 on u2.id = p2.url_id\n    where $__timeFilter(s2.started_at)\n    group by u2.host\n    order by sum(extract(epoch from s2.ended_at - s2.started_at)) desc\n    limit 15\n  )\ngroup by 1, 2\norder by 1"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Total active hours per day",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 0 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "select\n  date_trunc('day', started_at) as time,\n  sum(extract(epoch from ended_at - started_at)) / 3600 as active_hours\nfrom activity_spans\nwhere $__timeFilter(started_at)\ngroup by 1\norder by 1"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Page views per day",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 0 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "select\n  date_trunc('day', started_at) as time,\n  count(*) as page_views\nfrom page_views\nwhere $__timeFilter(started_at)\ngroup by 1\norder by 1"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Captures per day by extractor",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "select\n  date_trunc('day', captured_at) as time,\n  extractor as metric,\n  count(*) as captures\nfrom captures\nwhere $__timeFilter(captured_at)\ngroup by 1, 2\norder by 1"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Raw dedup ratio per day",
+      "description": "Share of captures whose HTML blob already existed before the capture was taken.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 18 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 0 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "select\n  date_trunc('day', c.captured_at) as time,\n  count(*) filter (where b.created_at < c.captured_at - interval '1 second')::float\n    / nullif(count(*), 0) as dedup_ratio\nfrom captures c\njoin raw_html_blobs b on b.hash = c.raw_hash\nwhere $__timeFilter(c.captured_at)\ngroup by 1\norder by 1"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "New records per day by extractor",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 18 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "select\n  date_trunc('day', first_seen_at) as time,\n  extractor as metric,\n  count(*) as new_records\nfrom records\nwhere $__timeFilter(first_seen_at)\ngroup by 1, 2\norder by 1"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Derivations by status",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "select\n  count(*) filter (where status = 'pending') as pending,\n  count(*) filter (where status = 'running') as running,\n  count(*) filter (where status = 'done') as done,\n  count(*) filter (where status = 'failed') as failed\nfrom derivations"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Derivation queue depth",
+      "datasource": { "type": "prometheus", "uid": "tracker-prom" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "tracker_derivations_pending",
+          "legendFormat": "pending"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Oldest pending derivation",
+      "datasource": { "type": "prometheus", "uid": "tracker-prom" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "tracker_derivations_oldest_age_seconds",
+          "legendFormat": "age"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "HTTP requests by status",
+      "datasource": { "type": "prometheus", "uid": "tracker-prom" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 34 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(tracker_http_requests_total[5m]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Extract duration p95 by extractor",
+      "datasource": { "type": "prometheus", "uid": "tracker-prom" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 34 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, extractor) (rate(tracker_extract_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{extractor}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Table size",
+      "datasource": { "type": "prometheus", "uid": "tracker-prom" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 34 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "expr": "tracker_table_bytes",
+          "legendFormat": "{{table}}"
+        }
+      ]
+    }
+  ]
+}
