@@ -1,43 +1,55 @@
 # tracker — browsing memory
 
-What I read and where my attention went, from a browser extension into a local Postgres. Two products of equal weight: **recall** (search over structured records extracted from pages I read) and **attention analytics** (page views and active time per site). Visits are cheap events; HTML snapshots are content-addressed immutable blobs; extraction is asynchronous, idempotent and replayable.
+What I read and where my attention went, from a browser extension and a macOS menu-bar agent into a local Postgres. Two products of equal weight: **recall** (search over structured records extracted from pages I read) and **attention analytics** (page views, active time per site and per desktop app, work blocks, context switches). Visits are cheap events; HTML snapshots are content-addressed immutable blobs; extraction is asynchronous, idempotent and replayable.
 
 ## Decisions (locked 2026-09-08)
 
-| Area          | Choice                                                                             | Why                                                                                                                                                                       |
-| ------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime       | Go, single `tracker` binary; `serve` runs HTTP plus in-process workers             | One process to supervise per machine                                                                                                                                      |
-| Store         | Postgres via the ParadeDB image (`pg_search` BM25)                                 | Same search engine as bank; no second index to sync                                                                                                                       |
-| Location      | Localhost per machine, `127.0.0.1` only                                            | Privacy first; `device_id` + UUIDv7 everywhere keep a later merge a `UNION`                                                                                               |
-| Auth          | None on loopback                                                                   | Owner's decision. Requests carrying an `Origin` header that is not `chrome-extension://…` are rejected anyway, which costs nothing and blocks forged posts from web pages |
-| Capture scope | Allowlist by extractor rule; the server publishes rules, the extension caches them | Only pages an extractor can read are worth a blob; the browser stays cheap                                                                                                |
-| Extraction    | Per-site extractors in Go returning typed records, run server-side                 | Serialising `outerHTML` is the cheapest thing the browser can do                                                                                                          |
-| Raw HTML      | Kept forever, zstd in Go, `STORAGE EXTERNAL`                                       | Re-running a fixed extractor after a site changes markup is the whole reason to keep it                                                                                   |
-| Queue         | The derivation row is the job (`FOR UPDATE SKIP LOCKED`)                           | Identity `(raw_hash, extractor, version)` already exists; no PGMQ                                                                                                         |
-| Dedup         | Blob hash, then record hash over canonical JSON                                    | SimHash dropped: structured records have no prose to near-match                                                                                                           |
-| ORM           | uptrace/bun with `pgdriver`, SQL migrations embedded                               | SQL-first with struct scanning; raw SQL where `@@@`, `SKIP LOCKED` and `ON CONFLICT` need it                                                                              |
-| Observability | slog JSON, Prometheus `/metrics`, Grafana with Postgres datasource for analytics   | Metrics yes, tracing no; analytics dashboards come free from the Postgres datasource, so no web app in v1                                                                 |
-| Extension     | WXT, TypeScript, Chromium MV3 only                                                 | One background lifecycle to get right                                                                                                                                     |
+| Area          | Choice                                                                                                                      | Why                                                                                                                                                                                                                                             |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime       | Go, single `tracker` binary; `serve` runs HTTP plus in-process workers                                                      | One process to supervise per machine                                                                                                                                                                                                            |
+| Supervision   | launchd LaunchAgent, `KeepAlive`, binary at `~/.local/bin/tracker`                                                          | Ingest must survive a closed terminal and a reboot; launchd is the supervisor macOS already runs, and its restart loop doubles as the wait for Postgres                                                                                         |
+| Store         | Postgres via the ParadeDB image (`pg_search` BM25)                                                                          | Same search engine as bank; no second index to sync                                                                                                                                                                                             |
+| Location      | Localhost per machine, `127.0.0.1` only                                                                                     | Privacy first; `device_id` + UUIDv7 everywhere keep a later merge a `UNION`                                                                                                                                                                     |
+| Auth          | None while no OIDC issuer is set; bearer tokens verified against the issuer's JWKS once one is                              | Loopback needs none, and the `Origin` header is not a credential off it. `/healthz` and `/metrics` stay open so a scrape and a reachability check need no token. One user, so a token answers "is this the owner" and `device_id` stays a label |
+| Capture scope | Site rules plus a universal `article` fallback gated on a 30 s dwell; the server publishes rules, the extension caches them | Site extractors capture at 5 s; for everything else the dwell is the filter, since a 5 s dwell would capture every page you bounce off. Private hosts and incognito stay the only exclusions                                                    |
+| Desktop       | A Swift menu-bar agent posts app/window spans to the same events endpoint, skipping the browsers the extension covers       | One span table, one ingest path; browser time is counted once, by the source that knows the page                                                                                                                                                |
+| Categories    | Config tables of regex rules, applied at query time by a view                                                               | Rules change; a stored category would need a backfill every time. Personal scale makes the regex join cheap                                                                                                                                     |
+| Work blocks   | SQL function over all devices, spans stitched when the gap is under 60 s                                                    | One person has one attention stream, and the extension and the agent carry different device ids on the same machine                                                                                                                             |
+| Extraction    | Per-site extractors in Go returning typed records, run server-side                                                          | Serialising `outerHTML` is the cheapest thing the browser can do                                                                                                                                                                                |
+| Raw HTML      | Kept forever, zstd in Go, `STORAGE EXTERNAL`                                                                                | Re-running a fixed extractor after a site changes markup is the whole reason to keep it                                                                                                                                                         |
+| Queue         | The derivation row is the job (`FOR UPDATE SKIP LOCKED`)                                                                    | Identity `(raw_hash, extractor, version)` already exists; no PGMQ                                                                                                                                                                               |
+| Dedup         | Blob hash, then record hash over canonical JSON                                                                             | SimHash dropped: structured records have no prose to near-match                                                                                                                                                                                 |
+| ORM           | uptrace/bun with `pgdriver`, SQL migrations embedded                                                                        | SQL-first with struct scanning; raw SQL where `@@@`, `SKIP LOCKED` and `ON CONFLICT` need it                                                                                                                                                    |
+| Observability | slog JSON, Prometheus `/metrics`, Grafana with Postgres datasource for analytics                                            | Metrics yes, tracing no; analytics dashboards come free from the Postgres datasource, so no web app in v1                                                                                                                                       |
+| Extension     | WXT, TypeScript, Chromium MV3 only                                                                                          | One background lifecycle to get right                                                                                                                                                                                                           |
 
 ## Layout
 
 ```
 apps/tracker/
-  cmd/tracker/            serve | migrate | reprocess | stats | search
+  cmd/tracker/            serve | migrate | reprocess | login | logout | stats | search
   internal/
     store/                bun models, embedded migrations, queries
-    ingest/               HTTP: events, captures, capture-rules, healthz, metrics
+    ingest/               HTTP: events, captures, capture-rules, search, stats, healthz, metrics
     extractor/            Extractor interface, Rule, registry
     extractor/github/     one package per site
     extractor/x/
     extractor/youtube/
+    extractor/article/    universal fallback (readability)
     processor/            worker loop: claim derivation, decompress, extract, write record
+    auth/                 OIDC bearer verification, off when no issuer is set
+    authtest/             throwaway issuer for tests
+    client/               device-code login and the CLI's HTTP calls
     urlnorm/              normalisation + hash
     blob/                 blake3 + zstd
     metrics/              Prometheus collectors
   extension/              WXT extension (@aqt/tracker-extension)
+  desktop/                Swift menu-bar agent (TrackerAgent.app): frontmost app and window spans
   deploy/
     docker-compose.yml    ParadeDB, Prometheus, Grafana
+    com.aqt.tracker.plist launchd agent for `serve`
+    com.aqt.tracker-agent.plist
+                          launchd agent for TrackerAgent.app
     prometheus.yml
     grafana/provisioning/ datasources (Prometheus, Postgres) + dashboards
   README.md, DESIGN.md
@@ -52,7 +64,7 @@ apps/tracker/
 | Prometheus    | `127.0.0.1:9091`                               |
 | Grafana       | `127.0.0.1:3090`                               |
 
-Env: `TRACKER_DATABASE_URL` (default `postgres://tracker:tracker@127.0.0.1:5434/tracker?sslmode=disable`), `TRACKER_LISTEN` (default `127.0.0.1:8490`), `TRACKER_WORKERS` (default 3), `TRACKER_LOG_LEVEL`.
+Env: `TRACKER_DATABASE_URL` (default `postgres://tracker:tracker@127.0.0.1:5434/tracker?sslmode=disable`), `TRACKER_LISTEN` (default `127.0.0.1:8490`), `TRACKER_WORKERS` (default 3), `TRACKER_LOG_LEVEL`. For authentication and the CLI: `TRACKER_SERVER_URL`, `TRACKER_OIDC_ISSUER`, `TRACKER_OIDC_AUDIENCE`, `TRACKER_OIDC_CLIENT_ID`, `TRACKER_TOKEN_PATH`.
 
 ## Schema
 
@@ -86,14 +98,35 @@ create index on page_views (url_id, started_at desc);
 activity_spans (
   id            uuid primary key,
   device_id     uuid not null,
-  page_view_id  uuid not null references page_views,
+  page_view_id  uuid references page_views,     -- browser span
+  app_name      text,                           -- desktop span
+  bundle_id     text,
+  window_title  text,
   started_at    timestamptz not null,
   ended_at      timestamptz not null,           -- advanced by heartbeats
-  end_reason    text,                           -- null while open; tab_switch | window_blur | idle | navigation | tab_closed | unknown
-  created_at    timestamptz not null default now()
+  end_reason    text,                           -- null while open; tab_switch | window_blur | app_switch | window_change | idle | navigation | tab_closed | unknown
+  created_at    timestamptz not null default now(),
+  check ((page_view_id is null) <> (app_name is null))
 );
 create index on activity_spans (device_id, started_at desc);
+create index on activity_spans (started_at desc);
 create index on activity_spans (page_view_id);
+
+categories (id smallint generated always as identity primary key, name text not null unique);
+category_rules (
+  id            bigint generated always as identity primary key,
+  category_id   smallint not null references categories,
+  app_pattern   text,                           -- case-insensitive regex (~*) over app_name
+  host_pattern  text,                           -- same, over the page view's host
+  priority      integer not null default 0,
+  check (app_pattern is not null or host_pattern is not null)
+);
+
+-- analytics, all read-only over the tables above
+categorized_spans                               -- view: every span with source (page | desktop), host, category
+context_switches_hourly                         -- view: per hour of ended_at, ends by tab_switch | window_blur | app_switch, and total ends
+work_blocks(from, to, max_gap = '60 seconds')   -- function: spans stitched into blocks while the gap stays under max_gap,
+                                                --   with active_seconds, span_count, switches, dominant_category; global across devices
 
 raw_html_blobs (
   hash          bytea primary key,              -- blake3(raw utf-8 html)
@@ -156,7 +189,7 @@ create index records_search on records using bm25 (id, title, search_text, extra
   with (key_field = 'id');
 ```
 
-Source data: `urls`, `page_views`, `activity_spans`, `raw_html_blobs`, `captures`. Derived: `derivations`, `records`. `tracker reprocess --all` must rebuild the derived tables from source alone; that property has a test.
+Source data: `urls`, `page_views`, `activity_spans`, `raw_html_blobs`, `captures`. Derived: `derivations`, `records`. Config, seeded by migration and edited in SQL: `categories`, `category_rules`. `tracker reprocess --all` must rebuild the derived tables from source alone and never touches config; that property has a test.
 
 ## Ingest transaction for a capture
 
@@ -188,10 +221,10 @@ Then, outside any transaction: fetch blob, decompress, run the extractor with a 
 type Rule struct {
     Extractor string   // package name, unique
     Version   int
-    Hosts     []string // exact, or "*.example.com"
+    Hosts     []string // exact, "*.example.com", or "*" for every host
     PathRegex string   // RE2 and JS compatible; keep it simple
     QueryKeys []string // query params that distinguish page views (e.g. "v" on YouTube)
-    DwellMS   int      // default 5000
+    DwellMS   int      // default 5000; article uses 30000
     Recapture string   // "never" | "after_quiet"
     MaxBytes  int      // default 10 MiB
 }
@@ -209,15 +242,19 @@ type Extractor interface {
 }
 ```
 
-Registry: `extractor.All()` returns every registered extractor; both the rules endpoint and the worker read it. `*.example.com` in `Hosts` matches subdomains only; list the apex separately when it is wanted. `ErrNoMatch` marks a page the rule matched but the extractor could not read (login wall, empty shell) and is classified `no_match`, not retried.
+Registry: `extractor.All()` returns every registered extractor; both the rules endpoint and the worker read it. `*.example.com` in `Hosts` matches subdomains only; list the apex separately when it is wanted. `"*"` matches any host: `MatchRule` tries host-specific rules before wildcard ones and `Rules()` publishes wildcards last, so a site extractor always beats the `article` fallback regardless of order. `ErrNoMatch` marks a page the rule matched but the extractor could not read (login wall, empty shell, under 200 characters of prose for `article`) and is classified `no_match`, not retried.
+
+`article` runs the readeck fork of go-readability over the page and records title, byline, site name, excerpt, published date, language, the cleaned text and a word count; `github` and `x` recapture `after_quiet`, `youtube` and `article` never.
 
 ## HTTP API
 
-All routes on `127.0.0.1:8490`. JSON bodies, `Content-Type: application/json`. A request with an `Origin` header that does not start with `chrome-extension://` gets 403. CORS headers allow `chrome-extension://*`.
+All routes on `127.0.0.1:8490`. JSON bodies, `Content-Type: application/json`. A request with an `Origin` header that does not start with `chrome-extension://` gets 403. CORS headers allow `chrome-extension://*` and the `Authorization` header.
 
-`GET /healthz` → `200 {"ok":true,"db":true}` or 503.
+With an issuer configured, every route below except `/healthz` and `/metrics` needs `Authorization: Bearer <jwt>` and answers 401 without one. 401 is never treated as permanent by a client: the fix is a login, not dropping the data.
 
-`GET /metrics` → Prometheus text.
+`GET /healthz` → `200 {"ok":true,"db":true}` or 503. Never authenticated.
+
+`GET /metrics` → Prometheus text. Never authenticated.
 
 `GET /v1/capture-rules` → `{"rules":[Rule…]}` with JSON keys `extractor, version, hosts, path_regex, query_keys, dwell_ms, recapture, max_bytes`.
 
@@ -239,25 +276,38 @@ All routes on `127.0.0.1:8490`. JSON bodies, `Content-Type: application/json`. A
       "private": false
     },
     { "type": "span_start", "id": "uuid", "page_view_id": "uuid", "started_at": "iso" },
+    {
+      "type": "span_start",
+      "id": "uuid",
+      "started_at": "iso",
+      "app_name": "Code",
+      "bundle_id": "com.microsoft.VSCode",
+      "window_title": "main.go — aqt"
+    },
     { "type": "span_heartbeat", "id": "uuid", "at": "iso" },
     { "type": "span_end", "id": "uuid", "ended_at": "iso", "reason": "tab_switch" }
   ]
 }
 ```
 
-Every event is idempotent (upsert by id; heartbeats and ends only move `ended_at` forward). A `span_*` whose page view is unknown, or any single malformed event, is dropped and counted, not an error; only malformed JSON, a missing `device_id` or more than 1000 events fail the batch with 400. Response `200 {"accepted":n,"dropped":n}`. For a private page view the extension sends `url` as `https://host/` and no title.
+A `span_start` carries either `page_view_id` (browser, from the extension) or `app_name` (desktop, from the macOS agent under its own `device_id`), never both; `bundle_id` and `window_title` are optional and only kept with `app_name`. `window_title` is truncated at 512 characters, `app_name` and `bundle_id` at 256. `span_end` reasons: `tab_switch | window_blur | app_switch | window_change | idle | navigation | tab_closed | unknown`; an unknown reason is stored as `unknown`.
+
+Every event is idempotent (upsert by id; heartbeats and ends only move `ended_at` forward). A `span_*` whose page view is unknown, a `span_start` with both or neither identity, or any single malformed event, is dropped and counted, not an error; only malformed JSON, a missing `device_id` or more than 1000 events fail the batch with 400. Response `200 {"accepted":n,"dropped":n}`. For a private page view the extension sends `url` as `https://host/` and no title.
 
 `POST /v1/captures` multipart/form-data: part `meta` = `{"capture_id","page_view_id","device_id","captured_at","url","title","extractor","reason","raw_char_count"}`, part `html` = the document. Response above.
+
+`GET /v1/stats` → table counts, blob sizes and per-status derivation and per-extractor record totals (used by `tracker stats`).
 
 `GET /v1/search?q=…&extractor=…&limit=20` → `{"hits":[{id, extractor, title, canonical_url, snippet, score, last_seen_at, data}]}` (used by `tracker search`). The query goes through `paradedb.match` with fuzzy distance 1 over `title` and `search_text`, never through pg_search's query-string parser, so punctuation and typos are fine; a fuzzy hit gets a locally cut snippet because the engine highlights none.
 
 ## Extension behaviour
 
-- On install: generate `device_id` (UUIDv7), store in `chrome.storage.local`. Options page: server URL (default above), private hosts list, capture on/off.
+- On install: generate `device_id` (UUIDv7), store in `chrome.storage.local`. Options page: server URL (default above), private hosts list, capture on/off, OIDC issuer and client id.
+- **Auth**: none while no issuer is configured. With one, the options page runs an authorization code flow with PKCE through `chrome.identity.launchWebAuthFlow`; the refresh token lives in `chrome.storage.local` and every request refreshes on expiry, once more on a 401. Only `invalid_grant` clears the session, so a network blip never reads as a logout.
 - Rules fetched at startup and hourly; cached in storage. No rules cached means no captures, events still flow.
 - **Page view**: every top-level navigation (`webNavigation.onCommitted`) and every SPA URL change where the path differs, or a `QueryKeys` value of the matching rule differs (`webNavigation.onHistoryStateUpdated` plus a content-script `pushState`/`replaceState`/`popstate` hook). `navigation_type` from the transition type. Hash-only and unlisted query-only changes are ignored.
 - **Spans**: open while the tab is active, its window focused and `chrome.idle` reports `active` (threshold 60 s). Close on tab switch, window blur, idle, navigation, tab close. Heartbeat every 30 s while open. Only one span open per device at a time.
-- **Capture**: when the page view's URL matches a rule and the tab has been active for `dwell_ms`, the service worker asks the content script for `document.documentElement.outerHTML` inside `requestIdleCallback`; once per page view (`reason: initial`). The content script keeps a `MutationObserver` that only sets a dirty flag; nothing acts on it in v1. Manual capture from the popup: `reason: manual`, always allowed.
+- **Capture**: when the page view's URL matches a rule and the tab has been active for `dwell_ms`, the service worker asks the content script for `document.documentElement.outerHTML` inside `requestIdleCallback` (`reason: initial`). The content script keeps a `MutationObserver` that sets a dirty flag; after the first serialize of a document it also debounces those mutations by 30 s and reports `quiet` to the service worker. On `quiet` from a top frame, a page view whose rule says `recapture: after_quiet` is captured again (`reason: recapture`) once at least 5 minutes have passed since its last capture; a page that settles earlier arms a one-shot alarm for when the interval ends, so lazily loaded comments are still picked up. A recapture that finds the document unchanged is skipped. Neither focus nor an open span is required: the point is the settled final state of a long-lived tab. The page view remembers `lastCapturedAt` in session storage, which is also what stops a second initial capture. Manual capture from the popup: `reason: manual`, always allowed, and with the `article` fallback it works on any page.
 - **Private hosts**: matching page views record host only, no title, `private: true`; never captured. Incognito tabs produce nothing.
 - **Outbox**: IndexedDB, one store for events and one for captures. Events batch every 10 s or at 100 pending. Captures upload immediately. Retry with backoff up to 5 min. While `/healthz` fails, capture is paused (no HTML serialised); events keep queueing.
 - **Popup**: connected/unreachable, pending events, pending captures, last sync, last error, capture-now button, last 100 diagnostic lines.
@@ -268,11 +318,13 @@ Every event is idempotent (upsert by id; heartbeats and ends only move `ended_at
 tracker serve [--listen 127.0.0.1:8490] [--workers 3]
 tracker migrate
 tracker reprocess [--extractor name] [--failed] [--all]
+tracker login
+tracker logout
 tracker stats [--json]
 tracker search [--extractor name] [--limit n] [--json] <query>
 ```
 
-`serve` runs migrations on startup, like bank.
+`serve` runs migrations on startup, like bank. `stats` and `search` go over HTTP so they work against a server whose database is not reachable; `login` is the RFC 8628 device code flow, and the token it stores refreshes itself.
 
 ## Metrics
 
@@ -282,5 +334,6 @@ Counters: `tracker_http_requests_total{route,status}`, `tracker_events_ingested_
 
 1. Schema, store, ingest server, worker, CLI, compose. Fake extractor for tests.
 2. Extension: page views, spans, rules, capture, outbox, popup.
-3. Extractors: github, x, youtube, each with fixture HTML tests.
+3. Extractors: github, x, youtube, article, each with fixture HTML tests.
 4. Grafana dashboard: attention per host per day, captures and dedup, queue depth.
+5. Recapture after quiet for evolving pages; desktop agent, categories, work blocks and context-switch panels.

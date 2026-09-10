@@ -1,5 +1,5 @@
 ["tracker:check"]
-depends = ["shared:ts", "tracker:ts", "tracker:go"]
+depends = ["shared:ts", "tracker:ts", "tracker:go", "tracker:swift", "tracker:desktop:test"]
 
 ["tracker:ts"]
 run = [
@@ -16,3 +16,79 @@ run = ["go vet ./...", "go test -race ./...", "golangci-lint run"]
 ["tracker:dev"]
 dir = "apps/tracker"
 run = "go run ./cmd/tracker serve"
+
+["tracker:install"]
+dir = "apps/tracker"
+description = "Build ~/.local/bin/tracker and restart the agent if it is loaded"
+run = [
+  "mkdir -p \"$HOME/.local/bin\"",
+  "go build -o \"$HOME/.local/bin/tracker\" ./cmd/tracker",
+  "launchctl kickstart -k \"gui/$(id -u)/com.aqt.tracker\" 2>/dev/null || true",
+]
+
+["tracker:service"]
+dir = "apps/tracker"
+description = "Install the LaunchAgent so serve starts at login"
+depends = ["tracker:install"]
+run = [
+  "mkdir -p \"$HOME/Library/LaunchAgents\"",
+  "cp deploy/com.aqt.tracker.plist \"$HOME/Library/LaunchAgents/com.aqt.tracker.plist\"",
+  "launchctl bootout \"gui/$(id -u)/com.aqt.tracker\" 2>/dev/null || true",
+  "launchctl bootstrap \"gui/$(id -u)\" \"$HOME/Library/LaunchAgents/com.aqt.tracker.plist\"",
+]
+
+["tracker:service:stop"]
+description = "Stop the LaunchAgent and remove it"
+run = [
+  "launchctl bootout \"gui/$(id -u)/com.aqt.tracker\" 2>/dev/null || true",
+  "rm -f \"$HOME/Library/LaunchAgents/com.aqt.tracker.plist\"",
+]
+
+["tracker:logs"]
+description = "Follow the LaunchAgent log"
+run = "tail -f \"$HOME/Library/Logs/tracker.log\""
+
+["tracker:swift"]
+run = [
+  "swiftformat --lint apps/tracker/desktop",
+  "swiftlint lint --strict --quiet apps/tracker/desktop",
+]
+
+["tracker:desktop:test"]
+dir = "apps/tracker/desktop"
+description = "Generate the Xcode project and run the TrackerCore logic tests"
+env = { DEVELOPER_DIR = "/Applications/Xcode.app/Contents/Developer" }
+run = ["xcodegen generate", "swift test --package-path Packages/TrackerCore"]
+
+["tracker:desktop:build"]
+dir = "apps/tracker/desktop"
+description = "Build TrackerAgent.app (Debug, ad-hoc signed)"
+env = { DEVELOPER_DIR = "/Applications/Xcode.app/Contents/Developer" }
+run = [
+  "xcodegen generate",
+  "xcodebuild -project TrackerAgent.xcodeproj -scheme TrackerAgent -configuration Debug -destination platform=macOS -derivedDataPath DerivedData -quiet build",
+]
+
+["tracker:desktop:service"]
+dir = "apps/tracker"
+description = "Install the menu-bar agent in ~/Applications and start it at login"
+depends = ["tracker:desktop:build"]
+run = [
+  "mkdir -p \"$HOME/Applications\" \"$HOME/Library/LaunchAgents\"",
+  "launchctl bootout \"gui/$(id -u)/com.aqt.tracker-agent\" 2>/dev/null || true",
+  "rm -rf \"$HOME/Applications/TrackerAgent.app\"",
+  "cp -R desktop/DerivedData/Build/Products/Debug/TrackerAgent.app \"$HOME/Applications/TrackerAgent.app\"",
+  "cp deploy/com.aqt.tracker-agent.plist \"$HOME/Library/LaunchAgents/com.aqt.tracker-agent.plist\"",
+  "launchctl bootstrap \"gui/$(id -u)\" \"$HOME/Library/LaunchAgents/com.aqt.tracker-agent.plist\"",
+]
+
+["tracker:desktop:service:stop"]
+description = "Stop the menu-bar agent and remove it"
+run = [
+  "launchctl bootout \"gui/$(id -u)/com.aqt.tracker-agent\" 2>/dev/null || true",
+  "rm -f \"$HOME/Library/LaunchAgents/com.aqt.tracker-agent.plist\"",
+]
+
+["tracker:desktop:logs"]
+description = "Follow the menu-bar agent's unified log"
+run = "log stream --predicate 'subsystem == \"com.aquitano.tracker-agent\"'"

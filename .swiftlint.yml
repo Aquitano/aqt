@@ -1,6 +1,7 @@
 included:
   - apps/starboard
   - apps/notch
+  - apps/tracker/desktop
 excluded:
   - "**/build"
   - "**/DerivedData"

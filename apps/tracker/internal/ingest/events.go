@@ -15,6 +15,8 @@ import (
 const (
 	maxEventBody     = 4 << 20
 	maxEventsPerPost = 1000
+	maxAppChars      = 256
+	maxTitleChars    = 512
 )
 
 // wireEvent is the union of every event shape. Ids and times stay strings so
@@ -31,6 +33,9 @@ type wireEvent struct {
 	TabSessionID   string `json:"tab_session_id"`
 	Private        bool   `json:"private"`
 	PageViewID     string `json:"page_view_id"`
+	AppName        string `json:"app_name"`
+	BundleID       string `json:"bundle_id"`
+	WindowTitle    string `json:"window_title"`
 	At             string `json:"at"`
 	EndedAt        string `json:"ended_at"`
 	Reason         string `json:"reason"`
@@ -38,7 +43,8 @@ type wireEvent struct {
 
 var (
 	navigationTypes = map[string]bool{"load": true, "spa": true, "reload": true, "back_forward": true}
-	endReasons      = map[string]bool{"tab_switch": true, "window_blur": true, "idle": true, "navigation": true, "tab_closed": true, "unknown": true}
+	endReasons      = map[string]bool{"tab_switch": true, "window_blur": true, "app_switch": true, "window_change": true,
+		"idle": true, "navigation": true, "tab_closed": true, "unknown": true}
 )
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
@@ -92,9 +98,9 @@ func parseEvents(wire []wireEvent) (store.Events, map[string]int) {
 				ok = true
 			}
 		case store.EventSpanStart:
-			id, pv, at := parseUUID(e.ID), parseUUID(e.PageViewID), parseTime(e.StartedAt)
-			if ok = id != uuid.Nil && pv != uuid.Nil && !at.IsZero(); ok {
-				ev.SpanStarts = append(ev.SpanStarts, store.SpanStartEvent{ID: id, PageViewID: pv, StartedAt: at})
+			if sp, valid := parseSpanStart(e); valid {
+				ev.SpanStarts = append(ev.SpanStarts, sp)
+				ok = true
 			}
 		case store.EventSpanHeartbeat:
 			id, at := parseUUID(e.ID), parseTime(e.At)
@@ -119,6 +125,34 @@ func parseEvents(wire []wireEvent) (store.Events, map[string]int) {
 		}
 	}
 	return ev, dropped
+}
+
+// parseSpanStart takes a browser span (page_view_id) or a desktop one
+// (app_name). Both or neither is malformed.
+func parseSpanStart(e wireEvent) (store.SpanStartEvent, bool) {
+	id, pv, at := parseUUID(e.ID), parseUUID(e.PageViewID), parseTime(e.StartedAt)
+	app := truncate(e.AppName, maxAppChars)
+	if id == uuid.Nil || at.IsZero() || (pv == uuid.Nil) == (app == "") {
+		return store.SpanStartEvent{}, false
+	}
+	sp := store.SpanStartEvent{ID: id, PageViewID: pv, StartedAt: at}
+	if app != "" {
+		sp.AppName = app
+		sp.BundleID = truncate(e.BundleID, maxAppChars)
+		sp.WindowTitle = truncate(e.WindowTitle, maxTitleChars)
+	}
+	return sp, true
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max])
 }
 
 func parsePageView(e wireEvent) (store.PageViewEvent, bool) {

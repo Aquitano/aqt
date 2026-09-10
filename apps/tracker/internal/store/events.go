@@ -26,10 +26,15 @@ type PageViewEvent struct {
 	Private        bool
 }
 
+// SpanStartEvent carries exactly one identity: PageViewID for a browser span,
+// AppName for a desktop one.
 type SpanStartEvent struct {
-	ID         uuid.UUID
-	PageViewID uuid.UUID
-	StartedAt  time.Time
+	ID          uuid.UUID
+	PageViewID  uuid.UUID
+	AppName     string
+	BundleID    string
+	WindowTitle string
+	StartedAt   time.Time
 }
 
 type SpanHeartbeatEvent struct {
@@ -62,8 +67,8 @@ func newEventResult() EventResult {
 
 // ApplyEvents stores one batch in a single transaction. Page views go first,
 // then span starts, heartbeats and ends, so an event order that was scrambled
-// on the way here still resolves. Every write is idempotent; a span whose page
-// view is unknown is dropped and counted.
+// on the way here still resolves. Every write is idempotent; a browser span
+// whose page view is unknown is dropped and counted.
 func (s *Store) ApplyEvents(ctx context.Context, deviceID uuid.UUID, ev Events) (EventResult, error) {
 	res := newEventResult()
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -93,12 +98,15 @@ func (s *Store) ApplyEvents(ctx context.Context, deviceID uuid.UUID, ev Events) 
 			return err
 		}
 		for _, sp := range ev.SpanStarts {
-			if !known[sp.PageViewID] {
-				res.Dropped[EventSpanStart]++
-				continue
+			row := ActivitySpan{ID: sp.ID, DeviceID: deviceID, StartedAt: sp.StartedAt, EndedAt: sp.StartedAt,
+				AppName: sp.AppName, BundleID: sp.BundleID, WindowTitle: sp.WindowTitle}
+			if sp.PageViewID != uuid.Nil {
+				if !known[sp.PageViewID] {
+					res.Dropped[EventSpanStart]++
+					continue
+				}
+				row.PageViewID = uuid.NullUUID{UUID: sp.PageViewID, Valid: true}
 			}
-			row := ActivitySpan{ID: sp.ID, DeviceID: deviceID, PageViewID: sp.PageViewID,
-				StartedAt: sp.StartedAt, EndedAt: sp.StartedAt}
 			if _, err := tx.NewInsert().Model(&row).On("conflict (id) do nothing").Exec(ctx); err != nil {
 				return err
 			}
@@ -137,7 +145,12 @@ func knownPageViews(ctx context.Context, tx bun.Tx, starts []SpanStartEvent) (ma
 	}
 	ids := make([]uuid.UUID, 0, len(starts))
 	for _, sp := range starts {
-		ids = append(ids, sp.PageViewID)
+		if sp.PageViewID != uuid.Nil {
+			ids = append(ids, sp.PageViewID)
+		}
+	}
+	if len(ids) == 0 {
+		return known, nil
 	}
 	var found []uuid.UUID
 	if err := tx.NewSelect().Model((*PageView)(nil)).Column("id").

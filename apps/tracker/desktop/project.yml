@@ -1,0 +1,56 @@
+name: TrackerAgent
+options:
+  bundleIdPrefix: com.aquitano
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    # Lets the app use TrackerCore's `package` declarations (same package group).
+    SWIFT_PACKAGE_NAME: trackercore
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+targets:
+  TrackerAgent:
+    type: application
+    platform: macOS
+    sources:
+      - path: TrackerAgent
+    dependencies:
+      - package: TrackerCore
+    settings:
+      base:
+        PRODUCT_NAME: TrackerAgent
+        PRODUCT_BUNDLE_IDENTIFIER: com.aquitano.tracker-agent
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: TrackerAgent/Info.plist
+        # Ad hoc: a launchd agent on this machine needs no Developer ID, and
+        # nothing here is notarised or distributed.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        ENABLE_HARDENED_RUNTIME: NO
+        # launchd runs the copy in ~/Applications; a single self-contained binary
+        # keeps the signed identity TCC remembers stable.
+        ENABLE_DEBUG_DYLIB: NO
+        ENABLE_APP_SANDBOX: NO
+        COMBINE_HIDPI_IMAGES: YES
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+
+schemes:
+  TrackerAgent:
+    build:
+      targets:
+        TrackerAgent: all
+    run:
+      config: Debug
+
+packages:
+  TrackerCore:
+    path: Packages/TrackerCore

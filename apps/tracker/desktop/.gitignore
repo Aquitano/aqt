@@ -1,0 +1,6 @@
+# XcodeGen output is regenerated from project.yml; the logic tests run through
+# SwiftPM, so nothing here needs a checked-in project.
+*.xcodeproj
+DerivedData/
+.build/
+.swiftpm/

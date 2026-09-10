@@ -33,16 +33,21 @@ type PageView struct {
 	CreatedAt      time.Time `bun:"created_at,nullzero,default:now()"`
 }
 
+// ActivitySpan holds both browser spans (PageViewID set) and desktop spans
+// (AppName set); the table's check constraint keeps it to exactly one.
 type ActivitySpan struct {
 	bun.BaseModel `bun:"table:activity_spans"`
 
-	ID         uuid.UUID `bun:"id,pk"`
-	DeviceID   uuid.UUID `bun:"device_id"`
-	PageViewID uuid.UUID `bun:"page_view_id"`
-	StartedAt  time.Time `bun:"started_at"`
-	EndedAt    time.Time `bun:"ended_at"`
-	EndReason  string    `bun:"end_reason,nullzero"`
-	CreatedAt  time.Time `bun:"created_at,nullzero,default:now()"`
+	ID          uuid.UUID     `bun:"id,pk"`
+	DeviceID    uuid.UUID     `bun:"device_id"`
+	PageViewID  uuid.NullUUID `bun:"page_view_id"`
+	AppName     string        `bun:"app_name,nullzero"`
+	BundleID    string        `bun:"bundle_id,nullzero"`
+	WindowTitle string        `bun:"window_title,nullzero"`
+	StartedAt   time.Time     `bun:"started_at"`
+	EndedAt     time.Time     `bun:"ended_at"`
+	EndReason   string        `bun:"end_reason,nullzero"`
+	CreatedAt   time.Time     `bun:"created_at,nullzero,default:now()"`
 }
 
 type RawHTMLBlob struct {

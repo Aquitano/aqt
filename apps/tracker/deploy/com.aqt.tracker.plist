@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.aqt.tracker</string>
+
+	<!-- launchd expands nothing, so the one static plist that works on any
+	     machine runs through a shell. exec keeps launchd supervising tracker
+	     itself, so KeepAlive and SIGTERM reach the right process. -->
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/sh</string>
+		<string>-c</string>
+		<string>exec "$HOME/.local/bin/tracker" serve &gt;&gt; "$HOME/Library/Logs/tracker.log" 2&gt;&amp;1</string>
+	</array>
+
+	<!-- Every other TRACKER_* knob keeps its built-in default; add it here to
+	     override. warn, not info, because nothing rotates that log file and
+	     per-request detail is already in Prometheus. -->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>TRACKER_LOG_LEVEL</key>
+		<string>warn</string>
+	</dict>
+
+	<key>RunAtLoad</key>
+	<true/>
+
+	<key>KeepAlive</key>
+	<true/>
+
+	<!-- Postgres is a container that may still be starting at login: serve
+	     exits, and this is how long launchd waits before trying again. -->
+	<key>ThrottleInterval</key>
+	<integer>30</integer>
+</dict>
+</plist>

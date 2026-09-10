@@ -270,6 +270,118 @@
           "legendFormat": "{{table}}"
         }
       ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Active minutes per category per day",
+      "description": "Spans matched to the highest-priority rule in category_rules; spans no rule matches are uncategorized.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 42 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "select\n  date_trunc('day', started_at) as time,\n  coalesce(category, 'uncategorized') as metric,\n  sum(seconds) / 60 as active_minutes\nfrom categorized_spans\nwhere $__timeFilter(started_at)\ngroup by 1, 2\norder by 1"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Active minutes per app per day (top 15)",
+      "description": "Desktop spans only.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 52 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "select\n  date_trunc('day', s.started_at) as time,\n  s.app_name as metric,\n  sum(extract(epoch from s.ended_at - s.started_at)) / 60 as active_minutes\nfrom activity_spans s\nwhere $__timeFilter(s.started_at)\n  and s.app_name is not null\n  and s.app_name in (\n    select s2.app_name\n    from activity_spans s2\n    where $__timeFilter(s2.started_at)\n      and s2.app_name is not null\n    group by s2.app_name\n    order by sum(extract(epoch from s2.ended_at - s2.started_at)) desc\n    limit 15\n  )\ngroup by 1, 2\norder by 1"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Context switches per hour",
+      "description": "Spans closed by a tab switch, a window blur or an app switch, against every span that closed.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 62 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "select\n  hour as time,\n  switches,\n  spans_ended\nfrom context_switches_hourly\nwhere $__timeFilter(hour)\norder by 1"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "table",
+      "title": "Work blocks",
+      "description": "Runs of activity across every device, split where nothing was active for more than a minute.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 62 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "select\n  started_at,\n  ended_at,\n  round(active_seconds / 60) as active_minutes,\n  span_count,\n  switches,\n  coalesce(dominant_category, 'uncategorized') as dominant_category\nfrom work_blocks($__timeFrom()::timestamptz, $__timeTo()::timestamptz)\norder by started_at desc"
+        }
+      ]
     }
   ]
 }
