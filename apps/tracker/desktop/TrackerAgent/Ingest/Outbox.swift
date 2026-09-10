@@ -31,7 +31,8 @@ final class Outbox {
     private let deviceID: UUID
 
     init(configuration: TrackerConfiguration, deviceID: UUID) {
-        client = IngestClient(configuration: configuration)
+        let tokens = configuration.tokenPath.map { TokenSource(path: $0) }
+        client = IngestClient(configuration: configuration, tokens: tokens)
         self.deviceID = deviceID
     }
 
@@ -103,7 +104,7 @@ final class Outbox {
     func flushOnTerminate(timeout: TimeInterval) {
         guard !queue.isEmpty else { return }
         let batch = EventBatch(deviceID: deviceID, events: Array(queue.prefix(Self.maximumBatch)))
-        guard let request = try? client.batchRequest(batch) else { return }
+        guard let request = try? client.batchRequest(batch, token: client.tokens?.mostRecentBearer()) else { return }
         IngestClient.sendBlocking(request, timeout: timeout)
     }
 

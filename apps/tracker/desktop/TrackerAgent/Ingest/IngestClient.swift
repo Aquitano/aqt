@@ -11,11 +11,23 @@ struct IngestClient: Sendable {
     }
 
     let configuration: TrackerConfiguration
+    let tokens: TokenSource?
 
+    /// A 401 on a token that had not expired means it was revoked or the
+    /// clock drifted; one forced refresh tells that apart from a real
+    /// rejection, and matches what the extension does.
     func send(_ batch: EventBatch) async -> Outcome {
+        let token = await tokens?.bearer()
+        let outcome = await attempt(batch, token: token)
+        guard case .transient("HTTP 401") = outcome, tokens != nil else { return outcome }
+        guard let renewed = await tokens?.bearer(forcingRefresh: true), renewed != token else { return outcome }
+        return await attempt(batch, token: renewed)
+    }
+
+    private func attempt(_ batch: EventBatch, token: String?) async -> Outcome {
         let request: URLRequest
         do {
-            request = try batchRequest(batch)
+            request = try batchRequest(batch, token: token)
         } catch {
             return .permanent("encode: \(error.localizedDescription)")
         }
@@ -45,12 +57,12 @@ struct IngestClient: Sendable {
         return http.statusCode == 200
     }
 
-    func batchRequest(_ batch: EventBatch) throws -> URLRequest {
+    func batchRequest(_ batch: EventBatch, token: String?) throws -> URLRequest {
         var request = URLRequest(url: configuration.serverURL.appending(path: "v1/events/batch"))
         request.httpMethod = "POST"
         request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let token = bearerToken() {
+        if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         request.httpBody = try EventEncoding.encoder().encode(batch)
@@ -65,30 +77,8 @@ struct IngestClient: Sendable {
         _ = semaphore.wait(timeout: .now() + timeout)
     }
 
-    private func bearerToken() -> String? {
-        guard let tokenPath = configuration.tokenPath,
-              let data = FileManager.default.contents(atPath: tokenPath),
-              let stored = try? JSONDecoder().decode(StoredSession.self, from: data)
-        else { return nil }
-        return stored.token?.accessToken
-    }
-
     private struct Receipt: Decodable {
         let accepted: Int
         let dropped: Int
-    }
-}
-
-/// The CLI's `token.json`, of which only the access token matters here;
-/// refreshing it is `tracker login`'s job.
-private struct StoredSession: Decodable {
-    let token: StoredToken?
-}
-
-private struct StoredToken: Decodable {
-    let accessToken: String
-
-    enum CodingKeys: String, CodingKey {
-        case accessToken = "access_token"
     }
 }

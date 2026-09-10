@@ -20,6 +20,11 @@ export type CaptureRow = typeof CaptureRow.infer;
 
 export type StoreName = "events" | "captures";
 
+// A signed-out extension keeps enqueueing: 401 is retryable, so nothing evicts
+// on failure, and the article fallback means every page is a capture. Captures
+// carry whole documents, which is why they are bounded far lower than events.
+const CAPACITY: Record<StoreName, number> = { events: 10_000, captures: 200 };
+
 let connection: Promise<IDBDatabase> | undefined;
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -56,12 +61,28 @@ function newRow<P>(payload: P) {
   return { id: uuidv7(), created_at: now, attempt_count: 0, next_attempt_at: now, payload };
 }
 
-export async function enqueueEvent(event: TrackerEvent): Promise<void> {
+/// Returns how many rows the insert evicted, so the caller can report them
+/// the same way it reports rows the server rejected.
+export async function enqueueEvent(event: TrackerEvent): Promise<number> {
   await settle((await objectStore("events", "readwrite")).put(newRow(event)));
+  return trimToCapacity("events");
 }
 
-export async function enqueueCapture(payload: CapturePayload): Promise<void> {
+export async function enqueueCapture(payload: CapturePayload): Promise<number> {
   await settle((await objectStore("captures", "readwrite")).put(newRow(payload)));
+  return trimToCapacity("captures");
+}
+
+async function trimToCapacity(name: StoreName): Promise<number> {
+  const overflow = (await settle((await objectStore(name, "readonly")).count())) - CAPACITY[name];
+  if (overflow <= 0) return 0;
+  // Row ids are UUIDv7, so ascending key order is insertion order and the
+  // first keys are the oldest.
+  const oldest = (
+    await settle((await objectStore(name, "readonly")).getAllKeys(null, overflow))
+  ).filter((key): key is string => typeof key === "string");
+  await removeRows(name, oldest);
+  return oldest.length;
 }
 
 async function rows<t>(name: StoreName, schema: Type<t>): Promise<Type<t>["infer"][]> {

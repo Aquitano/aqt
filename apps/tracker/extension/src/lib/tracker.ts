@@ -153,8 +153,14 @@ function scheduleFlush(): void {
   }, FLUSH_DELAY_MS);
 }
 
+async function reportEvicted(kind: string, evicted: number): Promise<void> {
+  if (evicted === 0) return;
+  await countDropped(evicted);
+  await diag(`outbox full, dropped ${evicted} oldest ${kind}`);
+}
+
 async function emit(event: TrackerEvent): Promise<void> {
-  await enqueueEvent(event);
+  await reportEvicted("events", await enqueueEvent(event));
   const { events } = await pendingCounts();
   if (events >= FLUSH_BATCH) await flushEvents();
   else scheduleFlush();
@@ -504,7 +510,7 @@ export async function captureTab(tabId: number, reason: CaptureReason): Promise<
     raw_char_count: html.length,
   };
   if (title) meta.title = title;
-  await enqueueCapture({ meta, html });
+  await reportEvicted("captures", await enqueueCapture({ meta, html }));
   await store.set({ ...state, pageView: { ...pageView, lastCapturedAt: meta.captured_at } });
   await diag(`capture queued ${rule.extractor} ${reason} ${bytes} bytes${dirty ? " (dirty)" : ""}`);
   await uploadCaptures();

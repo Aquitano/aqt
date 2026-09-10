@@ -50,11 +50,16 @@ Chromium browsers are on the skip list, so no span opens while one is frontmost:
 | Variable                     | Default                                                                                                                                                                          |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `TRACKER_SERVER_URL`         | `http://127.0.0.1:8490`                                                                                                                                                          |
-| `TRACKER_TOKEN_PATH`         | unset; point it at the CLI's `token.json` and the agent sends its access token                                                                                                   |
+| `TRACKER_TOKEN_PATH`         | the CLI's `token.json` under the user config directory; set it empty to send no token at all                                                                                     |
 | `TRACKER_SKIP_BUNDLE_IDS`    | `com.google.Chrome,com.google.Chrome.canary,com.google.Chrome.beta,org.chromium.Chromium,com.brave.Browser,com.microsoft.edgemac,company.thebrowser.Browser,com.vivaldi.Vivaldi` |
 | `TRACKER_PRIVATE_BUNDLE_IDS` | `com.1password.1password,com.apple.keychainaccess,com.apple.Passwords`                                                                                                           |
 
-An empty list means no entries; an unset one keeps the default.
+An empty list means no entries; an unset one keeps the default. The same holds
+for the token path: unset finds the CLI's session, empty means no token.
+
+The agent shares that session file with the CLI, so `tracker login` once signs in
+both. It refreshes the access token itself and writes the result back, rotated
+refresh token included, so it keeps running without anyone at a terminal.
 
 ## CLI
 
@@ -111,7 +116,8 @@ tracker logout
 
 The token lands in `$TRACKER_TOKEN_PATH` (by default under the user config
 directory) at mode 600 and refreshes itself; a rotated refresh token is written
-back, so signing in is a once-per-refresh-token-lifetime thing.
+back, so signing in is a once-per-refresh-token-lifetime thing. The desktop
+agent reads and refreshes the same file, so one login covers both.
 
 The extension signs in from its options page. Paste the issuer and client id
 there, then use the redirect URI it shows for the provider. Pin a `key` in the

@@ -16,8 +16,10 @@
 	</array>
 
 	<!-- Everything else keeps its built-in default; add TRACKER_SKIP_BUNDLE_IDS,
-	     TRACKER_PRIVATE_BUNDLE_IDS or TRACKER_TOKEN_PATH here to override.
-	     The agent logs to the unified log, so there is no log file to redirect. -->
+	     TRACKER_PRIVATE_BUNDLE_IDS or TRACKER_TOKEN_PATH here to override. The
+	     token path defaults to the CLI's session, so `tracker login` is all the
+	     agent needs to authenticate. The agent logs to the unified log, so there
+	     is no log file to redirect. -->
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>TRACKER_SERVER_URL</key>

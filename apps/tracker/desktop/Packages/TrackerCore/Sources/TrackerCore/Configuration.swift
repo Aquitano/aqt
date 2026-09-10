@@ -22,6 +22,14 @@ package struct TrackerConfiguration: Sendable, Equatable {
 
     package static let defaultServerURL = URL(string: "http://127.0.0.1:8490")!
 
+    /// Where `tracker login` leaves its session, which is Go's
+    /// `os.UserConfigDir()` on macOS. Sharing the file is what lets the
+    /// agent sign in once, at a terminal, and stay signed in.
+    package static var defaultTokenPath: String? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appending(path: "tracker/token.json").path(percentEncoded: false)
+    }
+
     package var serverURL: URL
     package var tokenPath: String?
     package var skipBundleIDs: Set<String>
@@ -44,7 +52,7 @@ package struct TrackerConfiguration: Sendable, Equatable {
     ) -> TrackerConfiguration {
         TrackerConfiguration(
             serverURL: values["TRACKER_SERVER_URL"].flatMap { URL(string: $0) } ?? defaultServerURL,
-            tokenPath: values["TRACKER_TOKEN_PATH"].flatMap { $0.isEmpty ? nil : $0 },
+            tokenPath: tokenPath(values["TRACKER_TOKEN_PATH"]),
             skipBundleIDs: list(values["TRACKER_SKIP_BUNDLE_IDS"]) ?? defaultSkipBundleIDs,
             privateBundleIDs: list(values["TRACKER_PRIVATE_BUNDLE_IDS"]) ?? defaultPrivateBundleIDs
         )
@@ -56,6 +64,13 @@ package struct TrackerConfiguration: Sendable, Equatable {
 
     package func isPrivate(_ bundleID: String) -> Bool {
         privateBundleIDs.contains(bundleID.lowercased())
+    }
+
+    /// An empty variable means "no token", which is how authentication is
+    /// turned off; an unset variable keeps the default location.
+    package static func tokenPath(_ raw: String?) -> String? {
+        guard let raw else { return defaultTokenPath }
+        return raw.isEmpty ? nil : raw
     }
 
     /// An empty variable means "no entries", which is how the skip list is
