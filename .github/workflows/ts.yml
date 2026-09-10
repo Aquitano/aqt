@@ -51,4 +51,5 @@ jobs:
       - run: bun run fmt:check
       - run: bun run typecheck
       - run: bun run --filter @aqt/health-frontend test
+      - run: bun run --filter aqt-gallery test
       - run: bun run --filter @aqt/stack test

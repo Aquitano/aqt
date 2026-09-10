@@ -1,51 +1,29 @@
 {
-	"name": "aqt-gallery",
-	"private": true,
-	"workspaces": {
-		"packages": [
-			"apps/*",
-			"packages/*"
-		],
-		"catalog": {
-			"dotenv": "^17.2.2",
-			"zod": "^4.1.13",
-			"typescript": "^6",
-			"@types/bun": "^1.3.4",
-			"hono": "^4.8.2",
-			"@trpc/server": "^11.16.0",
-			"lucide-react": "^1.11.0",
-			"@trpc/client": "^11.16.0",
-			"@types/react-dom": "^19.2.3"
-		}
-	},
-	"type": "module",
-	"scripts": {
-		"dev": "turbo dev",
-		"build": "turbo build",
-		"check-types": "turbo check-types",
-		"dev:web": "turbo -F web dev",
-		"dev:server": "turbo -F server dev",
-		"db:push": "turbo -F @aqt-gallery/db db:push",
-		"db:studio": "turbo -F @aqt-gallery/db db:studio",
-		"db:generate": "turbo -F @aqt-gallery/db db:generate",
-		"db:migrate": "turbo -F @aqt-gallery/db db:migrate",
-		"check": "biome check --write ."
-	},
-	"dependencies": {
-		"@aqt-gallery/env": "workspace:*",
-		"dotenv": "catalog:",
-		"zod": "catalog:"
-	},
-	"devDependencies": {
-		"@aqt-gallery/config": "workspace:*",
-		"@biomejs/biome": "^2.2.0",
-		"@types/bun": "catalog:",
-		"turbo": "^2.8.12",
-		"typescript": "catalog:",
-		"wrangler": "^4.129.1"
-	},
-	"packageManager": "bun@1.3.5",
-	"overrides": {
-		"@tanstack/query-core": "5.102.8"
-	}
+  "name": "aqt-gallery",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "turbo dev -F '@aqt/gallery-*'",
+    "build": "turbo build -F '@aqt/gallery-*'",
+    "dev:web": "turbo -F @aqt/gallery-web dev",
+    "dev:server": "turbo -F @aqt/gallery-server dev",
+    "db:push": "turbo -F @aqt/gallery-db db:push",
+    "db:studio": "turbo -F @aqt/gallery-db db:studio",
+    "db:generate": "turbo -F @aqt/gallery-db db:generate",
+    "db:migrate": "turbo -F @aqt/gallery-db db:migrate",
+    "check": "oxlint --type-aware",
+    "typecheck": "turbo typecheck -F '@aqt/gallery-*'",
+    "test": "bun test apps/server/src packages/gallery-layout/src apps/web/src"
+  },
+  "dependencies": {
+    "@aqt/gallery-env": "workspace:*",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@aqt/config": "workspace:*",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:",
+    "wrangler": "^4.129.1"
+  }
 }

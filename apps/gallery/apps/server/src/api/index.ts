@@ -6,16 +6,16 @@ import type { Context } from "./context";
  * is invisible to agents; the tool's input schema is the procedure's own zod
  * input, so the two can never drift. */
 export type McpToolMeta = {
-	name: string;
-	title: string;
-	description: string;
-	readOnly?: boolean;
-	destructive?: boolean;
-	idempotent?: boolean;
+  name: string;
+  title: string;
+  description: string;
+  readOnly?: boolean;
+  destructive?: boolean;
+  idempotent?: boolean;
 };
 
 export type Meta = {
-	mcp?: McpToolMeta;
+  mcp?: McpToolMeta;
 };
 
 export const t = initTRPC.context<Context>().meta<Meta>().create();
@@ -29,17 +29,17 @@ export const createCallerFactory = t.createCallerFactory;
 export const publicProcedure = t.procedure;
 
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
-	if (!ctx.session) {
-		throw new TRPCError({
-			code: "UNAUTHORIZED",
-			message: "Authentication required",
-			cause: "No session",
-		});
-	}
-	return next({
-		ctx: {
-			...ctx,
-			session: ctx.session,
-		},
-	});
+  if (!ctx.session) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "Authentication required",
+      cause: "No session",
+    });
+  }
+  return next({
+    ctx: {
+      ...ctx,
+      session: ctx.session,
+    },
+  });
 });

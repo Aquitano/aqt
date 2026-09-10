@@ -34,10 +34,14 @@ publishing.
    - `description` — a clear paragraph about the work
    - `story` — a short, engaging wall-label narrative for museum visitors
    - `funFacts` — a few short, surprising facts
-     Then `set_artwork_tags` with relevant themes/keywords.
+   Then `set_artwork_tags` with relevant themes/keywords.
+   - To attribute a structured artist (whose bio renders on the artist wall),
+     call `link_artist` with the artist's name and the `artworkId`s — it
+     find-or-creates by name and links in one call, so pass every work by the
+     same creator together. This beats setting `artistId` by hand.
    - Only set fields you're reasonably sure of. Don't invent facts; if you're
      guessing, say so to the user or leave the field out.
-   - `rating`/`review`/`thoughts` are the owner's _private_ notes — leave them
+   - `rating`/`review`/`thoughts` are the owner's *private* notes — leave them
      unless the user gives an opinion to record.
 
 3. **Create the gallery.** `create_gallery` with a `name`, `tagline`, and

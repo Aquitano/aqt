@@ -20,14 +20,14 @@ Scaffolded with [Better-T-Stack](https://github.com/AmanVarshney01/create-better
 - **Clerk** authentication (browser sessions), plus `aqtg_` personal access
   tokens for agents
 - **TailwindCSS** with shared shadcn/ui primitives in `packages/ui`
-- **Biome** for linting and formatting
+- **oxlint** and **oxfmt**, configured once at the workspace root
 - **three.js + React Three Fiber** museum renderer in
   `apps/web/src/components/museum/renderer/` — see its
   [README](apps/web/src/components/museum/renderer/README.md)
 
 ## Getting Started
 
-First, install the dependencies:
+First, install the dependencies from the workspace root:
 
 ```bash
 bun install
@@ -109,16 +109,17 @@ npx shadcn@latest add accordion dialog popover sheet table -c packages/ui
 Import shared components like this:
 
 ```tsx
-import { Button } from "@aqt-gallery/ui/components/button";
+import { Button } from "@aqt/gallery-ui/components/button";
 ```
 
 ### Add app-specific blocks
 
 If you want to add app-specific blocks instead of shared primitives, run the shadcn CLI from `apps/web`.
 
-## Git Hooks and Formatting
+## Formatting and Linting
 
-- Format and lint fix: `bun run check`
+- Lint, format check and typecheck: `mise run gallery:check`
+- Lint only: `bun run check`. Format with `bunx oxfmt` from anywhere.
 
 ## Project Structure
 
@@ -129,7 +130,6 @@ aqt-gallery/
 │   └── server/          # Backend API (Hono, tRPC), media pipeline, MCP endpoint
 ├── packages/
 │   ├── auth/            # Clerk-based session/auth resolution
-│   ├── config/          # Shared TypeScript/build config
 │   ├── db/              # Drizzle schema & DB client
 │   ├── env/             # Typed environment-variable validation
 │   ├── gallery-layout/  # Floor-plan graph + 3D layout shared by renderer, linter, studio
@@ -142,9 +142,11 @@ aqt-gallery/
 - `bun run build`: Build all applications
 - `bun run dev:web`: Start only the web application
 - `bun run dev:server`: Start only the server
-- `bun run check-types`: Check TypeScript types across all apps
+- `bun run typecheck`: Check TypeScript types across all apps
 - `bun run db:push`: Push schema changes to database
 - `bun run db:generate`: Generate database client/types
 - `bun run db:migrate`: Run database migrations
 - `bun run db:studio`: Open database studio UI
-- `bun run check`: Run Biome formatting and linting
+- `bun run check`: Type-aware lint with oxlint
+- `bun run test`: Run the suite. It names source directories explicitly so the
+  server's built `dist/` copies are not collected a second time.

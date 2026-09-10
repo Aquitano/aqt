@@ -93,6 +93,7 @@ run = [
   "bun run --cwd apps/gallery check",
   "bunx --no-install oxfmt --check apps/gallery",
   "bun run --cwd apps/gallery typecheck",
+  "bun run --cwd apps/gallery test",
 ]
 
 [tasks."gallery:dev"]

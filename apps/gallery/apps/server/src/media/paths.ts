@@ -8,7 +8,7 @@ const MEDIA_DIRS = new Set(["originals", "thumbs"]);
  * returned untouched.
  */
 export function mediaKey(stored: string): string {
-	const segments = stored.split(/[\\/]+/).filter(Boolean);
-	const start = segments.findIndex((s) => MEDIA_DIRS.has(s));
-	return start === -1 ? stored : segments.slice(start).join("/");
+  const segments = stored.split(/[\\/]+/).filter(Boolean);
+  const start = segments.findIndex((s) => MEDIA_DIRS.has(s));
+  return start === -1 ? stored : segments.slice(start).join("/");
 }

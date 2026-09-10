@@ -17,26 +17,23 @@ import type { MediaStore } from "./store";
  * a real storage fault (the very thing that would otherwise reintroduce the
  * leak). */
 async function bestEffortDelete(store: MediaStore, key: string): Promise<void> {
-	try {
-		await store.delete(key);
-	} catch (error) {
-		console.error(`Failed to remove media object ${key}:`, error);
-	}
+  try {
+    await store.delete(key);
+  } catch (error) {
+    console.error(`Failed to remove media object ${key}:`, error);
+  }
 }
 
 /** Purge every stored artefact tied to a deleted artwork: its media asset
  * originals/thumbnails (keys read before the cascade) and any cached proxied
  * images keyed by the artwork id. */
 export async function deleteArtworkFiles(opts: {
-	store: MediaStore;
-	artworkId: string;
-	assetKeys: ReadonlyArray<string>;
+  store: MediaStore;
+  artworkId: string;
+  assetKeys: ReadonlyArray<string>;
 }): Promise<void> {
-	const targets = [
-		...opts.assetKeys,
-		...publicImageCacheTargets("artwork", opts.artworkId),
-	];
-	await Promise.all(targets.map((key) => bestEffortDelete(opts.store, key)));
+  const targets = [...opts.assetKeys, ...publicImageCacheTargets("artwork", opts.artworkId)];
+  await Promise.all(targets.map((key) => bestEffortDelete(opts.store, key)));
 }
 
 /** Purge only an artwork's cached proxied images, leaving its stored asset
@@ -44,29 +41,29 @@ export async function deleteArtworkFiles(opts: {
  * image it serves changes (e.g. swapping the primary asset), so the capped-webp
  * cache — keyed by artwork id, not asset id — must be re-derived. */
 export async function deleteArtworkCacheFiles(opts: {
-	store: MediaStore;
-	artworkId: string;
+  store: MediaStore;
+  artworkId: string;
 }): Promise<void> {
-	await Promise.all(
-		publicImageCacheTargets("artwork", opts.artworkId).map((key) =>
-			bestEffortDelete(opts.store, key),
-		),
-	);
+  await Promise.all(
+    publicImageCacheTargets("artwork", opts.artworkId).map((key) =>
+      bestEffortDelete(opts.store, key),
+    ),
+  );
 }
 
 /** Purge the cached cover image and social card of a deleted exhibition.
  * Member artworks survive the delete, so only the entity's own cache is
  * removed. */
 export async function deleteEntityCacheFiles(opts: {
-	store: MediaStore;
-	entity: "exhibition";
-	id: string;
+  store: MediaStore;
+  entity: "exhibition";
+  id: string;
 }): Promise<void> {
-	const targets = [
-		...publicImageCacheTargets(opts.entity, opts.id),
-		...ogCardCacheTargets(opts.id),
-	];
-	await Promise.all(targets.map((key) => bestEffortDelete(opts.store, key)));
+  const targets = [
+    ...publicImageCacheTargets(opts.entity, opts.id),
+    ...ogCardCacheTargets(opts.id),
+  ];
+  await Promise.all(targets.map((key) => bestEffortDelete(opts.store, key)));
 }
 
 /** Purge only an entity's cached social card, leaving its cover image cache
@@ -74,11 +71,9 @@ export async function deleteEntityCacheFiles(opts: {
  * edit to the name/tagline/theme/counts, a cover swap, or an unpublish — so the
  * next share re-derives a fresh card instead of serving the immutable old one. */
 export async function deleteOgCardFiles(opts: {
-	store: MediaStore;
-	entity: "exhibition";
-	id: string;
+  store: MediaStore;
+  entity: "exhibition";
+  id: string;
 }): Promise<void> {
-	await Promise.all(
-		ogCardCacheTargets(opts.id).map((key) => bestEffortDelete(opts.store, key)),
-	);
+  await Promise.all(ogCardCacheTargets(opts.id).map((key) => bestEffortDelete(opts.store, key)));
 }

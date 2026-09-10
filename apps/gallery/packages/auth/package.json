@@ -1,21 +1,23 @@
 {
-	"name": "@aqt-gallery/auth",
-	"type": "module",
-	"exports": {
-		".": {
-			"default": "./src/index.ts"
-		},
-		"./*": {
-			"default": "./src/*.ts"
-		}
-	},
-	"scripts": {},
-	"dependencies": {
-		"@aqt-gallery/env": "workspace:*",
-		"@clerk/backend": "^3.7.0"
-	},
-	"devDependencies": {
-		"@aqt-gallery/config": "workspace:*",
-		"typescript": "catalog:"
-	}
+  "name": "@aqt/gallery-auth",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aqt/gallery-env": "workspace:*",
+    "@clerk/backend": "^3.7.0"
+  },
+  "devDependencies": {
+    "@aqt/config": "workspace:*",
+    "typescript": "catalog:"
+  }
 }

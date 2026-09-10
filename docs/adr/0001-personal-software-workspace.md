@@ -62,6 +62,14 @@ Gallery (Bun, Postgres, tRPC, Base UI, zod) and img (Cloudflare Worker, D1, R2, 
 - All tasks live in the root `mise.toml`. mise's monorepo mode (per-app `mise.toml` files addressed as `//apps/bank:check`) is the path if the block outgrows one file.
 - The check workflows keep calling native tools directly for their setup-action caching and annotations; only the notch release workflow installs mise.
 
+## Applied 2026-09-10: gallery re-import
+
+`aqt-gallery` kept moving after the 5 September `git subtree add`, and its history was rewritten by squash merges. The split commit `62f1510` no longer exists upstream, so `git subtree pull` has no merge base. The app was re-imported as content at upstream `5d08eb4` and the workspace layer re-applied on top: `@aqt/gallery-*` package names, tsconfigs extending `@aqt/config`, oxlint and oxfmt in place of Biome, no nested CI or turbo config, the curator skill at the workspace root.
+
+What arrived with it: exhibitions replacing galleries and museums, a React Three Fiber renderer in place of the Bevy/WASM engine (which never reached this repo), S3-compatible media storage, and `packages/gallery-layout`. Upstream's `overrides` pin of `@tanstack/query-core` moved to the root manifest, where bun reads it, and `lucide-react` joined the root catalog. The Bun suite that came with the import runs from `gallery:ts` and the `ts` workflow; upstream's render-budget harness, which drives headless Chromium through Playwright, stayed a manual script in `apps/web`.
+
+Open: whether the standalone repository stays a development home. Nothing reconciles the two automatically, and the next divergence needs another content re-import.
+
 ## Toolchain versions (2026-09-05)
 
 mise pins bun 1.4.2, Go 1.27.1, Temurin 25, golangci-lint 2.13.2, swiftformat 0.63.0, swiftlint 0.65.1, xcodegen 2.46.0. Node is not managed by mise; `.node-version` says 26 for fnm. Go and Java are pinned identically in go.mod, go.work, the Dockerfiles, CI and mise; bump all of them together.

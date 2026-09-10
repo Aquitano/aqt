@@ -33,18 +33,18 @@ export const WALL_END_MARGIN = 1.6;
 export const MAX_SIDE_SPAN = MAX_ROOM_DEPTH - 2 * WALL_END_MARGIN;
 
 export function clamp(v: number, min: number, max: number): number {
-	return Math.min(Math.max(v, min), max);
+  return Math.min(Math.max(v, min), max);
 }
 
 /** Minimal structural view of an artwork the layout math needs. */
 export type LayoutArtwork = {
-	dimensions?: string | null;
-	imageWidth?: number | null;
-	imageHeight?: number | null;
-	/** Curated placement, when set. */
-	wall?: WallId | null;
-	wallOffset?: number | null;
-	scale?: number | null;
+  dimensions?: string | null;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
+  /** Curated placement, when set. */
+  wall?: WallId | null;
+  wallOffset?: number | null;
+  scale?: number | null;
 };
 
 /** Parse "73.7 × 92.1 cm" (height × width) into meters. The match is anchored
@@ -52,17 +52,17 @@ export type LayoutArtwork = {
  * e.g. "29 x 36 1/4 in. (73.7 x 92.1 cm)" from the Met — still resolves to the
  * metric figures. */
 export function parsePhysicalSize(
-	dimensions: string | null | undefined,
+  dimensions: string | null | undefined,
 ): { height: number; width: number } | null {
-	if (!dimensions) return null;
-	const match = dimensions.match(/([\d.]+)\s*[×x]\s*([\d.]+)\s*cm/i);
-	if (!match?.[1] || !match[2]) return null;
-	const h = Number.parseFloat(match[1]) / 100;
-	const w = Number.parseFloat(match[2]) / 100;
-	if (!Number.isFinite(h) || !Number.isFinite(w) || h <= 0 || w <= 0) {
-		return null;
-	}
-	return { height: h, width: w };
+  if (!dimensions) return null;
+  const match = dimensions.match(/([\d.]+)\s*[×x]\s*([\d.]+)\s*cm/i);
+  if (!match?.[1] || !match[2]) return null;
+  const h = Number.parseFloat(match[1]) / 100;
+  const w = Number.parseFloat(match[2]) / 100;
+  if (!Number.isFinite(h) || !Number.isFinite(w) || h <= 0 || w <= 0) {
+    return null;
+  }
+  return { height: h, width: w };
 }
 
 /** Display size in meters, scaled by the curatorial placement.scale. The
@@ -71,27 +71,25 @@ export function parsePhysicalSize(
  * image that is a detail crop of the catalogued work (or includes its frame)
  * then hangs at a plausible size instead of a distorted one. */
 export function displaySize(artwork: LayoutArtwork): {
-	width: number;
-	height: number;
+  width: number;
+  height: number;
 } {
-	const scale = artwork.scale ?? 1;
-	const physical = parsePhysicalSize(artwork.dimensions);
-	const imageAspect =
-		artwork.imageWidth && artwork.imageHeight
-			? artwork.imageWidth / artwork.imageHeight
-			: null;
-	if (physical && imageAspect === null) {
-		return { width: physical.width * scale, height: physical.height * scale };
-	}
-	const aspect = imageAspect ?? 4 / 3;
-	const height = physical
-		? Math.sqrt((physical.width * physical.height) / aspect) * scale
-		: 1.2 * scale;
-	return { width: height * aspect, height };
+  const scale = artwork.scale ?? 1;
+  const physical = parsePhysicalSize(artwork.dimensions);
+  const imageAspect =
+    artwork.imageWidth && artwork.imageHeight ? artwork.imageWidth / artwork.imageHeight : null;
+  if (physical && imageAspect === null) {
+    return { width: physical.width * scale, height: physical.height * scale };
+  }
+  const aspect = imageAspect ?? 4 / 3;
+  const height = physical
+    ? Math.sqrt((physical.width * physical.height) / aspect) * scale
+    : 1.2 * scale;
+  return { width: height * aspect, height };
 }
 
 /** Along-wall footprint of one work, including frame margin and the minimum
  * slot floor. */
 export function slotWidth(displayWidth: number): number {
-	return Math.max(displayWidth + FRAME_MARGIN, MIN_SLOT);
+  return Math.max(displayWidth + FRAME_MARGIN, MIN_SLOT);
 }
