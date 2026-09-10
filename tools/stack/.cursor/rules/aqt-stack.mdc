@@ -12,6 +12,8 @@ Follow the workspace conventions in the root CLAUDE.md.
 - Generated apps use Next.js, React Compiler, ArkType, and shared `@aqt/config`.
 - Use root Oxlint and Oxfmt. shadcn components use Base UI and the `cn` package.
 - Keep the optional Vitest and Testing Library setup for generated React apps.
+- Register generated apps in `tools/tasks/<name>.toml` after checks and build pass.
+  Preserve existing tasks; validate namespace and aggregate discovery before creating files.
 - Put generated GitHub Actions workflows at the workspace root, with app path filters.
 - Verify changes with a real generated app's checks and build, including a minimal
   app without optional features when changing conditional templates.

@@ -32,6 +32,10 @@ export interface ShellRunner {
   /** Write string content to a file. */
   writeFile(path: string, content: string): Promise<void>;
 
+  readFile(path: string): Promise<string>;
+
+  taskNames(cwd: string): Promise<string[]>;
+
   /** Read a project's package.json. */
   readPackageJson(path: string): Promise<PackageManifest>;
 }
@@ -74,6 +78,22 @@ export class BunShellRunner implements ShellRunner {
 
   async writeFile(path: string, content: string): Promise<void> {
     await Bun.write(path, content);
+  }
+
+  async readFile(path: string): Promise<string> {
+    return Bun.file(path).text();
+  }
+
+  async taskNames(cwd: string): Promise<string[]> {
+    const proc = Bun.spawn(["mise", "tasks", "--json", "--hidden"], {
+      cwd,
+      stdout: "pipe",
+      stderr: "inherit",
+    });
+    const output = await new Response(proc.stdout).text();
+    if ((await proc.exited) !== 0) throw new Error("Could not read workspace mise tasks.");
+    const tasks = type({ name: "string", aliases: "string[]" }).array().assert(JSON.parse(output));
+    return tasks.flatMap((task) => [task.name, ...task.aliases]);
   }
 
   async readPackageJson(path: string): Promise<PackageManifest> {

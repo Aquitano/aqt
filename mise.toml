@@ -7,52 +7,72 @@ swiftformat = "0.63.0"
 swiftlint = "0.65.1"
 xcodegen = "2.46.0"
 
+[task_config]
+includes = ["tools/tasks"]
+
 [tasks.check]
-description = "Every app's checks"
-depends = [
-  "ts:check",
-  "stack:check",
-  "bank:check",
-  "health:check",
-  "gallery:check",
-  "img:check",
-  "notch:check",
-  "starboard:check",
-]
+description = "Every app's checks, with shared tasks run once"
+depends = ["*:check"]
 
 [tasks."ts:check"]
-description = "Lint, format check and typecheck every TypeScript project"
-run = ["bun run lint", "bun run fmt:check", "bun run typecheck"]
+description = "Lint, format check, typecheck and test every TypeScript project"
+depends = ["*:ts"]
+
+[tasks."workspace:check"]
+description = "Format check workspace configuration and documentation"
+run = "bunx --no-install oxfmt --check . '!apps/**' '!packages/**' '!tools/stack/**'"
+
+[tasks."shared:ts"]
+run = [
+  "bunx --no-install oxlint --type-aware packages/ts",
+  "bunx --no-install oxfmt --check packages",
+  "bun run --filter './packages/ts/*' typecheck",
+]
 
 [tasks."stack:check"]
-wait_for = ["ts:check"]
-dir = "tools/stack"
-run = ["bun run typecheck", "bun test"]
+depends = ["shared:ts", "stack:ts"]
+
+[tasks."stack:ts"]
+run = [
+  "bunx --no-install oxlint --type-aware tools/stack",
+  "bunx --no-install oxfmt --check tools/stack",
+  "bun run --cwd tools/stack typecheck",
+  "bun run --cwd tools/stack test",
+]
 
 [tasks."bank:check"]
-wait_for = ["ts:check"]
-dir = "apps/bank"
+depends = ["shared:ts", "bank:ts", "bank:go"]
+
+[tasks."bank:ts"]
 run = [
-  "go vet ./...",
-  "go test -race ./...",
-  "golangci-lint run",
-  "bun run --cwd internal/webui/app check",
+  "bunx --no-install oxlint --type-aware apps/bank",
+  "bunx --no-install oxfmt --check apps/bank",
+  "bun run --filter '@aqt/bank-*' typecheck",
 ]
+
+[tasks."bank:go"]
+dir = "apps/bank"
+run = ["go vet ./...", "go test -race ./...", "golangci-lint run"]
 
 [tasks."bank:dev"]
 dir = "apps/bank"
 run = "go run ./cmd/bank serve"
 
 [tasks."health:check"]
-wait_for = ["ts:check"]
 description = "Needs Docker or AQT_HEALTH_TEST_JDBC_URL"
-dir = "apps/health"
+depends = ["shared:ts", "health:ts", "health:kotlin"]
+
+[tasks."health:ts"]
 run = [
-  "./gradlew check --continue",
-  "bun run --cwd frontend lint",
-  "bun run --cwd frontend typecheck",
-  "bun run --cwd frontend test",
+  "bun run --cwd apps/health/frontend lint",
+  "bunx --no-install oxfmt --check apps/health",
+  "bun run --cwd apps/health/frontend typecheck",
+  "bun run --cwd apps/health/frontend test",
 ]
+
+[tasks."health:kotlin"]
+dir = "apps/health"
+run = "./gradlew check --continue"
 
 [tasks."health:dev"]
 depends = ["health:dev:api", "health:dev:web"]
@@ -66,18 +86,28 @@ dir = "apps/health/frontend"
 run = "bun run dev"
 
 [tasks."gallery:check"]
-wait_for = ["ts:check"]
-dir = "apps/gallery"
-run = ["bun run typecheck", "bun run check"]
+depends = ["shared:ts", "gallery:ts"]
+
+[tasks."gallery:ts"]
+run = [
+  "bun run --cwd apps/gallery check",
+  "bunx --no-install oxfmt --check apps/gallery",
+  "bun run --cwd apps/gallery typecheck",
+]
 
 [tasks."gallery:dev"]
 dir = "apps/gallery"
 run = "bun run dev"
 
 [tasks."img:check"]
-wait_for = ["ts:check"]
-dir = "apps/img"
-run = ["bun run typecheck", "bun run --cwd cli typecheck", "bun run lint"]
+depends = ["shared:ts", "img:ts"]
+
+[tasks."img:ts"]
+run = [
+  "bun run --cwd apps/img lint",
+  "bunx --no-install oxfmt --check apps/img",
+  "bun run --filter '@aqt/img*' typecheck",
+]
 
 [tasks."img:dev"]
 dir = "apps/img"
@@ -87,7 +117,11 @@ run = "bun run dev"
 depends = ["notch:lint", "notch:test"]
 
 [tasks."notch:lint"]
-run = ["swiftformat --lint apps/notch", "swiftlint lint --strict --quiet apps/notch"]
+run = [
+  "swiftformat --lint apps/notch",
+  "swiftlint lint --strict --quiet apps/notch",
+  "bunx --no-install oxfmt --check apps/notch",
+]
 
 [tasks."notch:test"]
 dir = "apps/notch"
@@ -105,7 +139,11 @@ run = "./run.sh --run"
 depends = ["starboard:lint", "starboard:test"]
 
 [tasks."starboard:lint"]
-run = ["swiftformat --lint apps/starboard", "swiftlint lint --strict --quiet apps/starboard"]
+run = [
+  "swiftformat --lint apps/starboard",
+  "swiftlint lint --strict --quiet apps/starboard",
+  "bunx --no-install oxfmt --check apps/starboard",
+]
 
 [tasks."starboard:test"]
 dir = "apps/starboard"

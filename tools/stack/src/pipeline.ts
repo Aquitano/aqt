@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 
 import type { Config } from "./config.ts";
 import { REQUIRED_LANDING_COMPONENTS, validateProjectName } from "./config.ts";
+import { buildMiseTasks, validateMiseNamespace } from "./mise.ts";
 import type { ShellRunner } from "./shell.ts";
 import { buildCi, getTemplates } from "./templates.ts";
 
@@ -26,6 +27,7 @@ export async function scaffold(
   if (nameError) throw new Error(nameError);
   const projectPath = resolve(workspaceRoot, "apps", config.projectName);
   const workflowPath = resolve(workspaceRoot, ".github/workflows", `${config.projectName}.yml`);
+  const taskPath = resolve(workspaceRoot, "tools/tasks", `${config.projectName}.toml`);
   const rootPackage = await shell.readPackageJson(`${workspaceRoot}/package.json`);
   if (
     rootPackage.name !== "aqt" ||
@@ -37,6 +39,12 @@ export async function scaffold(
   if (config.ci && (await shell.exists(workflowPath))) {
     throw new Error(`Workflow already exists: ${workflowPath}`);
   }
+  if (await shell.exists(taskPath)) throw new Error(`Task file already exists: ${taskPath}`);
+  validateMiseNamespace(
+    await shell.readFile(`${workspaceRoot}/mise.toml`),
+    config.projectName,
+    await shell.taskNames(workspaceRoot),
+  );
   await shell.reserveDirectory(projectPath);
 
   await runStep(
@@ -167,4 +175,10 @@ export async function scaffold(
     },
     { verbose: true },
   );
+
+  await runStep("Registering mise entry points", async () => {
+    await shell.mkdir(resolve(taskPath, ".."), workspaceRoot);
+    await shell.writeFile(taskPath, buildMiseTasks(config.projectName));
+    await shell.spawn("mise", ["run", "-n", `${config.projectName}:check`], { cwd: workspaceRoot });
+  });
 }

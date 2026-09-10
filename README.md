@@ -28,7 +28,12 @@ mise pins bun, go, java, golangci-lint, swiftformat, swiftlint and xcodegen. Act
 mise tasks            # list every entry point
 mise run <app>:check  # one app's lint, typecheck and tests, with its native tools
 mise run <app>:dev    # run one app locally
+mise run ts:check     # TypeScript only, including existing tests
 mise run check        # everything
 ```
 
-Each task is a thin wrapper over the app's own tooling (`go test`, `./gradlew check`, `turbo`, `xcodebuild`), defined in `mise.toml`. `ts:check` lints, format-checks and typechecks every TypeScript project at once; `health:check` needs Docker or `AQT_HEALTH_TEST_JDBC_URL`.
+Each task wraps the app's own tooling (`go test`, `./gradlew check`, `turbo`, `xcodebuild`). TypeScript app checks include lint, formatting, types, and existing tests, plus checks of shared TypeScript packages. mise runs each shared task once per invocation. Go and Kotlin checks can run alongside TypeScript checks; `health:check` needs Docker or `AQT_HEALTH_TEST_JDBC_URL`.
+
+Tasks live in `mise.toml` and `tools/tasks/*.toml`. The stack generator registers each new app there after its checks and build pass. Root `check` discovers `*:check` tasks, and `ts:check` discovers `*:ts` tasks, so new apps join both aggregates automatically. `workspace:check` covers formatting outside app and shared-package tasks. Gallery keeps its scoped Turbo typechecks and cache.
+
+Put mise flags before the task name, for example `mise run -n check` to preview the graph. App-specific scripts remain available inside each app.

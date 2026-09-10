@@ -337,11 +337,16 @@ Run from the workspace root:
 \`\`\`sh
 mise install
 bun install
-cd apps/${opts.projectName}
-bun run dev
+mise run ${opts.projectName}:dev
 \`\`\`
 
 Open http://localhost:3000. Optional environment variables are in .env.example.
+
+Run \`mise run ${opts.projectName}:check\` from the root to check this app and shared
+TypeScript packages. Root \`mise run ts:check\` and \`mise run check\` include this app.
+The task definitions are in \`tools/tasks/${opts.projectName}.toml\`.
+
+From \`apps/${opts.projectName}\`:
 
 - \`bun run check\`: lint, format check, types${opts.testing ? ", and tests" : ""}.
 - \`bun run build\`: production build. \`bun run start\`: serve that build.
