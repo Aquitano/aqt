@@ -1,0 +1,16 @@
+{
+	"name": "@aqt-gallery/gallery-layout",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"check-types": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@aqt-gallery/config": "workspace:*",
+		"typescript": "catalog:"
+	}
+}

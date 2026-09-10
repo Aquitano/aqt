@@ -64,6 +64,41 @@
       "when": 1781632904495,
       "tag": "0008_handy_mesmero",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781974676456,
+      "tag": "0009_tricky_ultimo",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783441083293,
+      "tag": "0010_certain_outlaw_kid",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784100216825,
+      "tag": "0011_curious_bullseye",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784141138858,
+      "tag": "0012_sturdy_blue_shield",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788773689924,
+      "tag": "0013_exhibitions",
+      "breakpoints": true
     }
   ]
 }

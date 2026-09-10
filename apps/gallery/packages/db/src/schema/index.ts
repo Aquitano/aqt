@@ -1,4 +1,5 @@
+export * from "./analytics";
+export * from "./exhibition";
 export * from "./gallery";
-export * from "./museum";
 export * from "./theme";
 export * from "./tokens";

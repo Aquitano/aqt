@@ -6,6 +6,7 @@ node_modules
 # Build outputs
 dist
 build
+target
 *.tsbuildinfo
 uploads
 apps/server/uploads
@@ -42,6 +43,9 @@ lerna-debug.log*
 # Better-T-Stack
 .alchemy
 
+# Wrangler local state
+.wrangler
+
 # Testing
 coverage
 .nyc_output
@@ -52,3 +56,10 @@ coverage
 tmp
 temp
 .claude/settings.local.json
+
+# Codex CLI local config (contains an auth token — never commit)
+.codex/
+
+# Chrome performance traces
+Trace-*.json.gz
+

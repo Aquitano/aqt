@@ -11,12 +11,12 @@ import { z } from "zod";
  * (`apps/web/.../museum/theme.ts`), since defaults are a presentation concern.
  */
 export const themeSchema = z.object({
-  wallColor: z.string().optional(),
-  accentWallColor: z.string().optional(),
-  floorColor: z.string().optional(),
-  floorRoughness: z.number().min(0).max(1).optional(),
-  ambientIntensity: z.number().min(0).max(5).optional(),
-  lightTemperature: z.enum(["warm", "neutral", "cool"]).optional(),
+	wallColor: z.string().optional(),
+	accentWallColor: z.string().optional(),
+	floorColor: z.string().optional(),
+	floorRoughness: z.number().min(0).max(1).optional(),
+	ambientIntensity: z.number().min(0).max(5).optional(),
+	lightTemperature: z.enum(["warm", "neutral", "cool"]).optional(),
 });
 
 export type Theme = z.infer<typeof themeSchema>;

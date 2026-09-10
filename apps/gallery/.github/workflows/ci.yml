@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to the same branch supersedes in-flight runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.5
+
+      - name: Cache bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
+      - name: Lint and format
+        run: bunx biome ci .
+
+      - name: Typecheck
+        run: bun run check-types
+
+      # Source dirs only: the Typecheck step's `tsc -b` emits apps/server/dist,
+      # and bun would otherwise run the compiled .test.js copies a second time.
+      - name: Test
+        run: bun test apps/server/src packages/gallery-layout/src apps/web/src
+        # Tests mock services or run pure layout/renderer logic. Supply
+        # schema-satisfying placeholders so @t3-oss/env validation passes.
+        env:
+          DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+          CLERK_SECRET_KEY: sk_test_ci_placeholder_not_used
+          CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder_not_used
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder_not_used
+          SERVER_URL: http://localhost:3000
+          CORS_ORIGIN: http://localhost:3001
+          VITE_SERVER_URL: http://localhost:3000
+          NODE_ENV: test
+
+      # Render-budget guard: boots the web dev server, opens the synthetic
+      # 25-room / 100-work harness in headless Chromium and fails on draw-call
+      # or light-count regressions (counts, not frame time: CI has no GPU).
+      - name: Install Chromium for the harness budget
+        run: bunx playwright install --with-deps chromium
+
+      - name: Render budget
+        run: bun run harness:budget
+        working-directory: apps/web
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder_not_used
+          VITE_SERVER_URL: http://localhost:3000
+          CLERK_SECRET_KEY: sk_test_ci_placeholder_not_used
+
+      - name: Build
+        run: bun run build
+        # Builds only bundle code; no real services are reached. Supply
+        # schema-satisfying placeholders so @t3-oss/env validation passes.
+        env:
+          DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+          CLERK_SECRET_KEY: sk_test_ci_placeholder_not_used
+          CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder_not_used
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder_not_used
+          SERVER_URL: http://localhost:3000
+          CORS_ORIGIN: http://localhost:3001
+          VITE_SERVER_URL: http://localhost:3000
+          NODE_ENV: production
