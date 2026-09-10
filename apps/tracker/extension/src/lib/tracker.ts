@@ -19,11 +19,11 @@ import {
   type StatusReply,
 } from "./messages.ts";
 import {
-  dueCaptures,
   dueEvents,
   enqueueCapture,
   enqueueEvent,
   markFailed,
+  nextDueCapture,
   pendingCounts,
   removeRows,
 } from "./outbox.ts";
@@ -193,7 +193,7 @@ export async function flushEvents(): Promise<void> {
 }
 
 export async function uploadCaptures(): Promise<void> {
-  const [head] = await dueCaptures();
+  const head = await nextDueCapture();
   if (!head) return;
   const settings = await loadSettings();
   const result = await postCapture(settings.serverUrl, head.payload);

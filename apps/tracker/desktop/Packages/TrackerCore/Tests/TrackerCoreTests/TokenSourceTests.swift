@@ -31,6 +31,23 @@ private func tokenFile(_ contents: Data) throws -> String {
     return path.path(percentEncoded: false)
 }
 
+private final class CallCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    func record() {
+        lock.lock()
+        defer { lock.unlock() }
+        value += 1
+    }
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+
 private func reply(_ json: String, status: Int = 200) -> TokenSource.Transport {
     { request in
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
@@ -68,26 +85,72 @@ struct TokenSourceTests {
         #expect(stored.issuer == "https://auth.example.com/application/o/tracker/")
     }
 
-    /// A provider that does not rotate omits the field, and discarding the old
-    /// one would mean signing in again at the next expiry.
-    @Test func aRefreshTokenTheProviderOmitsIsKept() throws {
+    /// A provider that does not rotate omits the field or sends it empty, and
+    /// storing that would sign out the CLI as well at the next expiry.
+    @Test(arguments: [
+        #"{"access_token":"access-2","expires_in":600}"#,
+        #"{"access_token":"access-2","refresh_token":"","expires_in":600}"#,
+    ])
+    func aRefreshTokenTheProviderDoesNotRotateIsKept(body: String) throws {
         let previous = StoredToken(accessToken: "access-1", refreshToken: "refresh-1")
-        let response = try SessionCoding.decoder().decode(
-            TokenResponse.self,
-            from: Data(#"{"access_token":"access-2","expires_in":600}"#.utf8)
-        )
+        let response = try SessionCoding.decoder().decode(TokenResponse.self, from: Data(body.utf8))
         let merged = TokenExchange.merge(response, into: previous, at: epoch)
         #expect(merged.refreshToken == "refresh-1")
         #expect(merged.expiry == epoch.addingTimeInterval(600))
     }
 
-    /// A refresh that fails on the network says nothing about the access token,
-    /// so the agent keeps trying with what it has rather than going silent.
-    @Test func aRefreshTheServerRejectsLeavesTheOldTokenInPlace() async throws {
-        let path = try tokenFile(sessionJSON(expiry: "2026-01-01T00:00:00Z"))
+    /// Quoted by some providers, bare by most; oauth2 takes either, and a body
+    /// that fails to decode wholesale would strand a token it had just rotated.
+    @Test func aQuotedExpiresInIsAccepted() throws {
+        let response = try SessionCoding.decoder().decode(
+            TokenResponse.self,
+            from: Data(#"{"access_token":"access-2","expires_in":"600"}"#.utf8)
+        )
+        #expect(TokenExchange.merge(response, into: nil, at: epoch).expiry == epoch.addingTimeInterval(600))
+    }
+
+    /// A refresh can fail because the network is down, which says nothing about
+    /// a token that has not run out yet.
+    @Test func aTokenInsideTheRefreshSkewSurvivesAFailedRefresh() async throws {
+        let path = try tokenFile(sessionJSON(expiry: "2026-05-28T21:47:10Z"))
         let source = TokenSource(path: path, now: { epoch }, transport: reply("nope", status: 503))
         #expect(await source.bearer() == "access-1")
+    }
+
+    /// Past its expiry it is spent, and sending it again only earns another 401.
+    @Test func aSpentTokenIsNotSentAfterAFailedRefresh() async throws {
+        let path = try tokenFile(sessionJSON(expiry: "2026-01-01T00:00:00Z"))
+        let source = TokenSource(path: path, now: { epoch }, transport: reply("nope", status: 503))
+        #expect(await source.bearer() == nil)
         #expect(await source.bearer(forcingRefresh: true) == nil)
+    }
+
+    /// Actors are reentrant and this one suspends for the whole round trip, so
+    /// without the shared task both callers would spend the same refresh token.
+    @Test func concurrentCallersShareOneRefresh() async throws {
+        let path = try tokenFile(sessionJSON(expiry: "2026-01-01T00:00:00Z"))
+        let calls = CallCounter()
+        let source = TokenSource(path: path, now: { epoch }, transport: { request in
+            calls.record()
+            try? await Task.sleep(for: .milliseconds(50))
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let body = #"{"access_token":"access-2","refresh_token":"refresh-2","expires_in":3600}"#
+            return (Data(body.utf8), response)
+        })
+
+        async let first = source.bearer()
+        async let second = source.bearer()
+
+        #expect(await [first, second] == ["access-2", "access-2"])
+        #expect(calls.count == 1)
+    }
+
+    /// `applicationWillTerminate` cannot await, and a quit before the first
+    /// flush would otherwise send that last batch with no token at all.
+    @Test func theTerminatePathFindsATokenBeforeTheFirstFlush() throws {
+        let path = try tokenFile(sessionJSON(expiry: "2027-01-01T00:00:00Z"))
+        let source = TokenSource(path: path, now: { epoch }, transport: reply(""))
+        #expect(source.mostRecentBearer() == "access-1")
     }
 
     @Test func anUnsetTokenPathFallsBackToTheCLIsLocation() {

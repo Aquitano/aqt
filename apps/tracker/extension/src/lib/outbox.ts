@@ -105,8 +105,30 @@ export async function dueEvents(limit: number): Promise<EventRow[]> {
   return due(await rows("events", EventRow), limit);
 }
 
-export async function dueCaptures(): Promise<CaptureRow[]> {
-  return due(await rows("captures", CaptureRow), Number.POSITIVE_INFINITY);
+/// A cursor rather than `getAll`, because the caller only ever uploads the head
+/// and a capture carries a whole document: reading every queued one would pull
+/// hundreds of megabytes into the service worker on each pass.
+export function nextDueCapture(): Promise<CaptureRow | undefined> {
+  const now = new Date().toISOString();
+  return openDatabase().then(
+    (db) =>
+      new Promise((resolve, reject) => {
+        // Row ids are UUIDv7, so the cursor walks oldest first.
+        const request = db.transaction("captures", "readonly").objectStore("captures").openCursor();
+        request.addEventListener("success", () => {
+          const cursor = request.result;
+          if (!cursor) return resolve(undefined);
+          const decoded = CaptureRow(cursor.value);
+          if (!(decoded instanceof type.errors) && decoded.next_attempt_at <= now) {
+            return resolve(decoded);
+          }
+          cursor.continue();
+        });
+        request.addEventListener("error", () =>
+          reject(request.error ?? new Error("indexedDB cursor failed")),
+        );
+      }),
+  );
 }
 
 export async function removeRows(name: StoreName, ids: readonly string[]): Promise<void> {

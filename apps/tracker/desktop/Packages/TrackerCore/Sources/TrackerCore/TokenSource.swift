@@ -5,15 +5,18 @@ import Synchronization
 /// session; from then on this refreshes the access token and writes the result
 /// back, so an agent that runs for weeks never needs a human at a terminal.
 ///
-/// An actor because the refresh token can rotate: two concurrent refreshes
-/// would race, and the loser would persist a refresh token the provider has
-/// already retired.
+/// The refresh token can rotate, so two refreshes must never be in flight at
+/// once: the loser would persist a token the provider has already retired, and
+/// a provider with reuse detection would revoke the session outright. An actor
+/// alone does not give that — actors are reentrant, and this one suspends for
+/// the whole round trip — so concurrent callers share one `inFlight` task.
 package actor TokenSource {
     package typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
     private let path: String
     private let now: @Sendable () -> Date
     private let transport: Transport
+    private var inFlight: Task<StoredToken?, Never>?
 
     /// `applicationWillTerminate` cannot await an actor, so the last token
     /// handed out is kept where a synchronous caller can reach it.
@@ -38,17 +41,22 @@ package actor TokenSource {
             return issue(token.accessToken)
         }
         guard let refreshed = await refresh(session) else {
-            // The old token may still be good: a refresh can fail because the
-            // network is down, which says nothing about the access token.
-            return forcingRefresh ? nil : issue(token.accessToken)
+            // A refresh can fail because the network is down, which says nothing
+            // about the access token. One already past its expiry is spent
+            // either way, and sending it again only earns another 401.
+            guard !forcingRefresh, !token.isSpent(at: now()) else { return nil }
+            return issue(token.accessToken)
         }
         return issue(refreshed.accessToken)
     }
 
-    /// The token last handed out, for a caller that cannot await. It may be
-    /// a moment stale, which costs one rejected batch at shutdown at worst.
+    /// The token last handed out, for a caller that cannot await. Falls back to
+    /// the file so a quit before the first flush still sends something.
     package nonisolated func mostRecentBearer() -> String? {
-        lastIssued.withLock { $0 }
+        if let issued = lastIssued.withLock({ $0 }) {
+            return issued
+        }
+        return Self.read(path)?.token?.accessToken
     }
 
     private func issue(_ token: String) -> String {
@@ -56,7 +64,20 @@ package actor TokenSource {
         return token
     }
 
+    /// Callers that arrive while a refresh is running wait for that one rather
+    /// than spending the same refresh token a second time.
     private func refresh(_ session: StoredSession) async -> StoredToken? {
+        if let inFlight {
+            return await inFlight.value
+        }
+        let task = Task { await self.exchange(session) }
+        inFlight = task
+        let token = await task.value
+        inFlight = nil
+        return token
+    }
+
+    private func exchange(_ session: StoredSession) async -> StoredToken? {
         guard let request = TokenExchange.refreshRequest(session: session) else {
             Log.auth.error("no refresh token stored, run 'tracker login'")
             return nil
@@ -89,9 +110,13 @@ package actor TokenSource {
     /// Read every time rather than cache: the file is small, and a cached
     /// session would outlive a `tracker login` that replaced it.
     private func load() -> StoredSession? {
+        Self.read(path)
+    }
+
+    private nonisolated static func read(_ path: String) -> StoredSession? {
         guard let data = FileManager.default.contents(atPath: path) else { return nil }
         guard let session = try? SessionCoding.decoder().decode(StoredSession.self, from: data) else {
-            Log.auth.error("\(self.path, privacy: .public) is not a tracker session")
+            Log.auth.error("\(path, privacy: .public) is not a tracker session")
             return nil
         }
         return session

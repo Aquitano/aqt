@@ -56,9 +56,22 @@ package struct StoredToken: Codable, Sendable, Equatable {
     /// the batch is in flight costs a round trip and a retry.
     package static let expirySkew: TimeInterval = 60
 
+    /// Go marshals a zero `time.Time` as year 1, never omitting it, and that
+    /// means "the provider gave no expiry" rather than "expired in antiquity".
+    private var hasExpiry: Bool {
+        guard let expiry else { return false }
+        return expiry.timeIntervalSince1970 > 0
+    }
+
     package func isFresh(at now: Date) -> Bool {
-        guard let expiry, expiry != Date(timeIntervalSince1970: 0) else { return true }
+        guard hasExpiry, let expiry else { return true }
         return expiry.timeIntervalSince(now) > Self.expirySkew
+    }
+
+    /// Past its expiry outright, as opposed to merely inside the refresh skew.
+    package func isSpent(at now: Date) -> Bool {
+        guard hasExpiry, let expiry else { return false }
+        return expiry <= now
     }
 }
 
@@ -74,6 +87,25 @@ package struct TokenResponse: Decodable, Sendable {
         case tokenType = "token_type"
         case refreshToken = "refresh_token"
         case expiresIn = "expires_in"
+    }
+
+    package init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        accessToken = try container.decode(String.self, forKey: .accessToken)
+        tokenType = try container.decodeIfPresent(String.self, forKey: .tokenType)
+        refreshToken = try container.decodeIfPresent(String.self, forKey: .refreshToken)
+        // Quoted by some providers, bare by most; oauth2 takes either.
+        if let seconds = try? container.decodeIfPresent(Double.self, forKey: .expiresIn) {
+            expiresIn = seconds
+        } else {
+            expiresIn = try container.decodeIfPresent(String.self, forKey: .expiresIn).flatMap(Double.init)
+        }
+    }
+}
+
+extension String {
+    var nilWhenEmpty: String? {
+        isEmpty ? nil : self
     }
 }
 
@@ -107,7 +139,7 @@ package enum TokenExchange {
         StoredToken(
             accessToken: response.accessToken,
             tokenType: response.tokenType ?? previous?.tokenType ?? "Bearer",
-            refreshToken: response.refreshToken ?? previous?.refreshToken,
+            refreshToken: response.refreshToken?.nilWhenEmpty ?? previous?.refreshToken,
             expiry: response.expiresIn.map { now.addingTimeInterval($0) }
         )
     }
