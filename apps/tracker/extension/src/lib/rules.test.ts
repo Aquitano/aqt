@@ -27,6 +27,12 @@ describe("hostMatches", () => {
     expect(hostMatches("*.example.com", "example.com")).toBe(false);
     expect(hostMatches("*.example.com", "notexample.com")).toBe(false);
   });
+
+  test("a bare star matches every host", () => {
+    expect(hostMatches("*", "example.com")).toBe(true);
+    expect(hostMatches("*", "a.b.c.example.co.uk")).toBe(true);
+    expect(hostMatches("*", "localhost")).toBe(true);
+  });
 });
 
 describe("matchRule", () => {
@@ -54,6 +60,23 @@ describe("matchRule", () => {
 
   test("an empty path regex matches every path", () => {
     expect(matchRule(rules, new URL("https://x.com/"))?.extractor).toBe("anything");
+  });
+
+  test("a wildcard rule catches what no specific rule claims", () => {
+    const article = rule({ extractor: "article", hosts: ["*"], path_regex: "" });
+    expect(matchRule([...rules, article], new URL("https://example.com/post"))?.extractor).toBe(
+      "article",
+    );
+    expect(matchRule([...rules, article], new URL("https://github.com/a/b"))?.extractor).toBe(
+      "article",
+    );
+  });
+
+  test("a specific rule beats a wildcard one whatever the order", () => {
+    const article = rule({ extractor: "article", hosts: ["*"], path_regex: "" });
+    const url = new URL("https://github.com/wxt-dev/wxt/pull/12");
+    expect(matchRule([...rules, article], url)?.extractor).toBe("github");
+    expect(matchRule([article, ...rules], url)?.extractor).toBe("github");
   });
 
   test("an invalid regex never matches", () => {

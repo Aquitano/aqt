@@ -40,6 +40,7 @@ export const RulesResponse = type({ rules: WireRule.array() }).pipe(({ rules }) 
 export function hostMatches(pattern: string, hostname: string): boolean {
   const host = hostname.toLowerCase();
   const wanted = pattern.toLowerCase();
+  if (wanted === "*") return true;
   if (wanted.startsWith("*.")) return host.endsWith(wanted.slice(1));
   return host === wanted;
 }
@@ -53,10 +54,22 @@ function pathMatches(pattern: string, pathname: string): boolean {
   }
 }
 
+function isWildcard(rule: Rule): boolean {
+  return rule.hosts.includes("*");
+}
+
+function ruleMatches(rule: Rule, url: URL): boolean {
+  return (
+    rule.hosts.some((host) => hostMatches(host, url.hostname)) &&
+    pathMatches(rule.path_regex, url.pathname)
+  );
+}
+
+// Host-specific rules are tried before any wildcard one, so a site extractor
+// wins over the article fallback whatever order the server published them in.
 export function matchRule(rules: readonly Rule[], url: URL): Rule | undefined {
-  return rules.find(
-    (rule) =>
-      rule.hosts.some((host) => hostMatches(host, url.hostname)) &&
-      pathMatches(rule.path_regex, url.pathname),
+  return (
+    rules.find((rule) => !isWildcard(rule) && ruleMatches(rule, url)) ??
+    rules.find((rule) => isWildcard(rule) && ruleMatches(rule, url))
   );
 }

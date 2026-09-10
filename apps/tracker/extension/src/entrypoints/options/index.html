@@ -34,6 +34,25 @@
         margin-left: 8px;
         color: #1a7f37;
       }
+      fieldset {
+        margin: 0 0 16px;
+        padding: 12px;
+        border: 1px solid #ddd;
+      }
+      legend {
+        padding: 0 4px;
+        color: #666;
+      }
+      #auth-status[data-state="in"] {
+        color: #1a7f37;
+      }
+      #auth-status[data-state="out"] {
+        color: #b42318;
+      }
+      code {
+        overflow-wrap: anywhere;
+        background: #f4f4f4;
+      }
     </style>
   </head>
   <body>
@@ -59,6 +78,30 @@
         <input id="capture-enabled" type="checkbox" />
         Capture HTML on pages that match a server rule
       </label>
+      <fieldset>
+        <legend>Authentication</legend>
+        <label>
+          OIDC issuer
+          <input
+            id="oidc-issuer"
+            type="url"
+            placeholder="https://auth.example.com/application/o/tracker/"
+          />
+          <small
+            >Leave empty for a server on loopback or a private network, which needs none.</small
+          >
+        </label>
+        <label>
+          Client id
+          <input id="oidc-client-id" type="text" />
+        </label>
+        <p>Redirect URI for the provider: <code id="redirect-uri"></code></p>
+        <p>
+          <span id="auth-status" data-state="off"></span>
+        </p>
+        <button id="sign-in" type="button">Sign in</button>
+        <button id="sign-out" type="button">Sign out</button>
+      </fieldset>
       <button type="submit">Save</button>
       <span id="saved"></span>
     </form>

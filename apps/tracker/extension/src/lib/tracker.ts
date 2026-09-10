@@ -1,14 +1,8 @@
 import { type } from "arktype";
 import { browser, type Browser } from "wxt/browser";
 
-import {
-  checkHealth,
-  fetchRules,
-  isPermanentFailure,
-  postCapture,
-  postEvents,
-  type Result,
-} from "./api.ts";
+import { checkHealth, fetchRules, postCapture, postEvents, type Result } from "./api.ts";
+import { authState } from "./auth.ts";
 import { errorMessage } from "./errors.ts";
 import type {
   CaptureMeta,
@@ -35,6 +29,8 @@ import {
 } from "./outbox.ts";
 import { isNewPageView, navigationTypeFor, spaNavigationType } from "./page-view.ts";
 import { isPrivateHost, privateUrl } from "./privacy.ts";
+import { recaptureDecision } from "./recapture.ts";
+import { isPermanentFailure } from "./result.ts";
 import { matchRule, type Rule } from "./rules.ts";
 import {
   countDropped,
@@ -55,6 +51,7 @@ import { uuidv7 } from "./uuid.ts";
 const HEARTBEAT_ALARM = "heartbeat";
 const RULES_ALARM = "rules";
 const CAPTURE_ALARM_PREFIX = "capture:";
+const RECAPTURE_ALARM_PREFIX = "recapture:";
 export const IDLE_SECONDS = 60;
 const FLUSH_DELAY_MS = 10_000;
 const FLUSH_BATCH = 100;
@@ -64,6 +61,18 @@ const now = () => new Date().toISOString();
 const failure = (error: string): CaptureNowReply => ({ ok: false, error });
 const captureAlarm = (tabId: number, pageViewId: string) =>
   `${CAPTURE_ALARM_PREFIX}${tabId}:${pageViewId}`;
+const recaptureAlarm = (tabId: number, pageViewId: string) =>
+  `${RECAPTURE_ALARM_PREFIX}${tabId}:${pageViewId}`;
+
+async function clearRecaptureAlarms(tabId: number): Promise<void> {
+  const prefix = `${RECAPTURE_ALARM_PREFIX}${tabId}:`;
+  const alarms = await browser.alarms.getAll();
+  await Promise.all(
+    alarms
+      .filter((alarm) => alarm.name.startsWith(prefix))
+      .map((alarm) => browser.alarms.clear(alarm.name)),
+  );
+}
 
 let chain: Promise<void> = Promise.resolve();
 
@@ -254,7 +263,7 @@ async function armCapture(): Promise<void> {
   if (!open) return;
   const pageView = (await tabStore(open.tabId).get())?.pageView;
   if (!pageView || pageView.event.id !== open.pageViewId) return;
-  if (pageView.captured || pageView.event.private) return;
+  if (pageView.lastCapturedAt !== undefined || pageView.event.private) return;
   const settings = await loadSettings();
   if (!settings.captureEnabled) return;
   if (!(await syncStore.get())?.connected) return;
@@ -303,7 +312,7 @@ export async function onBrowserStartup(): Promise<void> {
   await refreshRules();
 }
 
-export async function onSettingsChanged(): Promise<void> {
+export async function onConfigChanged(): Promise<void> {
   await refreshRules();
   await pollHealth();
 }
@@ -348,6 +357,7 @@ async function beginPageView(
 ): Promise<void> {
   const tab = await browser.tabs.get(tabId).catch(() => undefined);
   if (!tab || tab.incognito) return;
+  await clearRecaptureAlarms(tabId);
   const store = tabStore(tabId);
   const previous = await store.get();
   const tabSessionId = previous?.tabSessionId ?? uuidv7();
@@ -370,7 +380,7 @@ async function beginPageView(
   };
   if (previous?.pageView) event.referrer = previous.pageView.event.url;
   if (!isPrivate && tab.title) event.title = tab.title;
-  await store.set({ tabSessionId, pageView: { event, titled: false, captured: false } });
+  await store.set({ tabSessionId, pageView: { event, titled: false } });
   await emit(event);
   await diag(`page view ${event.url} (${navigationType})`);
   await reconcile("navigation");
@@ -390,6 +400,7 @@ export async function onTitleChanged(tabId: number, title: string): Promise<void
 export async function onTabRemoved(tabId: number): Promise<void> {
   const open = await openSpanStore.get();
   if (open?.tabId === tabId) await closeSpan(open, "tab_closed", now());
+  await clearRecaptureAlarms(tabId);
   await tabStore(tabId).remove();
   await reconcile("tab_closed");
 }
@@ -406,7 +417,8 @@ export async function onAlarm(alarm: Browser.alarms.Alarm): Promise<void> {
     await refreshRules();
     return;
   }
-  if (alarm.name.startsWith(CAPTURE_ALARM_PREFIX)) await onCaptureAlarm(alarm.name);
+  if (alarm.name.startsWith(RECAPTURE_ALARM_PREFIX)) await onRecaptureAlarm(alarm.name);
+  else if (alarm.name.startsWith(CAPTURE_ALARM_PREFIX)) await onCaptureAlarm(alarm.name);
 }
 
 async function onCaptureAlarm(name: string): Promise<void> {
@@ -415,6 +427,38 @@ async function onCaptureAlarm(name: string): Promise<void> {
   if (!tabId || !pageViewId || open?.pageViewId !== pageViewId) return;
   const outcome = await captureTab(Number(tabId), "initial");
   if (!outcome.ok) await diag(`capture skipped: ${outcome.error}`);
+}
+
+async function onQuiet(tabId: number): Promise<void> {
+  const pageView = (await tabStore(tabId).get())?.pageView;
+  if (!pageView) return;
+  const rule = ruleFor(await cachedRules(), pageView.event.url);
+  const decision = recaptureDecision({
+    rule,
+    lastCapturedAt: pageView.lastCapturedAt,
+    now: Date.now(),
+  });
+  if (decision.kind === "never") return;
+  if (decision.kind === "defer") {
+    await clearRecaptureAlarms(tabId);
+    await browser.alarms.create(recaptureAlarm(tabId, pageView.event.id), { when: decision.due });
+    return;
+  }
+  await recapture(tabId, pageView.event.id);
+}
+
+async function recapture(tabId: number, pageViewId: string): Promise<void> {
+  await clearRecaptureAlarms(tabId);
+  const outcome = await captureTab(tabId, "recapture");
+  if (!outcome.ok) await diag(`recapture skipped ${pageViewId}: ${outcome.error}`);
+}
+
+async function onRecaptureAlarm(name: string): Promise<void> {
+  const [tabId, pageViewId] = name.slice(RECAPTURE_ALARM_PREFIX.length).split(":");
+  if (!tabId || !pageViewId) return;
+  const pageView = (await tabStore(Number(tabId)).get())?.pageView;
+  if (pageView?.event.id !== pageViewId) return;
+  await recapture(Number(tabId), pageViewId);
 }
 
 async function requestHtml(tabId: number): Promise<Result<SerializeReply>> {
@@ -444,6 +488,7 @@ export async function captureTab(tabId: number, reason: CaptureReason): Promise<
   const page = await requestHtml(tabId);
   if (!page.ok) return page;
   const { html, title, url, dirty } = page.value;
+  if (reason === "recapture" && !dirty) return failure("page unchanged since last capture");
   const bytes = new Blob([html]).size;
   if (bytes > rule.max_bytes) {
     return failure(`page is ${bytes} bytes, ${rule.extractor} allows ${rule.max_bytes}`);
@@ -460,7 +505,7 @@ export async function captureTab(tabId: number, reason: CaptureReason): Promise<
   };
   if (title) meta.title = title;
   await enqueueCapture({ meta, html });
-  await store.set({ ...state, pageView: { ...pageView, captured: true } });
+  await store.set({ ...state, pageView: { ...pageView, lastCapturedAt: meta.captured_at } });
   await diag(`capture queued ${rule.extractor} ${reason} ${bytes} bytes${dirty ? " (dirty)" : ""}`);
   await uploadCaptures();
   return { ok: true };
@@ -473,13 +518,15 @@ async function captureActiveTab(): Promise<CaptureNowReply> {
 }
 
 async function status(): Promise<StatusReply> {
-  const [counts, sync, lines] = await Promise.all([
+  const [counts, sync, lines, auth] = await Promise.all([
     pendingCounts(),
     syncStore.get(),
     diagnostics(),
+    authState(),
   ]);
   return {
     connected: sync?.connected ?? false,
+    auth,
     pendingEvents: counts.events,
     pendingCaptures: counts.captures,
     lastSyncAt: sync?.lastSyncAt,
@@ -496,8 +543,8 @@ export async function handleMessage(
   if (message.type === "status") return status();
   if (message.type === "capture_now") return captureActiveTab();
   const tabId = sender.tab?.id;
-  if (tabId !== undefined && sender.frameId === 0) {
-    await onSpaChange(tabId, message.url, message.navigation_type);
-  }
+  if (tabId === undefined || sender.frameId !== 0) return undefined;
+  if (message.type === "quiet") await onQuiet(tabId);
+  else await onSpaChange(tabId, message.url, message.navigation_type);
   return undefined;
 }

@@ -14,7 +14,7 @@ import {
   onTabRemoved,
   onTitleChanged,
   onWorkerStart,
-  onSettingsChanged,
+  onConfigChanged,
   reconcile,
   serialized,
 } from "../lib/tracker.ts";
@@ -41,7 +41,10 @@ export default defineBackground(() => {
   browser.idle.onStateChanged.addListener(() => void serialized(() => reconcile("idle")));
   browser.alarms.onAlarm.addListener((alarm) => void serialized(() => onAlarm(alarm)));
   browser.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && "settings" in changes) void serialized(onSettingsChanged);
+    // Signing in changes authTokens, not settings, and should take effect at
+    // once rather than at the next hourly rules alarm.
+    if (area !== "local") return;
+    if ("settings" in changes || "authTokens" in changes) void serialized(onConfigChanged);
   });
 
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {

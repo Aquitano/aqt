@@ -16,6 +16,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/aquitano/aqt/apps/tracker/internal/auth"
+	"github.com/aquitano/aqt/apps/tracker/internal/authtest"
 	"github.com/aquitano/aqt/apps/tracker/internal/blob"
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor/fake"
@@ -54,10 +56,14 @@ func (f *fakeStore) Search(context.Context, store.SearchOpts) ([]store.Hit, erro
 	return []store.Hit{}, nil
 }
 
+func (f *fakeStore) Stats(context.Context) (store.Stats, error) {
+	return store.Stats{Derivations: map[string]int64{}, Records: map[string]int64{}}, nil
+}
+
 func newServer(t *testing.T) (*Server, *fakeStore) {
 	t.Helper()
 	fs := &fakeStore{}
-	return New(fs, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}), fs
+	return New(fs, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off()), fs
 }
 
 func do(t *testing.T, h http.Handler, req *http.Request) *httptest.ResponseRecorder {
@@ -101,8 +107,13 @@ func TestOriginPolicy(t *testing.T) {
 	req = httptest.NewRequest(http.MethodOptions, "/v1/captures", nil)
 	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
 	req.Header.Set("Access-Control-Request-Method", "POST")
-	if rec := do(t, h, req); rec.Code != http.StatusNoContent || !strings.Contains(rec.Header().Get("Access-Control-Allow-Methods"), "POST") {
+	rec = do(t, h, req)
+	if rec.Code != http.StatusNoContent || !strings.Contains(rec.Header().Get("Access-Control-Allow-Methods"), "POST") {
 		t.Errorf("preflight: status %d, methods %q", rec.Code, rec.Header().Get("Access-Control-Allow-Methods"))
+	}
+	// Without this the extension cannot send a bearer token at all.
+	if !strings.Contains(rec.Header().Get("Access-Control-Allow-Headers"), "Authorization") {
+		t.Errorf("preflight allows headers %q, want Authorization among them", rec.Header().Get("Access-Control-Allow-Headers"))
 	}
 
 	if rec := do(t, h, httptest.NewRequest(http.MethodGet, "/healthz", nil)); rec.Code != http.StatusOK {
@@ -218,5 +229,39 @@ func TestSearchNeedsAQuery(t *testing.T) {
 	}
 	if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, "/v1/search?q=bun&limit=0", nil)); rec.Code != http.StatusBadRequest {
 		t.Errorf("limit 0: status %d, want 400", rec.Code)
+	}
+}
+
+func TestProtectedRoutesNeedAToken(t *testing.T) {
+	const audience = "tracker"
+	iss := authtest.NewIssuer(t)
+	a, err := auth.New(context.Background(), auth.Config{Issuer: iss.URL, Audience: audience})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := New(&fakeStore{}, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, a).Handler()
+
+	// The extension reads healthz to tell a server that is down from one it
+	// is not signed in to, so it stays open even with auth on.
+	if rec := do(t, h, httptest.NewRequest(http.MethodGet, "/healthz", nil)); rec.Code != http.StatusOK {
+		t.Errorf("healthz: status %d, want 200", rec.Code)
+	}
+	if rec := do(t, h, httptest.NewRequest(http.MethodGet, "/v1/capture-rules", nil)); rec.Code != http.StatusUnauthorized {
+		t.Errorf("no token: status %d, want 401", rec.Code)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/capture-rules", nil)
+	req.Header.Set("Authorization", "Bearer "+iss.Token(t, audience))
+	if rec := do(t, h, req); rec.Code != http.StatusOK {
+		t.Errorf("valid token: status %d, want 200", rec.Code)
+	}
+
+	// A preflight carries no Authorization header. Answering it with 401
+	// would fail every extension request before the real one is ever sent.
+	preflight := httptest.NewRequest(http.MethodOptions, "/v1/captures", nil)
+	preflight.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
+	preflight.Header.Set("Access-Control-Request-Method", "POST")
+	if rec := do(t, h, preflight); rec.Code != http.StatusNoContent {
+		t.Errorf("preflight with auth on: status %d, want 204", rec.Code)
 	}
 }

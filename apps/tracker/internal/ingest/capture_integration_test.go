@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/aquitano/aqt/apps/tracker/internal/auth"
 	"github.com/aquitano/aqt/apps/tracker/internal/metrics"
 	"github.com/aquitano/aqt/apps/tracker/internal/store"
 	"github.com/aquitano/aqt/apps/tracker/internal/storetest"
@@ -21,7 +22,7 @@ import (
 func TestCaptureTransaction(t *testing.T) {
 	st, schema := storetest.NewNamed(t)
 	woken := 0
-	s := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() { woken++ })
+	s := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() { woken++ }, auth.Off())
 	h := s.Handler()
 
 	device := uuid.Must(uuid.NewV7())

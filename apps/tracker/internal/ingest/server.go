@@ -1,6 +1,7 @@
 // Package ingest is the HTTP side: events and captures in from the
-// extension, rules and search out. Loopback only and no auth by decision;
-// the Origin check is the one guard, so a web page cannot post here.
+// extension, rules and search out. The Origin check keeps a web page from
+// posting here; a bearer token is required as well once an OIDC issuer is
+// configured, and on loopback there is usually neither issuer nor need.
 package ingest
 
 import (
@@ -14,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/aquitano/aqt/apps/tracker/internal/auth"
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
 	"github.com/aquitano/aqt/apps/tracker/internal/metrics"
 	"github.com/aquitano/aqt/apps/tracker/internal/store"
@@ -24,6 +26,7 @@ type Store interface {
 	ApplyEvents(ctx context.Context, deviceID uuid.UUID, ev store.Events) (store.EventResult, error)
 	InsertCapture(ctx context.Context, in store.CaptureInput) (store.CaptureResult, error)
 	Search(ctx context.Context, o store.SearchOpts) ([]store.Hit, error)
+	Stats(ctx context.Context) (store.Stats, error)
 }
 
 type Server struct {
@@ -31,10 +34,11 @@ type Server struct {
 	metrics *metrics.Metrics
 	log     *slog.Logger
 	wake    func()
+	auth    *auth.Authenticator
 }
 
-func New(st Store, m *metrics.Metrics, log *slog.Logger, wake func()) *Server {
-	return &Server{store: st, metrics: m, log: log, wake: wake}
+func New(st Store, m *metrics.Metrics, log *slog.Logger, wake func(), a *auth.Authenticator) *Server {
+	return &Server{store: st, metrics: m, log: log, wake: wake, auth: a}
 }
 
 const extensionOrigin = "chrome-extension://"
@@ -43,13 +47,29 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.Handle("GET /metrics", s.metrics.Handler())
-	mux.HandleFunc("GET /v1/capture-rules", func(w http.ResponseWriter, _ *http.Request) {
+	mux.Handle("GET /v1/capture-rules", s.protect(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"rules": extractor.Rules()})
-	})
-	mux.HandleFunc("POST /v1/events/batch", s.handleEvents)
-	mux.HandleFunc("POST /v1/captures", s.handleCapture)
-	mux.HandleFunc("GET /v1/search", s.handleSearch)
+	}))
+	mux.Handle("POST /v1/events/batch", s.protect(s.handleEvents))
+	mux.Handle("POST /v1/captures", s.protect(s.handleCapture))
+	mux.Handle("GET /v1/search", s.protect(s.handleSearch))
+	mux.Handle("GET /v1/stats", s.protect(s.handleStats))
 	return s.observe(mux)
+}
+
+// protect turns away anything without a token the issuer signed. /healthz and
+// /metrics stay open on purpose: Prometheus scrapes one, and the extension
+// reads the other to tell "server down" from "signed out", which are
+// different states with different fixes.
+func (s *Server) protect(next http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := s.auth.Verify(r.Context(), r); err != nil {
+			s.log.Warn("unauthenticated", "path", r.URL.Path, "err", err)
+			writeErr(w, http.StatusUnauthorized, "invalid or missing bearer token")
+			return
+		}
+		next(w, r)
+	})
 }
 
 // observe is the one middleware: origin policy, CORS, request log, metrics.
@@ -66,7 +86,7 @@ func (s *Server) observe(next http.Handler) http.Handler {
 			route = "preflight"
 			allowOrigin(rw, origin)
 			rw.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			rw.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			rw.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 			rw.Header().Set("Access-Control-Max-Age", "600")
 			rw.WriteHeader(http.StatusNoContent)
 		default:
@@ -109,6 +129,15 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true, "db": true})
+}
+
+func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.store.Stats(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {

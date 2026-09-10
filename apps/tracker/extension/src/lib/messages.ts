@@ -10,7 +10,10 @@ export type UrlChangedMessage = typeof UrlChangedMessage.infer;
 export const PopupMessage = type({ type: "'status'" }).or({ type: "'capture_now'" });
 export type PopupMessage = typeof PopupMessage.infer;
 
-export const BackgroundMessage = UrlChangedMessage.or(PopupMessage);
+export const QuietMessage = type({ type: "'quiet'" });
+export type QuietMessage = typeof QuietMessage.infer;
+
+export const BackgroundMessage = UrlChangedMessage.or(PopupMessage).or(QuietMessage);
 export type BackgroundMessage = typeof BackgroundMessage.infer;
 
 export const SerializeRequest = type({ type: "'serialize'" });
@@ -26,6 +29,7 @@ export type SerializeReply = typeof SerializeReply.infer;
 
 export const StatusReply = type({
   connected: "boolean",
+  auth: "'off' | 'in' | 'out'",
   pendingEvents: "number",
   pendingCaptures: "number",
   "lastSyncAt?": "string",

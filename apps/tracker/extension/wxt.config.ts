@@ -10,7 +10,7 @@ export default defineConfig({
     description:
       "Browsing memory: page views, active time and HTML captures into a local tracker server.",
     incognito: "not_allowed",
-    permissions: ["storage", "tabs", "webNavigation", "idle", "alarms"],
+    permissions: ["storage", "tabs", "webNavigation", "idle", "alarms", "identity"],
     host_permissions: ["http://*/*", "https://*/*"],
   },
 });

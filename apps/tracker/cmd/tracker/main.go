@@ -18,6 +18,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/aquitano/aqt/apps/tracker/internal/auth"
+	"github.com/aquitano/aqt/apps/tracker/internal/client"
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
 	_ "github.com/aquitano/aqt/apps/tracker/internal/extractor/all"
 	"github.com/aquitano/aqt/apps/tracker/internal/ingest"
@@ -35,15 +37,25 @@ Usage:
                                                           (default: every capture under the current version;
                                                           --failed: retry failed jobs; --all: wipe and rebuild
                                                           records and derivations from the raw blobs)
+  tracker login                                           device-code sign in against the OIDC issuer
+  tracker logout                                          forget the stored token
   tracker stats [--json]                                  table counts, blob sizes, queue and record totals
   tracker search [--extractor name] [--limit n] [--json] <query>
                                                           BM25 search over extracted records
 
+stats and search read the server over HTTP, so they work against a tracker on
+another machine; serve, migrate and reprocess need the database itself.
+
 Environment:
-  TRACKER_DATABASE_URL  default postgres://tracker:tracker@127.0.0.1:5434/tracker?sslmode=disable
-  TRACKER_LISTEN        default 127.0.0.1:8490
-  TRACKER_WORKERS       default 3
-  TRACKER_LOG_LEVEL     debug | info | warn | error (default info)
+  TRACKER_DATABASE_URL   default postgres://tracker:tracker@127.0.0.1:5434/tracker?sslmode=disable
+  TRACKER_LISTEN         default 127.0.0.1:8490
+  TRACKER_WORKERS        default 3
+  TRACKER_LOG_LEVEL      debug | info | warn | error (default info)
+  TRACKER_SERVER_URL     default http://127.0.0.1:8490, what the CLI talks to
+  TRACKER_OIDC_ISSUER    unset, which means no authentication on either side
+  TRACKER_OIDC_AUDIENCE  audience serve requires in a token, usually the client id
+  TRACKER_OIDC_CLIENT_ID client id the CLI signs in as
+  TRACKER_TOKEN_PATH     default <user config dir>/tracker/token.json
 `
 
 func main() {
@@ -60,6 +72,10 @@ func main() {
 		err = cmdMigrate(ctx)
 	case "reprocess":
 		err = cmdReprocess(ctx, os.Args[2:])
+	case "login":
+		err = cmdLogin(ctx)
+	case "logout":
+		err = cmdLogout()
 	case "stats":
 		err = cmdStats(ctx, os.Args[2:])
 	case "search":
@@ -113,6 +129,13 @@ func cmdServe(ctx context.Context, args []string) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	authenticator, err := auth.New(ctx, auth.Config{
+		Issuer:   os.Getenv("TRACKER_OIDC_ISSUER"),
+		Audience: os.Getenv("TRACKER_OIDC_AUDIENCE"),
+	})
+	if err != nil {
+		return err
+	}
 	st, err := store.Open(ctx, databaseURL())
 	if err != nil {
 		return err
@@ -122,7 +145,7 @@ func cmdServe(ctx context.Context, args []string) error {
 	proc := processor.New(st, m, log, *workers)
 	srv := &http.Server{
 		Addr:              *listen,
-		Handler:           ingest.New(st, m, log, proc.Wake).Handler(),
+		Handler:           ingest.New(st, m, log, proc.Wake, authenticator).Handler(),
 		ReadHeaderTimeout: 15 * time.Second,
 	}
 
@@ -139,7 +162,8 @@ func cmdServe(ctx context.Context, args []string) error {
 		srv.Shutdown(shutdownCtx)
 	}()
 
-	log.Info("serving", "listen", *listen, "workers", *workers, "extractors", len(extractor.All()))
+	log.Info("serving", "listen", *listen, "workers", *workers,
+		"extractors", len(extractor.All()), "auth", authenticator.Enabled())
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		stop()
 		<-workersDone
@@ -190,18 +214,61 @@ func cmdReprocess(ctx context.Context, args []string) error {
 	return nil
 }
 
+func clientConfig() (client.Config, error) {
+	path := os.Getenv("TRACKER_TOKEN_PATH")
+	if path == "" {
+		var err error
+		if path, err = client.DefaultTokenPath(); err != nil {
+			return client.Config{}, err
+		}
+	}
+	return client.Config{
+		ServerURL: env("TRACKER_SERVER_URL", "http://127.0.0.1:8490"),
+		Issuer:    os.Getenv("TRACKER_OIDC_ISSUER"),
+		ClientID:  os.Getenv("TRACKER_OIDC_CLIENT_ID"),
+		TokenPath: path,
+	}, nil
+}
+
+func newClient(ctx context.Context) (*client.Client, error) {
+	cfg, err := clientConfig()
+	if err != nil {
+		return nil, err
+	}
+	return client.New(ctx, cfg)
+}
+
+func cmdLogin(ctx context.Context) error {
+	cfg, err := clientConfig()
+	if err != nil {
+		return err
+	}
+	return client.Login(ctx, cfg, os.Stdout)
+}
+
+func cmdLogout() error {
+	cfg, err := clientConfig()
+	if err != nil {
+		return err
+	}
+	if err := client.Logout(cfg); err != nil {
+		return err
+	}
+	fmt.Println("signed out")
+	return nil
+}
+
 func cmdStats(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("stats", flag.ExitOnError)
 	asJSON := fs.Bool("json", false, "")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	st, err := store.Open(ctx, databaseURL())
+	c, err := newClient(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
-	stats, err := st.Stats(ctx)
+	stats, err := c.Stats(ctx)
 	if err != nil {
 		return err
 	}
@@ -234,12 +301,11 @@ func cmdSearch(ctx context.Context, args []string) error {
 	if query == "" {
 		return errors.New("usage: tracker search [--extractor name] [--limit n] [--json] <query>")
 	}
-	st, err := store.Open(ctx, databaseURL())
+	c, err := newClient(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
-	hits, err := st.Search(ctx, store.SearchOpts{Query: query, Extractor: *name, Limit: *limit})
+	hits, err := c.Search(ctx, store.SearchOpts{Query: query, Extractor: *name, Limit: *limit})
 	if err != nil {
 		return err
 	}

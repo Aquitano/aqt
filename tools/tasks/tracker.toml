@@ -6,6 +6,7 @@ run = [
   "bunx --no-install oxlint --type-aware apps/tracker/extension",
   "bunx --no-install oxfmt --check apps/tracker",
   "bun run --cwd apps/tracker/extension typecheck",
+  "bun run --cwd apps/tracker/extension test",
 ]
 
 ["tracker:go"]

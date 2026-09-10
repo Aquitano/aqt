@@ -24,6 +24,14 @@ function keyed<t>(area: Browser.storage.StorageArea, key: string, schema: Type<t
 }
 
 export const deviceIdStore = keyed(browser.storage.local, "deviceId", type("string"));
+
+export const AuthTokens = type({
+  accessToken: "string",
+  expiresAt: "number",
+  "refreshToken?": "string",
+});
+export type AuthTokens = typeof AuthTokens.infer;
+export const authTokensStore = keyed(browser.storage.local, "authTokens", AuthTokens);
 export const settingsStore = keyed(browser.storage.local, "settings", Settings);
 
 export const RulesCache = type({ fetchedAt: "string", rules: Rule.array() });
@@ -50,7 +58,11 @@ export const syncStore = keyed(browser.storage.local, "sync", SyncState);
 
 const diagnosticsStore = keyed(browser.storage.local, "diagnostics", type("string[]"));
 
-export const PageViewState = type({ event: PageViewEvent, titled: "boolean", captured: "boolean" });
+export const PageViewState = type({
+  event: PageViewEvent,
+  titled: "boolean",
+  "lastCapturedAt?": "string",
+});
 export type PageViewState = typeof PageViewState.infer;
 export const TabState = type({ tabSessionId: "string", "pageView?": PageViewState });
 export const tabStore = (tabId: number) => keyed(browser.storage.session, `tab:${tabId}`, TabState);

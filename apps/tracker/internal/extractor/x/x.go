@@ -42,6 +42,7 @@ func (Extractor) Rule() extractor.Rule {
 		Version:   1,
 		Hosts:     []string{"x.com", "twitter.com", "mobile.x.com"},
 		PathRegex: `^/[^/]+/status/\d+`,
+		Recapture: extractor.RecaptureAfterQuiet,
 	}
 }
 

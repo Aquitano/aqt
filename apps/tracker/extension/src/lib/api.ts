@@ -1,28 +1,52 @@
 import { type Type, type } from "arktype";
 
+import { bearer, refresh } from "./auth.ts";
 import { errorMessage } from "./errors.ts";
 import type { CapturePayload, TrackerEvent } from "./events.ts";
+import type { Result } from "./result.ts";
 import { RulesResponse, type Rule } from "./rules.ts";
 
-export type Result<T> = { ok: true; value: T } | { ok: false; error: string; status?: number };
-
-// 408 and 429 are the only client errors a retry can fix.
-export function isPermanentFailure(status: number | undefined): boolean {
-  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
-}
+export type { Result } from "./result.ts";
 
 const HealthReply = type({ ok: "boolean", db: "boolean" });
 const BatchReply = type({ accepted: "number", dropped: "number" });
 const CaptureReply = type({ capture_id: "string", raw_hash: "string", deduplicated: "boolean" });
 
+// healthz is the one route the server leaves open, so it answers even when
+// this extension is signed out. That is what tells "server down" apart from
+// "signed out" in the popup.
+type Authorize = "required" | "none";
+
+function authorized(init: RequestInit | undefined, token: string | undefined): RequestInit {
+  if (!token) return init ?? {};
+  const headers = new Headers(init?.headers);
+  headers.set("Authorization", `Bearer ${token}`);
+  return { ...init, headers };
+}
+
 async function call<T extends Type>(
   url: string,
   init: RequestInit | undefined,
   schema: T,
+  authorize: Authorize = "required",
 ): Promise<Result<T["infer"]>> {
+  let token: string | undefined;
+  if (authorize === "required") {
+    const got = await bearer();
+    if (!got.ok) return got;
+    token = got.value;
+  }
   let response: Response;
   try {
-    response = await fetch(url, init);
+    response = await fetch(url, authorized(init, token));
+    if (response.status === 401 && authorize === "required") {
+      const renewed = await refresh();
+      if (!renewed.ok) return renewed;
+      if (renewed.value === token) {
+        return { ok: false, error: `${url}: HTTP 401`, status: response.status };
+      }
+      response = await fetch(url, authorized(init, renewed.value));
+    }
   } catch (error) {
     return { ok: false, error: `${url}: ${errorMessage(error)}` };
   }
@@ -47,7 +71,7 @@ export function fetchRules(serverUrl: string): Promise<Result<Rule[]>> {
 }
 
 export function checkHealth(serverUrl: string) {
-  return call(`${serverUrl}/healthz`, undefined, HealthReply);
+  return call(`${serverUrl}/healthz`, undefined, HealthReply, "none");
 }
 
 export function postEvents(serverUrl: string, deviceId: string, events: readonly TrackerEvent[]) {

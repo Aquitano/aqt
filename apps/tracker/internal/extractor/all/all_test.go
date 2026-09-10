@@ -1,19 +1,22 @@
 package all
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
 )
 
 func TestRegistryListsEverySite(t *testing.T) {
-	want := map[string]bool{"github": false, "x": false, "youtube": false}
+	want := map[string]bool{"article": false, "github": false, "x": false, "youtube": false}
 	for _, rule := range extractor.Rules() {
 		if _, ok := want[rule.Extractor]; !ok {
 			continue
 		}
 		want[rule.Extractor] = true
-		if rule.Version < 1 || len(rule.Hosts) == 0 || rule.PathRegex == "" {
+		// The wildcard fallback reads every path there is, so it carries no regex.
+		fallback := slices.Contains(rule.Hosts, "*")
+		if rule.Version < 1 || len(rule.Hosts) == 0 || (rule.PathRegex == "" && !fallback) {
 			t.Errorf("%s has an incomplete rule: %+v", rule.Extractor, rule)
 		}
 		if rule.DwellMS == 0 || rule.MaxBytes == 0 || rule.Recapture == "" {

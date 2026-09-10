@@ -25,8 +25,11 @@ async function refresh(): Promise<void> {
     connection.dataset.state = "unknown";
     return;
   }
-  connection.textContent = status.connected ? "connected" : "unreachable";
-  connection.dataset.state = status.connected ? "connected" : "unreachable";
+  // Signed out is not the same failure as unreachable, and the fix differs:
+  // one is a login, the other is a server that is down.
+  const state = !status.connected ? "unreachable" : status.auth === "out" ? "out" : "connected";
+  connection.textContent = state === "out" ? "signed out" : state;
+  connection.dataset.state = state;
   element("pending-events", HTMLElement).textContent = String(status.pendingEvents);
   element("pending-captures", HTMLElement).textContent = String(status.pendingCaptures);
   element("last-sync", HTMLElement).textContent = status.lastSyncAt ?? "never";

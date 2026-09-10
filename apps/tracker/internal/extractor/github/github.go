@@ -49,6 +49,7 @@ func (Extractor) Rule() extractor.Rule {
 		Version:   1,
 		Hosts:     []string{"github.com"},
 		PathRegex: `^/[^/]+/[^/]+(/?$|/(issues|pull)/\d+)`,
+		Recapture: extractor.RecaptureAfterQuiet,
 	}
 }
 

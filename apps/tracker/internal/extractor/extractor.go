@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -43,9 +44,10 @@ type Extractor interface {
 var ErrNoMatch = errors.New("extractor: page has no readable content")
 
 const (
-	DefaultDwellMS  = 5000
-	DefaultMaxBytes = 10 << 20
-	RecaptureNever  = "never"
+	DefaultDwellMS      = 5000
+	DefaultMaxBytes     = 10 << 20
+	RecaptureNever      = "never"
+	RecaptureAfterQuiet = "after_quiet"
 )
 
 var (
@@ -91,13 +93,22 @@ func Lookup(name string) (Extractor, bool) {
 	return e, ok
 }
 
+// Rules puts the wildcard rules last so a client that takes the first
+// match in the published order still prefers a site extractor over the
+// article fallback.
 func Rules() []Rule {
 	all := All()
 	rules := make([]Rule, 0, len(all))
+	wildcards := make([]Rule, 0, len(all))
 	for _, e := range all {
-		rules = append(rules, e.Rule().WithDefaults())
+		r := e.Rule().WithDefaults()
+		if r.isWildcard() {
+			wildcards = append(wildcards, r)
+		} else {
+			rules = append(rules, r)
+		}
 	}
-	return rules
+	return append(rules, wildcards...)
 }
 
 func (r Rule) WithDefaults() Rule {
@@ -120,7 +131,7 @@ func (r Rule) Matches(u *url.URL) bool {
 	host := strings.ToLower(u.Hostname())
 	hostOK := false
 	for _, h := range r.Hosts {
-		if h == host || (strings.HasPrefix(h, "*.") && strings.HasSuffix(host, h[1:])) {
+		if h == "*" || h == host || (strings.HasPrefix(h, "*.") && strings.HasSuffix(host, h[1:])) {
 			hostOK = true
 			break
 		}
@@ -135,9 +146,20 @@ func (r Rule) Matches(u *url.URL) bool {
 	return err == nil && re.MatchString(u.Path)
 }
 
+func (r Rule) isWildcard() bool {
+	return slices.Contains(r.Hosts, "*")
+}
+
+// MatchRule tries every host-specific rule before any wildcard one, so a
+// site extractor wins over the article fallback whatever the slice order.
 func MatchRule(rules []Rule, u *url.URL) (Rule, bool) {
 	for _, r := range rules {
-		if r.Matches(u) {
+		if !r.isWildcard() && r.Matches(u) {
+			return r, true
+		}
+	}
+	for _, r := range rules {
+		if r.isWildcard() && r.Matches(u) {
 			return r, true
 		}
 	}

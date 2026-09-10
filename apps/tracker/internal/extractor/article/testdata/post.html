@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Backpressure is a product decision — Mercury Notes</title>
+    <link rel="canonical" href="https://notes.mercury.example/backpressure-is-a-product-decision" />
+    <meta property="og:site_name" content="Mercury Notes" />
+    <meta property="og:title" content="Backpressure is a product decision" />
+    <meta name="author" content="Ida Ferreira" />
+    <meta property="article:published_time" content="2024-11-19T08:30:00+01:00" />
+    <meta
+      name="description"
+      content="Queues do not remove load, they move it in time. Deciding what to drop is the part nobody wants to own."
+    />
+  </head>
+  <body>
+    <div class="cookie-banner" id="cookie-consent">
+      <p>We use cookies to measure traffic and remember your theme. Accept all cookies or manage your preferences at any time.</p>
+      <button>Accept all cookies</button>
+      <button>Manage preferences</button>
+    </div>
+
+    <nav class="site-nav">
+      <a href="/">Mercury Notes</a>
+      <a href="/archive">Archive</a>
+      <a href="/talks">Talks</a>
+      <a href="/newsletter">Subscribe to the newsletter</a>
+      <a href="/about">About the author</a>
+    </nav>
+
+    <main>
+      <article class="post">
+        <h1>Backpressure is a product decision</h1>
+        <p class="byline">By <a rel="author" href="/authors/ida">Ida Ferreira</a> on <time datetime="2024-11-19">19 November 2024</time></p>
+
+        <p>Every queue I have ever added to a system was sold internally as a way to absorb load. That is only half true. A queue absorbs a burst, and it does so by trading latency for throughput, but it cannot invent capacity that the consumer does not have. If the producer is faster than the consumer for long enough, the queue is not a buffer any more. It is a slowly filling bucket with a leak nobody has specified yet.</p>
+
+        <p>The interesting question is never whether to apply backpressure. Backpressure happens either way, and the only choice is where it lands. It can land on the client as a rejected request, on the operator as a paging alert at three in the morning, or on the user as a feature that quietly stopped working two hours ago. Those three outcomes have wildly different costs, and none of them are technical judgements. They are product judgements dressed up as infrastructure.</p>
+
+        <p>Consider a document ingestion pipeline that indexes uploads for search. When the indexing workers fall behind, one team will argue for unbounded retries because losing a document is unacceptable. Another will argue for shedding load at the edge because a slow upload form is worse than a stale index. Both positions are defensible, and the argument only ends when somebody with authority over the product says which failure the users are allowed to see.</p>
+
+        <p>What makes this hard is that the decision has to be made before the incident, and written down somewhere the on-call engineer will actually read. A drop policy discovered during an outage is not a policy, it is an improvisation. The teams that recover well from saturation are the ones where the answer to "what do we shed first" was boring and already agreed on: analytics events before user writes, thumbnails before documents, recommendations before search.</p>
+
+        <p>So write the limit down. Give every queue a maximum depth, a maximum age, and a named owner who decided what happens when either is hit. Then instrument the moment the limit is reached, because that number is the earliest honest signal you have that the system is out of capacity, long before the latency graph bends.</p>
+      </article>
+
+      <aside class="sidebar">
+        <h2>Related reading</h2>
+        <ul>
+          <li><a href="/queues-are-not-free">Queues are not free</a></li>
+          <li><a href="/slo-budgets">Spending an error budget on purpose</a></li>
+        </ul>
+        <p>Subscribe to get one short essay on distributed systems every other Tuesday.</p>
+      </aside>
+    </main>
+
+    <footer class="site-footer">
+      <p>Copyright 2024 Mercury Notes. All rights reserved. Built with a static site generator and no tracking scripts.</p>
+      <a href="/privacy">Privacy policy</a>
+      <a href="/imprint">Imprint</a>
+    </footer>
+  </body>
+</html>
