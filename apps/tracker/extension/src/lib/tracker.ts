@@ -225,7 +225,8 @@ async function focusedTarget(): Promise<FocusTarget | undefined> {
   const [tab] = await browser.tabs.query({ active: true, windowId: focusedWindow.id });
   if (tab?.id === undefined) return undefined;
   if ((await browser.idle.queryState(IDLE_SECONDS)) !== "active") return undefined;
-  const pageView = (await tabStore(tab.id).get())?.pageView;
+  const state = await tabStore(tab.id).get();
+  const pageView = state ? state.pageView : await adoptTab(tab.id, tab);
   return pageView ? { tabId: tab.id, pageView } : undefined;
 }
 
@@ -371,6 +372,25 @@ async function beginPageView(
 ): Promise<void> {
   const tab = await browser.tabs.get(tabId).catch(() => undefined);
   if (!tab || tab.incognito) return;
+  await recordPageView(tabId, tab, url, navigationType);
+  await reconcile("navigation");
+}
+
+// A tab open before the extension loaded has no state and would go
+// unrecorded until it navigates; the first time it takes focus it is
+// recorded as of then.
+async function adoptTab(tabId: number, tab: Browser.tabs.Tab): Promise<PageViewState | undefined> {
+  if (tab.incognito || tab.url === undefined) return undefined;
+  await recordPageView(tabId, tab, tab.url, "load");
+  return (await tabStore(tabId).get())?.pageView;
+}
+
+async function recordPageView(
+  tabId: number,
+  tab: Browser.tabs.Tab,
+  url: string,
+  navigationType: PageViewEvent["navigation_type"],
+): Promise<void> {
   await clearRecaptureAlarms(tabId);
   const store = tabStore(tabId);
   const previous = await store.get();
@@ -378,7 +398,6 @@ async function beginPageView(
   const parsed = URL.parse(url);
   if (!parsed || (parsed.protocol !== "http:" && parsed.protocol !== "https:")) {
     await store.set({ tabSessionId });
-    await reconcile("navigation");
     return;
   }
   const settings = await loadSettings();
@@ -397,7 +416,6 @@ async function beginPageView(
   await store.set({ tabSessionId, pageView: { event, titled: false } });
   await emit(event);
   await diag(`page view ${event.url} (${navigationType})`);
-  await reconcile("navigation");
 }
 
 export async function onTitleChanged(tabId: number, title: string): Promise<void> {
