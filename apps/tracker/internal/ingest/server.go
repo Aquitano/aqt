@@ -134,7 +134,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := s.store.Stats(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		s.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, stats)
@@ -157,7 +157,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	hits, err := s.store.Search(r.Context(), o)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		s.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"hits": hits})
@@ -171,4 +171,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeErr(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// fail answers a server-side error; the client only ever sees the status,
+// so the message lands in the log.
+func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
+	s.log.Error("request failed", "route", r.Pattern, "err", err)
+	writeErr(w, http.StatusInternalServerError, err.Error())
 }

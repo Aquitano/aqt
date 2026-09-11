@@ -68,7 +68,7 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 		Version: rule.Version,
 	})
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		s.fail(w, r, err)
 		return
 	}
 	s.metrics.CapturesIngested.WithLabelValues(meta.Extractor, boolLabel(res.Deduplicated)).Inc()

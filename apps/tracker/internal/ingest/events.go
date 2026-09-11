@@ -67,7 +67,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	events, dropped := parseEvents(batch.Events)
 	res, err := s.store.ApplyEvents(r.Context(), batch.DeviceID, events)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		s.fail(w, r, err)
 		return
 	}
 	accepted := 0

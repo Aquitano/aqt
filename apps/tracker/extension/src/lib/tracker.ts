@@ -521,6 +521,9 @@ export async function captureTab(tabId: number, reason: CaptureReason): Promise<
   await reportEvicted("captures", await enqueueCapture({ meta, html }));
   await store.set({ ...state, pageView: { ...pageView, lastCapturedAt: meta.captured_at } });
   await diag(`capture queued ${rule.extractor} ${reason} ${bytes} bytes${dirty ? " (dirty)" : ""}`);
+  // The capture references its page view, which may still be waiting for the
+  // flush timer; the server rejects the one without the other.
+  await flushEvents();
   await uploadCaptures();
   return { ok: true };
 }
