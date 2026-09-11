@@ -163,7 +163,7 @@ derivations (
   attempts          integer not null default 0,
   claimed_at        timestamptz,
   last_error        text,
-  error_class       text,                       -- panic | parse | no_match | timeout | too_large | unregistered
+  error_class       text,                       -- panic | parse | no_match | stale | timeout | too_large | unregistered
   record_id         bigint references records,
   processing_ms     integer,
   created_at        timestamptz not null default now(),
@@ -211,7 +211,7 @@ where (raw_hash, extractor, extractor_version) in (
 returning *;
 ```
 
-Then, outside any transaction: fetch blob, decompress, run the extractor with a 30 s context timeout and panic recovery. Then one short transaction: upsert `records` on `(extractor, record_hash)` (bump `last_seen_at`), set derivation `done` with `record_id`. On error: `failed` once `attempts >= 5`, else back to `pending` with `last_error`/`error_class`. `no_match` and `unregistered` (a derivation for an extractor or version this binary does not carry) fail on the first attempt. Idle workers sleep 2 s; a successful ingest wakes them through a channel.
+Then, outside any transaction: fetch blob, decompress, run the extractor with a 30 s context timeout and panic recovery. Then one short transaction: upsert `records` on `(extractor, record_hash)` (bump `last_seen_at`), set derivation `done` with `record_id`. On error: `failed` once `attempts >= 5`, else back to `pending` with `last_error`/`error_class`. `no_match`, `stale` (the page's embedded state belongs to another URL: a single-page app navigated in place, so an extractor checks what it reads against the URL) and `unregistered` (a derivation for an extractor or version this binary does not carry) fail on the first attempt. Idle workers sleep 2 s; a successful ingest wakes them through a channel.
 
 `reprocess` without flags queues every capture under each extractor's current version (the rollout after a version bump); `--failed` resets failed rows; `--all` deletes the targets' derivations and records and re-queues from `captures`; `--extractor` narrows any of them. Workers in `serve` pick the rows up.
 

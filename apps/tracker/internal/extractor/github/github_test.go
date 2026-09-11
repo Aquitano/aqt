@@ -143,6 +143,22 @@ func TestExtractRepo(t *testing.T) {
 	}
 }
 
+func TestExtractStaleWhenTheEmbeddedDataIsAnotherPage(t *testing.T) {
+	for fixture, pageURL := range map[string]string{
+		"pull-900.html": "https://github.com/uptrace/bun/pull/901",
+		"repo.html":     "https://github.com/uptrace/bun-debug",
+	} {
+		raw, err := os.ReadFile("testdata/" + fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, _ := url.Parse(pageURL)
+		if _, err := (Extractor{}).Extract(context.Background(), raw, u); !errors.Is(err, extractor.ErrStale) {
+			t.Errorf("%s at %s: err = %v, want ErrStale", fixture, pageURL, err)
+		}
+	}
+}
+
 func TestExtractNoMatchOnLoginWall(t *testing.T) {
 	shell := []byte(`<!doctype html><html><head><title>Sign in to GitHub</title></head>
 		<body><div class="auth-form"><h1>Sign in</h1></div></body></html>`)

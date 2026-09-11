@@ -31,6 +31,7 @@ const (
 	ClassPanic        = "panic"
 	ClassParse        = "parse"
 	ClassNoMatch      = "no_match"
+	ClassStale        = "stale"
 	ClassTimeout      = "timeout"
 	ClassTooLarge     = "too_large"
 	ClassUnregistered = "unregistered"
@@ -203,6 +204,8 @@ func classify(err error) *failure {
 	switch {
 	case errors.Is(err, extractor.ErrNoMatch):
 		return &failure{err: err, class: ClassNoMatch, permanent: true}
+	case errors.Is(err, extractor.ErrStale):
+		return &failure{err: err, class: ClassStale, permanent: true}
 	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
 		return &failure{err: err, class: ClassTimeout}
 	case errors.As(err, &p):

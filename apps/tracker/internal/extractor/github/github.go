@@ -46,7 +46,7 @@ func init() { extractor.Register(Extractor{}) }
 func (Extractor) Rule() extractor.Rule {
 	return extractor.Rule{
 		Extractor: Name,
-		Version:   1,
+		Version:   2,
 		Hosts:     []string{"github.com"},
 		PathRegex: `^/[^/]+/[^/]+(/?$|/(issues|pull)/\d+)`,
 		Recapture: extractor.RecaptureAfterQuiet,
@@ -75,6 +75,11 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 	}
 	if !ok {
 		return extractor.Record{}, extractor.ErrNoMatch
+	}
+	// GitHub navigates in place and leaves the previous page's embedded data
+	// in the DOM, so the data has to describe the page the URL names.
+	if !strings.EqualFold(data.Owner, target.owner) || !strings.EqualFold(data.Repo, target.repo) || data.Number != target.number {
+		return extractor.Record{}, extractor.ErrStale
 	}
 
 	title := data.Owner + "/" + data.Repo

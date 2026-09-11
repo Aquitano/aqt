@@ -110,6 +110,13 @@ func TestExtractFallsBackToMicrodata(t *testing.T) {
 	}
 }
 
+func TestExtractStaleWhenThePageStateIsAnotherVideo(t *testing.T) {
+	u, _ := url.Parse("https://www.youtube.com/watch?v=b0rdUpcs--w")
+	if _, err := (Extractor{}).Extract(context.Background(), fixture(t), u); !errors.Is(err, extractor.ErrStale) {
+		t.Fatalf("err = %v, want ErrStale", err)
+	}
+}
+
 func TestExtractNoMatchOnConsentShell(t *testing.T) {
 	shell := []byte(`<!doctype html><html><head><title>YouTube</title></head>
 		<body><div id="content">Before you continue to YouTube</div></body></html>`)

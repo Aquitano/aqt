@@ -36,7 +36,7 @@ func init() { extractor.Register(Extractor{}) }
 func (Extractor) Rule() extractor.Rule {
 	return extractor.Rule{
 		Extractor: Name,
-		Version:   1,
+		Version:   2,
 		Hosts:     []string{"www.youtube.com", "youtube.com"},
 		PathRegex: `^/watch$`,
 		QueryKeys: []string{"v"},
@@ -48,12 +48,9 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 	if err != nil {
 		return extractor.Record{}, err
 	}
-	data, ok := playerData(doc)
-	if !ok {
-		data, ok = microdata(doc)
-	}
-	if !ok {
-		return extractor.Record{}, extractor.ErrNoMatch
+	data, err := currentVideo(doc, pageURL.Query().Get("v"))
+	if err != nil {
+		return extractor.Record{}, err
 	}
 	return extractor.Record{
 		CanonicalURL: "https://www.youtube.com/watch?v=" + data.VideoID,
@@ -62,6 +59,25 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 			[]string{data.Title, data.Channel, data.Description, strings.Join(data.Keywords, " ")}, "\n")),
 		Data: data,
 	}, nil
+}
+
+// currentVideo prefers the player response and falls back to the microdata,
+// skipping either when it describes a video other than the one the URL
+// names: YouTube navigates in place and leaves the previous page's script in
+// the DOM.
+func currentVideo(doc *html.Node, videoID string) (Data, error) {
+	err := extractor.ErrNoMatch
+	for _, read := range []func(*html.Node) (Data, bool){playerData, microdata} {
+		data, ok := read(doc)
+		switch {
+		case !ok:
+		case data.VideoID == videoID:
+			return data, nil
+		default:
+			err = extractor.ErrStale
+		}
+	}
+	return Data{}, err
 }
 
 type playerResponse struct {

@@ -43,6 +43,11 @@ type Extractor interface {
 // login wall, an empty client-side shell. It is recorded and never retried.
 var ErrNoMatch = errors.New("extractor: page has no readable content")
 
+// ErrStale means the page state the extractor reads belongs to another URL:
+// a single-page app navigated in place and left the previous page's embedded
+// data in the DOM. Recorded and never retried, like ErrNoMatch.
+var ErrStale = errors.New("extractor: page state belongs to another url")
+
 const (
 	DefaultDwellMS      = 5000
 	DefaultMaxBytes     = 10 << 20
