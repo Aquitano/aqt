@@ -58,18 +58,22 @@ function isWildcard(rule: Rule): boolean {
   return rule.hosts.includes("*");
 }
 
-function ruleMatches(rule: Rule, url: URL): boolean {
-  return (
-    rule.hosts.some((host) => hostMatches(host, url.hostname)) &&
-    pathMatches(rule.path_regex, url.pathname)
-  );
+function hostClaimed(rule: Rule, url: URL): boolean {
+  return rule.hosts.some((host) => hostMatches(host, url.hostname));
 }
 
-// Host-specific rules are tried before any wildcard one, so a site extractor
-// wins over the article fallback whatever order the server published them in.
+function ruleMatches(rule: Rule, url: URL): boolean {
+  return hostClaimed(rule, url) && pathMatches(rule.path_regex, url.pathname);
+}
+
+// Host-specific rules are tried before any wildcard one, whatever order the
+// server published them in. A host any site rule names is that rule's alone:
+// its other pages are app shell, not articles, so they never fall through to
+// the wildcard.
 export function matchRule(rules: readonly Rule[], url: URL): Rule | undefined {
-  return (
-    rules.find((rule) => !isWildcard(rule) && ruleMatches(rule, url)) ??
-    rules.find((rule) => isWildcard(rule) && ruleMatches(rule, url))
-  );
+  const specific = rules.filter((rule) => !isWildcard(rule));
+  if (specific.some((rule) => hostClaimed(rule, url))) {
+    return specific.find((rule) => ruleMatches(rule, url));
+  }
+  return rules.find((rule) => isWildcard(rule) && ruleMatches(rule, url));
 }

@@ -66,9 +66,11 @@ func TestMatchRuleWildcardLosesToASpecificRule(t *testing.T) {
 		want string
 	}{
 		{"https://github.com/uptrace/bun", "gh"},
-		{"https://github.com/uptrace/bun/issues", "article"},
 		{"https://www.youtube.com/watch?v=x", "yt"},
 		{"https://example.com/anything", "article"},
+		// A host a site rule names never falls through to the wildcard.
+		{"https://github.com/uptrace/bun/issues", ""},
+		{"https://www.youtube.com/shorts/x", ""},
 	}
 	orders := [][]Rule{
 		append(slices.Clone(specific), wildcard),
@@ -78,9 +80,9 @@ func TestMatchRuleWildcardLosesToASpecificRule(t *testing.T) {
 		for _, c := range cases {
 			u, _ := url.Parse(c.url)
 			r, ok := MatchRule(rules, u)
-			if !ok || r.Extractor != c.want {
+			if got := r.Extractor; got != c.want || ok != (c.want != "") {
 				t.Errorf("MatchRule(%s) with %q first = %q, %v; want %q",
-					c.url, rules[0].Extractor, r.Extractor, ok, c.want)
+					c.url, rules[0].Extractor, got, ok, c.want)
 			}
 		}
 	}

@@ -67,9 +67,14 @@ describe("matchRule", () => {
     expect(matchRule([...rules, article], new URL("https://example.com/post"))?.extractor).toBe(
       "article",
     );
-    expect(matchRule([...rules, article], new URL("https://github.com/a/b"))?.extractor).toBe(
-      "article",
-    );
+  });
+
+  test("a host a specific rule names never falls through to the wildcard", () => {
+    const article = rule({ extractor: "article", hosts: ["*"], path_regex: "" });
+    expect(matchRule([...rules, article], new URL("https://github.com/a/b"))).toBeUndefined();
+    expect(
+      matchRule([...rules, article], new URL("https://www.youtube.com/shorts/abc")),
+    ).toBeUndefined();
   });
 
   test("a specific rule beats a wildcard one whatever the order", () => {

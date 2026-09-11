@@ -133,17 +133,20 @@ func (r Rule) WithDefaults() Rule {
 }
 
 func (r Rule) Matches(u *url.URL) bool {
+	return r.matchesHost(u) && r.matchesPath(u)
+}
+
+func (r Rule) matchesHost(u *url.URL) bool {
 	host := strings.ToLower(u.Hostname())
-	hostOK := false
 	for _, h := range r.Hosts {
 		if h == "*" || h == host || (strings.HasPrefix(h, "*.") && strings.HasSuffix(host, h[1:])) {
-			hostOK = true
-			break
+			return true
 		}
 	}
-	if !hostOK {
-		return false
-	}
+	return false
+}
+
+func (r Rule) matchesPath(u *url.URL) bool {
 	if r.PathRegex == "" {
 		return true
 	}
@@ -155,13 +158,23 @@ func (r Rule) isWildcard() bool {
 	return slices.Contains(r.Hosts, "*")
 }
 
-// MatchRule tries every host-specific rule before any wildcard one, so a
-// site extractor wins over the article fallback whatever the slice order.
+// MatchRule tries every host-specific rule before any wildcard one, whatever
+// the slice order. A host any site rule names is that rule's alone: its other
+// pages are app shell, not articles, so they never fall through to the
+// wildcard.
 func MatchRule(rules []Rule, u *url.URL) (Rule, bool) {
+	claimed := false
 	for _, r := range rules {
-		if !r.isWildcard() && r.Matches(u) {
+		if r.isWildcard() || !r.matchesHost(u) {
+			continue
+		}
+		claimed = true
+		if r.matchesPath(u) {
 			return r, true
 		}
+	}
+	if claimed {
+		return Rule{}, false
 	}
 	for _, r := range rules {
 		if r.isWildcard() && r.Matches(u) {

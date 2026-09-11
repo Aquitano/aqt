@@ -104,9 +104,11 @@ func TestRuleIsTheFallback(t *testing.T) {
 	article := Extractor{}.Rule().WithDefaults()
 	cases := map[string]string{
 		"https://notes.mercury.example/post":         Name,
-		"https://github.com/uptrace/bun/issues/1":    Name,
 		"https://github.com/uptrace/bun":             "github",
 		"https://sub.domain.example.co.uk/a/b?c=d#e": Name,
+		// github.com belongs to the github rule; its other pages are app
+		// shell, not articles.
+		"https://github.com/uptrace/bun/issues/1": "",
 	}
 	for _, rules := range [][]extractor.Rule{{github, article}, {article, github}} {
 		for raw, want := range cases {
@@ -115,8 +117,8 @@ func TestRuleIsTheFallback(t *testing.T) {
 				t.Fatal(err)
 			}
 			r, ok := extractor.MatchRule(rules, u)
-			if !ok || r.Extractor != want {
-				t.Errorf("MatchRule(%s) = %q, %v; want %q", raw, r.Extractor, ok, want)
+			if got := r.Extractor; got != want || ok != (want != "") {
+				t.Errorf("MatchRule(%s) = %q, %v; want %q", raw, got, ok, want)
 			}
 		}
 	}
