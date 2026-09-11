@@ -50,6 +50,29 @@ func TestDesktopSpanRoundTrips(t *testing.T) {
 	}
 }
 
+func TestIdleEndRollsBackPastHeartbeatsButNotBeforeTheStart(t *testing.T) {
+	st, schema := storetest.NewNamed(t)
+	device := uuid.Must(uuid.NewV7())
+	start := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+	span := func(idleAt time.Time) uuid.UUID {
+		t.Helper()
+		id := uuid.Must(uuid.NewV7())
+		apply(t, st, device, store.Events{SpanStarts: []store.SpanStartEvent{{ID: id, AppName: "Code", StartedAt: start}}})
+		apply(t, st, device, store.Events{Heartbeats: []store.SpanHeartbeatEvent{{ID: id, At: start.Add(60 * time.Second)}}})
+		apply(t, st, device, store.Events{SpanEnds: []store.SpanEndEvent{{ID: id, EndedAt: idleAt, Reason: "idle"}}})
+		return id
+	}
+	rolledBack := span(start.Add(5 * time.Second))
+	clamped := span(start.Add(-10 * time.Second))
+
+	matched := storetest.QueryInt(t, schema, `select count(*) from activity_spans
+		where (id, ended_at) in (($1, $3::timestamptz + interval '5 seconds'), ($2, $3::timestamptz)) and end_reason = 'idle'`,
+		rolledBack, clamped, start)
+	if matched != 2 {
+		t.Fatalf("idle spans ending at the last input: %d, want 2", matched)
+	}
+}
+
 func TestWorkBlocksSplitOnGapsOverMaxGap(t *testing.T) {
 	st, schema := storetest.NewNamed(t)
 	device := uuid.Must(uuid.NewV7())

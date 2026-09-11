@@ -33,7 +33,7 @@ final class AgentCoordinator {
 
     func start() {
         focus.onEvent = { [weak self] event in self?.handle(event) }
-        idle.onChange = { [weak self] isIdle in
+        idle.onChange = { [weak self] isIdle, since in
             guard let self else { return }
             guard isIdle else {
                 // Refresh before resuming so the new span carries the title the
@@ -42,7 +42,7 @@ final class AgentCoordinator {
                 emit(.active)
                 return
             }
-            emit(.idle)
+            emit(.idle(since: since))
         }
 
         outbox.start()

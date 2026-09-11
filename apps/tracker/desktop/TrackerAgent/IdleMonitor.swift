@@ -11,11 +11,14 @@ final class IdleMonitor: NSObject {
     private static let interval = Duration.seconds(5)
     private static let anyInputEvent = CGEventType(rawValue: ~0)
 
-    var onChange: ((Bool) -> Void)?
+    /// The date is when the state began: the last input for an idle poll,
+    /// now for a lock, a sleep or a resume.
+    var onChange: ((Bool, Date) -> Void)?
 
     private(set) var isIdle = false
 
     private var inputIdle = false
+    private var lastInputAt = Date.now
     private var screensAsleep = false
     private var sessionInactive = false
     private var isLocked = false
@@ -106,6 +109,7 @@ final class IdleMonitor: NSObject {
         guard let eventType = Self.anyInputEvent else { return }
         let seconds = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: eventType)
         inputIdle = seconds >= Self.threshold
+        lastInputAt = .now.addingTimeInterval(-seconds)
         publish()
     }
 
@@ -114,7 +118,7 @@ final class IdleMonitor: NSObject {
         guard idle != isIdle else { return }
         isIdle = idle
         Log.idle.debug("idle \(idle, privacy: .public)")
-        onChange?(idle)
+        onChange?(idle, idle && inputIdle ? lastInputAt : .now)
     }
 }
 

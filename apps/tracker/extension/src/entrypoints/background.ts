@@ -15,6 +15,7 @@ import {
   onTitleChanged,
   onWorkerStart,
   onConfigChanged,
+  onIdleStateChanged,
   reconcile,
   serialized,
 } from "../lib/tracker.ts";
@@ -38,7 +39,9 @@ export default defineBackground(() => {
   browser.tabs.onActivated.addListener(() => void serialized(() => reconcile("tab_switch")));
   browser.tabs.onRemoved.addListener((tabId) => void serialized(() => onTabRemoved(tabId)));
   browser.windows.onFocusChanged.addListener(() => void serialized(() => reconcile("window_blur")));
-  browser.idle.onStateChanged.addListener(() => void serialized(() => reconcile("idle")));
+  browser.idle.onStateChanged.addListener(
+    (state) => void serialized(() => onIdleStateChanged(state)),
+  );
   browser.alarms.onAlarm.addListener((alarm) => void serialized(() => onAlarm(alarm)));
   browser.storage.onChanged.addListener((changes, area) => {
     // Signing in changes authTokens, not settings, and should take effect at

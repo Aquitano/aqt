@@ -61,6 +61,13 @@ type EventResult struct {
 	Dropped  map[string]int
 }
 
+// An idle end is dated to the last input, a full detection interval before
+// the client noticed, and the heartbeats sent meanwhile have already pushed
+// ended_at past it; every other reason only ever moves ended_at forward.
+const spanEndedAtSQL = `ended_at = case
+	when end_reason is null and ? = 'idle' then greatest(started_at, ?::timestamptz)
+	else greatest(ended_at, ?::timestamptz) end`
+
 func newEventResult() EventResult {
 	return EventResult{Accepted: map[string]int{}, Dropped: map[string]int{}}
 }
@@ -122,7 +129,7 @@ func (s *Store) ApplyEvents(ctx context.Context, deviceID uuid.UUID, ev Events) 
 		}
 		for _, end := range ev.SpanEnds {
 			r, err := tx.NewUpdate().Model((*ActivitySpan)(nil)).
-				Set("ended_at = greatest(ended_at, ?)", end.EndedAt).
+				Set(spanEndedAtSQL, end.Reason, end.EndedAt, end.EndedAt).
 				Set("end_reason = coalesce(end_reason, ?)", end.Reason).
 				Where("id = ?", end.ID).Exec(ctx)
 			if err != nil {

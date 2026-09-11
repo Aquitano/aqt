@@ -63,7 +63,7 @@ struct SpanTrackerTests {
         var tracker = makeTracker()
         _ = tracker.apply(.frontmost(editor, windowTitle: "main.go"), at: .now)
 
-        let idle = tracker.apply(.idle, at: .now)
+        let idle = tracker.apply(.idle(since: .now), at: .now)
         #expect(idle.count == 1)
         #expect(end(idle[0])?.reason == .idle)
         #expect(tracker.apply(.windowTitle("other.go"), at: .now).isEmpty)
@@ -72,6 +72,16 @@ struct SpanTrackerTests {
         let resumed = tracker.apply(.active, at: .now)
         #expect(resumed.count == 1)
         #expect(start(resumed[0])?.id == "span-2")
+    }
+
+    @Test func idleEndsTheSpanAtTheLastInputButNotBeforeItStarted() {
+        let opened = Date(timeIntervalSince1970: 1000)
+        var tracker = makeTracker()
+        _ = tracker.apply(.frontmost(editor, windowTitle: "main.go"), at: opened)
+        #expect(end(tracker.apply(.idle(since: opened + 5), at: opened + 65)[0])?.endedAt == opened + 5)
+
+        _ = tracker.apply(.active, at: opened + 100)
+        #expect(end(tracker.apply(.idle(since: opened + 90), at: opened + 150)[0])?.endedAt == opened + 100)
     }
 
     @Test func aSkippedBundleIDOpensNoSpan() {

@@ -15,7 +15,9 @@ package enum SpanInput: Sendable, Equatable {
     /// with no title and immediately close it again as `window_change`.
     case frontmost(FocusTarget, windowTitle: String?)
     case windowTitle(String?)
-    case idle
+    /// `since` is the last input, a full detection interval before idle was
+    /// noticed; that is when attention stopped, not when the poll ran.
+    case idle(since: Date)
     case active
     case stop
 }
@@ -49,21 +51,15 @@ package struct SpanTracker: Sendable {
     package mutating func apply(_ input: SpanInput, at now: Date) -> [WireEvent] {
         switch input {
         case let .frontmost(target, title):
-            guard target != focus else { return apply(.windowTitle(title), at: now) }
-            focus = target
-            windowTitle = title
-            return close(.appSwitch, at: now) + open(at: now)
+            return focusChanged(to: target, title: title, at: now)
 
         case let .windowTitle(title):
-            guard let focus, !configuration.isPrivate(focus.bundleID), title != windowTitle else { return [] }
-            windowTitle = title
-            guard openSpan != nil else { return [] }
-            return close(.windowChange, at: now) + open(at: now)
+            return titleChanged(to: title, at: now)
 
-        case .idle:
+        case let .idle(since):
             guard !isIdle else { return [] }
             isIdle = true
-            return close(.idle, at: now)
+            return close(.idle, at: since)
 
         case .active:
             guard isIdle else { return [] }
@@ -75,15 +71,29 @@ package struct SpanTracker: Sendable {
         }
     }
 
+    private mutating func focusChanged(to target: FocusTarget, title: String?, at now: Date) -> [WireEvent] {
+        guard target != focus else { return titleChanged(to: title, at: now) }
+        focus = target
+        windowTitle = title
+        return close(.appSwitch, at: now) + open(at: now)
+    }
+
+    private mutating func titleChanged(to title: String?, at now: Date) -> [WireEvent] {
+        guard let focus, !configuration.isPrivate(focus.bundleID), title != windowTitle else { return [] }
+        windowTitle = title
+        guard openSpan != nil else { return [] }
+        return close(.windowChange, at: now) + open(at: now)
+    }
+
     package func heartbeat(at now: Date) -> [WireEvent] {
         guard let openSpan else { return [] }
         return [.spanHeartbeat(SpanHeartbeat(id: openSpan.id, at: now))]
     }
 
-    private mutating func close(_ reason: EndReason, at now: Date) -> [WireEvent] {
+    private mutating func close(_ reason: EndReason, at endedAt: Date) -> [WireEvent] {
         guard let openSpan else { return [] }
         self.openSpan = nil
-        return [.spanEnd(SpanEnd(id: openSpan.id, endedAt: now, reason: reason))]
+        return [.spanEnd(SpanEnd(id: openSpan.id, endedAt: max(openSpan.startedAt, endedAt), reason: reason))]
     }
 
     private mutating func open(at now: Date) -> [WireEvent] {

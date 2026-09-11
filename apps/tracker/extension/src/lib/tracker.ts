@@ -229,12 +229,20 @@ async function focusedTarget(): Promise<FocusTarget | undefined> {
   return pageView ? { tabId: tab.id, pageView } : undefined;
 }
 
-export async function reconcile(reason: EndReason): Promise<void> {
+export async function reconcile(reason: EndReason, endedAt = now()): Promise<void> {
   const target = await focusedTarget();
   const open = await openSpanStore.get();
   if (open && target && open.pageViewId === target.pageView.event.id) return;
-  if (open) await closeSpan(open, reason, now());
+  if (open) await closeSpan(open, reason, endedAt > open.startedAt ? endedAt : open.startedAt);
   if (target) await startSpan(target);
+}
+
+// chrome.idle reports idle a full detection interval after the last input,
+// which is when attention actually stopped; locking the screen is an input.
+export async function onIdleStateChanged(state: `${Browser.idle.IdleState}`): Promise<void> {
+  const endedAt =
+    state === "idle" ? new Date(Date.now() - IDLE_SECONDS * 1000).toISOString() : now();
+  await reconcile("idle", endedAt);
 }
 
 async function closeSpan(open: OpenSpan, reason: EndReason, endedAt: string): Promise<void> {
