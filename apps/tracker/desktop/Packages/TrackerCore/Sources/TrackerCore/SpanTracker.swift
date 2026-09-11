@@ -72,6 +72,7 @@ package struct SpanTracker: Sendable {
     }
 
     private mutating func focusChanged(to target: FocusTarget, title: String?, at now: Date) -> [WireEvent] {
+        guard !configuration.isIgnored(target.bundleID) else { return [] }
         guard target != focus else { return titleChanged(to: title, at: now) }
         focus = target
         windowTitle = title

@@ -6,6 +6,7 @@ private let editor = FocusTarget(bundleID: "com.microsoft.VSCode", appName: "Cod
 private let terminal = FocusTarget(bundleID: "com.apple.Terminal", appName: "Terminal")
 private let chrome = FocusTarget(bundleID: "com.google.Chrome", appName: "Google Chrome")
 private let vault = FocusTarget(bundleID: "com.1password.1password", appName: "1Password")
+private let dock = FocusTarget(bundleID: "com.apple.dock", appName: "Dock")
 
 private func makeTracker() -> SpanTracker {
     let counter = Counter()
@@ -82,6 +83,15 @@ struct SpanTrackerTests {
 
         _ = tracker.apply(.active, at: opened + 100)
         #expect(end(tracker.apply(.idle(since: opened + 90), at: opened + 150)[0])?.endedAt == opened + 100)
+    }
+
+    @Test func anIgnoredBundleIDLeavesTheSpanOpen() {
+        var tracker = makeTracker()
+        _ = tracker.apply(.frontmost(editor, windowTitle: "main.go"), at: .now)
+
+        #expect(tracker.apply(.frontmost(dock, windowTitle: nil), at: .now).isEmpty)
+        #expect(tracker.apply(.frontmost(editor, windowTitle: "main.go"), at: .now).isEmpty)
+        #expect(tracker.openSpan?.target == editor)
     }
 
     @Test func aSkippedBundleIDOpensNoSpan() {

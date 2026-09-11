@@ -20,6 +20,19 @@ package struct TrackerConfiguration: Sendable, Equatable {
         "com.apple.passwords",
     ]
 
+    /// Overlays that take focus for a moment without taking attention: the
+    /// Dock on the way to another app, a password prompt over the app that
+    /// asked, a notification. The span underneath stays open.
+    package static let defaultIgnoreBundleIDs: Set<String> = [
+        "com.apple.dock",
+        "com.apple.loginwindow",
+        "com.apple.securityagent",
+        "com.apple.localauthentication.uiagent",
+        "com.apple.usernotificationcenter",
+        "com.jordanbaird.ice",
+        "com.electron.wispr-flow",
+    ]
+
     package static let defaultServerURL = URL(string: "http://127.0.0.1:8490")!
 
     /// Where `tracker login` leaves its session, which is Go's
@@ -34,17 +47,20 @@ package struct TrackerConfiguration: Sendable, Equatable {
     package var tokenPath: String?
     package var skipBundleIDs: Set<String>
     package var privateBundleIDs: Set<String>
+    package var ignoreBundleIDs: Set<String>
 
     package init(
         serverURL: URL = TrackerConfiguration.defaultServerURL,
         tokenPath: String? = nil,
         skipBundleIDs: Set<String> = TrackerConfiguration.defaultSkipBundleIDs,
-        privateBundleIDs: Set<String> = TrackerConfiguration.defaultPrivateBundleIDs
+        privateBundleIDs: Set<String> = TrackerConfiguration.defaultPrivateBundleIDs,
+        ignoreBundleIDs: Set<String> = TrackerConfiguration.defaultIgnoreBundleIDs
     ) {
         self.serverURL = serverURL
         self.tokenPath = tokenPath
         self.skipBundleIDs = Set(skipBundleIDs.map { $0.lowercased() })
         self.privateBundleIDs = Set(privateBundleIDs.map { $0.lowercased() })
+        self.ignoreBundleIDs = Set(ignoreBundleIDs.map { $0.lowercased() })
     }
 
     package static func environment(
@@ -54,7 +70,8 @@ package struct TrackerConfiguration: Sendable, Equatable {
             serverURL: values["TRACKER_SERVER_URL"].flatMap { URL(string: $0) } ?? defaultServerURL,
             tokenPath: tokenPath(values["TRACKER_TOKEN_PATH"]),
             skipBundleIDs: list(values["TRACKER_SKIP_BUNDLE_IDS"]) ?? defaultSkipBundleIDs,
-            privateBundleIDs: list(values["TRACKER_PRIVATE_BUNDLE_IDS"]) ?? defaultPrivateBundleIDs
+            privateBundleIDs: list(values["TRACKER_PRIVATE_BUNDLE_IDS"]) ?? defaultPrivateBundleIDs,
+            ignoreBundleIDs: list(values["TRACKER_IGNORE_BUNDLE_IDS"]) ?? defaultIgnoreBundleIDs
         )
     }
 
@@ -64,6 +81,10 @@ package struct TrackerConfiguration: Sendable, Equatable {
 
     package func isPrivate(_ bundleID: String) -> Bool {
         privateBundleIDs.contains(bundleID.lowercased())
+    }
+
+    package func isIgnored(_ bundleID: String) -> Bool {
+        ignoreBundleIDs.contains(bundleID.lowercased())
     }
 
     /// An empty variable means "no token", which is how authentication is

@@ -45,14 +45,15 @@ Window titles need Accessibility. Grant it in System Settings > Privacy & Securi
 
 One span at a time: app name, bundle id and the focused window title, ended with `app_switch`, `window_change`, `idle` (60 s without input, a locked screen, a sleeping display or a sleeping machine; dated to the last input, not to when the agent noticed) or `unknown` when the agent quits. Heartbeats every 30 s. Events queue in memory and flush every 10 s or at 100 pending, with backoff to 5 minutes while the server is unreachable.
 
-Chromium browsers are on the skip list, so no span opens while one is frontmost: the extension already records that time and counting it twice would double every browsing hour. Apps on the private list (1Password, Keychain Access, Passwords by default) get a span with the app name and never a window title.
+Chromium browsers are on the skip list, so no span opens while one is frontmost: the extension already records that time and counting it twice would double every browsing hour. Apps on the private list (1Password, Keychain Access, Passwords by default) get a span with the app name and never a window title. Apps on the ignore list (the Dock, password prompts, notifications, menu-bar overlays by default) are focus without attention: the span underneath stays open.
 
-| Variable                     | Default                                                                                                                                                                          |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TRACKER_SERVER_URL`         | `http://127.0.0.1:8490`                                                                                                                                                          |
-| `TRACKER_TOKEN_PATH`         | the CLI's `token.json` under the user config directory; set it empty to send no token at all                                                                                     |
-| `TRACKER_SKIP_BUNDLE_IDS`    | `com.google.Chrome,com.google.Chrome.canary,com.google.Chrome.beta,org.chromium.Chromium,com.brave.Browser,com.microsoft.edgemac,company.thebrowser.Browser,com.vivaldi.Vivaldi` |
-| `TRACKER_PRIVATE_BUNDLE_IDS` | `com.1password.1password,com.apple.keychainaccess,com.apple.Passwords`                                                                                                           |
+| Variable                     | Default                                                                                                                                                                           |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TRACKER_SERVER_URL`         | `http://127.0.0.1:8490`                                                                                                                                                           |
+| `TRACKER_TOKEN_PATH`         | the CLI's `token.json` under the user config directory; set it empty to send no token at all                                                                                      |
+| `TRACKER_SKIP_BUNDLE_IDS`    | `com.google.Chrome,com.google.Chrome.canary,com.google.Chrome.beta,org.chromium.Chromium,com.brave.Browser,com.microsoft.edgemac,company.thebrowser.Browser,com.vivaldi.Vivaldi`  |
+| `TRACKER_PRIVATE_BUNDLE_IDS` | `com.1password.1password,com.apple.keychainaccess,com.apple.Passwords`                                                                                                            |
+| `TRACKER_IGNORE_BUNDLE_IDS`  | `com.apple.dock,com.apple.loginwindow,com.apple.SecurityAgent,com.apple.LocalAuthentication.UIAgent,com.apple.UserNotificationCenter,com.jordanbaird.Ice,com.electron.wispr-flow` |
 
 An empty list means no entries; an unset one keeps the default. The same holds
 for the token path: unset finds the CLI's session, empty means no token.
