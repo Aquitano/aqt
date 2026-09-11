@@ -4,9 +4,11 @@ package struct FocusTarget: Sendable, Equatable {
     package var bundleID: String
     package var appName: String
 
+    /// Localized names can carry a directionality mark, which no rule
+    /// anchored at ^ would ever match.
     package init(bundleID: String, appName: String) {
         self.bundleID = bundleID
-        self.appName = appName
+        self.appName = appName.trimmingCharacters(in: .controlCharacters)
     }
 }
 

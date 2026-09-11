@@ -94,6 +94,10 @@ struct SpanTrackerTests {
         #expect(tracker.openSpan?.target == editor)
     }
 
+    @Test func aDirectionalityMarkIsTrimmedFromTheAppName() {
+        #expect(FocusTarget(bundleID: "net.whatsapp.WhatsApp", appName: "\u{200E}WhatsApp").appName == "WhatsApp")
+    }
+
     @Test func aSkippedBundleIDOpensNoSpan() {
         var tracker = makeTracker()
         _ = tracker.apply(.frontmost(editor, windowTitle: "main.go"), at: .now)
