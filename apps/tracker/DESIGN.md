@@ -125,7 +125,7 @@ category_rules (
 -- analytics, all read-only over the tables above
 categorized_spans                               -- view: every span with source (page | desktop), host, category
 context_switches_hourly                         -- view: per hour of ended_at, ends by tab_switch | window_blur | app_switch, and total ends
-work_blocks(from, to, max_gap = '60 seconds')   -- function: spans stitched into blocks while the gap stays under max_gap,
+work_blocks(from_ts, to_ts, max_gap = '60 seconds') -- function: spans stitched into blocks while the gap stays under max_gap,
                                                 --   with active_seconds, span_count, switches, dominant_category; global across devices
 
 raw_html_blobs (
