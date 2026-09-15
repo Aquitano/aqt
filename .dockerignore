@@ -1,0 +1,23 @@
+# Allowlist: the gallery server image needs its own sources plus every
+# workspace manifest so bun can verify the lockfile. Nothing else, and never
+# the Xcode/Gradle/Swift build outputs that sit next to the other apps.
+*
+!package.json
+!bun.lock
+!apps/*/package.json
+!apps/img/cli/package.json
+!apps/health/frontend/package.json
+!apps/bank/internal/webui/app/package.json
+!apps/bank/scripts/package.json
+!apps/tracker/extension/package.json
+!packages/ts/*/package.json
+!tools/stack/package.json
+!apps/gallery
+apps/gallery/**/node_modules
+apps/gallery/**/dist
+apps/gallery/**/.turbo
+apps/gallery/**/.tanstack
+apps/gallery/**/uploads
+apps/gallery/**/.env
+apps/gallery/**/.env.*
+!apps/gallery/**/.env.example

@@ -7,9 +7,10 @@ Set `AQT_VPS_HOST` (ssh alias or `user@host`) and `AQT_VPS_ROOT` (checkout path 
 ```sh
 ops/deploy.sh bank
 ops/deploy.sh health
+ops/deploy.sh gallery/apps/server
 ```
 
-`deploy.sh` pulls the checkout on the VPS, requires `apps/<app>/.env` to exist there, and runs `docker compose up -d --build --wait` in the app's directory. Compose files live next to each app's Dockerfile, not here. Bank's data volume is LUKS and unlocked by hand, so it never auto-restarts.
+`deploy.sh` pulls the checkout on the VPS, requires `apps/<app>/.env` to exist there, and runs `docker compose up -d --build --wait` in the app's directory. Compose files live next to each app's Dockerfile, not here; for the gallery that is the server sub-app, whose `.env` is the one `secrets.sh send gallery` writes. Bank's data volume is LUKS and unlocked by hand, so it never auto-restarts.
 
 ## secrets
 

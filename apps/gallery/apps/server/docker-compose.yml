@@ -1,0 +1,18 @@
+# The API server only. Postgres (Neon), media (R2) and identity (Clerk) are
+# external services, and the web app is deployed on its own.
+#
+# .env here is the file `ops/secrets.sh send gallery prod` writes; compose also
+# reads it for the interpolation below.
+services:
+  server:
+    build:
+      context: ../../../..
+      dockerfile: apps/gallery/apps/server/Dockerfile
+    image: aqt-gallery-server:local
+    env_file: .env
+    ports:
+      # Loopback by default; the reverse proxy on the box terminates TLS.
+      - "${AQT_GALLERY_LISTEN:-127.0.0.1:3000}:3000"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true

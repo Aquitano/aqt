@@ -90,6 +90,38 @@ Media already on disk moves over with a re-runnable copy of `originals/` and
 cd apps/server && bun run media:migrate
 ```
 
+## Deployment
+
+Only the API server is containerised; Postgres (Neon), media (R2) and identity
+(Clerk) are external, and the web app is deployed on its own.
+
+### Server
+
+The Dockerfile and compose file live in `apps/server`. The image runs
+`src/index.ts` under Bun with a production install filtered to the server's
+dependencies; the build context is the workspace root so bun can verify the
+lockfile, and the root `.dockerignore` allowlists what that needs.
+
+```bash
+ops/secrets.sh send gallery prod        # writes apps/gallery/apps/server/.env on the VPS
+ops/deploy.sh gallery/apps/server       # pulls, builds and restarts it there
+```
+
+The container listens on 3000, published on loopback (`AQT_GALLERY_LISTEN`
+overrides); the reverse proxy on the box terminates TLS for `SERVER_URL`.
+Schema changes are applied from a checkout, not by the container: `bun run
+db:migrate` inside `packages/db` with `DATABASE_URL` set to the production
+database. Run it there and not through the root script, which goes through
+turbo; its strict env mode drops the variable and drizzle falls back to the
+dev `.env`.
+
+To build and smoke-test the image locally:
+
+```bash
+cd apps/server && docker compose build
+docker run --rm -p 3000:3000 --env-file .env aqt-gallery-server:local
+```
+
 ## UI Customization
 
 React web apps in this stack share shadcn/ui primitives through `packages/ui`.
