@@ -19,7 +19,9 @@ export default defineConfig({
   plugins: [
     tailwindcss(),
     tanstackStart(),
-    nitro(),
+    // vercel.json's bunVersion pins the build's Bun; on its own nitro would
+    // still emit the function as bun1.x, which is Bun 1.3 on Vercel.
+    nitro({ vercel: { functions: { runtime: "bun1.4.x" } } }),
     viteReact(),
     babel({ presets: [reactCompilerPreset()] }),
   ],
