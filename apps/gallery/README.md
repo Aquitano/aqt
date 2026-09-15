@@ -92,8 +92,12 @@ cd apps/server && bun run media:migrate
 
 ## Deployment
 
-Only the API server is containerised; Postgres (Neon), media (R2) and identity
-(Clerk) are external, and the web app is deployed on its own.
+The API server runs as a container on the VPS and the web app on Vercel;
+Postgres (Neon), media (R2) and identity (Clerk) are external. In production
+the two share a registrable domain, say `gallery.example.com` for the web app
+and `api.gallery.example.com` for the server: browser sessions are Clerk
+cookies, and `CORS_ORIGIN` (also Clerk's authorized party) is that single web
+origin, so Vercel preview URLs cannot talk to the API.
 
 ### Server
 
@@ -121,6 +125,29 @@ To build and smoke-test the image locally:
 cd apps/server && docker compose build
 docker run --rm -p 3000:3000 --env-file .env aqt-gallery-server:local
 ```
+
+### Web
+
+`apps/web` builds through the nitro Vite plugin, which picks the Vercel preset
+inside Vercel's build environment (`.vercel/output`) and the node-server preset
+anywhere else (`bun run build` writes `.output/`; `bun .output/server/index.mjs`
+runs it). `apps/web/vercel.json` sets the framework preset, the function region
+(`fra1`, next to the API and Neon), an install command that runs a filtered
+workspace install from the repository root, and an ignore command so only
+changes under `apps/gallery` or to the lockfile trigger a build.
+
+One-time project setup in Vercel:
+
+- Root Directory `apps/gallery/apps/web`, with "Include source files outside
+  of the Root Directory" enabled.
+- Environment variables `VITE_SERVER_URL`, `VITE_CLERK_PUBLISHABLE_KEY` and
+  `CLERK_SECRET_KEY` (see `apps/web/.env.example`), for production and, if
+  wanted, preview.
+- The custom domain, which is then also `CORS_ORIGIN` on the server and the
+  domain of the Clerk production instance.
+
+With the Git integration connected every push to `main` deploys; `vercel --prod`
+from `apps/web` does the same by hand.
 
 ## UI Customization
 

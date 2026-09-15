@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "tanstack-start",
+  "installCommand": "cd ../../../.. && bun install --frozen-lockfile --filter aqt-gallery --filter '@aqt/gallery-*'",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- ../.. ../../../../bun.lock",
+  "regions": ["fra1"]
+}

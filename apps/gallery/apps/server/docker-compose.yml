@@ -1,5 +1,5 @@
 # The API server only. Postgres (Neon), media (R2) and identity (Clerk) are
-# external services, and the web app is deployed on its own.
+# external services, and the web app runs on Vercel.
 #
 # .env here is the file `ops/secrets.sh send gallery prod` writes; compose also
 # reads it for the interpolation below.
