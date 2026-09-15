@@ -45,6 +45,41 @@ describe("generated MCP tools", () => {
     expect(galleryTools.filter((tool) => tool.path.startsWith("apiTokens."))).toEqual([]);
   });
 
+  test("import_artworks_from_urls items accept inline metadata", () => {
+    const importTool = galleryTools.find((tool) => tool.name === "import_artworks_from_urls");
+    if (!importTool) throw new Error("import_artworks_from_urls not generated");
+
+    // A JSON-manifest-style item: url + arbitrary detail subset.
+    const full = importTool.inputSchema.safeParse({
+      items: [
+        {
+          url: "https://example.org/painting.jpg",
+          title: "Starry Night",
+          artist: "Vincent van Gogh",
+          artworkType: "painting",
+          year: "1889",
+          story: "Painted from his asylum window.",
+          funFacts: ["The swirls match wind-map data."],
+          tagNames: ["post-impressionism"],
+          customFields: [{ label: "Collection", value: "MoMA" }],
+        },
+      ],
+    });
+    expect(full.success).toBe(true);
+
+    // The old bare-URL shape still validates unchanged.
+    const bare = importTool.inputSchema.safeParse({
+      items: [{ url: "https://example.org/painting.jpg" }],
+    });
+    expect(bare.success).toBe(true);
+
+    // A non-URL string is rejected.
+    const bad = importTool.inputSchema.safeParse({
+      items: [{ url: "not-a-url" }],
+    });
+    expect(bad.success).toBe(false);
+  });
+
   test("carry a description and an object input schema", () => {
     for (const tool of galleryTools) {
       expect(tool.description.length).toBeGreaterThan(0);

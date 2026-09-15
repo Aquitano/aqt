@@ -57,25 +57,25 @@ handle each request, so it scales without server-side session state.
 
 ## Tools
 
-| Tool                        | What it does                                                                                                                  |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `list_artworks`             | List the user's archived artworks (find ids).                                                                                 |
-| `get_artwork`               | One artwork with all details, custom fields, tags.                                                                            |
-| `list_exhibitions`          | The user's exhibitions with ordered rooms, each room's ordered placements, and publish state.                                 |
-| `list_tags`                 | The user's tags.                                                                                                              |
-| `list_artists`              | Artists you can link — your own plus built-in reference artists.                                                              |
-| `import_artworks_from_urls` | Download 1–25 remote images into the archive (stores each image's source URL).                                                |
-| `import_from_museum_object` | One-call enriched import (1–10 objects) from the Met, Art Institute of Chicago, or Wikidata: details + image + linked artist. |
-| `update_artwork`            | Set any subset of an artwork's details (partial patch), incl. `artistId`.                                                     |
-| `enrich_artworks`           | Batch-patch details + tags + custom fields for up to 50 artworks; per-item ok/error.                                          |
-| `set_artwork_tags`          | Replace an artwork's tags (created on demand).                                                                                |
-| `set_artwork_custom_fields` | Replace an artwork's label/value rows.                                                                                        |
-| `set_primary_asset`         | Choose an artwork's hero image among its uploaded assets.                                                                     |
-| `delete_artwork`            | Soft-delete (hidden from archive + exhibitions, recoverable).                                                                 |
-| `restore_artwork`           | Undo a `delete_artwork`.                                                                                                      |
-| `purge_artwork`             | Permanently delete an artwork and its files.                                                                                  |
-| `create_artist`             | Create a reusable artist (bio/dates/nationality); link via `update_artwork.artistId`.                                         |
-| `link_artist`               | Find-or-create an artist by name and link it to up to 50 artworks at once.                                                    |
+| Tool                        | What it does                                                                                                                                                                                                                                                                                    |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_artworks`             | List the user's archived artworks (find ids).                                                                                                                                                                                                                                                   |
+| `get_artwork`               | One artwork with all details, custom fields, tags.                                                                                                                                                                                                                                              |
+| `list_exhibitions`          | The user's exhibitions with ordered rooms, each room's ordered placements, and publish state.                                                                                                                                                                                                   |
+| `list_tags`                 | The user's tags.                                                                                                                                                                                                                                                                                |
+| `list_artists`              | Artists you can link — your own plus built-in reference artists.                                                                                                                                                                                                                                |
+| `import_artworks_from_urls` | Download 1–25 remote images into the archive (stores each image's source URL). Each item may also carry full artwork metadata (same fields as `update_artwork`, plus `tagNames`/`customFields`), applied in the same call — so a JSON manifest of artworks imports image + details in one step. |
+| `import_from_museum_object` | One-call enriched import (1–10 objects) from the Met, Art Institute of Chicago, or Wikidata: details + image + linked artist.                                                                                                                                                                   |
+| `update_artwork`            | Set any subset of an artwork's details (partial patch), incl. `artistId`.                                                                                                                                                                                                                       |
+| `enrich_artworks`           | Batch-patch details + tags + custom fields for up to 50 artworks; per-item ok/error.                                                                                                                                                                                                            |
+| `set_artwork_tags`          | Replace an artwork's tags (created on demand).                                                                                                                                                                                                                                                  |
+| `set_artwork_custom_fields` | Replace an artwork's label/value rows.                                                                                                                                                                                                                                                          |
+| `set_primary_asset`         | Choose an artwork's hero image among its uploaded assets.                                                                                                                                                                                                                                       |
+| `delete_artwork`            | Soft-delete (hidden from archive + exhibitions, recoverable).                                                                                                                                                                                                                                   |
+| `restore_artwork`           | Undo a `delete_artwork`.                                                                                                                                                                                                                                                                        |
+| `purge_artwork`             | Permanently delete an artwork and its files.                                                                                                                                                                                                                                                    |
+| `create_artist`             | Create a reusable artist (bio/dates/nationality); link via `update_artwork.artistId`.                                                                                                                                                                                                           |
+| `link_artist`               | Find-or-create an artist by name and link it to up to 50 artworks at once.                                                                                                                                                                                                                      |
 
 An **exhibition** is a walkable building of one or more rooms, each with its
 own ordered artworks. One room is a gallery, several are a museum — the tools
@@ -109,7 +109,9 @@ Also exposed:
 
 ## Recommended workflow
 
-1. `import_artworks_from_urls` — note the returned `artworkId`s.
+1. `import_artworks_from_urls` — note the returned `artworkId`s. Each item
+   may carry its full metadata (title, artist, year, story, tags, …) alongside
+   the `url`, in which case step 2 is already done for that piece.
 2. `enrich_artworks` — batch in title, artist, type, year, medium, dimensions,
    description, a short `story`, `funFacts`, tags, and custom fields for every
    imported piece at once (or `update_artwork` for a single one).

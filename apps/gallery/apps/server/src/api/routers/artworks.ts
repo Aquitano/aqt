@@ -128,6 +128,22 @@ const enrichItemSchema = artworkDetailSchema.extend({
   customFields: z.array(customFieldSchema).optional(),
 });
 
+/** One `import_artworks_from_urls` item: the image URL to download plus (all
+ * optional) the metadata the new artwork should carry. The same fields as
+ * `update_artwork`, so an agent can import image + details in one call instead
+ * of import → enrich. */
+const importItemSchema = artworkDetailSchema.extend({
+  url: z.string().url().describe("The image URL to download into the archive."),
+  title: z
+    .string()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe("Display title for the new artwork. Defaults to the image filename."),
+  tagNames: setArtworkTagsSchema.shape.tagNames.optional(),
+  customFields: z.array(customFieldSchema).optional(),
+});
+
 type EnrichResult =
   | { artworkId: string; ok: true }
   | { artworkId: string; ok: false; error: string };
@@ -768,22 +784,10 @@ export const artworksRouter = router({
         name: "import_artworks_from_urls",
         title: "Import artworks from URLs",
         description:
-          "Download remote image URLs into the user's archive (1–25 at a time). Each image is fetched once and stored locally, becoming a new unpublished artwork. Returns the new artworkId + title for each. Follow up with update_artwork to fill in details.",
+          "Download remote image URLs into the user's archive (1–25 at a time). Each image is fetched once and stored locally, becoming a new unpublished artwork. Each item may also carry the same metadata as update_artwork — title, artist, artistId, artworkType, year, medium, dimensions, description, story, funFacts, rating/review/thoughts, seenAt, sourceUrl — plus tagNames and customFields, which are written onto the freshly imported artwork in the same call (so a JSON manifest can be imported without a follow-up enrich step). Returns the new artworkId + title per item; items whose metadata could not be applied are removed and listed in `failed` per item. Metadata-only fields are still optional — import bare URLs and follow up with enrich_artworks if you prefer.",
       },
     })
-    .input(
-      z.object({
-        items: z
-          .array(
-            z.object({
-              url: z.string().url(),
-              title: z.string().min(1).max(200).optional(),
-            }),
-          )
-          .min(1)
-          .max(25),
-      }),
-    )
+    .input(z.object({ items: z.array(importItemSchema).min(1).max(25) }))
     .mutation(async ({ ctx, input }) => {
       // Imports fetch arbitrary upstream URLs server-side, so throttle by
       // image count (covers both the HTTP API and the MCP import tool, which
@@ -797,6 +801,7 @@ export const artworksRouter = router({
           )}s.`,
         });
       }
+
       const result = await importMediaFromUrls({
         items: input.items,
         store: mediaStore,
@@ -808,17 +813,72 @@ export const artworksRouter = router({
           message: uploadErrorResponse(result.error).body.error,
         });
       }
+
+      const userId = ctx.session.user.id;
+      type Outcome =
+        | { ok: true; artwork: { artworkId: string; title: string } }
+        | { ok: false; url: string; error: string };
+
+      const applyOne = async (
+        item: z.infer<typeof importItemSchema>,
+        { artworkId, title }: { artworkId: string; title: string },
+      ): Promise<Outcome> => {
+        const { url, title: _title, tagNames, customFields, ...fields } = item;
+        try {
+          if (Object.keys(fields).length > 0) {
+            await updateArtwork(userId, { id: artworkId, ...fields });
+          }
+          if (tagNames !== undefined) {
+            await replaceArtworkTags(userId, { artworkId, tagNames });
+          }
+          if (customFields !== undefined) {
+            await replaceCustomFields(userId, artworkId, customFields);
+          }
+          return { ok: true, artwork: { artworkId, title } };
+        } catch (error) {
+          // Roll the orphaned draft back so the archive stays clean;
+          // mirrors importFromMuseumObject's per-item rollback.
+          await purgeImportedArtwork(userId, artworkId).catch(() => {});
+          return {
+            ok: false,
+            url,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      };
+
+      // importMediaFromUrls preserves item order (mapWithConcurrency indexes
+      // results, and the stored files keep that order), so uploaded[i] is
+      // the artwork for input.items[i]. Batched like enrich, in input order.
+      const pairs = result.uploaded.flatMap((uploaded, index) => {
+        const item = input.items[index];
+        return item ? [{ item, uploaded }] : [];
+      });
+      const outcomes: Outcome[] = [];
+      for (let i = 0; i < pairs.length; i += ENRICH_CONCURRENCY) {
+        outcomes.push(
+          ...(await Promise.all(
+            pairs.slice(i, i + ENRICH_CONCURRENCY).map((p) => applyOne(p.item, p.uploaded)),
+          )),
+        );
+      }
+
+      const imported: Array<{ artworkId: string; title: string }> = [];
+      const failed: Array<{ url: string; error: string }> = [];
+      for (const outcome of outcomes) {
+        if (outcome.ok) {
+          imported.push(outcome.artwork);
+        } else {
+          failed.push({ url: outcome.url, error: outcome.error });
+        }
+      }
+
       void warmArtworkImages({
         store: mediaStore,
-        ownerId: ctx.session.user.id,
-        artworkIds: result.uploaded.map((u) => u.artworkId),
+        ownerId: userId,
+        artworkIds: imported.map((u) => u.artworkId),
       });
-      return {
-        imported: result.uploaded.map((u) => ({
-          artworkId: u.artworkId,
-          title: u.title,
-        })),
-      };
+      return failed.length > 0 ? { imported, failed } : { imported };
     }),
 
   /** One-call enriched import from a public museum / knowledge API. Fetches
