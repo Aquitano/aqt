@@ -9,67 +9,32 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ReviewsRouteImport } from './routes/reviews'
-import { Route as MuseumsRouteImport } from './routes/museums'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as JournalRouteImport } from './routes/journal'
-import { Route as GalleriesRouteImport } from './routes/galleries'
-import { Route as ExploreRouteImport } from './routes/explore'
-import { Route as ExhibitionsRouteImport } from './routes/exhibitions'
-import { Route as DashboardRouteImport } from './routes/dashboard'
-import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as MuseumIndexRouteImport } from './routes/museum.index'
-import { Route as MuseumsMuseumIdRouteImport } from './routes/museums_.$museumId'
-import { Route as MuseumSlugRouteImport } from './routes/museum.$slug'
-import { Route as GalleriesGalleryIdRouteImport } from './routes/galleries_.$galleryId'
-import { Route as ExhibitionsExhibitionIdRouteImport } from './routes/exhibitions_.$exhibitionId'
-import { Route as ExhibitSlugRouteImport } from './routes/exhibit.$slug'
-import { Route as DevWallRouteImport } from './routes/dev.wall'
-import { Route as DevHarnessRouteImport } from './routes/dev.harness'
-import { Route as CollectionCollectionIdRouteImport } from './routes/collection.$collectionId'
+import { Route as ConnectRouteImport } from './routes/connect'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as ExhibitionsRouteImport } from './routes/exhibitions'
+import { Route as ExploreRouteImport } from './routes/explore'
+import { Route as GalleriesRouteImport } from './routes/galleries'
+import { Route as JournalRouteImport } from './routes/journal'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as MuseumsRouteImport } from './routes/museums'
+import { Route as ReviewsRouteImport } from './routes/reviews'
 import { Route as ArtworksArtworkIdRouteImport } from './routes/artworks.$artworkId'
-import { Route as MuseumKindSlugRouteImport } from './routes/museum.$kind.$slug'
+import { Route as CollectionCollectionIdRouteImport } from './routes/collection.$collectionId'
+import { Route as DevHarnessRouteImport } from './routes/dev.harness'
+import { Route as DevWallRouteImport } from './routes/dev.wall'
+import { Route as ExhibitSlugRouteImport } from './routes/exhibit.$slug'
+import { Route as ExhibitionsExhibitionIdRouteImport } from './routes/exhibitions_.$exhibitionId'
+import { Route as GalleriesGalleryIdRouteImport } from './routes/galleries_.$galleryId'
+import { Route as MuseumIndexRouteImport } from './routes/museum.index'
+import { Route as MuseumSlugRouteImport } from './routes/museum.$slug'
+import { Route as MuseumsMuseumIdRouteImport } from './routes/museums_.$museumId'
 import { Route as ExhibitKindSlugRouteImport } from './routes/exhibit.$kind.$slug'
+import { Route as MuseumKindSlugRouteImport } from './routes/museum.$kind.$slug'
 
-const ReviewsRoute = ReviewsRouteImport.update({
-  id: '/reviews',
-  path: '/reviews',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MuseumsRoute = MuseumsRouteImport.update({
-  id: '/museums',
-  path: '/museums',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const JournalRoute = JournalRouteImport.update({
-  id: '/journal',
-  path: '/journal',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const GalleriesRoute = GalleriesRouteImport.update({
-  id: '/galleries',
-  path: '/galleries',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ExploreRoute = ExploreRouteImport.update({
-  id: '/explore',
-  path: '/explore',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ExhibitionsRoute = ExhibitionsRouteImport.update({
-  id: '/exhibitions',
-  path: '/exhibitions',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DashboardRoute = DashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectRoute = ConnectRouteImport.update({
@@ -77,54 +42,44 @@ const ConnectRoute = ConnectRouteImport.update({
   path: '/connect',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MuseumIndexRoute = MuseumIndexRouteImport.update({
-  id: '/museum/',
-  path: '/museum/',
+const ExhibitionsRoute = ExhibitionsRouteImport.update({
+  id: '/exhibitions',
+  path: '/exhibitions',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MuseumsMuseumIdRoute = MuseumsMuseumIdRouteImport.update({
-  id: '/museums_/$museumId',
-  path: '/museums/$museumId',
+const ExploreRoute = ExploreRouteImport.update({
+  id: '/explore',
+  path: '/explore',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MuseumSlugRoute = MuseumSlugRouteImport.update({
-  id: '/museum/$slug',
-  path: '/museum/$slug',
+const GalleriesRoute = GalleriesRouteImport.update({
+  id: '/galleries',
+  path: '/galleries',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GalleriesGalleryIdRoute = GalleriesGalleryIdRouteImport.update({
-  id: '/galleries_/$galleryId',
-  path: '/galleries/$galleryId',
+const JournalRoute = JournalRouteImport.update({
+  id: '/journal',
+  path: '/journal',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ExhibitionsExhibitionIdRoute = ExhibitionsExhibitionIdRouteImport.update({
-  id: '/exhibitions_/$exhibitionId',
-  path: '/exhibitions/$exhibitionId',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ExhibitSlugRoute = ExhibitSlugRouteImport.update({
-  id: '/exhibit/$slug',
-  path: '/exhibit/$slug',
+const MuseumsRoute = MuseumsRouteImport.update({
+  id: '/museums',
+  path: '/museums',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DevWallRoute = DevWallRouteImport.update({
-  id: '/dev/wall',
-  path: '/dev/wall',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DevHarnessRoute = DevHarnessRouteImport.update({
-  id: '/dev/harness',
-  path: '/dev/harness',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CollectionCollectionIdRoute = CollectionCollectionIdRouteImport.update({
-  id: '/collection/$collectionId',
-  path: '/collection/$collectionId',
+const ReviewsRoute = ReviewsRouteImport.update({
+  id: '/reviews',
+  path: '/reviews',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ArtworksArtworkIdRoute = ArtworksArtworkIdRouteImport.update({
@@ -132,14 +87,59 @@ const ArtworksArtworkIdRoute = ArtworksArtworkIdRouteImport.update({
   path: '/artworks/$artworkId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MuseumKindSlugRoute = MuseumKindSlugRouteImport.update({
-  id: '/museum/$kind/$slug',
-  path: '/museum/$kind/$slug',
+const CollectionCollectionIdRoute = CollectionCollectionIdRouteImport.update({
+  id: '/collection/$collectionId',
+  path: '/collection/$collectionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevHarnessRoute = DevHarnessRouteImport.update({
+  id: '/dev/harness',
+  path: '/dev/harness',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevWallRoute = DevWallRouteImport.update({
+  id: '/dev/wall',
+  path: '/dev/wall',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExhibitSlugRoute = ExhibitSlugRouteImport.update({
+  id: '/exhibit/$slug',
+  path: '/exhibit/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExhibitionsExhibitionIdRoute = ExhibitionsExhibitionIdRouteImport.update({
+  id: '/exhibitions_/$exhibitionId',
+  path: '/exhibitions/$exhibitionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GalleriesGalleryIdRoute = GalleriesGalleryIdRouteImport.update({
+  id: '/galleries_/$galleryId',
+  path: '/galleries/$galleryId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MuseumIndexRoute = MuseumIndexRouteImport.update({
+  id: '/museum/',
+  path: '/museum/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MuseumSlugRoute = MuseumSlugRouteImport.update({
+  id: '/museum/$slug',
+  path: '/museum/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MuseumsMuseumIdRoute = MuseumsMuseumIdRouteImport.update({
+  id: '/museums_/$museumId',
+  path: '/museums/$museumId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExhibitKindSlugRoute = ExhibitKindSlugRouteImport.update({
   id: '/exhibit/$kind/$slug',
   path: '/exhibit/$kind/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MuseumKindSlugRoute = MuseumKindSlugRouteImport.update({
+  id: '/museum/$kind/$slug',
+  path: '/museum/$kind/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -318,60 +318,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/reviews': {
-      id: '/reviews'
-      path: '/reviews'
-      fullPath: '/reviews'
-      preLoaderRoute: typeof ReviewsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/museums': {
-      id: '/museums'
-      path: '/museums'
-      fullPath: '/museums'
-      preLoaderRoute: typeof MuseumsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/journal': {
-      id: '/journal'
-      path: '/journal'
-      fullPath: '/journal'
-      preLoaderRoute: typeof JournalRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/galleries': {
-      id: '/galleries'
-      path: '/galleries'
-      fullPath: '/galleries'
-      preLoaderRoute: typeof GalleriesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/explore': {
-      id: '/explore'
-      path: '/explore'
-      fullPath: '/explore'
-      preLoaderRoute: typeof ExploreRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/exhibitions': {
-      id: '/exhibitions'
-      path: '/exhibitions'
-      fullPath: '/exhibitions'
-      preLoaderRoute: typeof ExhibitionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dashboard': {
-      id: '/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof DashboardRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connect': {
@@ -381,74 +332,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/museum/': {
-      id: '/museum/'
-      path: '/museum'
-      fullPath: '/museum/'
-      preLoaderRoute: typeof MuseumIndexRouteImport
+    '/exhibitions': {
+      id: '/exhibitions'
+      path: '/exhibitions'
+      fullPath: '/exhibitions'
+      preLoaderRoute: typeof ExhibitionsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/museums_/$museumId': {
-      id: '/museums_/$museumId'
-      path: '/museums/$museumId'
-      fullPath: '/museums/$museumId'
-      preLoaderRoute: typeof MuseumsMuseumIdRouteImport
+    '/explore': {
+      id: '/explore'
+      path: '/explore'
+      fullPath: '/explore'
+      preLoaderRoute: typeof ExploreRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/museum/$slug': {
-      id: '/museum/$slug'
-      path: '/museum/$slug'
-      fullPath: '/museum/$slug'
-      preLoaderRoute: typeof MuseumSlugRouteImport
+    '/galleries': {
+      id: '/galleries'
+      path: '/galleries'
+      fullPath: '/galleries'
+      preLoaderRoute: typeof GalleriesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/galleries_/$galleryId': {
-      id: '/galleries_/$galleryId'
-      path: '/galleries/$galleryId'
-      fullPath: '/galleries/$galleryId'
-      preLoaderRoute: typeof GalleriesGalleryIdRouteImport
+    '/journal': {
+      id: '/journal'
+      path: '/journal'
+      fullPath: '/journal'
+      preLoaderRoute: typeof JournalRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/exhibitions_/$exhibitionId': {
-      id: '/exhibitions_/$exhibitionId'
-      path: '/exhibitions/$exhibitionId'
-      fullPath: '/exhibitions/$exhibitionId'
-      preLoaderRoute: typeof ExhibitionsExhibitionIdRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/exhibit/$slug': {
-      id: '/exhibit/$slug'
-      path: '/exhibit/$slug'
-      fullPath: '/exhibit/$slug'
-      preLoaderRoute: typeof ExhibitSlugRouteImport
+    '/museums': {
+      id: '/museums'
+      path: '/museums'
+      fullPath: '/museums'
+      preLoaderRoute: typeof MuseumsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/dev/wall': {
-      id: '/dev/wall'
-      path: '/dev/wall'
-      fullPath: '/dev/wall'
-      preLoaderRoute: typeof DevWallRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dev/harness': {
-      id: '/dev/harness'
-      path: '/dev/harness'
-      fullPath: '/dev/harness'
-      preLoaderRoute: typeof DevHarnessRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/collection/$collectionId': {
-      id: '/collection/$collectionId'
-      path: '/collection/$collectionId'
-      fullPath: '/collection/$collectionId'
-      preLoaderRoute: typeof CollectionCollectionIdRouteImport
+    '/reviews': {
+      id: '/reviews'
+      path: '/reviews'
+      fullPath: '/reviews'
+      preLoaderRoute: typeof ReviewsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/artworks/$artworkId': {
@@ -458,11 +395,67 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ArtworksArtworkIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/museum/$kind/$slug': {
-      id: '/museum/$kind/$slug'
-      path: '/museum/$kind/$slug'
-      fullPath: '/museum/$kind/$slug'
-      preLoaderRoute: typeof MuseumKindSlugRouteImport
+    '/collection/$collectionId': {
+      id: '/collection/$collectionId'
+      path: '/collection/$collectionId'
+      fullPath: '/collection/$collectionId'
+      preLoaderRoute: typeof CollectionCollectionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dev/harness': {
+      id: '/dev/harness'
+      path: '/dev/harness'
+      fullPath: '/dev/harness'
+      preLoaderRoute: typeof DevHarnessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dev/wall': {
+      id: '/dev/wall'
+      path: '/dev/wall'
+      fullPath: '/dev/wall'
+      preLoaderRoute: typeof DevWallRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/exhibit/$slug': {
+      id: '/exhibit/$slug'
+      path: '/exhibit/$slug'
+      fullPath: '/exhibit/$slug'
+      preLoaderRoute: typeof ExhibitSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/exhibitions_/$exhibitionId': {
+      id: '/exhibitions_/$exhibitionId'
+      path: '/exhibitions/$exhibitionId'
+      fullPath: '/exhibitions/$exhibitionId'
+      preLoaderRoute: typeof ExhibitionsExhibitionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/galleries_/$galleryId': {
+      id: '/galleries_/$galleryId'
+      path: '/galleries/$galleryId'
+      fullPath: '/galleries/$galleryId'
+      preLoaderRoute: typeof GalleriesGalleryIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/museum/': {
+      id: '/museum/'
+      path: '/museum'
+      fullPath: '/museum/'
+      preLoaderRoute: typeof MuseumIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/museum/$slug': {
+      id: '/museum/$slug'
+      path: '/museum/$slug'
+      fullPath: '/museum/$slug'
+      preLoaderRoute: typeof MuseumSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/museums_/$museumId': {
+      id: '/museums_/$museumId'
+      path: '/museums/$museumId'
+      fullPath: '/museums/$museumId'
+      preLoaderRoute: typeof MuseumsMuseumIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/exhibit/$kind/$slug': {
@@ -470,6 +463,13 @@ declare module '@tanstack/react-router' {
       path: '/exhibit/$kind/$slug'
       fullPath: '/exhibit/$kind/$slug'
       preLoaderRoute: typeof ExhibitKindSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/museum/$kind/$slug': {
+      id: '/museum/$kind/$slug'
+      path: '/museum/$kind/$slug'
+      fullPath: '/museum/$kind/$slug'
+      preLoaderRoute: typeof MuseumKindSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
