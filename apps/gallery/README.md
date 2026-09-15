@@ -132,9 +132,13 @@ docker run --rm -p 3000:3000 --env-file .env aqt-gallery-server:local
 inside Vercel's build environment (`.vercel/output`) and the node-server preset
 anywhere else (`bun run build` writes `.output/`; `bun .output/server/index.mjs`
 runs it). `apps/web/vercel.json` sets the framework preset, the function region
-(`fra1`, next to the API and Neon), an install command that runs a filtered
-workspace install from the repository root, and an ignore command so only
-changes under `apps/gallery` or to the lockfile trigger a build.
+(`fra1`, next to the API and Neon), an install command that installs the
+pinned Bun (Vercel's image ships an older one that cannot read this lockfile
+format) and runs a filtered workspace install from the repository root, a plain
+`vite build` so Vercel's Turbo detection stays out of the way, and an ignore
+command so only changes under `apps/gallery` or to the lockfile trigger a
+build. The Bun version is pinned there as well as in `mise.toml` and the root
+`packageManager`; bump all three together.
 
 One-time project setup in Vercel:
 
