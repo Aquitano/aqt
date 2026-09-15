@@ -51,7 +51,7 @@ dependencies {
     implementation("io.ktor:ktor-server-core")
     implementation("io.ktor:ktor-server-content-negotiation")
     implementation("io.ktor:ktor-server-metrics-micrometer")
-    implementation("io.micrometer:micrometer-registry-prometheus:1.16.5")
+    implementation("io.micrometer:micrometer-registry-prometheus:1.17.1")
     implementation("org.xerial.snappy:snappy-java:1.1.10.8")
     implementation("io.ktor:ktor-server-netty")
     implementation("io.ktor:ktor-server-openapi")
