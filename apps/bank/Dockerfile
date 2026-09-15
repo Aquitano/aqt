@@ -20,7 +20,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/bank ./cmd/bank
 # The image the OCR worker runs from (the `ocr` compose profile). It carries
 # tesseract and poppler — a C++ image stack and a libc — which is exactly why
 # they are not in the image that listens on a port.
-FROM debian:12-slim AS ocr
+FROM debian:13-slim AS ocr
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-deu poppler-utils \
