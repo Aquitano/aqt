@@ -93,11 +93,12 @@ cd apps/server && bun run media:migrate
 ## Deployment
 
 The API server runs as a container on the VPS and the web app on Vercel;
-Postgres (Neon), media (R2) and identity (Clerk) are external. In production
-the two share a registrable domain, say `gallery.example.com` for the web app
-and `api.gallery.example.com` for the server: browser sessions are Clerk
-cookies, and `CORS_ORIGIN` (also Clerk's authorized party) is that single web
-origin, so Vercel preview URLs cannot talk to the API.
+Postgres (Neon), media (R2) and identity (Clerk) are external. Vercel forwards
+`/api/*` to `https://api.gallery.aquitano.me/*`. Set `VITE_SERVER_URL` to
+`https://aqt-web.vercel.app/api` so browser requests include their Clerk session
+cookies. `CORS_ORIGIN`, also Clerk's authorized party, is the frontend origin
+`https://aqt-web.vercel.app`. Preview origins need their own auth configuration.
+The rewrite disables CDN caching so authenticated responses remain private.
 
 ### Server
 
@@ -140,6 +141,11 @@ command so only changes under `apps/gallery` or to the lockfile trigger a
 build. The vite config names the matching `bun1.4.x` function runtime, since
 nitro would otherwise emit `bun1.x`. When the Bun line moves in `mise.toml`,
 move it in those two places as well.
+
+The SSR build bundles React explicitly so generated CommonJS helpers do not
+try to load missing packages inside the deployed function. After a local build,
+run `bun scripts/check-ssr-bundle.ts` from `apps/web` to check every SSR chunk
+without access to the checkout's dependencies or Bun's automatic installer.
 
 One-time project setup in Vercel:
 

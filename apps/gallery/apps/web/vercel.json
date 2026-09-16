@@ -5,5 +5,17 @@
   "installCommand": "cd ../../../.. && bun install --frozen-lockfile --filter aqt-gallery --filter '@aqt/gallery-*'",
   "buildCommand": "vite build",
   "ignoreCommand": "git diff --quiet HEAD^ HEAD -- ../.. ../../../../bun.lock",
-  "regions": ["fra1"]
+  "regions": ["fra1"],
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://api.gallery.aquitano.me/:path*"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [{ "key": "x-vercel-enable-rewrite-caching", "value": "0" }]
+    }
+  ]
 }
