@@ -80,7 +80,7 @@ dependencies {
     implementation("org.flywaydb:flyway-core:$flyway_version")
     implementation("org.flywaydb:flyway-database-postgresql:$flyway_version")
 
-    implementation("com.google.cloud:google-cloud-health:0.1.0")
+    implementation("com.google.cloud:google-cloud-health:0.6.0")
 
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("io.ktor:ktor-client-mock")
