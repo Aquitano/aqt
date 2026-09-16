@@ -16,6 +16,11 @@ export default defineConfig({
   resolve: {
     tsconfigPaths: true,
   },
+  ssr: {
+    // Keep CommonJS React imports in the bundle. Nitro cannot trace the
+    // generated require helpers, and Vercel has no node_modules at runtime.
+    noExternal: ["react", "react-dom"],
+  },
   plugins: [
     tailwindcss(),
     tanstackStart(),
