@@ -29,6 +29,11 @@ try {
           }
           console.log('PASS: renders ' + path);
         }
+        const protectedPage = await app.fetch(new Request('https://aqt-web.vercel.app/explore'));
+        if (protectedPage.status !== 307 || !protectedPage.headers.get('location')?.endsWith('/login')) {
+          throw new Error('Anonymous archive request must redirect to login');
+        }
+        console.log('PASS: anonymous archive requests stay protected');
       `,
       ...files.map((file) => join(chunks, file)),
     ],
