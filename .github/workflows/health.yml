@@ -34,7 +34,7 @@ jobs:
       AQT_HEALTH_TEST_DB_USER: aqt_health
       AQT_HEALTH_TEST_DB_PASSWORD: aqt_health
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
