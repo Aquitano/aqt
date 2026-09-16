@@ -17,6 +17,7 @@ import { ProviderSyncPanel } from "./ProviderSyncPanel";
 const refresh = vi.fn();
 
 const testRouter: AppRouterInstance = {
+  bfcacheId: "test",
   back: () => {},
   forward: () => {},
   push: () => {},
