@@ -10,6 +10,8 @@ updates:
   - package-ecosystem: gradle
     directory: /apps/health
     schedule: { interval: weekly }
+    # Dependabot names the kotlin("jvm") plugin "jvm"; the Kotlin plugins and stdlib must move together
+    groups: { kotlin: { patterns: ["org.jetbrains.kotlin*", "jvm"] } }
   - package-ecosystem: docker
     directory: /apps/bank
     schedule: { interval: weekly }
