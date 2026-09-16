@@ -18,7 +18,18 @@ try {
       process.execPath,
       "--no-install",
       "-e",
-      "for (const file of process.argv.slice(1)) await import(file)",
+      `
+        for (const file of process.argv.slice(1)) await import(file);
+        const { default: app } = await import(process.argv.slice(1).find(file => file.endsWith('/ssr.mjs')));
+        for (const path of ['/', '/login']) {
+          const response = await app.fetch(new Request('https://aqt-web.vercel.app' + path));
+          const body = await response.text();
+          if (response.status !== 200 || !body.includes('AQT Gallery')) {
+            throw new Error(path + ' failed to render: HTTP ' + response.status);
+          }
+          console.log('PASS: renders ' + path);
+        }
+      `,
       ...files.map((file) => join(chunks, file)),
     ],
     {
