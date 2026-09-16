@@ -142,10 +142,11 @@ build. The vite config names the matching `bun1.4.x` function runtime, since
 nitro would otherwise emit `bun1.x`. When the Bun line moves in `mise.toml`,
 move it in those two places as well.
 
-The SSR build bundles React explicitly so generated CommonJS helpers do not
-try to load missing packages inside the deployed function. After a local build,
-run `bun scripts/check-ssr-bundle.ts` from `apps/web` to check every SSR chunk
-without access to the checkout's dependencies or Bun's automatic installer.
+The SSR build bundles dependencies together so generated CommonJS helpers
+resolve React without adding a second copy. After a local build, run
+`infisical run --env=dev --path=/web -- bun apps/web/scripts/check-ssr-bundle.ts`
+from `apps/gallery`. The check imports every SSR chunk in isolation, renders
+public pages, and checks the anonymous archive redirect.
 
 One-time project setup in Vercel:
 
