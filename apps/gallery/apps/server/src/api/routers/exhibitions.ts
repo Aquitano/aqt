@@ -616,7 +616,7 @@ export async function loadExhibitionRender(
 }
 
 const exhibitionUpdateSchema = z.object({
-  id: z.string().min(1),
+  exhibitionId: z.string().min(1),
   name: z.string().min(1).max(120).optional(),
   tagline: z.string().max(200).nullable().optional(),
   description: z.string().max(2000).nullable().optional(),
@@ -630,14 +630,19 @@ const exhibitionUpdateSchema = z.object({
  * `publish` mutations so both go through the same ownership, cover-membership
  * and personal-collection guards. */
 async function updateExhibition(userId: string, input: z.infer<typeof exhibitionUpdateSchema>) {
-  const existing = await requireOwnExhibition(input.id, userId);
+  const existing = await requireOwnExhibition(input.exhibitionId, userId);
   // A chosen cover must be hung somewhere in this exhibition.
   if (input.coverArtworkId) {
     const member = await db
       .select({ artworkId: placement.artworkId })
       .from(placement)
       .innerJoin(room, eq(room.id, placement.roomId))
-      .where(and(eq(room.exhibitionId, input.id), eq(placement.artworkId, input.coverArtworkId)))
+      .where(
+        and(
+          eq(room.exhibitionId, input.exhibitionId),
+          eq(placement.artworkId, input.coverArtworkId),
+        ),
+      )
       .limit(1);
     if (!member[0]) {
       throw new TRPCError({
@@ -667,10 +672,14 @@ async function updateExhibition(userId: string, input: z.infer<typeof exhibition
   if (Object.keys(set).length === 0) {
     return existing;
   }
-  const rows = await db.update(exhibition).set(set).where(eq(exhibition.id, input.id)).returning();
+  const rows = await db
+    .update(exhibition)
+    .set(set)
+    .where(eq(exhibition.id, input.exhibitionId))
+    .returning();
   // The share card bakes in name/tagline/theme/cover/publish state, so
   // any edit here invalidates it — re-derive on next share.
-  await purgeOgCard(input.id);
+  await purgeOgCard(input.exhibitionId);
   return rows[0];
 }
 
@@ -780,7 +789,7 @@ export const exhibitionsRouter = router({
    * opens the inspect panel. Published-only, matching what the renderer
    * ever hangs, so no private draft text leaks through this public route. */
   artworkDetail: publicProcedure
-    .input(z.object({ id: z.string().min(1) }))
+    .input(z.object({ artworkId: z.string().min(1) }))
     .query(async ({ input }) => {
       const rows = await db
         .select({
@@ -793,7 +802,11 @@ export const exhibitionsRouter = router({
         .from(artwork)
         .leftJoin(artist, eq(artist.id, artwork.artistId))
         .where(
-          and(eq(artwork.id, input.id), eq(artwork.isPublished, true), isNull(artwork.deletedAt)),
+          and(
+            eq(artwork.id, input.artworkId),
+            eq(artwork.isPublished, true),
+            isNull(artwork.deletedAt),
+          ),
         )
         .limit(1);
       const row = rows[0];
@@ -875,10 +888,10 @@ export const exhibitionsRouter = router({
 
   /** Anonymous visit stats for an exhibition the caller owns. */
   stats: protectedProcedure
-    .input(z.object({ id: z.string().min(1) }))
+    .input(z.object({ exhibitionId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      await requireOwnExhibition(input.id, ctx.session.user.id);
-      return loadVisitStats(input.id);
+      await requireOwnExhibition(input.exhibitionId, ctx.session.user.id);
+      return loadVisitStats(input.exhibitionId);
     }),
 
   /** Create a new (unpublished) exhibition owned by the caller, with one room
@@ -949,10 +962,10 @@ export const exhibitionsRouter = router({
         idempotent: true,
       },
     })
-    .input(z.object({ id: z.string().min(1), publish: z.boolean() }))
+    .input(z.object({ exhibitionId: z.string().min(1), publish: z.boolean() }))
     .mutation(({ ctx, input }) =>
       updateExhibition(ctx.session.user.id, {
-        id: input.id,
+        exhibitionId: input.exhibitionId,
         isPublished: input.publish,
       }),
     ),
@@ -968,16 +981,16 @@ export const exhibitionsRouter = router({
         idempotent: true,
       },
     })
-    .input(z.object({ id: z.string().min(1) }))
+    .input(z.object({ exhibitionId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      await requireOwnExhibition(input.id, ctx.session.user.id);
+      await requireOwnExhibition(input.exhibitionId, ctx.session.user.id);
       // Rooms + placements cascade; member artworks themselves are kept.
-      const { placements } = await loadRoomsWithPlacements([input.id]);
-      await db.delete(exhibition).where(eq(exhibition.id, input.id));
+      const { placements } = await loadRoomsWithPlacements([input.exhibitionId]);
+      await db.delete(exhibition).where(eq(exhibition.id, input.exhibitionId));
       await deleteEntityCacheFiles({
         store: mediaStore,
         entity: "exhibition",
-        id: input.id,
+        id: input.exhibitionId,
       });
       // Placements cascade-deleted with the rooms may now hang nowhere.
       await unpublishOrphanedArtworks(
@@ -1419,9 +1432,9 @@ export const exhibitionsRouter = router({
         readOnly: true,
       },
     })
-    .input(z.object({ id: z.string().min(1) }))
+    .input(z.object({ exhibitionId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const owner = await requireOwnExhibition(input.id, ctx.session.user.id);
+      const owner = await requireOwnExhibition(input.exhibitionId, ctx.session.user.id);
       const { rooms, placements } = await loadRoomsWithPlacements([owner.id]);
       const artMap = await loadLintArtworks(placements.map((p) => p.artworkId));
       const placementsByRoom = bucketBy(placements, (p) => p.roomId);

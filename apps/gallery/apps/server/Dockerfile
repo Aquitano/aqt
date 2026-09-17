@@ -8,7 +8,8 @@ COPY . .
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile --production --filter @aqt/gallery-server
 
-ENV NODE_ENV=production PORT=3000 DOTENV_CONFIG_QUIET=true
+ARG GIT_SHA=unknown
+ENV NODE_ENV=production PORT=3000 DOTENV_CONFIG_QUIET=true GIT_SHA=$GIT_SHA
 EXPOSE 3000
 USER bun
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

@@ -89,7 +89,7 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const detail = useQuery(trpc.artworks.get.queryOptions({ id: artworkId }));
+  const detail = useQuery(trpc.artworks.get.queryOptions({ artworkId }));
   const artists = useQuery(trpc.artists.list.queryOptions());
   const updateArtwork = useMutation(trpc.artworks.update.mutationOptions());
   const setCustomFields = useMutation(trpc.artworks.setCustomFields.mutationOptions());
@@ -126,7 +126,7 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
     const { form, customFields } = draft;
     try {
       await updateArtwork.mutateAsync({
-        id: artworkId,
+        artworkId,
         title: form.title,
         artist: form.artist || null,
         artistId: form.artistId || null,
@@ -190,7 +190,7 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
   });
 
   const remove = async () => {
-    await deleteArtwork.mutateAsync({ id: artworkId });
+    await deleteArtwork.mutateAsync({ artworkId });
     setConfirmDelete(false);
     await Promise.all([
       queryClient.invalidateQueries(trpc.artworks.pathFilter()),

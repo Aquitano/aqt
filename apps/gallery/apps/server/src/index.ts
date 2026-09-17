@@ -325,7 +325,7 @@ app.use(
 );
 
 app.get("/", (c) => {
-  return c.text("OK");
+  return c.json({ ok: true, commit: env.GIT_SHA });
 });
 
 export default {

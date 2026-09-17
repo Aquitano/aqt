@@ -207,7 +207,7 @@ export const artistsRouter = router({
   update: protectedProcedure
     .input(
       z.object({
-        id: z.string().min(1),
+        artistId: z.string().min(1),
         name: z.string().min(1).max(160).optional(),
         bio: z.string().max(4000).nullable().optional(),
         birthYear: z.number().int().min(-5000).max(3000).nullable().optional(),
@@ -229,7 +229,7 @@ export const artistsRouter = router({
 
       // Only the owner can edit; seeded/global artists (user_id null) are
       // read-only and never match this guard.
-      const where = and(eq(artist.id, input.id), eq(artist.userId, ctx.session.user.id));
+      const where = and(eq(artist.id, input.artistId), eq(artist.userId, ctx.session.user.id));
       if (Object.keys(set).length === 0) {
         const rows = await db.select().from(artist).where(where).limit(1);
         if (!rows[0]) {
@@ -248,13 +248,13 @@ export const artistsRouter = router({
     }),
 
   delete: protectedProcedure
-    .input(z.object({ id: z.string().min(1) }))
+    .input(z.object({ artistId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       // artwork.artistId is ON DELETE SET NULL, so deleting unlinks any of
       // the caller's artworks automatically.
       const rows = await db
         .delete(artist)
-        .where(and(eq(artist.id, input.id), eq(artist.userId, ctx.session.user.id)))
+        .where(and(eq(artist.id, input.artistId), eq(artist.userId, ctx.session.user.id)))
         .returning({ id: artist.id });
       if (!rows[0]) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Artist not found" });

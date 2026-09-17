@@ -121,7 +121,7 @@ export function ArtistDialog({
       portraitUrl: portrait || null,
     };
     if (artist && ownArtist) {
-      await updateArtist.mutateAsync({ id: artist.id, ...payload });
+      await updateArtist.mutateAsync({ artistId: artist.id, ...payload });
       toast.success("Artist updated");
     } else {
       const created = await createArtist.mutateAsync(payload);
@@ -134,7 +134,7 @@ export function ArtistDialog({
 
   const remove = async () => {
     if (!artist) return;
-    await deleteArtist.mutateAsync({ id: artist.id });
+    await deleteArtist.mutateAsync({ artistId: artist.id });
     await queryClient.invalidateQueries();
     toast.success("Artist deleted");
     onDeleted?.(artist.id);

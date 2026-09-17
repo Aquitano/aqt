@@ -21,7 +21,7 @@ Read tools (list_artworks, get_artwork, list_exhibitions, list_tags, list_artist
 export const GUIDE = `# aqt-gallery agent guide
 
 ## Artwork fields (update_artwork)
-Identify the work with \`id\` (an artworkId from list_artworks / an import). The same \`id\` names the artwork for get_artwork, delete_artwork, restore_artwork and purge_artwork.
+Identify the work with \`artworkId\` (from list_artworks / an import). Every artwork-level tool names it the same way: get_artwork, delete_artwork, restore_artwork, purge_artwork, set_artwork_tags, set_artwork_custom_fields and enrich_artworks items.
 - title: string
 - artist: string — the creator's name (free text; a quick label)
 - artistId: link to a structured artist entity (see Artists). Overrides the free-text artist on the public artist wall; pass null to unlink.
@@ -68,7 +68,7 @@ set_artwork_custom_fields replaces an artwork's label/value rows (e.g. "Collecti
 - set_primary_asset chooses which uploaded media asset is the hero image (ids come from get_artwork → mediaAssets[]).
 
 ## Exhibitions and rooms
-An exhibition is a building of one or more rooms, each with its own ordered artworks. One room makes a gallery; several make a museum — the tools are the same. Exhibition-level tools (update_exhibition, publish_exhibition, delete_exhibition, lint_exhibition) take the exhibition's \`id\`; room-level tools take \`roomId\`.
+An exhibition is a building of one or more rooms, each with its own ordered artworks. One room makes a gallery; several make a museum — the tools are the same. Exhibition-level tools (update_exhibition, publish_exhibition, delete_exhibition, lint_exhibition, add_room, reorder_rooms) take \`exhibitionId\`; room-level tools take \`roomId\`.
 - create_exhibition returns { id, slug, roomId }: the default room is ready to hang into. add_room appends further rooms; reorder_rooms arranges the walk; update_room renames/resizes; delete_room removes one (its artworks stay in the archive).
 - add_artworks_to_room appends (skipping duplicates); set_room_artworks replaces the room's exact ordered list. An artwork hangs in at most one room per exhibition — hanging it elsewhere moves it.
 - update_exhibition sets name/tagline/description, kind (exhibition | artist_collection | collection | custom — the lobby label), the 3D theme, and a cover (the cover must be hung in one of the rooms).

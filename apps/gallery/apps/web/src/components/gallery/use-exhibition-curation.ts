@@ -111,7 +111,7 @@ export function useExhibitionCuration(exhibitionId: string): ExhibitionCuration 
   // invalidates the whole `exhibitions` path, so it refetches after any
   // curation write. Feeds both the lint panel and the per-room `warnings`.
   const lint = useQuery({
-    ...trpc.exhibitions.lint.queryOptions({ id: exhibitionId }),
+    ...trpc.exhibitions.lint.queryOptions({ exhibitionId }),
     enabled: exhibition !== null,
     // Advisory only: a lint failure degrades to no warnings, so keep it out of
     // the global error toast.
@@ -275,7 +275,7 @@ export function useExhibitionCuration(exhibitionId: string): ExhibitionCuration 
   const saveDetails = async (details: ExhibitionDetails) => {
     if (!exhibition) return;
     await updateMut.mutateAsync({
-      id: exhibition.id,
+      exhibitionId: exhibition.id,
       name: details.name.trim(),
       tagline: details.tagline.trim() || null,
       description: details.description.trim() || null,
@@ -287,7 +287,7 @@ export function useExhibitionCuration(exhibitionId: string): ExhibitionCuration 
 
   const saveTheme = async (theme: ThemeValue) => {
     if (!exhibition) return;
-    await updateMut.mutateAsync({ id: exhibition.id, theme });
+    await updateMut.mutateAsync({ exhibitionId: exhibition.id, theme });
     await refresh();
     toast.success("Theme saved");
   };
@@ -295,7 +295,7 @@ export function useExhibitionCuration(exhibitionId: string): ExhibitionCuration 
   const setCover = async (artworkId: string | null) => {
     if (!exhibition) return;
     await updateMut.mutateAsync({
-      id: exhibition.id,
+      exhibitionId: exhibition.id,
       coverArtworkId: artworkId,
     });
     await refresh();
@@ -305,7 +305,7 @@ export function useExhibitionCuration(exhibitionId: string): ExhibitionCuration 
   const togglePublish = async () => {
     if (!exhibition) return;
     await updateMut.mutateAsync({
-      id: exhibition.id,
+      exhibitionId: exhibition.id,
       isPublished: !exhibition.isPublished,
     });
     await refresh();
@@ -313,7 +313,7 @@ export function useExhibitionCuration(exhibitionId: string): ExhibitionCuration 
 
   const deleteExhibition = async () => {
     if (!exhibition) return;
-    await deleteMut.mutateAsync({ id: exhibition.id });
+    await deleteMut.mutateAsync({ exhibitionId: exhibition.id });
     await refresh();
     toast.success("Exhibition deleted");
   };

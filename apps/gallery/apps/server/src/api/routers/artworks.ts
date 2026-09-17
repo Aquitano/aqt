@@ -107,7 +107,7 @@ const artworkDetailSchema = z.object({
 });
 
 const artworkUpdateSchema = artworkDetailSchema.extend({
-  id: z.string().min(1),
+  artworkId: z.string().min(1),
 });
 
 type ArtworkDetailInput = z.infer<typeof artworkDetailSchema>;
@@ -217,7 +217,7 @@ async function updateArtwork(userId: string, input: z.infer<typeof artworkUpdate
     await assertArtistLinkable(input.artistId, userId);
   }
   const setValues = artworkSetValues(input);
-  const where = and(eq(artwork.id, input.id), eq(artwork.userId, userId));
+  const where = and(eq(artwork.id, input.artworkId), eq(artwork.userId, userId));
 
   // Nothing to change (id only) — return the current row instead of
   // asking Drizzle to run an empty `set`, which would throw.
@@ -468,13 +468,19 @@ export const artworksRouter = router({
         readOnly: true,
       },
     })
-    .input(z.object({ id: z.string().min(1) }))
+    .input(z.object({ artworkId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
       const rows = await db
         .select()
         .from(artwork)
-        .where(and(eq(artwork.id, input.id), eq(artwork.userId, userId), isNull(artwork.deletedAt)))
+        .where(
+          and(
+            eq(artwork.id, input.artworkId),
+            eq(artwork.userId, userId),
+            isNull(artwork.deletedAt),
+          ),
+        )
         .limit(1);
       const item = rows[0];
 
@@ -558,7 +564,7 @@ export const artworksRouter = router({
         const { artworkId, tagNames, customFields, ...fields } = item;
         try {
           if (Object.keys(fields).length > 0) {
-            await updateArtwork(userId, { id: artworkId, ...fields });
+            await updateArtwork(userId, { artworkId, ...fields });
           }
           if (tagNames !== undefined) {
             await replaceArtworkTags(userId, { artworkId, tagNames });
@@ -598,13 +604,19 @@ export const artworksRouter = router({
         idempotent: true,
       },
     })
-    .input(z.object({ id: z.string().min(1) }))
+    .input(z.object({ artworkId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
       const updated = await db
         .update(artwork)
         .set({ deletedAt: new Date() })
-        .where(and(eq(artwork.id, input.id), eq(artwork.userId, userId), isNull(artwork.deletedAt)))
+        .where(
+          and(
+            eq(artwork.id, input.artworkId),
+            eq(artwork.userId, userId),
+            isNull(artwork.deletedAt),
+          ),
+        )
         .returning({ id: artwork.id });
       // An id the caller doesn't own (or already deleted) is a no-op success
       // so retries stay idempotent.
@@ -623,13 +635,13 @@ export const artworksRouter = router({
         idempotent: true,
       },
     })
-    .input(z.object({ id: z.string().min(1) }))
+    .input(z.object({ artworkId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
       const updated = await db
         .update(artwork)
         .set({ deletedAt: null })
-        .where(and(eq(artwork.id, input.id), eq(artwork.userId, userId)))
+        .where(and(eq(artwork.id, input.artworkId), eq(artwork.userId, userId)))
         .returning();
       if (!updated[0]) {
         throw new TRPCError({
@@ -653,7 +665,7 @@ export const artworksRouter = router({
         idempotent: true,
       },
     })
-    .input(z.object({ id: z.string().min(1) }))
+    .input(z.object({ artworkId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
       // Read the asset paths before the FK cascade drops the media_asset
@@ -665,18 +677,18 @@ export const artworksRouter = router({
           thumbnailPath: mediaAsset.thumbnailPath,
         })
         .from(mediaAsset)
-        .where(and(eq(mediaAsset.artworkId, input.id), eq(mediaAsset.userId, userId)));
+        .where(and(eq(mediaAsset.artworkId, input.artworkId), eq(mediaAsset.userId, userId)));
 
       const deleted = await db
         .delete(artwork)
-        .where(and(eq(artwork.id, input.id), eq(artwork.userId, userId)))
+        .where(and(eq(artwork.id, input.artworkId), eq(artwork.userId, userId)))
         .returning({ id: artwork.id });
 
       // Only unlink files when we actually owned and removed the row.
       if (deleted.length > 0) {
         await deleteArtworkFiles({
           store: mediaStore,
-          artworkId: input.id,
+          artworkId: input.artworkId,
           assetKeys: assets.flatMap((a) => [mediaKey(a.storagePath), mediaKey(a.thumbnailPath)]),
         });
       }
@@ -765,7 +777,7 @@ export const artworksRouter = router({
           const rows = await tx
             .update(artwork)
             .set(setValues)
-            .where(and(eq(artwork.id, item.id), eq(artwork.userId, userId)))
+            .where(and(eq(artwork.id, item.artworkId), eq(artwork.userId, userId)))
             .returning();
           if (rows[0]) {
             updated.push(rows[0]);
@@ -826,7 +838,7 @@ export const artworksRouter = router({
         const { url, title: _title, tagNames, customFields, ...fields } = item;
         try {
           if (Object.keys(fields).length > 0) {
-            await updateArtwork(userId, { id: artworkId, ...fields });
+            await updateArtwork(userId, { artworkId, ...fields });
           }
           if (tagNames !== undefined) {
             await replaceArtworkTags(userId, { artworkId, tagNames });

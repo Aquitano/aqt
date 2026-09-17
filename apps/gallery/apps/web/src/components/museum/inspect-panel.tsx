@@ -34,7 +34,7 @@ export function InspectPanel({ artworkById }: { artworkById: Map<string, Artwork
   // the fetch overlaps the camera glide (approaching → open).
   const detailQuery = useQuery({
     ...trpc.exhibitions.artworkDetail.queryOptions({
-      id: inspectId ?? "",
+      artworkId: inspectId ?? "",
     }),
     enabled: mounted && Boolean(inspectId),
     staleTime: Number.POSITIVE_INFINITY,

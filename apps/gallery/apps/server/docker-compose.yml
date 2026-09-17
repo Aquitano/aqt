@@ -8,6 +8,8 @@ services:
     build:
       context: ../../../..
       dockerfile: apps/gallery/apps/server/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
     image: aqt-gallery-server:local
     env_file: .env
     ports:

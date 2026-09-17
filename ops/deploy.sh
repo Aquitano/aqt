@@ -7,4 +7,4 @@ root=${AQT_VPS_ROOT:-/opt/aqt}
 
 test -d "apps/$app" || { echo "no such app: $app" >&2; exit 1; }
 
-ssh "$host" "cd '$root' && git pull --ff-only && cd 'apps/$app' && test -f .env && docker compose up -d --build --wait --wait-timeout 180"
+ssh "$host" "cd '$root' && git pull --ff-only && cd 'apps/$app' && test -f .env && GIT_SHA=\$(git rev-parse --short HEAD) docker compose up -d --build --wait --wait-timeout 180"

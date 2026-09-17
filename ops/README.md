@@ -10,7 +10,7 @@ ops/deploy.sh health
 ops/deploy.sh gallery/apps/server
 ```
 
-`deploy.sh` pulls the checkout on the VPS, requires `apps/<app>/.env` to exist there, and runs `docker compose up -d --build --wait` in the app's directory. Compose files live next to each app's Dockerfile, not here; for the gallery that is the server sub-app, whose `.env` is the one `secrets.sh send gallery` writes. Bank's data volume is LUKS and unlocked by hand, so it never auto-restarts.
+`deploy.sh` pulls the checkout on the VPS, requires `apps/<app>/.env` to exist there, and runs `docker compose up -d --build --wait` in the app's directory with `GIT_SHA` set to the short commit it just pulled, so an image that reads the build arg can report which code is live (the gallery server does, on `GET /`). Compose files live next to each app's Dockerfile, not here; for the gallery that is the server sub-app, whose `.env` is the one `secrets.sh send gallery` writes. Bank's data volume is LUKS and unlocked by hand, so it never auto-restarts.
 
 ## secrets
 

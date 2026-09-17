@@ -47,6 +47,9 @@ export const env = createEnv({
     // Must match the real topology: too low keys on a spoofable address, too
     // high collapses every client onto one shared (intermediate-proxy) bucket.
     TRUSTED_PROXY_HOPS: z.coerce.number().int().min(1).default(1),
+    // Commit the running image was built from, stamped by the Dockerfile so
+    // GET / can say which code is live.
+    GIT_SHA: z.string().min(1).default("unknown"),
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   },
   // A half-configured bucket is worse than none: the server would boot and then

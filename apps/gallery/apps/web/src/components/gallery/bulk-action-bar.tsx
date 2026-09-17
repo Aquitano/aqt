@@ -76,7 +76,7 @@ export function BulkActionBar({
 
   const setType = async (artworkType: ArtworkType) => {
     await bulkUpdate.mutateAsync({
-      artworks: selected.map((id) => ({ id, artworkType })),
+      artworks: selected.map((artworkId) => ({ artworkId, artworkType })),
     });
     await queryClient.invalidateQueries();
     toast.success(`Set type on ${count} ${count === 1 ? "work" : "works"}`);
@@ -126,7 +126,7 @@ export function BulkActionBar({
     // allSettled: a single failed delete must still clear the (now partially
     // deleted) selection and report the partial outcome, not leave stale state.
     const results = await Promise.allSettled(
-      selected.map((id) => deleteArtwork.mutateAsync({ id })),
+      selected.map((artworkId) => deleteArtwork.mutateAsync({ artworkId })),
     );
     await queryClient.invalidateQueries();
     setConfirmDelete(false);

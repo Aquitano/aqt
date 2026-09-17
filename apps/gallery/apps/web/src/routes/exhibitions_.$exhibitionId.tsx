@@ -119,7 +119,7 @@ function StudioBody({ exhibitionId, search }: { exhibitionId: string; search: st
   const { exhibition, rooms, available, busy } = curation;
 
   const statsQuery = useQuery({
-    ...trpc.exhibitions.stats.queryOptions({ id: exhibitionId }),
+    ...trpc.exhibitions.stats.queryOptions({ exhibitionId }),
     enabled: Boolean(exhibition?.isPublished),
   });
 
