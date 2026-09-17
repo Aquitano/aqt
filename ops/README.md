@@ -2,12 +2,10 @@
 
 Deploy configuration for the services that run on the VPS, and the secrets they read.
 
-Set `AQT_VPS_HOST` (ssh alias or `user@host`) and `AQT_VPS_ROOT` (checkout path on the box, default `/opt/aqt`).
+Both scripts reach the box through `AQT_VPS_HOST`, `root@ubuntu` over Tailscale, set in the root `mise.toml` so any shell or `mise run` inside the repo has it, and act on the checkout at `AQT_VPS_ROOT`. Checkouts on the box are per app, so there is no default root: each app that runs there has a `<app>:deploy` task in the root `mise.toml` that sets its own path (kept once, in `[vars]`) and calls the script.
 
 ```sh
-ops/deploy.sh bank
-ops/deploy.sh health
-ops/deploy.sh gallery/apps/server
+mise run gallery:deploy                 # ops/deploy.sh gallery/apps/server at /srv/docker/aqt-gallery
 ```
 
 `deploy.sh` pulls the checkout on the VPS, requires `apps/<app>/.env` to exist there, and runs `docker compose up -d --build --wait` in the app's directory with `GIT_SHA` set to the short commit it just pulled, so an image that reads the build arg can report which code is live (the gallery server does, on `GET /`). Compose files live next to each app's Dockerfile, not here; for the gallery that is the server sub-app, whose `.env` is the one `secrets.sh send gallery` writes. Bank's data volume is LUKS and unlocked by hand, so it never auto-restarts.
@@ -37,7 +35,7 @@ ops/secrets.sh send health prod          # prod straight to the VPS, then ops/de
 
 Targets are `bank`, `health`, `health-frontend`, `gallery`, `gallery-web`, `img` and `tracker`; each one names the `.env` path it owns. `pull`, `diff` and `push` all work on the checkout they run in, so they default to `dev` — the environment you actually develop against.
 
-The VPS holds no Infisical credentials. `send` fetches an environment here and writes it over ssh to `$AQT_VPS_HOST:$AQT_VPS_ROOT`, never touching the local file, so pushing prod at the box does not disturb the dev `.env` in the checkout. It lands through a temporary name under `umask 077`, so an interrupted transfer cannot leave the box with half a file. `deploy.sh` is deliberately separate: it keeps using whatever `.env` is already there, and an Infisical outage can never block a deploy.
+The VPS holds no Infisical credentials. `send` fetches an environment here and writes it over ssh to `$AQT_VPS_HOST:$AQT_VPS_ROOT` (`mise run gallery:secrets:send` supplies both), never touching the local file, so pushing prod at the box does not disturb the dev `.env` in the checkout. It lands through a temporary name under `umask 077`, so an interrupted transfer cannot leave the box with half a file. `deploy.sh` is deliberately separate: it keeps using whatever `.env` is already there, and an Infisical outage can never block a deploy.
 
 `pull` replaces the file and reports whether the values actually changed, comparing them the way `diff` does, so reordering and comments do not count as drift. An environment that exists but holds no secrets aborts the pull rather than emptying a working `.env`. Comments do not survive a pull; they belong in `.env.example`.
 

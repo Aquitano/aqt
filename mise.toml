@@ -7,6 +7,12 @@ swiftformat = "0.63.0"
 swiftlint = "0.65.1"
 xcodegen = "2.46.0"
 
+[env]
+AQT_VPS_HOST = "root@ubuntu"
+
+[vars]
+gallery_vps_root = "/srv/docker/aqt-gallery"
+
 [task_config]
 includes = ["tools/tasks"]
 
@@ -95,6 +101,16 @@ run = [
   "bun run --cwd apps/gallery typecheck",
   "bun run --cwd apps/gallery test",
 ]
+
+[tasks."gallery:deploy"]
+description = "Pull, rebuild and restart the API server on the VPS"
+env = { AQT_VPS_ROOT = "{{vars.gallery_vps_root}}" }
+run = "ops/deploy.sh gallery/apps/server"
+
+[tasks."gallery:secrets:send"]
+description = "Write the prod .env from Infisical onto the VPS"
+env = { AQT_VPS_ROOT = "{{vars.gallery_vps_root}}" }
+run = "ops/secrets.sh send gallery prod"
 
 [tasks."gallery:dev"]
 dir = "apps/gallery"

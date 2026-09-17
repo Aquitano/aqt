@@ -3,7 +3,7 @@ set -eu
 
 app=${1:?usage: ops/deploy.sh <app>}
 host=${AQT_VPS_HOST:?set AQT_VPS_HOST}
-root=${AQT_VPS_ROOT:-/opt/aqt}
+root=${AQT_VPS_ROOT:?set AQT_VPS_ROOT}
 
 test -d "apps/$app" || { echo "no such app: $app" >&2; exit 1; }
 

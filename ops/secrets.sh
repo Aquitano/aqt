@@ -225,9 +225,9 @@ send)
   # Not ${AQT_VPS_HOST:?...}: bash 3.2 runs the EXIT trap on an expansion error
   # and the successful cleanup overwrites the failure status with 0.
   host=${AQT_VPS_HOST:-}
-  vps=${AQT_VPS_ROOT:-/opt/aqt}
-  [ -n "$host" ] || {
-    echo "set AQT_VPS_HOST" >&2
+  vps=${AQT_VPS_ROOT:-}
+  [ -n "$host" ] && [ -n "$vps" ] || {
+    echo "set AQT_VPS_HOST and AQT_VPS_ROOT" >&2
     exit 1
   }
   fetch >"$scratch/new"
