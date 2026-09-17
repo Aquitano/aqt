@@ -38,9 +38,9 @@ function buildGalleryTools(): GalleryTool[] {
   for (const [path, procedure] of Object.entries(procedures)) {
     const mcp = procedure._def.meta?.mcp;
     if (!mcp) continue;
-    // A personal access token authenticates the MCP endpoint and nothing
-    // else, so token management must stay off the agent surface — otherwise
-    // a leaked token could mint itself more.
+    // A personal access token never reaches the tRPC HTTP API, so token
+    // management must stay off the agent surface — otherwise a leaked token
+    // could mint itself more.
     if (path.startsWith("apiTokens.")) {
       throw new Error(`${path} must not be exposed as an MCP tool`);
     }

@@ -69,8 +69,11 @@ app.use(
   }),
 );
 
+// Browser uploads and agent uploads share this route: a personal access token
+// (Authorization: Bearer aqtg_…) is accepted as well as the cookie session, so
+// an agent can push local files that no fetchable URL exists for.
 app.post("/media/upload", async (c) => {
-  const session = await getSession(c.req.raw);
+  const session = (await sessionFromApiToken(c.req.raw.headers)) ?? (await getSession(c.req.raw));
 
   if (!session) {
     return c.json({ error: "Authentication required" }, 401);

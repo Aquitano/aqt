@@ -7,9 +7,9 @@ export type CreateContextOptions = {
 
 export async function createContext({ context }: CreateContextOptions) {
   // The tRPC HTTP API is cookie-session only. Personal access tokens are
-  // deliberately NOT honoured here — they authenticate the /mcp endpoint
-  // alone, so a leaked agent token can't reach token management or any other
-  // procedure outside the MCP tool surface.
+  // deliberately NOT honoured here — they authenticate only the agent surface
+  // (/mcp, /media/upload, owner preview on /public-image), so a leaked agent
+  // token can't reach token management or any other procedure outside it.
   const session = await getSession(context.req.raw);
   return {
     auth: null,

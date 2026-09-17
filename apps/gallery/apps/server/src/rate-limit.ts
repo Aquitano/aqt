@@ -86,8 +86,8 @@ export const mcpRateLimiter = createRateLimiter({
   max: 240,
 });
 
-/** Browser uploads are already bounded to 25 files / 25 MB per request; this
- * caps how often a session can fire those requests. */
+/** Uploads are already bounded to 25 files / 25 MB per request; this caps how
+ * often a session or agent token can fire those requests. */
 export const uploadRateLimiter = createRateLimiter({
   windowMs: 5 * 60_000,
   max: 60,

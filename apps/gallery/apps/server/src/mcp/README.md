@@ -107,6 +107,26 @@ Also exposed:
 - **Resource** `gallery://guide` — the field reference, enums, and theme shape.
 - **Prompt** `curate_gallery` — kicks off the import→enrich→curate→publish flow.
 
+### Uploading local files
+
+Images that live on the agent's machine (or on a host that refuses server-side
+fetches) go over plain HTTP instead of a tool, since MCP inputs are JSON and
+can't carry bytes efficiently. `POST /media/upload` accepts the same bearer
+token and runs the same ingest as a URL import; enrich the returned artwork
+ids over MCP afterwards.
+
+```bash
+curl http://localhost:3000/media/upload \
+  --header "Authorization: Bearer aqtg_your_token" \
+  --form "files=@hermes.jpg" --form "titles=Bronze Statuette of Hermes" \
+  --form "files=@kantei.jpg" --form "titles=Landscape with Pine Tree"
+# → { "uploaded": [{ "artworkId": "…", "title": "…", "asset": { … } }, …] }
+```
+
+Up to 25 files of 25 MB each per request, but keep one request under ~100 MB
+in total (Bun's default body limit is 128 MB); `titles` pairs with `files` by
+position and is optional.
+
 ## Recommended workflow
 
 1. `import_artworks_from_urls` — note the returned `artworkId`s. Each item
