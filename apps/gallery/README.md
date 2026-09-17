@@ -94,11 +94,13 @@ cd apps/server && bun run media:migrate
 
 The API server runs as a container on the VPS and the web app on Vercel;
 Postgres (Neon), media (R2) and identity (Clerk) are external. Vercel forwards
-`/api/*` to `https://api.gallery.aquitano.me/*`. Set `VITE_SERVER_URL` to
-`https://aqt-web.vercel.app/api` so browser requests include their Clerk session
-cookies. `CORS_ORIGIN`, also Clerk's authorized party, is the frontend origin
-`https://aqt-web.vercel.app`. Preview origins need their own auth configuration.
-The rewrite disables CDN caching so authenticated responses remain private.
+`/api/*` to `https://api.gallery.aquitano.me/*` with CDN caching off, so
+authenticated responses stay private. `VITE_SERVER_URL` is
+`https://gallery.aquitano.me/api`, not the API origin: Clerk's `__session`
+cookie is host-only and only reaches the API through that same-origin path.
+`CORS_ORIGIN`, also Clerk's authorized party, is the frontend origin
+`https://gallery.aquitano.me`. Preview origins need their own auth
+configuration.
 
 ### Server
 
