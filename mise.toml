@@ -16,6 +16,10 @@ gallery_vps_root = "/srv/docker/aqt-gallery"
 [task_config]
 includes = ["tools/tasks"]
 
+[tasks."vps:auth"]
+description = "Pass the Tailscale SSH check for the VPS, opening the login URL if one is needed"
+run = "ops/vps.sh $AQT_VPS_HOST"
+
 [tasks.check]
 description = "Every app's checks, with shared tasks run once"
 depends = ["*:check"]

@@ -230,6 +230,7 @@ send)
     echo "set AQT_VPS_HOST and AQT_VPS_ROOT" >&2
     exit 1
   }
+  "$root/ops/vps.sh" "$host"
   fetch >"$scratch/new"
   test -s "$scratch/new" || {
     echo "$target $slug:$folder returned nothing; refusing to send it" >&2
