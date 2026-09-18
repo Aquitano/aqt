@@ -17,6 +17,7 @@ import { z } from "zod";
 import { deleteEntityCacheFiles, deleteOgCardFiles } from "../../media/delete-files";
 import { mediaStore } from "../../media/store";
 import { protectedProcedure, publicProcedure, router } from "../index";
+import { visibleToUser } from "./gallery-helpers";
 import { type LintArtwork, runLint } from "./lint";
 
 /** All imagery is served by this API (downloaded + cached server-side);
@@ -508,12 +509,7 @@ async function resolveHangableArtworks(userId: string, artworkIds: string[]) {
       : await db
           .select({ id: artwork.id, userId: artwork.userId })
           .from(artwork)
-          .where(
-            and(
-              inArray(artwork.id, unique),
-              or(eq(artwork.userId, userId), eq(artwork.isPublished, true)),
-            ),
-          );
+          .where(and(inArray(artwork.id, unique), visibleToUser(userId)));
   const allowedIds = new Set(allowed.map((a) => a.id));
   const orderedIds = unique.filter((id) => allowedIds.has(id));
   const ownIds = new Set(allowed.filter((a) => a.userId === userId).map((a) => a.id));

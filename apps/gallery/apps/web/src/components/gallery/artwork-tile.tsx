@@ -70,6 +70,12 @@ export const ArtworkTile = memo(function ArtworkTile({
     );
   }
 
+  // Only own works have an editor page; another curator's published work is
+  // a plain figure until it is selected and hung.
+  if (!artwork.isOwn) {
+    return <div className="tile">{body}</div>;
+  }
+
   return (
     <Link className="tile" to="/artworks/$artworkId" params={{ artworkId: artwork.id }}>
       {body}

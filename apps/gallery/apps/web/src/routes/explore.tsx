@@ -1,5 +1,5 @@
 import { Button } from "@aqt/gallery-ui/components/button";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { CheckSquare, Plus } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -7,6 +7,7 @@ import { useCallback, useState } from "react";
 import {
   ArchiveControls,
   type ArchiveFilterId,
+  type ArchiveScope,
   type ArchiveSort,
 } from "@/components/gallery/archive-controls";
 import { ArtworkTile } from "@/components/gallery/artwork-tile";
@@ -45,6 +46,8 @@ export const Route = createFileRoute("/explore")({
   },
 });
 
+const PAGE_SIZE = 60;
+
 const SEARCH_HINT: Record<ExploreView, string> = {
   artworks: "Try 'Botticelli' or 'still life'",
   spaces: "Search galleries and museums",
@@ -72,6 +75,7 @@ function ArtworksWall({ search }: { search: string }) {
   // Debounce the value that feeds the query key so typing doesn't fire a
   // request per keystroke; keepPreviousData avoids a loading flash between them.
   const debouncedSearch = useDebouncedValue(search);
+  const [scope, setScope] = useState<ArchiveScope>("all");
   const [sort, setSort] = useState<ArchiveSort>("newest");
   const [artworkType, setArtworkType] = useState<ArtworkType | "all">("all");
   const [tagId, setTagId] = useState<ArchiveFilterId>("all");
@@ -79,17 +83,28 @@ function ArtworksWall({ search }: { search: string }) {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const artworks = useQuery({
-    ...trpc.artworks.list.queryOptions({
-      query: debouncedSearch,
-      sort,
-      artworkType: artworkType === "all" ? undefined : artworkType,
-      tagId: tagId === "all" ? undefined : tagId,
-      artistId: artistId === "all" ? undefined : artistId,
-    }),
+  // Paged, since "everyone" grows with every published work; a page's row
+  // offset is the cursor, and a short page means the set is exhausted.
+  const artworks = useInfiniteQuery({
+    ...trpc.artworks.list.infiniteQueryOptions(
+      {
+        scope,
+        query: debouncedSearch,
+        sort,
+        artworkType: artworkType === "all" ? undefined : artworkType,
+        tagId: tagId === "all" ? undefined : tagId,
+        artistId: artistId === "all" ? undefined : artistId,
+        limit: PAGE_SIZE,
+      },
+      {
+        initialCursor: 0,
+        getNextPageParam: (lastPage, pages) =>
+          lastPage.length < PAGE_SIZE ? undefined : pages.length * PAGE_SIZE,
+      },
+    ),
     placeholderData: keepPreviousData,
   });
-  const cards = (artworks.data ?? []) as ArtworkCard[];
+  const cards: ArtworkCard[] = artworks.data?.pages.flat() ?? [];
 
   // Stable identity (functional updater) so memoized ArtworkTiles don't all
   // re-render when one selection toggles.
@@ -119,6 +134,8 @@ function ArtworksWall({ search }: { search: string }) {
     <>
       <ArchiveControls
         lead={<ExploreSwitch active="artworks" />}
+        scope={scope}
+        onScope={setScope}
         sort={sort}
         onSort={setSort}
         artworkType={artworkType}
@@ -127,7 +144,7 @@ function ArtworksWall({ search }: { search: string }) {
         onTagId={setTagId}
         artistId={artistId}
         onArtistId={setArtistId}
-        count={cards.length}
+        count={artworks.hasNextPage ? undefined : cards.length}
         action={
           <Button variant={selectMode ? "secondary" : "ghost"} size="sm" onClick={toggleSelectMode}>
             <CheckSquare />
@@ -150,18 +167,31 @@ function ArtworksWall({ search }: { search: string }) {
           )}
         </WallEmptyState>
       ) : (
-        <MasonryWall>
-          {cards.map((artwork, index) => (
-            <ArtworkTile
-              key={artwork.id}
-              artwork={artwork}
-              index={index}
-              selectable={selectMode}
-              selected={selected.has(artwork.id)}
-              onToggleSelect={toggleSelect}
-            />
-          ))}
-        </MasonryWall>
+        <>
+          <MasonryWall>
+            {cards.map((artwork, index) => (
+              <ArtworkTile
+                key={artwork.id}
+                artwork={artwork}
+                index={index}
+                selectable={selectMode}
+                selected={selected.has(artwork.id)}
+                onToggleSelect={toggleSelect}
+              />
+            ))}
+          </MasonryWall>
+          {artworks.hasNextPage ? (
+            <div className="flex justify-center py-6">
+              <Button
+                variant="outline"
+                disabled={artworks.isFetchingNextPage}
+                onClick={() => void artworks.fetchNextPage()}
+              >
+                {artworks.isFetchingNextPage ? "Loading…" : "Show more"}
+              </Button>
+            </div>
+          ) : null}
+        </>
       )}
       {selectMode && selectedInView.length > 0 ? (
         <BulkActionBar

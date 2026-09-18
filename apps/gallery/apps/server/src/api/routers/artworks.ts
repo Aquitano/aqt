@@ -21,6 +21,7 @@ import {
   lt,
   lte,
   or,
+  type SQL,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -39,7 +40,7 @@ import { importMediaFromUrls, uploadErrorResponse } from "../../media/upload";
 import { importRateLimiter } from "../../rate-limit";
 import { protectedProcedure, router } from "../index";
 import { findOrCreateArtistByName } from "./artists";
-import { artworkTypes } from "./gallery-helpers";
+import { artworkTypes, visibleToUser } from "./gallery-helpers";
 import { replaceArtworkTags, setArtworkTagsSchema } from "./tags";
 
 /** First 3–4 digit run in a free-text year ("c. 1920", "1484-1486" → 1920,
@@ -288,13 +289,14 @@ export const artworksRouter = router({
         name: "list_artworks",
         title: "List artworks",
         description:
-          "List the user's archived artworks (newest first by default). Use to find artworkIds before editing or hanging them. Filters combine (AND): query (title/artist substring), artworkType, artistId (a linked artist), ratingMin/ratingMax (0–5 private rating), seenFrom/seenTo (ISO dates the work was seen), and yearFrom/yearTo (creation year parsed from the free-text year). A rating, seen, or year bound excludes works that lack that value.",
+          "List artworks (newest first by default). scope 'mine' (default) is the user's own archive in any state; scope 'all' adds every published work by anyone, own works first, which is exactly the set the user may hang. Use to find artworkIds before editing or hanging them. Filters combine (AND): query (title/artist substring), artworkType, artistId (a linked artist), ratingMin/ratingMax (0–5 private rating), seenFrom/seenTo (ISO dates the work was seen), and yearFrom/yearTo (creation year parsed from the free-text year). A rating, seen, or year bound excludes works that lack that value; rating and seen are private, so they only ever match the user's own works.",
         readOnly: true,
       },
     })
     .input(
       z
         .object({
+          scope: z.enum(["mine", "all"]).default("mine"),
           query: z.string().optional(),
           tagId: z.string().optional(),
           artistId: z.string().optional(),
@@ -306,27 +308,33 @@ export const artworksRouter = router({
           yearFrom: z.number().int().optional().describe("Earliest creation year, inclusive."),
           yearTo: z.number().int().optional().describe("Latest creation year, inclusive."),
           sort: z.enum(["newest", "oldest", "title", "rating"]).default("newest"),
-          // Optional pagination. Omitted = the full set (back-compat). When
-          // set, the year-range filter still runs in JS post-fetch, so a page
-          // may return fewer than `limit` rows once a year bound is applied.
+          // Optional pagination; omitted = the full set. `cursor` is the row
+          // offset of the page, named so tRPC infinite queries can drive it.
+          // The year-range filter still runs in JS post-fetch, so a page may
+          // return fewer than `limit` rows once a year bound is applied.
           limit: z.number().int().min(1).max(200).optional(),
-          offset: z.number().int().min(0).optional(),
+          cursor: z.number().int().min(0).optional(),
         })
         .optional(),
     )
     .query(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
+      const isOwn = eq(artwork.userId, userId);
+      const everyone = input?.scope === "all";
+      // Rating and seen date are the owner's private annotations, so a bound
+      // on them must never match (and thereby reveal) another user's values.
+      const ownOnly = (filter: SQL) => (everyone ? and(isOwn, filter) : filter);
       const filters = [
-        eq(artwork.userId, userId),
+        everyone ? visibleToUser(userId) : isOwn,
         isNull(artwork.deletedAt),
         input?.artworkType ? eq(artwork.artworkType, input.artworkType) : undefined,
         input?.artistId ? eq(artwork.artistId, input.artistId) : undefined,
-        input?.ratingMin != null ? gte(artwork.rating, input.ratingMin) : undefined,
-        input?.ratingMax != null ? lte(artwork.rating, input.ratingMax) : undefined,
-        input?.seenFrom ? gte(artwork.seenAt, new Date(input.seenFrom)) : undefined,
+        input?.ratingMin != null ? ownOnly(gte(artwork.rating, input.ratingMin)) : undefined,
+        input?.ratingMax != null ? ownOnly(lte(artwork.rating, input.ratingMax)) : undefined,
+        input?.seenFrom ? ownOnly(gte(artwork.seenAt, new Date(input.seenFrom))) : undefined,
         // seenAt is a timestamp; treat a date-only seenTo as inclusive of the
         // whole day by bounding below the next midnight.
-        input?.seenTo ? lt(artwork.seenAt, nextDay(input.seenTo)) : undefined,
+        input?.seenTo ? ownOnly(lt(artwork.seenAt, nextDay(input.seenTo))) : undefined,
         input?.query
           ? or(ilike(artwork.title, `%${input.query}%`), ilike(artwork.artist, `%${input.query}%`))
           : undefined,
@@ -353,7 +361,8 @@ export const artworksRouter = router({
       // Stable, intuitive ordering: NULL ratings sort last (DESC would float
       // unrated works above 5-star ones), and every sort has archivedAt as a
       // deterministic tiebreaker so equal keys (and any paging) are stable.
-      const orderBy =
+      // Across everyone, own works lead like the spaces wall.
+      const sortBy =
         input?.sort === "oldest"
           ? [asc(artwork.archivedAt)]
           : input?.sort === "title"
@@ -361,10 +370,12 @@ export const artworksRouter = router({
             : input?.sort === "rating"
               ? [sql`${artwork.rating} desc nulls last`, desc(artwork.archivedAt)]
               : [desc(artwork.archivedAt)];
+      const orderBy = everyone ? [desc(isOwn), ...sortBy] : sortBy;
 
       const rows = await db
         .select({
           id: artwork.id,
+          userId: artwork.userId,
           title: artwork.title,
           artist: artwork.artist,
           artworkType: artwork.artworkType,
@@ -386,7 +397,7 @@ export const artworksRouter = router({
         .where(and(...filters))
         .orderBy(...orderBy)
         .limit(input?.limit ?? Number.MAX_SAFE_INTEGER)
-        .offset(input?.offset ?? 0);
+        .offset(input?.cursor ?? 0);
 
       let scopedRows = rows;
 
@@ -416,36 +427,40 @@ export const artworksRouter = router({
         })
         .from(artworkTag)
         .innerJoin(tag, eq(tag.id, artworkTag.tagId))
-        .where(inArray(artworkTag.artworkId, artworkIds));
+        .where(and(inArray(artworkTag.artworkId, artworkIds), eq(tag.userId, userId)));
 
       return scopedRows.map((row) => {
         // An artwork has an image if it was uploaded (a media asset) or
-        // carries an external source URL (seeded content). Asset-backed
-        // images stream from the owner-auth /media route; external ones
-        // go through the proxy/cache, which also serves the owner's own
+        // carries an external source URL (seeded content). The owner's
+        // asset-backed images stream from the owner-auth /media route;
+        // external ones, and every other user's published work, go through
+        // the public proxy/cache, which also serves the owner's own
         // unpublished artworks. Either way the browser never hotlinks.
-        const hasExternal = Boolean(row.imageUrl || row.externalThumbUrl);
+        const own = row.userId === userId;
+        const hasImage = Boolean(row.assetId || row.imageUrl || row.externalThumbUrl);
+        const ownAsset = own && row.assetId;
         return {
           id: row.id,
+          isOwn: own,
           title: row.title,
           artist: row.artist,
           artworkType: row.artworkType,
           year: row.year,
           dimensions: row.dimensions,
-          rating: row.rating,
+          rating: own ? row.rating : null,
           archivedAt: row.archivedAt,
-          assetId: row.assetId,
-          mimeType: row.mimeType,
+          assetId: ownAsset ? row.assetId : null,
+          mimeType: ownAsset ? row.mimeType : null,
           width: row.assetWidth ?? row.imageWidth,
           height: row.assetHeight ?? row.imageHeight,
-          thumbnailUrl: row.assetId
+          thumbnailUrl: ownAsset
             ? `/media/${row.assetId}/thumb`
-            : hasExternal
+            : hasImage
               ? `/public-image/artwork/${row.id}/thumb`
               : null,
-          originalUrl: row.assetId
+          originalUrl: ownAsset
             ? `/media/${row.assetId}/original`
-            : hasExternal
+            : hasImage
               ? `/public-image/artwork/${row.id}/full`
               : null,
           tags: tagRows

@@ -35,11 +35,12 @@ const TYPES: { value: ArtworkType; label: string }[] = [
 ];
 
 /**
- * Floating toolbar for acting on a selection of archive artworks at once.
+ * Floating toolbar for acting on a selection of artworks at once.
  * Type changes go through the batched `artworks.bulkUpdate` and hanging
  * through `exhibitions.appendRoomArtworks`; tagging and deletion fan out one
  * call per artwork (tags must merge with each work's existing set, and delete
- * has no batch endpoint).
+ * has no batch endpoint). Another curator's work can only be hung, so the
+ * editing actions disappear as soon as one is in the selection.
  */
 export function BulkActionBar({
   selected,
@@ -65,6 +66,7 @@ export function BulkActionBar({
   const busy =
     bulkUpdate.isPending || setTags.isPending || deleteArtwork.isPending || appendToRoom.isPending;
   const selectedCards = cards.filter((card) => selected.includes(card.id));
+  const editable = selectedCards.every((card) => card.isOwn);
   // One flat target per room: a one-room exhibition reads as itself, a
   // multi-room one lists each room.
   const roomTargets = (exhibitions.data ?? []).filter(isCurated).flatMap((e) =>
@@ -144,24 +146,28 @@ export function BulkActionBar({
       <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full bg-popover/95 py-2 pr-2 pl-4 text-popover-foreground shadow-2xl backdrop-blur-md">
         <span className="px-1 text-sm font-medium tabular-nums">{count} selected</span>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="outline" size="sm" disabled={busy} />}>
-            <Shapes />
-            Set type
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="center" className="min-w-40">
-            {TYPES.map((type) => (
-              <DropdownMenuItem key={type.value} onClick={() => void setType(type.value)}>
-                {type.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {editable ? (
+          <>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="outline" size="sm" disabled={busy} />}>
+                <Shapes />
+                Set type
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" className="min-w-40">
+                {TYPES.map((type) => (
+                  <DropdownMenuItem key={type.value} onClick={() => void setType(type.value)}>
+                    {type.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-        <Button variant="outline" size="sm" disabled={busy} onClick={() => setTagOpen(true)}>
-          <Tag />
-          Add tag
-        </Button>
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => setTagOpen(true)}>
+              <Tag />
+              Add tag
+            </Button>
+          </>
+        ) : null}
 
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="outline" size="sm" disabled={busy} />}>
@@ -181,15 +187,17 @@ export function BulkActionBar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button
-          variant="destructive"
-          size="sm"
-          disabled={busy}
-          onClick={() => setConfirmDelete(true)}
-        >
-          <Trash2 />
-          Delete
-        </Button>
+        {editable ? (
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={busy}
+            onClick={() => setConfirmDelete(true)}
+          >
+            <Trash2 />
+            Delete
+          </Button>
+        ) : null}
 
         <Button
           variant="ghost"

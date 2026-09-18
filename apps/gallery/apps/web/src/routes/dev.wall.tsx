@@ -41,6 +41,7 @@ const CARDS: ArtworkCard[] = Array.from({ length: 24 }, (_, i) => {
   const height = Math.round(width / ratio);
   return {
     id: `demo-${i}`,
+    isOwn: true,
     title: `Study ${i + 1}`,
     artist: ARTISTS[i % ARTISTS.length] ?? null,
     artworkType: "painting",

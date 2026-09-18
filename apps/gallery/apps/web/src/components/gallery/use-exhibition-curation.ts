@@ -38,7 +38,7 @@ export function isCurated(e: StudioExhibition): e is CuratedExhibition {
   return e.kind !== "personal";
 }
 
-/** A room with its membership resolved to full archive artworks, in order. */
+/** A room with its membership resolved to full artworks, in order. */
 export type RoomView = {
   id: string;
   name: string;
@@ -56,8 +56,9 @@ export type RoomView = {
  * The studio's curation engine, behind one interface. Owns the per-room
  * optimistic order and the per-room `setRoomArtworks` reconcile, plus every
  * exhibition- and room-level mutation. Membership is unique exhibition-wide:
- * an artwork hangs in at most one room, so `available` is the archive minus
- * everything already placed anywhere in the exhibition.
+ * an artwork hangs in at most one room, so `available` is the hangable pool
+ * (own works plus anyone's published ones) minus everything already placed
+ * anywhere in the exhibition.
  */
 export type ExhibitionCuration = {
   exhibition: CuratedExhibition | null;
@@ -65,7 +66,7 @@ export type ExhibitionCuration = {
   archiveLoaded: boolean;
   /** Rooms with resolved, ordered members (optimistic where a sync is live). */
   rooms: RoomView[];
-  /** Archive artworks not hung in any room of this exhibition. */
+  /** Hangable artworks not hung in any room of this exhibition. */
   available: ArchiveArtwork[];
   busy: boolean;
   /** Latest pre-publish lint report, or null before it first resolves. */
@@ -93,7 +94,7 @@ export function useExhibitionCuration(exhibitionId: string): ExhibitionCuration 
   const queryClient = useQueryClient();
 
   const mine = useQuery(trpc.exhibitions.mine.queryOptions());
-  const archive = useQuery(trpc.artworks.list.queryOptions({}));
+  const archive = useQuery(trpc.artworks.list.queryOptions({ scope: "all" }));
 
   const updateMut = useMutation(trpc.exhibitions.update.mutationOptions());
   const deleteMut = useMutation(trpc.exhibitions.delete.mutationOptions());

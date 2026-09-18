@@ -543,8 +543,8 @@ function StudioBody({ exhibitionId, search }: { exhibitionId: string; search: st
           <div className="flex flex-col items-start gap-4 rounded-2xl border border-dashed border-border px-5 py-8 text-sm text-muted-foreground">
             <span>
               {rooms.some((r) => r.members.length > 0)
-                ? "Every artwork in your archive is already hung in this exhibition."
-                : "Your archive is empty. Import artworks to get started."}
+                ? "Every artwork you can hang is already in this exhibition."
+                : "Nothing to hang yet. Import artworks to get started."}
             </span>
             <Button variant="outline" size="sm" onClick={openImport}>
               <Upload />
@@ -552,7 +552,7 @@ function StudioBody({ exhibitionId, search }: { exhibitionId: string; search: st
             </Button>
           </div>
         ) : visibleAvailable.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No archive artworks match “{search}”.</p>
+          <p className="text-sm text-muted-foreground">No artworks match “{search}”.</p>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(116px,1fr))] gap-3">
             {visibleAvailable.map((a) => (

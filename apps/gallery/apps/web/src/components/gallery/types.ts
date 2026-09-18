@@ -12,6 +12,8 @@ export const ARTWORK_TYPES: { value: ArtworkType; label: string }[] = [
 
 export type ArtworkCard = {
   id: string;
+  /** False for another curator's published work: viewable and hangable, not editable. */
+  isOwn: boolean;
   title: string;
   artist: string | null;
   artworkType: string;

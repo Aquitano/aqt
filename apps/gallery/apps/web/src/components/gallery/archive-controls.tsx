@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@aqt/gallery-ui/components/dropdown-menu";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDownWideNarrow, ChevronDown, Shapes, Tag, User } from "lucide-react";
+import { ArrowDownWideNarrow, ChevronDown, Globe, Shapes, Tag, User } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useTRPC } from "@/utils/trpc";
@@ -15,6 +15,9 @@ import { useTRPC } from "@/utils/trpc";
 import { ARTWORK_TYPES, type ArtworkType } from "./types";
 
 export type ArchiveSort = "newest" | "oldest" | "title" | "rating";
+
+/** Mirrors `artworks.list`'s scope: your own archive, or everyone's published works too. */
+export type ArchiveScope = "mine" | "all";
 
 /** A tag or artist id, or `"all"` when that filter is off. */
 export type ArchiveFilterId = string;
@@ -31,13 +34,21 @@ const TYPES: { value: ArtworkType | "all"; label: string }[] = [
   ...ARTWORK_TYPES,
 ];
 
+const SCOPES: { value: ArchiveScope; label: string }[] = [
+  { value: "all", label: "Everyone" },
+  { value: "mine", label: "Mine" },
+];
+
 /**
  * Filter + sort toolbar for the archive views. Mirrors the inputs accepted by
- * `artworks.list` (sort / artworkType / tagId); "all" maps to an unset filter.
- * The tag menu only appears once the user has at least one tag.
+ * `artworks.list` (scope / sort / artworkType / tagId); "all" maps to an unset
+ * filter. The scope menu only renders where a caller wires it, and the tag
+ * menu only once the user has at least one tag.
  */
 export function ArchiveControls({
   lead,
+  scope,
+  onScope,
   sort,
   onSort,
   artworkType,
@@ -53,6 +64,8 @@ export function ArchiveControls({
   showArtist = true,
 }: {
   lead?: ReactNode;
+  scope?: ArchiveScope;
+  onScope?: (value: ArchiveScope) => void;
   sort: ArchiveSort;
   onSort: (value: ArchiveSort) => void;
   artworkType: ArtworkType | "all";
@@ -78,6 +91,7 @@ export function ArchiveControls({
   const artistList = artists.data ?? [];
 
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "Newest";
+  const scopeLabel = SCOPES.find((s) => s.value === scope)?.label ?? "Everyone";
   const typeLabel = TYPES.find((t) => t.value === artworkType)?.label ?? "All";
   const activeTag = tagList.find((t) => t.id === tagId);
   const activeArtist = artistList.find((a) => a.id === artistId);
@@ -85,6 +99,29 @@ export function ArchiveControls({
   return (
     <div className="flex flex-wrap items-center gap-2 py-4">
       {lead ? <div className="mr-2">{lead}</div> : null}
+      {scope && onScope ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant={scope === "all" ? "outline" : "secondary"} size="sm" />}
+          >
+            <Globe />
+            {scopeLabel}
+            <ChevronDown className="text-muted-foreground" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-40">
+            <DropdownMenuRadioGroup
+              value={scope}
+              onValueChange={(value) => onScope(value as ArchiveScope)}
+            >
+              {SCOPES.map((option) => (
+                <DropdownMenuRadioItem key={option.value} value={option.value}>
+                  {option.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
           <ArrowDownWideNarrow />
