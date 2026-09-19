@@ -1,5 +1,5 @@
 import { Download, Paperclip } from "lucide-react";
-import { memo, useEffect, useRef, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -79,6 +79,13 @@ function Attachments({ m }: { m: BankMessage }) {
             </AttachmentMedia>
             <AttachmentContent>
               <AttachmentTitle>{a.filename}</AttachmentTitle>
+              {a.text_status && !["ok", "manual"].includes(a.text_status) && (
+                <AttachmentDescription>
+                  {a.text_status === "needs_ocr"
+                    ? "Needs OCR to search text"
+                    : `Text: ${a.text_status.replaceAll("_", " ")}`}
+                </AttachmentDescription>
+              )}
               {fmtBytes(a.size_bytes) && (
                 <AttachmentDescription>{fmtBytes(a.size_bytes)}</AttachmentDescription>
               )}
@@ -240,23 +247,61 @@ export function Conversation({
   meta,
   messages,
   flashId,
+  navigation,
 }: {
   title: ReactNode;
   meta: string;
   messages: BankMessage[];
   flashId?: number | null;
+  navigation?: ReactNode;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
+
+  const scrollAnchor = useRef<{ id: string; top: number; count: number } | null>(null);
+  const rememberScroll = () => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const top = viewport.getBoundingClientRect().top;
+    const visible = Array.from(viewport.querySelectorAll<HTMLElement>("[data-mid]")).find(
+      (element) => element.getBoundingClientRect().bottom > top,
+    );
+    if (visible?.dataset.mid)
+      scrollAnchor.current = {
+        id: visible.dataset.mid,
+        top: visible.getBoundingClientRect().top,
+        count: messages.length,
+      };
+  };
+  useLayoutEffect(() => {
+    const saved = scrollAnchor.current;
+    const viewport = viewportRef.current;
+    if (!saved || !viewport || saved.count === messages.length) return;
+    const element = viewport.querySelector(`[data-mid="${saved.id}"]`);
+    if (element) viewport.scrollTop += element.getBoundingClientRect().top - saved.top;
+    scrollAnchor.current = null;
+  }, [messages]);
+
+  const lastFlashed = useRef<number | null>(null);
 
   // The scroller starts pinned to the bottom; a flashed search hit overrides
   // that and centers the hit instead.
   useEffect(() => {
-    if (!flashId) return;
+    if (!flashId || lastFlashed.current === flashId || !messages.some((m) => m.id === flashId))
+      return;
     const target = viewportRef.current?.querySelector(`[data-mid="${flashId}"]`);
-    target?.scrollIntoView({ block: "center" });
+    if (target) {
+      target.scrollIntoView({ block: "center" });
+      lastFlashed.current = flashId;
+    }
   }, [messages, flashId]);
 
-  if (messages.length === 1) return <DocumentView title={title} meta={meta} m={messages[0]} />;
+  if (messages.length === 1 && !flashId)
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex shrink-0 items-center gap-2 px-6">{navigation}</div>
+        <DocumentView title={title} meta={meta} m={messages[0]} />
+      </div>
+    );
 
   const runs = buildRuns(messages);
   // 1:1 chats need no per-run sender headers; the title already says who
@@ -268,6 +313,9 @@ export function Conversation({
       <div className="flex shrink-0 items-baseline gap-2.5 border-b px-6 py-3">
         <span className="truncate text-base font-semibold">{title}</span>
         <span className="ml-auto shrink-0 text-xs text-muted-foreground">{meta}</span>
+      </div>
+      <div className="flex shrink-0 items-center gap-2 px-6 py-2" onClickCapture={rememberScroll}>
+        {navigation}
       </div>
       <MessageScrollerProvider>
         <MessageScroller className="min-h-0 flex-1">

@@ -55,7 +55,7 @@ func (f *fakeReader) GetMessageByRef(_ context.Context, ref string) (store.Messa
 	return store.Message{ID: 7, Ref: ref}, nil, nil
 }
 
-func (f *fakeReader) GetThread(_ context.Context, _, _ string, _ int) (store.Thread, error) {
+func (f *fakeReader) GetThreadPage(_ context.Context, _, _ string, _ store.ThreadOpts) (store.Thread, error) {
 	return f.thread, f.threadErr
 }
 
@@ -83,11 +83,15 @@ func (f *fakeReader) ContactSourceCounts(context.Context, int64) ([]store.Contac
 	return []store.ContactSourceCount{}, f.contactErr
 }
 
-func (f *fakeReader) ContactMessages(_ context.Context, name string, _ store.ContactMessagesOpts) ([]store.Message, error) {
+func (f *fakeReader) ContactMessages(_ context.Context, name string, _ store.ContactMessagesOpts) ([]store.MessageDetail, error) {
 	if _, err := f.GetContact(context.Background(), name); err != nil {
 		return nil, err
 	}
-	return f.msgs, f.contactErr
+	out := make([]store.MessageDetail, len(f.msgs))
+	for i, m := range f.msgs {
+		out[i] = store.MessageDetail{Message: m}
+	}
+	return out, f.contactErr
 }
 
 func (f *fakeReader) SuggestIdentities(context.Context, int) ([]store.IdentitySuggestion, error) {
@@ -348,7 +352,7 @@ func TestMessageStatusDistinguishesMissingFromBroken(t *testing.T) {
 func TestThreadStatusCodes(t *testing.T) {
 	t.Run("found", func(t *testing.T) {
 		s, token := testServer(t)
-		s.read.(*fakeReader).thread = store.Thread{ThreadID: "t1", Source: "whatsapp", Messages: []store.Message{{ID: 1}}}
+		s.read.(*fakeReader).thread = store.Thread{ThreadID: "t1", Source: "whatsapp", Messages: []store.MessageDetail{{Message: store.Message{ID: 1}}}}
 		srv := httptest.NewServer(s.Handler())
 		defer srv.Close()
 		status, body := authedGet(t, srv, token, "/v1/threads/t1")
@@ -513,4 +517,8 @@ func TestPruneUploadsKeepsActiveStaging(t *testing.T) {
 	if err := pruneUploads(t.TempDir(), uploadMaxAge); err != nil {
 		t.Errorf("no staging dir should not be an error: %v", err)
 	}
+}
+
+func (f *fakeReader) BrowseThreads(context.Context, store.BrowseOpts) ([]store.ThreadGroup, error) {
+	return []store.ThreadGroup{}, nil
 }

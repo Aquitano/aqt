@@ -82,7 +82,7 @@ Usage:
   bank attachment stats [--json]              how much of the archive is searchable inside
   bank attachment text <sha256> [--set f]     read, replace or clear that text
   bank search <query> [flags]                 full-text search (BM25, fuzzy)
-  bank thread <id> [--source s] [--limit n]   one whole conversation, oldest first
+  bank thread <id> [--source s] [--limit n]   one conversation page, oldest first
   bank contact <add|list|show|alias|...>      one person across their many identities
   bank show <id|ref> [--json]                 print one message + attachments
   bank stats [--json]                         per-source counts, date ranges, freshness
@@ -119,10 +119,20 @@ Search flags:
   --person name  filter by contact, across all their aliases (bank contact)
   --since date   YYYY-MM-DD
   --until date   YYYY-MM-DD (exclusive)
-  --fuzzy n      typo tolerance 0-2 (default 1)
+  --match mode   any (default), all words, or phrase
+  --fuzzy n      typo tolerance 0-2 (default 1; ignored for phrase)
   --limit n      max results, 1-500 (default 20)
   --offset n     skip this many ranked results, for the next page (max 10000)
   --json         JSON output
+
+Thread flags:
+  --around id    center context on this message's numeric id
+  --before id    page backward from this message
+  --after id     page forward from this message
+  --latest       start at the newest page
+                 Choose one position; pages are always chronological.
+  --limit n      page size, 1-2000 (default 2000)
+  --json         includes has_before, has_after, and attachments
 
 Environment:
   DATABASE_URL   default postgres://bank:bank@localhost:5433/bank
@@ -980,6 +990,7 @@ func cmdSearch(ctx context.Context, args []string) error {
 	fs.StringVar(&o.From, "from", "", "")
 	fs.StringVar(&o.To, "to", "", "")
 	fs.StringVar(&o.Person, "person", "", "")
+	fs.StringVar(&o.Match, "match", "any", "")
 	fs.StringVar(&since, "since", "", "")
 	fs.StringVar(&until, "until", "", "")
 	fs.IntVar(&o.Fuzzy, "fuzzy", 1, "")
@@ -1003,7 +1014,7 @@ func cmdSearch(ctx context.Context, args []string) error {
 	// Checked before the query so local and remote modes reject the same
 	// values with the same message, instead of one returning nothing and the
 	// other a database error.
-	if err := o.Validate(); err != nil {
+	if err := o.ValidateQuery(query); err != nil {
 		return err
 	}
 
@@ -1059,13 +1070,18 @@ func printMorePages(got, limit, offset int) {
 func cmdThread(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("thread", flag.ExitOnError)
 	source := fs.String("source", "", "")
-	limit := fs.Int("limit", 0, "")
+	var o store.ThreadOpts
+	fs.IntVar(&o.Limit, "limit", 0, "")
+	fs.Int64Var(&o.Before, "before", 0, "")
+	fs.Int64Var(&o.After, "after", 0, "")
+	fs.Int64Var(&o.Around, "around", 0, "")
+	fs.BoolVar(&o.Latest, "latest", false, "")
 	asJSON := fs.Bool("json", false, "")
 	if err := parseFlagsAnywhere(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() == 0 {
-		return fmt.Errorf("usage: bank thread <id> [--source s] [--limit n] [--json]")
+		return fmt.Errorf("usage: bank thread <id> [--source s] [--around id|--before id|--after id|--latest] [--limit n] [--json]")
 	}
 	threadID := strings.Join(fs.Args(), " ")
 
@@ -1074,7 +1090,7 @@ func cmdThread(ctx context.Context, args []string) error {
 		return err
 	}
 	defer closeBackend()
-	thread, err := b.GetThread(ctx, *source, threadID, *limit)
+	thread, err := b.GetThreadPage(ctx, *source, threadID, o)
 	if errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("no thread %q", threadID)
 	}
@@ -1113,8 +1129,13 @@ func cmdThread(ctx context.Context, args []string) error {
 		}
 		fmt.Println()
 	}
-	if thread.Truncated {
-		fmt.Printf("… truncated at %d messages; raise --limit (max %d)\n", len(thread.Messages), store.MaxThreadMessages)
+	if len(thread.Messages) > 0 {
+		if thread.HasBefore {
+			fmt.Printf("Earlier messages: --before %d\n", thread.Messages[0].ID)
+		}
+		if thread.HasAfter {
+			fmt.Printf("Later messages: --after %d\n", thread.Messages[len(thread.Messages)-1].ID)
+		}
 	}
 	return nil
 }
@@ -1199,7 +1220,7 @@ type backend interface {
 	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
 	GetMessageDetail(ctx context.Context, id int64) (store.MessageDetail, error)
 	GetMessageDetailByRef(ctx context.Context, ref string) (store.MessageDetail, error)
-	GetThread(ctx context.Context, source, threadID string, limit int) (store.Thread, error)
+	GetThreadPage(ctx context.Context, source, threadID string, o store.ThreadOpts) (store.Thread, error)
 	Stats(ctx context.Context) ([]store.SourceStats, error)
 	SetCoverage(ctx context.Context, source, text string) error
 	CreateContact(ctx context.Context, name, note string) (store.Contact, error)
@@ -1209,7 +1230,7 @@ type backend interface {
 	GetContactDetail(ctx context.Context, name string) (store.ContactDetail, error)
 	AddAlias(ctx context.Context, name, source, value string) (store.ContactAlias, error)
 	RemoveAlias(ctx context.Context, name, source, value string) error
-	ContactMessages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error)
+	ContactMessages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.MessageDetail, error)
 	SuggestIdentities(ctx context.Context, limit int) ([]store.IdentitySuggestion, error)
 	Query(ctx context.Context, query string, limit int) (store.QueryResult, error)
 }
@@ -1880,6 +1901,7 @@ func contactMessages(ctx context.Context, b backend, args []string) error {
 	fs.StringVar(&since, "since", "", "")
 	fs.StringVar(&until, "until", "", "")
 	fs.IntVar(&o.Limit, "limit", 50, "")
+	fs.Int64Var(&o.Before, "before", 0, "")
 	fs.IntVar(&o.Offset, "offset", 0, "")
 	fs.BoolVar(&asJSON, "json", false, "")
 	if err := parseFlagsAnywhere(fs, args); err != nil {
@@ -1914,7 +1936,9 @@ func contactMessages(ctx context.Context, b backend, args []string) error {
 		fmt.Printf("%6d  %s  %-8s  %-22s  %s\n",
 			m.ID, m.SentAt.Format("2006-01-02"), m.Source, excerpt(m.Sender, 22), title)
 	}
-	printMorePages(len(msgs), o.Limit, o.Offset)
+	if len(msgs) == o.Limit {
+		fmt.Printf("Earlier messages: repeat with --before %d and without --offset\n", msgs[len(msgs)-1].ID)
+	}
 	return nil
 }
 

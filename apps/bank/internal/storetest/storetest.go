@@ -109,10 +109,10 @@ func NewSchema(t *testing.T) string {
 	ctx := context.Background()
 	admin, err := pgx.Connect(ctx, DSN())
 	if err != nil {
-		if unreachable(err) {
+		if unreachable(err) && os.Getenv("BANK_REQUIRE_DB") != "1" && os.Getenv("CI") == "" {
 			t.Skipf("no database at %s: %v", redacted(DSN()), err)
 		}
-		t.Fatalf("database at %s answered but refused the connection — fix DATABASE_URL rather than skipping every DB-backed test: %v",
+		t.Fatalf("required database at %s is unavailable — fix DATABASE_URL rather than skipping DB-backed tests: %v",
 			redacted(DSN()), err)
 	}
 	sweep.Do(func() { dropStaleSchemas(t, admin) })

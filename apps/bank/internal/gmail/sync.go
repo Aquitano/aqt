@@ -165,14 +165,8 @@ func fetchAll(ctx context.Context, c *client, st *store.Store, blobs *blob.Store
 					fmt.Fprintf(os.Stderr, "bank: gmail %d/%d\n", n, len(ids))
 				}
 			}()
-			exists, err := st.HasMessage(ctx, "gmail", id)
-			if err != nil {
-				return fail.Opf("gmail %s: %w", id, err)
-			}
-			if exists {
-				duplicates.Add(1)
-				return nil
-			}
+			// An existing row may come from a run that failed while storing
+			// attachments. Let Ingest reconcile it before advancing history.
 			msg, err := c.getRaw(ctx, id)
 			if err != nil {
 				if errors.Is(err, errNotFound) {

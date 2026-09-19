@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { search, SEARCH_PAGE, type Message, type SourceStat } from "@/lib/api";
+import { search, SEARCH_PAGE, type Message, type SourceStat, type SearchParams } from "@/lib/api";
 import { fmtDate, Highlight, SourceBadge } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -78,8 +78,8 @@ export function HitRow({
 export function ListSkeleton() {
   return (
     <div className="space-y-2 px-2.5 py-2">
-      {[...Array(8)].map((_, i) => (
-        <div key={i} className="space-y-1.5 py-1">
+      {["one", "two", "three", "four", "five", "six", "seven", "eight"].map((key) => (
+        <div key={key} className="space-y-1.5 py-1">
           <Skeleton className="h-3.5 w-1/2" />
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-3/4" />
@@ -105,31 +105,46 @@ export function SearchView({
   const [from, setFrom] = useState("");
   const [since, setSince] = useState("");
   const [until, setUntil] = useState("");
-  const [params, setParams] = useState<{
-    q: string;
-    source?: string;
-    from?: string;
-    since?: string;
-    until?: string;
-  } | null>(null);
+  const [to, setTo] = useState("");
+  const [person, setPerson] = useState("");
+  const [match, setMatch] = useState<"any" | "all" | "phrase">("any");
+  const [fuzzy, setFuzzy] = useState(1);
+  const [params, setParams] = useState<SearchParams | null>(null);
 
   const q = useInfiniteQuery({
     queryKey: ["search", params],
     enabled: params !== null,
     initialPageParam: 0,
-    queryFn: ({ pageParam }) => search({ ...params!, offset: pageParam }),
+    queryFn: ({ pageParam }) =>
+      params ? search({ ...params, offset: pageParam }) : Promise.resolve([]),
     getNextPageParam: (last, pages) =>
-      last.length === SEARCH_PAGE ? pages.length * SEARCH_PAGE : undefined,
+      last.length === SEARCH_PAGE && pages.length * SEARCH_PAGE <= 10000
+        ? pages.length * SEARCH_PAGE
+        : undefined,
   });
 
-  const submit = (over?: { source?: string; from?: string; since?: string; until?: string }) => {
+  const submit = (over?: Partial<SearchParams>) => {
     const query = input.trim();
     if (!query) return;
-    const p = { source: source === ALL ? "" : source, from, since, until, ...over };
+    const p = {
+      source: source === ALL ? "" : source,
+      from,
+      to,
+      person,
+      match,
+      fuzzy,
+      since,
+      until,
+      ...over,
+    };
     setParams({
       q: query,
       source: p.source || undefined,
       from: p.from || undefined,
+      to: p.to || undefined,
+      person: p.person || undefined,
+      match: p.match,
+      fuzzy: p.fuzzy,
       since: p.since || undefined,
       until: p.until || undefined,
     });
@@ -203,6 +218,55 @@ export function SearchView({
               submit({ until: e.target.value });
             }}
             className="h-8 flex-1 text-xs [color-scheme:dark]"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={match}
+            onValueChange={(v) => {
+              if (v === "any" || v === "all" || v === "phrase") {
+                setMatch(v);
+                submit({ match: v });
+              }
+            }}
+          >
+            <SelectTrigger size="sm" className="text-xs" aria-label="Match mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">Any words</SelectItem>
+              <SelectItem value="all">All words</SelectItem>
+              <SelectItem value="phrase">Exact phrase</SelectItem>
+            </SelectContent>
+          </Select>
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={fuzzy > 0}
+              disabled={match === "phrase"}
+              onChange={(e) => {
+                const value = e.target.checked ? 1 : 0;
+                setFuzzy(value);
+                submit({ fuzzy: value });
+              }}
+            />
+            Allow typos
+          </label>
+          <Input
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            placeholder="recipient"
+            aria-label="Recipient"
+            className="h-8 min-w-24 flex-1 text-xs"
+          />
+          <Input
+            value={person}
+            onChange={(e) => setPerson(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            placeholder="contact name"
+            aria-label="Contact name"
+            className="h-8 min-w-24 flex-1 text-xs"
           />
         </div>
       </div>

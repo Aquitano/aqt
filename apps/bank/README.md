@@ -43,6 +43,8 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank contact import contacts.json             # a whole contact book at once
 
 ./bank search "that invoice" --from alice --since 2024-01-01
+./bank search "alice retainer" --match all        # every word, across searchable fields
+./bank search "quarterly review" --match phrase   # adjacent words in this order
 ./bank search "retainer"                        # matches text inside PDFs and Office files
 ./bank search "the deck" --to bob               # by recipient
 ./bank search "that invoice" --person alice     # every identity she uses
@@ -50,7 +52,10 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank search "invoice" --limit 50 --offset 50  # the next page
 ./bank show 42
 ./bank show c5e63bfc3750                        # the stable ref a citation carries
-./bank thread "Alice" --source whatsapp         # the whole conversation
+./bank thread "Alice" --source whatsapp --around 42 --limit 100
+                                                # context centered on a search hit
+./bank thread "Alice" --source whatsapp --before 42 --limit 100
+                                                # earlier messages, without a history cap
 ./bank stats                                    # counts, freshness, coverage notes
 ./bank coverage whatsapp "only the chats exported in 2025-08"
 ./bank query --schema                           # tables and columns, before the first query
@@ -82,10 +87,30 @@ Agents on a client machine get the CLI handed to them by a Claude Code skill: [s
 
 Deployment (VPS, LUKS, containerized server, restic, cron): [DEPLOY.md](DEPLOY.md).
 
-Attachments are searchable inside. Importing reads text out of PDFs, Office and OpenDocument files, HTML and plain text, keyed on the blob digest so a document attached to forty messages is read once.
+Attachments can contain any file type. Gmail sync and EML/MBOX imports preserve MIME attachments, including inline images. A link to a cloud-hosted file is still a link; Bank does not download its target.
+
+Gmail retries reconcile attachments even when the message row already exists. To repair earlier partial imports, run `bank sync --full` on the server. This re-fetches existing mail and can take as long as the original backfill; normal syncs use history deltas.
+
+ChatGPT imports preserve referenced assets included in the full export ZIP or directory. Importing only `conversations.json` imports text without the asset files. Missing files appear in the import's missing-media count. Reimporting a fuller export fills missing attachments even when a message already has some files, without duplicating those files.
+
+Attachment storage and text extraction have different coverage. Audio, video, archives, and other binary files can be stored and downloaded without searchable contents. Supported document attachments are searchable inside. Importing reads text out of PDFs, Office and OpenDocument files, HTML and plain text, keyed on the blob digest so a document attached to forty messages is read once.
 
 Scanned pages and images hold no text layer, so they are recorded as `needs_ocr` rather than guessed at. `bank extract --ocr` reads them wherever tesseract is installed: on the deployed box that is a worker draining the queue on a timer, turned on by adding `ocr` to `COMPOSE_PROFILES`. `bank attachment text <sha256> --set` takes a transcription from anywhere else, including a model running on the client, and marks it `manual` so no later pass overwrites it. `BANK_EXTRACT=off` or `bank import --no-extract` leaves attachment text alone entirely.
 
 Config via env (see `.env.example`): `DATABASE_URL`, `BANK_DATA_DIR` (blobs, raw archives, inbox; default `~/.local/share/aqt-bank`), `BANK_EXTRACT`.
 
 Schema migrations are embedded and run automatically on startup.
+
+## Retrieve conversation history
+
+`bank thread` returns a chronological page with `has_before` and `has_after` in JSON. Use `--around <message-id>` to include a search hit, `--latest` to start at the newest messages, or `--before` and `--after` with a page's first and last message IDs. These positions are mutually exclusive. Each page contains up to 2,000 messages and includes attachment metadata.
+
+The browser opens search results around the matching message and provides **Load earlier** and **Load later** controls. Browse opens the newest page. Contact history also has **Load earlier**; CLI callers can use `bank contact messages <name> --before <message-id>` to continue beyond the offset limit.
+
+LinkedIn conversations use the export's conversation ID. Run `bank reimport linkedin` on the server after upgrading to repair previously title-keyed conversations. It preserves message IDs and bodies.
+
+## Check database behavior
+
+`go test -race ./...` uses the development database from `DATABASE_URL`. Local tests skip database cases when no server is listening. Set `BANK_REQUIRE_DB=1` to require them. CI always requires the database and starts the same pinned ParadeDB image as Compose.
+
+The retrieval cases in `internal/store/search_quality_integration_test.go` check exact and fuzzy ranking, all-word matches across fields, phrase order, and attachment-only matches. Run them with `go test ./internal/store -run TestSearchRetrievalCases`.

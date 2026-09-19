@@ -26,15 +26,16 @@ import (
 // reader is the read side of the store, an interface only so the handlers can
 // be exercised without a database.
 type reader interface {
+	BrowseThreads(context.Context, store.BrowseOpts) ([]store.ThreadGroup, error)
 	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
 	GetMessage(ctx context.Context, id int64) (store.Message, []store.Attachment, error)
 	GetMessageByRef(ctx context.Context, ref string) (store.Message, []store.Attachment, error)
-	GetThread(ctx context.Context, source, threadID string, limit int) (store.Thread, error)
+	GetThreadPage(ctx context.Context, source, threadID string, o store.ThreadOpts) (store.Thread, error)
 	Stats(ctx context.Context) ([]store.SourceStats, error)
 	ListContacts(ctx context.Context) ([]store.Contact, error)
 	GetContact(ctx context.Context, name string) (store.Contact, error)
 	ContactSourceCounts(ctx context.Context, contactID int64) ([]store.ContactSourceCount, error)
-	ContactMessages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error)
+	ContactMessages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.MessageDetail, error)
 	SuggestIdentities(ctx context.Context, limit int) ([]store.IdentitySuggestion, error)
 	Query(ctx context.Context, query string, limit int) (store.QueryResult, error)
 }
@@ -62,6 +63,7 @@ const maxUpload = 16 << 30
 func (s *Server) Handler() http.Handler {
 	v1 := http.NewServeMux()
 	v1.HandleFunc("GET /v1/search", s.handleSearch)
+	v1.HandleFunc("GET /v1/threads", s.handleBrowseThreads)
 	v1.HandleFunc("GET /v1/messages/{id}", s.handleMessage)
 	v1.HandleFunc("GET /v1/threads/{id}", s.handleThread)
 	v1.HandleFunc("GET /v1/blobs/{sha256}", s.handleBlob)
@@ -122,7 +124,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	o := store.SearchOpts{Source: q.Get("source"), From: q.Get("from"), To: q.Get("to"),
-		Person: q.Get("person"), Fuzzy: 1, Limit: 20}
+		Person: q.Get("person"), Match: q.Get("match"), Fuzzy: 1, Limit: 20}
 	var err error
 	if o.Since, err = parseDate(q.Get("since")); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -146,7 +148,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	// Validated here as well as in the store so a bad request is a 400 with a
 	// usage message, not a 500 carrying a database error.
-	if err := o.Validate(); err != nil {
+	if err := o.ValidateQuery(query); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -201,7 +203,28 @@ func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid limit")
 		return
 	}
-	thread, err := s.read.GetThread(r.Context(), q.Get("source"), r.PathValue("id"), limit)
+	o := store.ThreadOpts{Limit: limit}
+	for name, dst := range map[string]*int64{"before": &o.Before, "after": &o.After, "around": &o.Around} {
+		if raw := q.Get(name); raw != "" {
+			*dst, err = strconv.ParseInt(raw, 10, 64)
+			if err != nil || *dst <= 0 {
+				writeErr(w, http.StatusBadRequest, "invalid "+name)
+				return
+			}
+		}
+	}
+	if raw := q.Get("latest"); raw != "" {
+		o.Latest, err = strconv.ParseBool(raw)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid latest")
+			return
+		}
+	}
+	if err := o.Validate(); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	thread, err := s.read.GetThreadPage(r.Context(), q.Get("source"), r.PathValue("id"), o)
 	var ambiguous *store.AmbiguousThreadError
 	switch {
 	case err == nil:

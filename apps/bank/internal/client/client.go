@@ -98,6 +98,7 @@ func (c *Client) Search(ctx context.Context, query string, o store.SearchOpts) (
 	set("from", o.From)
 	set("to", o.To)
 	set("person", o.Person)
+	set("match", o.Match)
 	if !o.Since.IsZero() {
 		q.Set("since", o.Since.Format("2006-01-02"))
 	}
@@ -145,13 +146,22 @@ func (c *Client) SetCoverage(ctx context.Context, source, text string) error {
 
 // Thread fetches one conversation. An empty source lets the server resolve it,
 // which fails when the thread id is used by more than one source.
-func (c *Client) GetThread(ctx context.Context, source, threadID string, limit int) (store.Thread, error) {
+func (c *Client) GetThreadPage(ctx context.Context, source, threadID string, o store.ThreadOpts) (store.Thread, error) {
 	q := url.Values{}
 	if source != "" {
 		q.Set("source", source)
 	}
-	if limit > 0 {
-		q.Set("limit", strconv.Itoa(limit))
+	if err := o.Validate(); err != nil {
+		return store.Thread{}, err
+	}
+	q.Set("limit", strconv.Itoa(o.Limit))
+	for name, id := range map[string]int64{"before": o.Before, "after": o.After, "around": o.Around} {
+		if id > 0 {
+			q.Set(name, strconv.FormatInt(id, 10))
+		}
+	}
+	if o.Latest {
+		q.Set("latest", "true")
 	}
 	return getJSON[store.Thread](ctx, c, "/v1/threads/"+url.PathEscape(threadID), q)
 }
@@ -164,7 +174,7 @@ func (c *Client) GetContactDetail(ctx context.Context, name string) (store.Conta
 	return getJSON[store.ContactDetail](ctx, c, "/v1/contacts/"+url.PathEscape(name), nil)
 }
 
-func (c *Client) ContactMessages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.Message, error) {
+func (c *Client) ContactMessages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.MessageDetail, error) {
 	q := url.Values{}
 	if o.Source != "" {
 		q.Set("source", o.Source)
@@ -181,7 +191,10 @@ func (c *Client) ContactMessages(ctx context.Context, name string, o store.Conta
 	if o.Offset > 0 {
 		q.Set("offset", strconv.Itoa(o.Offset))
 	}
-	return getJSON[[]store.Message](ctx, c, "/v1/contacts/"+url.PathEscape(name)+"/messages", q)
+	if o.Before > 0 {
+		q.Set("before", strconv.FormatInt(o.Before, 10))
+	}
+	return getJSON[[]store.MessageDetail](ctx, c, "/v1/contacts/"+url.PathEscape(name)+"/messages", q)
 }
 
 // Query runs one read-only ad-hoc SQL statement on the server (POST /v1/query).

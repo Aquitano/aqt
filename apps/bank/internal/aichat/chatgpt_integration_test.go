@@ -237,3 +237,33 @@ func TestImportChatGPTHealsTextOnlyImport(t *testing.T) {
 		t.Fatalf("healed attachments = %+v", atts)
 	}
 }
+
+func TestImportChatGPTHealsPartiallyPresentAssets(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	dir := writeChatGPTAssetExport(t)
+	blobs := newBlobs(t)
+	archiveDir := filepath.Join(t.TempDir(), "archive")
+	if _, err := ImportChatGPT(ctx, st, blobs, archiveDir, dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "file-Gone.dat"), []byte("NOW PRESENT"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := ImportChatGPT(ctx, st, blobs, archiveDir, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Attachments != 1 {
+		t.Fatalf("reimport repaired %d attachments, want 1", res.Attachments)
+	}
+	id, _ := st.FindMessageID(ctx, "chatgpt", "msg-1")
+	_, atts, err := st.GetMessage(ctx, id)
+	if err != nil || len(atts) != 2 {
+		t.Fatalf("attachments=%v err=%v", atts, err)
+	}
+	res, err = ImportChatGPT(ctx, st, blobs, archiveDir, dir)
+	if err != nil || res.Attachments != 0 {
+		t.Fatalf("repeat import=%+v err=%v", res, err)
+	}
+}

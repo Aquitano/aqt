@@ -358,6 +358,7 @@ func (s *Store) ContactSourceCounts(ctx context.Context, contactID int64) ([]Con
 
 // ContactMessagesOpts narrows a contact's history the same way search does.
 type ContactMessagesOpts struct {
+	Before int64
 	Source string
 	Since  time.Time
 	Until  time.Time
@@ -372,7 +373,7 @@ type ContactMessagesOpts struct {
 // first. There is no full-text index behind this — it is a scan over a
 // personal archive, which is fast enough and keeps the matching rule in one
 // readable place.
-func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessagesOpts) ([]Message, error) {
+func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessagesOpts) ([]MessageDetail, error) {
 	c, err := s.GetContact(ctx, name)
 	if err != nil {
 		return nil, err
@@ -389,6 +390,9 @@ func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessa
 	if o.Offset > MaxSearchOffset {
 		return nil, fmt.Errorf("offset must be at most %d; narrow with --source or --since instead", MaxSearchOffset)
 	}
+	if o.Before < 0 || (o.Before > 0 && o.Offset > 0) {
+		return nil, fmt.Errorf("use a positive before cursor without offset")
+	}
 	sql := `select ` + messageColumns + ` from messages m where` + aliasMatch("$1")
 	args := []any{c.ID}
 	next := func(v any) string {
@@ -404,6 +408,17 @@ func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessa
 	if !o.Until.IsZero() {
 		sql += " and m.sent_at < " + next(o.Until)
 	}
+	if o.Before > 0 {
+		var at time.Time
+		err := s.pool.QueryRow(ctx, `select m.sent_at from messages m where m.id=$2 and`+aliasMatch("$1"), c.ID, o.Before).Scan(&at)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("before cursor is not a message for this contact")
+		}
+		if err != nil {
+			return nil, err
+		}
+		sql += " and (m.sent_at,m.id)<(" + next(at) + "," + next(o.Before) + ")"
+	}
 	sql += " order by m.sent_at desc, m.id desc limit " + next(o.Limit)
 	if o.Offset > 0 {
 		sql += " offset " + next(o.Offset)
@@ -414,15 +429,22 @@ func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessa
 		return nil, err
 	}
 	defer rows.Close()
-	out := []Message{}
+	out := []MessageDetail{}
 	for rows.Next() {
-		var m Message
+		var m MessageDetail
 		if err := m.scanFull(rows); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	if err := s.loadAttachments(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // The AI chat exports record who spoke as a role, not as a person: every

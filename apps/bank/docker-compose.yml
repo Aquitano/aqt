@@ -15,7 +15,8 @@
 # `docker compose up -d`.
 services:
   db:
-    image: paradedb/paradedb:latest
+    # pg_search 0.25.6; keep the CI database on this digest too.
+    image: paradedb/paradedb@sha256:c5b04eba22497fa25de12265692e9578e309c2e2001d023ce6d08a17226c200a
     environment:
       POSTGRES_USER: bank
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bank}

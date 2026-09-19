@@ -96,7 +96,7 @@ func TestContactResolvesOnePersonAcrossSources(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(got) < 2 {
-			t.Fatalf("got %d results: %+v", len(got), ids(got))
+			t.Fatalf("got %d results: %+v", len(got), got)
 		}
 		for _, m := range got {
 			if m.Sender == "Carol" {
@@ -394,7 +394,7 @@ func TestContactAliasScope(t *testing.T) {
 	}
 }
 
-func ids(msgs []store.Message) []string {
+func ids(msgs []store.MessageDetail) []string {
 	out := make([]string, len(msgs))
 	for i, m := range msgs {
 		out[i] = m.Source + "/" + m.ExternalID

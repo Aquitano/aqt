@@ -28,6 +28,7 @@ type stubGmail struct {
 	ids       []string // returned by the full listing
 	history   []string // returned by the history delta
 	status    map[string]int
+	raw       map[string]string
 	mu        sync.Mutex // the sync fetches with several workers at once
 	fetched   map[string]int
 	// held names a message whose response waits until a 404 has been served,
@@ -100,6 +101,9 @@ func (g *stubGmail) serve(w http.ResponseWriter, r *http.Request) {
 			}
 			raw := fmt.Sprintf("From: a@example.com\r\nSubject: mail %s\r\n"+
 				"Message-ID: <%s@example.com>\r\nDate: Mon, 13 May 2024 21:08:00 +0200\r\n\r\nbody\r\n", id, id)
+			if custom, ok := g.raw[id]; ok {
+				raw = custom
+			}
 			write(map[string]string{
 				"id": id, "threadId": "t-" + id, "internalDate": "1715627280000",
 				"raw": base64.RawURLEncoding.EncodeToString([]byte(raw)),
@@ -178,6 +182,38 @@ func TestBackfillAdvancesPastAPermanently404Message(t *testing.T) {
 	}
 	if loadedState(t, st).HistoryID != "101" {
 		t.Errorf("the incremental checkpoint did not advance")
+	}
+}
+
+func TestSyncHealsAttachmentsOnExistingMessage(t *testing.T) {
+	ctx := context.Background()
+	st, blobs, archiveDir := syncFixture(t)
+	id, err := st.InsertMessage(ctx, store.Message{Source: "gmail", ExternalID: "partial", Body: "body", SentAt: time.Unix(1, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := "From: a@example.com\r\nMessage-ID: <partial@example.com>\r\n" +
+		"MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=parts\r\n\r\n" +
+		"--parts\r\nContent-Type: text/plain\r\n\r\nbody\r\n" +
+		"--parts\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename=data.bin\r\n\r\nbinary data\r\n--parts--\r\n"
+	g := &stubGmail{t: t, historyID: "100", ids: []string{"partial"}, raw: map[string]string{"partial": raw}}
+	g.start(t)
+	for _, full := range []bool{false, true} {
+		res, err := runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, full)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantAttachments := int64(1)
+		if full {
+			wantAttachments = 0
+		}
+		if res.Inserted != 0 || res.Duplicates != 1 || res.Attachments != wantAttachments {
+			t.Fatalf("full=%v result=%+v", full, res)
+		}
+		_, atts, err := st.GetMessage(ctx, id)
+		if err != nil || len(atts) != 1 || atts[0].Filename != "data.bin" {
+			t.Fatalf("attachments=%+v err=%v", atts, err)
+		}
 	}
 }
 

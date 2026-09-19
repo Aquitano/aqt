@@ -50,3 +50,17 @@ func TestParseCSVWithBOM(t *testing.T) {
 		t.Fatalf("msgs = %+v, want the conversation id read through the BOM", msgs)
 	}
 }
+
+func TestConversationIdentityDoesNotUseTitle(t *testing.T) {
+	input := `CONVERSATION ID,CONVERSATION TITLE,FROM,TO,DATE,SUBJECT,CONTENT
+one,Same title,A,B,2024-01-01 12:00:00 UTC,,hello
+two,Same title,A,B,2024-01-01 12:00:00 UTC,,hello
+`
+	msgs, err := parseCSV(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msgs[0].Thread == msgs[1].Thread {
+		t.Fatalf("unrelated conversations merged under %q", msgs[0].Thread)
+	}
+}

@@ -13,6 +13,23 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      db:
+        # pg_search 0.25.6, also used by the local Compose stack.
+        image: paradedb/paradedb@sha256:c5b04eba22497fa25de12265692e9578e309c2e2001d023ce6d08a17226c200a
+        env:
+          POSTGRES_USER: bank
+          POSTGRES_PASSWORD: bank
+          POSTGRES_DB: bank
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bank -d bank"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://bank:bank@localhost:5433/bank?sslmode=disable
+      BANK_REQUIRE_DB: "1"
     defaults:
       run:
         working-directory: apps/bank

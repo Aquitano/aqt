@@ -6,6 +6,8 @@ const attachment = type({
   "mime_type?": "string",
   "size_bytes?": "number",
   sha256: "string",
+  "text_status?": "string",
+  "text_chars?": "number",
 });
 export type Attachment = typeof attachment.infer;
 
@@ -24,7 +26,7 @@ const message = type({
 });
 export type Message = typeof message.infer;
 
-const thread = type({ messages: message.array(), "truncated?": "boolean" });
+const thread = type({ messages: message.array(), has_before: "boolean", has_after: "boolean" });
 export type Thread = typeof thread.infer;
 
 const contact = type({
@@ -51,22 +53,18 @@ const contactSuggestion = type({
 });
 export type ContactSuggestion = typeof contactSuggestion.infer;
 
-const queryResult = type({ columns: "string[]", rows: "unknown[][]" });
-
-// One row in the thread-grouped browse list. Unthreaded messages appear as
-// singleton groups (gid = "msg:<id>").
-export interface ThreadGroup {
-  source: string;
-  gid: string;
-  n: number;
-  last_at: string;
-  last_id: number;
-  sender: string;
-  subject: string;
-  preview: string;
-  // distinct non-me senders, for titling unnamed group chats by participants
-  members: string | null;
-}
+const threadGroup = type({
+  source: "string",
+  thread_id: "string",
+  n: "number",
+  last_at: "string",
+  last_id: "number",
+  sender: "string",
+  subject: "string",
+  preview: "string",
+  members: "string",
+});
+export type ThreadGroup = typeof threadGroup.infer;
 
 // Failed /v1 requests answer with `{"error": "..."}` in place of the payload.
 const errorBody = type({ error: "string" });
@@ -98,12 +96,35 @@ export interface SearchParams {
   since?: string;
   until?: string;
   offset?: number;
+  match?: "any" | "all" | "phrase";
+  fuzzy?: number;
+  to?: string;
+  person?: string;
 }
 
-export function search({ q, source, from, since, until, offset = 0 }: SearchParams) {
-  const p = new URLSearchParams({ q, limit: "50", offset: String(offset) });
+export function search({
+  q,
+  source,
+  from,
+  since,
+  until,
+  offset = 0,
+  match = "any",
+  fuzzy = 1,
+  to,
+  person,
+}: SearchParams) {
+  const p = new URLSearchParams({
+    q,
+    limit: "50",
+    offset: String(offset),
+    match,
+    fuzzy: String(fuzzy),
+  });
   if (source) p.set("source", source);
   if (from) p.set("from", from);
+  if (to) p.set("to", to);
+  if (person) p.set("person", person);
   if (since) p.set("since", since);
   if (until) p.set("until", until);
   return api(`/v1/search?${p}`, message.array());
@@ -113,11 +134,18 @@ export function getMessage(id: number) {
   return api(`/v1/messages/${id}`, message);
 }
 
-export function getThread(source: string, threadId: string) {
-  return api(
-    `/v1/threads/${encodeURIComponent(threadId)}?source=${encodeURIComponent(source)}&limit=2000`,
-    thread,
-  );
+export interface ThreadPosition {
+  before?: number;
+  after?: number;
+  around?: number;
+  latest?: boolean;
+}
+export function getThread(source: string, threadId: string, position: ThreadPosition) {
+  const p = new URLSearchParams({ source, limit: "100" });
+  for (const [key, value] of Object.entries(position)) {
+    if (value !== undefined) p.set(key, String(value));
+  }
+  return api(`/v1/threads/${encodeURIComponent(threadId)}?${p}`, thread);
 }
 
 export function getStats() {
@@ -128,8 +156,11 @@ export function getContacts() {
   return api("/v1/contacts", contact.array());
 }
 
-export function getContactMessages(name: string) {
-  return api(`/v1/contacts/${encodeURIComponent(name)}/messages?limit=500`, message.array());
+export function getContactMessages(name: string, before?: number) {
+  return api(
+    `/v1/contacts/${encodeURIComponent(name)}/messages?limit=100${before ? `&before=${before}` : ""}`,
+    message.array(),
+  );
 }
 
 export function suggestContacts(limit = 40) {
@@ -149,61 +180,16 @@ export async function createContactWithAlias(name: string, alias: string) {
   });
 }
 
-function query(sql: string, limit: number) {
-  return api("/v1/query", queryResult, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sql, limit }),
+export function browseThreads(opts: { source?: string; order: "asc" | "desc"; offset: number }) {
+  const p = new URLSearchParams({
+    order: opts.order,
+    offset: String(opts.offset),
+    limit: String(BROWSE_PAGE),
   });
+  if (opts.source) p.set("source", opts.source);
+  return api(`/v1/threads?${p}`, threadGroup.array());
 }
 
-// /v1/query answers with positional rows, so each column is read back by name
-// and coerced into the ThreadGroup contract the browse list works with.
-function toThreadGroup(columns: string[], row: unknown[]): ThreadGroup {
-  const cell = (column: string) => row[columns.indexOf(column)];
-  const members = cell("members");
-  return {
-    source: String(cell("source")),
-    gid: String(cell("gid")),
-    n: Number(cell("n")),
-    last_at: String(cell("last_at")),
-    last_id: Number(cell("last_id")),
-    sender: String(cell("sender")),
-    subject: String(cell("subject")),
-    preview: String(cell("preview")),
-    members: typeof members === "string" ? members : null,
-  };
-}
-
-const PAGE = 50;
-
-export async function browseThreads(opts: {
-  source?: string;
-  order: "asc" | "desc";
-  offset: number;
-}): Promise<ThreadGroup[]> {
-  const where = opts.source ? `where source = '${opts.source.replace(/'/g, "''")}'` : "";
-  const order = opts.order === "asc" ? "asc" : "desc";
-  const sql = `
-    select source,
-           coalesce(nullif(thread_id, ''), 'msg:' || id::text) as gid,
-           count(*) as n,
-           max(sent_at) as last_at,
-           (array_agg(id order by sent_at desc))[1] as last_id,
-           (array_agg(coalesce(sender, '') order by sent_at desc))[1] as sender,
-           coalesce((array_agg(nullif(subject, '') order by sent_at desc)
-                     filter (where nullif(subject, '') is not null))[1], '') as subject,
-           (array_agg(left(coalesce(body, ''), 240) order by sent_at desc))[1] as preview,
-           left(string_agg(distinct case
-             when sender is not null and sender !~* '^thomas( breindl)?$' then sender
-           end, ', '), 200) as members
-    from messages ${where}
-    group by source, gid
-    order by last_at ${order}
-    limit ${PAGE} offset ${opts.offset}`;
-  const res = await query(sql, PAGE);
-  return res.rows.map((row) => toThreadGroup(res.columns, row));
-}
-
-export const BROWSE_PAGE = PAGE;
+export const BROWSE_PAGE = 50;
 export const SEARCH_PAGE = 50;
+export const CONTEXT_PAGE = 100;

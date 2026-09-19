@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -59,6 +60,13 @@ func (s *Server) handleContactMessages(w http.ResponseWriter, r *http.Request) {
 	if o.Limit, err = parseInt(q.Get("limit"), 0); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid limit")
 		return
+	}
+	if raw := q.Get("before"); raw != "" {
+		o.Before, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || o.Before <= 0 {
+			writeErr(w, 400, "invalid before")
+			return
+		}
 	}
 	msgs, err := s.read.ContactMessages(r.Context(), r.PathValue("name"), o)
 	switch {

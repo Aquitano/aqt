@@ -25,14 +25,14 @@ const JID = /@(g\.us|s\.whatsapp\.net)$/;
 
 function groupTitle(g: ThreadGroup) {
   if (g.subject) return g.subject;
-  if (JID.test(g.gid) && g.members) return g.members;
-  return g.gid.startsWith("msg:") ? g.sender || "—" : g.gid;
+  if (JID.test(g.thread_id) && g.members) return g.members;
+  return !g.thread_id ? g.sender || "—" : g.thread_id;
 }
 
 function groupSelection(g: ThreadGroup): Selection {
-  return g.gid.startsWith("msg:")
+  return !g.thread_id
     ? { kind: "message", id: g.last_id }
-    : { kind: "thread", source: g.source, threadId: g.gid, title: groupTitle(g) };
+    : { kind: "thread", source: g.source, threadId: g.thread_id, title: groupTitle(g) };
 }
 
 function GroupRow({
@@ -44,7 +44,7 @@ function GroupRow({
   selected: boolean;
   onClick: () => void;
 }) {
-  const threaded = !g.gid.startsWith("msg:");
+  const threaded = Boolean(g.thread_id);
   const title = groupTitle(g);
   return (
     <button
@@ -108,12 +108,6 @@ export function BrowseView({
   });
 
   const groups = q.data?.pages.flat() ?? [];
-  const selectedKey =
-    selection?.kind === "thread"
-      ? `${selection.source}/${selection.threadId}`
-      : selection?.kind === "message"
-        ? `msg/${selection.id}`
-        : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -155,13 +149,17 @@ export function BrowseView({
           <>
             {groups.map((g) => {
               const sel = groupSelection(g);
-              const key =
-                sel?.kind === "thread" ? `${sel.source}/${sel.threadId}` : `msg/${g.last_id}`;
+              const selected =
+                selection?.kind === "thread"
+                  ? Boolean(g.thread_id) &&
+                    selection.source === g.source &&
+                    selection.threadId === g.thread_id
+                  : selection?.kind === "message" && !g.thread_id && selection.id === g.last_id;
               return (
                 <GroupRow
-                  key={`${g.source}/${g.gid}`}
+                  key={JSON.stringify([g.source, g.thread_id, g.thread_id ? null : g.last_id])}
                   g={g}
-                  selected={key === selectedKey}
+                  selected={selected}
                   onClick={() => onSelect(sel)}
                 />
               );

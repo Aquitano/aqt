@@ -150,7 +150,7 @@ func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef str
 		r.Inserted++
 		if md != nil {
 			for _, a := range m.Attachments {
-				if err := r.storeAsset(ctx, st, md, id, a); err != nil {
+				if err := r.storeAsset(ctx, st, md, id, a, nil); err != nil {
 					return err
 				}
 			}
@@ -167,22 +167,19 @@ func (r *Result) healAssets(ctx context.Context, st *store.Store, md *media, sou
 	if id == 0 {
 		return nil
 	}
-	has, err := st.MessageHasAttachments(ctx, id)
+	have, err := st.AttachmentKeys(ctx, id)
 	if err != nil {
 		return fail.Opf("read attachments of message %d: %w", id, err)
 	}
-	if has {
-		return nil
-	}
 	for _, a := range m.Attachments {
-		if err := r.storeAsset(ctx, st, md, id, a); err != nil {
+		if err := r.storeAsset(ctx, st, md, id, a, have); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *Result) storeAsset(ctx context.Context, st *store.Store, md *media, messageID int64, a assetRef) error {
+func (r *Result) storeAsset(ctx context.Context, st *store.Store, md *media, messageID int64, a assetRef, have map[string]int) error {
 	rc := md.open(a.ID)
 	if rc == nil {
 		r.MissingMedia++
@@ -217,6 +214,11 @@ func (r *Result) storeAsset(ctx context.Context, st *store.Store, md *media, mes
 	sumHex, size, err := md.blobs.Put(io.MultiReader(bytes.NewReader(head), rc))
 	if err != nil {
 		return fail.Opf("store asset %q: %w", a.ID, err)
+	}
+	key := store.AttachmentKey(sumHex, name)
+	if have[key] > 0 {
+		have[key]--
+		return nil
 	}
 	err = st.InsertAttachment(ctx, store.Attachment{
 		MessageID: messageID,

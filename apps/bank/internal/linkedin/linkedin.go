@@ -30,6 +30,7 @@ type Result struct {
 
 type message struct {
 	ConversationID string
+	Title          string
 	Thread         string
 	From           string
 	To             string
@@ -62,19 +63,23 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 		if m.To != "" {
 			recipients = []string{m.To}
 		}
+		subject := m.Subject
+		if subject == "" {
+			subject = m.Title
+		}
 		messages = append(messages, store.Message{
 			Source:     "linkedin",
 			ExternalID: hex.EncodeToString(sum[:]),
 			ThreadID:   m.Thread,
 			Sender:     m.From,
 			Recipients: recipients,
-			Subject:    m.Subject,
+			Subject:    subject,
 			Body:       m.Body,
 			SentAt:     m.SentAt,
 			RawRef:     rawRef,
 		})
 	}
-	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{})
+	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{Rethread: true})
 	if err != nil {
 		return res, fail.Opf("insert messages: %w", err)
 	}
@@ -177,7 +182,8 @@ func parseCSV(r io.Reader) ([]message, error) {
 		}
 		m := message{
 			ConversationID: get(rec, "CONVERSATION ID"),
-			Thread:         get(rec, "CONVERSATION TITLE"),
+			Thread:         get(rec, "CONVERSATION ID"),
+			Title:          get(rec, "CONVERSATION TITLE"),
 			From:           get(rec, "FROM"),
 			To:             get(rec, "TO"),
 			Subject:        get(rec, "SUBJECT"),
@@ -185,7 +191,7 @@ func parseCSV(r io.Reader) ([]message, error) {
 			SentAt:         parseDate(get(rec, "DATE")),
 		}
 		if m.Thread == "" {
-			m.Thread = m.ConversationID
+			m.Thread = get(rec, "CONVERSATION TITLE")
 		}
 		out = append(out, m)
 	}

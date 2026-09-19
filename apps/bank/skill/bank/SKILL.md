@@ -13,7 +13,8 @@ Run once before the first archive command in a session:
 
 ```sh
 command -v bank
-printenv BANK_URL BANK_TOKEN
+test -n "$BANK_URL" && echo BANK_URL=set
+test -n "$BANK_TOKEN" && echo BANK_TOKEN=set
 bank stats
 ```
 
@@ -29,10 +30,10 @@ On the VPS itself there is no `BANK_URL`; `DATABASE_URL` points at Postgres and 
 ## Reading
 
 ```sh
-bank search "query" [--source s] [--from name] [--to name] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--fuzzy 0-2] [--limit n] [--offset n] [--json]
-bank thread <id> [--source s] [--limit n] [--json]   # every message in one conversation
+bank search "query" [--source s] [--from name] [--to name] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--match any|all|phrase] [--fuzzy 0-2] [--limit n] [--offset n] [--json]
+bank thread <id> [--source s] [--around id|--before id|--after id|--latest] [--limit n] [--json]
 bank contact list|show <name> [--json]               # who the owner has named, and their identities
-bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--offset n] [--json]
+bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--before id|--offset n] [--json]
 bank show <id|ref> [--json]      # full body, recipients, raw_ref, attachment list
 bank stats [--json]              # sources, counts, date ranges, freshness, coverage notes
 bank fetch <sha256> -o <path>    # write attachment bytes to a file
@@ -45,7 +46,7 @@ Semantics that matter:
 
 - Always pass `--json` when you are consuming the output; the plain text form truncates bodies to one line. Empty results are `[]`, never `null`.
 - **Cite by `ref`, never by `id`.** Every result carries `ref`, 12 hex characters derived from the message itself. `id` is a row number: rebuild the archive from its raw inputs and the same `id` points at a different message, so a note citing `bank:47` silently rots. Write `bank:<ref>` (e.g. `bank:c5e63bfc3750`). `bank show` takes either form, so an old numeric citation still resolves — replace it with the ref when you touch it.
-- Ranking is BM25 over subject, body, sender, recipients and text extracted from attachments, with typo tolerance (`--fuzzy 1` by default, max 2). Query words are matched independently — more words means more recall, not less.
+- Ranking is BM25 over subject, body, sender, recipients and text extracted from attachments, with typo tolerance (`--fuzzy 1` by default, max 2). The default `--match any` matches words independently. Use `--match all` to require every term across fields, or `--match phrase` for adjacent words in order within one field. Phrase matching ignores `--fuzzy`. Exact and subject matches receive extra ranking weight.
 - Each result carries a `snippet`: a bounded plain-text window of the body around the match, with no markup, so it is safe to print or quote directly. It is the cheapest way to see why something ranked.
 - A result may also carry `attachment_snippet`, meaning the match is inside an attached document rather than the message body — quote it as coming from the attachment, not from what the sender wrote. It is only set for exact-token matches; a fuzzy hit inside a document leaves it empty.
 - Searching finds text inside PDFs, Office and OpenDocument files, HTML and text attachments. It does **not** find text in scanned pages or photographs unless someone has OCR'd them: `bank show <id>` reports `text_status` per attachment, where `needs_ocr` means the words are pixels and invisible to search. If a document ought to contain something and does not match, check that before concluding the archive lacks it.
@@ -56,7 +57,8 @@ Semantics that matter:
 - `--limit` defaults to 20 and must be between 1 and 500; `--fuzzy` between 0 and 2. Out-of-range values are a usage error, not an empty result. Start generous (50-100), then narrow with `--source`/`--from`/dates rather than re-running blind.
 - `--offset` reaches past the first page: `--limit 100 --offset 100` is the second hundred. A page shorter than `--limit` means you have reached the end, so page until that happens rather than guessing a total. The results are ordered by score, then date, then id, so a page means the same thing on a second run. `--offset` is capped at 10000 — needing more than that means the query is too broad, so narrow it instead. `bank contact messages` takes the same flag, and is the one most likely to need it.
 - `search` returns bodies already, so only `bank show <id>` when you need recipients, `external_id`, `raw_ref` or attachments.
-- `bank thread` takes the `thread_id` from a search hit and returns the whole conversation oldest-first — the way to turn one match into context. A thread id used by two sources is a usage error until you add `--source`; very long threads come back with `"truncated": true`, so raise `--limit` (max 2000) if that matters.
+- `bank thread` takes a search hit's `thread_id` and `source`. Pass `--around <hit.id> --limit 100` to include that hit in context. Pages include attachments and `has_before`/`has_after`; continue with `--before <first.id>` or `--after <last.id>`. Use `--latest` for recent history. Positions are mutually exclusive, page size is capped at 2000, and there is no total history cap. Numeric IDs are paging cursors for the current archive; keep using `ref` for durable citations.
+- Contact history can continue with `bank contact messages <name> --before <last.id>`, beyond the offset limit. Results are newest-first. Use a positive cursor without `--offset`.
 - `bank contact show <name>` lists a person's attached identities and how many messages each source contributes — the quickest way to tell whether `--person` will actually reach the conversation you want, or whether an identity is still unattached.
 - `bank stats --json` includes `last_ingest` per source, and `last_sync` for sync-backed ones. Use it to say "the archive has nothing after X" instead of assuming a gap means nothing happened.
 - **Read `coverage` before concluding anything from absence.** It is the owner's note on what a source actually holds ("only the chats exported in 2025-08"), and it is the difference between "it never happened" and "that period was never imported". `stale: true` means nothing new has landed in that source for 30 days — a gap there may be a broken import rather than a quiet month. Both come back in `bank stats --json`.
@@ -75,7 +77,7 @@ bank search "hetzner invoise" --fuzzy 2 --limit 5
 
 # one hit is rarely the answer — pull the surrounding conversation
 bank search "release plan" --json     # -> thread_id, source
-bank thread "release plan chat" --source whatsapp --json
+bank thread "release plan chat" --source whatsapp --around 42 --limit 100 --json
 
 # "what did I send to bob about the deck"
 bank search "deck" --to bob --json
