@@ -14,6 +14,10 @@ export type Attachment = typeof attachment.infer;
 const message = type({
   id: "number",
   source: "string",
+  "external_id?": "string",
+  "parent_external_id?": "string",
+  "branch_id?": "string",
+  "alternative_index?": "number",
   "thread_id?": "string | null",
   "sender?": "string",
   "recipients?": "string[] | null",
@@ -193,3 +197,67 @@ export function browseThreads(opts: { source?: string; order: "asc" | "desc"; of
 export const BROWSE_PAGE = 50;
 export const SEARCH_PAGE = 50;
 export const CONTEXT_PAGE = 100;
+
+const libraryFile = type({
+  sha256: "string",
+  filename: "string",
+  mime_type: "string",
+  size_bytes: "number",
+  messages: "number",
+  last_at: "string",
+});
+export type LibraryFile = typeof libraryFile.infer;
+export function getLibrary(
+  filters: { q: string; type: string; person: string; since: string; until: string },
+  offset: number,
+) {
+  return api(
+    `/v1/attachment-library?${new URLSearchParams({ ...filters, offset: String(offset) })}`,
+    libraryFile.array(),
+  );
+}
+export function getFileMessages(sum: string, offset: number) {
+  return api(`/v1/attachments/${sum}/messages?offset=${offset}`, message.array());
+}
+const blobText = type({ text: "string", status: "string" });
+export function getFileText(sum: string) {
+  return api(`/v1/attachments/${sum}/text`, blobText);
+}
+const importReport = type({
+  id: "number",
+  kind: "string",
+  input: "string",
+  started_at: "string",
+  finished_at: "string | null",
+  status: "string",
+  error: "string",
+  result: type({
+    "inserted?": "number",
+    "duplicates?": "number",
+    "files_preserved?": "number",
+    "missing_media?": "number",
+    "unsupported_content?": "number",
+    "skipped?": "number",
+    "rejected?": "number",
+    "damaged?": "number",
+    "empty_conversations?": "number",
+    "failed_sessions?": "string[]",
+    "failed_channels?": "string[]",
+    "issues?": "string[]",
+    "warnings?": "string[]",
+  }),
+});
+export function getImportReports(before = 0) {
+  return api(`/v1/import-reports?before=${before}`, importReport.array());
+}
+
+export function getMessageParent(id: number) {
+  return api(`/v1/messages/${id}/parent`, message);
+}
+
+export function getMessageBranch(id: number) {
+  return api(
+    `/v1/messages/${id}/branch`,
+    type({ messages: message.array(), incomplete: "boolean" }),
+  );
+}

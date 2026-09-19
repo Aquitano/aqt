@@ -79,6 +79,9 @@ Usage:
                                               today's parser reads better (dry run by default)
   bank extract [--ocr] [--status s]           read text out of attachments
   bank attachment list [--status s]           attachment content and its text status
+  bank reports [--before ID] [--json]         saved import outcomes and gaps
+  bank attachment find --filename invoice --type pdf [--person alice] [--json]
+  bank attachment messages <sha256>          every message with this file, as JSON
   bank attachment stats [--json]              how much of the archive is searchable inside
   bank attachment text <sha256> [--set f]     read, replace or clear that text
   bank search <query> [flags]                 full-text search (BM25, fuzzy)
@@ -175,6 +178,8 @@ func main() {
 		err = cmdFetch(ctx, os.Args[2:])
 	case "extract":
 		err = cmdExtract(ctx, os.Args[2:])
+	case "reports":
+		err = cmdReports(ctx, os.Args[2:])
 	case "attachment":
 		err = cmdAttachment(ctx, os.Args[2:])
 	case "verify":
@@ -463,6 +468,10 @@ func inboxSource(kind string) string {
 // that knows which importer owns which kind, shared by `bank import <kind>`
 // and by the inbox sweep.
 func importLocal(ctx context.Context, d *local, kind, source, path string) (any, error) {
+	return store.RunImport(ctx, d.st, kind, path, func(ctx context.Context) (any, error) { return importLocalInput(ctx, d, kind, source, path) })
+}
+
+func importLocalInput(ctx context.Context, d *local, kind, source, path string) (any, error) {
 	switch kind {
 	case "whatsapp":
 		return whatsapp.Import(ctx, d.st, d.blobs, d.archiveDir, path)
@@ -1121,6 +1130,7 @@ func cmdThread(ctx context.Context, args []string) error {
 	fmt.Printf("source:  %s\nmessages: %d\n\n", thread.Source, len(thread.Messages))
 	for _, m := range thread.Messages {
 		fmt.Printf("[%d] %s  %s\n", m.ID, m.SentAt.Format("2006-01-02 15:04"), m.Sender)
+		printReplyInfo(m.Message)
 		if m.Subject != "" && m.Subject != title {
 			fmt.Printf("    %s\n", m.Subject)
 		}
@@ -1180,6 +1190,7 @@ func cmdShow(ctx context.Context, args []string) error {
 	}
 
 	m := d.Message
+	printReplyInfo(m)
 	fmt.Printf("id:      %d\nref:     %s\nsource:  %s\nthread:  %s\nfrom:    %s\ndate:    %s\n",
 		m.ID, m.Ref, m.Source, m.ThreadID, m.Sender, m.SentAt.Format(time.RFC1123))
 	if len(m.Recipients) > 0 {
@@ -1217,6 +1228,9 @@ func cmdShow(ctx context.Context, args []string) error {
 // remote `bank serve` answer to the same method names, so no command below
 // has to know which it is talking to.
 type backend interface {
+	ImportReports(context.Context, int64, int) ([]store.ImportReport, error)
+	AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error)
+	AttachmentMessages(context.Context, string, int, int) ([]store.Message, error)
 	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
 	GetMessageDetail(ctx context.Context, id int64) (store.MessageDetail, error)
 	GetMessageDetailByRef(ctx context.Context, ref string) (store.MessageDetail, error)
@@ -2310,9 +2324,13 @@ func printExtractSummary(sum extract.Summary) {
 
 func cmdAttachment(ctx context.Context, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: bank attachment <list|stats|text> ...")
+		return fmt.Errorf("usage: bank attachment <find|messages|list|stats|text> ...")
 	}
 	switch args[0] {
+	case "find":
+		return cmdAttachmentFind(ctx, args[1:])
+	case "messages":
+		return cmdAttachmentMessages(ctx, args[1:])
 	case "list":
 		return cmdAttachmentList(ctx, args[1:])
 	case "stats":
@@ -2320,7 +2338,7 @@ func cmdAttachment(ctx context.Context, args []string) error {
 	case "text":
 		return cmdAttachmentText(ctx, args[1:])
 	}
-	return fmt.Errorf("unknown attachment command %q (want list, stats or text)", args[0])
+	return fmt.Errorf("unknown attachment command %q (want find, messages, list, stats or text)", args[0])
 }
 
 // cmdAttachmentStats answers how much of the archive is searchable inside its

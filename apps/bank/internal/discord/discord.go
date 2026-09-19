@@ -44,6 +44,12 @@ type message struct {
 
 // Import reads a data package zip or an unpacked package directory.
 func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) (Result, error) {
+	return store.RunImport(ctx, st, "discord", inputPath, func(ctx context.Context) (Result, error) {
+		return importUnreported(ctx, st, archiveDir, inputPath)
+	})
+}
+
+func importUnreported(ctx context.Context, st *store.Store, archiveDir, inputPath string) (Result, error) {
 	var res Result
 	var fsys fs.FS
 	rawRef := inputPath

@@ -37,6 +37,7 @@ type cgptConversation struct {
 }
 
 type cgptNode struct {
+	Parent  string `json:"parent"`
 	Message *struct {
 		ID     string `json:"id"`
 		Author struct {
@@ -63,8 +64,14 @@ type cgptAttachment struct {
 }
 
 func ImportChatGPT(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, path string) (Result, error) {
+	return store.RunImport(ctx, st, "chatgpt", path, func(ctx context.Context) (Result, error) {
+		return importChatGPTUnreported(ctx, st, blobs, archiveDir, path)
+	})
+}
+
+func importChatGPTUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, path string) (Result, error) {
 	var res Result
-	raw, rawRef, md, closeExport, err := loadChatGPTExport(archiveDir, blobs, path)
+	raw, rawRef, md, closeExport, err := loadChatGPTExport(archiveDir, blobs, path, ctx)
 	if err != nil {
 		return res, err
 	}
@@ -74,7 +81,28 @@ func ImportChatGPT(ctx context.Context, st *store.Store, blobs *blob.Store, arch
 		return res, err
 	}
 	for _, c := range convs {
-		msgs := parseChatGPTConversation(c, md != nil)
+		msgs := parseChatGPTConversation(c, true)
+		for key, node := range c.Mapping {
+			if node.Message == nil {
+				continue
+			}
+			m := node.Message
+			if m.Author.Role != "user" && m.Author.Role != "assistant" {
+				continue
+			}
+			for _, part := range m.Content.Parts {
+				var plain string
+				if json.Unmarshal(part, &plain) == nil || partText(part) != "" || len(assetPointerIDs(part)) > 0 {
+					continue
+				}
+				res.UnsupportedContent++
+				store.ImportIssue(ctx, "Unsupported content in "+key+" ("+c.Title+")")
+			}
+			if len(m.Content.Parts) == 0 && strings.TrimSpace(m.Content.Text) == "" && len(m.Metadata.Attachments) == 0 {
+				res.UnsupportedContent++
+				store.ImportIssue(ctx, "Empty or unsupported message "+key+" ("+c.Title+")")
+			}
+		}
 		if len(msgs) == 0 {
 			res.EmptyConversations++
 			continue
@@ -87,10 +115,9 @@ func ImportChatGPT(ctx context.Context, st *store.Store, blobs *blob.Store, arch
 	return res, nil
 }
 
-// parseChatGPTConversation flattens one conversation tree. withAssets keeps
-// messages that carry only asset references and no text — worth importing
-// exactly when the input brings the files along; a bare conversations.json
-// still drops them, so its empty-conversation accounting stays truthful.
+// parseChatGPTConversation keeps the tree relationships on a deterministic
+// chronological list. Imports retain asset-only messages so missing files can
+// be reported even when the export contains no media.
 func parseChatGPTConversation(c cgptConversation, withAssets bool) []message {
 	// conversation_id is the stable identity; the title is display data and
 	// repeats across unrelated chats ("New chat"). Falling back to the title is
@@ -103,7 +130,7 @@ func parseChatGPTConversation(c cgptConversation, withAssets bool) []message {
 		thread = c.Title
 	}
 	var out []message
-	for _, node := range c.Mapping {
+	for nodeID, node := range c.Mapping {
 		m := node.Message
 		if m == nil || (m.Author.Role != "user" && m.Author.Role != "assistant") {
 			continue
@@ -156,13 +183,15 @@ func parseChatGPTConversation(c cgptConversation, withAssets bool) []message {
 			sentAt = time.Unix(int64(sec), int64(frac*1e9))
 		}
 		out = append(out, message{
-			ExternalID:  m.ID,
-			Thread:      thread,
-			Subject:     c.Title,
-			Sender:      m.Author.Role,
-			Body:        body,
-			SentAt:      sentAt,
-			Attachments: refs,
+			ExternalID:       m.ID,
+			ParentExternalID: chatGPTParent(c.Mapping, node.Parent),
+			BranchID:         nodeID,
+			Thread:           thread,
+			Subject:          c.Title,
+			Sender:           m.Author.Role,
+			Body:             body,
+			SentAt:           sentAt,
+			Attachments:      refs,
 		})
 	}
 	// Mapping is a map, so ties must break on something deterministic or the
@@ -173,7 +202,69 @@ func parseChatGPTConversation(c cgptConversation, withAssets bool) []message {
 		}
 		return out[i].ExternalID < out[j].ExternalID
 	})
+	applyChatGPTBranches(c.Mapping, out)
 	return out
+}
+
+// Resolve through structural and tool nodes, while guarding malformed cycles.
+func chatGPTParent(nodes map[string]cgptNode, parent string) string {
+	seen := map[string]bool{}
+	for parent != "" && !seen[parent] {
+		seen[parent] = true
+		node, ok := nodes[parent]
+		if !ok {
+			return parent
+		}
+		if node.Message != nil && (node.Message.Author.Role == "user" || node.Message.Author.Role == "assistant") && node.Message.ID != "" {
+			return node.Message.ID
+		}
+		parent = node.Parent
+	}
+	return ""
+}
+
+func applyChatGPTBranches(nodes map[string]cgptNode, messages []message) {
+	children := map[string][]int{}
+	byID := map[string]int{}
+	for i, m := range messages {
+		parent := m.ParentExternalID
+		if parent == "" && nodes[m.BranchID].Parent != "" {
+			parent = "node:" + nodes[m.BranchID].Parent
+		}
+		children[parent] = append(children[parent], i)
+		byID[m.ExternalID] = i
+	}
+	forks := map[string]string{}
+	for parent, indices := range children {
+		if parent == "" || len(indices) < 2 {
+			continue
+		}
+		answer := 0
+		for _, i := range indices {
+			forks[messages[i].ExternalID] = messages[i].BranchID
+			if messages[i].Sender == "assistant" {
+				answer++
+				messages[i].AlternativeIndex = answer
+			}
+		}
+	}
+	for i := range messages {
+		id := messages[i].ExternalID
+		seen := map[string]bool{}
+		messages[i].BranchID = ""
+		for id != "" && !seen[id] {
+			seen[id] = true
+			if branch := forks[id]; branch != "" {
+				messages[i].BranchID = branch
+				break
+			}
+			ancestor, ok := byID[id]
+			if !ok {
+				break
+			}
+			id = messages[ancestor].ParentExternalID
+		}
+	}
 }
 
 // partText returns the text a content part contributes. Most parts are plain
@@ -249,7 +340,7 @@ func assetID(pointer string) string {
 // for <asset-id>.dat files and the original-filename map, when the input is
 // a directory or zip that carries them. A bare conversations.json has no
 // media and imports text-only, exactly as before.
-func loadChatGPTExport(archiveDir string, blobs *blob.Store, path string) ([]byte, string, *media, func(), error) {
+func loadChatGPTExport(archiveDir string, blobs *blob.Store, path string, contexts ...context.Context) ([]byte, string, *media, func(), error) {
 	noop := func() {}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -257,7 +348,7 @@ func loadChatGPTExport(archiveDir string, blobs *blob.Store, path string) ([]byt
 	}
 	switch {
 	case info.IsDir():
-		raw, rawRef, err := loadConversations(archiveDir, "chatgpt", path)
+		raw, rawRef, err := loadConversations(archiveDir, "chatgpt", path, contexts...)
 		if err != nil {
 			return nil, "", nil, noop, err
 		}
@@ -279,7 +370,7 @@ func loadChatGPTExport(archiveDir string, blobs *blob.Store, path string) ([]byt
 		}
 		return raw, rawRef, md, noop, nil
 	case strings.EqualFold(filepath.Ext(path), ".zip"):
-		raw, rawRef, err := loadConversations(archiveDir, "chatgpt", path)
+		raw, rawRef, err := loadConversations(archiveDir, "chatgpt", path, contexts...)
 		if err != nil {
 			return nil, "", nil, noop, err
 		}
@@ -322,7 +413,7 @@ func loadChatGPTExport(archiveDir string, blobs *blob.Store, path string) ([]byt
 		}
 		return raw, rawRef, md, func() { zr.Close() }, nil
 	default:
-		raw, rawRef, err := loadConversations(archiveDir, "chatgpt", path)
+		raw, rawRef, err := loadConversations(archiveDir, "chatgpt", path, contexts...)
 		return raw, rawRef, nil, noop, err
 	}
 }

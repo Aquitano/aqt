@@ -5,8 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import { DetailPane, type Selection } from "@/components/detail-pane";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getStats } from "@/lib/api";
+import { AttachmentsView } from "@/views/attachments";
 import { ALL_SOURCES, BrowseView } from "@/views/browse";
 import { ContactsView } from "@/views/contacts";
+import { ImportsView } from "@/views/imports";
 import { SearchView } from "@/views/search";
 import { StatsView } from "@/views/stats";
 
@@ -14,7 +16,7 @@ const client = new QueryClient({
   defaultOptions: { queries: { staleTime: 60_000, retry: 1, refetchOnWindowFocus: false } },
 });
 
-const VIEWS = ["search", "browse", "contacts", "stats"] as const;
+const VIEWS = ["search", "browse", "contacts", "attachments", "imports", "stats"] as const;
 type View = (typeof VIEWS)[number];
 
 const isView = (value: string): value is View => VIEWS.some((candidate) => candidate === value);
@@ -88,6 +90,12 @@ function Shell() {
             <TabsTrigger value="contacts" className="text-xs">
               Contacts
             </TabsTrigger>
+            <TabsTrigger value="attachments" className="text-xs">
+              Files
+            </TabsTrigger>
+            <TabsTrigger value="imports" className="text-xs">
+              Imports
+            </TabsTrigger>
             <TabsTrigger value="stats" className="text-xs">
               Stats
             </TabsTrigger>
@@ -102,7 +110,9 @@ function Shell() {
         </div>
       </header>
 
-      {view === "stats" ? (
+      {view === "imports" ? (
+        <ImportsView />
+      ) : view === "stats" ? (
         <main className="min-h-0 flex-1 overflow-y-auto">
           <StatsView
             stats={stats}
@@ -132,6 +142,7 @@ function Shell() {
                 onSourceChange={setBrowseSource}
               />
             )}
+            {view === "attachments" && <AttachmentsView onSelect={setSelection} />}
             {view === "contacts" && <ContactsView selection={selection} onSelect={setSelection} />}
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">

@@ -40,6 +40,12 @@ type message struct {
 }
 
 func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) (Result, error) {
+	return store.RunImport(ctx, st, "linkedin", inputPath, func(ctx context.Context) (Result, error) {
+		return importUnreported(ctx, st, archiveDir, inputPath)
+	})
+}
+
+func importUnreported(ctx context.Context, st *store.Store, archiveDir, inputPath string) (Result, error) {
 	var res Result
 
 	open, rawRef, cleanup, err := openMessagesCSV(archiveDir, inputPath)

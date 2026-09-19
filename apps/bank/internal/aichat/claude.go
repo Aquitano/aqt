@@ -17,11 +17,12 @@ type claudeConversation struct {
 	UUID         string `json:"uuid"`
 	Name         string `json:"name"`
 	ChatMessages []struct {
-		UUID      string `json:"uuid"`
-		Text      string `json:"text"`
-		Sender    string `json:"sender"` // "human" | "assistant"
-		CreatedAt string `json:"created_at"`
-		Content   []struct {
+		UUID       string `json:"uuid"`
+		ParentUUID string `json:"parent_message_uuid"`
+		Text       string `json:"text"`
+		Sender     string `json:"sender"` // "human" | "assistant"
+		CreatedAt  string `json:"created_at"`
+		Content    []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
@@ -29,6 +30,12 @@ type claudeConversation struct {
 }
 
 func ImportClaude(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
+	return store.RunImport(ctx, st, "claude", path, func(ctx context.Context) (Result, error) {
+		return importClaudeUnreported(ctx, st, archiveDir, path)
+	})
+}
+
+func importClaudeUnreported(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
 	var res Result
 	// The export is several zips; anything that is not conversations
 	// (projects, memories, design chats) is handled by claudeextras.go. An
@@ -51,7 +58,7 @@ func ImportClaude(ctx context.Context, st *store.Store, archiveDir, path string)
 			return res, nil
 		}
 	}
-	raw, rawRef, err := loadConversations(archiveDir, "claude", path)
+	raw, rawRef, err := loadConversations(archiveDir, "claude", path, ctx)
 	if err != nil {
 		return res, err
 	}
@@ -100,12 +107,13 @@ func parseClaudeConversation(c claudeConversation) []message {
 			sender = "user"
 		}
 		out = append(out, message{
-			ExternalID: m.UUID,
-			Thread:     thread,
-			Subject:    c.Name,
-			Sender:     sender,
-			Body:       body,
-			SentAt:     parseTimestamp(m.CreatedAt),
+			ExternalID:       m.UUID,
+			ParentExternalID: m.ParentUUID,
+			Thread:           thread,
+			Subject:          c.Name,
+			Sender:           sender,
+			Body:             body,
+			SentAt:           parseTimestamp(m.CreatedAt),
 		})
 	}
 	return out

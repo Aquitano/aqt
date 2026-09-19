@@ -37,10 +37,11 @@ import (
 )
 
 type Result struct {
-	Conversations int `json:"conversations"`
-	Inserted      int `json:"inserted"`
-	Duplicates    int `json:"duplicates"`
-	Skipped       int `json:"skipped"`
+	UnsupportedContent int `json:"unsupported_content,omitempty"`
+	Conversations      int `json:"conversations"`
+	Inserted           int `json:"inserted"`
+	Duplicates         int `json:"duplicates"`
+	Skipped            int `json:"skipped"`
 	// EmptyConversations counts conversations that yielded no importable
 	// message and were dropped whole. Without it the loss is invisible: such a
 	// conversation never reaches any other counter.
@@ -64,8 +65,11 @@ type Result struct {
 }
 
 type message struct {
-	ExternalID string
-	Thread     string
+	ParentExternalID string
+	BranchID         string
+	AlternativeIndex int
+	ExternalID       string
+	Thread           string
 	// Subject is the conversation's human title, carried on every message so
 	// search ranking and result output can show it. Empty when the export has
 	// no title.
@@ -108,6 +112,7 @@ func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef str
 			if named == "" {
 				named = m.Thread
 			}
+			store.ImportIssue(ctx, fmt.Sprintf("Record without an id in %s", named))
 			fmt.Fprintf(os.Stderr, "bank: %s: skipping record without an id in %q\n", source, named)
 			continue
 		}
@@ -116,14 +121,17 @@ func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef str
 		}
 		valid = append(valid, m)
 		messages = append(messages, store.Message{
-			Source:     source,
-			ExternalID: m.ExternalID,
-			ThreadID:   m.Thread,
-			Subject:    m.Subject,
-			Sender:     m.Sender,
-			Body:       m.Body,
-			SentAt:     m.SentAt,
-			RawRef:     rawRef,
+			Source:           source,
+			ExternalID:       m.ExternalID,
+			ParentExternalID: m.ParentExternalID,
+			BranchID:         m.BranchID,
+			AlternativeIndex: m.AlternativeIndex,
+			ThreadID:         m.Thread,
+			Subject:          m.Subject,
+			Sender:           m.Sender,
+			Body:             m.Body,
+			SentAt:           m.SentAt,
+			RawRef:           rawRef,
 		})
 	}
 	// Rethreading, not a plain insert: an archive filled before threads were
@@ -135,6 +143,12 @@ func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef str
 	}
 	for i, m := range valid {
 		id := ids[i]
+		if md == nil {
+			r.MissingMedia += len(m.Attachments)
+			for _, a := range m.Attachments {
+				store.ImportIssue(ctx, "Missing asset "+a.ID+" in message "+m.ExternalID)
+			}
+		}
 		if id == 0 {
 			r.Duplicates++
 			// Heal attachments: an earlier import from a media-less input
@@ -183,6 +197,7 @@ func (r *Result) storeAsset(ctx context.Context, st *store.Store, md *media, mes
 	rc := md.open(a.ID)
 	if rc == nil {
 		r.MissingMedia++
+		store.ImportIssue(ctx, fmt.Sprintf("Missing asset %s (%s) in message %d", a.ID, a.Name, messageID))
 		return nil
 	}
 	defer rc.Close()
@@ -265,9 +280,12 @@ func shardNumber(name string) (int, bool) {
 // mergeShards concatenates the shard arrays, in shard order, into the single
 // conversations array the importers expect. Ordering is by number, not by
 // name, so an export that stops zero-padding still merges in export order.
-func mergeShards(shards []shard) ([]byte, error) {
+func mergeShards(shards []shard, contexts ...context.Context) ([]byte, error) {
 	sort.Slice(shards, func(i, j int) bool { return shards[i].num < shards[j].num })
 	if missing := missingShards(shards); len(missing) > 0 {
+		if len(contexts) > 0 {
+			store.ImportIssue(contexts[0], fmt.Sprintf("Missing conversation shards: %v", missing))
+		}
 		names := make([]string, len(missing))
 		for i, n := range missing {
 			names[i] = strconv.Itoa(n)
@@ -316,7 +334,7 @@ func archiveName(raw []byte) string {
 // export zip, or an unpacked export directory, archiving the raw input. Exports
 // since 2026 ship numbered shards instead of one conversations.json; those are
 // merged back into one array and archived as that array.
-func loadConversations(archiveDir, source, path string) ([]byte, string, error) {
+func loadConversations(archiveDir, source, path string, contexts ...context.Context) ([]byte, string, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, "", err
@@ -351,7 +369,7 @@ func loadConversations(archiveDir, source, path string) ([]byte, string, error) 
 		if len(shards) == 0 {
 			return nil, "", fmt.Errorf("%s: no conversations.json or conversations-N.json shards — not an export directory?", path)
 		}
-		raw, err = mergeShards(shards)
+		raw, err = mergeShards(shards, contexts...)
 		if err != nil {
 			return nil, "", err
 		}
@@ -390,7 +408,7 @@ func loadConversations(archiveDir, source, path string) ([]byte, string, error) 
 			if len(shards) == 0 {
 				return nil, "", fmt.Errorf("%s: no conversations.json or conversations-N.json shards in zip — not a data export?", path)
 			}
-			if raw, err = mergeShards(shards); err != nil {
+			if raw, err = mergeShards(shards, contexts...); err != nil {
 				return nil, "", err
 			}
 		}

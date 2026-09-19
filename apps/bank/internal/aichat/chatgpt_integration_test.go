@@ -212,13 +212,13 @@ func TestImportChatGPTHealsTextOnlyImport(t *testing.T) {
 	blobs := newBlobs(t)
 
 	// First pass from the bare conversations.json: messages without media,
-	// and the asset-only message not imported at all.
+	// including the asset-only message so missing references remain visible.
 	first, err := ImportChatGPT(ctx, st, blobs, filepath.Join(t.TempDir(), "archive"), filepath.Join(dir, "conversations.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Inserted != 1 || first.Attachments != 0 {
-		t.Fatalf("text-only import = %+v, want just the message with a body", first)
+	if first.Inserted != 2 || first.Attachments != 0 || first.MissingMedia != 3 {
+		t.Fatalf("text-only import = %+v, want both messages and all missing references", first)
 	}
 
 	// Re-import from the full directory attaches what the first pass could not.
@@ -226,8 +226,8 @@ func TestImportChatGPTHealsTextOnlyImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if healed.Attachments != 2 || healed.Inserted != 1 {
-		t.Fatalf("heal = %+v, want both present assets stored and the asset-only message added", healed)
+	if healed.Attachments != 2 || healed.Inserted != 0 || healed.Duplicates != 2 {
+		t.Fatalf("heal = %+v, want both present assets stored without adding duplicate messages", healed)
 	}
 	id, err := st.FindMessageID(ctx, "chatgpt", "msg-1")
 	if err != nil || id == 0 {

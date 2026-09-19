@@ -28,6 +28,12 @@ import (
 // first (OpenCode may be mid-write) and its credential tables are stripped
 // before anything is parsed, archived or uploaded.
 func ImportOpenCode(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
+	return store.RunImport(ctx, st, "opencode", path, func(ctx context.Context) (Result, error) {
+		return importOpenCodeUnreported(ctx, st, archiveDir, path)
+	})
+}
+
+func importOpenCodeUnreported(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
 	return importOpenCode(ctx, st, archiveDir, path, false)
 }
 
@@ -35,6 +41,12 @@ func ImportOpenCode(ctx context.Context, st *store.Store, archiveDir, path strin
 // snapshot is byte-identical to what is archived, an earlier run already
 // ingested it all (archiving happens after ingest) and nothing is parsed.
 func SyncOpenCode(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
+	return store.RunImport(ctx, st, "opencode", path, func(ctx context.Context) (Result, error) {
+		return syncOpenCodeUnreported(ctx, st, archiveDir, path)
+	})
+}
+
+func syncOpenCodeUnreported(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
 	return importOpenCode(ctx, st, archiveDir, path, true)
 }
 

@@ -21,6 +21,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/generic"
 	"github.com/aquitano/aqt/apps/bank/internal/linkedin"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/whatsapp"
 	"github.com/aquitano/aqt/apps/bank/internal/youtube"
 )
@@ -98,6 +99,9 @@ func (s *Server) extractAfterImport(ctx context.Context) {
 }
 
 func (s *Server) importJSON(ctx context.Context, source string, body []byte) (generic.Result, error) {
+	return store.RunImport(ctx, s.db, "json", "upload", func(ctx context.Context) (generic.Result, error) { return s.importJSONInput(ctx, source, body) })
+}
+func (s *Server) importJSONInput(ctx context.Context, source string, body []byte) (generic.Result, error) {
 	sum := sha256.Sum256(body)
 	rawRef, err := archive.Write(s.archiveDir, "json", fmt.Sprintf("upload-%x.json", sum[:6]), body)
 	if err != nil {

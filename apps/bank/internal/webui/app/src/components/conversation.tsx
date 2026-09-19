@@ -1,5 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { Download, Paperclip } from "lucide-react";
-import { memo, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
+import { memo, useState, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -27,7 +28,7 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
-import type { Message as BankMessage } from "@/lib/api";
+import { getMessageBranch, getMessageParent, type Message as BankMessage } from "@/lib/api";
 import { fmtDay, fmtTime, isMarkdownSource, isMe, Linkified, sourceHue } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -98,6 +99,86 @@ function Attachments({ m }: { m: BankMessage }) {
   );
 }
 
+function ReplyContext({ m }: { m: BankMessage }) {
+  const [open, setOpen] = useState(false);
+  const [branchOpen, setBranchOpen] = useState(false);
+  const parent = useQuery({
+    queryKey: ["parent", m.id],
+    queryFn: () => getMessageParent(m.id),
+    enabled: open,
+    retry: false,
+  });
+  if (!m.parent_external_id && !m.branch_id) return null;
+  return (
+    <div className="mb-2 border-b pb-2 text-xs text-muted-foreground">
+      {m.alternative_index ? (
+        <p className="font-medium text-amber-300">Alternative answer {m.alternative_index}</p>
+      ) : null}
+      {m.branch_id && <p title={m.branch_id}>Branch {m.branch_id.slice(0, 12)}</p>}
+      {m.parent_external_id && (
+        <button
+          type="button"
+          aria-expanded={open}
+          className="text-left underline"
+          onClick={() => setOpen(!open)}
+        >
+          View parent message
+        </button>
+      )}
+      {m.branch_id && (
+        <button
+          type="button"
+          aria-expanded={branchOpen}
+          className="ml-3 underline"
+          onClick={() => setBranchOpen(!branchOpen)}
+        >
+          Read branch to here
+        </button>
+      )}
+      {branchOpen && <BranchReader id={m.id} />}
+      {open && (
+        <div className="mt-2 border-l-2 pl-2 whitespace-pre-wrap">
+          {parent.isPending ? (
+            "Loading parent…"
+          ) : parent.isError ? (
+            parent.error.message
+          ) : (
+            <>
+              <p className="font-medium">{parent.data.sender}</p>
+              {parent.data.body || "Message has no text"}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BranchReader({ id }: { id: number }) {
+  const q = useQuery({ queryKey: ["branch", id], queryFn: () => getMessageBranch(id) });
+  if (q.isPending) return <p>Loading branch…</p>;
+  if (q.isError) return <p role="alert">{q.error.message}</p>;
+  return (
+    <div className="mt-3 max-h-96 overflow-y-auto rounded border p-3 text-foreground">
+      <p className="mb-3 font-medium">Reply path to this message</p>
+      {q.data.incomplete && (
+        <p className="mb-3 text-amber-300">
+          Earlier replies are unavailable or this path exceeds 1,000 messages.
+        </p>
+      )}
+      <ol className="space-y-4">
+        {q.data.messages.map((message) => (
+          <li key={message.id}>
+            <p className="mb-1 font-medium text-muted-foreground">{message.sender}</p>
+            <Body m={message} />
+            <Attachments m={message} />
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 // WhatsApp media placeholders written by wa-extract ("[photo] caption")
 const MEDIA_TAG =
   /^\[(photo|video|voice message|GIF|sticker|document|location|contact card[^\]]*)\]\s*/;
@@ -142,7 +223,8 @@ function buildRuns(messages: BankMessage[]): Run[] {
     const day = fmtDay(m.sent_at);
     const sender = m.sender || "—";
     const last = runs[runs.length - 1];
-    if (last && last.day === day && last.sender === sender) last.messages.push(m);
+    if (last && last.day === day && last.sender === sender && !m.parent_external_id && !m.branch_id)
+      last.messages.push(m);
     else runs.push({ day, sender, me: isMe(sender), messages: [m] });
   }
   return runs;
@@ -167,7 +249,12 @@ function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; s
     const showHeader = i === 0 && !run.me && !solo;
     const showFooter = lastOfRun && (run.me || solo);
     return (
-      <Message key={m.id} align={run.me ? "end" : "start"} data-mid={m.id}>
+      <Message
+        key={m.id}
+        align={run.me ? "end" : "start"}
+        data-mid={m.id}
+        data-external-id={m.external_id}
+      >
         {!run.me && (
           <MessageAvatar className={cn(!lastOfRun && "invisible")}>
             <SenderAvatar name={run.sender} />
@@ -191,6 +278,7 @@ function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; s
           >
             <BubbleContent>
               {m.subject ? <div className="mb-1 font-semibold">{m.subject}</div> : null}
+              <ReplyContext m={m} />
               <Body m={m} />
               <Attachments m={m} />
             </BubbleContent>
@@ -231,6 +319,7 @@ function DocumentView({ title, meta, m }: { title: ReactNode; meta: string; m: B
             </span>
           </div>
           <div className="text-sm leading-relaxed">
+            <ReplyContext m={m} />
             <Body m={m} />
           </div>
           <div className="mt-4">

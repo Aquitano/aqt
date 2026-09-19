@@ -25,11 +25,12 @@ import (
 // for search.
 
 type ccLine struct {
-	Type      string `json:"type"`
-	UUID      string `json:"uuid"`
-	Timestamp string `json:"timestamp"`
-	SessionID string `json:"sessionId"`
-	IsMeta    bool   `json:"isMeta"`
+	Type       string `json:"type"`
+	UUID       string `json:"uuid"`
+	ParentUUID string `json:"parentUuid"`
+	Timestamp  string `json:"timestamp"`
+	SessionID  string `json:"sessionId"`
+	IsMeta     bool   `json:"isMeta"`
 	// IsSidechain marks subagent traffic: machine-written prompts and their
 	// answers, stored either inline or as whole agent-*.jsonl transcripts.
 	IsSidechain bool   `json:"isSidechain"`
@@ -43,6 +44,12 @@ type ccLine struct {
 // ImportClaudeCode ingests one session .jsonl or every .jsonl under a
 // directory (e.g. ~/.claude/projects).
 func ImportClaudeCode(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
+	return store.RunImport(ctx, st, "claude-code", path, func(ctx context.Context) (Result, error) {
+		return importClaudeCodeUnreported(ctx, st, archiveDir, path)
+	})
+}
+
+func importClaudeCodeUnreported(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
 	return importClaudeCode(ctx, st, archiveDir, path, false)
 }
 
@@ -55,6 +62,12 @@ func ImportClaudeCode(ctx context.Context, st *store.Store, archiveDir, path str
 // already-superseded predecessor is touched later on its own, its replayed
 // prefix can rethread to it — a full ImportClaudeCode restores the order.
 func SyncClaudeCode(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
+	return store.RunImport(ctx, st, "claude-code", path, func(ctx context.Context) (Result, error) {
+		return syncClaudeCodeUnreported(ctx, st, archiveDir, path)
+	})
+}
+
+func syncClaudeCodeUnreported(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
 	return importClaudeCode(ctx, st, archiveDir, path, true)
 }
 
@@ -224,11 +237,12 @@ func parseClaudeCodeSession(r io.Reader, session string) (msgs []message, sidech
 			continue
 		}
 		out = append(out, message{
-			ExternalID: l.UUID,
-			Thread:     session,
-			Sender:     l.Message.Role,
-			Body:       body,
-			SentAt:     parseTimestamp(l.Timestamp),
+			ExternalID:       l.UUID,
+			ParentExternalID: l.ParentUUID,
+			Thread:           session,
+			Sender:           l.Message.Role,
+			Body:             body,
+			SentAt:           parseTimestamp(l.Timestamp),
 		})
 	}
 	if err := scanner.Err(); err != nil {

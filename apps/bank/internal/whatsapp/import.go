@@ -61,6 +61,12 @@ func safeMediaName(name string) bool {
 // Import ingests one "Export chat" file (.zip with media, or bare .txt whose
 // media files sit alongside it). Re-importing the same export is a no-op.
 func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, path string) (Result, error) {
+	return store.RunImport(ctx, st, "whatsapp", path, func(ctx context.Context) (Result, error) {
+		return importUnreported(ctx, st, blobs, archiveDir, path)
+	})
+}
+
+func importUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, path string) (Result, error) {
 	var res Result
 	res.Thread = ThreadName(path)
 
@@ -232,6 +238,7 @@ func storeAttachment(ctx context.Context, st *store.Store, blobs *blob.Store, op
 	media := openMedia(name)
 	if media == nil {
 		res.MissingMedia++
+		store.ImportIssue(ctx, fmt.Sprintf("Missing WhatsApp media %s in message %d", name, messageID))
 		return nil
 	}
 	sumHex, size, err := blobs.Put(media)

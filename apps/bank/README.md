@@ -114,3 +114,39 @@ LinkedIn conversations use the export's conversation ID. Run `bank reimport link
 `go test -race ./...` uses the development database from `DATABASE_URL`. Local tests skip database cases when no server is listening. Set `BANK_REQUIRE_DB=1` to require them. CI always requires the database and starts the same pinned ParadeDB image as Compose.
 
 The retrieval cases in `internal/store/search_quality_integration_test.go` check exact and fuzzy ranking, all-word matches across fields, phrase order, and attachment-only matches. Run them with `go test ./internal/store -run TestSearchRetrievalCases`.
+
+## Import reports, files, and branches
+
+The browser's **Imports** tab keeps every import attempt, including failures and
+unfinished runs. Reports record messages inserted, duplicates, newly preserved
+files counted by content hash, missing media, unsupported content, and parser
+diagnostics where the importer provides them. Unmeasured counters say
+"Not measured". Reports start with imports made after this update; earlier
+imports have no historical report. Reimporting creates a new report and keeps
+the previous one.
+
+```sh
+bank reports --json
+bank reports --before 42 --limit 50
+bank attachment find --filename invoice --type pdf --person alice --since 2025-01-01
+bank attachment messages <sha256> --offset 0 --limit 50
+```
+
+The **Files** tab searches filenames and filters by extension, MIME type or
+category such as `image`, contact name, and message date. The before-date filter
+is exclusive. Identical bytes share one library entry, even under different
+filenames. Selecting a file shows PDF/image previews, extracted document text
+when available, and every message containing those bytes. Message results include
+occurrences outside the selected filters. Original files remain downloadable.
+
+ChatGPT imports retain reply parents and branch identifiers. Alternative answers
+are labeled separately, and **Read branch to here** shows only the selected
+message's reply path. **View parent message** also works when the parent lies
+outside the loaded page. Claude and Claude Code imports retain explicit parent
+IDs when the export supplies them. `bank show`, `bank thread`, and their JSON
+output include the relationships.
+
+Reimport existing ChatGPT exports to fill in branch metadata. Reimporting keeps
+message IDs and existing bodies. A bare ChatGPT JSON export retains asset-only
+messages and reports their missing files; importing the full export later can
+restore those attachments.

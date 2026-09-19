@@ -79,6 +79,12 @@ var rolloutName = regexp.MustCompile(`([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 // ImportCodex ingests one rollout .jsonl or every .jsonl under a directory
 // (e.g. ~/.codex/sessions).
 func ImportCodex(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
+	return store.RunImport(ctx, st, "codex", path, func(ctx context.Context) (Result, error) {
+		return importCodexUnreported(ctx, st, archiveDir, path)
+	})
+}
+
+func importCodexUnreported(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
 	return importCodex(ctx, st, archiveDir, path, false)
 }
 
@@ -88,6 +94,12 @@ func ImportCodex(ctx context.Context, st *store.Store, archiveDir, path string) 
 // empty rollouts are never archived, so a sync still re-parses (and re-drops)
 // them each run.
 func SyncCodex(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
+	return store.RunImport(ctx, st, "codex", path, func(ctx context.Context) (Result, error) {
+		return syncCodexUnreported(ctx, st, archiveDir, path)
+	})
+}
+
+func syncCodexUnreported(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
 	return importCodex(ctx, st, archiveDir, path, true)
 }
 

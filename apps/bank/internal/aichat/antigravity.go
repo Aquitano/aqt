@@ -44,6 +44,12 @@ var agObjective = regexp.MustCompile(`# USER Objective:\s*\n(.+)`)
 // ImportAntigravity ingests one transcript file or every conversation under a
 // directory (e.g. ~/.gemini/antigravity-cli/brain).
 func ImportAntigravity(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
+	return store.RunImport(ctx, st, "antigravity", path, func(ctx context.Context) (Result, error) {
+		return importAntigravityUnreported(ctx, st, archiveDir, path)
+	})
+}
+
+func importAntigravityUnreported(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
 	return importAntigravity(ctx, st, archiveDir, path, false)
 }
 
@@ -51,6 +57,12 @@ func ImportAntigravity(ctx context.Context, st *store.Store, archiveDir, path st
 // whose exact bytes are already archived was fully ingested by an earlier run
 // (archiving happens after ingest) and is skipped without being parsed.
 func SyncAntigravity(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
+	return store.RunImport(ctx, st, "antigravity", path, func(ctx context.Context) (Result, error) {
+		return syncAntigravityUnreported(ctx, st, archiveDir, path)
+	})
+}
+
+func syncAntigravityUnreported(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
 	return importAntigravity(ctx, st, archiveDir, path, true)
 }
 

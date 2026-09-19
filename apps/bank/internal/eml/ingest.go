@@ -198,6 +198,12 @@ func (r *Result) record(out IngestResult) {
 // ImportEmlPath ingests a single .eml file, or every .eml under a directory
 // (the layout proton-mail-export produces).
 func ImportEmlPath(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string) (Result, error) {
+	return store.RunImport(ctx, st, "eml", path, func(ctx context.Context) (Result, error) {
+		return importEmlPathUnreported(ctx, st, blobs, archiveDir, source, path)
+	})
+}
+
+func importEmlPathUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string) (Result, error) {
 	var res Result
 	if err := archive.ValidSource(source); err != nil {
 		return res, err
@@ -241,6 +247,12 @@ func ImportEmlPath(ctx context.Context, st *store.Store, blobs *blob.Store, arch
 
 // ImportMbox ingests a Gmail Takeout style .mbox file.
 func ImportMbox(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string) (Result, error) {
+	return store.RunImport(ctx, st, "mbox", path, func(ctx context.Context) (Result, error) {
+		return importMboxUnreported(ctx, st, blobs, archiveDir, source, path)
+	})
+}
+
+func importMboxUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string) (Result, error) {
 	var res Result
 	if err := archive.ValidSource(source); err != nil {
 		return res, err

@@ -36,18 +36,21 @@ type Message struct {
 	// archive is rebuilt from its raw inputs, so a note citing "bank:<id>"
 	// silently comes to mean another message; Ref does not move. Computed in
 	// SQL (see refSQL), never stored.
-	Ref        string    `json:"ref,omitempty"`
-	Source     string    `json:"source"`
-	ExternalID string    `json:"external_id,omitempty"`
-	MessageID  string    `json:"message_id,omitempty"` // RFC 822 Message-ID for mail sources
-	ThreadID   string    `json:"thread_id,omitempty"`
-	Sender     string    `json:"sender"`
-	Recipients []string  `json:"recipients,omitempty"`
-	Subject    string    `json:"subject,omitempty"`
-	Body       string    `json:"body"`
-	SentAt     time.Time `json:"sent_at"`
-	RawRef     string    `json:"raw_ref,omitempty"`
-	Score      float64   `json:"score,omitempty"`
+	Ref              string    `json:"ref,omitempty"`
+	Source           string    `json:"source"`
+	ExternalID       string    `json:"external_id,omitempty"`
+	MessageID        string    `json:"message_id,omitempty"` // RFC 822 Message-ID for mail sources
+	ParentExternalID string    `json:"parent_external_id,omitempty"`
+	BranchID         string    `json:"branch_id,omitempty"`
+	AlternativeIndex int       `json:"alternative_index,omitempty"`
+	ThreadID         string    `json:"thread_id,omitempty"`
+	Sender           string    `json:"sender"`
+	Recipients       []string  `json:"recipients,omitempty"`
+	Subject          string    `json:"subject,omitempty"`
+	Body             string    `json:"body"`
+	SentAt           time.Time `json:"sent_at"`
+	RawRef           string    `json:"raw_ref,omitempty"`
+	Score            float64   `json:"score,omitempty"`
 	// Snippet is a bounded window of the body around the match, plain text so
 	// it is safe to print anywhere. Empty when nothing matched in the body.
 	Snippet string `json:"snippet,omitempty"`
@@ -77,19 +80,25 @@ type InsertMessagesOpts struct {
 const messageBatchSize = 1000
 
 const insertMessageSQL = `
-	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref)
-	values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref, parent_external_id, branch_id, alternative_index)
+	values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	on conflict do nothing
 	returning id`
 
 const rethreadMessageSQL = `
-	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref)
-	values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref, parent_external_id, branch_id, alternative_index)
+	values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	on conflict (source, external_id) do update
-		set thread_id = excluded.thread_id, subject = excluded.subject, sent_at = excluded.sent_at
+		set thread_id = excluded.thread_id, subject = excluded.subject, sent_at = excluded.sent_at,
+            parent_external_id = coalesce(nullif(excluded.parent_external_id, ''), messages.parent_external_id),
+            branch_id = coalesce(nullif(excluded.branch_id, ''), messages.branch_id),
+            alternative_index = case when excluded.alternative_index > 0 then excluded.alternative_index else messages.alternative_index end
 		where messages.thread_id is distinct from excluded.thread_id
 		   or messages.subject is distinct from excluded.subject
 		   or messages.sent_at is distinct from excluded.sent_at
+		   or (excluded.parent_external_id <> '' and messages.parent_external_id is distinct from excluded.parent_external_id)
+		   or (excluded.branch_id <> '' and messages.branch_id is distinct from excluded.branch_id)
+		   or (excluded.alternative_index > 0 and messages.alternative_index is distinct from excluded.alternative_index)
 	returning id, xmax = 0`
 
 type Attachment struct {
@@ -251,6 +260,9 @@ func (s *Store) InsertMessages(ctx context.Context, messages []Message, o Insert
 			return nil, err
 		}
 		ids[0] = id
+		if id != 0 {
+			countImported(ctx, 1, "")
+		}
 		return ids, nil
 	}
 
@@ -288,6 +300,11 @@ func (s *Store) InsertMessages(ctx context.Context, messages []Message, o Insert
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
+	for _, id := range ids {
+		if id != 0 {
+			countImported(ctx, 1, "")
+		}
+	}
 	return ids, nil
 }
 
@@ -300,7 +317,7 @@ func (s *Store) insertMessageRow(ctx context.Context, m Message, o InsertMessage
 }
 
 func messageArgs(m Message) []any {
-	return []any{m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef}
+	return []any{m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef, m.ParentExternalID, m.BranchID, m.AlternativeIndex}
 }
 
 func scanMessageInsert(row pgx.Row, o InsertMessagesOpts) (int64, error) {
@@ -372,6 +389,8 @@ func (m Message) clean() (Message, error) {
 	m.Subject = cleanText(m.Subject)
 	m.Body = cleanText(m.Body)
 	m.ThreadID = cleanText(m.ThreadID)
+	m.ParentExternalID = cleanText(m.ParentExternalID)
+	m.BranchID = cleanText(m.BranchID)
 	for i, r := range m.Recipients {
 		m.Recipients[i] = cleanText(r)
 	}
@@ -503,6 +522,9 @@ func (s *Store) InsertAttachment(ctx context.Context, a Attachment) error {
 		insert into attachments (message_id, filename, mime_type, size_bytes, sha256)
 		values ($1, $2, $3, $4, $5)`,
 		a.MessageID, cleanText(a.Filename), cleanText(a.MimeType), a.SizeBytes, a.SHA256)
+	if err == nil {
+		countImported(ctx, 0, a.SHA256)
+	}
 	return err
 }
 
@@ -572,11 +594,11 @@ func (s *Store) GetMessageDetailByRef(ctx context.Context, ref string) (MessageD
 // messageColumns is the full row every single-message read returns, with the
 // ref computed alongside it.
 var messageColumns = `m.id, ` + refSQL("m") + `, m.source, m.external_id, m.message_id, m.thread_id,
-	m.sender, m.recipients, m.subject, m.body, m.sent_at, m.raw_ref`
+	m.sender, m.recipients, m.subject, m.body, m.sent_at, m.raw_ref, m.parent_external_id, m.branch_id, m.alternative_index`
 
 func (m *Message) scanFull(row pgx.Row) error {
 	return row.Scan(&m.ID, &m.Ref, &m.Source, &m.ExternalID, &m.MessageID, &m.ThreadID,
-		&m.Sender, &m.Recipients, &m.Subject, &m.Body, &m.SentAt, &m.RawRef)
+		&m.Sender, &m.Recipients, &m.Subject, &m.Body, &m.SentAt, &m.RawRef, &m.ParentExternalID, &m.BranchID, &m.AlternativeIndex)
 }
 
 func (s *Store) GetMessage(ctx context.Context, id int64) (Message, []Attachment, error) {
