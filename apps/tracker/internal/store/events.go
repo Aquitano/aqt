@@ -63,9 +63,10 @@ type EventResult struct {
 
 // An idle end is dated to the last input, a full detection interval before
 // the client noticed, and the heartbeats sent meanwhile have already pushed
-// ended_at past it; every other reason only ever moves ended_at forward.
+// ended_at past it. Once ended, a span's timestamps are final, even on replay.
 const spanEndedAtSQL = `ended_at = case
-	when end_reason is null and ? = 'idle' then greatest(started_at, ?::timestamptz)
+	when end_reason is not null then ended_at
+	when ? = 'idle' then greatest(started_at, ?::timestamptz)
 	else greatest(ended_at, ?::timestamptz) end`
 
 func newEventResult() EventResult {
@@ -121,7 +122,8 @@ func (s *Store) ApplyEvents(ctx context.Context, deviceID uuid.UUID, ev Events) 
 		}
 		for _, hb := range ev.Heartbeats {
 			r, err := tx.NewUpdate().Model((*ActivitySpan)(nil)).
-				Set("ended_at = greatest(ended_at, ?)", hb.At).Where("id = ?", hb.ID).Exec(ctx)
+				Set("ended_at = case when end_reason is null then greatest(ended_at, ?) else ended_at end", hb.At).
+				Where("id = ?", hb.ID).Exec(ctx)
 			if err != nil {
 				return err
 			}

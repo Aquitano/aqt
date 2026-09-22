@@ -59,12 +59,12 @@ apps/tracker/
 
 | What          | Value                                          |
 | ------------- | ---------------------------------------------- |
-| Postgres      | `127.0.0.1:5434`, db `tracker`, user `tracker` |
+| Postgres      | `127.0.0.1:5435`, db `tracker`, user `tracker` |
 | tracker serve | `127.0.0.1:8490`                               |
 | Prometheus    | `127.0.0.1:9091`                               |
 | Grafana       | `127.0.0.1:3090`                               |
 
-Env: `TRACKER_DATABASE_URL` (default `postgres://tracker:tracker@127.0.0.1:5434/tracker?sslmode=disable`), `TRACKER_LISTEN` (default `127.0.0.1:8490`), `TRACKER_WORKERS` (default 3), `TRACKER_LOG_LEVEL`. For authentication and the CLI: `TRACKER_SERVER_URL`, `TRACKER_OIDC_ISSUER`, `TRACKER_OIDC_AUDIENCE`, `TRACKER_OIDC_CLIENT_ID`, `TRACKER_TOKEN_PATH`.
+Env: `TRACKER_DATABASE_URL` (default `postgres://tracker:tracker@127.0.0.1:5435/tracker?sslmode=disable`), `TRACKER_LISTEN` (default `127.0.0.1:8490`), `TRACKER_WORKERS` (default 3), `TRACKER_LOG_LEVEL`. For authentication and the CLI: `TRACKER_SERVER_URL`, `TRACKER_OIDC_ISSUER`, `TRACKER_OIDC_AUDIENCE`, `TRACKER_OIDC_CLIENT_ID`, `TRACKER_TOKEN_PATH`.
 
 ## Schema
 

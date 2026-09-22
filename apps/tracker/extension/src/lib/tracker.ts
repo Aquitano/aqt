@@ -188,6 +188,10 @@ export async function flushEvents(): Promise<void> {
     return;
   }
   await removeRows("events", ids);
+  if (result.value.dropped > 0) {
+    await countDropped(result.value.dropped);
+    await diag(`server dropped ${result.value.dropped} events`);
+  }
   await updateSync({ lastSyncAt: now() });
   if (batch.length === FLUSH_BATCH) return flushEvents();
 }
@@ -513,6 +517,9 @@ export async function captureTab(tabId: number, reason: CaptureReason): Promise<
   if (!state || !pageView) return failure("no page view for this tab");
   if (pageView.event.private) return failure("private host");
   const settings = await loadSettings();
+  const pageURL = URL.parse(pageView.event.url);
+  if (!pageURL) return failure("invalid page URL");
+  if (isPrivateHost(pageURL.hostname, settings.privateHosts)) return failure("private host");
   if (!settings.captureEnabled) return failure("capture is disabled in options");
   if (!(await syncStore.get())?.connected) return failure("server unreachable, capture paused");
   const rule = ruleFor(await cachedRules(), pageView.event.url);
@@ -520,6 +527,15 @@ export async function captureTab(tabId: number, reason: CaptureReason): Promise<
   const page = await requestHtml(tabId);
   if (!page.ok) return page;
   const { html, title, url, dirty } = page.value;
+  const capturedURL = URL.parse(url);
+  const latestSettings = await loadSettings();
+  if (!latestSettings.captureEnabled) return failure("capture is disabled in options");
+  if (capturedURL && isPrivateHost(capturedURL.hostname, latestSettings.privateHosts)) {
+    return failure("private host");
+  }
+  if (!capturedURL || isNewPageView(pageView.event.url, url, rule)) {
+    return failure("page changed during capture");
+  }
   if (reason === "recapture" && !dirty) return failure("page unchanged since last capture");
   const bytes = new Blob([html]).size;
   if (bytes > rule.max_bytes) {

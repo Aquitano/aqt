@@ -47,7 +47,7 @@ stats and search read the server over HTTP, so they work against a tracker on
 another machine; serve, migrate and reprocess need the database itself.
 
 Environment:
-  TRACKER_DATABASE_URL   default postgres://tracker:tracker@127.0.0.1:5434/tracker?sslmode=disable
+  TRACKER_DATABASE_URL   default postgres://tracker:tracker@127.0.0.1:5435/tracker?sslmode=disable
   TRACKER_LISTEN         default 127.0.0.1:8490
   TRACKER_WORKERS        default 3
   TRACKER_LOG_LEVEL      debug | info | warn | error (default info)
@@ -100,7 +100,7 @@ func env(name, def string) string {
 }
 
 func databaseURL() string {
-	return env("TRACKER_DATABASE_URL", "postgres://tracker:tracker@127.0.0.1:5434/tracker?sslmode=disable")
+	return env("TRACKER_DATABASE_URL", "postgres://tracker:tracker@127.0.0.1:5435/tracker?sslmode=disable")
 }
 
 func logger() *slog.Logger {

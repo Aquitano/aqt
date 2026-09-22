@@ -175,3 +175,26 @@ func withoutPlayerResponse(t *testing.T, raw []byte) []byte {
 		out = append(bytes.Clone(out[:start]), out[marker+end+len("</script>"):]...)
 	}
 }
+
+func TestExtractCurrentWatchDOMAfterNavigation(t *testing.T) {
+	raw := []byte(`<script>var ytInitialPlayerResponse={"videoDetails":{"videoId":"previous","title":"Old title","author":"Old channel"}};</script>
+ <meta itemprop="identifier" content="previous"><meta itemprop="name" content="Old title">
+ <h1>Unrelated heading</h1><ytd-watch-flexy video-id="dQw4w9WgXcQ"></ytd-watch-flexy>
+ <ytd-watch-metadata video-id="dQw4w9WgXcQ"><h1><span>Extension badge</span><yt-formatted-string>Current title</yt-formatted-string></h1>
+ <ytd-video-owner-renderer><div id="channel-name"><a>Current channel</a></div></ytd-video-owner-renderer>
+ <div id="description-inline-expander"><div id="expanded">Current description</div><span id="snippet-text">Duplicate snippet</span></div>
+ </ytd-watch-metadata></ytd-watch-flexy>`)
+	_, data := extractRaw(t, raw)
+	if data.Title != "Current title" || data.Channel != "Current channel" || data.Description != "Current description" {
+		t.Fatalf("current watch data = %+v", data)
+	}
+	for _, invalid := range []string{
+		strings.ReplaceAll(string(raw), `video-id="dQw4w9WgXcQ"`, `video-id="previous"`),
+		strings.ReplaceAll(string(raw), "<yt-formatted-string>Current title</yt-formatted-string>", ""),
+	} {
+		u, _ := url.Parse(watchURL)
+		if _, err := (Extractor{}).Extract(context.Background(), []byte(invalid), u); !errors.Is(err, extractor.ErrStale) {
+			t.Fatalf("invalid watch DOM error = %v, want stale", err)
+		}
+	}
+}

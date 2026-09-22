@@ -23,7 +23,7 @@ export type StoreName = "events" | "captures";
 // A signed-out extension keeps enqueueing: 401 is retryable, so nothing evicts
 // on failure, and the article fallback means every page is a capture. Captures
 // carry whole documents, which is why they are bounded far lower than events.
-const CAPACITY: Record<StoreName, number> = { events: 10_000, captures: 200 };
+const CAPACITY = { events: 10_000, captures: 200 } satisfies Record<StoreName, number>;
 
 let connection: Promise<IDBDatabase> | undefined;
 
@@ -93,16 +93,11 @@ async function rows<t>(name: StoreName, schema: Type<t>): Promise<Type<t>["infer
   });
 }
 
-function due<R extends { id: string; next_attempt_at: string }>(list: R[], limit: number): R[] {
-  const now = new Date().toISOString();
-  return list
-    .filter((row) => row.next_attempt_at <= now)
-    .toSorted((a, b) => a.id.localeCompare(b.id))
-    .slice(0, limit);
-}
-
 export async function dueEvents(limit: number): Promise<EventRow[]> {
-  return due(await rows("events", EventRow), limit);
+  const now = new Date().toISOString();
+  const ordered = (await rows("events", EventRow)).toSorted((a, b) => a.id.localeCompare(b.id));
+  const blocked = ordered.findIndex((row) => row.next_attempt_at > now);
+  return ordered.slice(0, blocked < 0 ? limit : Math.min(blocked, limit));
 }
 
 /// A cursor rather than `getAll`, because the caller only ever uploads the head

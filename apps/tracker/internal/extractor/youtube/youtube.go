@@ -36,7 +36,7 @@ func init() { extractor.Register(Extractor{}) }
 func (Extractor) Rule() extractor.Rule {
 	return extractor.Rule{
 		Extractor: Name,
-		Version:   2,
+		Version:   3,
 		Hosts:     []string{"www.youtube.com", "youtube.com"},
 		PathRegex: `^/watch$`,
 		QueryKeys: []string{"v"},
@@ -61,10 +61,8 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 	}, nil
 }
 
-// currentVideo prefers the player response and falls back to the microdata,
-// skipping either when it describes a video other than the one the URL
-// names: YouTube navigates in place and leaves the previous page's script in
-// the DOM.
+// YouTube navigation can leave the previous video in scripts and microdata.
+// Read the live watch metadata only beneath the requested video identity.
 func currentVideo(doc *html.Node, videoID string) (Data, error) {
 	err := extractor.ErrNoMatch
 	for _, read := range []func(*html.Node) (Data, bool){playerData, microdata} {
@@ -77,7 +75,60 @@ func currentVideo(doc *html.Node, videoID string) (Data, error) {
 			err = extractor.ErrStale
 		}
 	}
+	if data, ok := watchData(doc, videoID); ok {
+		return data, nil
+	}
 	return Data{}, err
+}
+
+func watchData(doc *html.Node, videoID string) (Data, bool) {
+	if videoID == "" {
+		return Data{}, false
+	}
+	watch := findNode(doc, func(n *html.Node) bool {
+		return n.Data == "ytd-watch-flexy" && attr(n, "video-id") == videoID
+	})
+	metadata := findNode(doc, func(n *html.Node) bool {
+		return n.Data == "ytd-watch-metadata" && attr(n, "video-id") == videoID
+	})
+	if metadata == nil {
+		metadata = findNode(watch, func(n *html.Node) bool {
+			return n.Data == "ytd-watch-metadata" && (attr(n, "video-id") == "" || attr(n, "video-id") == videoID)
+		})
+	}
+	heading := findNode(metadata, func(n *html.Node) bool { return n.Data == "h1" })
+	title := nodeText(findNode(heading, func(n *html.Node) bool { return n.Data == "yt-formatted-string" }))
+	if title == "" {
+		return Data{}, false
+	}
+	owner := findNode(metadata, func(n *html.Node) bool { return n.Data == "ytd-video-owner-renderer" })
+	channel := nodeText(findNode(findNode(owner, byAttr("id", "channel-name")), func(n *html.Node) bool {
+		return n.Data == "a"
+	}))
+	description := findNode(metadata, byAttr("id", "description-inline-expander"))
+	text := nodeText(findNode(description, byAttr("id", "expanded")))
+	if text == "" {
+		text = nodeText(findNode(description, byAttr("id", "snippet-text")))
+	}
+	return Data{VideoID: videoID, Title: title, Channel: channel, Description: text, Keywords: []string{}}, true
+}
+
+func nodeText(n *html.Node) string {
+	var text strings.Builder
+	var visit func(*html.Node)
+	visit = func(n *html.Node) {
+		if n == nil || n.Data == "script" || n.Data == "style" || n.Data == "template" {
+			return
+		}
+		if n.Type == html.TextNode {
+			text.WriteString(n.Data)
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			visit(c)
+		}
+	}
+	visit(n)
+	return strings.TrimSpace(text.String())
 }
 
 type playerResponse struct {

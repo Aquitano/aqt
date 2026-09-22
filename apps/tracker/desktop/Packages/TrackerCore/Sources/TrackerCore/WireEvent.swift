@@ -32,7 +32,7 @@ package enum WireEvent: Sendable, Equatable {
     case spanEnd(SpanEnd)
 }
 
-extension WireEvent: Encodable {
+extension WireEvent: Codable {
     private enum Key: String, CodingKey {
         case type
         case id
@@ -43,6 +43,33 @@ extension WireEvent: Encodable {
         case at
         case endedAt = "ended_at"
         case reason
+    }
+
+    package init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: Key.self)
+        let id = try container.decode(String.self, forKey: .id)
+        switch try container.decode(String.self, forKey: .type) {
+        case "span_start":
+            self = .spanStart(SpanStart(
+                id: id,
+                startedAt: try container.decode(Date.self, forKey: .startedAt),
+                appName: try container.decode(String.self, forKey: .appName),
+                bundleID: try container.decode(String.self, forKey: .bundleID),
+                windowTitle: try container.decodeIfPresent(String.self, forKey: .windowTitle)
+            ))
+        case "span_heartbeat":
+            self = .spanHeartbeat(SpanHeartbeat(id: id, at: try container.decode(Date.self, forKey: .at)))
+        case "span_end":
+            let rawReason = try container.decode(String.self, forKey: .reason)
+            guard let reason = EndReason(rawValue: rawReason) else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .reason, in: container, debugDescription: "Unknown end reason"
+                )
+            }
+            self = .spanEnd(SpanEnd(id: id, endedAt: try container.decode(Date.self, forKey: .endedAt), reason: reason))
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Unknown event type")
+        }
     }
 
     package func encode(to encoder: any Encoder) throws {

@@ -10,6 +10,7 @@ import { authTokensStore, loadSettings } from "./storage.ts";
 // that dies on the way.
 const EXPIRY_SKEW_MS = 60_000;
 const FALLBACK_LIFETIME_S = 300;
+const REQUEST_TIMEOUT_MS = 15_000;
 
 // "off" is an issuer that was never configured, which is what loopback runs
 // on; "out" means an issuer is configured and there is no usable token.
@@ -38,7 +39,10 @@ async function authorizationServer(issuer: string): Promise<oauth.AuthorizationS
   const url = new URL(issuer);
   return oauth.processDiscoveryResponse(
     url,
-    await oauth.discoveryRequest(url, { algorithm: "oidc" }),
+    await oauth.discoveryRequest(url, {
+      algorithm: "oidc",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    }),
   );
 }
 
@@ -94,6 +98,7 @@ export async function signIn(): Promise<Result<undefined>> {
       params,
       redirect,
       codeVerifier,
+      { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
     );
     await persist(
       await oauth.processAuthorizationCodeResponse(as, { client_id: client.clientId }, response),
@@ -127,6 +132,7 @@ export async function refresh(): Promise<Result<string | undefined>> {
         { client_id: client.clientId },
         oauth.None(),
         tokens.refreshToken,
+        { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
       ),
     );
     await persist(response, tokens.refreshToken);

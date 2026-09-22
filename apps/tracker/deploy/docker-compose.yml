@@ -14,7 +14,7 @@ services:
       POSTGRES_PASSWORD: tracker
       POSTGRES_DB: tracker
     ports:
-      - "127.0.0.1:5434:5432"
+      - "127.0.0.1:5435:5432"
     volumes:
       # Postgres 18+ images want the mount at /var/lib/postgresql (not .../data)
       - tracker-pgdata:/var/lib/postgresql

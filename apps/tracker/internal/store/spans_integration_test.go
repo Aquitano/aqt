@@ -99,6 +99,25 @@ func TestWorkBlocksSplitOnGapsOverMaxGap(t *testing.T) {
 	}
 }
 
+func TestIdleBatchReplayPreservesEndedAt(t *testing.T) {
+	st, schema := storetest.NewNamed(t)
+	device, id := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	start := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+	events := store.Events{
+		SpanStarts: []store.SpanStartEvent{{ID: id, AppName: "Code", StartedAt: start}},
+		Heartbeats: []store.SpanHeartbeatEvent{{ID: id, At: start.Add(45 * time.Second)}},
+		SpanEnds:   []store.SpanEndEvent{{ID: id, EndedAt: start.Add(5 * time.Second), Reason: "idle"}},
+	}
+	apply(t, st, device, events)
+	apply(t, st, device, events)
+	apply(t, st, device, store.Events{Heartbeats: []store.SpanHeartbeatEvent{{ID: id, At: start.Add(time.Minute)}}})
+	seconds := storetest.QueryInt(t, schema, `select extract(epoch from ended_at - started_at)::bigint
+		from activity_spans where id = $1`, id)
+	if seconds != 5 {
+		t.Fatalf("active seconds after replay and late heartbeat: %d, want 5", seconds)
+	}
+}
+
 func TestCategorizedSpansMatchAppsAndHosts(t *testing.T) {
 	st, schema := storetest.NewNamed(t)
 	device := uuid.Must(uuid.NewV7())
@@ -117,5 +136,42 @@ func TestCategorizedSpansMatchAppsAndHosts(t *testing.T) {
 		  and (host = 'www.youtube.com' or app_name = 'Code')`, browser, desktop)
 	if matched != 2 {
 		t.Fatalf("categorized spans matching their rules: %d, want 2", matched)
+	}
+}
+
+func TestCategoryCoverageSeeds(t *testing.T) {
+	st, schema := storetest.NewNamed(t)
+	device := uuid.Must(uuid.NewV7())
+	start := time.Now().UTC()
+	cases := []struct{ app, host, category string }{
+		{app: "\u200eWhatsApp", category: "Communication"},
+		{app: "ChatGPT", category: "AI"},
+		{app: "Brave Browser Nightly", category: "Browsing"},
+		{app: "Docker Desktop", category: "Focus/Code"},
+		{app: "Finder", category: "System"},
+		{app: "Affinity", category: "Design"},
+		{host: "www.perplexity.ai", category: "AI"},
+		{host: "www.google.com", category: "Browsing"},
+		{host: "www.amazon.de", category: "Personal"},
+		{host: "www.overleaf.com", category: "Learning"},
+		{host: "www.disneyplus.com", category: "Distraction"},
+		{host: "dash.cloudflare.com", category: "Focus/Code"},
+		{host: "developer.apple.com", category: "Learning"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.app+tc.host, func(t *testing.T) {
+			id := uuid.Must(uuid.NewV7())
+			event := store.SpanStartEvent{ID: id, AppName: tc.app, StartedAt: start}
+			events := store.Events{}
+			if tc.host != "" {
+				event.PageViewID = uuid.Must(uuid.NewV7())
+				events.PageViews = []store.PageViewEvent{{ID: event.PageViewID, URL: urlKey(t, "https://"+tc.host), StartedAt: start, NavigationType: "load"}}
+			}
+			events.SpanStarts = []store.SpanStartEvent{event}
+			apply(t, st, device, events)
+			if got := storetest.QueryInt(t, schema, `select count(*) from categorized_spans where id = $1 and category = $2`, id, tc.category); got != 1 {
+				t.Fatalf("expected category %q", tc.category)
+			}
+		})
 	}
 }

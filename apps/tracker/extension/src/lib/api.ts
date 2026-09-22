@@ -11,6 +11,7 @@ export type { Result } from "./result.ts";
 const HealthReply = type({ ok: "boolean", db: "boolean" });
 const BatchReply = type({ accepted: "number", dropped: "number" });
 const CaptureReply = type({ capture_id: "string", raw_hash: "string", deduplicated: "boolean" });
+const REQUEST_TIMEOUT_MS = 15_000;
 
 // healthz is the one route the server leaves open, so it answers even when
 // this extension is signed out. That is what tells "server down" apart from
@@ -38,14 +39,20 @@ async function call<T extends Type>(
   }
   let response: Response;
   try {
-    response = await fetch(url, authorized(init, token));
+    response = await fetch(url, {
+      ...authorized(init, token),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
     if (response.status === 401 && authorize === "required") {
       const renewed = await refresh();
       if (!renewed.ok) return renewed;
       if (renewed.value === token) {
         return { ok: false, error: `${url}: HTTP 401`, status: response.status };
       }
-      response = await fetch(url, authorized(init, renewed.value));
+      response = await fetch(url, {
+        ...authorized(init, renewed.value),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
     }
   } catch (error) {
     return { ok: false, error: `${url}: ${errorMessage(error)}` };
