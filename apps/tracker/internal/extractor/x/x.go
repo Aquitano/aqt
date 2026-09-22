@@ -22,16 +22,23 @@ func init() { extractor.Register(Extractor{}) }
 
 type Extractor struct{}
 
+type Image struct {
+	URL     string `json:"url"`
+	AltText string `json:"alt_text"`
+}
+
 type Data struct {
-	StatusID        string `json:"status_id"`
-	AuthorHandle    string `json:"author_handle"`
-	AuthorName      string `json:"author_name"`
-	Text            string `json:"text"`
-	PostedAt        string `json:"posted_at"`
-	ReplyToStatusID string `json:"reply_to_status_id,omitempty"`
-	QuotedStatusID  string `json:"quoted_status_id,omitempty"`
-	MediaCount      int    `json:"media_count"`
-	Lang            string `json:"lang,omitempty"`
+	PostURL         string  `json:"post_url"`
+	Images          []Image `json:"images"`
+	StatusID        string  `json:"status_id"`
+	AuthorHandle    string  `json:"author_handle"`
+	AuthorName      string  `json:"author_name"`
+	Text            string  `json:"text"`
+	PostedAt        string  `json:"posted_at"`
+	ReplyToStatusID string  `json:"reply_to_status_id,omitempty"`
+	QuotedStatusID  string  `json:"quoted_status_id,omitempty"`
+	MediaCount      int     `json:"media_count"`
+	Lang            string  `json:"lang,omitempty"`
 }
 
 const titleRunes = 80
@@ -39,7 +46,7 @@ const titleRunes = 80
 func (Extractor) Rule() extractor.Rule {
 	return extractor.Rule{
 		Extractor: Name,
-		Version:   1,
+		Version:   2,
 		Hosts:     []string{"x.com", "twitter.com", "mobile.x.com"},
 		PathRegex: `^/[^/]+/status/\d+`,
 		Recapture: extractor.RecaptureAfterQuiet,
@@ -64,7 +71,8 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 
 	quote := find(focal, nil, isQuoteCard)
 	body := find(focal, quote, func(n *html.Node) bool { return testID(n, "tweetText") })
-	if body == nil {
+	images := postImages(focal, quote)
+	if body == nil && len(images) == 0 {
 		return extractor.Record{}, extractor.ErrNoMatch
 	}
 
@@ -72,7 +80,10 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 	if handle == "" {
 		handle, _ = linkStatus(pageURL.Path)
 	}
+	postURL := "https://x.com/" + handle + "/status/" + statusID
 	data := Data{
+		PostURL:         postURL,
+		Images:          images,
 		StatusID:        statusID,
 		AuthorHandle:    handle,
 		AuthorName:      name,
@@ -84,24 +95,60 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 		Lang:            attr(body, "lang"),
 	}
 
-	title := "@" + data.AuthorHandle + ": " + firstRunes(collapse(data.Text), titleRunes)
+	search := []string{data.AuthorHandle, data.AuthorName, data.Text}
+	titleText := data.Text
+	for _, image := range images {
+		if alt := strings.TrimSpace(image.AltText); alt != "" && !strings.EqualFold(alt, "Image") {
+			search = append(search, alt)
+			if titleText == "" {
+				titleText = alt
+			}
+		}
+	}
+	if titleText == "" {
+		titleText = "Photo post"
+	}
+	title := "@" + data.AuthorHandle + ": " + firstRunes(collapse(titleText), titleRunes)
 	return extractor.Record{
-		CanonicalURL: "https://x.com/" + data.AuthorHandle + "/status/" + data.StatusID,
+		CanonicalURL: postURL,
 		Title:        title,
-		SearchText:   strings.TrimSpace(data.AuthorHandle + "\n" + data.AuthorName + "\n" + data.Text),
+		SearchText:   strings.TrimSpace(strings.Join(search, "\n")),
 		Data:         data,
 	}, nil
 }
 
+func postImages(focal, quote *html.Node) []Image {
+	images := []Image{}
+	seen := map[string]bool{}
+	for _, photo := range findAll(focal, quote, func(n *html.Node) bool { return testID(n, "tweetPhoto") }) {
+		for _, img := range findAll(photo, nil, func(n *html.Node) bool { return isElem(n, "img") }) {
+			src := attr(img, "src")
+			u, err := url.Parse(src)
+			if err != nil || u.Scheme != "https" || u.Host != "pbs.twimg.com" || !strings.HasPrefix(u.Path, "/media/") || seen[src] {
+				continue
+			}
+			seen[src] = true
+			images = append(images, Image{URL: src, AltText: attr(img, "alt")})
+		}
+	}
+	return images
+}
+
 func focalArticle(articles []*html.Node, statusID string) (focal *html.Node, before []*html.Node) {
 	for i, a := range articles {
-		if find(a, nil, func(n *html.Node) bool {
+		quote := find(a, nil, isQuoteCard)
+		link := find(a, quote, func(n *html.Node) bool {
 			if !isElem(n, "a") {
 				return false
 			}
 			_, id := linkStatus(attr(n, "href"))
 			return id == statusID
-		}) != nil {
+		})
+		if link == nil {
+			continue
+		}
+		hasText := find(a, quote, func(n *html.Node) bool { return testID(n, "tweetText") }) != nil
+		if hasText || len(postImages(a, quote)) > 0 {
 			return a, articles[:i]
 		}
 	}
@@ -109,14 +156,15 @@ func focalArticle(articles []*html.Node, statusID string) (focal *html.Node, bef
 }
 
 // isQuoteCard matches the embedded tweet X renders inside a status: a
-// role="link" box carrying its own timestamp and text.
+// role="link" box carrying its own timestamp and text or media.
 func isQuoteCard(n *html.Node) bool {
 	if n.Type != html.ElementNode || attr(n, "role") != "link" {
 		return false
 	}
 	hasTime := find(n, nil, func(c *html.Node) bool { return isElem(c, "time") }) != nil
 	hasText := find(n, nil, func(c *html.Node) bool { return testID(c, "tweetText") }) != nil
-	return hasTime && hasText
+	hasMedia := find(n, nil, isMedia) != nil
+	return hasTime && (hasText || hasMedia)
 }
 
 func isMedia(n *html.Node) bool {

@@ -25,6 +25,9 @@ func linkStatus(href string) (handle, id string) {
 }
 
 func attr(n *html.Node, key string) string {
+	if n == nil {
+		return ""
+	}
 	for _, a := range n.Attr {
 		if a.Key == key {
 			return a.Val

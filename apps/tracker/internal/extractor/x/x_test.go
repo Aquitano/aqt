@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
@@ -33,6 +35,8 @@ func TestPlainStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Data{
+		PostURL:      "https://x.com/dexhorthy/status/1965203819281002523",
+		Images:       []Image{{URL: "https://pbs.twimg.com/media/Gabc123.jpg", AltText: "Image"}},
 		StatusID:     "1965203819281002523",
 		AuthorHandle: "dexhorthy",
 		AuthorName:   "Dex 🛠 Horthy",
@@ -41,7 +45,7 @@ func TestPlainStatus(t *testing.T) {
 		MediaCount:   1,
 		Lang:         "en",
 	}
-	if got := rec.Data.(Data); got != want {
+	if got := rec.Data.(Data); !reflect.DeepEqual(got, want) {
 		t.Errorf("data\ngot  %+v\nwant %+v", got, want)
 	}
 	if rec.CanonicalURL != "https://x.com/dexhorthy/status/1965203819281002523" {
@@ -61,6 +65,8 @@ func TestReplyWithQuote(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Data{
+		PostURL:         "https://x.com/dexhorthy/status/1965203819281002524",
+		Images:          []Image{},
 		StatusID:        "1965203819281002524",
 		AuthorHandle:    "dexhorthy",
 		AuthorName:      "Dex Horthy",
@@ -71,7 +77,7 @@ func TestReplyWithQuote(t *testing.T) {
 		MediaCount:      1,
 		Lang:            "de",
 	}
-	if got := rec.Data.(Data); got != want {
+	if got := rec.Data.(Data); !reflect.DeepEqual(got, want) {
 		t.Errorf("data\ngot  %+v\nwant %+v", got, want)
 	}
 }
@@ -104,5 +110,47 @@ func TestRuleMatches(t *testing.T) {
 		if _, ok := extractor.MatchRule(rules, u); ok != c.want {
 			t.Errorf("MatchRule(%s) = %v, want %v", c.url, ok, c.want)
 		}
+	}
+}
+
+func TestPhotoOnlyPostUsesPopulatedCopyAndKeepsImageMetadata(t *testing.T) {
+	raw := []byte(`<article data-testid="tweet">
+ <a href="/someone/status/99"><time datetime="2026-09-22T08:00:00Z"></time></a>
+ <div role="link"><a href="/author/status/123"><time></time></a>
+ <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/quoted.jpg" alt="Quoted image"></div></div>
+ </article>
+ <article data-testid="tweet"><a href="/author/status/123"><time></time></a></article>
+ <article data-testid="tweet">
+ <div data-testid="User-Name"><a href="/author">Author</a><a href="/author">@author</a></div>
+ <a href="/author/status/123">September 22</a>
+ <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/photo?format=jpg&amp;name=medium" alt="A blue house"></div>
+ <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/second.jpg" alt=""></div>
+ <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/second.jpg" alt=""></div>
+ <div data-testid="tweetPhoto"><img src="data:image/png;base64,abc" alt="Placeholder"></div>
+ <div role="link"><a href="/quoted/status/456"><time></time></a>
+ <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/quoted.jpg" alt="Quoted image"></div></div>
+ </article>`)
+	u, _ := url.Parse("https://x.com/author/status/123/photo/1")
+	rec, err := (Extractor{}).Extract(context.Background(), raw, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := rec.Data.(Data)
+	want := []Image{
+		{URL: "https://pbs.twimg.com/media/photo?format=jpg&name=medium", AltText: "A blue house"},
+		{URL: "https://pbs.twimg.com/media/second.jpg", AltText: ""},
+	}
+	if !reflect.DeepEqual(data.Images, want) || data.Text != "" || data.PostURL != "https://x.com/author/status/123" || rec.CanonicalURL != data.PostURL {
+		t.Fatalf("photo-only data = %+v", data)
+	}
+	if rec.Title != "@author: A blue house" || !strings.Contains(rec.SearchText, "A blue house") || strings.Contains(rec.SearchText, "Quoted image") {
+		t.Fatalf("title = %q, search text = %q", rec.Title, rec.SearchText)
+	}
+	rec, err = (Extractor{}).Extract(context.Background(), []byte(strings.ReplaceAll(string(raw), "A blue house", "Image")), u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Title != "@author: Photo post" {
+		t.Fatalf("title without descriptive alt text = %q", rec.Title)
 	}
 }
