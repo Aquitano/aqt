@@ -13,7 +13,7 @@ Load the extension unpacked in `chrome://extensions` (developer mode) from `exte
 
 Before browsing with it, list your private hosts on the extension's options page: webmail, banking, health portals, anything whose pages you would not want kept forever. The list is empty by default, and the `article` fallback snapshots any page you stay on for 30 seconds.
 
-Grafana is at <http://127.0.0.1:3090> — anonymous admin, dashboard `tracker`, both datasources provisioned.
+Grafana is at <http://127.0.0.1:3090> — anonymous admin, dashboard `tracker`, both datasources provisioned. The per-day panels bucket by the database's time zone, UTC unless set: `docker compose -f deploy/docker-compose.yml exec db psql -U tracker -d tracker -c "alter database tracker set timezone to 'Europe/London'"` with your zone, then `docker compose -f deploy/docker-compose.yml restart grafana` so its pooled connections pick it up.
 
 ## Always on
 
