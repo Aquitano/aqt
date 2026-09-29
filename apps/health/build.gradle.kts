@@ -13,11 +13,11 @@ val kotlin_logging_version: String by project
 val konsist_version: String by project
 
 plugins {
-    kotlin("jvm") version "2.3.0"
-    id("io.ktor.plugin") version "3.5.0"
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.0"
+    kotlin("jvm") version "2.3.21"
+    id("io.ktor.plugin") version "3.6.0"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.21"
 
-    id("com.github.ben-manes.versions") version "0.54.0"
+    id("com.github.ben-manes.versions") version "0.64.0"
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
 }
 
@@ -80,7 +80,7 @@ dependencies {
     implementation("org.flywaydb:flyway-core:$flyway_version")
     implementation("org.flywaydb:flyway-database-postgresql:$flyway_version")
 
-    implementation("com.google.cloud:google-cloud-health:0.1.0")
+    implementation("com.google.cloud:google-cloud-health:0.7.0")
 
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("io.ktor:ktor-client-mock")
