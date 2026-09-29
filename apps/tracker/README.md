@@ -63,7 +63,7 @@ mise run tracker:desktop:build        # rebuild only
 mise run tracker:desktop:service:stop # stop it and remove the agent
 ```
 
-[deploy/com.aqt.tracker-agent.plist](deploy/com.aqt.tracker-agent.plist) is copied to `~/Library/LaunchAgents` and runs `~/Applications/TrackerAgent.app`. Put `TRACKER_*` overrides in its `EnvironmentVariables` and re-run `tracker:desktop:service`.
+[deploy/com.aqt.tracker-agent.plist](deploy/com.aqt.tracker-agent.plist) is copied to `~/Library/LaunchAgents` and runs `~/Applications/TrackerAgent.app`. Put `TRACKER_*` overrides in its `EnvironmentVariables` and re-run `tracker:desktop:service`. launchd restarts the agent after a crash but not after Quit, so Quit pauses tracking until the next login.
 
 Window titles need Accessibility. Grant it in System Settings > Privacy & Security > Accessibility for `~/Applications/TrackerAgent.app`, the copy launchd runs, not the one in `DerivedData`; the menu has an item that opens that pane. Without the grant the agent records app-level spans with no title and re-checks every 30 seconds, so granting takes effect without a restart. The app is ad-hoc signed, so its identity changes on every rebuild and macOS may drop the grant: if titles stop appearing after `tracker:desktop:service`, remove the entry from the Accessibility list and add it again.
 
@@ -155,6 +155,6 @@ Every top-level navigation and SPA URL change as a page view, active time as spa
 
 With the desktop agent installed, the frontmost app, its bundle id and its window title are recorded as spans in the same table while the machine is not idle. Spans map to categories (`Focus/Code`, `Communication`, `Distraction`, `Learning`, `AI`, `Browsing`, `Personal`, `Design`, `System`, `Productivity`) through regex rules in the `category_rules` table, which you edit in SQL; the Grafana dashboard shows minutes per category and per app, context switches per hour and the day's work blocks (spans stitched together while the gap stays under 60 s), all computed from SQL views over the spans.
 
-Never recorded: anything from an incognito tab, and the title or HTML of a host on the private list — those page views keep the host and nothing else. Window titles are capped at 512 characters and nothing beyond the title is read from a desktop app. Capture pauses entirely while the server is unreachable.
+Never recorded: anything from an incognito tab, and the title or HTML of a host on the private list — those page views keep the host and nothing else. Window titles are capped at 512 characters and nothing beyond the title is read from a desktop app. The desktop agent cannot tell a private browser window from any other, so a browser outside the extension's reach (Safari, Firefox) has its window titles recorded, private windows included, unless its bundle id is on `TRACKER_PRIVATE_BUNDLE_IDS`. Capture pauses entirely while the server is unreachable.
 
 Config via env, see [.env.example](.env.example).

@@ -94,6 +94,16 @@ struct SpanTrackerTests {
         #expect(tracker.openSpan?.target == editor)
     }
 
+    @Test func anIgnoredBundleIDsWindowTitleNeverReachesTheSpanUnderneath() {
+        var tracker = makeTracker()
+        _ = tracker.apply(.frontmost(editor, windowTitle: "main.go"), at: .now)
+        _ = tracker.apply(.frontmost(dock, windowTitle: nil), at: .now)
+
+        #expect(tracker.apply(.windowTitle("Dock"), at: .now).isEmpty)
+        #expect(tracker.apply(.frontmost(editor, windowTitle: "main.go"), at: .now).isEmpty)
+        #expect(tracker.openSpan?.windowTitle == "main.go")
+    }
+
     @Test func aDirectionalityMarkIsTrimmedFromTheAppName() {
         #expect(FocusTarget(bundleID: "net.whatsapp.WhatsApp", appName: "\u{200E}WhatsApp").appName == "WhatsApp")
     }
