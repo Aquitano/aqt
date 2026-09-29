@@ -32,8 +32,11 @@ func Normalize(raw string) (normalized, host string, err error) {
 		port = ""
 	}
 	u.Host = host
+	if strings.Contains(host, ":") {
+		u.Host = "[" + host + "]"
+	}
 	if port != "" {
-		u.Host = host + ":" + port
+		u.Host += ":" + port
 	}
 	u.User = nil
 	u.Fragment = ""
@@ -41,13 +44,17 @@ func Normalize(raw string) (normalized, host string, err error) {
 	if u.Path == "" {
 		u.Path = "/"
 	}
-	q := u.Query()
-	for k := range q {
-		if strippedKeys[k] || strings.HasPrefix(k, "utm_") {
-			delete(q, k)
+	// A query ParseQuery rejects, one with a ';' or a stray '%', is kept as
+	// sent: its parsed form has already lost the segments that failed, and
+	// two different pages would share one row.
+	if q, err := url.ParseQuery(u.RawQuery); err == nil {
+		for k := range q {
+			if strippedKeys[k] || strings.HasPrefix(k, "utm_") {
+				delete(q, k)
+			}
 		}
+		u.RawQuery = q.Encode()
 	}
-	u.RawQuery = q.Encode()
 	u.ForceQuery = false
 	return u.String(), host, nil
 }
