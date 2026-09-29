@@ -1,6 +1,6 @@
-import { cancel, isCancel, log, spinner } from "@clack/prompts";
+import { cancel, isCancel, log, spinner, type CANCEL_SYMBOL } from "@clack/prompts";
 
-export function unwrap<T>(value: T | symbol): T {
+export function unwrap<T>(value: T | typeof CANCEL_SYMBOL): T {
   if (isCancel(value)) {
     cancel("Operation cancelled.");
     process.exit(0);
