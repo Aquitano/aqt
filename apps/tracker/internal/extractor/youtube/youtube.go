@@ -25,7 +25,6 @@ type Data struct {
 	DurationSeconds int      `json:"duration_seconds"`
 	Published       string   `json:"published"`
 	Description     string   `json:"description"`
-	ViewCount       int64    `json:"view_count"`
 	Keywords        []string `json:"keywords"`
 }
 
@@ -36,8 +35,10 @@ func init() { extractor.Register(Extractor{}) }
 func (Extractor) Rule() extractor.Rule {
 	return extractor.Rule{
 		Extractor: Name,
-		Version:   3,
-		Hosts:     []string{"www.youtube.com", "youtube.com"},
+		Version:   4,
+		// Every subdomain, so studio and music pages never fall through to
+		// the article fallback.
+		Hosts:     []string{"youtube.com", "*.youtube.com"},
 		PathRegex: `^/watch$`,
 		QueryKeys: []string{"v"},
 	}
@@ -139,7 +140,6 @@ type playerResponse struct {
 		ChannelID        string   `json:"channelId"`
 		LengthSeconds    string   `json:"lengthSeconds"`
 		ShortDescription string   `json:"shortDescription"`
-		ViewCount        string   `json:"viewCount"`
 		Keywords         []string `json:"keywords"`
 	} `json:"videoDetails"`
 	Microformat struct {
@@ -171,7 +171,6 @@ func playerData(doc *html.Node) (Data, bool) {
 		return Data{}, false
 	}
 	length, _ := strconv.Atoi(details.LengthSeconds)
-	views, _ := strconv.ParseInt(details.ViewCount, 10, 64)
 	keywords := details.Keywords
 	if keywords == nil {
 		keywords = []string{}
@@ -184,7 +183,6 @@ func playerData(doc *html.Node) (Data, bool) {
 		DurationSeconds: length,
 		Published:       isoDate(pr.Microformat.PlayerMicroformatRenderer.PublishDate),
 		Description:     details.ShortDescription,
-		ViewCount:       views,
 		Keywords:        keywords,
 	}, true
 }
@@ -244,7 +242,6 @@ func microdata(doc *html.Node) (Data, bool) {
 	if keywords := itemprop(doc, "keywords"); keywords != "" {
 		d.Keywords = strings.Split(keywords, ",")
 	}
-	d.ViewCount = interactionCount(doc, "https://schema.org/WatchAction")
 	return d, true
 }
 
@@ -256,15 +253,6 @@ func itemprop(root *html.Node, name string) string {
 		return ""
 	}
 	return attr(n, "content")
-}
-
-func interactionCount(doc *html.Node, interactionType string) int64 {
-	stat := findNode(doc, func(n *html.Node) bool {
-		return attr(n, "itemprop") == "interactionStatistic" &&
-			itemprop(n, "interactionType") == interactionType
-	})
-	count, _ := strconv.ParseInt(itemprop(stat, "userInteractionCount"), 10, 64)
-	return count
 }
 
 var durationRe = regexp.MustCompile(`^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$`)

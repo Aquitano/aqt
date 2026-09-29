@@ -46,8 +46,10 @@ const titleRunes = 80
 func (Extractor) Rule() extractor.Rule {
 	return extractor.Rule{
 		Extractor: Name,
-		Version:   2,
-		Hosts:     []string{"x.com", "twitter.com", "mobile.x.com"},
+		Version:   3,
+		// Every subdomain, so X Pro's columns of notifications and messages
+		// never fall through to the article fallback.
+		Hosts:     []string{"x.com", "*.x.com", "twitter.com", "*.twitter.com"},
 		PathRegex: `^/[^/]+/status/\d+`,
 		Recapture: extractor.RecaptureAfterQuiet,
 	}
@@ -122,9 +124,19 @@ func postImages(focal, quote *html.Node) []Image {
 	seen := map[string]bool{}
 	for _, photo := range findAll(focal, quote, func(n *html.Node) bool { return testID(n, "tweetPhoto") }) {
 		for _, img := range findAll(photo, nil, func(n *html.Node) bool { return isElem(n, "img") }) {
-			src := attr(img, "src")
-			u, err := url.Parse(src)
-			if err != nil || u.Scheme != "https" || u.Host != "pbs.twimg.com" || !strings.HasPrefix(u.Path, "/media/") || seen[src] {
+			u, err := url.Parse(attr(img, "src"))
+			if err != nil || u.Scheme != "https" || u.Host != "pbs.twimg.com" || !strings.HasPrefix(u.Path, "/media/") {
+				continue
+			}
+			// X picks name=small|medium|large from the rendered size, so the
+			// same post seen on two screens would hash as two records.
+			q := url.Values{"name": {"orig"}}
+			if format := u.Query().Get("format"); format != "" {
+				q.Set("format", format)
+			}
+			u.RawQuery = q.Encode()
+			src := u.String()
+			if seen[src] {
 				continue
 			}
 			seen[src] = true

@@ -21,10 +21,13 @@ type Rule struct {
 	Version   int      `json:"version"`
 	Hosts     []string `json:"hosts"`
 	PathRegex string   `json:"path_regex"`
-	QueryKeys []string `json:"query_keys"`
-	DwellMS   int      `json:"dwell_ms"`
-	Recapture string   `json:"recapture"`
-	MaxBytes  int      `json:"max_bytes"`
+	// ExcludePathRegex carves pages out of PathRegex, since RE2 has no
+	// lookahead to say "any two segments but these".
+	ExcludePathRegex string   `json:"exclude_path_regex"`
+	QueryKeys        []string `json:"query_keys"`
+	DwellMS          int      `json:"dwell_ms"`
+	Recapture        string   `json:"recapture"`
+	MaxBytes         int      `json:"max_bytes"`
 }
 
 type Record struct {
@@ -67,6 +70,9 @@ func Register(e Extractor) {
 	}
 	if _, err := regexp.Compile(r.PathRegex); err != nil {
 		panic(fmt.Sprintf("extractor %s: path_regex: %v", r.Extractor, err))
+	}
+	if _, err := regexp.Compile(r.ExcludePathRegex); err != nil {
+		panic(fmt.Sprintf("extractor %s: exclude_path_regex: %v", r.Extractor, err))
 	}
 	mu.Lock()
 	defer mu.Unlock()
@@ -147,6 +153,12 @@ func (r Rule) matchesHost(u *url.URL) bool {
 }
 
 func (r Rule) matchesPath(u *url.URL) bool {
+	if r.ExcludePathRegex != "" {
+		re, err := regexp.Compile(r.ExcludePathRegex)
+		if err != nil || re.MatchString(u.Path) {
+			return false
+		}
+	}
 	if r.PathRegex == "" {
 		return true
 	}

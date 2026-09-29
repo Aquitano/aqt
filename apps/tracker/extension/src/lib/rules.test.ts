@@ -84,6 +84,20 @@ describe("matchRule", () => {
     expect(matchRule([article, ...rules], url)?.extractor).toBe("github");
   });
 
+  test("an excluded path is not captured, and not handed to the wildcard either", () => {
+    const repos = rule({
+      path_regex: "^/[^/]+/[^/]+/?$",
+      exclude_path_regex: "^/(settings|login)(/|$)",
+    });
+    const article = rule({ extractor: "article", hosts: ["*"], path_regex: "" });
+    expect(matchRule([repos, article], new URL("https://github.com/wxt-dev/wxt"))?.extractor).toBe(
+      "github",
+    );
+    expect(
+      matchRule([repos, article], new URL("https://github.com/settings/tokens")),
+    ).toBeUndefined();
+  });
+
   test("an invalid regex never matches", () => {
     expect(
       matchRule([rule({ path_regex: "(" })], new URL("https://github.com/a/b")),

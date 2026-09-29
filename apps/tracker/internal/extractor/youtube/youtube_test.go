@@ -63,9 +63,6 @@ func TestExtractWatchPage(t *testing.T) {
 	if data.Published != "2009-10-24" {
 		t.Errorf("published = %q", data.Published)
 	}
-	if data.ViewCount < 1_000_000_000 {
-		t.Errorf("view count = %d", data.ViewCount)
-	}
 	if !strings.HasPrefix(data.Description, "The official video for") {
 		t.Errorf("description = %q", data.Description)
 	}
@@ -102,9 +99,6 @@ func TestExtractFallsBackToMicrodata(t *testing.T) {
 	if data.Published != "2009-10-24" {
 		t.Errorf("published = %q", data.Published)
 	}
-	if data.ViewCount < 1_000_000_000 {
-		t.Errorf("view count = %d", data.ViewCount)
-	}
 	if len(data.Keywords) == 0 || data.Keywords[0] != "rick astley" {
 		t.Errorf("keywords = %v", data.Keywords)
 	}
@@ -133,7 +127,8 @@ func TestMatchRule(t *testing.T) {
 		"https://www.youtube.com/watch?v=dQw4w9WgXcQ": true,
 		"https://youtube.com/watch?v=dQw4w9WgXcQ":     true,
 		"https://www.youtube.com/watch":               true,
-		"https://m.youtube.com/watch?v=x":             false,
+		"https://m.youtube.com/watch?v=x":             true,
+		"https://studio.youtube.com/channel/x":        false,
 		"https://www.youtube.com/watch/x":             false,
 		"https://www.youtube.com/@RickAstleyYT":       false,
 		"https://example.com/watch?v=x":               false,

@@ -36,7 +36,7 @@ func TestPlainStatus(t *testing.T) {
 	}
 	want := Data{
 		PostURL:      "https://x.com/dexhorthy/status/1965203819281002523",
-		Images:       []Image{{URL: "https://pbs.twimg.com/media/Gabc123.jpg", AltText: "Image"}},
+		Images:       []Image{{URL: "https://pbs.twimg.com/media/Gabc123.jpg?name=orig", AltText: "Image"}},
 		StatusID:     "1965203819281002523",
 		AuthorHandle: "dexhorthy",
 		AuthorName:   "Dex 🛠 Horthy",
@@ -124,8 +124,8 @@ func TestPhotoOnlyPostUsesPopulatedCopyAndKeepsImageMetadata(t *testing.T) {
  <div data-testid="User-Name"><a href="/author">Author</a><a href="/author">@author</a></div>
  <a href="/author/status/123">September 22</a>
  <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/photo?format=jpg&amp;name=medium" alt="A blue house"></div>
- <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/second.jpg" alt=""></div>
- <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/second.jpg" alt=""></div>
+ <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/second.jpg?name=small" alt=""></div>
+ <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/second.jpg?name=large" alt=""></div>
  <div data-testid="tweetPhoto"><img src="data:image/png;base64,abc" alt="Placeholder"></div>
  <div role="link"><a href="/quoted/status/456"><time></time></a>
  <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/quoted.jpg" alt="Quoted image"></div></div>
@@ -137,8 +137,8 @@ func TestPhotoOnlyPostUsesPopulatedCopyAndKeepsImageMetadata(t *testing.T) {
 	}
 	data := rec.Data.(Data)
 	want := []Image{
-		{URL: "https://pbs.twimg.com/media/photo?format=jpg&name=medium", AltText: "A blue house"},
-		{URL: "https://pbs.twimg.com/media/second.jpg", AltText: ""},
+		{URL: "https://pbs.twimg.com/media/photo?format=jpg&name=orig", AltText: "A blue house"},
+		{URL: "https://pbs.twimg.com/media/second.jpg?name=orig", AltText: ""},
 	}
 	if !reflect.DeepEqual(data.Images, want) || data.Text != "" || data.PostURL != "https://x.com/author/status/123" || rec.CanonicalURL != data.PostURL {
 		t.Fatalf("photo-only data = %+v", data)

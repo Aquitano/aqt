@@ -220,14 +220,15 @@ Then, outside any transaction: fetch blob, decompress, run the extractor with a 
 
 ```go
 type Rule struct {
-    Extractor string   // package name, unique
-    Version   int
-    Hosts     []string // exact, "*.example.com", or "*" for every host
-    PathRegex string   // RE2 and JS compatible; keep it simple
-    QueryKeys []string // query params that distinguish page views (e.g. "v" on YouTube)
-    DwellMS   int      // default 5000; article uses 30000
-    Recapture string   // "never" | "after_quiet"
-    MaxBytes  int      // default 10 MiB
+    Extractor        string   // package name, unique
+    Version          int
+    Hosts            []string // exact, "*.example.com", or "*" for every host
+    PathRegex        string   // RE2 and JS compatible; keep it simple
+    ExcludePathRegex string   // pages PathRegex matches that are never captured; RE2 has no lookahead
+    QueryKeys        []string // query params that distinguish page views (e.g. "v" on YouTube)
+    DwellMS          int      // default 5000; article uses 30000
+    Recapture        string   // "never" | "after_quiet"
+    MaxBytes         int      // default 10 MiB
 }
 
 type Record struct {
@@ -257,7 +258,7 @@ With an issuer configured, every route below except `/healthz` and `/metrics` ne
 
 `GET /metrics` → Prometheus text. Never authenticated.
 
-`GET /v1/capture-rules` → `{"rules":[Rule…]}` with JSON keys `extractor, version, hosts, path_regex, query_keys, dwell_ms, recapture, max_bytes`.
+`GET /v1/capture-rules` → `{"rules":[Rule…]}` with JSON keys `extractor, version, hosts, path_regex, exclude_path_regex, query_keys, dwell_ms, recapture, max_bytes`.
 
 `POST /v1/events/batch`
 
