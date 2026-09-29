@@ -1,4 +1,5 @@
-# ParadeDB (Postgres + pg_search) plus the stack the dashboards are read from.
+# ParadeDB (Postgres + pg_search), its daily backup, and the stack the
+# dashboards are read from.
 # Laptop-local development: every port is bound to 127.0.0.1, nothing is exposed.
 #
 # `tracker serve` is not in here. It runs natively on the host, so Prometheus
@@ -8,7 +9,10 @@ name: tracker
 
 services:
   db:
-    image: paradedb/paradedb:latest
+    # Pinned: the data directory is named after the Postgres major, so a
+    # floating tag that moves to the next major starts on an empty database.
+    # After a bump, run `alter extension pg_search update` (see README).
+    image: &paradedb paradedb/paradedb:0.25.10-pg18@sha256:188591a0bc317beb2c6d6d3f9ef0cb3e859d09ecc15a71dda5e9a027876686cf
     environment:
       POSTGRES_USER: tracker
       POSTGRES_PASSWORD: tracker
@@ -23,6 +27,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+    restart: unless-stopped
+
+  # A daily pg_dump onto the host, where Time Machine can version it. The db
+  # image, so pg_dump always matches the server it dumps.
+  backup:
+    image: *paradedb
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    environment:
+      PGPASSWORD: tracker
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - ${TRACKER_BACKUP_DIR:-${HOME}/Library/Application Support/tracker/backups}:/backups
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   prometheus:

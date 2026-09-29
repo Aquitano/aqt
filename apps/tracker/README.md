@@ -5,11 +5,13 @@ Browsing memory: a Chromium extension records page views and active time and sna
 ## Quickstart
 
 ```sh
-docker compose -f deploy/docker-compose.yml up -d   # ParadeDB, Prometheus, Grafana
+docker compose -f deploy/docker-compose.yml up -d   # ParadeDB, daily backups, Prometheus, Grafana
 go run ./cmd/tracker serve                          # migrates on startup
 ```
 
-Load the extension unpacked in `chrome://extensions` (developer mode) from `extension/.output/chrome-mv3`, built with `bun run --filter @aqt/tracker-extension dev`.
+Load the extension unpacked in `chrome://extensions` (developer mode) from `extension/.output/chrome-mv3`, built with `bun run --filter @aqt/tracker-extension build`. Keep it unpacked: Chromium honours the 5 s capture timers only for unpacked extensions. `dev` is for working on the extension; it writes to `chrome-mv3-dev` and opens a browser profile of its own.
+
+Before browsing with it, list your private hosts on the extension's options page: webmail, banking, health portals, anything whose pages you would not want kept forever. The list is empty by default, and the `article` fallback snapshots any page you stay on for 30 seconds.
 
 Grafana is at <http://127.0.0.1:3090> — anonymous admin, dashboard `tracker`, both datasources provisioned.
 
@@ -26,7 +28,29 @@ mise run tracker:service:stop # stop it and remove the agent
 
 [deploy/com.aqt.tracker.plist](deploy/com.aqt.tracker.plist) is copied to `~/Library/LaunchAgents` and runs `~/.local/bin/tracker`; the tasks use `launchctl bootstrap`/`bootout`, which replace the deprecated `load`/`unload`. Put `TRACKER_*` overrides in its `EnvironmentVariables` and re-run `tracker:service`.
 
-Nothing here starts Postgres. Turn on Docker Desktop's _Start Docker Desktop when you sign in_, and the compose stack comes back with it (`restart: unless-stopped` on all three). Until it does, `serve` exits and launchd retries every 30 s; no data is lost meanwhile, the extension queues its events and pauses capture while the server is unreachable.
+Nothing here starts Postgres. Turn on Docker Desktop's _Start Docker Desktop when you sign in_, and the compose stack comes back with it (`restart: unless-stopped` on every service). Until it does, `serve` exits and launchd retries every 30 s; no data is lost meanwhile, the extension queues its events and pauses capture while the server is unreachable.
+
+## Backups
+
+The compose `backup` service writes a `pg_dump` once a day to `~/Library/Application Support/tracker/backups` (`TRACKER_BACKUP_DIR` overrides it) and keeps the newest three. That directory is only on this disk: Time Machine, or anything else that copies it off the machine, is what makes it a backup. `docker compose -f deploy/docker-compose.yml logs backup` shows each run.
+
+To restore, stop the server, replace the database with a dump, start it again:
+
+```sh
+mise run tracker:service:stop
+docker compose -f deploy/docker-compose.yml exec -T db \
+  pg_restore -U tracker -d tracker --clean --if-exists < "$HOME/Library/Application Support/tracker/backups/tracker-<stamp>.dump"
+mise run tracker:service
+```
+
+## Upgrading ParadeDB
+
+The image is pinned by version and digest in [deploy/docker-compose.yml](deploy/docker-compose.yml). Stay on the `-pg18` line: the data directory is named after the Postgres major, so another major starts on an empty one and needs a dump and restore. After changing the pin:
+
+```sh
+docker compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/docker-compose.yml exec db psql -U tracker -d tracker -c 'alter extension pg_search update'
+```
 
 ## Desktop agent
 
@@ -88,7 +112,7 @@ on another machine; `serve`, `migrate` and `reprocess` need the database.
 | Prometheus      | `127.0.0.1:9091`                    |
 | Grafana         | `127.0.0.1:3090`                    |
 
-Everything is loopback-only and unauthenticated by default; requests carrying an `Origin` that is not `chrome-extension://…` are rejected.
+Everything is loopback-only and unauthenticated by default; requests carrying an `Origin` that is not `chrome-extension://…` are rejected, and while authentication is off, so is every request but `/healthz` and `/metrics` whose `Host` is not `127.0.0.1`, `localhost` or `[::1]`. That second check stops a DNS-rebinding page, which is same-origin with the server and sends no `Origin` on a GET.
 
 ## Authentication
 

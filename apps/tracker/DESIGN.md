@@ -46,7 +46,8 @@ apps/tracker/
   extension/              WXT extension (@aqt/tracker-extension)
   desktop/                Swift menu-bar agent (TrackerAgent.app): frontmost app and window spans
   deploy/
-    docker-compose.yml    ParadeDB, Prometheus, Grafana
+    docker-compose.yml    ParadeDB, backup, Prometheus, Grafana
+    backup.sh             daily pg_dump loop the backup service runs
     com.aqt.tracker.plist launchd agent for `serve`
     com.aqt.tracker-agent.plist
                           launchd agent for TrackerAgent.app
@@ -248,7 +249,7 @@ Registry: `extractor.All()` returns every registered extractor; both the rules e
 
 ## HTTP API
 
-All routes on `127.0.0.1:8490`. JSON bodies, `Content-Type: application/json`. A request with an `Origin` header that does not start with `chrome-extension://` gets 403. CORS headers allow `chrome-extension://*` and the `Authorization` header.
+All routes on `127.0.0.1:8490`. JSON bodies, `Content-Type: application/json`. A request with an `Origin` header that does not start with `chrome-extension://` gets 403. While no issuer is configured, a request to any route but `/healthz` and `/metrics` whose `Host` is not loopback (`127.0.0.1`, `localhost`, `[::1]`) gets 403 too: a DNS-rebound page is same-origin and sends no `Origin` on a GET. CORS headers allow `chrome-extension://*` and the `Authorization` header.
 
 With an issuer configured, every route below except `/healthz` and `/metrics` needs `Authorization: Bearer <jwt>` and answers 401 without one. 401 is never treated as permanent by a client: the fix is a login, not dropping the data.
 
