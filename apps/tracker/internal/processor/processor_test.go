@@ -142,6 +142,46 @@ func TestReprocessAllRebuildsDerivedTablesFromSource(t *testing.T) {
 	}
 }
 
+func TestReprocessAfterAVersionBumpReplacesTheOldRecords(t *testing.T) {
+	p, st, schema := newProcessor(t)
+	ingest(t, st, "https://example.com/bun", pageHTML)
+	drain(t, p)
+	// Pretend the record came from an older version whose output differed.
+	storetest.QueryInt(t, schema, `with old as (
+		update derivations set extractor_version = $1 returning 1),
+		changed as (update records set record_hash = '\x00', data = '{"old": true}' returning 1)
+		select (select count(*) from old) + (select count(*) from changed)`, fakeVersion-1)
+
+	queued, err := st.Reprocess(context.Background(), store.ReprocessOpts{
+		Targets: []store.ExtractorVersion{{Name: fake.Name, Version: fakeVersion}}})
+	if err != nil || queued != 1 {
+		t.Fatalf("reprocess queued %d (%v), want 1", queued, err)
+	}
+	drain(t, p)
+	if n := storetest.QueryInt(t, schema, `select count(*) from records`); n != 1 {
+		t.Errorf("%d records after the rollout, want the new one only", n)
+	}
+	if n := storetest.QueryInt(t, schema, `select count(*) from derivations where extractor_version <> $1`, fakeVersion); n != 0 {
+		t.Errorf("%d derivations of the old version survived", n)
+	}
+}
+
+func TestAJobWhoseWorkerKeepsDyingIsFailedNotReclaimed(t *testing.T) {
+	p, st, schema := newProcessor(t)
+	ingest(t, st, "https://example.com/bun", pageHTML)
+	storetest.QueryInt(t, schema, `with quiet as (
+		update derivations set status = 'running', claimed_at = now() - interval '1 hour', attempts = $1
+		returning 1) select count(*) from quiet`, store.MaxAttempts)
+
+	if n := drain(t, p); n != 0 {
+		t.Errorf("claimed %d jobs, want none", n)
+	}
+	if n := storetest.QueryInt(t, schema,
+		`select count(*) from derivations where status = 'failed' and error_class = $1`, store.ClassAbandoned); n != 1 {
+		t.Errorf("the abandoned job was not failed (%d rows)", n)
+	}
+}
+
 func TestFailuresAreClassifiedAndRetriedByPolicy(t *testing.T) {
 	p, st, schema := newProcessor(t)
 	ingest(t, st, "https://example.com/empty", `<html><body>no title here</body></html>`)

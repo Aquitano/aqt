@@ -69,7 +69,7 @@ func (s *Store) migrate(ctx context.Context) error {
 	defer func() {
 		_, _ = conn.ExecContext(context.WithoutCancel(ctx), `select pg_advisory_unlock(?)`, migrationLock)
 	}()
-	m := migrate.NewMigrator(s.db, migrations)
+	m := migrate.NewMigrator(s.db, migrations, migrate.WithMarkAppliedOnSuccess(true))
 	if err := m.Init(ctx); err != nil {
 		return err
 	}

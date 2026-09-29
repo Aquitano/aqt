@@ -32,6 +32,7 @@ const (
 	ClassParse        = "parse"
 	ClassNoMatch      = "no_match"
 	ClassStale        = "stale"
+	ClassStore        = "store"
 	ClassTimeout      = "timeout"
 	ClassTooLarge     = "too_large"
 	ClassUnregistered = "unregistered"
@@ -109,7 +110,10 @@ func (p *Processor) RunOnce(ctx context.Context) (busy bool, err error) {
 	}
 	res, err := p.store.CompleteDerivation(writeCtx, d.Key(), rec, elapsed)
 	if err != nil {
-		return true, err
+		retry := d.Attempts < store.MaxAttempts
+		p.metrics.Derivations.WithLabelValues(d.Extractor, ClassStore).Inc()
+		log.Warn("derivation failed", "class", ClassStore, "retry", retry, "err", err)
+		return true, errors.Join(err, p.store.FailDerivation(writeCtx, d.Key(), store.Failure{Error: err.Error(), Class: ClassStore, Retry: retry}))
 	}
 	p.metrics.Derivations.WithLabelValues(d.Extractor, ResultDone).Inc()
 	p.metrics.Records.WithLabelValues(d.Extractor, fmt.Sprint(res.Deduplicated)).Inc()
@@ -206,7 +210,12 @@ func classify(err error) *failure {
 		return &failure{err: err, class: ClassNoMatch, permanent: true}
 	case errors.Is(err, extractor.ErrStale):
 		return &failure{err: err, class: ClassStale, permanent: true}
-	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+	// Extractors cannot be interrupted, so a timed-out run keeps its goroutine
+	// until it finishes. A retry would start another copy of work that already
+	// took too long.
+	case errors.Is(err, context.DeadlineExceeded):
+		return &failure{err: err, class: ClassTimeout, permanent: true}
+	case errors.Is(err, context.Canceled):
 		return &failure{err: err, class: ClassTimeout}
 	case errors.As(err, &p):
 		return &failure{err: err, class: ClassPanic}

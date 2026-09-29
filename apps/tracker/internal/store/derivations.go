@@ -12,6 +12,7 @@ import (
 const (
 	MaxAttempts     = 5
 	staleRunningAge = "2 minutes"
+	ClassAbandoned  = "abandoned"
 )
 
 type DerivationKey struct {
@@ -21,15 +22,21 @@ type DerivationKey struct {
 }
 
 // ClaimDerivation takes the oldest pending job, or a running one whose worker
-// went quiet, and marks it running under this worker. ok is false when the
-// queue is empty.
+// went quiet, and marks it running under this worker. A quiet job that has
+// used up its attempts is failed as abandoned instead: whatever keeps killing
+// its worker would kill the next one too. ok is false when the queue is empty.
 func (s *Store) ClaimDerivation(ctx context.Context) (d Derivation, ok bool, err error) {
-	err = s.db.NewRaw(`update derivations set status = 'running', claimed_at = now(), attempts = attempts + 1, updated_at = now()
+	err = s.db.NewRaw(`with abandoned as (
+			update derivations set status = 'failed', error_class = ?, updated_at = now(),
+				last_error = 'claimed ' || attempts || ' times without finishing'
+			where status = 'running' and claimed_at < now() - interval '`+staleRunningAge+`' and attempts >= ?
+		)
+		update derivations set status = 'running', claimed_at = now(), attempts = attempts + 1, updated_at = now()
 		where (raw_hash, extractor, extractor_version) in (
 			select raw_hash, extractor, extractor_version from derivations
-			where status = 'pending' or (status = 'running' and claimed_at < now() - interval '`+staleRunningAge+`')
+			where status = 'pending' or (status = 'running' and claimed_at < now() - interval '`+staleRunningAge+`' and attempts < ?)
 			order by created_at limit 1 for update skip locked)
-		returning *`).Scan(ctx, &d)
+		returning *`, ClassAbandoned, MaxAttempts, MaxAttempts).Scan(ctx, &d)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Derivation{}, false, nil
 	}
@@ -158,7 +165,9 @@ type ReprocessOpts struct {
 // Reprocess re-queues work. All wipes the derived rows of the targets and
 // rebuilds the queue from captures alone; Failed resets failed jobs; otherwise
 // every captured blob is queued under the target's current version, which is
-// how a version bump is rolled out. Returns the number of queued jobs.
+// how a version bump is rolled out, and the older versions' jobs and the
+// records only they produced go, so search never shows a page twice. Returns
+// the number of queued jobs.
 func (s *Store) Reprocess(ctx context.Context, o ReprocessOpts) (int64, error) {
 	var queued int64
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -186,6 +195,16 @@ func (s *Store) Reprocess(ctx context.Context, o ReprocessOpts) (int64, error) {
 			return nil
 		}
 		for _, t := range o.Targets {
+			if !o.All {
+				if _, err := tx.NewDelete().Model((*Derivation)(nil)).
+					Where("extractor = ? and extractor_version <> ?", t.Name, t.Version).Exec(ctx); err != nil {
+					return err
+				}
+				if _, err := tx.NewRaw(`delete from records r where r.extractor = ?
+					and not exists (select 1 from derivations d where d.record_id = r.id)`, t.Name).Exec(ctx); err != nil {
+					return err
+				}
+			}
 			r, err := tx.NewRaw(`insert into derivations (raw_hash, extractor, extractor_version)
 				select distinct raw_hash, extractor, ? from captures where extractor = ?
 				on conflict do nothing`, t.Version, t.Name).Exec(ctx)
