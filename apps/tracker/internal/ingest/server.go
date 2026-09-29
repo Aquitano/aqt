@@ -1,13 +1,14 @@
 // Package ingest is the HTTP side: events and captures in from the
 // extension, rules and search out. The Origin check keeps a web page from
 // posting here; a bearer token is required as well once an OIDC issuer is
-// configured, and on loopback there is usually neither issuer nor need.
+// configured, and without one only loopback Host headers are served.
 package ingest
 
 import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -61,8 +62,17 @@ func (s *Server) Handler() http.Handler {
 // /metrics stay open on purpose: Prometheus scrapes one, and the extension
 // reads the other to tell "server down" from "signed out", which are
 // different states with different fixes.
+//
+// With auth off, a loopback Host is the credential instead. A DNS-rebound web
+// page is same-origin with this server, so its GETs carry no Origin header to
+// reject; its Host is still the attacker's name.
 func (s *Server) protect(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.auth.Enabled() && !loopbackHost(r.Host) {
+			s.log.Warn("non-loopback host without auth", "path", r.URL.Path, "host", r.Host)
+			writeErr(w, http.StatusForbidden, "authentication is off, so only loopback hosts are served")
+			return
+		}
 		if err := s.auth.Verify(r.Context(), r); err != nil {
 			s.log.Warn("unauthenticated", "path", r.URL.Path, "err", err)
 			writeErr(w, http.StatusUnauthorized, "invalid or missing bearer token")
@@ -102,6 +112,18 @@ func (s *Server) observe(next http.Handler) http.Handler {
 		s.log.Info("request", "request_id", requestID, "route", route, "status", rw.status,
 			"duration_ms", elapsed.Milliseconds())
 	})
+}
+
+func loopbackHost(hostport string) bool {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		host = hostport
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
 }
 
 func allowOrigin(w http.ResponseWriter, origin string) {

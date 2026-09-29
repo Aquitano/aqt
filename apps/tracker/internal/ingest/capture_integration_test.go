@@ -30,7 +30,7 @@ func TestCaptureTransaction(t *testing.T) {
 	events, _ := json.Marshal(map[string]any{"device_id": device, "events": []map[string]any{
 		{"type": "page_view", "id": pv, "url": "https://example.com/page", "title": "Page",
 			"started_at": time.Now().UTC().Format(time.RFC3339), "navigation_type": "load"}}})
-	if rec := do(t, h, httptest.NewRequest(http.MethodPost, "/v1/events/batch", bytes.NewReader(events))); rec.Code != http.StatusOK {
+	if rec := do(t, h, httptest.NewRequest(http.MethodPost, server+"/v1/events/batch", bytes.NewReader(events))); rec.Code != http.StatusOK {
 		t.Fatalf("events: %d %s", rec.Code, rec.Body.String())
 	}
 
