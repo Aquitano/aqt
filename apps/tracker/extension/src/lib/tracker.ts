@@ -234,7 +234,11 @@ async function focusedTarget(): Promise<FocusTarget | undefined> {
   return pageView ? { tabId: tab.id, pageView } : undefined;
 }
 
+// The stale check comes first because a worker that survives a sleep sees
+// the wake before any idle or lock event: without it, the span would run
+// through the night.
 export async function reconcile(reason: EndReason, endedAt = now()): Promise<void> {
+  await closeStaleSpan(STALE_SPAN_MS);
   const target = await focusedTarget();
   const open = await openSpanStore.get();
   if (open && target && open.pageViewId === target.pageView.event.id) return;
@@ -310,12 +314,14 @@ async function closeStaleSpan(maxAgeMs: number): Promise<void> {
   }
 }
 
+// No reconcile here: the event that woke the worker is queued right behind
+// this and closes the span with its own reason, and the heartbeat alarm
+// reconciles within 30 s when nothing else does.
 export async function onWorkerStart(): Promise<void> {
   await ensureAlarms();
   await closeStaleSpan(STALE_SPAN_MS);
   if (!(await rulesStore.get())) await refreshRules();
   await pollHealth();
-  await reconcile("unknown");
   await flushEvents();
   await uploadCaptures();
 }
@@ -416,7 +422,9 @@ async function recordPageView(
     private: isPrivate,
   };
   if (previous?.pageView) event.referrer = previous.pageView.event.url;
-  if (!isPrivate && tab.title) event.title = tab.title;
+  // By the time this runs the tab may already show another document, such as
+  // a redirect target on a private host; its title is not this page's.
+  if (!isPrivate && tab.title && tab.url === url) event.title = tab.title;
   await store.set({ tabSessionId, pageView: { event, titled: false } });
   await emit(event);
   await diag(`page view ${event.url} (${navigationType})`);
@@ -434,6 +442,7 @@ export async function onTitleChanged(tabId: number, title: string): Promise<void
 }
 
 export async function onTabRemoved(tabId: number): Promise<void> {
+  await closeStaleSpan(STALE_SPAN_MS);
   const open = await openSpanStore.get();
   if (open?.tabId === tabId) await closeSpan(open, "tab_closed", now());
   await clearRecaptureAlarms(tabId);
@@ -497,10 +506,19 @@ async function onRecaptureAlarm(name: string): Promise<void> {
   await recapture(Number(tabId), pageViewId);
 }
 
+// Every handler waits in one queue, and a tab whose main thread is stuck in
+// an alert or a huge diff would otherwise hold it for as long as it stays so.
+const SERIALIZE_TIMEOUT_MS = 10_000;
+
 async function requestHtml(tabId: number): Promise<Result<SerializeReply>> {
   const request: SerializeRequest = { type: "serialize" };
   try {
-    const reply = await browser.tabs.sendMessage<SerializeRequest, unknown>(tabId, request);
+    const reply = await Promise.race([
+      browser.tabs.sendMessage<SerializeRequest, unknown>(tabId, request),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("no reply in time")), SERIALIZE_TIMEOUT_MS);
+      }),
+    ]);
     const decoded = SerializeReply(reply);
     return decoded instanceof type.errors
       ? { ok: false, error: `content script replied badly: ${decoded.summary}` }

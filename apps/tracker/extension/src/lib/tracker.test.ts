@@ -8,9 +8,9 @@ import { defaultSettings } from "./settings.ts";
 Object.assign(globalThis, { chrome: fakeBrowser, browser: fakeBrowser, indexedDB });
 const { checkHealth } = await import("./api.ts");
 const { dueEvents, enqueueEvent, markFailed, pendingCounts } = await import("./outbox.ts");
-const { deviceIdStore, rulesStore, settingsStore, syncStore, tabStore } =
+const { deviceIdStore, openSpanStore, rulesStore, settingsStore, syncStore, tabStore } =
   await import("./storage.ts");
-const { captureTab, flushEvents, serialized } = await import("./tracker.ts");
+const { captureTab, flushEvents, reconcile, serialized } = await import("./tracker.ts");
 
 const pageURL = "https://example.org/article";
 const timestamp = "2026-09-21T12:00:00.000Z";
@@ -105,6 +105,41 @@ test("capture rechecks privacy after the content script replies", async () => {
   });
   expect(await captureTab(1, "manual")).toEqual({ ok: false, error: "private host" });
   expect((await pendingCounts()).captures).toBe(0);
+});
+
+test("a span that outlived a sleep ends at its last heartbeat, not at the wake", async () => {
+  const { windows, tabs, idle } = fakeBrowser;
+  const originals = {
+    getLastFocused: windows.getLastFocused,
+    query: tabs.query,
+    queryState: idle.queryState,
+  };
+  Object.assign(windows, { getLastFocused: async () => ({ id: 1, focused: true }) });
+  Object.assign(tabs, { query: async () => [{ id: 1, url: pageURL, incognito: false }] });
+  Object.assign(idle, { queryState: async () => "active" });
+  const lastHeartbeatAt = "2026-09-21T22:00:00.000Z";
+  await openSpanStore.set({
+    id: "night",
+    pageViewId: "page",
+    tabId: 1,
+    startedAt: lastHeartbeatAt,
+    lastHeartbeatAt,
+  });
+  try {
+    setSystemTime(new Date("2026-09-22T06:00:00.000Z"));
+    await serialized(() => reconcile("unknown"));
+    const events = (await dueEvents(100)).map((row) => row.payload);
+    expect(events).toContainEqual({
+      type: "span_end",
+      id: "night",
+      ended_at: lastHeartbeatAt,
+      reason: "unknown",
+    });
+  } finally {
+    Object.assign(windows, { getLastFocused: originals.getLastFocused });
+    Object.assign(tabs, { query: originals.query });
+    Object.assign(idle, { queryState: originals.queryState });
+  }
 });
 
 test("events waiting for retry keep their dependent events behind them", async () => {
