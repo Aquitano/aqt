@@ -8,6 +8,7 @@ export const Settings = type({
   captureEnabled: "boolean",
   "oidcIssuer?": "string",
   "oidcClientId?": "string",
+  "pausedUntil?": "number",
 });
 export type Settings = typeof Settings.infer;
 
@@ -19,4 +20,8 @@ export const defaultSettings: Settings = {
 
 export function normalizeServerUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, "") || defaultSettings.serverUrl;
+}
+
+export function isPaused(settings: Settings, at: number): boolean {
+  return settings.pausedUntil !== undefined && at < settings.pausedUntil;
 }

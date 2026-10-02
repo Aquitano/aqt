@@ -17,3 +17,22 @@ function entryHost(entry: string): string {
 export function privateUrl(url: URL): string {
   return `https://${url.hostname}/`;
 }
+
+export type ForgetTarget = { url: string } | { host: string };
+
+// A page is its URL without the fragment; a host covers its subdomains, as
+// in the private-host list.
+export function forgets(target: ForgetTarget): (url: string) => boolean {
+  if ("host" in target) {
+    return (url) => {
+      const host = URL.parse(url)?.hostname;
+      return host !== undefined && isPrivateHost(host, [target.host]);
+    };
+  }
+  const page = withoutFragment(target.url);
+  return (url) => withoutFragment(url) === page;
+}
+
+function withoutFragment(url: string): string {
+  return url.split("#", 1)[0] ?? url;
+}

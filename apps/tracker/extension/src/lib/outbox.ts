@@ -126,6 +126,61 @@ export function nextDueCapture(): Promise<CaptureRow | undefined> {
   );
 }
 
+/// Drops everything queued about forgotten pages, so none of it reaches the
+/// server again: page views whose URL `forgotten` accepts or whose id is in
+/// `ids`, their spans and any other span in `ids`, and the captures of those
+/// page views or of a forgotten URL. A page view that stays loses a forgotten
+/// referrer.
+export async function purge(
+  forgotten: (url: string) => boolean,
+  ids: ReadonlySet<string>,
+): Promise<{ events: number; captures: number }> {
+  const events = await rows("events", EventRow);
+  const dropped = new Set(ids);
+  for (const { payload } of events) {
+    if (payload.type === "page_view" && forgotten(payload.url)) dropped.add(payload.id);
+  }
+  for (const { payload } of events) {
+    if (payload.type === "span_start" && dropped.has(payload.page_view_id)) dropped.add(payload.id);
+  }
+  const doomed = events.filter((row) => dropped.has(row.payload.id));
+  const unreferred = events.flatMap((row) => {
+    if (row.payload.type !== "page_view" || dropped.has(row.payload.id)) return [];
+    const { referrer, ...payload } = row.payload;
+    return referrer !== undefined && forgotten(referrer) ? [{ ...row, payload }] : [];
+  });
+  const store = await objectStore("events", "readwrite");
+  await Promise.all([
+    ...doomed.map((row) => settle(store.delete(row.id))),
+    ...unreferred.map((row) => settle(store.put(row))),
+  ]);
+  const captures = await purgeCaptures(
+    ({ meta }) => dropped.has(meta.page_view_id) || forgotten(meta.url),
+  );
+  return { events: doomed.length, captures };
+}
+
+async function purgeCaptures(doomed: (capture: CapturePayload) => boolean): Promise<number> {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction("captures", "readwrite").objectStore("captures").openCursor();
+    let removed = 0;
+    request.addEventListener("success", () => {
+      const cursor = request.result;
+      if (!cursor) return resolve(removed);
+      const row = CaptureRow(cursor.value);
+      if (!(row instanceof type.errors) && doomed(row.payload)) {
+        cursor.delete();
+        removed += 1;
+      }
+      cursor.continue();
+    });
+    request.addEventListener("error", () =>
+      reject(request.error ?? new Error("indexedDB cursor failed")),
+    );
+  });
+}
+
 export async function removeRows(name: StoreName, ids: readonly string[]): Promise<void> {
   const store = await objectStore(name, "readwrite");
   await Promise.all(ids.map((id) => settle(store.delete(id))));

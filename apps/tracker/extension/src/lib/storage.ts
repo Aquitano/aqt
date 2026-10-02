@@ -61,6 +61,7 @@ const diagnosticsStore = keyed(browser.storage.local, "diagnostics", type("strin
 export const PageViewState = type({
   event: PageViewEvent,
   titled: "boolean",
+  "latestTitle?": "string",
   "lastCapturedAt?": "string",
 });
 export type PageViewState = typeof PageViewState.infer;
