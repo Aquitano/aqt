@@ -253,6 +253,8 @@ Registry: `extractor.All()` returns every registered extractor; both the rules e
 
 `article` runs the readeck fork of go-readability over the page and records title, byline, site name, excerpt, published date, language, the cleaned text and a word count; `github`, `hackernews`, `reddit`, `stackexchange` and `x` recapture `after_change`, `youtube` and `article` never.
 
+`youtube` reads the video id, title, channel, duration, publish date, description and keywords from whichever of the player response, the microdata and the watch DOM belongs to the URL's video. The extension appends the transcript YouTube loaded for the video on screen as `<script type="application/json" id="tracker-transcript">`; `youtube` keeps its language, kind (`manual` or `asr`) and joined text only when its `video_id` is the URL's video too, and adds the text to `search_text`. Segment timestamps stay in the blob.
+
 An article's canonical URL is its `<link rel=canonical>` only when that is on the page's host (a leading `www.` aside) with a path other than `/`, since some sites point every article at their homepage; otherwise it is the page URL.
 
 ## HTTP API
