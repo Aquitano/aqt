@@ -300,6 +300,7 @@ export async function onIdleStateChanged(
 
 async function closeSpan(open: OpenSpan, reason: EndReason, endedAt: string): Promise<void> {
   await browser.alarms.clear(captureAlarm(open.tabId, open.pageViewId));
+  await sendLatestTitle(open.tabId, open.pageViewId);
   await openSpanStore.remove();
   await emit({ type: "span_end", id: open.id, ended_at: endedAt, reason });
   await diag(`span closed (${reason})`);
@@ -361,6 +362,7 @@ async function heartbeat(at: number): Promise<void> {
   const lastHeartbeatAt = iso(at);
   await openSpanStore.set({ ...open, lastHeartbeatAt });
   await emit({ type: "span_heartbeat", id: open.id, at: lastHeartbeatAt });
+  await sendLatestTitle(open.tabId, open.pageViewId);
   void serialized(() => recaptureIfDue(open));
 }
 
@@ -464,6 +466,7 @@ async function recordPageView(
   navigationType: PageViewEvent["navigation_type"],
   at: number,
 ): Promise<void> {
+  await sendLatestTitle(tabId);
   const store = tabStore(tabId);
   const previous = await store.get();
   const tabSessionId = previous?.tabSessionId ?? uuidv7();
@@ -497,14 +500,34 @@ async function recordPageView(
   await diag(`page view ${event.url} (${navigationType})`);
 }
 
+async function isPrivateNow(event: PageViewEvent): Promise<boolean> {
+  const host = URL.parse(event.url)?.hostname;
+  return (
+    event.private || host === undefined || isPrivateHost(host, (await loadSettings()).privateHosts)
+  );
+}
+
+// The first change goes out at once, because a background tab may never get a
+// span. Later ones wait for the span's heartbeat or the end of the page view,
+// so a page that counts or ticks in its title sends at most one update per
+// heartbeat, and a title that settles after "Loading…" still arrives.
 export async function onTitleChanged(tabId: number, title: string): Promise<void> {
   const store = tabStore(tabId);
   const state = await store.get();
   const pageView = state?.pageView;
-  if (!state || !pageView || pageView.titled || pageView.event.private) return;
-  if (pageView.event.title === title) return;
-  const host = URL.parse(pageView.event.url)?.hostname;
-  if (host === undefined || isPrivateHost(host, (await loadSettings()).privateHosts)) return;
+  if (!state || !pageView || (await isPrivateNow(pageView.event))) return;
+  await store.set({ ...state, pageView: { ...pageView, latestTitle: title } });
+  if (!pageView.titled) await sendLatestTitle(tabId);
+}
+
+async function sendLatestTitle(tabId: number, pageViewId?: string): Promise<void> {
+  const store = tabStore(tabId);
+  const state = await store.get();
+  const pageView = state?.pageView;
+  if (!state || !pageView || (pageViewId !== undefined && pageView.event.id !== pageViewId)) return;
+  const title = pageView.latestTitle;
+  if (title === undefined || title === pageView.event.title) return;
+  if (await isPrivateNow(pageView.event)) return;
   const event = { ...pageView.event, title };
   await store.set({ ...state, pageView: { ...pageView, event, titled: true } });
   await emit(event);
@@ -514,6 +537,7 @@ export async function onTabRemoved(tabId: number, at: number): Promise<void> {
   await closeStaleSpan(STALE_SPAN_MS);
   const open = await openSpanStore.get();
   if (open?.tabId === tabId) await closeSpan(open, "tab_closed", iso(at));
+  await sendLatestTitle(tabId);
   await tabStore(tabId).remove();
   await reconcile("tab_closed", at);
 }

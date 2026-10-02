@@ -17,6 +17,7 @@ const {
   flushEvents,
   handleMessage,
   onAlarm,
+  onTabRemoved,
   onTitleChanged,
   reconcile,
   requestSync,
@@ -372,4 +373,61 @@ test("a heartbeat recaptures a changing page the span has stayed on for 5 minute
   await requestSync();
   expect((await openSpanStore.get())?.id).toBe("span");
   expect((await tabStore(1).get())?.pageView?.lastCapturedAt).toBe(timestamp);
+});
+
+async function titlesSent(): Promise<string[]> {
+  const titles = (await dueEvents(100)).flatMap(({ payload }) =>
+    payload.type === "page_view" && payload.title !== undefined ? [payload.title] : [],
+  );
+  return titles.toSorted((a, b) => a.localeCompare(b));
+}
+
+async function whileServerHangs(run: () => Promise<void>): Promise<void> {
+  const answered = Promise.withResolvers<void>();
+  fetchRequest.mockImplementation(
+    fakeFetch(async () => {
+      await answered.promise;
+      return Response.json({ ok: true, db: true });
+    }),
+  );
+  try {
+    await run();
+  } finally {
+    answered.resolve();
+    await requestSync();
+  }
+}
+
+test("a changing title goes out at once, then only its latest value on each heartbeat", async () => {
+  setSystemTime(new Date(timestamp));
+  await openSpanStore.set({
+    id: "span",
+    pageViewId: pageView.id,
+    tabId: 1,
+    startedAt: timestamp,
+    lastHeartbeatAt: timestamp,
+  });
+  await onTitleChanged(1, "Loading…");
+  await onTitleChanged(1, "(1) Inbox");
+  await onTitleChanged(1, "(2) Inbox");
+  expect(await titlesSent()).toEqual(["Loading…"]);
+  await whileServerHangs(async () => {
+    await withTabFocused(() =>
+      serialized((at) =>
+        onAlarm({ name: "heartbeat", scheduledTime: at, persistAcrossSessions: true }, at),
+      ),
+    );
+    expect(await titlesSent()).toEqual(["(2) Inbox", "Loading…"]);
+  });
+});
+
+test("a title held back for the heartbeat goes out when its tab closes", async () => {
+  await tabStore(1).set({
+    tabSessionId: "tab",
+    pageView: { event: { ...pageView, title: "Loading…" }, titled: true },
+  });
+  await onTitleChanged(1, "Article");
+  expect(await titlesSent()).toEqual([]);
+  await serialized((at) => onTabRemoved(1, at));
+  expect(await titlesSent()).toEqual(["Article"]);
 });
