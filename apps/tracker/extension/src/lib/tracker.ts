@@ -76,7 +76,10 @@ async function clearRecaptureAlarms(tabId: number): Promise<void> {
 
 let chain: Promise<void> = Promise.resolve();
 
-// Every handler runs through one queue so storage read-modify-write cycles never interleave.
+// Every handler runs through one queue so storage read-modify-write cycles
+// never interleave. Queued tasks stay short and local: network calls go through
+// requestSync, which queues its own storage writes, so a task awaiting a sync
+// would wait on itself.
 export function serialized<T>(task: () => Promise<T>): Promise<T | undefined> {
   const run = chain.then(async () => {
     try {
@@ -108,16 +111,51 @@ async function ensureAlarms(): Promise<void> {
   }
 }
 
-export async function refreshRules(): Promise<void> {
-  const settings = await loadSettings();
-  const result = await fetchRules(settings.serverUrl);
-  if (!result.ok) {
-    await updateSync({ lastError: result.error });
-    await diag(`rules: ${result.error}`);
+type SyncStep = "rules" | "health";
+
+let syncSteps: Set<SyncStep> | undefined;
+let syncing: Promise<void> | undefined;
+
+// Network calls run here rather than in the handler queue, so a slow or
+// unreachable server never holds up tab and span handling. One run at a time:
+// requests made during a run merge into a single follow-up run, which the
+// returned promise covers.
+export function requestSync(steps: readonly SyncStep[] = []): Promise<void> {
+  syncSteps = new Set([...(syncSteps ?? []), ...steps]);
+  syncing ??= drainSync();
+  return syncing;
+}
+
+async function drainSync(): Promise<void> {
+  const steps = syncSteps;
+  syncSteps = undefined;
+  if (!steps) {
+    syncing = undefined;
     return;
   }
-  await rulesStore.set({ fetchedAt: now(), rules: result.value });
-  await diag(`rules: ${result.value.length} cached`);
+  try {
+    if (steps.has("rules")) await refreshRules();
+    if (steps.has("health")) await pollHealth();
+    await flushEvents();
+    await uploadCaptures();
+  } catch (error) {
+    await serialized(() => diag(`sync error: ${errorMessage(error)}`));
+  }
+  return drainSync();
+}
+
+async function refreshRules(): Promise<void> {
+  const settings = await loadSettings();
+  const result = await fetchRules(settings.serverUrl);
+  await serialized(async () => {
+    if (!result.ok) {
+      await updateSync({ lastError: result.error });
+      await diag(`rules: ${result.error}`);
+      return;
+    }
+    await rulesStore.set({ fetchedAt: now(), rules: result.value });
+    await diag(`rules: ${result.value.length} cached`);
+  });
 }
 
 async function cachedRules(): Promise<Rule[]> {
@@ -131,17 +169,22 @@ function ruleFor(rules: readonly Rule[], url: string): Rule | undefined {
 
 async function pollHealth(): Promise<void> {
   const settings = await loadSettings();
-  const before = (await syncStore.get())?.connected ?? false;
   const result = await checkHealth(settings.serverUrl);
   const connected = result.ok && result.value.ok;
-  if (connected) await updateSync({ connected });
-  else
-    await updateSync({ connected, lastError: result.ok ? "healthz reports not ok" : result.error });
-  if (connected && !before) {
-    await diag("server reachable");
-    await armCapture();
-  }
-  if (!connected && before) await diag("server unreachable, capture paused");
+  await serialized(async () => {
+    const before = (await syncStore.get())?.connected ?? false;
+    if (connected) await updateSync({ connected });
+    else
+      await updateSync({
+        connected,
+        lastError: result.ok ? "healthz reports not ok" : result.error,
+      });
+    if (connected && !before) {
+      await diag("server reachable");
+      await armCapture();
+    }
+    if (!connected && before) await diag("server unreachable, capture paused");
+  });
 }
 
 let flushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -149,7 +192,7 @@ let flushTimer: ReturnType<typeof setTimeout> | undefined;
 function scheduleFlush(): void {
   flushTimer ??= setTimeout(() => {
     flushTimer = undefined;
-    void serialized(flushEvents);
+    void requestSync();
   }, FLUSH_DELAY_MS);
 }
 
@@ -162,7 +205,7 @@ async function reportEvicted(kind: string, evicted: number): Promise<void> {
 async function emit(event: TrackerEvent): Promise<void> {
   await reportEvicted("events", await enqueueEvent(event));
   const { events } = await pendingCounts();
-  if (events >= FLUSH_BATCH) await flushEvents();
+  if (events >= FLUSH_BATCH) void requestSync();
   else scheduleFlush();
 }
 
@@ -170,30 +213,34 @@ export async function flushEvents(): Promise<void> {
   const batch = await dueEvents(FLUSH_BATCH);
   if (batch.length === 0) return;
   const settings = await loadSettings();
+  const device = await serialized(deviceId);
+  if (device === undefined) return;
   const result = await postEvents(
     settings.serverUrl,
-    await deviceId(),
+    device,
     batch.map((row) => row.payload),
   );
-  const ids = batch.map((row) => row.id);
-  if (!result.ok) {
-    if (isPermanentFailure(result.status)) {
-      await removeRows("events", ids);
-      await countDropped(batch.length);
-      await diag(`events batch dropped (${batch.length} events): ${result.error}`);
-    } else {
-      await markFailed("events", batch);
+  await serialized(async () => {
+    const ids = batch.map((row) => row.id);
+    if (!result.ok) {
+      if (isPermanentFailure(result.status)) {
+        await removeRows("events", ids);
+        await countDropped(batch.length);
+        await diag(`events batch dropped (${batch.length} events): ${result.error}`);
+      } else {
+        await markFailed("events", batch);
+      }
+      await updateSync({ lastError: result.error });
+      return;
     }
-    await updateSync({ lastError: result.error });
-    return;
-  }
-  await removeRows("events", ids);
-  if (result.value.dropped > 0) {
-    await countDropped(result.value.dropped);
-    await diag(`server dropped ${result.value.dropped} events`);
-  }
-  await updateSync({ lastSyncAt: now() });
-  if (batch.length === FLUSH_BATCH) return flushEvents();
+    await removeRows("events", ids);
+    if (result.value.dropped > 0) {
+      await countDropped(result.value.dropped);
+      await diag(`server dropped ${result.value.dropped} events`);
+    }
+    await updateSync({ lastSyncAt: now() });
+  });
+  if (result.ok && batch.length === FLUSH_BATCH) return flushEvents();
 }
 
 // The server rejects a capture whose page view it has not seen, for good. A
@@ -205,24 +252,26 @@ export async function uploadCaptures(): Promise<void> {
   if (!head) return;
   const settings = await loadSettings();
   const result = await postCapture(settings.serverUrl, head.payload);
-  if (!result.ok) {
-    if (isPermanentFailure(result.status)) {
-      await removeRows("captures", [head.id]);
-      await countDropped(1);
-      await diag(`capture dropped ${head.payload.meta.extractor}: ${result.error}`);
-    } else {
-      await markFailed("captures", [head]);
-      await diag(`capture upload failed: ${result.error}`);
+  await serialized(async () => {
+    if (!result.ok) {
+      if (isPermanentFailure(result.status)) {
+        await removeRows("captures", [head.id]);
+        await countDropped(1);
+        await diag(`capture dropped ${head.payload.meta.extractor}: ${result.error}`);
+      } else {
+        await markFailed("captures", [head]);
+        await diag(`capture upload failed: ${result.error}`);
+      }
+      await updateSync({ lastError: result.error });
+      return;
     }
-    await updateSync({ lastError: result.error });
-    return;
-  }
-  await removeRows("captures", [head.id]);
-  await updateSync({ lastSyncAt: now() });
-  await diag(
-    `capture uploaded ${head.payload.meta.extractor}${result.value.deduplicated ? " (dedup)" : ""}`,
-  );
-  return uploadCaptures();
+    await removeRows("captures", [head.id]);
+    await updateSync({ lastSyncAt: now() });
+    await diag(
+      `capture uploaded ${head.payload.meta.extractor}${result.value.deduplicated ? " (dedup)" : ""}`,
+    );
+  });
+  if (result.ok) return uploadCaptures();
 }
 
 type FocusTarget = { tabId: number; pageView: PageViewState };
@@ -324,26 +373,18 @@ async function closeStaleSpan(maxAgeMs: number): Promise<void> {
 export async function onWorkerStart(): Promise<void> {
   await ensureAlarms();
   await closeStaleSpan(STALE_SPAN_MS);
-  if (!(await rulesStore.get())) await refreshRules();
-  await pollHealth();
-  await flushEvents();
-  await uploadCaptures();
+  void requestSync((await rulesStore.get()) ? ["health"] : ["rules", "health"]);
 }
 
 export async function onInstalled(): Promise<void> {
   await deviceId();
   await diag("installed");
-  await refreshRules();
+  void requestSync(["rules"]);
 }
 
 export async function onBrowserStartup(): Promise<void> {
   await closeStaleSpan(0);
-  await refreshRules();
-}
-
-export async function onConfigChanged(): Promise<void> {
-  await refreshRules();
-  await pollHealth();
+  void requestSync(["rules"]);
 }
 
 export async function onCommitted(
@@ -457,13 +498,11 @@ export async function onTabRemoved(tabId: number): Promise<void> {
 export async function onAlarm(alarm: Browser.alarms.Alarm): Promise<void> {
   if (alarm.name === HEARTBEAT_ALARM) {
     await heartbeat();
-    await pollHealth();
-    await flushEvents();
-    await uploadCaptures();
+    void requestSync(["health"]);
     return;
   }
   if (alarm.name === RULES_ALARM) {
-    await refreshRules();
+    void requestSync(["rules"]);
     return;
   }
   if (alarm.name.startsWith(RECAPTURE_ALARM_PREFIX)) await onRecaptureAlarm(alarm.name);
@@ -577,10 +616,7 @@ export async function captureTab(tabId: number, reason: CaptureReason): Promise<
   await reportEvicted("captures", await enqueueCapture({ meta, html }));
   await store.set({ ...state, pageView: { ...pageView, lastCapturedAt: meta.captured_at } });
   await diag(`capture queued ${rule.extractor} ${reason} ${bytes} bytes${dirty ? " (dirty)" : ""}`);
-  // The capture references its page view, which may still be waiting for the
-  // flush timer; the server rejects the one without the other.
-  await flushEvents();
-  await uploadCaptures();
+  void requestSync();
   return { ok: true };
 }
 

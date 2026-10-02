@@ -14,9 +14,9 @@ import {
   onTabRemoved,
   onTitleChanged,
   onWorkerStart,
-  onConfigChanged,
   onIdleStateChanged,
   reconcile,
+  requestSync,
   serialized,
 } from "../lib/tracker.ts";
 
@@ -47,7 +47,7 @@ export default defineBackground(() => {
     // Signing in changes authTokens, not settings, and should take effect at
     // once rather than at the next hourly rules alarm.
     if (area !== "local") return;
-    if ("settings" in changes || "authTokens" in changes) void serialized(onConfigChanged);
+    if ("settings" in changes || "authTokens" in changes) void requestSync(["rules", "health"]);
   });
 
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
