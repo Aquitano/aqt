@@ -229,5 +229,8 @@ func (s *Store) loadAttachments(ctx context.Context, messages []MessageDetail) e
 		return err
 	}
 	rows.Close()
-	return s.loadMailboxes(ctx, messages)
+	if err := s.loadMailboxes(ctx, messages); err != nil {
+		return err
+	}
+	return s.loadMailProvenance(ctx, messages)
 }

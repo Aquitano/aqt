@@ -15,6 +15,42 @@ type Mailbox struct {
 	Count  int64  `json:"n"`
 }
 
+type MailProvenance struct {
+	MessageID      string   `json:"message_id"`
+	InReplyTo      []string `json:"in_reply_to"`
+	References     []string `json:"references"`
+	RawRef         string   `json:"raw_ref"`
+	NativeThreadID string   `json:"native_thread_id"`
+	HasReplyLinks  bool     `json:"has_reply_links"`
+	Incomplete     bool     `json:"incomplete"`
+	ConflictKey    string   `json:"conflict_key"`
+}
+
+func (s *Store) loadMailProvenance(ctx context.Context, messages []MessageDetail) error {
+	ids := make([]int64, len(messages))
+	positions := make(map[int64]int, len(messages))
+	for index, message := range messages {
+		ids[index], positions[message.ID] = message.ID, index
+	}
+	rows, err := s.pool.Query(ctx, `select d.message_id,d.header_message_id,d.in_reply_to,d.reference_ids,d.header_raw_ref,d.native_thread_id,d.incomplete,n.conflict_key,
+		exists(select 1 from mail_thread_edges e where e.source=d.source and (e.left_node=d.node_key or e.right_node=d.node_key))
+		from mail_details d join mail_thread_nodes n on n.source=d.source and n.node_key=d.node_key
+		where d.message_id=any($1)`, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var provenance MailProvenance
+		if err := rows.Scan(&id, &provenance.MessageID, &provenance.InReplyTo, &provenance.References, &provenance.RawRef, &provenance.NativeThreadID, &provenance.Incomplete, &provenance.ConflictKey, &provenance.HasReplyLinks); err != nil {
+			return err
+		}
+		messages[positions[id]].Mail = &provenance
+	}
+	return rows.Err()
+}
+
 func (s *Store) ResolveMailMessage(ctx context.Context, source, messageID, externalID string) (int64, error) {
 	id, err := s.FindByEmailMessageID(ctx, source, messageID)
 	if err != nil || id != 0 {

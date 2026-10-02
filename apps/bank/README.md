@@ -57,6 +57,7 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank search "invoice" --limit 50 --offset 50  # the next page
 ./bank show 42
 ./bank show c5e63bfc3750                        # the stable ref a citation carries
+./bank show c5e63bfc3750 --provenance           # archived input and mail grouping evidence
 ./bank thread "Alice" --source whatsapp --around 42 --limit 100
                                                 # context centered on a search hit
 ./bank thread "Alice" --source whatsapp --before 42 --limit 100

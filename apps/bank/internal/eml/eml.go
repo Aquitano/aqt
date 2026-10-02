@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	messagemail "github.com/emersion/go-message/mail"
@@ -58,8 +59,14 @@ func Parse(raw []byte) (*Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	h := msg.Header
+	out := parseHeader(msg.Header)
+	p := &parser{out: out}
+	p.walk(msg.Header.Get("Content-Type"), msg.Header.Get("Content-Transfer-Encoding"), msg.Header.Get("Content-Disposition"), msg.Body, 0, false)
+	out.Body = p.body()
+	return out, nil
+}
 
+func parseHeader(h mail.Header) *Message {
 	out := &Message{
 		MessageID: strings.Trim(h.Get("Message-Id"), "<> \t"),
 		From:      decodeHeader(h.Get("From")),
@@ -71,6 +78,10 @@ func Parse(raw []byte) (*Message, error) {
 	out.NormalizedMessageID, _ = mailHeader.MessageID()
 	if out.NormalizedMessageID == "" && !strings.ContainsAny(out.MessageID, "<> \t\r\n()") && strings.Contains(out.MessageID, "@") {
 		out.NormalizedMessageID = out.MessageID
+	}
+	if !utf8.ValidString(out.NormalizedMessageID) || strings.ContainsFunc(out.NormalizedMessageID, unicode.IsControl) {
+		out.NormalizedMessageID = ""
+		out.Warnings = append(out.Warnings, "invalid Message-ID excluded from email grouping")
 	}
 	if len(out.NormalizedMessageID) > 1024 {
 		out.NormalizedMessageID = ""
@@ -87,6 +98,10 @@ func Parse(raw []byte) (*Message, error) {
 		}
 		seen := make(map[string]bool)
 		for _, id := range ids {
+			if !utf8.ValidString(id) || strings.ContainsFunc(id, unicode.IsControl) {
+				out.Warnings = append(out.Warnings, "invalid "+name+" ID excluded from email grouping")
+				continue
+			}
 			if len(id) > 1024 || len(*destination) >= 128 {
 				out.Warnings = append(out.Warnings, name+" exceeds email grouping limit")
 				break
@@ -101,10 +116,7 @@ func Parse(raw []byte) (*Message, error) {
 		out.Date = d
 	}
 
-	p := &parser{out: out}
-	p.walk(h.Get("Content-Type"), h.Get("Content-Transfer-Encoding"), h.Get("Content-Disposition"), msg.Body, 0, false)
-	out.Body = p.body()
-	return out, nil
+	return out
 }
 
 // parser collects body candidates while walking the MIME tree.

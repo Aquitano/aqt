@@ -25,10 +25,11 @@ func persistMailFacts(ctx context.Context, transaction pgx.Tx, message Message, 
 	if projection.References == nil {
 		projection.References = []string{}
 	}
-	if _, err := transaction.Exec(ctx, `insert into mail_details(message_id,source,node_key,in_reply_to,reference_ids,native_thread_id,incomplete)
-		values($1,$2,$3,$4,$5,$6,$7) on conflict(message_id) do update set node_key=excluded.node_key,
-		in_reply_to=excluded.in_reply_to,reference_ids=excluded.reference_ids,native_thread_id=excluded.native_thread_id,incomplete=excluded.incomplete`,
-		message.ID, message.Source, key, projection.InReplyTo, projection.References, projection.NativeThreadID, incomplete); err != nil {
+	if _, err := transaction.Exec(ctx, `insert into mail_details(message_id,source,node_key,in_reply_to,reference_ids,native_thread_id,incomplete,header_message_id,header_raw_ref)
+		values($1,$2,$3,$4,$5,$6,$7,$8,$9) on conflict(message_id) do update set node_key=excluded.node_key,
+		in_reply_to=excluded.in_reply_to,reference_ids=excluded.reference_ids,native_thread_id=excluded.native_thread_id,incomplete=excluded.incomplete,
+		header_message_id=excluded.header_message_id,header_raw_ref=excluded.header_raw_ref`,
+		message.ID, message.Source, key, projection.InReplyTo, projection.References, projection.NativeThreadID, incomplete, projection.MessageID, projection.RawRef); err != nil {
 		return err
 	}
 	if incomplete {

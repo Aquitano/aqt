@@ -24,7 +24,14 @@ import {
 import { SourceBadge } from "@/lib/format";
 
 export type Selection =
-  | { kind: "thread"; source: string; threadId: string; title?: string; flashId?: number }
+  | {
+      kind: "thread";
+      source: string;
+      threadId: string;
+      title?: string;
+      flashId?: number;
+      current?: boolean;
+    }
   | { kind: "message"; id: number }
   | { kind: "contact"; name: string }
   | { kind: "mail-conflict"; source: string; key: string }
@@ -47,6 +54,11 @@ export function DetailPane({ selection }: { selection: Selection }) {
 
 function SelectedDetail({ selection: initialSelection }: { selection: Selection }) {
   const [selection, setSelection] = useState(initialSelection);
+  const conversationChoices = JSON.stringify(selection) !== JSON.stringify(initialSelection) && (
+    <Button variant="outline" size="sm" onClick={() => setSelection(initialSelection)}>
+      Back to conversation choices
+    </Button>
+  );
   const q = useInfiniteQuery({
     queryKey: ["detail", selection],
     enabled: selection !== null,
@@ -57,15 +69,14 @@ function SelectedDetail({ selection: initialSelection }: { selection: Selection 
         case "mail-conflict":
           return getMailConflict(selection.source, selection.key, pageParam.before);
         case "thread":
-          return getThread(
-            selection.source,
-            selection.threadId,
-            pageParam.before || pageParam.after
+          return getThread(selection.source, selection.threadId, {
+            current: selection.current,
+            ...(pageParam.before || pageParam.after
               ? pageParam
               : selection.flashId
                 ? { around: selection.flashId }
-                : { latest: true },
-          );
+                : { latest: true }),
+          });
         case "message":
           return {
             messages: [await getMessage(selection.id)],
@@ -120,6 +131,7 @@ function SelectedDetail({ selection: initialSelection }: { selection: Selection 
             {q.error instanceof MailConflictError ? "Conversation split" : "Could not load"}
           </EmptyTitle>
           <EmptyDescription>{q.error.message}</EmptyDescription>
+          {conversationChoices}
           {q.error instanceof MailConflictError && (
             <div className="flex flex-wrap gap-2">
               {q.error.conflict.choices.map((threadId) => (
@@ -128,7 +140,12 @@ function SelectedDetail({ selection: initialSelection }: { selection: Selection 
                   variant="outline"
                   onClick={() => {
                     if (q.error instanceof MailConflictError)
-                      setSelection({ kind: "thread", source: q.error.conflict.source, threadId });
+                      setSelection({
+                        kind: "thread",
+                        source: q.error.conflict.source,
+                        threadId,
+                        current: true,
+                      });
                   }}
                 >
                   {threadId}
@@ -179,6 +196,7 @@ function SelectedDetail({ selection: initialSelection }: { selection: Selection 
       flashId={selection.kind === "thread" ? selection.flashId : undefined}
       navigation={
         <>
+          {conversationChoices}
           {q.hasPreviousPage && (
             <Button
               variant="outline"

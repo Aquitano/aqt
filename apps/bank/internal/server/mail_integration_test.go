@@ -51,6 +51,15 @@ func TestMailImportContextAndThreadConflictHTTP(t *testing.T) {
 	if err != nil || len(thread.Messages) != 2 {
 		t.Fatalf("full conversation: %+v %v", thread, err)
 	}
+	for _, message := range thread.Messages {
+		detail, err := remote.GetMessageDetail(ctx, message.ID)
+		if err != nil || detail.Mail == nil || message.Mail == nil || !detail.Mail.HasReplyLinks || !message.Mail.HasReplyLinks {
+			t.Fatalf("mail provenance missing over HTTP: %+v %v", detail, err)
+		}
+		if message.MessageID == "root@example.com" && (detail.Mail.RawRef != detail.RawRef || len(detail.Mailboxes) != 2) {
+			t.Fatalf("archive or folder provenance lost: %+v", detail)
+		}
+	}
 	if _, err := eml.Ingest(ctx, database, server.blobs, root, eml.IngestOpts{Source: "mail", ThreadID: "provider-one"}); err != nil {
 		t.Fatal(err)
 	}
@@ -61,6 +70,12 @@ func TestMailImportContextAndThreadConflictHTTP(t *testing.T) {
 	var conflict *store.MailThreadConflictError
 	if !errors.As(err, &conflict) || len(conflict.Choices) != 2 {
 		t.Fatalf("HTTP conflict not typed: %v", err)
+	}
+	for _, choice := range conflict.Choices {
+		page, err := remote.GetThreadPage(ctx, "mail", choice, store.ThreadOpts{Limit: 10, Current: true})
+		if err != nil || len(page.Messages) != 1 || page.Messages[0].Mail == nil || page.Messages[0].Mail.ConflictKey == "" || page.Messages[0].Mail.NativeThreadID != choice {
+			t.Fatalf("provider conflict provenance: %+v %v", page, err)
+		}
 	}
 	page, err := remote.MailConflictMessages(ctx, "mail", conflict.ConflictKey, 0, 10)
 	if err != nil || len(page.Messages) != 0 {

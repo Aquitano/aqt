@@ -50,6 +50,19 @@ bank mail conflict '<conflict-key>' --source gmail --limit 100
 bank mail conflict '<conflict-key>' --source gmail --before 123 --limit 100
 ```
 
+## Inspect message provenance
+
+Open **Message provenance** beneath a message in the browser, or run:
+
+```sh
+bank show <id-or-ref> --provenance
+bank show <id-or-ref> --json
+```
+
+The view includes the source, stable ref, external ID, original archived input, and historically observed folders. For mail, it also shows the normalized Message-ID, reply headers, provider thread ID, grouping conflicts, and incomplete grouping. A reply connection can come from another message's headers. Missing folder observations do not mean the message was never in a folder.
+
+The header archive input identifies the file used for the current stored headers. It can differ from the original archived input after a duplicate import corrects the headers. Older metadata may have no recorded header input. Archive paths are relative to the server archive directory. The JSON message detail and conversation responses include the same mail evidence under `mail`.
+
 ## Rebuild metadata
 
 Run rebuild beside the database and archive. It is not available through `BANK_URL`. Back up the database, raw archive, and blobs before applying historical changes.
@@ -62,7 +75,7 @@ bank verify --source proton --json
 
 The first command is read-only, including its database connection. It does not migrate the schema, create context files, or write checkpoints. Run a current Bank server first if the database has not received the additive mail migrations. The preview carries earlier proposed graph changes in memory, so conflicts across archived inputs are visible before applying. It stops rather than presenting a complete preview when grouping is incomplete or its workspace exceeds 100000 nodes or messages, or 1000000 edge and historical references.
 
-Rebuild parses archived EML and streams MBOX. It resolves existing canonical rows and updates only mail metadata and thread projections. It does not create messages, rewrite bodies, or extract attachments. JSON output reports missing rows, unknown folders, invalid inputs, conflicts, and incomplete grouping.
+Rebuild reads archived EML headers without loading message bodies and streams MBOX. The MBOX import size limit does not apply to individual EML inputs. It resolves existing canonical rows and updates only mail metadata and thread projections. It does not create messages, rewrite bodies, or extract attachments. JSON output reports missing rows, unknown folders, invalid inputs, conflicts, and incomplete grouping.
 
 Applied work is checkpointed in the destination database with the context identity, raw digest, projection version, and grouping limits. A newly archived context is new work even if its raw file was processed before. Failed or incomplete work is retryable. Repeating an interrupted MBOX rebuild safely replays any uncheckpointed messages.
 
@@ -76,11 +89,13 @@ The grouping limits apply to the connected header component. The node limit also
 
 Each limit accepts 1 through 100000. Exceeding a limit retains header facts and explicit provider IDs but avoids additional inferred merges. Existing edges stay available until a complete recomputation can process a correction. The import report warns about incomplete grouping. Raise a limit deliberately and run rebuild to retry.
 
-After a split, `--current` reads a subgroup listed in the conflict response without following its historical alias. Without that flag, the old combined ID continues to describe the split. The browser uses current subgroup reads for its search and browse results. Rebuild preserves provider IDs already recorded in the database instead of replacing them with older context records.
+After a split, `--current` reads a subgroup listed in the conflict response without following its historical alias. Without that flag, the old combined ID continues to describe the split. The browser follows aliases for search and browse results, then uses current subgroup reads when a subgroup is chosen in the conflict picker.
+
+Rebuild preserves headers and provider IDs already recorded in the database, so older archive inputs cannot undo a correction. It still recovers folder observations from every input. Keep the database backup: immutable context records do not record correction order, so raw inputs alone cannot identify which variant was the last correction.
 
 ## Recover folder provenance
 
-Mail imports write immutable digest-named JSON records under `archive/<source>/.mail-contexts/` before the database projection. Records contain the raw reference, input kind, folder context, and any supplied external ID, provider thread ID, or date override. They contain no account credentials. A crash after publication can leave pending metadata for rebuild to recover. `bank verify` checks context digests, validation, and raw references.
+Mail imports write immutable digest-named JSON records under `archive/<source>/.mail-contexts/` before the database projection. Records contain the raw reference, input kind, folder context, and any supplied external ID, provider thread ID, or date override. They contain no account credentials. After a crash, rebuild can recover folder observations and missing metadata for existing messages. If a duplicate header or provider correction was archived but never projected, reimport that corrected input or resync the provider: rebuild preserves the facts already in the database. `bank verify` checks context digests, validation, and raw references.
 
 Backups must include these hidden directories. Old raw files without context have unknown folders. Recover that information from the original export tree, not flattened archive filenames. Historical Gmail raw files may lack provider IDs that existed only in the database. Keep a database backup or resync Gmail; raw bytes cannot reproduce metadata that was never captured.
 

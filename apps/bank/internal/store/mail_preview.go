@@ -8,6 +8,7 @@ import (
 type MailPreview struct {
 	nodes         map[string]mailNode
 	members       map[int64]mailMember
+	headers       map[int64]mailHeaders
 	edges         map[int64][]mailEdge
 	history       map[string][]string
 	adjacent      map[string]map[mailEdge]bool
@@ -19,6 +20,7 @@ func (s *Store) PreviewMail(ctx context.Context, id int64, projection MailProjec
 	if preview.nodes == nil {
 		preview.nodes = make(map[string]mailNode)
 		preview.members = make(map[int64]mailMember)
+		preview.headers = make(map[int64]mailHeaders)
 		preview.edges = make(map[int64][]mailEdge)
 		preview.history = make(map[string][]string)
 		preview.adjacent = make(map[string]map[mailEdge]bool)

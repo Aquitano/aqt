@@ -20,9 +20,24 @@ const mailbox = type({
 });
 export type Mailbox = typeof mailbox.infer;
 
+const mailProvenance = type({
+  message_id: "string",
+  in_reply_to: "string[]",
+  references: "string[]",
+  raw_ref: "string",
+  native_thread_id: "string",
+  has_reply_links: "boolean",
+  incomplete: "boolean",
+  conflict_key: "string",
+});
+
 const message = type({
   id: "number",
   source: "string",
+  "ref?": "string",
+  "raw_ref?": "string",
+  "message_id?": "string",
+  "mail?": mailProvenance,
   "external_id?": "string",
   "parent_external_id?": "string",
   "branch_id?": "string",
@@ -180,9 +195,10 @@ export interface ThreadPosition {
   after?: number;
   around?: number;
   latest?: boolean;
+  current?: boolean;
 }
 export function getThread(source: string, threadId: string, position: ThreadPosition) {
-  const p = new URLSearchParams({ source, limit: "100", current: "true" });
+  const p = new URLSearchParams({ source, limit: "100" });
   for (const [key, value] of Object.entries(position)) {
     if (value !== undefined) p.set(key, String(value));
   }

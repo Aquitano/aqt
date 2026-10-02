@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -14,6 +15,119 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
+
+func TestMalformedMessageIDDoesNotBlockIngest(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	blobs, err := blob.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, messageID := range []string{"bad\x00@example.com", "bad\xff@example.com", "bad\x01@example.com"} {
+		raw := []byte("Message-ID: " + messageID + "\r\n\r\nbody")
+		opts := IngestOpts{Source: "malformed", ExternalID: fmt.Sprintf("mail%d", index)}
+		for range 2 {
+			result, err := Ingest(ctx, st, blobs, raw, opts)
+			if err != nil || len(result.Warnings) == 0 {
+				t.Fatalf("invalid ID wedged ingest: %+v %v", result, err)
+			}
+		}
+		id, err := st.FindMessageID(ctx, opts.Source, opts.ExternalID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		message, err := st.GetMessageDetail(ctx, id)
+		if err != nil || message.Mail == nil || message.Mail.MessageID != "" || message.Body != "body" {
+			t.Fatalf("malformed message not retained safely: %+v %v", message, err)
+		}
+	}
+}
+
+func TestMailRebuildPreservesCorrectedHeadersAndProvenance(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	root := t.TempDir()
+	blobs, err := blob.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := []byte("Message-ID: <child@example.com>\r\nReferences: <parent@example.com>\r\n\r\noriginal")
+	corrected := []byte("Message-ID: <child@example.com>\r\n\r\ncorrected")
+	var originalRef, correctedRef string
+	for index, raw := range [][]byte{old, corrected} {
+		name := []string{"z-old.eml", "a-corrected.eml"}[index]
+		reference, err := archive.Write(root, "correction", name, raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Ingest(ctx, st, blobs, raw, IngestOpts{Source: "correction", RawRef: reference}); err != nil {
+			t.Fatal(err)
+		}
+		if index == 0 {
+			originalRef = reference
+		} else {
+			correctedRef = filepath.ToSlash(reference)
+		}
+	}
+	id, err := st.FindByEmailMessageID(ctx, "correction", "child@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, apply := range []bool{false, true} {
+		report, err := RebuildMail(ctx, st, root, "correction", apply)
+		if err != nil || report.ThreadChanges != 0 || report.Messages != 2 {
+			t.Fatalf("rebuild restored old headers: %+v %v", report, err)
+		}
+		message, err := st.GetMessageDetail(ctx, id)
+		if err != nil || message.Mail == nil {
+			t.Fatalf("missing provenance: %+v %v", message, err)
+		}
+		if len(message.Mail.References) != 0 || message.Mail.HasReplyLinks || message.Mail.RawRef != correctedRef || message.RawRef != originalRef || message.Body != "original" {
+			t.Fatalf("incorrect provenance after rebuild: %+v, mail=%+v", message, message.Mail)
+		}
+	}
+	t.Setenv("BANK_MAIL_MAX_NODES", "1")
+	if _, err := Ingest(ctx, st, blobs, old, IngestOpts{Source: "correction", RawRef: originalRef}); err != nil {
+		t.Fatal(err)
+	}
+	limited, err := st.GetMessageDetail(ctx, id)
+	if err != nil || limited.Mail == nil || !limited.Mail.Incomplete || len(limited.Mail.References) != 1 {
+		t.Fatalf("pending correction missing from provenance: %+v %v", limited, err)
+	}
+	t.Setenv("BANK_MAIL_MAX_NODES", "100")
+	if _, err := RebuildMail(ctx, st, root, "correction", true); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := st.GetMessageDetail(ctx, id)
+	if err != nil || recovered.Mail == nil || recovered.Mail.Incomplete || !recovered.Mail.HasReplyLinks || recovered.Mail.RawRef != filepath.ToSlash(originalRef) {
+		t.Fatalf("rebuild lost pending correction: %+v %v", recovered, err)
+	}
+}
+
+func TestMailRebuildLargeEMLReadsOnlyHeaders(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	root := t.TempDir()
+	reference, err := archive.Write(root, "large", "message.eml", []byte("Message-ID: <large@example.com>\r\nReferences: <parent@example.com>\r\n\r\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(filepath.Join(root, reference), int64(maxMboxMessage)+1); err != nil {
+		t.Fatal(err)
+	}
+	id, err := st.InsertMessage(ctx, store.Message{Source: "large", ExternalID: "large@example.com", MessageID: "large@example.com", RawRef: reference, Body: "preserved"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := RebuildMail(ctx, st, root, "large", true)
+	if err != nil || report.Messages != 1 || report.Invalid != 0 {
+		t.Fatalf("large EML was not rebuilt: %+v %v", report, err)
+	}
+	message, err := st.GetMessageDetail(ctx, id)
+	if err != nil || message.Mail == nil || !message.Mail.HasReplyLinks || strings.Join(message.Mail.References, ",") != "parent@example.com" || message.Body != "preserved" {
+		t.Fatalf("large EML metadata: %+v %v", message, err)
+	}
+}
 
 func TestMailThreadArrivalOrdersAndConflicts(t *testing.T) {
 	ctx := context.Background()

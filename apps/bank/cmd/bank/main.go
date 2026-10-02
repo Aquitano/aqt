@@ -95,7 +95,7 @@ Usage:
   bank search [query] [flags]                 full-text search, or filtered conversations
   bank thread <id> [--source s] [--limit n]   one conversation page, oldest first
   bank contact <add|list|show|alias|...>      one person across their many identities
-  bank show <id|ref> [--json]                 print one message + attachments
+  bank show <id|ref> [--json] [--provenance]   print one message + attachments
   bank stats [--json]                         per-source counts, date ranges, freshness
   bank coverage <source> <text>               note what a source holds (empty text clears)
   bank query <sql|-> [--limit n] [--json]     read-only ad-hoc SQL (analytics escape
@@ -1206,11 +1206,12 @@ func cmdThread(ctx context.Context, args []string) error {
 func cmdShow(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("show", flag.ExitOnError)
 	asJSON := fs.Bool("json", false, "")
+	provenance := fs.Bool("provenance", false, "show archive, folder, and mail grouping evidence")
 	if err := parseFlagsAnywhere(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: bank show <id|ref> [--json]")
+		return fmt.Errorf("usage: bank show <id|ref> [--json] [--provenance]")
 	}
 	arg := fs.Arg(0)
 
@@ -1252,6 +1253,9 @@ func cmdShow(ctx context.Context, args []string) error {
 	if m.Subject != "" {
 		fmt.Printf("subject: %s\n", m.Subject)
 	}
+	if *provenance {
+		printProvenance(m)
+	}
 	fmt.Printf("\n%s\n", m.Body)
 	if len(d.Attachments) > 0 {
 		fmt.Println()
@@ -1275,6 +1279,26 @@ func cmdShow(ctx context.Context, args []string) error {
 		}
 	}
 	return nil
+}
+
+func printProvenance(m store.Message) {
+	recorded := func(value string) string {
+		if value == "" {
+			return "not recorded"
+		}
+		return value
+	}
+	fmt.Printf("external ID: %s\noriginal archive input: %s\n", recorded(m.ExternalID), recorded(m.RawRef))
+	if len(m.Mailboxes) == 0 {
+		fmt.Println("observed folders: not recorded")
+	}
+	for _, mailbox := range m.Mailboxes {
+		fmt.Printf("observed folder: %s (%s, historical)\n", mailbox.Path, mailbox.Kind)
+	}
+	if mail := m.Mail; mail != nil {
+		fmt.Printf("header archive input: %s\nnormalized Message-ID: %s\nIn-Reply-To: %s\nReferences: %s\nprovider thread ID: %s\nreply links: %t\ngrouping incomplete: %t\nconflict key: %s\n",
+			recorded(mail.RawRef), recorded(mail.MessageID), recorded(strings.Join(mail.InReplyTo, ", ")), recorded(strings.Join(mail.References, ", ")), recorded(mail.NativeThreadID), mail.HasReplyLinks, mail.Incomplete, recorded(mail.ConflictKey))
+	}
 }
 
 // backend is the archive as the read commands use it. The local store and a

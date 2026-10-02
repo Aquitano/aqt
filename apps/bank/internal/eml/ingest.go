@@ -143,7 +143,7 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 	if err := syncAttachments(ctx, st, blobs, id, m.Attachments, res.Inserted, &res); err != nil {
 		return res, err
 	}
-	projection, err := st.ProjectMail(ctx, id, store.MailProjection{MessageID: m.NormalizedMessageID, InReplyTo: m.InReplyTo, References: m.References, NativeThreadID: o.ThreadID, Context: o.MailContext}, true, "")
+	projection, err := st.ProjectMail(ctx, id, store.MailProjection{MessageID: m.NormalizedMessageID, InReplyTo: m.InReplyTo, References: m.References, RawRef: filepath.ToSlash(o.RawRef), NativeThreadID: o.ThreadID, Context: o.MailContext}, true, "")
 	if err != nil {
 		return res, fail.Opf("persist mail metadata: %w", err)
 	}

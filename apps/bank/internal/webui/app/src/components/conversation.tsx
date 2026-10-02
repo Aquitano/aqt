@@ -4,6 +4,7 @@ import { memo, useState, useEffect, useLayoutEffect, useRef, type ReactNode } fr
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { MessageProvenance } from "@/components/message-provenance";
 import {
   Attachment,
   AttachmentContent,
@@ -297,6 +298,7 @@ function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; s
               ) : null}
               <Body m={m} />
               <Attachments m={m} />
+              <MessageProvenance message={m} />
             </BubbleContent>
           </Bubble>
           {showFooter && (
@@ -340,6 +342,7 @@ function DocumentView({ title, meta, m }: { title: ReactNode; meta: string; m: B
           </div>
           <div className="mt-4">
             <Attachments m={m} />
+            <MessageProvenance message={m} />
           </div>
         </article>
       </div>

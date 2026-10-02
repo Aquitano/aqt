@@ -1,6 +1,7 @@
 package eml
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -8,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/mail"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,20 +66,25 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 		if _, err := input.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
-		prefix := "mail-projection-v2:" + identity + ":" + hex.EncodeToString(digest.Sum(nil)) + ":" + string(configuration)
+		rawDigest := hex.EncodeToString(digest.Sum(nil))
+		prefix := "mail-projection-v3:" + identity + ":" + rawDigest + ":" + string(configuration)
 		report.Inputs++
-		visit := func(raw []byte) error {
+		visit := func(input io.Reader, contentDigest string) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			message, err := Parse(raw)
+			envelope, err := mail.ReadMessage(input)
 			if err != nil {
 				note(record.RawRef + ": " + err.Error())
 				return nil
 			}
+			message := parseHeader(envelope.Header)
 			externalID := record.ExternalID
 			if externalID == "" {
-				externalID = defaultExternalID(message, raw)
+				externalID = message.MessageID
+				if externalID == "" {
+					externalID = contentDigest
+				}
 			}
 			id, err := st.ResolveMailMessage(ctx, source, message.MessageID, externalID)
 			if err != nil {
@@ -87,8 +94,7 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 				report.Missing++
 				return nil
 			}
-			contentDigest := sha256.Sum256(raw)
-			digest := sha256.Sum256([]byte(prefix + hex.EncodeToString(contentDigest[:])))
+			digest := sha256.Sum256([]byte(prefix + contentDigest))
 			workKey := hex.EncodeToString(digest[:])
 			done, err := st.MailRebuildDone(ctx, source, workKey, id)
 			if err != nil {
@@ -98,7 +104,7 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 				report.Skipped++
 				return nil
 			}
-			facts := store.MailProjection{MessageID: message.NormalizedMessageID, InReplyTo: message.InReplyTo, References: message.References, NativeThreadID: record.ThreadID, PreserveNative: true, Context: record.Context}
+			facts := store.MailProjection{MessageID: message.NormalizedMessageID, InReplyTo: message.InReplyTo, References: message.References, RawRef: record.RawRef, NativeThreadID: record.ThreadID, PreserveNative: true, PreserveHeaders: true, Context: record.Context}
 			var projection store.MailProjectionResult
 			if apply {
 				projection, err = st.ProjectMail(ctx, id, facts, true, workKey)
@@ -127,17 +133,12 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 			return nil
 		}
 		if record.InputKind == "mbox" {
-			return SplitMbox(input, visit)
+			return SplitMbox(input, func(raw []byte) error {
+				digest := sha256.Sum256(raw)
+				return visit(bytes.NewReader(raw), hex.EncodeToString(digest[:]))
+			})
 		}
-		raw, err := io.ReadAll(io.LimitReader(input, int64(maxMboxMessage)+1))
-		if err != nil {
-			return err
-		}
-		if len(raw) > maxMboxMessage {
-			note(record.RawRef + ": EML exceeds message size limit")
-			return nil
-		}
-		return visit(raw)
+		return visit(input, rawDigest)
 	}
 	known := make(map[string]bool)
 	contexts, err := os.ReadDir(filepath.Join(root, source, ".mail-contexts"))

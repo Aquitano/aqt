@@ -30,8 +30,9 @@ type Store struct {
 }
 
 type Message struct {
-	Mailboxes []Mailbox `json:"mailboxes,omitempty"`
-	ID        int64     `json:"id"`
+	Mail      *MailProvenance `json:"mail,omitempty"`
+	Mailboxes []Mailbox       `json:"mailboxes,omitempty"`
+	ID        int64           `json:"id"`
 	// Ref is the stable citation id: 12 hex characters derived from the source
 	// and the message's own identifier. ID is a row serial and changes when the
 	// archive is rebuilt from its raw inputs, so a note citing "bank:<id>"
