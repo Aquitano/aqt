@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -27,18 +28,24 @@ type Image struct {
 	AltText string `json:"alt_text"`
 }
 
+type Post struct {
+	StatusID     string `json:"status_id"`
+	AuthorHandle string `json:"author_handle"`
+	AuthorName   string `json:"author_name"`
+	Text         string `json:"text"`
+	PostedAt     string `json:"posted_at"`
+}
+
 type Data struct {
+	Post
 	PostURL         string  `json:"post_url"`
 	Images          []Image `json:"images"`
-	StatusID        string  `json:"status_id"`
-	AuthorHandle    string  `json:"author_handle"`
-	AuthorName      string  `json:"author_name"`
-	Text            string  `json:"text"`
-	PostedAt        string  `json:"posted_at"`
 	ReplyToStatusID string  `json:"reply_to_status_id,omitempty"`
 	QuotedStatusID  string  `json:"quoted_status_id,omitempty"`
 	MediaCount      int     `json:"media_count"`
 	Lang            string  `json:"lang,omitempty"`
+	Ancestors       []Post  `json:"ancestors"`
+	Replies         []Post  `json:"replies"`
 }
 
 const titleRunes = 80
@@ -46,12 +53,12 @@ const titleRunes = 80
 func (Extractor) Rule() extractor.Rule {
 	return extractor.Rule{
 		Extractor: Name,
-		Version:   3,
+		Version:   4,
 		// Every subdomain, so X Pro's columns of notifications and messages
 		// never fall through to the article fallback.
 		Hosts:     []string{"x.com", "*.x.com", "twitter.com", "*.twitter.com"},
 		PathRegex: `^/[^/]+/status/\d+`,
-		Recapture: extractor.RecaptureAfterQuiet,
+		Recapture: extractor.RecaptureAfterChange,
 	}
 }
 
@@ -66,35 +73,39 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 	}
 
 	articles := findAll(doc, nil, func(n *html.Node) bool { return testID(n, "tweet") })
-	focal, before := focalArticle(articles, statusID)
-	if focal == nil {
+	i := focalIndex(articles, statusID)
+	if i < 0 {
 		return extractor.Record{}, extractor.ErrNoMatch
 	}
+	focal := articles[i]
 
 	quote := find(focal, nil, isQuoteCard)
-	body := find(focal, quote, func(n *html.Node) bool { return testID(n, "tweetText") })
+	body := find(focal, quote, isTweetText)
 	images := postImages(focal, quote)
 	if body == nil && len(images) == 0 {
 		return extractor.Record{}, extractor.ErrNoMatch
 	}
 
-	handle, name := author(focal, quote)
-	if handle == "" {
-		handle, _ = linkStatus(pageURL.Path)
+	post := readPost(focal)
+	post.StatusID = statusID
+	if post.AuthorHandle == "" {
+		post.AuthorHandle, _ = linkStatus(pageURL.Path)
 	}
-	postURL := "https://x.com/" + handle + "/status/" + statusID
+	postURL := "https://x.com/" + post.AuthorHandle + "/status/" + statusID
 	data := Data{
-		PostURL:         postURL,
-		Images:          images,
-		StatusID:        statusID,
-		AuthorHandle:    handle,
-		AuthorName:      name,
-		Text:            text(body, nil),
-		PostedAt:        postedAt(focal, quote),
-		ReplyToStatusID: replyTo(before, statusID),
-		QuotedStatusID:  quotedStatusID(quote),
-		MediaCount:      len(findAll(focal, quote, isMedia)),
-		Lang:            attr(body, "lang"),
+		Post:           post,
+		PostURL:        postURL,
+		Images:         images,
+		QuotedStatusID: quotedStatusID(quote),
+		MediaCount:     len(findAll(focal, quote, isMedia)),
+		Lang:           attr(body, "lang"),
+		Ancestors:      conversation(articles[:i], statusID),
+		Replies:        conversation(repliesBelow(doc, focal), statusID),
+	}
+	// div[data-testid="reply-context"] names the handles answered but carries
+	// no id, so the parent is the nearest post rendered above.
+	if n := len(data.Ancestors); n > 0 {
+		data.ReplyToStatusID = data.Ancestors[n-1].StatusID
 	}
 
 	search := []string{data.AuthorHandle, data.AuthorName, data.Text}
@@ -109,6 +120,9 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 	}
 	if titleText == "" {
 		titleText = "Photo post"
+	}
+	for _, p := range slices.Concat(data.Ancestors, data.Replies) {
+		search = append(search, p.AuthorHandle, p.AuthorName, p.Text)
 	}
 	title := "@" + data.AuthorHandle + ": " + firstRunes(collapse(titleText), titleRunes)
 	return extractor.Record{
@@ -146,7 +160,7 @@ func postImages(focal, quote *html.Node) []Image {
 	return images
 }
 
-func focalArticle(articles []*html.Node, statusID string) (focal *html.Node, before []*html.Node) {
+func focalIndex(articles []*html.Node, statusID string) int {
 	for i, a := range articles {
 		quote := find(a, nil, isQuoteCard)
 		link := find(a, quote, func(n *html.Node) bool {
@@ -159,12 +173,55 @@ func focalArticle(articles []*html.Node, statusID string) (focal *html.Node, bef
 		if link == nil {
 			continue
 		}
-		hasText := find(a, quote, func(n *html.Node) bool { return testID(n, "tweetText") }) != nil
-		if hasText || len(postImages(a, quote)) > 0 {
-			return a, articles[:i]
+		if find(a, quote, isTweetText) != nil || len(postImages(a, quote)) > 0 {
+			return i
 		}
 	}
-	return nil, nil
+	return -1
+}
+
+func readPost(a *html.Node) Post {
+	quote := find(a, nil, isQuoteCard)
+	handle, name := author(a, quote)
+	return Post{
+		StatusID:     permalinkID(a, quote),
+		AuthorHandle: handle,
+		AuthorName:   name,
+		Text:         text(find(a, quote, isTweetText), nil),
+		PostedAt:     postedAt(a, quote),
+	}
+}
+
+// repliesBelow is every post after the focal one up to the next section
+// heading: below the replies, X adds a "Discover more" section of posts from
+// strangers, which would otherwise be indexed as this thread's.
+func repliesBelow(doc, focal *html.Node) []*html.Node {
+	var replies []*html.Node
+	below := false
+	for _, n := range findAll(doc, nil, func(n *html.Node) bool { return testID(n, "tweet") || isElem(n, "h2") }) {
+		switch {
+		case n == focal:
+			below = true
+		case !below:
+		case isElem(n, "h2"):
+			return replies
+		default:
+			replies = append(replies, n)
+		}
+	}
+	return replies
+}
+
+// conversation reads the posts X renders around the focal one: the thread it
+// answers above it, the replies below.
+func conversation(articles []*html.Node, statusID string) []Post {
+	posts := []Post{}
+	for _, a := range articles {
+		if p := readPost(a); p.StatusID != "" && p.StatusID != statusID {
+			posts = append(posts, p)
+		}
+	}
+	return posts
 }
 
 // isQuoteCard matches the embedded tweet X renders inside a status: a
@@ -174,9 +231,13 @@ func isQuoteCard(n *html.Node) bool {
 		return false
 	}
 	hasTime := find(n, nil, func(c *html.Node) bool { return isElem(c, "time") }) != nil
-	hasText := find(n, nil, func(c *html.Node) bool { return testID(c, "tweetText") }) != nil
+	hasText := find(n, nil, isTweetText) != nil
 	hasMedia := find(n, nil, isMedia) != nil
 	return hasTime && (hasText || hasMedia)
+}
+
+func isTweetText(n *html.Node) bool {
+	return testID(n, "tweetText")
 }
 
 func isMedia(n *html.Node) bool {
@@ -218,27 +279,11 @@ func postedAt(focal, quote *html.Node) string {
 	return parsed.UTC().Format(time.RFC3339)
 }
 
-// replyTo reads the status this one answers off the nearest article rendered
-// above the focal one; div[data-testid="reply-context"] names the handles but
-// carries no id.
-func replyTo(before []*html.Node, statusID string) string {
-	for i := len(before) - 1; i >= 0; i-- {
-		a := before[i]
-		if find(a, nil, func(n *html.Node) bool { return testID(n, "tweetText") }) == nil {
-			continue
-		}
-		if id := permalinkID(a); id != "" && id != statusID {
-			return id
-		}
-	}
-	return ""
-}
-
 func quotedStatusID(quote *html.Node) string {
 	if quote == nil {
 		return ""
 	}
-	if id := permalinkID(quote); id != "" {
+	if id := permalinkID(quote, nil); id != "" {
 		return id
 	}
 	link := find(quote, nil, func(n *html.Node) bool {
@@ -258,8 +303,8 @@ func quotedStatusID(quote *html.Node) string {
 // permalinkID reads the id off the anchor wrapping the timestamp, which is the
 // one link guaranteed to point at the tweet itself rather than at media or a
 // quoted status.
-func permalinkID(root *html.Node) string {
-	t := find(root, nil, func(n *html.Node) bool { return isElem(n, "time") })
+func permalinkID(root, skip *html.Node) string {
+	t := find(root, skip, func(n *html.Node) bool { return isElem(n, "time") })
 	if t == nil {
 		return ""
 	}

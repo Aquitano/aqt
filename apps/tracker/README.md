@@ -92,6 +92,7 @@ refresh token included, so it keeps running without anyone at a terminal.
 tracker serve [--listen 127.0.0.1:8490] [--workers 3]
 tracker migrate
 tracker reprocess [--extractor name] [--failed] [--all]
+tracker blob <hash-or-url>
 tracker login
 tracker logout
 tracker stats [--json]
@@ -101,7 +102,11 @@ tracker search [--extractor name] [--limit n] [--json] <query>
 `serve` queues every capture the current extractor versions have not processed yet when it starts, so a release that bumps one needs no manual step. `reprocess` also removes the records only an older version produced; `reprocess --all` rebuilds every derived row from the source tables alone.
 
 `stats` and `search` read the server over HTTP, so they work against a tracker
-on another machine; `serve`, `migrate` and `reprocess` need the database.
+on another machine; `serve`, `migrate`, `reprocess` and `blob` need the database.
+
+`blob` writes the HTML of a stored capture to stdout, for turning a real page
+into an extractor fixture: 64 hex characters name a blob, anything else is a
+URL, normalised like ingest does, whose most recent capture it writes.
 
 ## Ports
 
@@ -151,7 +156,7 @@ without one Chrome reassigns the extension id, and the URI changes with it.
 
 ## What is recorded
 
-Every top-level navigation and SPA URL change as a page view, active time as spans (tab focused, window focused, not idle), and the full HTML of pages you read. Site extractors (github, x, youtube) snapshot after 5 s of active time; every page on a host without its own extractor is snapshotted by the `article` fallback after 30 s, which strips navigation, ads and footers with readability and keeps the prose and its metadata. A host a site extractor names is that extractor's alone, so a YouTube home page or a GitHub issue list is never snapshotted as an article. GitHub's own pages (settings, sign-in, notifications and the like) are never snapshotted at all: a new access token is shown on one of them. Pages with under 200 characters of prose are recorded as `no_match`. The popup's capture-now button works on any page. Rules marked `after_quiet` (github, x) are snapshotted again once the page has stopped changing for 30 seconds and at least 5 minutes have passed since the last snapshot, so a thread or a pull request that grew while the tab stayed open is stored in its final state; an unchanged page is never snapshotted twice. Raw HTML is kept forever, zstd-compressed and content-addressed, so a fixed extractor can be replayed over it. X records also keep the post URL and each photo's original-size image URL and alt text. Photo-only posts are indexed by author and descriptive alt text. Image URLs reference X's hosted files; the tracker does not download the image files.
+Every top-level navigation and SPA URL change as a page view, active time as spans (tab focused, window focused, not idle), and the full HTML of pages you read. Site extractors (github, x, youtube) snapshot after 5 s of active time; every page on a host without its own extractor is snapshotted by the `article` fallback after 30 s, which strips navigation, ads and footers with readability and keeps the prose and its metadata. A host a site extractor names is that extractor's alone, so a YouTube home page or a GitHub issue list is never snapshotted as an article. GitHub's own pages (settings, sign-in, notifications and the like) are never snapshotted at all: a new access token is shown on one of them. Pages with under 200 characters of prose are recorded as `no_match`. The popup's capture-now button works on any page. Rules marked `after_change` (github, x) are snapshotted again at most every 5 minutes while you are on the page, and when you leave it, so a thread or a pull request that grew while you read it is stored as you left it; an unchanged page is never snapshotted twice. Raw HTML is kept forever, zstd-compressed and content-addressed, so a fixed extractor can be replayed over it. GitHub issue and pull request records keep every comment the page shows, and X records keep the posts shown above and below the one opened, so replies are searchable too. X records also keep the post URL and each photo's original-size image URL and alt text. Photo-only posts are indexed by author and descriptive alt text. Image URLs reference X's hosted files; the tracker does not download the image files.
 
 With the desktop agent installed, the frontmost app, its bundle id and its window title are recorded as spans in the same table while the machine is not idle. Spans map to categories (`Focus/Code`, `Communication`, `Distraction`, `Learning`, `AI`, `Browsing`, `Personal`, `Design`, `System`, `Productivity`) through regex rules in the `category_rules` table, which you edit in SQL; the Grafana dashboard shows minutes per category and per app, context switches per hour and the day's work blocks (spans stitched together while the gap stays under 60 s), all computed from SQL views over the spans.
 

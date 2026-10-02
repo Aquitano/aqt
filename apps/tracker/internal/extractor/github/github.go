@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/net/html"
 
@@ -27,16 +28,23 @@ const (
 )
 
 type Data struct {
-	Kind      string   `json:"kind"`
-	Owner     string   `json:"owner"`
-	Repo      string   `json:"repo"`
-	Number    int      `json:"number"`
-	Title     string   `json:"title"`
-	State     string   `json:"state"`
-	Author    string   `json:"author"`
-	Body      string   `json:"body"`
-	Labels    []string `json:"labels"`
-	CreatedAt string   `json:"created_at"`
+	Kind      string    `json:"kind"`
+	Owner     string    `json:"owner"`
+	Repo      string    `json:"repo"`
+	Number    int       `json:"number"`
+	Title     string    `json:"title"`
+	State     string    `json:"state"`
+	Author    string    `json:"author"`
+	Body      string    `json:"body"`
+	Labels    []string  `json:"labels"`
+	CreatedAt string    `json:"created_at"`
+	Comments  []Comment `json:"comments"`
+}
+
+type Comment struct {
+	Author    string `json:"author"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
 }
 
 type Extractor struct{}
@@ -46,13 +54,13 @@ func init() { extractor.Register(Extractor{}) }
 func (Extractor) Rule() extractor.Rule {
 	return extractor.Rule{
 		Extractor: Name,
-		Version:   3,
+		Version:   4,
 		Hosts:     []string{"github.com"},
 		PathRegex: `^/[^/]+/[^/]+(/(issues|pull)/\d+)?/?$`,
 		// GitHub's own two-segment pages look like owner/repo. Some are
 		// secret: /settings/tokens shows a new token in the page.
 		ExcludePathRegex: `^/(settings|login|logout|sessions|session|signup|join|password_reset|account|auth|notifications|issues|pulls|orgs|organizations|new|marketplace|sponsors|apps|codespaces|copilot|github-copilot|dashboard|explore|topics|trending|collections|search|stars|users|enterprises|features|security)(/|$)`,
-		Recapture:        extractor.RecaptureAfterQuiet,
+		Recapture:        extractor.RecaptureAfterChange,
 	}
 }
 
@@ -92,10 +100,14 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 		path = fmt.Sprintf("%s/%s/%d", path, issuePathSegment(data.Kind), data.Number)
 	}
 	canonical := &url.URL{Scheme: pageURL.Scheme, Host: pageURL.Host, Path: path}
+	search := []string{data.Title, data.Body, strings.Join(data.Labels, " ")}
+	for _, c := range data.Comments {
+		search = append(search, c.Body)
+	}
 	return extractor.Record{
 		CanonicalURL: canonical.String(),
 		Title:        title,
-		SearchText:   strings.TrimSpace(strings.Join([]string{data.Title, data.Body, strings.Join(data.Labels, " ")}, "\n")),
+		SearchText:   strings.TrimSpace(strings.Join(search, "\n")),
 		Data:         data,
 	}, nil
 }
@@ -229,7 +241,7 @@ func (e *embedded) issue() *issueNode {
 }
 
 func issueData(t target, emb *embedded, doc *html.Node) (Data, bool) {
-	d := Data{Kind: KindIssue, Owner: t.owner, Repo: t.repo, Number: t.number, Labels: []string{}}
+	d := Data{Kind: KindIssue, Owner: t.owner, Repo: t.repo, Number: t.number, Labels: []string{}, Comments: comments(doc)}
 	if issue := emb.issue(); issue != nil {
 		if issue.Repository.Owner.Login != "" {
 			d.Owner, d.Repo = issue.Repository.Owner.Login, issue.Repository.Name
@@ -259,7 +271,7 @@ func issueData(t target, emb *embedded, doc *html.Node) (Data, bool) {
 }
 
 func pullData(t target, emb *embedded, doc *html.Node) (Data, bool) {
-	d := Data{Kind: KindPull, Owner: t.owner, Repo: t.repo, Number: t.number, Labels: []string{}}
+	d := Data{Kind: KindPull, Owner: t.owner, Repo: t.repo, Number: t.number, Labels: []string{}, Comments: comments(doc)}
 	if emb != nil {
 		route := emb.Payload.PullRequestsLayoutRoute
 		if route.Repository.OwnerLogin != "" {
@@ -289,7 +301,7 @@ func pullData(t target, emb *embedded, doc *html.Node) (Data, bool) {
 }
 
 func repoData(t target, emb *embedded, doc *html.Node) (Data, bool) {
-	d := Data{Kind: KindRepo, Owner: t.owner, Repo: t.repo, Labels: []string{}}
+	d := Data{Kind: KindRepo, Owner: t.owner, Repo: t.repo, Labels: []string{}, Comments: []Comment{}}
 	var about string
 	if emb != nil && emb.Payload.SidebarAbout != nil {
 		sidebar := emb.Payload.SidebarAbout
@@ -315,6 +327,40 @@ func repoData(t target, emb *embedded, doc *html.Node) (Data, bool) {
 
 func markdownBody(doc *html.Node) string {
 	return nodeText(findNode(doc, byClass("markdown-body")))
+}
+
+// comments reads every comment body after the description, in the React
+// issue viewer and in the server-rendered pull request timeline alike. Each
+// body follows its own header's author link and timestamp in document order;
+// timeline events in between carry theirs too, so the last ones seen win.
+func comments(doc *html.Node) []Comment {
+	out := []Comment{}
+	var c Comment
+	description := true
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode {
+			switch {
+			case hasClass(n, "js-comment-body") || attr(n, "data-testid") == "markdown-body":
+				if c.Body = nodeText(n); !description && c.Body != "" {
+					out = append(out, c)
+				}
+				c, description = Comment{}, false
+				return
+			case n.Data == "a" && (hasClass(n, "author") || attr(n, "data-testid") == "avatar-link"):
+				c.Author = nodeText(n)
+			case n.Data == "relative-time":
+				if t, err := time.Parse(time.RFC3339, attr(n, "datetime")); err == nil {
+					c.CreatedAt = t.UTC().Format(time.RFC3339)
+				}
+			}
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(doc)
+	return out
 }
 
 func normalizeState(s string) string {

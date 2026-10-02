@@ -106,7 +106,7 @@ describe("matchRule", () => {
 });
 
 describe("Rule decoding", () => {
-  test("normalises Go nil slices and zero defaults", () => {
+  test("normalises Go nil slices, zero defaults and unknown recapture modes", () => {
     const decoded = RulesResponse({
       rules: [
         {
@@ -116,7 +116,7 @@ describe("Rule decoding", () => {
           path_regex: "",
           query_keys: null,
           dwell_ms: 0,
-          recapture: "never",
+          recapture: "after_quiet",
           max_bytes: 0,
         },
       ],

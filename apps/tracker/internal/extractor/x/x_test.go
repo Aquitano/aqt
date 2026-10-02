@@ -1,6 +1,5 @@
-// The fixtures under testdata/ are hand-written from X's rendered DOM, not a
-// real capture. Replace them with an extension capture of a live status page
-// (see README.md) and re-check every expectation below against it.
+// status-photo.html and reply-quote.html are hand-written from the logged-in
+// DOM, not captured; logged-out.html is real. See README.md.
 package x
 
 import (
@@ -44,6 +43,14 @@ func TestPlainStatus(t *testing.T) {
 		PostedAt:     "2026-09-05T14:23:11Z",
 		MediaCount:   1,
 		Lang:         "en",
+		Ancestors:    []Post{},
+		Replies: []Post{{
+			StatusID:     "1965209999999999999",
+			AuthorHandle: "someone",
+			AuthorName:   "Someone Else",
+			Text:         "Congrats!",
+			PostedAt:     "2026-09-05T15:01:00Z",
+		}},
 	}
 	if got := rec.Data.(Data); !reflect.DeepEqual(got, want) {
 		t.Errorf("data\ngot  %+v\nwant %+v", got, want)
@@ -54,7 +61,7 @@ func TestPlainStatus(t *testing.T) {
 	if rec.Title != "@dexhorthy: Shipped the extractor 🚀 today. Fixtures next." {
 		t.Errorf("title = %q", rec.Title)
 	}
-	if rec.SearchText != "dexhorthy\nDex 🛠 Horthy\nShipped the extractor 🚀 today.\nFixtures next." {
+	if rec.SearchText != "dexhorthy\nDex 🛠 Horthy\nShipped the extractor 🚀 today.\nFixtures next.\nsomeone\nSomeone Else\nCongrats!" {
 		t.Errorf("search text = %q", rec.SearchText)
 	}
 }
@@ -76,14 +83,22 @@ func TestReplyWithQuote(t *testing.T) {
 		QuotedStatusID:  "1965000000000000009",
 		MediaCount:      1,
 		Lang:            "de",
+		Ancestors: []Post{{
+			StatusID:     "1965100000000000001",
+			AuthorHandle: "simonw",
+			AuthorName:   "Simon Willison",
+			Text:         "Scraping rendered DOM is mostly a parser problem.",
+			PostedAt:     "2026-09-04T08:12:00Z",
+		}},
+		Replies: []Post{},
 	}
 	if got := rec.Data.(Data); !reflect.DeepEqual(got, want) {
 		t.Errorf("data\ngot  %+v\nwant %+v", got, want)
 	}
 }
 
-func TestShellPageHasNoMatch(t *testing.T) {
-	_, err := extract(t, "shell.html", "https://x.com/dexhorthy/status/1965203819281002523")
+func TestLoggedOutPageHasNoMatch(t *testing.T) {
+	_, err := extract(t, "logged-out.html", "https://x.com/jack/status/20")
 	if !errors.Is(err, extractor.ErrNoMatch) {
 		t.Fatalf("err = %v, want ErrNoMatch", err)
 	}

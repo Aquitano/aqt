@@ -27,7 +27,7 @@ What I read and where my attention went, from a browser extension and a macOS me
 
 ```
 apps/tracker/
-  cmd/tracker/            serve | migrate | reprocess | login | logout | stats | search
+  cmd/tracker/            serve | migrate | reprocess | blob | login | logout | stats | search
   internal/
     store/                bun models, embedded migrations, queries
     ingest/               HTTP: events, captures, capture-rules, search, stats, healthz, metrics
@@ -227,7 +227,7 @@ type Rule struct {
     ExcludePathRegex string   // pages PathRegex matches that are never captured; RE2 has no lookahead
     QueryKeys        []string // query params that distinguish page views (e.g. "v" on YouTube)
     DwellMS          int      // default 5000; article uses 30000
-    Recapture        string   // "never" | "after_quiet"
+    Recapture        string   // "never" | "after_change"
     MaxBytes         int      // default 10 MiB
 }
 
@@ -246,7 +246,7 @@ type Extractor interface {
 
 Registry: `extractor.All()` returns every registered extractor; both the rules endpoint and the worker read it. `*.example.com` in `Hosts` matches subdomains only; list the apex separately when it is wanted. `"*"` matches any host: `MatchRule` tries host-specific rules before wildcard ones and `Rules()` publishes wildcards last, so a site extractor always beats the `article` fallback regardless of order, and a host any site rule names never reaches the fallback at all. `ErrNoMatch` marks a page the rule matched but the extractor could not read (login wall, empty shell, under 200 characters of prose for `article`) and is classified `no_match`, not retried. `ErrStale` marks embedded page state that belongs to another URL, which is what a single-page app leaves behind after navigating in place; classified `stale`, not retried.
 
-`article` runs the readeck fork of go-readability over the page and records title, byline, site name, excerpt, published date, language, the cleaned text and a word count; `github` and `x` recapture `after_quiet`, `youtube` and `article` never.
+`article` runs the readeck fork of go-readability over the page and records title, byline, site name, excerpt, published date, language, the cleaned text and a word count; `github` and `x` recapture `after_change`, `youtube` and `article` never.
 
 An article's canonical URL is its `<link rel=canonical>` only when that is on the page's host (a leading `www.` aside) with a path other than `/`, since some sites point every article at their homepage; otherwise it is the page URL.
 
@@ -313,7 +313,7 @@ Every event is idempotent (upsert by id; heartbeats and ends only move `ended_at
 - Rules fetched at startup and hourly; cached in storage. No rules cached means no captures, events still flow.
 - **Page view**: every top-level navigation (`webNavigation.onCommitted`) and every SPA URL change where the path differs, or a `QueryKeys` value of the matching rule differs (`webNavigation.onHistoryStateUpdated` plus a content-script `pushState`/`replaceState`/`popstate` hook). `navigation_type` from the transition type. Hash-only and unlisted query-only changes are ignored.
 - **Spans**: open while the tab is active, its window focused and `chrome.idle` reports `active` (threshold 60 s). Close on tab switch, window blur, idle, navigation, tab close. Heartbeat every 30 s while open. Only one span open per device at a time. Span edges, heartbeats and page view start times carry the time the browser event fired (`webNavigation`'s `timeStamp` where it has one), not the time the service worker got round to handling it.
-- **Capture**: when the page view's URL matches a rule and the tab has been active for `dwell_ms`, the service worker asks the content script for `document.documentElement.outerHTML` inside `requestIdleCallback` (`reason: initial`). The content script keeps a `MutationObserver` that sets a dirty flag; after the first serialize of a document it also debounces those mutations by 30 s and reports `quiet` to the service worker. On `quiet` from a top frame, a page view whose rule says `recapture: after_quiet` is captured again (`reason: recapture`) once at least 5 minutes have passed since its last capture; a page that settles earlier arms a one-shot alarm for when the interval ends, so lazily loaded comments are still picked up. A recapture that finds the document unchanged is skipped. Neither focus nor an open span is required: the point is the settled final state of a long-lived tab. The page view remembers `lastCapturedAt` in session storage, which is also what stops a second initial capture. Manual capture from the popup: `reason: manual`, always allowed, and with the `article` fallback it works on any page.
+- **Capture**: when the page view's URL matches a rule and the tab has been active for `dwell_ms`, the service worker asks the content script for `document.documentElement.outerHTML` inside `requestIdleCallback` (`reason: initial`). The content script keeps a `MutationObserver` that sets a dirty flag, cleared by every serialize. A page view whose rule says `recapture: after_change` is captured again (`reason: recapture`) once its last capture is at least 5 minutes old: checked on each heartbeat of its span, and when the span ends while the tab still shows it. A thread that grows while it is read is so stored at most every 5 minutes while it is on screen, and as it was left. A recapture that finds the document unchanged is skipped. A span that ends because its tab navigated or closed leaves no document to recapture; the heartbeat check covers a page left by navigation. The page view remembers `lastCapturedAt` in session storage, which is also what stops a second initial capture. Manual capture from the popup: `reason: manual`, always allowed, and with the `article` fallback it works on any page.
 - **Private hosts**: matching page views record host only, no title, `private: true`; never captured. Incognito tabs produce nothing.
 - **Outbox**: IndexedDB, one store for events and one for captures. Events batch every 10 s or at 100 pending. Captures upload immediately, but only while no event is queued: the page view a capture references must reach the server first. Retry with backoff up to 5 min. While `/healthz` fails, capture is paused (no HTML serialised); events keep queueing.
 - **Popup**: connected/unreachable, pending events, pending captures, last sync, last error, capture-now button, last 100 diagnostic lines.
@@ -324,13 +324,14 @@ Every event is idempotent (upsert by id; heartbeats and ends only move `ended_at
 tracker serve [--listen 127.0.0.1:8490] [--workers 3]
 tracker migrate
 tracker reprocess [--extractor name] [--failed] [--all]
+tracker blob <hash-or-url>
 tracker login
 tracker logout
 tracker stats [--json]
 tracker search [--extractor name] [--limit n] [--json] <query>
 ```
 
-`serve` runs migrations on startup, like bank. `stats` and `search` go over HTTP so they work against a server whose database is not reachable; `login` is the RFC 8628 device code flow, and the token it stores refreshes itself.
+`serve` runs migrations on startup, like bank. `blob` writes a stored capture's decompressed HTML to stdout: 64 hex characters name a blob; anything else is a URL, normalised as ingest does, and the most recent capture whose page view is at that URL is written. `stats` and `search` go over HTTP so they work against a server whose database is not reachable; `login` is the RFC 8628 device code flow, and the token it stores refreshes itself.
 
 ## Metrics
 
@@ -342,4 +343,4 @@ Counters: `tracker_http_requests_total{route,status}`, `tracker_events_ingested_
 2. Extension: page views, spans, rules, capture, outbox, popup.
 3. Extractors: github, x, youtube, article, each with fixture HTML tests.
 4. Grafana dashboard: attention per host per day, captures and dedup, queue depth.
-5. Recapture after quiet for evolving pages; desktop agent, categories, work blocks and context-switch panels.
+5. Recapture of pages that change while open; desktop agent, categories, work blocks and context-switch panels.

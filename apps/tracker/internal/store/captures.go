@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"github.com/google/uuid"
@@ -68,4 +69,19 @@ func (s *Store) InsertCapture(ctx context.Context, in CaptureInput) (CaptureResu
 		return CaptureResult{}, err
 	}
 	return res, nil
+}
+
+// LatestCaptureHash is the blob of the most recent capture of the page whose
+// normalised URL hashes to urlHash, matched on the page view it belongs to.
+func (s *Store) LatestCaptureHash(ctx context.Context, urlHash []byte) ([]byte, error) {
+	var hash []byte
+	err := s.db.NewRaw(`select c.raw_hash from captures c
+		join page_views pv on pv.id = c.page_view_id
+		join urls u on u.id = pv.url_id
+		where u.url_hash = ?
+		order by c.captured_at desc, c.id desc limit 1`, urlHash).Scan(ctx, &hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return hash, err
 }

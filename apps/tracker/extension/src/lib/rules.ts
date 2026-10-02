@@ -11,12 +11,13 @@ export const Rule = type({
   "exclude_path_regex?": "string",
   query_keys: "string[]",
   dwell_ms: "number",
-  recapture: "string",
+  recapture: "'never' | 'after_change'",
   max_bytes: "number",
 });
 export type Rule = typeof Rule.infer;
 
-// Go encodes nil slices as null and unset ints as 0; the wire form is normalised once, here.
+// Go encodes nil slices as null and unset ints as 0, and a server can publish a
+// recapture mode this extension does not know; the wire form is normalised once, here.
 const WireRule = type({
   extractor: "string",
   version: "number",
@@ -36,6 +37,7 @@ export const RulesResponse = type({ rules: WireRule.array() }).pipe(({ rules }) 
     query_keys: rule.query_keys ?? [],
     dwell_ms: rule.dwell_ms > 0 ? rule.dwell_ms : DEFAULT_DWELL_MS,
     max_bytes: rule.max_bytes > 0 ? rule.max_bytes : DEFAULT_MAX_BYTES,
+    recapture: rule.recapture === "after_change" ? "after_change" : "never",
   })),
 );
 

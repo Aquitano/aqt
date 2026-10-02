@@ -14,10 +14,9 @@ import (
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
 )
 
-// The fixtures are curl output with a desktop Chrome user agent, trimmed of
-// unrelated inline scripts and style blocks. The live DOM the extension
-// serialises carries the same embeddedData script and the same server
-// rendered title, body and state markup.
+// The fixtures are logged-out pages rendered by headless Chromium and dumped
+// without the doctype, as the extension's outerHTML would be, trimmed of style
+// blocks and of every script but the embeddedData one.
 
 func extract(t *testing.T, fixture, pageURL string) (extractor.Record, Data) {
 	t.Helper()
@@ -46,80 +45,120 @@ func extractRaw(t *testing.T, raw []byte, pageURL string) (extractor.Record, Dat
 }
 
 func TestExtractIssue(t *testing.T) {
-	rec, data := extract(t, "issue-1.html", "https://github.com/uptrace/bun/issues/1")
+	rec, data := extract(t, "issue-51419.html", "https://github.com/golang/go/issues/51419")
 
 	want := Data{
-		Kind: KindIssue, Owner: "uptrace", Repo: "bun", Number: 1,
-		Title:     "Plans for a migration tool similar to go-pg's?",
+		Kind: KindIssue, Owner: "golang", Repo: "go", Number: 51419,
+		Title:     "fmt: padding flag is not accepted with minus flag",
 		State:     "closed",
-		Author:    "elliotcourant",
-		CreatedAt: "2021-05-03T15:33:09Z",
-		Labels:    []string{},
+		Author:    "adamdecaf",
+		CreatedAt: "2022-03-01T23:37:36Z",
+		Labels:    []string{"Documentation", "FrozenDueToAge", "NeedsFix"},
 	}
 	got := data
-	got.Body = ""
+	got.Body, got.Comments = "", nil
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
-	if !strings.HasPrefix(data.Body, "Do you have any plans to make a migration tool similar to what you did with go-pg?") {
-		t.Errorf("body = %q", data.Body)
+	if !strings.HasPrefix(data.Body, "### What version of Go are you using (`go version`)?") {
+		t.Errorf("body = %q", firstLines(data.Body, 3))
 	}
-	if rec.Title != "uptrace/bun#1 Plans for a migration tool similar to go-pg's?" {
+	if rec.Title != "golang/go#51419 fmt: padding flag is not accepted with minus flag" {
 		t.Errorf("title = %q", rec.Title)
 	}
-	if rec.CanonicalURL != "https://github.com/uptrace/bun/issues/1" {
+	if rec.CanonicalURL != "https://github.com/golang/go/issues/51419" {
 		t.Errorf("canonical url = %q", rec.CanonicalURL)
 	}
-	if !strings.Contains(rec.SearchText, "SQLite requires a clause to enable foreign keys") {
-		t.Errorf("search text misses the body: %q", rec.SearchText)
+	if !strings.Contains(rec.SearchText, "the minus and padding character flags don't work") {
+		t.Errorf("search text misses the body: %q", firstLines(rec.SearchText, 3))
 	}
 }
 
 func TestExtractIssueWithoutEmbeddedJSON(t *testing.T) {
-	raw, err := os.ReadFile("testdata/issue-1.html")
+	raw, err := os.ReadFile("testdata/issue-51419.html")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, data := extractRaw(t, withoutEmbeddedJSON(t, raw), "https://github.com/uptrace/bun/issues/1")
+	_, data := extractRaw(t, withoutEmbeddedJSON(t, raw), "https://github.com/golang/go/issues/51419")
 
-	if data.Title != "Plans for a migration tool similar to go-pg's?" {
+	if data.Title != "fmt: padding flag is not accepted with minus flag" {
 		t.Errorf("title = %q", data.Title)
 	}
-	if data.Author != "elliotcourant" {
+	if data.Author != "adamdecaf" {
 		t.Errorf("author = %q", data.Author)
 	}
 	if data.State != "closed" {
 		t.Errorf("state = %q", data.State)
 	}
-	if !strings.HasPrefix(data.Body, "Do you have any plans to make a migration tool") {
-		t.Errorf("body = %q", data.Body)
+	if !strings.HasPrefix(data.Body, "What version of Go are you using (go version)?") {
+		t.Errorf("body = %q", firstLines(data.Body, 3))
 	}
 }
 
 func TestExtractPull(t *testing.T) {
-	rec, data := extract(t, "pull-900.html", "https://github.com/uptrace/bun/pull/900")
+	rec, data := extract(t, "pull-11513.html", "https://github.com/cli/cli/pull/11513")
 
 	want := Data{
-		Kind: KindPull, Owner: "uptrace", Repo: "bun", Number: 900,
-		Title:     "feat: `dbfixture.New` to accept IDB interface",
+		Kind: KindPull, Owner: "cli", Repo: "cli", Number: 11513,
+		Title:     "Add `--force` flag to `gh run cancel`",
 		State:     "merged",
-		Author:    "hirasawayuki",
-		CreatedAt: "2023-09-18T06:13:36Z",
+		Author:    "ankddev",
+		CreatedAt: "2025-08-15T07:13:25Z",
 		Labels:    []string{},
 	}
 	got := data
-	got.Body = ""
+	got.Body, got.Comments = "", nil
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
-	if !strings.HasPrefix(data.Body, "This PR addresses the limitation where the dbfixture.New function") {
-		t.Errorf("body = %q", data.Body)
+	if !strings.HasPrefix(data.Body, "Fixes #11073.\nDescription\nAdd --force flag to gh run cancel command") {
+		t.Errorf("body = %q", firstLines(data.Body, 3))
 	}
-	if rec.Title != "uptrace/bun#900 feat: `dbfixture.New` to accept IDB interface" {
+	if rec.Title != "cli/cli#11513 Add `--force` flag to `gh run cancel`" {
 		t.Errorf("title = %q", rec.Title)
 	}
-	if rec.CanonicalURL != "https://github.com/uptrace/bun/pull/900" {
+	if rec.CanonicalURL != "https://github.com/cli/cli/pull/11513" {
 		t.Errorf("canonical url = %q", rec.CanonicalURL)
+	}
+}
+
+func TestExtractComments(t *testing.T) {
+	cases := []struct {
+		fixture, pageURL string
+		want             []Comment // Body is a prefix
+	}{
+		{"issue-51419.html", "https://github.com/golang/go/issues/51419", []Comment{
+			{"adamdecaf", "Context, we have a 13 character fixed width field", "2022-03-01T23:49:58Z"},
+			{"robpike", "Padding a string with zeros doesn't seem right", "2022-03-02T01:31:31Z"},
+			{"adamdecaf", "I didn't see this existing test", "2022-03-02T18:37:51Z"},
+			{"robpike", "It is very odd to right-pad a string with zeros.", "2022-03-02T20:59:29Z"},
+			{"adamdecaf", "Agreed. There's been a test rejecting this behavior since 2016", "2022-03-02T22:16:23Z"},
+			{"gopherbot", "Change https://go.dev/cl/389434 mentions this issue", "2022-03-02T23:07:32Z"},
+			{"cagedmantis", "/cc @martisch", "2022-03-05T00:02:12Z"},
+			{"gopherbot", "Change https://go.dev/cl/390674 mentions this issue", "2022-03-08T00:30:45Z"},
+		}},
+		{"pull-11513.html", "https://github.com/cli/cli/pull/11513", []Comment{
+			{"BagToad", "Thank you for this one @ankddev", "2025-08-18T19:01:35Z"},
+			{"ankddev", "@BagToad Done!", "2025-08-19T05:28:06Z"},
+			{"BagToad", "Sorry @ankddev, one more thing", "2025-08-21T16:50:58Z"},
+			{"BagToad", "LGTM - thanks @ankddev!", "2025-08-21T18:44:48Z"},
+		}},
+	}
+	for _, c := range cases {
+		rec, data := extract(t, c.fixture, c.pageURL)
+		if len(data.Comments) != len(c.want) {
+			t.Errorf("%s: %d comments, want %d: %+v", c.fixture, len(data.Comments), len(c.want), data.Comments)
+			continue
+		}
+		for i, want := range c.want {
+			got := data.Comments[i]
+			if got.Author != want.Author || got.CreatedAt != want.CreatedAt || !strings.HasPrefix(got.Body, want.Body) {
+				t.Errorf("%s comment %d = %+v, want %+v", c.fixture, i, got, want)
+			}
+			if !strings.Contains(rec.SearchText, got.Body) {
+				t.Errorf("%s: search text misses comment %d", c.fixture, i)
+			}
+		}
 	}
 }
 
@@ -145,8 +184,8 @@ func TestExtractRepo(t *testing.T) {
 
 func TestExtractStaleWhenTheEmbeddedDataIsAnotherPage(t *testing.T) {
 	for fixture, pageURL := range map[string]string{
-		"pull-900.html": "https://github.com/uptrace/bun/pull/901",
-		"repo.html":     "https://github.com/uptrace/bun-debug",
+		"pull-11513.html": "https://github.com/cli/cli/pull/11514",
+		"repo.html":       "https://github.com/uptrace/bun-debug",
 	} {
 		raw, err := os.ReadFile("testdata/" + fixture)
 		if err != nil {
