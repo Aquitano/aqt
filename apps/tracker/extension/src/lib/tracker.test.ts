@@ -7,12 +7,11 @@ import type { PageViewEvent } from "./events.ts";
 import { defaultSettings } from "./settings.ts";
 
 Object.assign(globalThis, { chrome: fakeBrowser, browser: fakeBrowser, indexedDB });
-const { checkHealth } = await import("./api.ts");
-const { dueEvents, enqueueCapture, enqueueEvent, markFailed, pendingCounts } =
+const { dueEvents, enqueueCapture, enqueueEvent, markFailed, pendingCounts, removeRows } =
   await import("./outbox.ts");
 const { deviceIdStore, openSpanStore, rulesStore, settingsStore, syncStore, tabStore } =
   await import("./storage.ts");
-const { captureTab, flushEvents, reconcile, serialized, uploadCaptures } =
+const { captureTab, flushEvents, onAlarm, reconcile, requestSync, serialized, uploadCaptures } =
   await import("./tracker.ts");
 
 const pageURL = "https://example.org/article";
@@ -30,6 +29,10 @@ const pageView: PageViewEvent = {
 const originalFetch = globalThis.fetch;
 const sendMessage = spyOn(fakeBrowser.tabs, "sendMessage");
 const fetchRequest = spyOn(globalThis, "fetch");
+
+function fakeFetch(respond: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
+  return Object.assign(respond, { preconnect: originalFetch.preconnect });
+}
 
 beforeEach(async () => {
   fakeBrowser.reset();
@@ -125,7 +128,7 @@ test("a span that outlived a sleep ends at its last heartbeat, not at the wake",
   });
   try {
     setSystemTime(new Date("2026-09-22T06:00:00.000Z"));
-    await serialized(() => reconcile("unknown"));
+    await serialized((at) => reconcile("unknown", at));
     const events = (await dueEvents(100)).map((row) => row.payload);
     expect(events).toContainEqual({
       type: "span_end",
@@ -138,6 +141,30 @@ test("a span that outlived a sleep ends at its last heartbeat, not at the wake",
     Object.assign(tabs, { query: originals.query });
     Object.assign(idle, { queryState: originals.queryState });
   }
+});
+
+test("a handler that runs late records when its event fired", async () => {
+  const startedAt = "2026-09-21T11:59:30.000Z";
+  await openSpanStore.set({
+    id: "span",
+    pageViewId: "page",
+    tabId: 1,
+    startedAt,
+    lastHeartbeatAt: startedAt,
+  });
+  setSystemTime(new Date(timestamp));
+  const busy = Promise.withResolvers<void>();
+  void serialized(() => busy.promise);
+  const switched = serialized((at) => reconcile("tab_switch", at));
+  setSystemTime(new Date("2026-09-21T12:00:20.000Z"));
+  busy.resolve();
+  await switched;
+  expect((await dueEvents(100)).map((row) => row.payload)).toContainEqual({
+    type: "span_end",
+    id: "span",
+    ended_at: timestamp,
+    reason: "tab_switch",
+  });
 });
 
 test("events waiting for retry keep their dependent events behind them", async () => {
@@ -154,6 +181,17 @@ test("events waiting for retry keep their dependent events behind them", async (
   expect(await dueEvents(100)).toEqual([]);
   setSystemTime(Date.now() + 300000);
   expect((await dueEvents(100)).map((row) => row.payload.type)).toEqual(["span_start", "span_end"]);
+});
+
+test("a failed upload does not bring back a row the full outbox evicted meanwhile", async () => {
+  await enqueueEvent(pageView);
+  const inFlight = await dueEvents(100);
+  await removeRows(
+    "events",
+    inFlight.map((row) => row.id),
+  );
+  await markFailed("events", inFlight);
+  expect((await pendingCounts()).events).toBe(0);
 });
 
 test("a capture waits until the page view it references has left the outbox", async () => {
@@ -184,24 +222,51 @@ test("the extension counts events the server drops", async () => {
   expect((await pendingCounts()).events).toBe(0);
 });
 
-test("a timed out request releases the serialized event queue", async () => {
+test("a hanging server does not hold up the handlers queued behind it", async () => {
+  const requested = Promise.withResolvers<void>();
+  const answered = Promise.withResolvers<void>();
+  fetchRequest.mockImplementation(
+    fakeFetch(async () => {
+      requested.resolve();
+      await answered.promise;
+      return Response.json({ ok: true, db: true });
+    }),
+  );
+  await serialized((at) =>
+    onAlarm({ name: "heartbeat", scheduledTime: at, persistAcrossSessions: true }, at),
+  );
+  await requested.promise;
+  expect(await serialized(async () => "handled")).toBe("handled");
+  answered.resolve();
+  await requestSync();
+}, 1000);
+
+test("sync requests during a run coalesce into one follow-up run", async () => {
+  fetchRequest.mockImplementation(fakeFetch(async () => Response.json({ ok: true, db: true })));
+  const run = requestSync(["health"]);
+  void requestSync(["health"]);
+  void requestSync(["health"]);
+  await run;
+  expect(fetchRequest).toHaveBeenCalledTimes(2);
+});
+
+test("a timed out request releases the sync", async () => {
   const controller = new AbortController();
   const timeout = spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
-  const hangingFetch = (_input: RequestInfo | URL, init?: RequestInit) =>
-    new Promise<Response>((_resolve, reject) => {
-      init?.signal?.addEventListener("abort", () => reject(new Error("request timed out")), {
-        once: true,
-      });
-      controller.abort();
-    });
   fetchRequest.mockImplementation(
-    Object.assign(hangingFetch, { preconnect: originalFetch.preconnect }),
+    fakeFetch(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("request timed out")), {
+            once: true,
+          });
+          controller.abort();
+        }),
+    ),
   );
   try {
-    const request = serialized(() => checkHealth(defaultSettings.serverUrl));
-    const following = serialized(async () => "processed");
-    expect((await request)?.ok).toBe(false);
-    expect(await following).toBe("processed");
+    await requestSync(["health"]);
+    expect((await syncStore.get())?.connected).toBe(false);
   } finally {
     timeout.mockRestore();
   }

@@ -137,10 +137,12 @@ export async function markFailed(
 ): Promise<void> {
   const store = await objectStore(name, "readwrite");
   await Promise.all(
-    failed.map((row) => {
+    failed.map(async (row) => {
+      // A full outbox may have evicted the row while its upload was in flight.
+      if ((await settle(store.count(row.id))) === 0) return;
       const attempt_count = row.attempt_count + 1;
       const next_attempt_at = new Date(Date.now() + backoffMs(attempt_count)).toISOString();
-      return settle(store.put({ ...row, attempt_count, next_attempt_at }));
+      await settle(store.put({ ...row, attempt_count, next_attempt_at }));
     }),
   );
 }
