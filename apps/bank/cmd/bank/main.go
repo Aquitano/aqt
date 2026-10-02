@@ -56,6 +56,9 @@ const usage = `bank — personal message archive
 Usage:
   bank auth gmail [--port n] [--bind addr]    authorize Gmail (loopback OAuth)
   bank sync [--full]                          pull new mail from Gmail
+  bank imap --config <file> [--once]         collect IMAP mail continuously or once
+  bank imap --config <file> --check          check IMAP login and selected folders
+  bank imap --config <file> --status         read local IMAP collector status
   bank import whatsapp <export.zip|.txt>...   WhatsApp "Export chat" files
   bank import eml [--source s] <file|dir>...  .eml files (default source: proton)
   bank import mbox [--source s] <file>...     mbox files (default source: gmail)
@@ -156,6 +159,8 @@ func main() {
 		err = cmdAuth(ctx, os.Args[2:])
 	case "sync":
 		err = cmdSync(ctx, os.Args[2:])
+	case "imap":
+		err = cmdIMAP(ctx, os.Args[2:])
 	case "import":
 		err = cmdImport(ctx, os.Args[2:])
 	case "reimport":

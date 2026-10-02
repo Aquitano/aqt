@@ -11,6 +11,9 @@ go build -o bank ./cmd/bank
 ./bank auth gmail             # once; then:
 ./bank sync                   # incremental Gmail pull (cron this)
 
+./bank imap --config imap.json --check   # check IMAP login and folders
+./bank imap --config imap.json          # collect Proton Bridge/Gmail IMAP continuously
+
 ./bank import whatsapp "WhatsApp Chat with Alice.zip"
 ./bank import eml ~/proton-export/            # proton-mail-export output
 ./bank import mbox takeout/All\ mail.mbox     # Gmail Takeout
@@ -98,6 +101,11 @@ Attachment storage and text extraction have different coverage. Audio, video, ar
 Scanned pages and images hold no text layer, so they are recorded as `needs_ocr` rather than guessed at. `bank extract --ocr` reads them wherever tesseract is installed: on the deployed box that is a worker draining the queue on a timer, turned on by adding `ocr` to `COMPOSE_PROFILES`. `bank attachment text <sha256> --set` takes a transcription from anywhere else, including a model running on the client, and marks it `manual` so no later pass overwrites it. `BANK_EXTRACT=off` or `bank import --no-extract` leaves attachment text alone entirely.
 
 Config via env (see `.env.example`): `DATABASE_URL`, `BANK_DATA_DIR` (blobs, raw archives, inbox; default `~/.local/share/aqt-bank`), `BANK_EXTRACT`.
+
+For automatic IMAP collection from Proton Bridge, Gmail or another provider,
+see [IMAP.md](IMAP.md) and [imap.example.json](imap.example.json). The collector
+runs beside Bridge or on another client machine and uploads to `BANK_URL`.
+It keeps local checkpoints, retries failures and preserves mailbox read flags.
 
 Schema migrations are embedded and run automatically on startup.
 

@@ -293,6 +293,7 @@ func ImportFile[T any](ctx context.Context, c *Client, kind, source, path string
 	defer f.Close()
 
 	pr, pw := io.Pipe()
+	defer pr.Close()
 	mw := multipart.NewWriter(pw)
 	go func() {
 		part, err := mw.CreateFormFile("file", filepath.Base(path))

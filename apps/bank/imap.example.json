@@ -1,0 +1,20 @@
+{
+  "state_dir": "state",
+  "interval": "1m",
+  "timeout": "2m",
+  "workers": 4,
+  "batch_size": 32,
+  "max_message_bytes": 67108864,
+  "accounts": [
+    {
+      "id": "proton-personal",
+      "source": "proton",
+      "address": "127.0.0.1:1143",
+      "username_env": "BANK_PROTON_USER",
+      "password_env": "BANK_PROTON_PASSWORD",
+      "tls": "starttls",
+      "tls_ca_file": "bridge-cert.pem",
+      "folders": ["INBOX", "Sent"]
+    }
+  ]
+}
