@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TrackerCore
 
-/// 2026-05-28T21:46:40Z, so the fixtures below sit clearly either side of it.
+/// 2026-05-28T20:26:40Z, so the fixtures below sit clearly either side of it.
 private let epoch = Date(timeIntervalSince1970: 1_780_000_000)
 
 /// The shape `tracker login` writes, fractional seconds and all.
