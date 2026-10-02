@@ -56,10 +56,11 @@ Usage:
                                                           (90m, 24h, 7d) or a local date (2026-10-01)
   tracker forget <url> | --host <host>                    delete everything recorded for a page, or a host and
                                                           its subdomains; backups keep it until they rotate out
+  tracker healthcheck                                     exit 0 when the server's /healthz answers ok
 
-stats, search, show, visits, time and forget go over HTTP, so they work
-against a tracker on another machine; serve, migrate, reprocess and blob need
-the database itself.
+stats, search, show, visits, time, forget and healthcheck go over HTTP, so
+they work against a tracker on another machine; serve, migrate, reprocess and
+blob need the database itself.
 
 Environment:
   TRACKER_DATABASE_URL   default postgres://tracker:tracker@127.0.0.1:5435/tracker?sslmode=disable
@@ -73,6 +74,9 @@ Environment:
   TRACKER_TOKEN_PATH     default <user config dir>/tracker/token.json
   TRACKER_EXTENSION_ID   the one extension whose origin serve accepts; unset, any
 `
+
+// version is the commit the image was built from, set by the Dockerfile.
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -106,6 +110,8 @@ func main() {
 		err = cmdTime(ctx, os.Args[2:])
 	case "forget":
 		err = cmdForget(ctx, os.Args[2:])
+	case "healthcheck":
+		err = cmdHealthcheck(ctx)
 	case "help", "--help", "-h":
 		fmt.Print(usage)
 	default:
@@ -196,7 +202,7 @@ func cmdServe(ctx context.Context, args []string) error {
 		srv.Shutdown(shutdownCtx)
 	}()
 
-	log.Info("serving", "listen", *listen, "workers", *workers,
+	log.Info("serving", "version", version, "listen", *listen, "workers", *workers,
 		"extractors", len(extractor.All()), "queued", queued, "auth", authenticator.Enabled())
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		stop()
@@ -526,6 +532,12 @@ func cmdForget(ctx context.Context, args []string) error {
 	fmt.Printf("forgot %d page views, %d spans, %d captures, %d blobs, %d records\n",
 		f.PageViews, f.Spans, f.Captures, f.Blobs, f.Records)
 	return nil
+}
+
+// cmdHealthcheck is the container's healthcheck: the image has no shell or
+// HTTP client to run one with.
+func cmdHealthcheck(ctx context.Context) error {
+	return client.Healthy(ctx, env("TRACKER_SERVER_URL", "http://127.0.0.1:8490"))
 }
 
 // pointInTime reads a duration back from now (90m, 24h, 7d) or a date, which

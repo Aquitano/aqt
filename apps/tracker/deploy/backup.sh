@@ -6,6 +6,8 @@
 set -u
 
 keep=3
+# A dump holds every page read; on the VPS only root reads it.
+umask 077
 
 while :; do
 	if [ -z "$(find /backups -maxdepth 1 -name 'tracker-*.dump' -mmin -1380)" ]; then

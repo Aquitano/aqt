@@ -45,7 +45,10 @@ type session struct {
 
 var ErrSignedOut = errors.New("no stored token: run 'tracker login'")
 
-const discoveryTimeout = 10 * time.Second
+const (
+	discoveryTimeout = 10 * time.Second
+	healthTimeout    = 5 * time.Second
+)
 
 func DefaultTokenPath() (string, error) {
 	dir, err := os.UserConfigDir()
@@ -214,6 +217,26 @@ func save(path string, s session) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+// Healthy reports whether the server answers /healthz, which it does only
+// while its database does. The route is open, so this needs no token.
+func Healthy(ctx context.Context, serverURL string) error {
+	ctx, cancel := context.WithTimeout(ctx, healthTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, serverURL+"/healthz", nil)
+	if err != nil {
+		return err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return httpError(req.URL.String(), res)
+	}
+	return nil
 }
 
 func (c *Client) Search(ctx context.Context, o store.SearchOpts) ([]store.Hit, error) {

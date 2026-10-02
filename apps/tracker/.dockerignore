@@ -1,0 +1,7 @@
+# The build needs the Go module and nothing else. An allowlist, so a .env, the
+# extension's node_modules or an Xcode build can never end up in a layer.
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/

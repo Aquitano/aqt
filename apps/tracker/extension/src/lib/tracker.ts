@@ -185,11 +185,8 @@ async function pollHealth(): Promise<void> {
         connected,
         lastError: result.ok ? "healthz reports not ok" : result.error,
       });
-    if (connected && !before) {
-      await diag("server reachable");
-      await armCapture();
-    }
-    if (!connected && before) await diag("server unreachable, capture paused");
+    if (connected && !before) await diag("server reachable");
+    if (!connected && before) await diag("server unreachable, queueing until it answers");
   });
 }
 
@@ -363,7 +360,6 @@ async function armCapture(): Promise<void> {
   if (pageView.lastCapturedAt !== undefined || pageView.event.private) return;
   const settings = await loadSettings();
   if (!settings.captureEnabled) return;
-  if (!(await syncStore.get())?.connected) return;
   const rule = ruleFor(await cachedRules(), pageView.event.url);
   if (!rule) return;
   await browser.alarms.create(captureAlarm(open.tabId, open.pageViewId), {
@@ -647,7 +643,6 @@ export async function captureTab(tabId: number, reason: CaptureReason): Promise<
   if (!pageURL) return failure("invalid page URL");
   if (isPrivateHost(pageURL.hostname, settings.privateHosts)) return failure("private host");
   if (!settings.captureEnabled) return failure("capture is disabled in options");
-  if (!(await syncStore.get())?.connected) return failure("server unreachable, capture paused");
   const rule = ruleFor(await cachedRules(), pageView.event.url);
   if (!rule) return failure("no capture rule matches this page");
   const page = await requestHtml(tabId);

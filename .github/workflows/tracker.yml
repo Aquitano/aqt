@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       db:
-        # The image apps/tracker/deploy/docker-compose.yml pins.
+        # The image apps/tracker/docker-compose.yml pins.
         image: paradedb/paradedb:0.25.10-pg18@sha256:188591a0bc317beb2c6d6d3f9ef0cb3e859d09ecc15a71dda5e9a027876686cf
         env:
           POSTGRES_USER: tracker
