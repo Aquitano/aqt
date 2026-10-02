@@ -138,3 +138,37 @@ func TestSyncDropsABatchTheServerWillNeverAccept(t *testing.T) {
 		t.Errorf("status %+v, want the batch dropped and the error kept", st)
 	}
 }
+
+func TestSyncWaitsOnlyWhileEventsArePendingAndNotBeforeTheBackoffEnds(t *testing.T) {
+	server := &ingest{status: http.StatusServiceUnavailable}
+	srv := httptest.NewServer(server)
+	defer srv.Close()
+	s := newSyncer(t, srv, "")
+	now := t0
+	s.now = func() time.Time { return now }
+	ctx := context.Background()
+
+	if _, pending := s.nextFlush(); pending {
+		t.Fatal("a flush is scheduled with nothing queued")
+	}
+	s.Enqueue(heartbeats(3))
+	if wait, _ := s.nextFlush(); wait != flushInterval {
+		t.Errorf("first flush in %v, want %v", wait, flushInterval)
+	}
+	for range 5 {
+		s.Flush(ctx)
+	}
+	if wait, _ := s.nextFlush(); wait != 32*time.Second {
+		t.Errorf("after five failures the next flush is in %v, want the 32 s backoff", wait)
+	}
+	now = now.Add(30 * time.Second)
+	if wait, _ := s.nextFlush(); wait != flushInterval {
+		t.Errorf("with 2 s of backoff left the next flush is in %v, want %v", wait, flushInterval)
+	}
+
+	server.fail(0)
+	s.Flush(ctx)
+	if _, pending := s.nextFlush(); pending {
+		t.Error("a flush is still scheduled after the queue was delivered")
+	}
+}

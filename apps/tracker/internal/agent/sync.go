@@ -25,8 +25,9 @@ const (
 	requestTimeout = 15 * time.Second
 )
 
-// Syncer delivers the outbox to POST /v1/events/batch: every 10 s or at 100
-// pending, backing off to 5 minutes while the server cannot take a batch.
+// Syncer delivers the outbox to POST /v1/events/batch: 10 s after events
+// arrive or at once at 100 pending, backing off to 5 minutes while the server
+// cannot take a batch. Nothing wakes it while the outbox is empty.
 type Syncer struct {
 	url       string
 	deviceID  uuid.UUID
@@ -66,27 +67,48 @@ func NewSyncer(c Config, deviceID uuid.UUID, outbox *Outbox, log *slog.Logger, c
 }
 
 func (s *Syncer) Enqueue(events []Event) {
-	if s.outbox.Append(events) >= flushThreshold {
-		select {
-		case s.kick <- struct{}{}:
-		default:
-		}
+	s.outbox.Append(events)
+	select {
+	case s.kick <- struct{}{}:
+	default:
 	}
 	s.changed()
 }
 
 func (s *Syncer) Run(ctx context.Context) {
-	tick := time.NewTicker(flushInterval)
-	defer tick.Stop()
+	flush := time.NewTimer(0)
+	flush.Stop()
+	defer flush.Stop()
+	armed := false
 	for {
+		if wait, pending := s.nextFlush(); pending && !armed {
+			flush.Reset(wait)
+			armed = true
+		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-tick.C:
 		case <-s.kick:
+			if pending, _, _ := s.outbox.Status(); pending >= flushThreshold {
+				s.flushIfDue(ctx)
+			}
+		case <-flush.C:
+			armed = false
+			s.flushIfDue(ctx)
 		}
-		s.flushIfDue(ctx)
 	}
+}
+
+// nextFlush is how long to wait before sending what is pending: the flush
+// interval, or longer while a backoff runs. With nothing pending there is
+// nothing to wait for.
+func (s *Syncer) nextFlush() (time.Duration, bool) {
+	if pending, _, _ := s.outbox.Status(); pending == 0 {
+		return 0, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return max(flushInterval, s.retryAt.Sub(s.now())), true
 }
 
 func (s *Syncer) flushIfDue(ctx context.Context) {
