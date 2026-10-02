@@ -6,8 +6,8 @@ Everything is keyed off `data-testid` (`tweet`, `User-Name`, `tweetText`, `tweet
 
 **The fixtures under `testdata/` are synthetic** — hand-written from that DOM description, not captured from X — so every expectation in `x_test.go` is unverified until they are replaced.
 
-To replace one: load a real status page with the extension installed, dwell past `dwell_ms` so `tracker` stores the blob, get its hash (`select raw_hash from captures where url like '%status/<id>%'`), and pull the payload — until a `tracker blob <hash>` subcommand exists:
+To replace one: load a real status page with the extension installed, dwell past `dwell_ms` so `tracker` stores the blob, then write out its most recent capture:
 
 ```sh
-psql "$TRACKER_DATABASE_URL" -At -c "select encode(payload,'base64') from raw_html_blobs where hash='\x<hex>'" | base64 -d | zstd -d > testdata/status-photo.html
+tracker blob https://x.com/<handle>/status/<id> > testdata/status-photo.html
 ```

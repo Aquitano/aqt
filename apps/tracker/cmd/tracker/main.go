@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/tracker/internal/auth"
+	"github.com/aquitano/aqt/apps/tracker/internal/blob"
 	"github.com/aquitano/aqt/apps/tracker/internal/client"
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
 	_ "github.com/aquitano/aqt/apps/tracker/internal/extractor/all"
@@ -26,6 +28,7 @@ import (
 	"github.com/aquitano/aqt/apps/tracker/internal/metrics"
 	"github.com/aquitano/aqt/apps/tracker/internal/processor"
 	"github.com/aquitano/aqt/apps/tracker/internal/store"
+	"github.com/aquitano/aqt/apps/tracker/internal/urlnorm"
 )
 
 const usage = `tracker — browsing memory
@@ -37,6 +40,8 @@ Usage:
                                                           (default: every capture under the current version;
                                                           --failed: retry failed jobs; --all: wipe and rebuild
                                                           records and derivations from the raw blobs)
+  tracker blob <hash-or-url>                              write a stored capture's HTML to stdout: a blob hash,
+                                                          or the most recent capture of a page
   tracker login                                           device-code sign in against the OIDC issuer
   tracker logout                                          forget the stored token
   tracker stats [--json]                                  table counts, blob sizes, queue and record totals
@@ -44,7 +49,7 @@ Usage:
                                                           BM25 search over extracted records
 
 stats and search read the server over HTTP, so they work against a tracker on
-another machine; serve, migrate and reprocess need the database itself.
+another machine; serve, migrate, reprocess and blob need the database itself.
 
 Environment:
   TRACKER_DATABASE_URL   default postgres://tracker:tracker@127.0.0.1:5435/tracker?sslmode=disable
@@ -72,6 +77,8 @@ func main() {
 		err = cmdMigrate(ctx)
 	case "reprocess":
 		err = cmdReprocess(ctx, os.Args[2:])
+	case "blob":
+		err = cmdBlob(ctx, os.Args[2:])
 	case "login":
 		err = cmdLogin(ctx)
 	case "logout":
@@ -215,6 +222,51 @@ func cmdReprocess(ctx context.Context, args []string) error {
 	}
 	fmt.Printf("queued %d derivations; a running 'tracker serve' picks them up\n", n)
 	return nil
+}
+
+func cmdBlob(ctx context.Context, args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: tracker blob <hash-or-url>")
+	}
+	st, err := store.Open(ctx, databaseURL())
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	hash, err := blobHash(ctx, st, args[0])
+	if err != nil {
+		return err
+	}
+	b, err := st.LoadBlob(ctx, hash)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("no blob %x", hash)
+	}
+	if err != nil {
+		return err
+	}
+	html, err := blob.Decompress(b.Payload)
+	if err != nil {
+		return err
+	}
+	_, err = os.Stdout.Write(html)
+	return err
+}
+
+// blobHash reads 64 hex characters as a blob hash and anything else as a
+// page URL, normalised the way ingest stores it.
+func blobHash(ctx context.Context, st *store.Store, ref string) ([]byte, error) {
+	if hash, err := hex.DecodeString(ref); err == nil && len(hash) == 32 {
+		return hash, nil
+	}
+	normalized, _, err := urlnorm.Normalize(ref)
+	if err != nil {
+		return nil, fmt.Errorf("%q is neither a 64-character blob hash nor an http(s) url", ref)
+	}
+	hash, err := st.LatestCaptureHash(ctx, urlnorm.Hash(normalized))
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, fmt.Errorf("no capture of %s", normalized)
+	}
+	return hash, err
 }
 
 // extractorVersions lists every registered extractor at its current version,

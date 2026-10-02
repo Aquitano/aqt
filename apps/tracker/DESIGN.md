@@ -27,7 +27,7 @@ What I read and where my attention went, from a browser extension and a macOS me
 
 ```
 apps/tracker/
-  cmd/tracker/            serve | migrate | reprocess | login | logout | stats | search
+  cmd/tracker/            serve | migrate | reprocess | blob | login | logout | stats | search
   internal/
     store/                bun models, embedded migrations, queries
     ingest/               HTTP: events, captures, capture-rules, search, stats, healthz, metrics
@@ -324,13 +324,14 @@ Every event is idempotent (upsert by id; heartbeats and ends only move `ended_at
 tracker serve [--listen 127.0.0.1:8490] [--workers 3]
 tracker migrate
 tracker reprocess [--extractor name] [--failed] [--all]
+tracker blob <hash-or-url>
 tracker login
 tracker logout
 tracker stats [--json]
 tracker search [--extractor name] [--limit n] [--json] <query>
 ```
 
-`serve` runs migrations on startup, like bank. `stats` and `search` go over HTTP so they work against a server whose database is not reachable; `login` is the RFC 8628 device code flow, and the token it stores refreshes itself.
+`serve` runs migrations on startup, like bank. `blob` writes a stored capture's decompressed HTML to stdout: 64 hex characters name a blob; anything else is a URL, normalised as ingest does, and the most recent capture whose page view is at that URL is written. `stats` and `search` go over HTTP so they work against a server whose database is not reachable; `login` is the RFC 8628 device code flow, and the token it stores refreshes itself.
 
 ## Metrics
 

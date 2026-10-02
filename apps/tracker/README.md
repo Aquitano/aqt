@@ -92,6 +92,7 @@ refresh token included, so it keeps running without anyone at a terminal.
 tracker serve [--listen 127.0.0.1:8490] [--workers 3]
 tracker migrate
 tracker reprocess [--extractor name] [--failed] [--all]
+tracker blob <hash-or-url>
 tracker login
 tracker logout
 tracker stats [--json]
@@ -101,7 +102,11 @@ tracker search [--extractor name] [--limit n] [--json] <query>
 `serve` queues every capture the current extractor versions have not processed yet when it starts, so a release that bumps one needs no manual step. `reprocess` also removes the records only an older version produced; `reprocess --all` rebuilds every derived row from the source tables alone.
 
 `stats` and `search` read the server over HTTP, so they work against a tracker
-on another machine; `serve`, `migrate` and `reprocess` need the database.
+on another machine; `serve`, `migrate`, `reprocess` and `blob` need the database.
+
+`blob` writes the HTML of a stored capture to stdout, for turning a real page
+into an extractor fixture: 64 hex characters name a blob, anything else is a
+URL, normalised like ingest does, whose most recent capture it writes.
 
 ## Ports
 
