@@ -10,10 +10,7 @@ export type UrlChangedMessage = typeof UrlChangedMessage.infer;
 export const PopupMessage = type({ type: "'status'" }).or({ type: "'capture_now'" });
 export type PopupMessage = typeof PopupMessage.infer;
 
-export const QuietMessage = type({ type: "'quiet'" });
-export type QuietMessage = typeof QuietMessage.infer;
-
-export const BackgroundMessage = UrlChangedMessage.or(PopupMessage).or(QuietMessage);
+export const BackgroundMessage = UrlChangedMessage.or(PopupMessage);
 export type BackgroundMessage = typeof BackgroundMessage.infer;
 
 export const SerializeRequest = type({ type: "'serialize'" });

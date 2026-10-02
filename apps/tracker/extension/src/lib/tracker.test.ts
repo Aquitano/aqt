@@ -4,6 +4,7 @@ import { fakeBrowser } from "@webext-core/fake-browser";
 import { indexedDB } from "fake-indexeddb";
 
 import type { PageViewEvent } from "./events.ts";
+import type { Rule } from "./rules.ts";
 import { defaultSettings } from "./settings.ts";
 
 Object.assign(globalThis, { chrome: fakeBrowser, browser: fakeBrowser, indexedDB });
@@ -26,6 +27,16 @@ const pageView: PageViewEvent = {
   tab_session_id: "tab",
   private: false,
 };
+const article: Rule = {
+  extractor: "article",
+  version: 1,
+  hosts: ["*"],
+  path_regex: "",
+  query_keys: [],
+  dwell_ms: 30000,
+  recapture: "never",
+  max_bytes: 1000000,
+};
 const originalFetch = globalThis.fetch;
 const sendMessage = spyOn(fakeBrowser.tabs, "sendMessage");
 const fetchRequest = spyOn(globalThis, "fetch");
@@ -43,21 +54,7 @@ beforeEach(async () => {
   await settingsStore.set(defaultSettings);
   await syncStore.set({ connected: true });
   await deviceIdStore.set("device");
-  await rulesStore.set({
-    fetchedAt: timestamp,
-    rules: [
-      {
-        extractor: "article",
-        version: 1,
-        hosts: ["*"],
-        path_regex: "",
-        query_keys: [],
-        dwell_ms: 30000,
-        recapture: "never",
-        max_bytes: 1000000,
-      },
-    ],
-  });
+  await rulesStore.set({ fetchedAt: timestamp, rules: [article] });
   await tabStore(1).set({ tabSessionId: "tab", pageView: { event: pageView, titled: false } });
   await pendingCounts();
   await new Promise<void>((resolve, reject) => {
@@ -271,3 +268,49 @@ test("a timed out request releases the sync", async () => {
     timeout.mockRestore();
   }
 }, 1000);
+
+const fiveMinutesBefore = "2026-09-21T11:55:00.000Z";
+
+async function endSpanOnPageCapturedAt(
+  lastCapturedAt: string,
+  recapture: Rule["recapture"] = "after_change",
+): Promise<string | undefined> {
+  setSystemTime(new Date(timestamp));
+  await rulesStore.set({ fetchedAt: timestamp, rules: [{ ...article, recapture }] });
+  await tabStore(1).set({
+    tabSessionId: "tab",
+    pageView: { event: pageView, titled: false, lastCapturedAt },
+  });
+  await openSpanStore.set({
+    id: "span",
+    pageViewId: pageView.id,
+    tabId: 1,
+    startedAt: lastCapturedAt,
+    lastHeartbeatAt: timestamp,
+  });
+  await serialized((at) => reconcile("tab_switch", at));
+  await serialized(() => Promise.resolve());
+  await requestSync();
+  return (await tabStore(1).get())?.pageView?.lastCapturedAt;
+}
+
+test("a span end recaptures a changing page last captured 5 minutes before", async () => {
+  expect(await endSpanOnPageCapturedAt(fiveMinutesBefore)).toBe(timestamp);
+});
+
+test("a span end within 5 minutes of the last capture does not recapture", async () => {
+  const fourMinutesBefore = "2026-09-21T11:56:00.000Z";
+  expect(await endSpanOnPageCapturedAt(fourMinutesBefore)).toBe(fourMinutesBefore);
+  expect(sendMessage).not.toHaveBeenCalled();
+});
+
+test("a span end does not recapture a page that has not changed", async () => {
+  sendMessage.mockImplementation(async () => ({ ...page, dirty: false }));
+  expect(await endSpanOnPageCapturedAt(fiveMinutesBefore)).toBe(fiveMinutesBefore);
+  expect(sendMessage).toHaveBeenCalledTimes(1);
+});
+
+test("a span end does not recapture a page whose rule never recaptures", async () => {
+  expect(await endSpanOnPageCapturedAt(fiveMinutesBefore, "never")).toBe(fiveMinutesBefore);
+  expect(sendMessage).not.toHaveBeenCalled();
+});

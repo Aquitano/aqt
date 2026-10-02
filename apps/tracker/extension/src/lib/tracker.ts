@@ -29,7 +29,6 @@ import {
 } from "./outbox.ts";
 import { isNewPageView, navigationTypeFor, spaNavigationType } from "./page-view.ts";
 import { isPrivateHost, privateUrl } from "./privacy.ts";
-import { recaptureDecision } from "./recapture.ts";
 import { isPermanentFailure } from "./result.ts";
 import { matchRule, type Rule } from "./rules.ts";
 import {
@@ -51,29 +50,17 @@ import { uuidv7 } from "./uuid.ts";
 const HEARTBEAT_ALARM = "heartbeat";
 const RULES_ALARM = "rules";
 const CAPTURE_ALARM_PREFIX = "capture:";
-const RECAPTURE_ALARM_PREFIX = "recapture:";
 export const IDLE_SECONDS = 60;
 const FLUSH_DELAY_MS = 10_000;
 const FLUSH_BATCH = 100;
 const STALE_SPAN_MS = 90_000;
+const RECAPTURE_INTERVAL_MS = 5 * 60_000;
 
 const iso = (ms: number) => new Date(ms).toISOString();
 const now = () => iso(Date.now());
 const failure = (error: string): CaptureNowReply => ({ ok: false, error });
 const captureAlarm = (tabId: number, pageViewId: string) =>
   `${CAPTURE_ALARM_PREFIX}${tabId}:${pageViewId}`;
-const recaptureAlarm = (tabId: number, pageViewId: string) =>
-  `${RECAPTURE_ALARM_PREFIX}${tabId}:${pageViewId}`;
-
-async function clearRecaptureAlarms(tabId: number): Promise<void> {
-  const prefix = `${RECAPTURE_ALARM_PREFIX}${tabId}:`;
-  const alarms = await browser.alarms.getAll();
-  await Promise.all(
-    alarms
-      .filter((alarm) => alarm.name.startsWith(prefix))
-      .map((alarm) => browser.alarms.clear(alarm.name)),
-  );
-}
 
 let chain: Promise<void> = Promise.resolve();
 
@@ -316,6 +303,18 @@ async function closeSpan(open: OpenSpan, reason: EndReason, endedAt: string): Pr
   await openSpanStore.remove();
   await emit({ type: "span_end", id: open.id, ended_at: endedAt, reason });
   await diag(`span closed (${reason})`);
+  void serialized(() => recaptureAfterSpan(open));
+}
+
+// A thread or a pull request keeps changing while it is read, so its page is
+// captured again once attention leaves it, as long as the tab still shows it.
+async function recaptureAfterSpan({ tabId, pageViewId }: OpenSpan): Promise<void> {
+  const pageView = (await tabStore(tabId).get())?.pageView;
+  if (pageView?.event.id !== pageViewId || pageView.lastCapturedAt === undefined) return;
+  if (Date.now() - Date.parse(pageView.lastCapturedAt) < RECAPTURE_INTERVAL_MS) return;
+  if (ruleFor(await cachedRules(), pageView.event.url)?.recapture !== "after_change") return;
+  const outcome = await captureTab(tabId, "recapture");
+  if (!outcome.ok) await diag(`recapture skipped: ${outcome.error}`);
 }
 
 async function startSpan(target: FocusTarget, at: number): Promise<void> {
@@ -463,7 +462,6 @@ async function recordPageView(
   navigationType: PageViewEvent["navigation_type"],
   at: number,
 ): Promise<void> {
-  await clearRecaptureAlarms(tabId);
   const store = tabStore(tabId);
   const previous = await store.get();
   const tabSessionId = previous?.tabSessionId ?? uuidv7();
@@ -507,7 +505,6 @@ export async function onTabRemoved(tabId: number, at: number): Promise<void> {
   await closeStaleSpan(STALE_SPAN_MS);
   const open = await openSpanStore.get();
   if (open?.tabId === tabId) await closeSpan(open, "tab_closed", iso(at));
-  await clearRecaptureAlarms(tabId);
   await tabStore(tabId).remove();
   await reconcile("tab_closed", at);
 }
@@ -522,8 +519,7 @@ export async function onAlarm(alarm: Browser.alarms.Alarm, at: number): Promise<
     void requestSync(["rules"]);
     return;
   }
-  if (alarm.name.startsWith(RECAPTURE_ALARM_PREFIX)) await onRecaptureAlarm(alarm.name);
-  else if (alarm.name.startsWith(CAPTURE_ALARM_PREFIX)) await onCaptureAlarm(alarm.name);
+  if (alarm.name.startsWith(CAPTURE_ALARM_PREFIX)) await onCaptureAlarm(alarm.name);
 }
 
 async function onCaptureAlarm(name: string): Promise<void> {
@@ -532,38 +528,6 @@ async function onCaptureAlarm(name: string): Promise<void> {
   if (!tabId || !pageViewId || open?.pageViewId !== pageViewId) return;
   const outcome = await captureTab(Number(tabId), "initial");
   if (!outcome.ok) await diag(`capture skipped: ${outcome.error}`);
-}
-
-async function onQuiet(tabId: number): Promise<void> {
-  const pageView = (await tabStore(tabId).get())?.pageView;
-  if (!pageView) return;
-  const rule = ruleFor(await cachedRules(), pageView.event.url);
-  const decision = recaptureDecision({
-    rule,
-    lastCapturedAt: pageView.lastCapturedAt,
-    now: Date.now(),
-  });
-  if (decision.kind === "never") return;
-  if (decision.kind === "defer") {
-    await clearRecaptureAlarms(tabId);
-    await browser.alarms.create(recaptureAlarm(tabId, pageView.event.id), { when: decision.due });
-    return;
-  }
-  await recapture(tabId, pageView.event.id);
-}
-
-async function recapture(tabId: number, pageViewId: string): Promise<void> {
-  await clearRecaptureAlarms(tabId);
-  const outcome = await captureTab(tabId, "recapture");
-  if (!outcome.ok) await diag(`recapture skipped ${pageViewId}: ${outcome.error}`);
-}
-
-async function onRecaptureAlarm(name: string): Promise<void> {
-  const [tabId, pageViewId] = name.slice(RECAPTURE_ALARM_PREFIX.length).split(":");
-  if (!tabId || !pageViewId) return;
-  const pageView = (await tabStore(Number(tabId)).get())?.pageView;
-  if (pageView?.event.id !== pageViewId) return;
-  await recapture(Number(tabId), pageViewId);
 }
 
 // Every handler waits in one queue, and a tab whose main thread is stuck in
@@ -671,7 +635,6 @@ export async function handleMessage(
   if (message.type === "capture_now") return captureActiveTab();
   const tabId = sender.tab?.id;
   if (tabId === undefined || sender.frameId !== 0) return undefined;
-  if (message.type === "quiet") await onQuiet(tabId);
-  else await onSpaChange(tabId, message.url, message.navigation_type, at);
+  await onSpaChange(tabId, message.url, message.navigation_type, at);
   return undefined;
 }
