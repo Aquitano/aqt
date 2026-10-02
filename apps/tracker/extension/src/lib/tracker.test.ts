@@ -105,7 +105,7 @@ test("capture rechecks privacy after the content script replies", async () => {
   expect((await pendingCounts()).captures).toBe(0);
 });
 
-test("a span that outlived a sleep ends at its last heartbeat, not at the wake", async () => {
+async function withTabFocused<T>(run: () => Promise<T>): Promise<T> {
   const { windows, tabs, idle } = fakeBrowser;
   const originals = {
     getLastFocused: windows.getLastFocused,
@@ -115,6 +115,16 @@ test("a span that outlived a sleep ends at its last heartbeat, not at the wake",
   Object.assign(windows, { getLastFocused: async () => ({ id: 1, focused: true }) });
   Object.assign(tabs, { query: async () => [{ id: 1, url: pageURL, incognito: false }] });
   Object.assign(idle, { queryState: async () => "active" });
+  try {
+    return await run();
+  } finally {
+    Object.assign(windows, { getLastFocused: originals.getLastFocused });
+    Object.assign(tabs, { query: originals.query });
+    Object.assign(idle, { queryState: originals.queryState });
+  }
+}
+
+test("a span that outlived a sleep ends at its last heartbeat, not at the wake", async () => {
   const lastHeartbeatAt = "2026-09-21T22:00:00.000Z";
   await openSpanStore.set({
     id: "night",
@@ -123,21 +133,15 @@ test("a span that outlived a sleep ends at its last heartbeat, not at the wake",
     startedAt: lastHeartbeatAt,
     lastHeartbeatAt,
   });
-  try {
-    setSystemTime(new Date("2026-09-22T06:00:00.000Z"));
-    await serialized((at) => reconcile("unknown", at));
-    const events = (await dueEvents(100)).map((row) => row.payload);
-    expect(events).toContainEqual({
-      type: "span_end",
-      id: "night",
-      ended_at: lastHeartbeatAt,
-      reason: "unknown",
-    });
-  } finally {
-    Object.assign(windows, { getLastFocused: originals.getLastFocused });
-    Object.assign(tabs, { query: originals.query });
-    Object.assign(idle, { queryState: originals.queryState });
-  }
+  setSystemTime(new Date("2026-09-22T06:00:00.000Z"));
+  await withTabFocused(() => serialized((at) => reconcile("unknown", at)));
+  const events = (await dueEvents(100)).map((row) => row.payload);
+  expect(events).toContainEqual({
+    type: "span_end",
+    id: "night",
+    ended_at: lastHeartbeatAt,
+    reason: "unknown",
+  });
 });
 
 test("a handler that runs late records when its event fired", async () => {
@@ -313,4 +317,32 @@ test("a span end does not recapture a page that has not changed", async () => {
 test("a span end does not recapture a page whose rule never recaptures", async () => {
   expect(await endSpanOnPageCapturedAt(fiveMinutesBefore, "never")).toBe(fiveMinutesBefore);
   expect(sendMessage).not.toHaveBeenCalled();
+});
+
+test("a heartbeat recaptures a changing page the span has stayed on for 5 minutes", async () => {
+  setSystemTime(new Date(timestamp));
+  await rulesStore.set({
+    fetchedAt: timestamp,
+    rules: [{ ...article, recapture: "after_change" }],
+  });
+  await tabStore(1).set({
+    tabSessionId: "tab",
+    pageView: { event: pageView, titled: false, lastCapturedAt: fiveMinutesBefore },
+  });
+  await openSpanStore.set({
+    id: "span",
+    pageViewId: pageView.id,
+    tabId: 1,
+    startedAt: fiveMinutesBefore,
+    lastHeartbeatAt: "2026-09-21T11:59:30.000Z",
+  });
+  await withTabFocused(async () => {
+    await serialized((at) =>
+      onAlarm({ name: "heartbeat", scheduledTime: at, persistAcrossSessions: true }, at),
+    );
+    await serialized(() => Promise.resolve());
+  });
+  await requestSync();
+  expect((await openSpanStore.get())?.id).toBe("span");
+  expect((await tabStore(1).get())?.pageView?.lastCapturedAt).toBe(timestamp);
 });

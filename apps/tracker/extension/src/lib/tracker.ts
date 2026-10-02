@@ -303,12 +303,13 @@ async function closeSpan(open: OpenSpan, reason: EndReason, endedAt: string): Pr
   await openSpanStore.remove();
   await emit({ type: "span_end", id: open.id, ended_at: endedAt, reason });
   await diag(`span closed (${reason})`);
-  void serialized(() => recaptureAfterSpan(open));
+  void serialized(() => recaptureIfDue(open));
 }
 
 // A thread or a pull request keeps changing while it is read, so its page is
-// captured again once attention leaves it, as long as the tab still shows it.
-async function recaptureAfterSpan({ tabId, pageViewId }: OpenSpan): Promise<void> {
+// captured again on the span's heartbeats and when the span ends. Both are
+// needed: a span ended by navigation finds the tab already on the next page.
+async function recaptureIfDue({ tabId, pageViewId }: OpenSpan): Promise<void> {
   const pageView = (await tabStore(tabId).get())?.pageView;
   if (pageView?.event.id !== pageViewId || pageView.lastCapturedAt === undefined) return;
   if (Date.now() - Date.parse(pageView.lastCapturedAt) < RECAPTURE_INTERVAL_MS) return;
@@ -360,6 +361,7 @@ async function heartbeat(at: number): Promise<void> {
   const lastHeartbeatAt = iso(at);
   await openSpanStore.set({ ...open, lastHeartbeatAt });
   await emit({ type: "span_heartbeat", id: open.id, at: lastHeartbeatAt });
+  void serialized(() => recaptureIfDue(open));
 }
 
 async function closeStaleSpan(maxAgeMs: number): Promise<void> {
