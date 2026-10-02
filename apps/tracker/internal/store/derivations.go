@@ -89,8 +89,10 @@ type RecordResult struct {
 }
 
 // CompleteDerivation writes the record and closes the job in one short
-// transaction. A record with the same hash already on file is not rewritten;
-// only its seen window widens.
+// transaction. A page has one record per extractor, keyed by its canonical
+// URL: its seen window always widens, and its content is replaced only by a
+// blob seen at least as late, so replaying an older blob never overwrites a
+// newer one.
 func (s *Store) CompleteDerivation(ctx context.Context, key DerivationKey, in RecordInput, processing time.Duration) (RecordResult, error) {
 	var res RecordResult
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -102,11 +104,16 @@ func (s *Store) CompleteDerivation(ctx context.Context, key DerivationKey, in Re
 		var inserted bool
 		if err := tx.NewRaw(`insert into records (extractor, record_hash, url_id, canonical_url, title, search_text, data, first_seen_at, last_seen_at)
 			values (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			on conflict (extractor, record_hash) do update set
+			on conflict (extractor, canonical_url) do update set
 				first_seen_at = least(records.first_seen_at, excluded.first_seen_at),
-				last_seen_at = greatest(records.last_seen_at, excluded.last_seen_at)
+				last_seen_at = greatest(records.last_seen_at, excluded.last_seen_at),
+				record_hash = case when excluded.last_seen_at >= records.last_seen_at then excluded.record_hash else records.record_hash end,
+				url_id = case when excluded.last_seen_at >= records.last_seen_at then excluded.url_id else records.url_id end,
+				title = case when excluded.last_seen_at >= records.last_seen_at then excluded.title else records.title end,
+				search_text = case when excluded.last_seen_at >= records.last_seen_at then excluded.search_text else records.search_text end,
+				data = case when excluded.last_seen_at >= records.last_seen_at then excluded.data else records.data end
 			returning id, xmax = 0`,
-			r.Extractor, r.RecordHash, urlID, nullable(r.CanonicalURL), nullable(r.Title), r.SearchText,
+			r.Extractor, r.RecordHash, urlID, r.CanonicalURL, nullable(r.Title), r.SearchText,
 			string(r.Data), r.FirstSeenAt, r.LastSeenAt).Scan(ctx, &res.ID, &inserted); err != nil {
 			return err
 		}
@@ -193,9 +200,8 @@ func (s *Store) Reprocess(ctx context.Context, o ReprocessOpts) (int64, error) {
 			}
 			queued, _ = r.RowsAffected()
 			return nil
-		}
-		for _, t := range o.Targets {
-			if !o.All {
+		default:
+			for _, t := range o.Targets {
 				if _, err := tx.NewDelete().Model((*Derivation)(nil)).
 					Where("extractor = ? and extractor_version <> ?", t.Name, t.Version).Exec(ctx); err != nil {
 					return err
@@ -205,18 +211,35 @@ func (s *Store) Reprocess(ctx context.Context, o ReprocessOpts) (int64, error) {
 					return err
 				}
 			}
-			r, err := tx.NewRaw(`insert into derivations (raw_hash, extractor, extractor_version)
-				select distinct raw_hash, extractor, ? from captures where extractor = ?
-				on conflict do nothing`, t.Version, t.Name).Exec(ctx)
-			if err != nil {
-				return err
-			}
-			n, _ := r.RowsAffected()
-			queued += n
 		}
-		return nil
+		var err error
+		queued, err = queueCaptures(ctx, tx, o.Targets)
+		return err
 	})
 	return queued, err
+}
+
+// QueueCaptures queues every captured blob under each target's version unless
+// it already has a job there, so neither a version bump nor a migration that
+// clears the derived tables waits on a manual reprocess. Returns the number
+// of queued jobs.
+func (s *Store) QueueCaptures(ctx context.Context, targets []ExtractorVersion) (int64, error) {
+	return queueCaptures(ctx, s.db, targets)
+}
+
+func queueCaptures(ctx context.Context, db bun.IDB, targets []ExtractorVersion) (int64, error) {
+	var queued int64
+	for _, t := range targets {
+		r, err := db.NewRaw(`insert into derivations (raw_hash, extractor, extractor_version)
+			select distinct raw_hash, extractor, ? from captures where extractor = ?
+			on conflict do nothing`, t.Version, t.Name).Exec(ctx)
+		if err != nil {
+			return 0, err
+		}
+		n, _ := r.RowsAffected()
+		queued += n
+	}
+	return queued, nil
 }
 
 func nullable(s string) sql.NullString {

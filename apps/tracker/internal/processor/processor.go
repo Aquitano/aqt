@@ -167,11 +167,21 @@ func (p *Processor) derive(ctx context.Context, d store.Derivation) (store.Recor
 	}
 	hash := blake3.Sum256(canonical)
 	return store.RecordInput{
-		Record: store.Record{Extractor: d.Extractor, RecordHash: hash[:], CanonicalURL: rec.CanonicalURL,
+		Record: store.Record{Extractor: d.Extractor, RecordHash: hash[:], CanonicalURL: canonicalURL(rec.CanonicalURL, normalized),
 			Title: rec.Title, SearchText: rec.SearchText, Data: canonical,
 			FirstSeenAt: summary.FirstSeen, LastSeenAt: summary.LastSeen},
 		URL: store.URLKey{Hash: urlnorm.Hash(normalized), Normalized: normalized, Host: host},
 	}, nil
+}
+
+// canonicalURL is what a page's record is keyed on, so it goes through the
+// same normalisation as every other URL; an extractor that names none, or one
+// that does not parse, leaves the page's own URL.
+func canonicalURL(raw, pageURL string) string {
+	if normalized, _, err := urlnorm.Normalize(raw); err == nil {
+		return normalized
+	}
+	return pageURL
 }
 
 type panicError struct{ value any }

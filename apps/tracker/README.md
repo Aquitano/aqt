@@ -98,7 +98,7 @@ tracker stats [--json]
 tracker search [--extractor name] [--limit n] [--json] <query>
 ```
 
-`reprocess --all` rebuilds every derived row from the source tables alone.
+`serve` queues every capture the current extractor versions have not processed yet when it starts, so a release that bumps one needs no manual step. `reprocess` also removes the records only an older version produced; `reprocess --all` rebuilds every derived row from the source tables alone.
 
 `stats` and `search` read the server over HTTP, so they work against a tracker
 on another machine; `serve`, `migrate` and `reprocess` need the database.

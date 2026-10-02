@@ -18,7 +18,7 @@ What I read and where my attention went, from a browser extension and a macOS me
 | Extraction    | Per-site extractors in Go returning typed records, run server-side                                                                                                                        | Serialising `outerHTML` is the cheapest thing the browser can do                                                                                                                                                                                             |
 | Raw HTML      | Kept forever, zstd in Go, `STORAGE EXTERNAL`                                                                                                                                              | Re-running a fixed extractor after a site changes markup is the whole reason to keep it                                                                                                                                                                      |
 | Queue         | The derivation row is the job (`FOR UPDATE SKIP LOCKED`)                                                                                                                                  | Identity `(raw_hash, extractor, version)` already exists; no PGMQ                                                                                                                                                                                            |
-| Dedup         | Blob hash, then record hash over canonical JSON                                                                                                                                           | SimHash dropped: structured records have no prose to near-match                                                                                                                                                                                              |
+| Dedup         | Blob hash for snapshots; one record per extractor and canonical URL, holding the newest snapshot's content                                                                                | A page changes between visits (an issue closes, an article is edited, a thread grows) and should still be one search hit; `record_hash` says whether the content changed. SimHash dropped: structured records have no prose to near-match                    |
 | ORM           | uptrace/bun with `pgdriver`, SQL migrations embedded                                                                                                                                      | SQL-first with struct scanning; raw SQL where `@@@`, `SKIP LOCKED` and `ON CONFLICT` need it                                                                                                                                                                 |
 | Observability | slog JSON, Prometheus `/metrics`, Grafana with Postgres datasource for analytics                                                                                                          | Metrics yes, tracing no; analytics dashboards come free from the Postgres datasource, so no web app in v1                                                                                                                                                    |
 | Extension     | WXT, TypeScript, Chromium MV3 only                                                                                                                                                        | One background lifecycle to get right                                                                                                                                                                                                                        |
@@ -176,15 +176,15 @@ create index on derivations (status, created_at) where status in ('pending', 'ru
 records (
   id            bigint generated always as identity primary key,
   extractor     text not null,
-  record_hash   bytea not null,                 -- blake3(canonical json of data)
+  record_hash   bytea not null,                 -- blake3(canonical json of data); changes with the content
   url_id        bigint not null references urls,
-  canonical_url text,
+  canonical_url text not null,                  -- normalised; the page URL when the extractor names none
   title         text,
   search_text   text not null,                  -- what BM25 sees; built by the extractor
   data          jsonb not null,
   first_seen_at timestamptz not null,
   last_seen_at  timestamptz not null,
-  unique (extractor, record_hash)
+  unique (extractor, canonical_url)
 );
 create index records_search on records using bm25 (id, title, search_text, extractor)
   with (key_field = 'id');
@@ -212,9 +212,9 @@ where (raw_hash, extractor, extractor_version) in (
 returning *;
 ```
 
-Then, outside any transaction: fetch blob, decompress, run the extractor with a 30 s context timeout and panic recovery. Then one short transaction: upsert `records` on `(extractor, record_hash)` (bump `last_seen_at`), set derivation `done` with `record_id`. On error, including a failed write (`store`): `failed` once `attempts >= 5`, else back to `pending` with `last_error`/`error_class`. `no_match`, `stale` (the page's embedded state belongs to another URL: a single-page app navigated in place, so an extractor checks what it reads against the URL), `unregistered` (a derivation for an extractor or version this binary does not carry) and `timeout` (an extractor cannot be interrupted, so a retry would run beside the copy still going) fail on the first attempt. A stale `running` row that has used its 5 attempts is failed as `abandoned` rather than claimed again. Idle workers sleep 2 s; a successful ingest wakes them through a channel.
+Then, outside any transaction: fetch blob, decompress, run the extractor with a 30 s context timeout and panic recovery. Then one short transaction: upsert `records` on `(extractor, canonical_url)`, set derivation `done` with `record_id`. The upsert always widens the seen window (`first_seen_at`, `last_seen_at` from the blob's captures) and replaces `record_hash`, `url_id`, `title`, `search_text` and `data` only when the blob was last seen no earlier than the record, so replaying an older blob never overwrites newer content. On error, including a failed write (`store`): `failed` once `attempts >= 5`, else back to `pending` with `last_error`/`error_class`. `no_match`, `stale` (the page's embedded state belongs to another URL: a single-page app navigated in place, so an extractor checks what it reads against the URL), `unregistered` (a derivation for an extractor or version this binary does not carry) and `timeout` (an extractor cannot be interrupted, so a retry would run beside the copy still going) fail on the first attempt. A stale `running` row that has used its 5 attempts is failed as `abandoned` rather than claimed again. Idle workers sleep 2 s; a successful ingest wakes them through a channel.
 
-`reprocess` without flags queues every capture under each extractor's current version and deletes the older versions' derivations and the records only they produced (the rollout after a version bump); `--failed` resets failed rows; `--all` deletes the targets' derivations and records and re-queues from `captures`; `--extractor` narrows any of them. Workers in `serve` pick the rows up.
+`serve`, after migrating, queues every capture under each registered extractor's current version wherever that version has no derivation yet, so neither a version bump nor a migration that clears the derived tables waits on a manual step; the new version's records land on the same `(extractor, canonical_url)` as the old ones. `reprocess` without flags does the same and also deletes the older versions' derivations and the records only they produced, which drops a page a new version no longer reads or keys differently; `--failed` resets failed rows; `--all` deletes the targets' derivations and records and re-queues from `captures`; `--extractor` narrows any of them. Workers in `serve` pick the rows up.
 
 ## Extractor interface
 
@@ -232,7 +232,7 @@ type Rule struct {
 }
 
 type Record struct {
-    CanonicalURL string
+    CanonicalURL string // keys the record with the extractor; normalised by the worker, the page URL when empty
     Title        string
     SearchText   string
     Data         any    // extractor-specific struct, marshalled canonically (sorted keys) for the hash
@@ -247,6 +247,8 @@ type Extractor interface {
 Registry: `extractor.All()` returns every registered extractor; both the rules endpoint and the worker read it. `*.example.com` in `Hosts` matches subdomains only; list the apex separately when it is wanted. `"*"` matches any host: `MatchRule` tries host-specific rules before wildcard ones and `Rules()` publishes wildcards last, so a site extractor always beats the `article` fallback regardless of order, and a host any site rule names never reaches the fallback at all. `ErrNoMatch` marks a page the rule matched but the extractor could not read (login wall, empty shell, under 200 characters of prose for `article`) and is classified `no_match`, not retried. `ErrStale` marks embedded page state that belongs to another URL, which is what a single-page app leaves behind after navigating in place; classified `stale`, not retried.
 
 `article` runs the readeck fork of go-readability over the page and records title, byline, site name, excerpt, published date, language, the cleaned text and a word count; `github` and `x` recapture `after_quiet`, `youtube` and `article` never.
+
+An article's canonical URL is its `<link rel=canonical>` only when that is on the page's host (a leading `www.` aside) with a path other than `/`, since some sites point every article at their homepage; otherwise it is the page URL.
 
 ## HTTP API
 

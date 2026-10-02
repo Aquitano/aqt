@@ -43,7 +43,7 @@ func init() { extractor.Register(Extractor{}) }
 func (Extractor) Rule() extractor.Rule {
 	return extractor.Rule{
 		Extractor: Name,
-		Version:   1,
+		Version:   2,
 		Hosts:     []string{"*"},
 		DwellMS:   30000,
 	}
@@ -114,16 +114,24 @@ func normalizeWhitespace(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// canonicalURL trusts <link rel=canonical> only when it names an article on
+// the page's own site. Records are keyed on it, and some sites point every
+// article's canonical at their homepage, which would merge them all into one.
 func canonicalURL(doc *html.Node, pageURL *url.URL) string {
 	link := findNode(doc, func(n *html.Node) bool {
 		return n.Data == "link" && strings.EqualFold(attr(n, "rel"), "canonical")
 	})
 	if link != nil {
-		if u, err := url.Parse(strings.TrimSpace(attr(link, "href"))); err == nil && u.IsAbs() {
+		u, err := url.Parse(strings.TrimSpace(attr(link, "href")))
+		if err == nil && u.IsAbs() && siteHost(u) == siteHost(pageURL) && u.Path != "" && u.Path != "/" {
 			return u.String()
 		}
 	}
 	return pageURL.String()
+}
+
+func siteHost(u *url.URL) string {
+	return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
 }
 
 func documentTitle(doc *html.Node) string {
