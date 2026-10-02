@@ -1,0 +1,2274 @@
+<html itemscope="" itemtype="https://schema.org/QAPage" class="html__responsive " lang="en"><head>
+            
+            <title>scripts - What is the difference between #!/bin/sh and #!/bin/bash? - Ask Ubuntu</title>
+                    
+    
+
+<link rel="icon" sizes="32x32" href="https://askubuntu.com/Content/Sites/askubuntu/Img/favicon.ico?v=928dfb7c1990">
+
+
+<link rel="apple-touch-icon" href="https://askubuntu.com/Content/Sites/askubuntu/Img/apple-touch-icon.png?v=e16e1315edd6">
+<link rel="image_src" href="https://askubuntu.com/Content/Sites/askubuntu/Img/apple-touch-icon.png?v=e16e1315edd6"> 
+    <link rel="search" type="application/opensearchdescription+xml" title="Ask Ubuntu" href="/opensearch.xml">
+        <link rel="canonical" href="https://askubuntu.com/questions/141928/what-is-the-difference-between-bin-sh-and-bin-bash">
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, minimum-scale=1.0">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://askubuntu.com/questions/141928/what-is-the-difference-between-bin-sh-and-bin-bash">
+    <meta property="og:site_name" content="Ask Ubuntu">
+    <meta property="og:image" content="https://askubuntu.com/Content/Sites/askubuntu/Img/apple-touch-icon@2.png?v=c492c9229955">
+        
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:domain" content="askubuntu.com">
+    <meta name="twitter:title" property="og:title" content="What is the difference between #!/bin/sh and #!/bin/bash?">
+    <meta name="twitter:description" property="og:description" content="If I write
+#!/bin/bash
+echo &amp;quot;foo&amp;quot;
+
+or
+#!/bin/sh
+echo &amp;quot;foo&amp;quot;
+
+both yields same. I have seen some scripts starting with #!/bin/sh or #!/bin/bash. Is there any difference between them?">
+
+    
+<meta itemprop="name" content="What is the difference between #!/bin/sh and #!/bin/bash?">
+<meta itemprop="description" content="If I write
+#!/bin/bash
+echo &amp;quot;foo&amp;quot;
+
+or
+#!/bin/sh
+echo &amp;quot;foo&amp;quot;
+
+both yields same. I have seen some scripts starting with #!/bin/sh or #!/bin/bash. Is there any difference between them?">
+<meta itemprop="image" content="https://askubuntu.com/Content/Sites/askubuntu/Img/apple-touch-icon@2.png?v=c492c9229955">
+<meta itemprop="primaryImageOfPage" content="https://askubuntu.com/Content/Sites/askubuntu/Img/apple-touch-icon@2.png?v=c492c9229955">
+<meta itemprop="url" content="https://askubuntu.com/questions/141928/what-is-the-difference-between-bin-sh-and-bin-bash">
+    <meta itemprop="isPartOf" content="https://askubuntu.com/#website">
+    <meta itemprop="publisher" content="https://stackoverflow.com/#organization">
+
+
+
+
+
+
+
+
+
+
+
+            
+            
+            
+
+            <link rel="stylesheet" type="text/css" href="https://askubuntu.com/Content/Shared/stacks.css?v=b2264ccf0463">
+            <link rel="stylesheet" type="text/css" href="https://askubuntu.com/Content/Sites/askubuntu/primary.css?v=ae1e22779d8d">
+
+
+            
+            <link rel="alternate" type="application/atom+xml" title="Feed for question 'What is the difference between #!/bin/sh and #!/bin/bash?'" href="/feeds/question/141928">
+
+
+                
+                
+                
+            <link rel="stylesheet" type="text/css" href="https://askubuntu.com/Content/Shared/Channels/channels.css?v=d431b1be5a03">
+
+            
+            
+
+            
+
+
+                
+            
+
+            
+            <noscript id="noscript-css"></noscript>
+
+            
+        
+        
+        
+
+        <!----><link rel="preload" as="script" href="https://dn0qt3r0xannq.cloudfront.net/stackoverflow-M6HzSe6yue/mapping.base/prebid-load.js"><link rel="preload" as="script" href="https://dn0qt3r0xannq.cloudfront.net/stackoverflow-M6HzSe6yue/mapping.base/prebid-wrapper.js"><meta http-equiv="origin-trial" content="AlK2UR5SkAlj8jjdEc9p3F3xuFYlF6LYjAML3EOqw1g26eCwWPjdmecULvBH5MVPoqKYrOfPhYVL71xAXI1IBQoAAAB8eyJvcmlnaW4iOiJodHRwczovL2RvdWJsZWNsaWNrLm5ldDo0NDMiLCJmZWF0dXJlIjoiV2ViVmlld1hSZXF1ZXN0ZWRXaXRoRGVwcmVjYXRpb24iLCJleHBpcnkiOjE3NTgwNjcxOTksImlzU3ViZG9tYWluIjp0cnVlfQ=="><meta http-equiv="origin-trial" content="Amm8/NmvvQfhwCib6I7ZsmUxiSCfOxWxHayJwyU1r3gRIItzr7bNQid6O8ZYaE1GSQTa69WwhPC9flq/oYkRBwsAAACCeyJvcmlnaW4iOiJodHRwczovL2dvb2dsZXN5bmRpY2F0aW9uLmNvbTo0NDMiLCJmZWF0dXJlIjoiV2ViVmlld1hSZXF1ZXN0ZWRXaXRoRGVwcmVjYXRpb24iLCJleHBpcnkiOjE3NTgwNjcxOTksImlzU3ViZG9tYWluIjp0cnVlfQ=="><meta http-equiv="origin-trial" content="A9nrunKdU5m96PSN1XsSGr3qOP0lvPFUB2AiAylCDlN5DTl17uDFkpQuHj1AFtgWLxpLaiBZuhrtb2WOu7ofHwEAAACKeyJvcmlnaW4iOiJodHRwczovL2RvdWJsZWNsaWNrLm5ldDo0NDMiLCJmZWF0dXJlIjoiQUlQcm9tcHRBUElNdWx0aW1vZGFsSW5wdXQiLCJleHBpcnkiOjE3NzQzMTA0MDAsImlzU3ViZG9tYWluIjp0cnVlLCJpc1RoaXJkUGFydHkiOnRydWV9"><meta http-equiv="origin-trial" content="A93bovR+QVXNx2/38qDbmeYYf1wdte9EO37K9eMq3r+541qo0byhYU899BhPB7Cv9QqD7wIbR1B6OAc9kEfYCA4AAACQeyJvcmlnaW4iOiJodHRwczovL2dvb2dsZXN5bmRpY2F0aW9uLmNvbTo0NDMiLCJmZWF0dXJlIjoiQUlQcm9tcHRBUElNdWx0aW1vZGFsSW5wdXQiLCJleHBpcnkiOjE3NzQzMTA0MDAsImlzU3ViZG9tYWluIjp0cnVlLCJpc1RoaXJkUGFydHkiOnRydWV9"><meta http-equiv="origin-trial" content="A1S5fojrAunSDrFbD8OfGmFHdRFZymSM/1ss3G+NEttCLfHkXvlcF6LGLH8Mo5PakLO1sCASXU1/gQf6XGuTBgwAAACQeyJvcmlnaW4iOiJodHRwczovL2dvb2dsZXRhZ3NlcnZpY2VzLmNvbTo0NDMiLCJmZWF0dXJlIjoiQUlQcm9tcHRBUElNdWx0aW1vZGFsSW5wdXQiLCJleHBpcnkiOjE3NzQzMTA0MDAsImlzU3ViZG9tYWluIjp0cnVlLCJpc1RoaXJkUGFydHkiOnRydWV9"><link href="https://securepubads.g.doubleclick.net/pagead/managed/dict/m202610010101/gpt" rel="compression-dictionary"><link rel="preload" as="script" href="https://edge.aditude.io/prebid/9.53.5.js?fork=1&amp;v=5ca9181136c94da00b81e9f7e5b8f986&amp;modules=WyIzM2Fjcm9zc0lkU3lzdGVtIiwiYWRpdHVkZSIsImFsbG93QWN0aXZpdGllcyIsImFwcG5leHVzQmlkQWRhcHRlciIsImNvbnNlbnRNYW5hZ2VtZW50IiwiY29uc2VudE1hbmFnZW1lbnRHcHAiLCJjb25zZW50TWFuYWdlbWVudFVzcCIsImNvbnZlcnNhbnRCaWRBZGFwdGVyIiwiY3JpdGVvSWRTeXN0ZW0iLCJlcXVhdGl2QmlkQWRhcHRlciIsImZhYnJpY2tJZFN5c3RlbSIsImdkcHJFbmZvcmNlbWVudCIsImdwcENvbnRyb2xfdXNuYXQiLCJncHRQcmVBdWN0aW9uIiwiaWQ1SWRTeXN0ZW0iLCJpeEJpZEFkYXB0ZXIiLCJrYXJnb0JpZEFkYXB0ZXIiLCJtZWRpYW5ldEJpZEFkYXB0ZXIiLCJvcGVueEJpZEFkYXB0ZXIiLCJwcmViaWRTZXJ2ZXJCaWRBZGFwdGVyIiwicHJpY2VGbG9vcnMiLCJwdWJQcm92aWRlZElkU3lzdGVtIiwicHVibWF0aWNCaWRBZGFwdGVyIiwicnViaWNvbkJpZEFkYXB0ZXIiLCJzaGFyZWRJZFN5c3RlbSIsInNoYXJldGhyb3VnaEJpZEFkYXB0ZXIiLCJ0cmlwbGVsaWZ0QmlkQWRhcHRlciIsInR0ZEJpZEFkYXB0ZXIiLCJ1bmlmaWVkSWRTeXN0ZW0iXQ%3D%3D"><link rel="preload" as="script" href="https://securepubads.g.doubleclick.net/tag/js/gpt.js"><link id="googleidentityservice" type="text/css" media="all" href="https://accounts.google.com/gsi/style" rel="stylesheet"></head>
+
+    <body class="question-page unified-theme" style="padding-bottom: 90px;">
+        
+<div id="signup-modal-container"><!----><aside role="dialog" class="s-modal" aria-hidden="true" aria-labelledby="signup-modal-title" aria-describedby="signup-modal-description"><div role="document" class="s-modal--dialog pt32 pr32 pb32"><h1 class="s-modal--header" id="signup-modal-title"><div class="s-modal--header d-flex g8 mt8 ai-center"><img class="h48 w48 native" alt="site logo" src="https://askubuntu.com/Content/Sites/askubuntu/Img/icon-48.png?v=fd3b426e9803"> <span class="fs-headline1 mb0 fc-black-700"><strong>Join Ask Ubuntu</strong></span></div><!----></h1> <div class="s-modal--body" id="signup-modal-description"><div class="wmx4 pl8"><div class="mb24"><span class="fs-caption fc-black-400 ta-left">By clicking “Sign up”, you agree to our <a href="/legal/terms-of-service/public" target="_blank" rel="noopener noreferrer" class="s-link svelte-9quauz">terms of service</a>  and acknowledge you have read our <a href="/legal/privacy-policy" target="_blank" rel="noopener noreferrer" class="s-link svelte-9quauz">privacy policy</a>.</span><!----></div> <div class="pb32"><form class="flex--item" method="POST" action="/users/signup?ssrc=undefined&amp;returnurl=https%3A%2F%2Faskubuntu.com%2Fusers%2Fafter-signup%2Foauth-only" target="oauth-frame"><input type="hidden" name="fkey" value="0f38e7a5307fb8121fd4bfe1d743d3c720d7c237c45c21bf32db9270477a8121"> <input type="hidden" name="legalLinksShown" value="1"> <input type="hidden" name="ssrc"> <!----> <!----> <!----> <input type="hidden" name="oauth_version" value="2.0"> <input type="hidden" name="oauth_server"> <div class="d-flex fd-column gy12"><!----><button class="s-btn w100 s-btn__google" type="submit" data-testid="signup-google" data-provider="Google"><!----><!----><div class="d-flex ai-center jc-center gx8"><!----><svg aria-hidden="true" class="native svg-icon iconGoogle" width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18"></path><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17"></path><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18z"></path><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.8 4.8 0 0 1 4.48-3.3"></path></svg><!----> Sign up with Google</div></button></div></form><!----></div> <!----><h1 class="svelte-1mm1u63">OR</h1><!----><!----> <form id="signup-modal-signup-form" class="mt32 d-flex fd-column gy16" method="POST" action="/users/signup?ssrc=undefined&amp;returnurl=https%3A%2F%2Faskubuntu.com%2Fquestions%2F141928%2Fwhat-is-the-difference-between-bin-sh-and-bin-bash"><input type="hidden" name="fkey" value="0f38e7a5307fb8121fd4bfe1d743d3c720d7c237c45c21bf32db9270477a8121"> <input type="hidden" name="legalLinksShown" value="1"> <input type="hidden" name="ssrc" value=""> <input type="hidden" name="vote" value=""> <input type="hidden" name="votehash" value=""> <input type="hidden" name="tagAction" value=""> <input type="hidden" name="tagNames" value=""> <input type="hidden" name="anonTheme" value=""> <div class="flex--item d-flex fd-column gs4 gsy  svelte-1rlgrxv"><label class="flex--item s-label" for="signup-modal-email">Email</label> <div class="d-flex ps-relative"><input class="s-input" id="signup-modal-email" size="30" maxlength="100" name="email" autocomplete="off"></div> <!----></div> <div class="flex--item d-flex fd-column gs4 gsy  svelte-1rlgrxv"><label class="flex--item s-label" for="signup-modal-password">Password</label> <div class="d-flex ps-relative"><input id="signup-modal-password" class="flex--item s-input" autocomplete="new-password" name="password" placeholder="8+ characters (at least 1 letter &amp; 1 number)" type="password"> <button type="button" class="show-hide-password svelte-1rlgrxv"><!----><svg aria-hidden="true" class="svg-icon iconEyeOff" width="18" height="18" viewBox="0 0 18 18"><path d="m5.02 9.44-2.22 2.2C1.63 10.25 1 9 1 9s3-6 8.06-6q1.13.01 2.12.38L9.5 5.03 9 5a4 4 0 0 0-3.98 4.44m2.03 3.05A4 4 0 0 0 13 9q-.01-1.1-.54-2l-1.51 1.54q.05.22.05.46a2 2 0 0 1-2.44 1.95zm7.11-7.22A15 15 0 0 1 17 9s-3 6-7.94 6c-1.31 0-2.48-.4-3.5-1l-1.97 2L2 14.41 14.59 2 16 3.41z"></path></svg><!----></button></div> <!----></div> <!----> <div class="flex--item d-flex gs4 gsy fd-column svelte-1rlgrxv"><!----><button class="s-btn flex--item mt12 s-btn__filled" id="signup-modal-submit-button" type="submit"><!----><!---->Sign up</button><!----> <p aria-live="assertive" class="flex--item s-input-message d-none svelte-1rlgrxv" aria-hidden="true"></p></div></form><!----></div><!----></div> <div class="d-flex g8 s-modal--footer"><div class="fs-body1 pl8">Already have an account?  <a href="/users/login" class="s-link">Log in</a></div><!----></div><!----> <!----><button class="s-btn s-modal--close s-btn__muted s-btn__icon" aria-label="Close"><!----><!----><!----><svg aria-hidden="true" class="modal-close svg-icon iconClear" width="18" height="18" viewBox="0 0 18 18"><path d="M15 4.41 13.59 3 9 7.59 4.41 3 3 4.41 7.59 9 3 13.59 4.41 15 9 10.41 13.59 15 15 13.59 10.41 9z"></path></svg></button><!----></div></aside></div>
+
+
+
+
+    
+    
+
+    <div id="one-tap-container"><form id="one-tap-form" name="one-tap-form" method="post" action="/users/auth/gcp?ssrc=google-one-tap&amp;returnurl=https%253a%252f%252faskubuntu.com%252fquestions%252f141928%252fwhat-is-the-difference-between-bin-sh-and-bin-bash"><input type="hidden" name="fKey" value="0f38e7a5307fb8121fd4bfe1d743d3c720d7c237c45c21bf32db9270477a8121"> <input type="hidden" name="googleIdToken" value=""></form></div>
+
+
+    <div id="notify-container"></div>
+    <div id="custom-header"><div class="nav-global"><div class="nav-global-wrapper"><ul><li><a href="http://www.ubuntu.com">Ubuntu</a></li><li><a href="http://community.ubuntu.com/">Community</a></li><li><a href="http://askubuntu.com" class="active">Ask!</a></li><li><a href="http://developer.ubuntu.com">Developer</a></li><li><a href="http://design.ubuntu.com">Design</a></li><li><a href="http://www.ubuntu.com/certification">Hardware</a></li><li><a href="http://insights.ubuntu.com/">Insights</a></li><li><a href="https://jujucharms.com/">Juju</a></li><li><a href="http://shop.ubuntu.com">Shop</a></li><li class="more"><a href="#">More <span>›</span></a><ul><li><a href="http://apps.ubuntu.com">Apps</a></li><li><a href="https://help.ubuntu.com">Help</a></li><li><a href="http://ubuntuforums.org">Forum</a></li><li><a href="http://www.launchpad.net">Launchpad</a></li><li><a href="http://maas.ubuntu.com">MAAS</a></li><li><a href="http://www.canonical.com">Canonical</a></li></ul></li></ul></div></div> </div>
+        
+
+<header class="s-topbar ps-fixed t0 l0 js-top-bar">
+    <a href="#content" class="s-topbar--skip-link">Skip to main content</a>
+	<div class="s-topbar--container">
+
+			<a href="#" class="s-topbar--menu-btn js-left-sidebar-toggle" aria-haspopup="true" aria-controls="left-sidebar" aria-expanded="false"><span></span></a>
+			<div class="topbar-dialog leftnav-dialog js-leftnav-dialog dno">
+				<div class="left-sidebar js-unpinned-left-sidebar" data-can-be="left-sidebar" data-is-here-when="sm"></div>
+			</div>
+			<a href="#" class="s-topbar--logo network-logo js-gps-track js-network-logo" data-gps-track="stack_exchange_popup.show" aria-haspopup="true" aria-controls="topbar-network-logo-dialog" aria-expanded="false">
+				<svg aria-hidden="true" class="fc-black-200 d:fc-black-350 mtn1 svg-icon iconGlyphNew" width="26" height="31" viewBox="0 0 26 31"><path fill="currentColor" d="m22.18 16.32.05.02-.02.01za19 19 0 0 0-2.45 4.14l-.03.07q-.94 2.19-1.29 4.6v.03a18 18 0 0 0-.05 4.85H.01v-4.88h15.94l.1-.6L.69 20.48l1.28-4.7 15.55 4.1.22-.46-13.96-7.96 2.47-4.22 14.16 8.07.34-.4L9.15 3.47 12.65 0l11.78 11.64 1.25 1.23q-1.97 1.5-3.5 3.44"></path></svg>
+			</a>
+			<div class="s-popover topbar-dialog network-logo-dialog btr0 btw0 md:wmx-initial overflow-hidden js-network-logo-dialog dno" id="topbar-network-logo-dialog" role="dialog" aria-labelledby="topbar-network-logo-dialog-title" aria-describedby="topbar-network-logo-dialog-body">
+				<div class="dialog-content">
+					<h4 class="bold fs-body2 mb8" id="topbar-network-logo-dialog-title">184 communities for the curious</h4>
+					<p class="fc-medium" id="topbar-network-logo-dialog-body">
+						<b>Ask Ubuntu</b> is part of Stack Overflow’s open communities: specialist spaces where curiosity is welcome, knowledge is shared freely, and the best answers rise to the top.
+					</p>
+					<a class="s-btn s-btn__filled bg-black h:bg-black-500" href="https://stackexchange.com" data-gps-track="stack_exchange_popup.click">Find your community</a>
+					<button class="s-btn s-btn__muted ps-absolute p4 t8 r8 js-close-button" aria-label="Close"><svg aria-hidden="true" class="svg-icon iconClear" width="18" height="18" viewBox="0 0 18 18"><path d="M15 4.41 13.59 3 9 7.59 4.41 3 3 4.41 7.59 9 3 13.59 4.41 15 9 10.41 13.59 15 15 13.59 10.41 9z"></path></svg></button>
+
+					<svg class="ps-absolute r0 b0" aria-hidden="true" height="61" viewBox="0 0 95 61" width="95">
+						<path d="m88.009 0v61h-50v-61.00000219z" fill="#fc0"></path>
+						<path d="m95.009 0v61h-7v-61.00000031z" fill="#ff5e00"></path>
+						<path d="m77.7493 3.21625-6.4673 4.94164h-49.4984l6.4673-4.94164z" fill="#5074ef"></path>
+						<path d="m83.1467 61h-49.498l-11.8653-52.8418h49.4981z" fill="#fc0"></path>
+						<path d="m90.7239 61h-7.5772l-11.8652-52.8418 6.4678-4.94238z" fill="#ff5e00"></path>
+						<path d="m62.7966 18.6167-4.9498 9.131h-49.4984l4.9498-9.131z" fill="#5074ef"></path>
+						<path d="m75.8723 61h-49.498l-18.02542-33.252h49.49802z" fill="#fc0"></path>
+						<path d="m85.7727 61h-9.9004l-18.0254-33.252 4.9502-9.1308z" fill="#ff5e00"></path>
+						<path d="m52.1772 43.4004-2.6788 11.9301h-49.49838102l2.67884102-11.9301z" fill="#5074ef"></path>
+						<path d="m75.2102 61h-18.292l-7.4199-5.6699 2.6787-11.9297z" fill="#ff5e00"></path>
+						<path d="m56.9182 61h-49.49803l-7.4111368-5.6641v-.0058h49.4892668z" fill="#fc0"></path>
+					</svg>
+				</div>
+			</div>
+
+
+
+
+
+		        <form id="search" role="search" action="/search" class="s-topbar--searchbar js-searchbar " autocomplete="off">
+                        <div class="s-topbar--searchbar--input-group">
+                             <input name="q" type="text" role="combobox" aria-haspopup="dialog" aria-expanded="false" placeholder="Search on Ask Ubuntu…" value="" autocomplete="off" maxlength="240" class="s-input s-input__search js-search-field wmn1 " aria-label="Search" aria-controls="top-search" data-controller="s-popover" data-action="focus-&gt;s-popover#show" data-s-popover-placement="bottom-start">
+                            <svg aria-hidden="true" class="s-input-icon s-input-icon__search svg-icon iconSearch" width="18" height="18" viewBox="0 0 18 18"><path d="m18 16.5-5.14-5.18h-.35a7 7 0 1 0-1.19 1.19v.35L16.5 18zM12 7A5 5 0 1 1 2 7a5 5 0 0 1 10 0"></path></svg>
+                            <div class="s-popover p0 wmx100 wmn4 sm:wmn-initial js-top-search-popover" id="top-search" role="dialog" aria-label="Search suggestions and help">
+    <div class="s-popover--arrow"></div>
+    <div class="s-popover--content">
+        <div class="js-spinner p24 d-flex ai-center jc-center d-none">
+            <div class="s-spinner s-spinner__sm fc-orange-400">
+                <div class="v-visible-sr">Loading…</div>
+            </div>
+        </div>
+
+        <span class="v-visible-sr js-screen-reader-info" role="status" aria-live="polite" aria-atomic="true"></span>
+        <div class="js-ac-results overflow-y-auto hmx3 d-none"></div>
+
+        <div class="js-search-hints"></div>
+    </div>
+</div>
+
+                        </div>
+                </form>
+		
+
+<nav class="h100 ml-auto overflow-x-auto pr12" aria-label="Topbar">
+    <ol class="s-topbar--content">
+    
+    
+    
+        <li>
+            <a href="/help" class="s-topbar--item js-help-button" aria-label="Help Center and other resources" aria-haspopup="true" aria-controls="topbar-help-dialog" data-ga="[&quot;top navigation&quot;,&quot;help menu click&quot;,null,null,null]" data-controller="s-tooltip" aria-describedby="--stacks-s-tooltip-yw2lqe8a"><svg aria-hidden="true" class="svg-icon iconHelp" width="18" height="18" viewBox="0 0 18 18"><path d="M9 1C4.64 1 1 4.64 1 9s3.64 8 8 8 8-3.64 8-8-3.64-8-8-8m.81 12.13c-.02.71-.55 1.15-1.24 1.13-.66-.02-1.17-.49-1.15-1.2.02-.72.56-1.18 1.22-1.16.7.03 1.2.51 1.17 1.23M11.77 8c-.59.66-1.78 1.09-2.05 1.97a4 4 0 0 0-.09.75c0 .05-.03.16-.18.16H7.88c-.16 0-.18-.1-.18-.15.06-1.35.66-2.2 1.83-2.88.39-.29.7-.75.7-1.24.01-1.24-1.64-1.82-2.35-.72-.21.33-.18.73-.18 1.1H5.75c0-1.97 1.03-3.26 3.03-3.26 1.75 0 3.47.87 3.47 2.83 0 .57-.2 1.05-.48 1.44"></path></svg></a><div id="--stacks-s-tooltip-yw2lqe8a" class="s-popover s-popover__tooltip" role="tooltip">Help Center and other resources<div class="s-popover--arrow"></div></div>
+            <div class="topbar-dialog help-dialog js-help-dialog dno" id="topbar-help-dialog" role="menu">
+                <div class="modal-content">
+                    <ul>
+                            <li>
+                                <a href="/tour" class="js-gps-track s-block-link" data-gps-track="help_popup.click({ item_type:1 })" data-ga="[&quot;top navigation&quot;,&quot;tour submenu click&quot;,null,null,null]">
+                                    Tour
+                                    <span class="item-summary">
+                                        Start here for a quick overview of the site
+                                    </span>
+                                </a>
+                            </li>
+                        <li>
+                            <a href="/help" class="js-gps-track s-block-link" data-gps-track="help_popup.click({ item_type:4 })" data-ga="[&quot;top navigation&quot;,&quot;help center&quot;,null,null,null]">
+                                Help Center
+                                <span class="item-summary">
+                                    Detailed answers to any questions you might have
+                                </span>
+                            </a>
+                        </li>
+                                    <li>
+                                        <a href="https://meta.askubuntu.com" class="js-gps-track s-block-link" data-gps-track="help_popup.click({ item_type:2 })" data-ga="[&quot;top navigation&quot;,&quot;meta submenu click&quot;,null,null,null]">
+                                            Meta
+                                            <span class="item-summary">
+                                                Discuss the workings and policies of this site
+                                            </span>
+                                        </a>
+                                    </li>
+                                <li>
+                                    <a href="https://stackoverflow.co/" class="js-gps-track s-block-link" data-gps-track="help_popup.click({ item_type:6 })" data-ga="[&quot;top navigation&quot;,&quot;about us submenu click&quot;,null,null,null]">
+                                        About Us
+                                        <span class="item-summary">
+                                            Learn more about Stack Overflow the company, and our products
+                                        </span>
+                                    </a>
+                                </li>
+                    </ul>
+                </div>
+            </div>
+        </li>
+    
+        <li>
+            <a href="https://stackexchange.com" class="s-topbar--item js-site-switcher-button js-gps-track" data-gps-track="site_switcher.show" aria-label="Site switcher" aria-haspopup="true" aria-expanded="false" data-ga="[&quot;top navigation&quot;,&quot;stack exchange click&quot;,null,null,null]" data-controller="s-tooltip" aria-describedby="--stacks-s-tooltip-ylqjykl2">
+                <svg aria-hidden="true" class="svg-icon iconStackExchange" width="18" height="18" viewBox="0 0 18 18"><path d="M15 1H3a2 2 0 0 0-2 2v2h16V3a2 2 0 0 0-2-2M1 13c0 1.1.9 2 2 2h8v3l3-3h1a2 2 0 0 0 2-2v-2H1zm16-7H1v4h16z"></path></svg>
+            </a><div id="--stacks-s-tooltip-ylqjykl2" class="s-popover s-popover__tooltip" role="tooltip">A list of all 184 Stack Overflow communities<div class="s-popover--arrow"></div></div>
+        </li>
+    
+    
+        <li class="js-topbar-dialog-corral">
+                
+
+    <div class="topbar-dialog siteSwitcher-dialog dno" role="menu">
+        <div class="header fw-wrap">
+            <h3 class="flex--item">
+                <a href="https://askubuntu.com">current community</a>
+            </h3>
+            <div class="flex--item fl1">
+                <div class="ai-center d-flex jc-end">
+                    <button class="js-close-button s-btn s-btn__muted p0 ml8 d-none sm:d-block" type="button" aria-label="Close">
+                        <svg aria-hidden="true" class="svg-icon iconClear" width="18" height="18" viewBox="0 0 18 18"><path d="M15 4.41 13.59 3 9 7.59 4.41 3 3 4.41 7.59 9 3 13.59 4.41 15 9 10.41 13.59 15 15 13.59 10.41 9z"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="modal-content bg-blue-200 current-site-container">
+            <ul class="current-site">
+                    <li class="d-flex">
+                            <div class="fl1">
+                <a href="https://askubuntu.com" class="current-site-link d-flex gx8 site-link js-gps-track" data-id="89" data-gps-track="site_switcher.click({ item_type:3 })">
+        <div class="favicon favicon-askubuntu site-icon flex--item" aria-label="Ask Ubuntu" data-controller="s-tooltip" aria-describedby="--stacks-s-tooltip-goqaf0ta"></div><div id="--stacks-s-tooltip-goqaf0ta" class="s-popover s-popover__tooltip" role="tooltip">Ask Ubuntu<div class="s-popover--arrow"></div></div>
+        <span class="flex--item fl1">
+            Ask Ubuntu
+        </span>
+    </a>
+
+    </div>
+    <div class="related-links">
+            <a href="https://askubuntu.com/help" class="js-gps-track" data-gps-track="site_switcher.click({ item_type:14 })">help</a>
+            <a href="https://chat.stackexchange.com?tab=site&amp;host=askubuntu.com" class="js-gps-track" data-gps-track="site_switcher.click({ item_type:6 })">chat</a>
+    </div>
+
+                    </li>
+                    <li class="related-site d-flex">
+                            <div class="L-shaped-icon-container">
+        <span class="L-shaped-icon"></span>
+    </div>
+
+                            <a href="https://meta.askubuntu.com" class="s-block-link px16 d-flex gx8 site-link js-gps-track" data-id="91" data-gps-track="site.switch({ target_site:91, item_type:3 }),site_switcher.click({ item_type:4 })">
+        <div class="favicon favicon-askubuntumeta site-icon flex--item" aria-label="Ask Ubuntu Meta" data-controller="s-tooltip" aria-describedby="--stacks-s-tooltip-60wq9ax9"></div><div id="--stacks-s-tooltip-60wq9ax9" class="s-popover s-popover__tooltip" role="tooltip">Ask Ubuntu Meta<div class="s-popover--arrow"></div></div>
+        <span class="flex--item fl1">
+            Ask Ubuntu Meta
+        </span>
+    </a>
+
+                    </li>
+            </ul>
+        </div>
+
+        <div class="header" id="your-communities-header">
+            <h3>
+your communities            </h3>
+
+        </div>
+        <div class="modal-content" id="your-communities-section">
+
+                <div class="call-to-login">
+<a href="https://askubuntu.com/users/signup?ssrc=site_switcher&amp;returnurl=https%3a%2f%2faskubuntu.com%2fquestions%2f141928%2fwhat-is-the-difference-between-bin-sh-and-bin-bash" class="login-link js-gps-track" data-gps-track="site_switcher.click({ item_type:10 })">Sign up</a> or <a href="https://askubuntu.com/users/login?ssrc=site_switcher&amp;returnurl=https%3a%2f%2faskubuntu.com%2fquestions%2f141928%2fwhat-is-the-difference-between-bin-sh-and-bin-bash" class="login-link js-gps-track" data-gps-track="site_switcher.click({ item_type:11 })">log in</a> to customize your list.                </div>
+        </div>
+
+        <div class="header">
+            <h3><a href="https://stackexchange.com/sites">More communities</a>
+            </h3>
+            <a href="https://stackoverflow.blog" class="float-right">company blog</a>
+        </div>
+        <div class="modal-content">
+                <div class="child-content"></div>
+        </div>
+    </div>
+
+        </li>
+    
+            <li><button class="s-topbar--item s-btn s-btn__icon s-btn__muted d-none sm:d-inline-flex js-searchbar-trigger" aria-label="Search" aria-haspopup="true" aria-controls="search" data-controller="s-tooltip" aria-describedby="--stacks-s-tooltip-9jfo2dsm"><svg aria-hidden="true" class="svg-icon iconSearch" width="18" height="18" viewBox="0 0 18 18"><path d="m18 16.5-5.14-5.18h-.35a7 7 0 1 0-1.19 1.19v.35L16.5 18zM12 7A5 5 0 1 1 2 7a5 5 0 0 1 10 0"></path></svg></button><div id="--stacks-s-tooltip-9jfo2dsm" class="s-popover s-popover__tooltip" role="tooltip">Click to show search<div class="s-popover--arrow"></div></div></li>
+                        <li>
+                            <a href="https://askubuntu.com/users/login?ssrc=head&amp;returnurl=https%3a%2f%2faskubuntu.com%2fquestions%2f141928%2fwhat-is-the-difference-between-bin-sh-and-bin-bash" class="s-topbar--item s-topbar--item__unset s-btn s-btn__outlined ws-nowrap js-gps-track" rel="nofollow" data-gps-track="login.click" data-ga="[&quot;top navigation&quot;,&quot;login button click&quot;,null,null,null]">Log in</a>
+                        </li>
+                        <li><a href="https://askubuntu.com/users/signup?ssrc=head&amp;returnurl=https%3a%2f%2faskubuntu.com%2fquestions%2f141928%2fwhat-is-the-difference-between-bin-sh-and-bin-bash" class="s-topbar--item s-topbar--item__unset ml4 s-btn s-btn__filled ws-nowrap js-signup-button js-gps-track" rel="nofollow" data-gps-track="signup.topbar.click" data-ga="[&quot;sign up&quot;,&quot;Sign Up Navigation&quot;,&quot;Header&quot;,null,null]">Sign up</a></li>
+    </ol>
+</nav>
+
+
+	</div>
+</header>
+
+	
+
+    
+
+
+
+                
+
+
+    <div id="announcement-banner" class="js-announcement-banner bg-blue-400 fc-white baw0 ff-sans fs-body2 py2" data-campaign="2026-09-30.stack-internal-sept-launch" data-cookie="notice-si26" data-expire-date="1791986400000">
+        <div class="d-flex jc-space-between ai-center wmx12 mx-auto px16 py8">
+            <div class="flex--item mr12 ">
+                <span>
+                    Just launched! Check out the new Stack Internal platform. 
+                </span>
+                <a target="_blank" class="s-link s-link__underlined fw-bold fc-white js-link js-gps-track" href="http://stackoverflow.co/lp/stack-internal-signup?utm_medium=referral&amp;utm_source=stackoverflow-community&amp;utm_campaign=stack-internal-sept-launch&amp;utm_content=announcement-banner" data-ga="[&quot;stack-internal-sept-launch&quot;,&quot;Announcement Banner&quot;,&quot;http://stackoverflow.co/lp/stack-internal-signup?utm_medium=referral&amp;utm_source=stackoverflow-community&amp;utm_campaign=stack-internal-sept-launch&amp;utm_content=announcement-banner&quot;,null,{&quot;dimension4&quot;:&quot;stack-internal-sept-launch&quot;}]" data-gps-track="announcement_banner.click({campaign: '2026-09-30.stack-internal-sept-launch', location: 2, action: 2})">Create a free workspace</a>.
+            </div>
+            <a class="flex--item fc-white js-dismiss js-gps-track" href="#" title="dismiss" data-gps-track="announcement_banner.click({campaign: '2026-09-30.stack-internal-sept-launch', location: 2, action: 1})"><svg aria-hidden="true" class="m0 svg-icon iconClear" width="18" height="18" viewBox="0 0 18 18"><path d="M15 4.41 13.59 3 9 7.59 4.41 3 3 4.41 7.59 9 3 13.59 4.41 15 9 10.41 13.59 15 15 13.59 10.41 9z"></path></svg></a>
+        </div>
+    </div>
+    
+
+
+
+        <header class="site-header">
+            <div class="site-header--container jc-space-between sm:fd-column sm:pt8 sm:pb8">
+            <a class="site-header--link d-flex ai-center fs-headline1 fw-bold sm:mb8" href="https://askubuntu.com" aria-label="Ask Ubuntu Home">
+                <img class="h-auto wmx100" src="https://askubuntu.com/Content/Sites/askubuntu/Img/logo.svg?v=472cf2768bba" alt="Ask Ubuntu" aria-hidden="true">
+            </a>
+
+                <div class="d-flex ai-center gsx gs8">
+<div class="js-zone-container zone-container-sidebar">
+    <div id="dfp-sspon" class="everyonelovesstackoverflow my4"></div>
+</div>
+                </div>
+            </div>
+        </header>
+
+    <div class="container">
+
+                
+
+
+
+<div id="left-sidebar" data-is-here-when="md lg" class="left-sidebar js-pinned-left-sidebar ps-relative">
+    <div class="left-sidebar--sticky-container js-sticky-leftnav">
+        <nav aria-label="Primary">
+            <ol class="nav-links">
+                <li>
+                    <ol class="nav-links">
+                        
+
+<li class="ps-relative" aria-current="false">
+
+
+    <a href="/" class="s-block-link pl8 js-gps-track js-left-sidebar-focus-restore nav-links--link -link__with-icon" data-gps-track="top_nav.click({is_current: false, location:2, destination:8,  has_activity_notification:False});home_nav.click({location:2})" aria-controls=" " data-controller="  " data-s-popover-placement="right" data-left-nav-events-navigation-destination-value="" data-left-nav-events-navigation-location-value="" data-left-nav-events-navigation-activity-notification-value="" data-action="" aria-current="false" data-s-popover-auto-show="true" data-s-popover-hide-on-outside-click="never">
+        <div class="d-flex ai-center">
+<svg aria-hidden="true" class="svg-icon iconHome" width="18" height="18" viewBox="0 0 18 18"><path d="M15 10v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5H0l9-9 9 9zm-8 1v6h4v-6z"></path></svg>                <span class="-link--channel-name pl8">Home</span>
+
+        </div>
+    </a>
+</li>
+
+
+
+
+
+
+
+                        
+
+<li class="ps-relative  youarehere" aria-current="true">
+
+
+    <a id="nav-questions" href="/questions" class="s-block-link pl8 js-gps-track js-left-sidebar-focus-restore nav-links--link -link__with-icon" data-gps-track="top_nav.click({is_current: true, location:2, destination:1,  has_activity_notification:False})" aria-controls=" " data-controller="  " data-s-popover-placement="right" data-left-nav-events-navigation-destination-value="" data-left-nav-events-navigation-location-value="" data-left-nav-events-navigation-activity-notification-value="" data-action="" aria-current="false" data-s-popover-auto-show="true" data-s-popover-hide-on-outside-click="never">
+        <div class="d-flex ai-center">
+<svg aria-hidden="true" class="svg-icon iconQuestion" width="18" height="18" viewBox="0 0 18 18"><path d="m4 15-3 3V4c0-1.1.9-2 2-2h12c1.09 0 2 .91 2 2v9c0 1.09-.91 2-2 2zm7.75-3.97c.72-.83.98-1.86.98-2.94 0-1.65-.7-3.22-2.3-3.83a4.4 4.4 0 0 0-3.02 0 3.8 3.8 0 0 0-2.32 3.83q0 1.93 1.03 3a3.8 3.8 0 0 0 2.85 1.07q.94 0 1.71-.34.97.66 1.06.7.34.2.7.3l.59-1.13a5 5 0 0 1-1.28-.66m-1.27-.9a5 5 0 0 0-1.5-.8l-.45.9q.5.18.98.5-.3.1-.65.11-.92 0-1.52-.68c-.86-1-.86-3.12 0-4.11.8-.9 2.35-.9 3.15 0 .9 1.01.86 3.03-.01 4.08"></path></svg>                <span class="-link--channel-name pl8">Questions</span>
+
+        </div>
+    </a>
+</li>
+
+
+
+
+
+
+                            
+
+<li class="ps-relative" aria-current="false">
+
+
+    <a id="nav-unanswered" href="/unanswered" class="s-block-link pl8 js-gps-track js-left-sidebar-focus-restore nav-links--link -link__with-icon" data-gps-track="top_nav.click({is_current: false, location:2, destination:5,  has_activity_notification:False})" aria-controls=" " data-controller="  " data-s-popover-placement="right" data-left-nav-events-navigation-destination-value="" data-left-nav-events-navigation-location-value="" data-left-nav-events-navigation-activity-notification-value="" data-action="" aria-current="false" data-s-popover-auto-show="true" data-s-popover-hide-on-outside-click="never">
+        <div class="d-flex ai-center">
+<svg aria-hidden="true" class="svg-icon iconAnswer" width="18" height="18" viewBox="0 0 18 18"><path d="M14 15H3c-1.09 0-2-.91-2-2V4c0-1.1.9-2 2-2h12c1.09 0 2 .91 2 2v14zm-1.02-3L9.82 4H8.14l-3.06 8h1.68l.65-1.79h3.15l.69 1.79zm-2.93-3.12H7.9l1.06-2.92z"></path></svg>                <span class="-link--channel-name pl8">Unanswered</span>
+
+        </div>
+    </a>
+</li>
+
+
+
+
+
+
+                            
+
+<li class="ps-relative" aria-current="false">
+
+
+    <a id="nav-askstack" href="https://stackoverflow.com/ai-assist" class="s-block-link h32 pl8 ai-center js-disable-askstack-new-link js-gps-track js-left-sidebar-focus-restore nav-links--link -link__with-icon" data-gps-track="top_nav.click({is_current: false, location:2, destination:33,  has_activity_notification:False})" aria-controls=" " data-controller="  " data-s-popover-placement="right" data-left-nav-events-navigation-destination-value="" data-left-nav-events-navigation-location-value="" data-left-nav-events-navigation-activity-notification-value="" data-action="" aria-current="false" data-s-popover-auto-show="true" data-s-popover-hide-on-outside-click="never">
+        <div class="d-flex ai-center">
+<div class="d-flex ai-center mln8 mrn8 myn8 bg-purple-400 baw3 bas-solid bc-purple-200 bar-circle fc-white p4"><svg aria-hidden="true" class="fc-white bg-transparent h18 w18 svg-icon iconAnswerAI" width="18" height="18" viewBox="0 0 18 18"><path d="M15 1a2 2 0 0 1 2 2v14l-3-3H3c-1.09 0-2-.91-2-2V3c0-1.09.91-2 2-2zM8.2 4.13a.2.2 0 0 0-.37 0l-.57 1.31a3.5 3.5 0 0 1-1.82 1.82l-1.3.57a.2.2 0 0 0 0 .36l1.3.57c.82.35 1.47 1 1.82 1.82l.57 1.3c.07.17.3.17.36 0l.57-1.3a3.5 3.5 0 0 1 1.82-1.82l1.3-.57a.2.2 0 0 0 0-.36l-1.3-.57a3.5 3.5 0 0 1-1.82-1.82zm4.9-1.07a.1.1 0 0 0-.2 0l-.28.66c-.17.4-.5.73-.9.9l-.66.29a.1.1 0 0 0 0 .18l.66.29c.4.17.73.5.9.9l.29.66a.1.1 0 0 0 .18 0l.29-.66c.17-.4.5-.73.9-.9l.66-.29a.1.1 0 0 0 0-.18l-.66-.29c-.4-.17-.73-.5-.9-.9z"></path></svg></div>                <span class="-link--channel-name pl8">AI Assist</span>
+
+        </div>
+    </a>
+</li>
+
+
+
+
+    
+
+
+
+                        
+
+<li class="ps-relative" aria-current="false">
+
+
+    <a href="/tags" class="s-block-link pl8 js-gps-track js-left-sidebar-focus-restore nav-links--link -link__with-icon" data-gps-track="top_nav.click({is_current: false, location:2, destination:2,  has_activity_notification:False})" aria-controls=" " data-controller="  " data-s-popover-placement="right" data-left-nav-events-navigation-destination-value="" data-left-nav-events-navigation-location-value="" data-left-nav-events-navigation-activity-notification-value="" data-action="" aria-current="false" data-s-popover-auto-show="true" data-s-popover-hide-on-outside-click="never">
+        <div class="d-flex ai-center">
+<svg aria-hidden="true" class="svg-icon iconTags" width="18" height="18" viewBox="0 0 18 18"><path d="M9.24 1a3 3 0 0 0-2.12.88l-5.7 5.7a2 2 0 0 0-.38 2.31 3 3 0 0 1 .67-1.01l6-6A3 3 0 0 1 9.83 2H14a3 3 0 0 1 .79.1A2 2 0 0 0 13 1z" opacity=".4"></path><path d="M9.83 3a2 2 0 0 0-1.42.59l-6 6a2 2 0 0 0 0 2.82L6.6 16.6a2 2 0 0 0 2.82 0l6-6A2 2 0 0 0 16 9.17V5a2 2 0 0 0-2-2zM12 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4"></path></svg>                <span class="-link--channel-name pl8">Tags</span>
+
+        </div>
+    </a>
+</li>
+
+
+
+
+
+
+
+                            <li class="pb24"></li>
+                            
+
+<li class="ps-relative" aria-current="false">
+
+
+    <a id="nav-sofa" href="http://agents.stackoverflow.com" class="s-block-link h32 pl8 ai-center js-disable-sofa-new-link js-gps-track js-left-sidebar-focus-restore nav-links--link -link__with-icon" target="_blank" data-gps-track="top_nav.click({is_current: false, location:2, destination:36,  has_activity_notification:False})" aria-controls=" " data-controller="  " data-s-popover-placement="right" data-left-nav-events-navigation-destination-value="" data-left-nav-events-navigation-location-value="" data-left-nav-events-navigation-activity-notification-value="" data-action="" aria-current="false" data-s-popover-auto-show="true" data-s-popover-hide-on-outside-click="never">
+        <div class="d-flex ai-center">
+<div class="d-flex ai-center mln8 mrn8 myn8 bg-purple-400 baw3 bas-solid bc-purple-200 bar-circle fc-white p4"><svg width="20" height="20" viewBox="0 0 20 20" class="h18 w18 fc-white bg-transparent svg-icon IconAssistant" aria-hidden="true"><path d="M8 3.5H5.24a.75.75 0 0 0-.75.75v3.01c0 .97-.62 1.8-1.49 2.1v1.27c.87.31 1.49 1.14 1.49 2.1v3.02c0 .41.33.75.75.75H8V18H5.24C4 18 2.99 17 2.99 15.75v-3.01c0-.4-.33-.74-.74-.74H1.5V8h.75c.4 0 .74-.33.74-.74V4.25c0-1.24 1-2.25 2.25-2.25H8zM14.75 2C15.99 2 17 3 17 4.25v3c0 .41.34.75.75.75h.75v4h-.75a.75.75 0 0 0-.75.75v3c0 1.24-1 2.25-2.25 2.25H12v-1.5h2.75c.41 0 .75-.34.75-.75v-3c0-.98.63-1.81 1.5-2.12V9.37a2.25 2.25 0 0 1-1.5-2.12v-3a.75.75 0 0 0-.75-.75H12V2zM8.4 9.75H6.65V8H8.4zm5 0h-1.75V8h1.75z"></path></svg></div>                <span class="-link--channel-name pl8">Stack Overflow for Agents</span>
+
+        </div>
+    </a>
+</li>
+
+
+    
+
+
+
+
+                        <li class="pb24"></li>
+
+
+                            <li class="ps-relative">
+                                <a id="nav-chat" href="https://chat.stackexchange.com" class="s-block-link pl8 ai-center js-disable-chat-new-link js-ch-popover-controller js-gps-track nav-links--link -link__with-icon" aria-expanded="true" aria-current="false" data-gps-track="chat.click({ is_registered:false, rep_bucket:'new', origin:'Ask Ubuntu' })" data-controller=" ">
+                                    <div class="d-flex ai-center">
+                                        <div class="d-flex ai-center mln8 mrn8 myn8 bg-purple-400 baw3 bas-solid bc-purple-200 bar-circle fc-white p4"><svg aria-hidden="true" class="fc-white bg-transparent  svg-icon iconChatTest" width="18" height="18" viewBox="0 0 18 16"><path d="M17 3C17 1.89543 16.1046 1 15 1H7C5.89543 1 5 1.89543 5 3V5C5 6.10457 5.89543 7 7 7H15C16.1046 7 17 6.10457 17 5V3ZM7 3H15V5H7V3Z"></path><path d="M17 10C17 8.89543 16.1046 8 15 8H7C5.89543 8 5 8.89543 5 10V14C5 15.1046 5.89543 16 7 16H15C16.1046 16 17 15.1046 17 14V10ZM7 10H15V14H7V10Z"></path><path d="M1 9C1 8.44771 1.44772 8 2 8H3C3.55228 8 4 8.44772 4 9V10C4 10.5523 3.55228 11 3 11H2C1.44772 11 1 10.5523 1 10V9Z"></path><path d="M2 1C1.44772 1 1 1.44772 1 2V3C1 3.55228 1.44772 4 2 4H3C3.55228 4 4 3.55228 4 3V2C4 1.44772 3.55228 1 3 1H2Z"></path></svg></div>
+                                    </div>
+                                    <span class="-link--channel-name pl8">Chat</span>
+                                   </a>
+                            </li>
+
+
+                        
+
+<li class="ps-relative" aria-current="false">
+
+
+    <a id="nav-users" href="/users" class="s-block-link pl8 js-gps-track js-left-sidebar-focus-restore nav-links--link -link__with-icon" data-gps-track="top_nav.click({is_current: false, location:2, destination:3,  has_activity_notification:False})" aria-controls=" " data-controller="  " data-s-popover-placement="right" data-left-nav-events-navigation-destination-value="" data-left-nav-events-navigation-location-value="" data-left-nav-events-navigation-activity-notification-value="" data-action="" aria-current="false" data-s-popover-auto-show="true" data-s-popover-hide-on-outside-click="never">
+        <div class="d-flex ai-center">
+<svg aria-hidden="true" class="svg-icon iconPeople" width="18" height="18" viewBox="0 0 18 18"><path d="M17 14c0 .44-.45 1-1 1H9a1 1 0 0 1-1-1H2c-.54 0-1-.56-1-1 0-2.63 3-4 3-4s.23-.4 0-1c-.84-.62-1.06-.59-1-3s1.37-3 2.5-3 2.44.58 2.5 3-.16 2.38-1 3c-.23.59 0 1 0 1s1.55.71 2.42 2.09c.78-.72 1.58-1.1 1.58-1.1s.23-.4 0-1c-.84-.61-1.06-.58-1-3s1.37-3 2.5-3 2.44.59 2.5 3c.05 2.42-.16 2.39-1 3-.23.6 0 1 0 1s3 1.38 3 4"></path></svg>                <span class="-link--channel-name pl8">Users</span>
+
+        </div>
+    </a>
+</li>
+
+
+
+
+
+
+
+                        <li class="pb24"></li>
+
+
+
+                            
+
+<li class="ps-relative" aria-current="false">
+
+
+    <a id="nav-companies" href="https://stackoverflow.com/jobs/companies?so_medium=askubuntu&amp;so_source=SiteNav" class="s-block-link pl8 js-gps-track js-left-sidebar-focus-restore nav-links--link -link__with-icon" data-gps-track="top_nav.click({is_current: false, location:2, destination:12,  has_activity_notification:False})" aria-controls=" " data-controller="  " data-s-popover-placement="right" data-left-nav-events-navigation-destination-value="" data-left-nav-events-navigation-location-value="" data-left-nav-events-navigation-activity-notification-value="" data-action="" aria-current="false" data-s-popover-auto-show="true" data-s-popover-hide-on-outside-click="never">
+        <div class="d-flex ai-center">
+<svg aria-hidden="true" class="svg-icon iconIndustry" width="18" height="18" viewBox="0 0 18 18"><path d="M10 16v-4H8v4H2V4c0-1.1.9-2 2-2h6c1.09 0 2 .91 2 2v2h2c1.09 0 2 .91 2 2v8zM4 4v2h2V4zm0 4v2h2V8zm4-4v2h2V4zm0 4v2h2V8zm-4 4v2h2v-2zm8 0v2h2v-2zm0-4v2h2V8z"></path></svg>                <span class="-link--channel-name pl8">Companies</span>
+
+        </div>
+    </a>
+</li>
+
+
+
+
+
+
+
+                    </ol>
+                </li>
+
+                
+
+        
+
+<li class="ps-relative mt32 mb8">
+    <div class="fs-fine tt-uppercase fc-black-600 fw-bold ml8 mt16 mb8">Stack Internal</div>
+
+    <div class="px8 pt12 pb4 mb12 fc-medium overflow-hidden">
+        <img class="stack-internal-left-tile-image--pinned mx-auto mb12 wmx100 h-auto" width="97" height="96" src="https://askubuntu.com/Content/Img/stack-internal-left-tile-pinned.svg?v=16878b0d76c5" alt="">
+        <img class="stack-internal-left-tile-image--drawer mx-auto mb12 wmx100 h-auto" width="120" height="69" src="https://askubuntu.com/Content/Img/stack-internal-left-tile-drawer.svg?v=0056d71cd7e6" alt="">
+
+        <p class="fs-fine">Turn scattered docs and code into trusted AI context. Explore the new Stack Internal platform.</p>
+        <a href="https://stackoverflow.co/lp/stack-internal-signup?utm_medium=referral&amp;utm_source=stackoverflow-community&amp;utm_campaign=stack-internal-sept-launch&amp;utm_content=left-rail-tile" class="w100 s-btn s-btn__filled s-btn__xs js-gps-track" data-gps-track="teams.create.left-sidenav.click({ Action: 6 })" data-ga="[&quot;teams left navigation - anonymous&quot;,&quot;left nav free cta&quot;,&quot;stackoverflow.co/lp/stack-internal-signup&quot;,null,null]">Create a workspace</a>
+    </div>
+</li>
+
+
+            </ol>
+        </nav>
+    </div>
+
+
+
+
+
+
+</div>
+
+
+
+        <div id="content" class="" tabindex="-1">
+
+            
+
+
+
+<div itemprop="mainEntity" itemscope="" itemtype="https://schema.org/Question">
+    <link itemprop="image" href="https://askubuntu.com/Content/Sites/askubuntu/Img/apple-touch-icon.png?v=e16e1315edd6">
+
+    <div class="inner-content clearfix">
+        
+
+            <div id="question-header" class="d-flex sm:fd-column">
+                        <h1 itemprop="name" class="fs-headline1 ow-anywhere mb8 flex--item fl1"><a href="/questions/141928/what-is-the-difference-between-bin-sh-and-bin-bash" class="question-hyperlink">What is the difference between #!/bin/sh and #!/bin/bash?</a></h1>
+
+                <div class="ml12 aside-cta flex--item sm:ml0 sm:mb12 sm:order-first d-flex jc-end">
+
+                        <div class="ml12 aside-cta flex--item print:d-none">
+                                <a href="/questions/ask" class="ws-nowrap s-btn s-btn__filled">
+        Ask Question
+    </a>
+
+                        </div>
+                </div>
+            </div>
+                <div class="d-flex ai-center fw-wrap pb8 mb16 bb bc-black-200">
+                        <div class="flex--item ws-nowrap mr16 mb8" title="2012-05-25 03:59:39Z">
+                            <span class="fc-black-400 mr2">Asked</span>
+                            <time itemprop="dateCreated" datetime="2012-05-25 03:59:39Z">14 years, 4 months ago</time>
+                        </div>
+                        <div class="flex--item ws-nowrap mr16 mb8">
+                            <span class="fc-black-400 mr2">Modified</span>
+                            <a href="?lastactivity" class="s-link s-link__inherit" title="2025-10-27 00:34:00Z">11 months ago</a>
+                        </div>
+                        <div class="flex--item ws-nowrap mb8" title="Viewed 941,618 times">
+                            <span class="fc-black-400 mr2">Viewed</span>
+                            942k times
+                        </div>
+                </div>
+
+
+
+            <div id="mainbar" role="main" aria-label="question and answers" data-open-in-codex-page="True">
+                
+<div class="question js-question" data-questionid="141928" data-position-on-page="0" data-score="426" data-author-username="Rahul Virpara" data-should-show-copy-button="False" data-open-in-codex-enabled="False" data-open-in-codex-context="What is the difference between #!/bin/sh and #!/bin/bash?" data-open-in-codex-sofa-cue="" data-se-share-sheet-license-name="CC BY-SA 4.0" data-author-reputation="11890" data-is-edited="True" data-creation-source="native" data-creation-method="manual" id="question">
+    
+<div class="js-zone-container zone-container-main">
+    <div id="dfp-tlb" class="everyonelovesstackoverflow everyoneloves__top-leaderboard everyoneloves__leaderboard"></div>
+		<div class="js-report-ad-button-container  ad-report-width-leaderboard"></div>
+</div>
+
+    <div class="post-layout ">
+            <div class="votecell post-layout--left">
+                
+<div class="js-voting-container d-flex jc-center fd-column ai-center gs4 fc-black-300" data-post-id="141928" data-referrer="None">
+        <button class="js-vote-up-btn flex--item s-btn s-btn__muted s-btn__outlined bar-pill bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" id="upvote-btn-141928" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-pressed="false" aria-label="Up vote" data-selected-classes="fc-theme-primary-100 bc-theme-primary-500 bg-theme-primary-500" data-unselected-classes="bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" aria-describedby="--stacks-s-tooltip-z4ll7c8h">
+            <svg aria-hidden="true" class="svg-icon iconArrowUp" width="18" height="18" viewBox="0 0 18 18"><path d="M1 12h16L9 4z"></path></svg>
+        </button><div id="--stacks-s-tooltip-z4ll7c8h" class="s-popover s-popover__tooltip" role="tooltip">This question shows research effort; it is useful and clear<div class="s-popover--arrow"></div></div>
+        <input type="hidden" id="voteUpHash" value="68:3:31e,16:a11a5985dbe59ff9,10:1790932424,16:3100f3baab73e2da,6:141928,188e1d2ffe727fbaabbd274d0fb356e00da1d30c23b2c69a4abfc1cb5bbc05b3">
+        <div class="js-vote-count flex--item d-flex fd-column ai-center fc-theme-body-font fw-bold fs-subheading py4" itemprop="upvoteCount" data-value="426">
+426        </div>
+        <button class="js-vote-down-btn js-vote-down-question flex--item mb8 s-btn s-btn__muted s-btn__outlined bar-pill bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" id="downvote-btn-141928" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-pressed="false" aria-label="Down vote" data-selected-classes="fc-theme-primary-100 bc-theme-primary-500 bg-theme-primary-500" data-unselected-classes="bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" aria-describedby="--stacks-s-tooltip-u7j1hi74">
+
+            <svg aria-hidden="true" class="svg-icon iconArrowDown" width="18" height="18" viewBox="0 0 18 18"><path d="M1 6h16l-8 8z"></path></svg>
+        </button><div id="--stacks-s-tooltip-u7j1hi74" class="s-popover s-popover__tooltip" role="tooltip">This question does not show any research effort; it is unclear or not useful<div class="s-popover--arrow"></div></div>
+        <input type="hidden" id="voteDownHash" value="68:3:31e,16:d1b100f4d164d4dc,10:1790932424,16:c9ae4ccc7d5712ad,6:141928,8034f408ab78cf1d213c468cacde4de6f14d0d4790787fec1ff0cb6d41b84c95">
+
+
+        
+<button class="js-saves-btn s-btn s-btn__unset c-pointer py4" type="button" id="saves-btn-141928" data-controller="s-tooltip" data-s-tooltip-placement="right" data-s-popover-placement="" data-is-saved="false" aria-label="Save" data-post-id="141928" data-post-type-id="1" data-user-privilege-for-post-click="0" aria-controls="" data-s-popover-auto-show="false" aria-describedby="--stacks-s-tooltip-edhn72de">
+    <svg aria-hidden="true" class="fc-theme-primary-400 js-saves-btn-selected d-none svg-icon iconBookmark" width="18" height="18" viewBox="0 0 18 18"><path d="M3 17V3c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v14l-6-4z"></path></svg>
+    <svg aria-hidden="true" class="fc-black-500 js-saves-btn-unselected svg-icon iconBookmarkAlt" width="18" height="18" viewBox="0 0 18 18"><path d="m9 10.6 4 2.66V3H5v10.26zM3 17V3c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v14l-6-4z"></path></svg>
+</button><div id="--stacks-s-tooltip-edhn72de" class="s-popover s-popover__tooltip" role="tooltip">Save this question.<div class="s-popover--arrow"></div></div>
+
+
+
+
+
+
+
+    
+    <a class="js-post-issue flex--item s-btn s-btn__unset c-pointer py6 mx-auto fc-black-500" href="/posts/141928/timeline" data-shortcut="T" data-ks-title="timeline" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-label="Timeline" aria-describedby="--stacks-s-tooltip-j9oi89sl"><svg aria-hidden="true" class="mln2 mr0 svg-icon iconHistory" width="19" height="18" viewBox="0 0 19 18"><path d="M3 9a8 8 0 1 1 3.73 6.77L8.2 14.3A6 6 0 1 0 5 9l3.01-.01-4 4-4-4zm7-4h1.01L11 9.36l3.22 2.1-.6.93L10 10z"></path></svg></a><div id="--stacks-s-tooltip-j9oi89sl" class="s-popover s-popover__tooltip" role="tooltip">Show activity on this post.<div class="s-popover--arrow"></div></div>
+
+</div>
+
+            </div>
+
+        
+<div class="postcell post-layout--right">
+
+    
+    <div class="s-prose js-post-body" itemprop="text">
+                
+<p>If I write</p>
+<pre class="lang-bash s-code-block"><code data-highlighted="yes" class="hljs language-bash"><span class="hljs-meta">#!/bin/bash</span>
+<span class="hljs-built_in">echo</span> <span class="hljs-string">"foo"</span>
+</code></pre>
+<p>or</p>
+<pre class="lang-bash s-code-block"><code data-highlighted="yes" class="hljs language-bash"><span class="hljs-meta">#!/bin/sh</span>
+<span class="hljs-built_in">echo</span> <span class="hljs-string">"foo"</span>
+</code></pre>
+<p>both yields same. I have seen some scripts starting with <code>#!/bin/sh</code> or <code>#!/bin/bash</code>. Is there any difference between them?</p>
+    </div>
+
+            <div class="mt24 mb12">
+                <div class="post-taglist d-flex gs4 gsy fd-column">
+                    <div class="d-flex ps-relative fw-wrap">
+                        
+                        <ul class="ml0 list-ls-none js-post-tag-list-wrapper d-inline"><li class="d-inline mr4 js-post-tag-list-item"><a href="/questions/tagged/bash" class="s-tag post-tag" title="show questions tagged 'bash'" aria-label="show questions tagged 'bash'" rel="tag" aria-describedby="tag-bash-tooltip-container" data-tag-menu-origin="Unknown">bash</a></li><li class="d-inline mr4 js-post-tag-list-item"><a href="/questions/tagged/scripts" class="s-tag post-tag" title="show questions tagged 'scripts'" aria-label="show questions tagged 'scripts'" rel="tag" aria-describedby="tag-scripts-tooltip-container" data-tag-menu-origin="Unknown">scripts</a></li><li class="d-inline mr4 js-post-tag-list-item"><a href="/questions/tagged/sh" class="s-tag post-tag" title="show questions tagged 'sh'" aria-label="show questions tagged 'sh'" rel="tag" aria-describedby="tag-sh-tooltip-container" data-tag-menu-origin="Unknown">sh</a></li><li class="d-inline mr4 js-post-tag-list-item"><a href="/questions/tagged/shebang" class="s-tag post-tag" title="show questions tagged 'shebang'" aria-label="show questions tagged 'shebang'" rel="tag" aria-describedby="tag-shebang-tooltip-container" data-tag-menu-origin="Unknown">shebang</a></li></ul>
+                    </div>
+                </div>
+            </div>
+
+    <div class="mb0 ">
+        <div class="mt16 d-flex gs8 gsy fw-wrap jc-end ai-start pt4 mb16">
+            <div class="flex--item mr16 fl1 w96">
+                
+
+
+<div class="js-post-menu pt2" data-post-id="141928" data-post-type-id="1">
+
+    <div class="d-flex gs8 s-anchors s-anchors__muted fw-wrap">
+
+        <div class="flex--item">
+            <a href="/q/141928" rel="nofollow" itemprop="url" class="js-share-link js-gps-track" data-controller="se-share-sheet s-tooltip s-popover" data-s-tooltip-placement="top" data-gps-track="post.click({ item: 2, priv: 0, post_type: 1 })" data-se-share-sheet-title="Share a link to this question" data-se-share-sheet-subtitle="" data-se-share-sheet-post-type="question" data-se-share-sheet-social="facebook twitter " data-se-share-sheet-location="1" data-se-share-sheet-license-url="https%3a%2f%2fcreativecommons.org%2flicenses%2fby-sa%2f4.0%2f" data-se-share-sheet-license-name="CC BY-SA 4.0" data-s-popover-placement="bottom-start" aria-describedby="--stacks-s-tooltip-cd7y0ow4" aria-controls="se-share-sheet-0" data-action=" s-popover#toggle se-share-sheet#preventNavigation s-popover:show-&gt;se-share-sheet#willShow s-popover:shown-&gt;se-share-sheet#didShow" aria-expanded="false">Share</a><div class="s-popover z-dropdown s-anchors s-anchors__default share-sheet-popover" id="se-share-sheet-0"><div class="s-popover--arrow"></div><div><label for="share-sheet-input-se-share-sheet-0"><span class="js-title fw-bold">Share a link to this question</span> <span class="js-subtitle"></span></label></div><div class="my8"><input type="text" id="share-sheet-input-se-share-sheet-0" class="js-input s-input wmn3 sm:wmn-initial bc-black-300 bg-white fc-black-600" readonly=""></div><div class="d-flex jc-space-between ai-center mbn4"><button class="js-copy-link-btn s-btn s-btn__link js-gps-track" data-gps-track="">Copy link</button><a href="https://creativecommons.org/licenses/by-sa/4.0/" rel="license" class="js-license s-block-link w-auto" target="_blank" title="The current license for this post: CC BY-SA 4.0">CC BY-SA 4.0</a><div class="js-social-container d-none"></div></div><div class="js-copy-status v-visible-sr" role="status" aria-live="polite"></div></div><div id="--stacks-s-tooltip-cd7y0ow4" class="s-popover s-popover__tooltip" role="tooltip">Short permalink to this question<div class="s-popover--arrow"></div></div>
+        </div>
+
+
+                    <div class="flex--item">
+                        <a href="/posts/141928/edit" class="js-suggest-edit-post js-gps-track" data-gps-track="post.click({ item: 6, priv: 0, post_type: 1 })" title="">Improve this question</a>
+                    </div>
+
+                <div class="flex--item">
+                    <button type="button" id="btnFollowPost-141928" class="s-btn s-btn__link js-follow-post js-follow-question js-gps-track" data-gps-track="post.click({ item: 14, priv: 0, post_type: 1 })" data-controller="s-tooltip " data-s-tooltip-placement="bottom" data-s-popover-placement="bottom" aria-controls="" aria-describedby="--stacks-s-tooltip-32a1y652">
+                        Follow
+                        <input type="hidden" id="voteFollowHash" value="68:3:31e,16:beb2a7032eb1e1ea,10:1790932424,16:f8e8315b7d744af4,6:141928,a7072d3e59fadf611dace0d09ca908bd73060ddf361bb5986ad330f84c071011">
+                    </button><div id="--stacks-s-tooltip-32a1y652" class="s-popover s-popover__tooltip" role="tooltip">Follow this question to receive notifications<div class="s-popover--arrow"></div></div>
+                </div>
+
+
+
+
+
+
+    </div>
+    <div class="js-menu-popup-container"></div>
+</div>
+
+            </div>
+
+                <div class="post-signature flex--item">
+<div class="user-info user-hover ">
+    <div class="d-flex ">
+        <div class="user-action-time fl-grow1">
+            <a href="/posts/141928/revisions" title="show all edits to this post" class="js-gps-track" data-gps-track="post.click({ item: 4, priv: 0, post_type: 1 })">edited <span title="2025-10-27 00:34:00Z" class="relativetime">Oct 27, 2025 at 0:34</span></a>
+        </div>
+        
+    </div>
+    <div class="user-gravatar32">
+        <a href="/users/44876/franck-dernoncourt"><div class="gravatar-wrapper-32"><img src="https://i.sstatic.net/pBokEFif.jpg?s=64" alt="Franck Dernoncourt's user avatar" width="32" height="32" class="bar-sm"></div></a>
+    </div>
+    <div class="user-details">
+        <a href="/users/44876/franck-dernoncourt" dir="auto">Franck Dernoncourt</a>
+        <div class="-flair">
+            <span class="reputation-score" title="reputation score " dir="ltr">3,586</span><span title="8 gold badges" aria-hidden="true"><span class="badge1"></span><span class="badgecount">8</span></span><span class="v-visible-sr">8 gold badges</span><span title="44 silver badges" aria-hidden="true"><span class="badge2"></span><span class="badgecount">44</span></span><span class="v-visible-sr">44 silver badges</span><span title="64 bronze badges" aria-hidden="true"><span class="badge3"></span><span class="badgecount">64</span></span><span class="v-visible-sr">64 bronze badges</span>
+        </div>
+    </div>
+</div>
+                </div>
+
+                <div class="post-signature owner flex--item">
+                    <div class="user-info ">
+    <div class="d-flex ">
+        <div class="user-action-time fl-grow1">
+            asked <span title="2012-05-25 03:59:39Z" class="relativetime">May 25, 2012 at 3:59</span>
+        </div>
+        
+    </div>
+    <div class="user-gravatar32">
+        <a href="/users/40166/rahul-virpara"><div class="gravatar-wrapper-32"><img src="https://www.gravatar.com/avatar/63184f2d74a17c4558306045e44c8c1b?s=64&amp;d=identicon&amp;r=PG" alt="Rahul Virpara's user avatar" width="32" height="32" class="bar-sm"></div></a>
+    </div>
+    <div class="user-details" itemprop="author" itemscope="" itemtype="http://schema.org/Person">
+        <a href="/users/40166/rahul-virpara" itemprop="url" dir="auto">Rahul Virpara</a><meta itemprop="name" content="Rahul Virpara">
+        <div class="-flair">
+            <span class="reputation-score" title="reputation score 11,890" dir="ltr">11.9k</span><span title="11 gold badges" aria-hidden="true"><span class="badge1"></span><span class="badgecount">11</span></span><span class="v-visible-sr">11 gold badges</span><span title="41 silver badges" aria-hidden="true"><span class="badge2"></span><span class="badgecount">41</span></span><span class="v-visible-sr">41 silver badges</span><span title="50 bronze badges" aria-hidden="true"><span class="badge3"></span><span class="badgecount">50</span></span><span class="v-visible-sr">50 bronze badges</span>
+        </div>
+    </div>
+</div>
+
+
+                </div>
+        </div>
+    </div>
+    
+</div>
+
+
+
+
+            
+
+<span class="d-none" itemprop="commentCount">1</span>
+	<div class="post-layout--right js-post-comments-component" data-has-opted-out="False">
+        <div id="comments-141928" class="comments js-comments-container bt bc-black-200 mt12 " data-post-id="141928" data-min-length="15">
+            <ul class="comments-list js-comments-list" data-remaining-comments-count="0" data-canpost="false" data-cansee="true" data-comments-unavailable="false" data-addlink-disabled="true">
+
+                    
+    <li id="comment-2742368" itemprop="comment" itemscope="" itemtype="https://schema.org/Comment" class="comment js-comment " data-comment-id="2742368" data-comment-owner-id="44876" data-comment-score="0">
+        <div class="js-comment-actions comment-actions">
+            <div class="comment-score js-comment-score js-comment-edit-hide">
+            </div>
+        </div>
+        <div class="comment-text  js-comment-text-and-form">
+            <div class="comment-body js-comment-edit-hide">
+                
+                <span class="comment-copy" itemprop="text">Same question on SO: <a href="https://stackoverflow.com/q/5725296/395857">Difference between sh and Bash</a></span>
+                
+                <div class="d-inline-flex ai-center" itemprop="author" itemscope="" itemtype="https://schema.org/Person">
+                    <div class="d-none" itemprop="name">Franck Dernoncourt</div>
+–&nbsp;
+                        <a href="/users/44876/franck-dernoncourt" title="3,586 reputation" class="comment-user" itemprop="url">Franck Dernoncourt</a>
+                </div>
+                <div class="d-none" itemprop="datePublished">2025-10-27 00:36:37 +00:00</div>
+                <span class="comment-date" dir="ltr"><a class="comment-link" href="#comment2742368_141928">
+                    <span class="v-visible-sr">Commented</span>
+                    <span title="2025-10-27 00:36:37Z, License: CC BY-SA 4.0" class="relativetime-clean">Oct 27, 2025 at 0:36</span>
+                </a></span>
+            </div>
+        </div>
+    </li>
+
+            </ul>
+	    </div>
+
+        <div id="comments-link-141928" data-rep="50" data-anon="true">
+                    <a class="js-add-link comments-link disabled-link" title="Use comments to ask for more information or suggest improvements. Avoid answering questions in comments." href="#" role="button" data-show-first-time-commenting="False">
+                        Add a comment
+                    </a>
+                <span class="js-link-separator dno">&nbsp;|&nbsp;</span>
+            <a class="js-show-link comments-link dno" title="Expand to show all comments on this post" href="#" aria-controls="comments-141928" aria-expanded="false" role="button">
+                
+            </a>
+        </div>         
+    </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+                <div id="answers" class="">
+                        <a name="tab-top"></a>
+                        <div id="answers-header">
+                            <div class="answers-subheader d-flex ai-center mb8">
+                                <div class="flex--item fl1">
+                                    <h2 class="mb0" data-answercount="4">
+4 Answers                                        <span class="d-none" itemprop="answerCount">4</span>
+                                    </h2>
+                                </div>
+                                <div class="flex--item">
+                                        
+
+<div class="d-flex g4 gsx ai-center sm:fd-column sm:ai-start">
+    <div class="d-flex fd-column ai-end sm:ai-start">
+        <label class="flex--item fs-caption" for="answer-sort-dropdown-select-menu">
+            Sorted by:
+        </label>
+        <a class="js-sort-preference-change s-link flex--item fs-fine d-none" data-value="ScoreDesc" href="/questions/141928/what-is-the-difference-between-bin-sh-and-bin-bash?answertab=scoredesc#tab-top">
+            Reset to default
+        </a>
+    </div>
+    <div class="flex--item s-select">
+        <select id="answer-sort-dropdown-select-menu">
+                    <option value="scoredesc" selected="selected">
+                        Highest score (default)
+                    </option>
+                    <option value="modifieddesc">
+                        Date modified (newest first)
+                    </option>
+                    <option value="createdasc">
+                        Date created (oldest first)
+                    </option>
+        </select>
+    </div>
+</div>
+
+
+                                </div>
+                            </div>
+
+
+                        </div>
+                                        
+<a name="141932"></a>
+<div id="answer-141932" class="answer js-answer accepted-answer js-accepted-answer " data-answerid="141932" data-parentid="141928" data-score="369" data-position-on-page="1" data-highest-scored="1" data-question-has-accepted-highest-score="1" data-author-username="reverendj1" data-author-reputation="16463" data-should-show-copy-button="False" data-open-in-codex-enabled="False" data-open-in-codex-context="What is the difference between #!/bin/sh and #!/bin/bash?" data-open-in-codex-sofa-cue="" data-se-share-sheet-license-name="CC BY-SA 4.0" data-is-edited="True" itemprop="acceptedAnswer" itemscope="" itemtype="https://schema.org/Answer">
+        <div class="post-layout ">
+                <div class="votecell post-layout--left">
+                    
+<div class="js-voting-container d-flex jc-center fd-column ai-center gs4 fc-black-300" data-post-id="141932" data-referrer="None">
+        <button class="js-vote-up-btn flex--item s-btn s-btn__muted s-btn__outlined bar-pill bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" id="upvote-btn-141932" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-pressed="false" aria-label="Up vote" data-selected-classes="fc-theme-primary-100 bc-theme-primary-500 bg-theme-primary-500" data-unselected-classes="bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" aria-describedby="--stacks-s-tooltip-vtln23nl">
+            <svg aria-hidden="true" class="svg-icon iconArrowUp" width="18" height="18" viewBox="0 0 18 18"><path d="M1 12h16L9 4z"></path></svg>
+        </button><div id="--stacks-s-tooltip-vtln23nl" class="s-popover s-popover__tooltip" role="tooltip">This answer is useful<div class="s-popover--arrow"></div></div>
+        <input type="hidden" id="voteUpHash" value="68:3:31e,16:bea4a1a46939e814,10:1790932424,16:4ee6f6ec226a09da,6:141932,e848c4648dedbd3da6d90caa0cc11bced83205ba3867381c6405d1db10f9a70f">
+        <div class="js-vote-count flex--item d-flex fd-column ai-center fc-theme-body-font fw-bold fs-subheading py4" itemprop="upvoteCount" data-value="369">
+369        </div>
+        <button class="js-vote-down-btn flex--item mb8 s-btn s-btn__muted s-btn__outlined bar-pill bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" id="downvote-btn-141932" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-pressed="false" aria-label="Down vote" data-selected-classes="fc-theme-primary-100 bc-theme-primary-500 bg-theme-primary-500" data-unselected-classes="bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" aria-describedby="--stacks-s-tooltip-k6skprii">
+
+            <svg aria-hidden="true" class="svg-icon iconArrowDown" width="18" height="18" viewBox="0 0 18 18"><path d="M1 6h16l-8 8z"></path></svg>
+        </button><div id="--stacks-s-tooltip-k6skprii" class="s-popover s-popover__tooltip" role="tooltip">This answer is not useful<div class="s-popover--arrow"></div></div>
+        <input type="hidden" id="voteDownHash" value="68:3:31e,16:f59c056e9db46264,10:1790932424,16:4d7b61216397e34c,6:141932,215efdfb6a9a32c233054cb404bfadb96eb659bcea790080a5d0e16450535d37">
+
+
+        
+<button class="js-saves-btn s-btn s-btn__unset c-pointer py4" type="button" id="saves-btn-141932" data-controller="s-tooltip" data-s-tooltip-placement="right" data-s-popover-placement="" data-is-saved="false" aria-label="Save" data-post-id="141932" data-post-type-id="2" data-user-privilege-for-post-click="0" aria-controls="" data-s-popover-auto-show="false" aria-describedby="--stacks-s-tooltip-6dsvo64z">
+    <svg aria-hidden="true" class="fc-theme-primary-400 js-saves-btn-selected d-none svg-icon iconBookmark" width="18" height="18" viewBox="0 0 18 18"><path d="M3 17V3c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v14l-6-4z"></path></svg>
+    <svg aria-hidden="true" class="fc-black-500 js-saves-btn-unselected svg-icon iconBookmarkAlt" width="18" height="18" viewBox="0 0 18 18"><path d="m9 10.6 4 2.66V3H5v10.26zM3 17V3c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v14l-6-4z"></path></svg>
+</button><div id="--stacks-s-tooltip-6dsvo64z" class="s-popover s-popover__tooltip" role="tooltip">Save this answer.<div class="s-popover--arrow"></div></div>
+
+
+
+
+
+
+            <div class="js-accepted-answer-indicator flex--item fc-green-400 py6 mtn8" data-controller="s-tooltip" data-s-tooltip-placement="right" tabindex="0" role="note" aria-label="Accepted" aria-describedby="--stacks-s-tooltip-bi29ddm6">
+                <div class="ta-center">
+                    <svg aria-hidden="true" class="svg-icon iconCheckmarkLg" width="36" height="36" viewBox="0 0 36 36"><path d="m6 14 8 8L30 6v8L14 30l-8-8z"></path></svg>
+                </div>
+            </div><div id="--stacks-s-tooltip-bi29ddm6" class="s-popover s-popover__tooltip" role="tooltip">Loading when this answer was accepted…<div class="s-popover--arrow"></div></div>
+
+    
+    <a class="js-post-issue flex--item s-btn s-btn__unset c-pointer py6 mx-auto fc-black-500" href="/posts/141932/timeline" data-shortcut="T" data-ks-title="timeline" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-label="Timeline" aria-describedby="--stacks-s-tooltip-ytajjnyr"><svg aria-hidden="true" class="mln2 mr0 svg-icon iconHistory" width="19" height="18" viewBox="0 0 19 18"><path d="M3 9a8 8 0 1 1 3.73 6.77L8.2 14.3A6 6 0 1 0 5 9l3.01-.01-4 4-4-4zm7-4h1.01L11 9.36l3.22 2.1-.6.93L10 10z"></path></svg></a><div id="--stacks-s-tooltip-ytajjnyr" class="s-popover s-popover__tooltip" role="tooltip">Show activity on this post.<div class="s-popover--arrow"></div></div>
+
+</div>
+
+                </div>
+
+            
+
+<div class="answercell post-layout--right">
+    
+
+
+    <div class="s-prose js-post-body" itemprop="text">
+<p><code>bash</code> and <code>sh</code> are two different shells. Basically <code>bash</code> is <code>sh</code>, with more features and better syntax. Most commands work the same, but they are different.</p>
+<p>Having said that, you should realize <code>/bin/sh</code> on most systems will be a symbolic link and will not invoke <code>sh</code>.  In Ubuntu <code>/bin/sh</code> used to link to <code>bash</code>, typical behavior on Linux distributions, but now has changed to linking to <a href="https://wiki.ubuntu.com/DashAsBinSh" rel="noreferrer">another shell called dash</a>.  I would use <code>bash</code>, as that is pretty much the standard (or at least most common, from my experience).  In fact, problems arise when a bash script will use <code>#!/bin/sh</code> because the script-maker assumes the link is to <code>bash</code> when it doesn't have to be.</p>
+<p>For more info:</p>
+<ul>
+<li><a href="http://man.cx/sh" rel="noreferrer">http://man.cx/sh</a></li>
+<li><a href="http://man.cx/bash" rel="noreferrer">http://man.cx/bash</a></li>
+</ul>
+    </div>
+    <div class="mt24">
+        <div class="d-flex fw-wrap ai-start jc-end gs8 gsy">
+
+            <time itemprop="dateCreated" datetime="2012-05-25 04:08:06Z"></time>
+            <div class="flex--item mr16 answer-menu-cell">
+                
+
+
+<div class="js-post-menu pt2" data-post-id="141932" data-post-type-id="2">
+
+    <div class="d-flex gs8 s-anchors s-anchors__muted fw-wrap">
+
+        <div class="flex--item">
+            <a href="/a/141932" rel="nofollow" itemprop="url" class="js-share-link js-gps-track" data-controller="se-share-sheet s-tooltip s-popover" data-s-tooltip-placement="top" data-gps-track="post.click({ item: 2, priv: 0, post_type: 2 })" data-se-share-sheet-title="Share a link to this answer" data-se-share-sheet-subtitle="" data-se-share-sheet-post-type="answer" data-se-share-sheet-social="facebook twitter " data-se-share-sheet-location="2" data-se-share-sheet-license-url="https%3a%2f%2fcreativecommons.org%2flicenses%2fby-sa%2f4.0%2f" data-se-share-sheet-license-name="CC BY-SA 4.0" data-s-popover-placement="bottom-start" aria-describedby="--stacks-s-tooltip-9yio89v9" aria-controls="se-share-sheet-1" data-action=" s-popover#toggle se-share-sheet#preventNavigation s-popover:show-&gt;se-share-sheet#willShow s-popover:shown-&gt;se-share-sheet#didShow" aria-expanded="false">Share</a><div class="s-popover z-dropdown s-anchors s-anchors__default share-sheet-popover" id="se-share-sheet-1"><div class="s-popover--arrow"></div><div><label for="share-sheet-input-se-share-sheet-1"><span class="js-title fw-bold">Share a link to this answer</span> <span class="js-subtitle"></span></label></div><div class="my8"><input type="text" id="share-sheet-input-se-share-sheet-1" class="js-input s-input wmn3 sm:wmn-initial bc-black-300 bg-white fc-black-600" readonly=""></div><div class="d-flex jc-space-between ai-center mbn4"><button class="js-copy-link-btn s-btn s-btn__link js-gps-track" data-gps-track="">Copy link</button><a href="https://creativecommons.org/licenses/by-sa/4.0/" rel="license" class="js-license s-block-link w-auto" target="_blank" title="The current license for this post: CC BY-SA 4.0">CC BY-SA 4.0</a><div class="js-social-container d-none"></div></div><div class="js-copy-status v-visible-sr" role="status" aria-live="polite"></div></div><div id="--stacks-s-tooltip-9yio89v9" class="s-popover s-popover__tooltip" role="tooltip">Short permalink to this answer<div class="s-popover--arrow"></div></div>
+        </div>
+
+
+                    <div class="flex--item">
+                        <a href="/posts/141932/edit" class="js-suggest-edit-post js-gps-track" data-gps-track="post.click({ item: 6, priv: 0, post_type: 2 })" title="">Improve this answer</a>
+                    </div>
+
+                <div class="flex--item">
+                    <button type="button" id="btnFollowPost-141932" class="s-btn s-btn__link js-follow-post js-follow-answer js-gps-track" data-gps-track="post.click({ item: 14, priv: 0, post_type: 2 })" data-controller="s-tooltip " data-s-tooltip-placement="bottom" data-s-popover-placement="bottom" aria-controls="" aria-describedby="--stacks-s-tooltip-f73bh5qq">
+                        Follow
+                        <input type="hidden" id="voteFollowHash" value="68:3:31e,16:acda238ec9c48187,10:1790932424,16:6b058d6c2a260027,6:141932,ecf19120885ce61adf21d6104a9446da5d39dddceaafde91655c3f267174ccc7">
+                    </button><div id="--stacks-s-tooltip-f73bh5qq" class="s-popover s-popover__tooltip" role="tooltip">Follow this answer to receive notifications<div class="s-popover--arrow"></div></div>
+                </div>
+
+
+
+
+
+
+    </div>
+    <div class="js-menu-popup-container"></div>
+</div>
+
+            </div>
+            <div class="post-signature flex--item fl0">
+<div class="user-info user-hover ">
+    <div class="d-flex ">
+        <div class="user-action-time fl-grow1">
+            <a href="/posts/141932/revisions" title="show all edits to this post" class="js-gps-track" data-gps-track="post.click({ item: 4, priv: 0, post_type: 2 })">edited <span title="2024-01-28 20:23:57Z" class="relativetime">Jan 28, 2024 at 20:23</span></a>
+        </div>
+        
+    </div>
+    <div class="user-gravatar32">
+        <a href="/users/1360846/audwin-oyong"><div class="gravatar-wrapper-32"><img src="https://i.sstatic.net/5bVqe.png?s=64" alt="Audwin Oyong's user avatar" width="32" height="32" class="bar-sm"></div></a>
+    </div>
+    <div class="user-details">
+        <a href="/users/1360846/audwin-oyong" dir="auto">Audwin Oyong</a>
+        <div class="-flair">
+            <span class="reputation-score" title="reputation score " dir="ltr">105</span><span title="1 gold badge" aria-hidden="true"><span class="badge1"></span><span class="badgecount">1</span></span><span class="v-visible-sr">1 gold badge</span><span title="1 silver badge" aria-hidden="true"><span class="badge2"></span><span class="badgecount">1</span></span><span class="v-visible-sr">1 silver badge</span><span title="5 bronze badges" aria-hidden="true"><span class="badge3"></span><span class="badgecount">5</span></span><span class="v-visible-sr">5 bronze badges</span>
+        </div>
+    </div>
+</div>
+            </div>
+
+
+                <div class="post-signature flex--item fl0">
+                    <div class="user-info user-hover ">
+    <div class="d-flex ">
+        <div class="user-action-time fl-grow1">
+            answered <span title="2012-05-25 04:08:06Z" class="relativetime">May 25, 2012 at 4:08</span>
+        </div>
+        
+    </div>
+    <div class="user-gravatar32">
+        <a href="/users/53455/reverendj1"><div class="gravatar-wrapper-32"><img src="https://www.gravatar.com/avatar/6e6c67aa4de84f0b91cc608ea58fef1a?s=64&amp;d=identicon&amp;r=PG" alt="reverendj1's user avatar" width="32" height="32" class="bar-sm"></div></a>
+    </div>
+    <div class="user-details" itemprop="author" itemscope="" itemtype="http://schema.org/Person">
+        <a href="/users/53455/reverendj1" itemprop="url" dir="auto">reverendj1</a><meta itemprop="name" content="reverendj1">
+        <div class="-flair">
+            <span class="reputation-score" title="reputation score 16,463" dir="ltr">16.5k</span><span title="2 gold badges" aria-hidden="true"><span class="badge1"></span><span class="badgecount">2</span></span><span class="v-visible-sr">2 gold badges</span><span title="45 silver badges" aria-hidden="true"><span class="badge2"></span><span class="badgecount">45</span></span><span class="v-visible-sr">45 silver badges</span><span title="39 bronze badges" aria-hidden="true"><span class="badge3"></span><span class="badgecount">39</span></span><span class="v-visible-sr">39 bronze badges</span>
+        </div>
+    </div>
+</div>
+
+
+                </div>
+        </div>
+        
+    
+    </div>
+    
+</div>
+
+
+
+
+                
+
+<span class="d-none" itemprop="commentCount">7</span>
+	<div class="post-layout--right js-post-comments-component" data-has-opted-out="False">
+        <div id="comments-141932" class="comments js-comments-container bt bc-black-200 mt12 " data-post-id="141932" data-min-length="15">
+            <ul class="comments-list js-comments-list" data-remaining-comments-count="2" data-canpost="false" data-cansee="true" data-comments-unavailable="false" data-addlink-disabled="true">
+
+                    
+    <li id="comment-229465" itemprop="comment" itemscope="" itemtype="https://schema.org/Comment" class="comment js-comment " data-comment-id="229465" data-comment-owner-id="54256" data-comment-score="47">
+        <div class="js-comment-actions comment-actions">
+            <div class="comment-score js-comment-score js-comment-edit-hide">
+                    <span title="number of 'useful comment' votes received" class="supernova">47</span>
+            </div>
+        </div>
+        <div class="comment-text  js-comment-text-and-form">
+            <div class="comment-body js-comment-edit-hide">
+                
+                <span class="comment-copy" itemprop="text">Your first paragraph is quite misleading.  "sh" is not a shell at all, but a symlink to the currently configured <i>system shell</i>, which on Linux systems is usually either bash or dash (recent versions of Ubuntu using the latter).</span>
+                
+                <div class="d-inline-flex ai-center" itemprop="author" itemscope="" itemtype="https://schema.org/Person">
+                    <div class="d-none" itemprop="name">thomasrutter</div>
+–&nbsp;
+                        <a href="/users/54256/thomasrutter" title="38,137 reputation" class="comment-user" itemprop="url">thomasrutter</a>
+                </div>
+                <div class="d-none" itemprop="datePublished">2012-09-05 01:16:16 +00:00</div>
+                <span class="comment-date" dir="ltr"><a class="comment-link" href="#comment229465_141932">
+                    <span class="v-visible-sr">Commented</span>
+                    <span title="2012-09-05 01:16:16Z, License: CC BY-SA 3.0" class="relativetime-clean">Sep 5, 2012 at 1:16</span>
+                </a></span>
+                        <span title="this comment was edited 1 time">
+                            <svg aria-hidden="true" class="va-text-bottom o50 svg-icon iconPencilSm" width="14" height="14" viewBox="0 0 14 14"><path fill="#F1B600" d="m2 10.12 6.37-6.43 1.88 1.88L3.88 12H2z"></path><path fill="#E87C87" d="m11.1 1.71 1.13 1.12c.2.2.2.51 0 .71L11.1 4.7 9.21 2.86l1.17-1.15c.2-.2.51-.2.71 0"></path></svg>
+                        </span>
+            </div>
+        </div>
+    </li>
+        <li class="comment native-comment-ad js-native-comment-ad">
+            <div class="comment-actions w0 p0 m0"></div>
+            <div class="js-zone-container zone-container-native-comment ta-right" style="margin-left: -30px;">
+    <div id="dfp-nativecomment-141932-0" class="everyonelovesstackoverflow everyoneloves__native-comment"></div>
+    <div class="js-report-ad-button-container w100"></div>
+</div>
+
+        </li>
+    <li id="comment-715713" itemprop="comment" itemscope="" itemtype="https://schema.org/Comment" class="comment js-comment " data-comment-id="715713" data-comment-owner-id="328068" data-comment-score="37">
+        <div class="js-comment-actions comment-actions">
+            <div class="comment-score js-comment-score js-comment-edit-hide">
+                    <span title="number of 'useful comment' votes received" class="supernova">37</span>
+            </div>
+        </div>
+        <div class="comment-text  js-comment-text-and-form">
+            <div class="comment-body js-comment-edit-hide">
+                
+                <span class="comment-copy" itemprop="text"><code>/bin/sh</code> used to be a shell called <i>bourne shell</i> back in 1977. bash is a /bin/sh compatible shell that <i>can</i> be used as a bourne shell replacement that is posix conforming.  <a href="https://en.wikipedia.org/wiki/Bourne_shell" rel="nofollow noreferrer">en.wikipedia.org/wiki/Bourne_shell</a></span>
+                
+                <div class="d-inline-flex ai-center" itemprop="author" itemscope="" itemtype="https://schema.org/Person">
+                    <div class="d-none" itemprop="name">Alexander Oh</div>
+–&nbsp;
+                        <a href="/users/328068/alexander-oh" title="105 reputation" class="comment-user" itemprop="url">Alexander Oh</a>
+                </div>
+                <div class="d-none" itemprop="datePublished">2014-09-18 06:57:44 +00:00</div>
+                <span class="comment-date" dir="ltr"><a class="comment-link" href="#comment715713_141932">
+                    <span class="v-visible-sr">Commented</span>
+                    <span title="2014-09-18 06:57:44Z, License: CC BY-SA 3.0" class="relativetime-clean">Sep 18, 2014 at 6:57</span>
+                </a></span>
+            </div>
+        </div>
+    </li>
+    <li id="comment-723588" itemprop="comment" itemscope="" itemtype="https://schema.org/Comment" class="comment js-comment " data-comment-id="723588" data-comment-owner-id="17479" data-comment-score="12">
+        <div class="js-comment-actions comment-actions">
+            <div class="comment-score js-comment-score js-comment-edit-hide">
+                    <span title="number of 'useful comment' votes received" class="warm">12</span>
+            </div>
+        </div>
+        <div class="comment-text  js-comment-text-and-form">
+            <div class="comment-body js-comment-edit-hide">
+                
+                <span class="comment-copy" itemprop="text"><i>bash</i> is a de facto standard (very widely used) but it is not "standard"; <i>sh</i> on Ubuntu uses <i>dash</i>, which is a Posix-compliant shell, so it is really standard. My advice is to use <i>dash</i> as often as possible for scripting, especially for server-side scripts. Although <i>bash</i> is more expressive, <i>dash</i> runs quite a lot faster and is more secure.</span>
+                
+                <div class="d-inline-flex ai-center" itemprop="author" itemscope="" itemtype="https://schema.org/Person">
+                    <div class="d-none" itemprop="name">Rick-777</div>
+–&nbsp;
+                        <a href="/users/17479/rick-777" title="506 reputation" class="comment-user" itemprop="url">Rick-777</a>
+                </div>
+                <div class="d-none" itemprop="datePublished">2014-09-29 17:19:16 +00:00</div>
+                <span class="comment-date" dir="ltr"><a class="comment-link" href="#comment723588_141932">
+                    <span class="v-visible-sr">Commented</span>
+                    <span title="2014-09-29 17:19:16Z, License: CC BY-SA 3.0" class="relativetime-clean">Sep 29, 2014 at 17:19</span>
+                </a></span>
+            </div>
+        </div>
+    </li>
+    <li id="comment-962683" itemprop="comment" itemscope="" itemtype="https://schema.org/Comment" class="comment js-comment " data-comment-id="962683" data-comment-owner-id="137717" data-comment-score="1">
+        <div class="js-comment-actions comment-actions">
+            <div class="comment-score js-comment-score js-comment-edit-hide">
+                    <span title="number of 'useful comment' votes received" class="cool">1</span>
+            </div>
+        </div>
+        <div class="comment-text  js-comment-text-and-form">
+            <div class="comment-body js-comment-edit-hide">
+                
+                <span class="comment-copy" itemprop="text">@Rick-777 So should I explicitly put #!/bin/dash at the top of my scripts? I have also written scripts where I only write commands and execute with ./scriptName and that has worked fine. Is the #!/bin/yourShellHere necessary?</span>
+                
+                <div class="d-inline-flex ai-center" itemprop="author" itemscope="" itemtype="https://schema.org/Person">
+                    <div class="d-none" itemprop="name">user137717</div>
+–&nbsp;
+                        <a href="/users/137717/user137717" title="133 reputation" class="comment-user" itemprop="url">user137717</a>
+                </div>
+                <div class="d-none" itemprop="datePublished">2015-08-27 20:42:38 +00:00</div>
+                <span class="comment-date" dir="ltr"><a class="comment-link" href="#comment962683_141932">
+                    <span class="v-visible-sr">Commented</span>
+                    <span title="2015-08-27 20:42:38Z, License: CC BY-SA 3.0" class="relativetime-clean">Aug 27, 2015 at 20:42</span>
+                </a></span>
+            </div>
+        </div>
+    </li>
+    <li id="comment-962684" itemprop="comment" itemscope="" itemtype="https://schema.org/Comment" class="comment js-comment " data-comment-id="962684" data-comment-owner-id="137717" data-comment-score="0">
+        <div class="js-comment-actions comment-actions">
+            <div class="comment-score js-comment-score js-comment-edit-hide">
+            </div>
+        </div>
+        <div class="comment-text  js-comment-text-and-form">
+            <div class="comment-body js-comment-edit-hide">
+                
+                <span class="comment-copy" itemprop="text">@Rick-777 In the cases where I exclude any #!/bin/shellName, I have named the files fileName.sh. Will that implicitly link to the preferred system shell  without declaring #!/bin/sh?</span>
+                
+                <div class="d-inline-flex ai-center" itemprop="author" itemscope="" itemtype="https://schema.org/Person">
+                    <div class="d-none" itemprop="name">user137717</div>
+–&nbsp;
+                        <a href="/users/137717/user137717" title="133 reputation" class="comment-user" itemprop="url">user137717</a>
+                </div>
+                <div class="d-none" itemprop="datePublished">2015-08-27 20:44:20 +00:00</div>
+                <span class="comment-date" dir="ltr"><a class="comment-link" href="#comment962684_141932">
+                    <span class="v-visible-sr">Commented</span>
+                    <span title="2015-08-27 20:44:20Z, License: CC BY-SA 3.0" class="relativetime-clean">Aug 27, 2015 at 20:44</span>
+                </a></span>
+            </div>
+        </div>
+    </li>
+
+            </ul>
+	    </div>
+
+        <div id="comments-link-141932" data-rep="50" data-anon="true">
+                    <a class="js-add-link comments-link dno" title="Use comments to ask for more information or suggest improvements. Avoid comments like “+1” or “thanks”." href="#" role="button" data-show-first-time-commenting="False">
+                        
+                    </a>
+                <span class="js-link-separator dno">&nbsp;|&nbsp;</span>
+            <a class="js-show-link comments-link " title="Expand to show all comments on this post" href="#" aria-controls="comments-141932" aria-expanded="false" role="button">
+                Show <b>2</b> more comments
+            </a>
+        </div>         
+    </div>
+
+        </div>
+</div>
+
+<div class="js-zone-container zone-container-main">
+    <div id="dfp-mlb" class="everyonelovesstackoverflow everyoneloves__mid-leaderboard everyoneloves__leaderboard"></div>
+		<div class="js-report-ad-button-container  ad-report-width-leaderboard"></div>
+</div>
+                                        
+<a name="141997"></a>
+<div id="answer-141997" class="answer js-answer " data-answerid="141997" data-parentid="141928" data-score="117" data-position-on-page="2" data-highest-scored="0" data-question-has-accepted-highest-score="1" data-author-username="thomasrutter" data-author-reputation="38137" data-should-show-copy-button="False" data-open-in-codex-enabled="False" data-open-in-codex-context="What is the difference between #!/bin/sh and #!/bin/bash?" data-open-in-codex-sofa-cue="" data-se-share-sheet-license-name="CC BY-SA 4.0" data-is-edited="True" itemprop="suggestedAnswer" itemscope="" itemtype="https://schema.org/Answer">
+        <div class="post-layout ">
+                <div class="votecell post-layout--left">
+                    
+<div class="js-voting-container d-flex jc-center fd-column ai-center gs4 fc-black-300" data-post-id="141997" data-referrer="None">
+        <button class="js-vote-up-btn flex--item s-btn s-btn__muted s-btn__outlined bar-pill bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" id="upvote-btn-141997" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-pressed="false" aria-label="Up vote" data-selected-classes="fc-theme-primary-100 bc-theme-primary-500 bg-theme-primary-500" data-unselected-classes="bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" aria-describedby="--stacks-s-tooltip-9xe5q3w1">
+            <svg aria-hidden="true" class="svg-icon iconArrowUp" width="18" height="18" viewBox="0 0 18 18"><path d="M1 12h16L9 4z"></path></svg>
+        </button><div id="--stacks-s-tooltip-9xe5q3w1" class="s-popover s-popover__tooltip" role="tooltip">This answer is useful<div class="s-popover--arrow"></div></div>
+        <input type="hidden" id="voteUpHash" value="68:3:31e,16:77d50eee9d09b07f,10:1790932424,16:d16ac5779e9dc606,6:141997,01faa53928ef74123e70364c3d15e57226913ce8d9274b0ebb5753cc8b1babf4">
+        <div class="js-vote-count flex--item d-flex fd-column ai-center fc-theme-body-font fw-bold fs-subheading py4" itemprop="upvoteCount" data-value="117">
+117        </div>
+        <button class="js-vote-down-btn flex--item mb8 s-btn s-btn__muted s-btn__outlined bar-pill bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" id="downvote-btn-141997" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-pressed="false" aria-label="Down vote" data-selected-classes="fc-theme-primary-100 bc-theme-primary-500 bg-theme-primary-500" data-unselected-classes="bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" aria-describedby="--stacks-s-tooltip-pxk5nadq">
+
+            <svg aria-hidden="true" class="svg-icon iconArrowDown" width="18" height="18" viewBox="0 0 18 18"><path d="M1 6h16l-8 8z"></path></svg>
+        </button><div id="--stacks-s-tooltip-pxk5nadq" class="s-popover s-popover__tooltip" role="tooltip">This answer is not useful<div class="s-popover--arrow"></div></div>
+        <input type="hidden" id="voteDownHash" value="68:3:31e,16:6809d8931678bf9e,10:1790932424,16:2e5c882b81b79178,6:141997,491ff0d64fc56e15a20ec5a89c017cb0ce86741eae1dfa033de30261a9d75e35">
+
+
+        
+<button class="js-saves-btn s-btn s-btn__unset c-pointer py4" type="button" id="saves-btn-141997" data-controller="s-tooltip" data-s-tooltip-placement="right" data-s-popover-placement="" data-is-saved="false" aria-label="Save" data-post-id="141997" data-post-type-id="2" data-user-privilege-for-post-click="0" aria-controls="" data-s-popover-auto-show="false" aria-describedby="--stacks-s-tooltip-urqois6o">
+    <svg aria-hidden="true" class="fc-theme-primary-400 js-saves-btn-selected d-none svg-icon iconBookmark" width="18" height="18" viewBox="0 0 18 18"><path d="M3 17V3c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v14l-6-4z"></path></svg>
+    <svg aria-hidden="true" class="fc-black-500 js-saves-btn-unselected svg-icon iconBookmarkAlt" width="18" height="18" viewBox="0 0 18 18"><path d="m9 10.6 4 2.66V3H5v10.26zM3 17V3c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v14l-6-4z"></path></svg>
+</button><div id="--stacks-s-tooltip-urqois6o" class="s-popover s-popover__tooltip" role="tooltip">Save this answer.<div class="s-popover--arrow"></div></div>
+
+
+
+
+
+
+            <div class="js-accepted-answer-indicator flex--item fc-green-400 py6 mtn8 d-none" data-controller="s-tooltip" data-s-tooltip-placement="right" tabindex="0" role="note" aria-label="Accepted" aria-describedby="--stacks-s-tooltip-7d4kx1h5">
+                <div class="ta-center">
+                    <svg aria-hidden="true" class="svg-icon iconCheckmarkLg" width="36" height="36" viewBox="0 0 36 36"><path d="m6 14 8 8L30 6v8L14 30l-8-8z"></path></svg>
+                </div>
+            </div><div id="--stacks-s-tooltip-7d4kx1h5" class="s-popover s-popover__tooltip" role="tooltip">Loading when this answer was accepted…<div class="s-popover--arrow"></div></div>
+
+    
+    <a class="js-post-issue flex--item s-btn s-btn__unset c-pointer py6 mx-auto fc-black-500" href="/posts/141997/timeline" data-shortcut="T" data-ks-title="timeline" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-label="Timeline" aria-describedby="--stacks-s-tooltip-vxka16g0"><svg aria-hidden="true" class="mln2 mr0 svg-icon iconHistory" width="19" height="18" viewBox="0 0 19 18"><path d="M3 9a8 8 0 1 1 3.73 6.77L8.2 14.3A6 6 0 1 0 5 9l3.01-.01-4 4-4-4zm7-4h1.01L11 9.36l3.22 2.1-.6.93L10 10z"></path></svg></a><div id="--stacks-s-tooltip-vxka16g0" class="s-popover s-popover__tooltip" role="tooltip">Show activity on this post.<div class="s-popover--arrow"></div></div>
+
+</div>
+
+                </div>
+
+            
+
+<div class="answercell post-layout--right">
+    
+
+
+    <div class="s-prose js-post-body" itemprop="text">
+<p>On Linux and other Unix-like systems you have a choice of multiple shells.</p>
+<p>The shell is responsible not only for presenting an interactive environment where it shows a prompt, but it also interprets your commands whether they are typed or loaded from a script.</p>
+<p><a href="https://en.wikipedia.org/wiki/Bourne_shell" rel="nofollow noreferrer"><strong>bash</strong></a> is the most common shell used as a default shell for users of Linux systems.  It is a spiritual descendent of other shells used throughout Unix history.  Its name, <em>bash</em> is an abbreviation of Bourne-Again Shell, an homage to the Bourne shell it was designed to replace, though it also incorporates features from the C Shell and the Korn Shell.</p>
+<p>It's run, these days, from <code>/bin/bash</code> - any system with bash will have it accessible here.</p>
+<p>Shells aren't only used interactively by users, though.  Scripts (<em>shell scripts</em>) also need shells to interpret them.  When you run a shell script, your system needs to start up a shell process to execute the script.</p>
+<p>The problem is, different shells have small inconsistencies between them, and when it comes to running scripts, these can be a real problem.  <em>bash</em> has quite a lot of scripting features that are unique only to bash, and not to other shells.  This is fine, if you're always going to use bash to run those scripts.  Other shells may try to either emulate bash, or adhere to the POSIX standard, which bash supports pretty well (though adds its own extensions to).</p>
+<p>It's possible to specify at the top of a shell script which shell it should be run with using a shebang.  A script may specify <code>#!/bin/bash</code> on the first line, meaning that the script should always be run with bash, rather than another shell.</p>
+<p><strong>/bin/sh</strong> is an executable representing the <em>system shell</em>.  Actually, it is usually implemented as a symbolic link pointing to the executable for whichever shell is the system shell.  The system shell is kind of the default shell that system scripts should use.  In Linux distributions, for a long time this was usually a symbolic link to <em>bash</em>, so much so that it became somewhat of a convention for Linux to always link /bin/sh to bash. Bash can detect when it has been launched a "sh" symbolic link and it enables a compatibility mode allowing it to act more like older shells (primarily the Bourne shell it was designed to replace, but it also makes it more POSIX compatible).  Even in this compatibility mode however, bash does provide a number of optional features that weren't available in the original Bourne shell or the POSIX standard.</p>
+<p>In the last couple of years, Debian (and Ubuntu) decided to switch the system shell from bash to <a href="https://en.wikipedia.org/wiki/Debian_Almquist_shell" rel="nofollow noreferrer">dash</a> - breaking with a long tradition in Linux (well, GNU) of using bash for /bin/sh.  Dash is seen as a lighter, and much faster, shell which can be beneficial to boot speed (and other things that require a lot of shell scripts, like package installation scripts).</p>
+<p>Dash is fairly well compatible with bash, being based on the same POSIX standard.  However, it does not implement many of the non-standard extensions that bash provided.  There are scripts in existence that use <code>#!/bin/sh</code> (the system shell) as their shebang, but which require bash-specific extensions.  This is currently considered a <em>bug that should be fixed</em> by Debian and Ubuntu, who require /bin/sh to be able to work when pointed to dash.</p>
+<p>Even though Ubuntu's <em>system shell</em> is pointing to dash, your <em>login shell</em> as a user continues to be bash for now.  That is, when you log in to a terminal emulator anywhere in Linux, your login shell will be bash.  Speed of operation is not so much a problem when the shell is used interactively, and users are familiar with bash (and may have bash-specific customisations in their home directory).</p>
+<p><strong>What you should use when writing scripts</strong></p>
+<p>If your script requires features only supported by bash, use <code>#!/bin/bash</code>.</p>
+<p>But if at all possible, it would be good to make sure your script is POSIX-compatible, and use <code>#!/bin/sh</code>, which should always, quite reliably, point to the preferred POSIX-compatible system shell in any installation.</p>
+    </div>
+    <div class="mt24">
+        <div class="d-flex fw-wrap ai-start jc-end gs8 gsy">
+
+            <time itemprop="dateCreated" datetime="2012-05-25 08:31:19Z"></time>
+            <div class="flex--item mr16 answer-menu-cell">
+                
+
+
+<div class="js-post-menu pt2" data-post-id="141997" data-post-type-id="2">
+
+    <div class="d-flex gs8 s-anchors s-anchors__muted fw-wrap">
+
+        <div class="flex--item">
+            <a href="/a/141997" rel="nofollow" itemprop="url" class="js-share-link js-gps-track" data-controller="se-share-sheet s-tooltip s-popover" data-s-tooltip-placement="top" data-gps-track="post.click({ item: 2, priv: 0, post_type: 2 })" data-se-share-sheet-title="Share a link to this answer" data-se-share-sheet-subtitle="" data-se-share-sheet-post-type="answer" data-se-share-sheet-social="facebook twitter " data-se-share-sheet-location="2" data-se-share-sheet-license-url="https%3a%2f%2fcreativecommons.org%2flicenses%2fby-sa%2f4.0%2f" data-se-share-sheet-license-name="CC BY-SA 4.0" data-s-popover-placement="bottom-start" aria-describedby="--stacks-s-tooltip-js0mgtxv" aria-controls="se-share-sheet-2" data-action=" s-popover#toggle se-share-sheet#preventNavigation s-popover:show-&gt;se-share-sheet#willShow s-popover:shown-&gt;se-share-sheet#didShow" aria-expanded="false">Share</a><div class="s-popover z-dropdown s-anchors s-anchors__default share-sheet-popover" id="se-share-sheet-2"><div class="s-popover--arrow"></div><div><label for="share-sheet-input-se-share-sheet-2"><span class="js-title fw-bold">Share a link to this answer</span> <span class="js-subtitle"></span></label></div><div class="my8"><input type="text" id="share-sheet-input-se-share-sheet-2" class="js-input s-input wmn3 sm:wmn-initial bc-black-300 bg-white fc-black-600" readonly=""></div><div class="d-flex jc-space-between ai-center mbn4"><button class="js-copy-link-btn s-btn s-btn__link js-gps-track" data-gps-track="">Copy link</button><a href="https://creativecommons.org/licenses/by-sa/4.0/" rel="license" class="js-license s-block-link w-auto" target="_blank" title="The current license for this post: CC BY-SA 4.0">CC BY-SA 4.0</a><div class="js-social-container d-none"></div></div><div class="js-copy-status v-visible-sr" role="status" aria-live="polite"></div></div><div id="--stacks-s-tooltip-js0mgtxv" class="s-popover s-popover__tooltip" role="tooltip">Short permalink to this answer<div class="s-popover--arrow"></div></div>
+        </div>
+
+
+                    <div class="flex--item">
+                        <a href="/posts/141997/edit" class="js-suggest-edit-post js-gps-track" data-gps-track="post.click({ item: 6, priv: 0, post_type: 2 })" title="">Improve this answer</a>
+                    </div>
+
+                <div class="flex--item">
+                    <button type="button" id="btnFollowPost-141997" class="s-btn s-btn__link js-follow-post js-follow-answer js-gps-track" data-gps-track="post.click({ item: 14, priv: 0, post_type: 2 })" data-controller="s-tooltip " data-s-tooltip-placement="bottom" data-s-popover-placement="bottom" aria-controls="" aria-describedby="--stacks-s-tooltip-3hk7jx38">
+                        Follow
+                        <input type="hidden" id="voteFollowHash" value="68:3:31e,16:af088a4b7fb25835,10:1790932424,16:022739ffd4ec2ae3,6:141997,38ee34dbef1cbf610ab5b61e1309a6b98f9a2295395e6fd097a4cbe2f1a0e4f7">
+                    </button><div id="--stacks-s-tooltip-3hk7jx38" class="s-popover s-popover__tooltip" role="tooltip">Follow this answer to receive notifications<div class="s-popover--arrow"></div></div>
+                </div>
+
+
+
+
+
+
+    </div>
+    <div class="js-menu-popup-container"></div>
+</div>
+
+            </div>
+            <div class="post-signature flex--item fl0">
+<div class="user-info ">
+    <div class="d-flex ">
+        <div class="user-action-time fl-grow1">
+            <a href="/posts/141997/revisions" title="show all edits to this post" class="js-gps-track" data-gps-track="post.click({ item: 4, priv: 0, post_type: 2 })">edited <span title="2023-04-20 07:37:41Z" class="relativetime">Apr 20, 2023 at 7:37</span></a>
+        </div>
+        
+    </div>
+    <div class="user-gravatar32">
+        
+    </div>
+    <div class="user-details">
+        
+        <div class="-flair">
+            
+        </div>
+    </div>
+</div>
+            </div>
+
+
+                <div class="post-signature flex--item fl0">
+                    <div class="user-info ">
+    <div class="d-flex ">
+        <div class="user-action-time fl-grow1">
+            answered <span title="2012-05-25 08:31:19Z" class="relativetime">May 25, 2012 at 8:31</span>
+        </div>
+        
+    </div>
+    <div class="user-gravatar32">
+        <a href="/users/54256/thomasrutter"><div class="gravatar-wrapper-32"><img src="https://www.gravatar.com/avatar/e0fbce15f81d6308656931250db267a1?s=64&amp;d=identicon&amp;r=PG" alt="thomasrutter's user avatar" width="32" height="32" class="bar-sm"></div></a>
+    </div>
+    <div class="user-details" itemprop="author" itemscope="" itemtype="http://schema.org/Person">
+        <a href="/users/54256/thomasrutter" itemprop="url" dir="auto">thomasrutter</a><meta itemprop="name" content="thomasrutter">
+        <div class="-flair">
+            <span class="reputation-score" title="reputation score 38,137" dir="ltr">38.1k</span><span title="10 gold badges" aria-hidden="true"><span class="badge1"></span><span class="badgecount">10</span></span><span class="v-visible-sr">10 gold badges</span><span title="94 silver badges" aria-hidden="true"><span class="badge2"></span><span class="badgecount">94</span></span><span class="v-visible-sr">94 silver badges</span><span title="117 bronze badges" aria-hidden="true"><span class="badge3"></span><span class="badgecount">117</span></span><span class="v-visible-sr">117 bronze badges</span>
+        </div>
+    </div>
+</div>
+
+
+                </div>
+        </div>
+        
+    
+    </div>
+    
+</div>
+
+
+
+
+                
+
+<span class="d-none" itemprop="commentCount"></span>
+	<div class="post-layout--right js-post-comments-component" data-has-opted-out="False">
+        <div id="comments-141997" class="comments js-comments-container bt bc-black-200 mt12  dno" data-post-id="141997" data-min-length="15">
+            <ul class="comments-list js-comments-list" data-remaining-comments-count="0" data-canpost="false" data-cansee="true" data-comments-unavailable="false" data-addlink-disabled="true">
+
+            </ul>
+	    </div>
+
+        <div id="comments-link-141997" data-rep="50" data-anon="true">
+                    <a class="js-add-link comments-link disabled-link" title="Use comments to ask for more information or suggest improvements. Avoid comments like “+1” or “thanks”." href="#" role="button" data-show-first-time-commenting="False">
+                        Add a comment
+                    </a>
+                <span class="js-link-separator dno">&nbsp;|&nbsp;</span>
+            <a class="js-show-link comments-link dno" title="Expand to show all comments on this post" href="#" aria-controls="comments-141997" aria-expanded="false" role="button">
+                
+            </a>
+        </div>         
+    </div>
+
+        </div>
+</div>
+
+                                        
+<a name="573660"></a>
+<div id="answer-573660" class="answer js-answer " data-answerid="573660" data-parentid="141928" data-score="33" data-position-on-page="3" data-highest-scored="0" data-question-has-accepted-highest-score="1" data-author-username="AnkiF" data-author-reputation="331" data-should-show-copy-button="False" data-open-in-codex-enabled="False" data-open-in-codex-context="What is the difference between #!/bin/sh and #!/bin/bash?" data-open-in-codex-sofa-cue="" data-se-share-sheet-license-name="CC BY-SA 3.0" data-is-edited="True" itemprop="suggestedAnswer" itemscope="" itemtype="https://schema.org/Answer">
+        <div class="post-layout ">
+                <div class="votecell post-layout--left">
+                    
+<div class="js-voting-container d-flex jc-center fd-column ai-center gs4 fc-black-300" data-post-id="573660" data-referrer="None">
+        <button class="js-vote-up-btn flex--item s-btn s-btn__muted s-btn__outlined bar-pill bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" id="upvote-btn-573660" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-pressed="false" aria-label="Up vote" data-selected-classes="fc-theme-primary-100 bc-theme-primary-500 bg-theme-primary-500" data-unselected-classes="bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" aria-describedby="--stacks-s-tooltip-0rakl5km">
+            <svg aria-hidden="true" class="svg-icon iconArrowUp" width="18" height="18" viewBox="0 0 18 18"><path d="M1 12h16L9 4z"></path></svg>
+        </button><div id="--stacks-s-tooltip-0rakl5km" class="s-popover s-popover__tooltip" role="tooltip">This answer is useful<div class="s-popover--arrow"></div></div>
+        <input type="hidden" id="voteUpHash" value="68:3:31e,16:62ed4c2030678342,10:1790932424,16:c6a7c2b73cb3b981,6:573660,20c3b9b7de4542d20d3c5cd29ecef54d44806eb92e403e9a02fae249f4c036c5">
+        <div class="js-vote-count flex--item d-flex fd-column ai-center fc-theme-body-font fw-bold fs-subheading py4" itemprop="upvoteCount" data-value="33">
+33        </div>
+        <button class="js-vote-down-btn flex--item mb8 s-btn s-btn__muted s-btn__outlined bar-pill bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" id="downvote-btn-573660" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-pressed="false" aria-label="Down vote" data-selected-classes="fc-theme-primary-100 bc-theme-primary-500 bg-theme-primary-500" data-unselected-classes="bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" aria-describedby="--stacks-s-tooltip-0cnpbbua">
+
+            <svg aria-hidden="true" class="svg-icon iconArrowDown" width="18" height="18" viewBox="0 0 18 18"><path d="M1 6h16l-8 8z"></path></svg>
+        </button><div id="--stacks-s-tooltip-0cnpbbua" class="s-popover s-popover__tooltip" role="tooltip">This answer is not useful<div class="s-popover--arrow"></div></div>
+        <input type="hidden" id="voteDownHash" value="68:3:31e,16:553a85a4041fe595,10:1790932424,16:8eef530af68520e0,6:573660,78252618959fdced01df3b835b29eed710b0c693856486da66187d1e1615c5da">
+
+
+        
+<button class="js-saves-btn s-btn s-btn__unset c-pointer py4" type="button" id="saves-btn-573660" data-controller="s-tooltip" data-s-tooltip-placement="right" data-s-popover-placement="" data-is-saved="false" aria-label="Save" data-post-id="573660" data-post-type-id="2" data-user-privilege-for-post-click="0" aria-controls="" data-s-popover-auto-show="false" aria-describedby="--stacks-s-tooltip-gp0gx3jo">
+    <svg aria-hidden="true" class="fc-theme-primary-400 js-saves-btn-selected d-none svg-icon iconBookmark" width="18" height="18" viewBox="0 0 18 18"><path d="M3 17V3c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v14l-6-4z"></path></svg>
+    <svg aria-hidden="true" class="fc-black-500 js-saves-btn-unselected svg-icon iconBookmarkAlt" width="18" height="18" viewBox="0 0 18 18"><path d="m9 10.6 4 2.66V3H5v10.26zM3 17V3c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v14l-6-4z"></path></svg>
+</button><div id="--stacks-s-tooltip-gp0gx3jo" class="s-popover s-popover__tooltip" role="tooltip">Save this answer.<div class="s-popover--arrow"></div></div>
+
+
+
+
+
+
+            <div class="js-accepted-answer-indicator flex--item fc-green-400 py6 mtn8 d-none" data-controller="s-tooltip" data-s-tooltip-placement="right" tabindex="0" role="note" aria-label="Accepted" aria-describedby="--stacks-s-tooltip-dx26gohz">
+                <div class="ta-center">
+                    <svg aria-hidden="true" class="svg-icon iconCheckmarkLg" width="36" height="36" viewBox="0 0 36 36"><path d="m6 14 8 8L30 6v8L14 30l-8-8z"></path></svg>
+                </div>
+            </div><div id="--stacks-s-tooltip-dx26gohz" class="s-popover s-popover__tooltip" role="tooltip">Loading when this answer was accepted…<div class="s-popover--arrow"></div></div>
+
+    
+    <a class="js-post-issue flex--item s-btn s-btn__unset c-pointer py6 mx-auto fc-black-500" href="/posts/573660/timeline" data-shortcut="T" data-ks-title="timeline" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-label="Timeline" aria-describedby="--stacks-s-tooltip-wxyfstb5"><svg aria-hidden="true" class="mln2 mr0 svg-icon iconHistory" width="19" height="18" viewBox="0 0 19 18"><path d="M3 9a8 8 0 1 1 3.73 6.77L8.2 14.3A6 6 0 1 0 5 9l3.01-.01-4 4-4-4zm7-4h1.01L11 9.36l3.22 2.1-.6.93L10 10z"></path></svg></a><div id="--stacks-s-tooltip-wxyfstb5" class="s-popover s-popover__tooltip" role="tooltip">Show activity on this post.<div class="s-popover--arrow"></div></div>
+
+</div>
+
+                </div>
+
+            
+
+<div class="answercell post-layout--right">
+    
+
+
+    <div class="s-prose js-post-body" itemprop="text">
+<p>In addition to the previous answers, even if <code>/bin/sh</code> is a symbolic link to <code>/bin/bash</code>, <code>#!/bin/sh</code> is not totally equivalent to <code>#!/bin/bash</code>.</p>
+
+<p>From the <a href="http://manpages.ubuntu.com/bash.1">bash(1) man page</a> :</p>
+
+<blockquote>
+  <p>"If  bash is invoked with the name sh, it tries to mimic the startup
+  behavior of historical versions of sh as closely as possible, while
+  conforming to the POSIX standard as well."</p>
+</blockquote>
+
+<p>For example the bash specific syntax :</p>
+
+<pre class="lang-bash s-code-block"><code data-highlighted="yes" class="hljs language-bash"> <span class="hljs-built_in">exec</span>  &gt; &gt;(<span class="hljs-built_in">tee</span> logfile.txt)
+</code></pre>
+
+<p>gives an error in a shell beginning with <code>#!/bin/sh</code>, even with the sh-&gt;bash symbolic link in place.</p>
+    </div>
+    <div class="mt24">
+        <div class="d-flex fw-wrap ai-start jc-end gs8 gsy">
+
+            <time itemprop="dateCreated" datetime="2015-01-14 11:24:07Z"></time>
+            <div class="flex--item mr16 answer-menu-cell">
+                
+
+
+<div class="js-post-menu pt2" data-post-id="573660" data-post-type-id="2">
+
+    <div class="d-flex gs8 s-anchors s-anchors__muted fw-wrap">
+
+        <div class="flex--item">
+            <a href="/a/573660" rel="nofollow" itemprop="url" class="js-share-link js-gps-track" data-controller="se-share-sheet s-tooltip s-popover" data-s-tooltip-placement="top" data-gps-track="post.click({ item: 2, priv: 0, post_type: 2 })" data-se-share-sheet-title="Share a link to this answer" data-se-share-sheet-subtitle="" data-se-share-sheet-post-type="answer" data-se-share-sheet-social="facebook twitter " data-se-share-sheet-location="2" data-se-share-sheet-license-url="https%3a%2f%2fcreativecommons.org%2flicenses%2fby-sa%2f3.0%2f" data-se-share-sheet-license-name="CC BY-SA 3.0" data-s-popover-placement="bottom-start" aria-describedby="--stacks-s-tooltip-rijl6sd0" aria-controls="se-share-sheet-3" data-action=" s-popover#toggle se-share-sheet#preventNavigation s-popover:show-&gt;se-share-sheet#willShow s-popover:shown-&gt;se-share-sheet#didShow" aria-expanded="false">Share</a><div class="s-popover z-dropdown s-anchors s-anchors__default share-sheet-popover" id="se-share-sheet-3"><div class="s-popover--arrow"></div><div><label for="share-sheet-input-se-share-sheet-3"><span class="js-title fw-bold">Share a link to this answer</span> <span class="js-subtitle"></span></label></div><div class="my8"><input type="text" id="share-sheet-input-se-share-sheet-3" class="js-input s-input wmn3 sm:wmn-initial bc-black-300 bg-white fc-black-600" readonly=""></div><div class="d-flex jc-space-between ai-center mbn4"><button class="js-copy-link-btn s-btn s-btn__link js-gps-track" data-gps-track="">Copy link</button><a href="https://creativecommons.org/licenses/by-sa/3.0/" rel="license" class="js-license s-block-link w-auto" target="_blank" title="The current license for this post: CC BY-SA 3.0">CC BY-SA 3.0</a><div class="js-social-container d-none"></div></div><div class="js-copy-status v-visible-sr" role="status" aria-live="polite"></div></div><div id="--stacks-s-tooltip-rijl6sd0" class="s-popover s-popover__tooltip" role="tooltip">Short permalink to this answer<div class="s-popover--arrow"></div></div>
+        </div>
+
+
+                    <div class="flex--item">
+                        <a href="/posts/573660/edit" class="js-suggest-edit-post js-gps-track" data-gps-track="post.click({ item: 6, priv: 0, post_type: 2 })" title="">Improve this answer</a>
+                    </div>
+
+                <div class="flex--item">
+                    <button type="button" id="btnFollowPost-573660" class="s-btn s-btn__link js-follow-post js-follow-answer js-gps-track" data-gps-track="post.click({ item: 14, priv: 0, post_type: 2 })" data-controller="s-tooltip " data-s-tooltip-placement="bottom" data-s-popover-placement="bottom" aria-controls="" aria-describedby="--stacks-s-tooltip-3zst657r">
+                        Follow
+                        <input type="hidden" id="voteFollowHash" value="68:3:31e,16:caf4d96b04783628,10:1790932424,16:2dd756953a0b643c,6:573660,4d238d0704a1a7c379cfc000531eb7e77c1857295ee784f31b70e186902410fa">
+                    </button><div id="--stacks-s-tooltip-3zst657r" class="s-popover s-popover__tooltip" role="tooltip">Follow this answer to receive notifications<div class="s-popover--arrow"></div></div>
+                </div>
+
+
+
+
+
+
+    </div>
+    <div class="js-menu-popup-container"></div>
+</div>
+
+            </div>
+            <div class="post-signature flex--item fl0">
+<div class="user-info user-hover ">
+    <div class="d-flex ">
+        <div class="user-action-time fl-grow1">
+            <a href="/posts/573660/revisions" title="show all edits to this post" class="js-gps-track" data-gps-track="post.click({ item: 4, priv: 0, post_type: 2 })">edited <span title="2015-01-14 11:27:59Z" class="relativetime">Jan 14, 2015 at 11:27</span></a>
+        </div>
+        
+    </div>
+    <div class="user-gravatar32">
+        <a href="/users/158442/muru"><div class="gravatar-wrapper-32"><img src="https://i.sstatic.net/xNPjb.png?s=64" alt="muru's user avatar" width="32" height="32" class="bar-sm"></div></a>
+    </div>
+    <div class="user-details">
+        <a href="/users/158442/muru" dir="auto">muru</a><span class="mod-flair mtn2" title="Moderator">♦</span>
+        <div class="-flair">
+            <span class="reputation-score" title="reputation score 210,135" dir="ltr">210k</span><span title="60 gold badges" aria-hidden="true"><span class="badge1"></span><span class="badgecount">60</span></span><span class="v-visible-sr">60 gold badges</span><span title="522 silver badges" aria-hidden="true"><span class="badge2"></span><span class="badgecount">522</span></span><span class="v-visible-sr">522 silver badges</span><span title="802 bronze badges" aria-hidden="true"><span class="badge3"></span><span class="badgecount">802</span></span><span class="v-visible-sr">802 bronze badges</span>
+        </div>
+    </div>
+</div>
+            </div>
+
+
+                <div class="post-signature flex--item fl0">
+                    <div class="user-info ">
+    <div class="d-flex ">
+        <div class="user-action-time fl-grow1">
+            answered <span title="2015-01-14 11:24:07Z" class="relativetime">Jan 14, 2015 at 11:24</span>
+        </div>
+        
+    </div>
+    <div class="user-gravatar32">
+        <a href="/users/368652/ankif"><div class="gravatar-wrapper-32"><img src="https://www.gravatar.com/avatar/6e02d0e543fd75e36251ca02a4b12469?s=64&amp;d=identicon&amp;r=PG" alt="AnkiF's user avatar" width="32" height="32" class="bar-sm"></div></a>
+    </div>
+    <div class="user-details" itemprop="author" itemscope="" itemtype="http://schema.org/Person">
+        <a href="/users/368652/ankif" itemprop="url" dir="auto">AnkiF</a><meta itemprop="name" content="AnkiF">
+        <div class="-flair">
+            <span class="reputation-score" title="reputation score " dir="ltr">331</span><span title="3 silver badges" aria-hidden="true"><span class="badge2"></span><span class="badgecount">3</span></span><span class="v-visible-sr">3 silver badges</span><span title="2 bronze badges" aria-hidden="true"><span class="badge3"></span><span class="badgecount">2</span></span><span class="v-visible-sr">2 bronze badges</span>
+        </div>
+    </div>
+</div>
+
+
+                </div>
+        </div>
+        
+    
+    </div>
+    
+</div>
+
+
+
+
+                
+
+<span class="d-none" itemprop="commentCount"></span>
+	<div class="post-layout--right js-post-comments-component" data-has-opted-out="False">
+        <div id="comments-573660" class="comments js-comments-container bt bc-black-200 mt12  dno" data-post-id="573660" data-min-length="15">
+            <ul class="comments-list js-comments-list" data-remaining-comments-count="0" data-canpost="false" data-cansee="true" data-comments-unavailable="false" data-addlink-disabled="true">
+
+            </ul>
+	    </div>
+
+        <div id="comments-link-573660" data-rep="50" data-anon="true">
+                    <a class="js-add-link comments-link disabled-link" title="Use comments to ask for more information or suggest improvements. Avoid comments like “+1” or “thanks”." href="#" role="button" data-show-first-time-commenting="False">
+                        Add a comment
+                    </a>
+                <span class="js-link-separator dno">&nbsp;|&nbsp;</span>
+            <a class="js-show-link comments-link dno" title="Expand to show all comments on this post" href="#" aria-controls="comments-573660" aria-expanded="false" role="button">
+                
+            </a>
+        </div>         
+    </div>
+
+        </div>
+</div>
+
+<div class="js-zone-container zone-container-main">
+    <div id="dfp-smlb" class="everyonelovesstackoverflow everyoneloves__mid-second-leaderboard everyoneloves__leaderboard"></div>
+		<div class="js-report-ad-button-container  ad-report-width-leaderboard"></div>
+</div>
+                                        
+<a name="1104171"></a>
+<div id="answer-1104171" class="answer js-answer " data-answerid="1104171" data-parentid="141928" data-score="15" data-position-on-page="4" data-highest-scored="0" data-question-has-accepted-highest-score="1" data-author-username="山茶树和葡萄树" data-author-reputation="261" data-should-show-copy-button="False" data-open-in-codex-enabled="False" data-open-in-codex-context="What is the difference between #!/bin/sh and #!/bin/bash?" data-open-in-codex-sofa-cue="" data-se-share-sheet-license-name="CC BY-SA 4.0" data-is-edited="False" itemprop="suggestedAnswer" itemscope="" itemtype="https://schema.org/Answer">
+        <div class="post-layout ">
+                <div class="votecell post-layout--left">
+                    
+<div class="js-voting-container d-flex jc-center fd-column ai-center gs4 fc-black-300" data-post-id="1104171" data-referrer="None">
+        <button class="js-vote-up-btn flex--item s-btn s-btn__muted s-btn__outlined bar-pill bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" id="upvote-btn-1104171" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-pressed="false" aria-label="Up vote" data-selected-classes="fc-theme-primary-100 bc-theme-primary-500 bg-theme-primary-500" data-unselected-classes="bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" aria-describedby="--stacks-s-tooltip-r960htzi">
+            <svg aria-hidden="true" class="svg-icon iconArrowUp" width="18" height="18" viewBox="0 0 18 18"><path d="M1 12h16L9 4z"></path></svg>
+        </button><div id="--stacks-s-tooltip-r960htzi" class="s-popover s-popover__tooltip" role="tooltip">This answer is useful<div class="s-popover--arrow"></div></div>
+        <input type="hidden" id="voteUpHash" value="69:3:31e,16:647e8e4c22746655,10:1790932424,16:8203c210aa9df18d,7:1104171,552e3103176fd2f0c97840dca247f5e769d460cfc530fee2119d4a755f22c22a">
+        <div class="js-vote-count flex--item d-flex fd-column ai-center fc-theme-body-font fw-bold fs-subheading py4" itemprop="upvoteCount" data-value="15">
+15        </div>
+        <button class="js-vote-down-btn flex--item mb8 s-btn s-btn__muted s-btn__outlined bar-pill bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" id="downvote-btn-1104171" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-pressed="false" aria-label="Down vote" data-selected-classes="fc-theme-primary-100 bc-theme-primary-500 bg-theme-primary-500" data-unselected-classes="bc-black-225 f:bc-theme-secondary-400 f:bg-theme-secondary-400 f:fc-black-050 h:bg-theme-primary-200" aria-describedby="--stacks-s-tooltip-ac8mthmz">
+
+            <svg aria-hidden="true" class="svg-icon iconArrowDown" width="18" height="18" viewBox="0 0 18 18"><path d="M1 6h16l-8 8z"></path></svg>
+        </button><div id="--stacks-s-tooltip-ac8mthmz" class="s-popover s-popover__tooltip" role="tooltip">This answer is not useful<div class="s-popover--arrow"></div></div>
+        <input type="hidden" id="voteDownHash" value="69:3:31e,16:4162861d9d9f9353,10:1790932424,16:91e346328fccc7ba,7:1104171,47ca7f9f4dacd90fc5533c2a755dd88ea3f1fc8fb4e98a4b3daf32f2cdb301f8">
+
+
+        
+<button class="js-saves-btn s-btn s-btn__unset c-pointer py4" type="button" id="saves-btn-1104171" data-controller="s-tooltip" data-s-tooltip-placement="right" data-s-popover-placement="" data-is-saved="false" aria-label="Save" data-post-id="1104171" data-post-type-id="2" data-user-privilege-for-post-click="0" aria-controls="" data-s-popover-auto-show="false" aria-describedby="--stacks-s-tooltip-01awlp60">
+    <svg aria-hidden="true" class="fc-theme-primary-400 js-saves-btn-selected d-none svg-icon iconBookmark" width="18" height="18" viewBox="0 0 18 18"><path d="M3 17V3c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v14l-6-4z"></path></svg>
+    <svg aria-hidden="true" class="fc-black-500 js-saves-btn-unselected svg-icon iconBookmarkAlt" width="18" height="18" viewBox="0 0 18 18"><path d="m9 10.6 4 2.66V3H5v10.26zM3 17V3c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v14l-6-4z"></path></svg>
+</button><div id="--stacks-s-tooltip-01awlp60" class="s-popover s-popover__tooltip" role="tooltip">Save this answer.<div class="s-popover--arrow"></div></div>
+
+
+
+
+
+
+            <div class="js-accepted-answer-indicator flex--item fc-green-400 py6 mtn8 d-none" data-controller="s-tooltip" data-s-tooltip-placement="right" tabindex="0" role="note" aria-label="Accepted" aria-describedby="--stacks-s-tooltip-7lcyo32a">
+                <div class="ta-center">
+                    <svg aria-hidden="true" class="svg-icon iconCheckmarkLg" width="36" height="36" viewBox="0 0 36 36"><path d="m6 14 8 8L30 6v8L14 30l-8-8z"></path></svg>
+                </div>
+            </div><div id="--stacks-s-tooltip-7lcyo32a" class="s-popover s-popover__tooltip" role="tooltip">Loading when this answer was accepted…<div class="s-popover--arrow"></div></div>
+
+    
+    <a class="js-post-issue flex--item s-btn s-btn__unset c-pointer py6 mx-auto fc-black-500" href="/posts/1104171/timeline" data-shortcut="T" data-ks-title="timeline" data-controller="s-tooltip" data-s-tooltip-placement="right" aria-label="Timeline" aria-describedby="--stacks-s-tooltip-t93j8na4"><svg aria-hidden="true" class="mln2 mr0 svg-icon iconHistory" width="19" height="18" viewBox="0 0 19 18"><path d="M3 9a8 8 0 1 1 3.73 6.77L8.2 14.3A6 6 0 1 0 5 9l3.01-.01-4 4-4-4zm7-4h1.01L11 9.36l3.22 2.1-.6.93L10 10z"></path></svg></a><div id="--stacks-s-tooltip-t93j8na4" class="s-popover s-popover__tooltip" role="tooltip">Show activity on this post.<div class="s-popover--arrow"></div></div>
+
+</div>
+
+                </div>
+
+            
+
+<div class="answercell post-layout--right">
+    
+
+
+    <div class="s-prose js-post-body" itemprop="text">
+<p>GNU Bash: <code>#!/bin/bash</code>;
+POSIX shell: <code>#!/bin/sh</code>.</p>
+    </div>
+    <div class="mt24">
+        <div class="d-flex fw-wrap ai-start jc-end gs8 gsy">
+
+            <time itemprop="dateCreated" datetime="2018-12-24 07:27:20Z"></time>
+            <div class="flex--item mr16 answer-menu-cell">
+                
+
+
+<div class="js-post-menu pt2" data-post-id="1104171" data-post-type-id="2">
+
+    <div class="d-flex gs8 s-anchors s-anchors__muted fw-wrap">
+
+        <div class="flex--item">
+            <a href="/a/1104171" rel="nofollow" itemprop="url" class="js-share-link js-gps-track" data-controller="se-share-sheet s-tooltip s-popover" data-s-tooltip-placement="top" data-gps-track="post.click({ item: 2, priv: 0, post_type: 2 })" data-se-share-sheet-title="Share a link to this answer" data-se-share-sheet-subtitle="" data-se-share-sheet-post-type="answer" data-se-share-sheet-social="facebook twitter " data-se-share-sheet-location="2" data-se-share-sheet-license-url="https%3a%2f%2fcreativecommons.org%2flicenses%2fby-sa%2f4.0%2f" data-se-share-sheet-license-name="CC BY-SA 4.0" data-s-popover-placement="bottom-start" aria-describedby="--stacks-s-tooltip-0soz7hqa" aria-controls="se-share-sheet-4" data-action=" s-popover#toggle se-share-sheet#preventNavigation s-popover:show-&gt;se-share-sheet#willShow s-popover:shown-&gt;se-share-sheet#didShow" aria-expanded="false">Share</a><div class="s-popover z-dropdown s-anchors s-anchors__default share-sheet-popover" id="se-share-sheet-4"><div class="s-popover--arrow"></div><div><label for="share-sheet-input-se-share-sheet-4"><span class="js-title fw-bold">Share a link to this answer</span> <span class="js-subtitle"></span></label></div><div class="my8"><input type="text" id="share-sheet-input-se-share-sheet-4" class="js-input s-input wmn3 sm:wmn-initial bc-black-300 bg-white fc-black-600" readonly=""></div><div class="d-flex jc-space-between ai-center mbn4"><button class="js-copy-link-btn s-btn s-btn__link js-gps-track" data-gps-track="">Copy link</button><a href="https://creativecommons.org/licenses/by-sa/4.0/" rel="license" class="js-license s-block-link w-auto" target="_blank" title="The current license for this post: CC BY-SA 4.0">CC BY-SA 4.0</a><div class="js-social-container d-none"></div></div><div class="js-copy-status v-visible-sr" role="status" aria-live="polite"></div></div><div id="--stacks-s-tooltip-0soz7hqa" class="s-popover s-popover__tooltip" role="tooltip">Short permalink to this answer<div class="s-popover--arrow"></div></div>
+        </div>
+
+
+                    <div class="flex--item">
+                        <a href="/posts/1104171/edit" class="js-suggest-edit-post js-gps-track" data-gps-track="post.click({ item: 6, priv: 0, post_type: 2 })" title="">Improve this answer</a>
+                    </div>
+
+                <div class="flex--item">
+                    <button type="button" id="btnFollowPost-1104171" class="s-btn s-btn__link js-follow-post js-follow-answer js-gps-track" data-gps-track="post.click({ item: 14, priv: 0, post_type: 2 })" data-controller="s-tooltip " data-s-tooltip-placement="bottom" data-s-popover-placement="bottom" aria-controls="" aria-describedby="--stacks-s-tooltip-nw3obf2u">
+                        Follow
+                        <input type="hidden" id="voteFollowHash" value="69:3:31e,16:873d54e995f16e50,10:1790932424,16:283e6f1efcb23b99,7:1104171,6b46e7418d8041cc30acc2fc5ed7e7c11dad3d8da1c881b2cab8d957fbf9e833">
+                    </button><div id="--stacks-s-tooltip-nw3obf2u" class="s-popover s-popover__tooltip" role="tooltip">Follow this answer to receive notifications<div class="s-popover--arrow"></div></div>
+                </div>
+
+
+
+
+
+
+    </div>
+    <div class="js-menu-popup-container"></div>
+</div>
+
+            </div>
+
+
+                <div class="post-signature flex--item fl0">
+                    <div class="user-info ">
+    <div class="d-flex ">
+        <div class="user-action-time fl-grow1">
+            answered <span title="2018-12-24 07:27:20Z" class="relativetime">Dec 24, 2018 at 7:27</span>
+        </div>
+        
+    </div>
+    <div class="user-gravatar32">
+        <a href="/users/907046/%e5%b1%b1%e8%8c%b6%e6%a0%91%e5%92%8c%e8%91%a1%e8%90%84%e6%a0%91"><div class="gravatar-wrapper-32"><img src="https://www.gravatar.com/avatar/f9e56df5172315365cb773ea43072598?s=64&amp;d=identicon&amp;r=PG" alt="山茶树和葡萄树's user avatar" width="32" height="32" class="bar-sm"></div></a>
+    </div>
+    <div class="user-details" itemprop="author" itemscope="" itemtype="http://schema.org/Person">
+        <a href="/users/907046/%e5%b1%b1%e8%8c%b6%e6%a0%91%e5%92%8c%e8%91%a1%e8%90%84%e6%a0%91" itemprop="url" dir="auto">山茶树和葡萄树</a><meta itemprop="name" content="山茶树和葡萄树">
+        <div class="-flair">
+            <span class="reputation-score" title="reputation score " dir="ltr">261</span><span title="2 silver badges" aria-hidden="true"><span class="badge2"></span><span class="badgecount">2</span></span><span class="v-visible-sr">2 silver badges</span><span title="3 bronze badges" aria-hidden="true"><span class="badge3"></span><span class="badgecount">3</span></span><span class="v-visible-sr">3 bronze badges</span>
+        </div>
+    </div>
+</div>
+
+
+                </div>
+        </div>
+        
+    
+    </div>
+    
+</div>
+
+
+
+
+                
+
+<span class="d-none" itemprop="commentCount">0</span>
+	<div class="post-layout--right js-post-comments-component" data-has-opted-out="False">
+        <div id="comments-1104171" class="comments js-comments-container bt bc-black-200 mt12  dno" data-post-id="1104171" data-min-length="15">
+            <ul class="comments-list js-comments-list" data-remaining-comments-count="0" data-canpost="false" data-cansee="true" data-comments-unavailable="false" data-addlink-disabled="true">
+
+            </ul>
+	    </div>
+
+        <div id="comments-link-1104171" data-rep="50" data-anon="true">
+                    <a class="js-add-link comments-link disabled-link" title="Use comments to ask for more information or suggest improvements. Avoid comments like “+1” or “thanks”." href="#" role="button" data-show-first-time-commenting="False">
+                        Add a comment
+                    </a>
+                <span class="js-link-separator dno">&nbsp;|&nbsp;</span>
+            <a class="js-show-link comments-link dno" title="Expand to show all comments on this post" href="#" aria-controls="comments-1104171" aria-expanded="false" role="button">
+                
+            </a>
+        </div>         
+    </div>
+
+        </div>
+</div>
+
+                                    <h2 class="js-bottom-notice bottom-notice">
+                                        You must <a href="/users/login?ssrc=question_page&amp;returnurl=https%3a%2f%2faskubuntu.com%2fquestions%2f141928">log in</a> to answer this question.
+                                    </h2>
+                                        <aside class="s-notice s-notice__info post-notice js-post-notice s-anchors s-anchors__inherit s-anchors__underlined mb16" role="status">
+        <div class="d-flex fd-column fw-nowrap">
+            <div class="d-flex fw-nowrap">
+                    <div class="flex--item mr8">
+                        <svg aria-hidden="true" class="svg-icon iconShield" width="18" height="18" viewBox="0 0 18 18"><path d="m2 4 7-3 7 3v5.02C16 13.69 10.69 17 9 17s-7-3.31-7-7.98zm6.14 5.2L7 12h4L9.86 9.2a.6.6 0 0 1 .25-.59c.56-.36.89-.95.89-1.61 0-1.09-.94-2-2.02-2A2 2 0 0 0 7 7c0 .66.33 1.25.89 1.61.2.13.3.36.25.59"></path></svg>
+                    </div>
+                <div class="flex--item wmn0 fl1 lh-lg">
+                    <div class="flex--item fl1 lh-lg">
+                            <div>
+                                <b><a href="/help/privileges/protect-questions">Protected question</a></b>. To answer this question, you need to have at least 10 reputation on this site (not counting the <a href="https://meta.stackexchange.com/questions/141648/what-is-the-association-bonus-and-how-does-it-work">association bonus</a>). The reputation requirement helps protect this question from spam and non-answer activity.
+                                
+                            </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+</aside>
+
+                                <div class="js-bottom-notice d-flex w100 md:mb12 md:fd-column ac-stretch" data-loc="1">
+                                    <div class="flex--item ba bc-black-200 bar-md p24 md:p16 mr12 md:mb12 md:mr0 w50 md:w100">
+                                        <div class="d-flex fd-column">
+                                            <p class="flex--item fs-body2 fw-bold fc-black-500 mb8">Start asking to get answers</p>
+                                            <p class="flex--item fs-body1 fc-black-400 mb16">Find the answer to your question by asking.</p>
+                                            <a class="flex--item s-btn s-btn__outlined as-start px32 md:px16" href="/questions/ask">Ask question</a>
+                                        </div>
+                                    </div>
+                                    <div class="flex--item ba bc-black-200 bar-md p24 md:p16 w50 md:w100">
+                                        <div class="d-flex fd-column gsy g16">
+                                            <p class="flex--item fs-body2 fw-bold fc-black-500 mb0">Explore related questions</p>
+                                            <div class="flex--item mb0"><ul class="ml0 list-ls-none js-post-tag-list-wrapper d-inline"><li class="d-inline mr4 js-post-tag-list-item"><a href="/questions/tagged/bash" class="s-tag post-tag" title="show questions tagged 'bash'" aria-label="show questions tagged 'bash'" rel="tag" aria-describedby="tag-bash-tooltip-container" data-tag-menu-origin="Unknown">bash</a></li><li class="d-inline mr4 js-post-tag-list-item"><a href="/questions/tagged/scripts" class="s-tag post-tag" title="show questions tagged 'scripts'" aria-label="show questions tagged 'scripts'" rel="tag" aria-describedby="tag-scripts-tooltip-container" data-tag-menu-origin="Unknown">scripts</a></li><li class="d-inline mr4 js-post-tag-list-item"><a href="/questions/tagged/sh" class="s-tag post-tag" title="show questions tagged 'sh'" aria-label="show questions tagged 'sh'" rel="tag" aria-describedby="tag-sh-tooltip-container" data-tag-menu-origin="Unknown">sh</a></li><li class="d-inline mr4 js-post-tag-list-item"><a href="/questions/tagged/shebang" class="s-tag post-tag" title="show questions tagged 'shebang'" aria-label="show questions tagged 'shebang'" rel="tag" aria-describedby="tag-shebang-tooltip-container" data-tag-menu-origin="Unknown">shebang</a></li></ul></div>
+                                            <p class="flex--item fs-body1 fc-black-400 mb0">See similar questions with these tags.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                </div>
+            </div>
+
+        
+
+            
+<div id="sidebar" class="show-votes ps-sticky md:ps-static js-sticky-bottom-sidebar" role="complementary" aria-label="sidebar" style="top: -1330.53px;">
+        
+
+
+    <div class="s-sidebarwidget s-sidebarwidget__yellow s-anchors s-anchors__grayscale mb16" data-tracker="cb=1">
+            <ul class="s-sidebarwidget--content s-sidebarwidget__items p0">
+                        <li class="s-sidebarwidget--header">
+                            The Overflow Blog
+                        </li>
+        <li class="s-sidebarwidget--item d-flex px16">
+            <div class="flex--item1 fl-shrink0">
+<svg aria-hidden="true" class="va-text-top svg-icon iconPencilSm" width="14" height="14" viewBox="0 0 14 14"><path fill="#F1B600" d="m2 10.12 6.37-6.43 1.88 1.88L3.88 12H2z"></path><path fill="#E87C87" d="m11.1 1.71 1.13 1.12c.2.2.2.51 0 .71L11.1 4.7 9.21 2.86l1.17-1.15c.2-.2.51-.2.71 0"></path></svg>            </div>
+            <div class="flex--item wmn0 ow-break-word">
+                <a href="https://stackoverflow.blog/2026/10/01/a-look-back-before-we-look-forward-a-developer-survey-retrospective/?cb=1" class="js-gps-track" data-ga="[&quot;community bulletin board&quot;,&quot;The Overflow Blog&quot;,&quot;https://stackoverflow.blog/2026/10/01/a-look-back-before-we-look-forward-a-developer-survey-retrospective/&quot;,null,null]" data-gps-track="communitybulletin.click({ priority: 1, position: 0, location: questionpage })">A look back before we look forward: A Developer Survey retrospective</a>
+            </div>
+        </li>
+        <li class="s-sidebarwidget--item d-flex px16">
+            <div class="flex--item1 fl-shrink0">
+<svg aria-hidden="true" class="va-text-top svg-icon iconPencilSm" width="14" height="14" viewBox="0 0 14 14"><path fill="#F1B600" d="m2 10.12 6.37-6.43 1.88 1.88L3.88 12H2z"></path><path fill="#E87C87" d="m11.1 1.71 1.13 1.12c.2.2.2.51 0 .71L11.1 4.7 9.21 2.86l1.17-1.15c.2-.2.51-.2.71 0"></path></svg>            </div>
+            <div class="flex--item wmn0 ow-break-word">
+                <a href="https://stackoverflow.blog/2026/10/02/constraints-that-make-developers-faster/?cb=1" class="js-gps-track" data-ga="[&quot;community bulletin board&quot;,&quot;The Overflow Blog&quot;,&quot;https://stackoverflow.blog/2026/10/02/constraints-that-make-developers-faster/&quot;,null,null]" data-gps-track="communitybulletin.click({ priority: 1, position: 1, location: questionpage })">Constraints that make developers faster</a>
+            </div>
+        </li>
+                        <li class="s-sidebarwidget--header">
+                            Featured on Meta
+                        </li>
+        <li class="s-sidebarwidget--item d-flex px16">
+            <div class="flex--item1 fl-shrink0">
+<div class="favicon favicon-stackexchangemeta" title="Meta Stack Exchange"></div>            </div>
+            <div class="flex--item wmn0 ow-break-word">
+                <a href="https://meta.stackexchange.com/questions/419716/free-votes-for-all-that-want-them?cb=1" class="js-gps-track" data-ga="[&quot;community bulletin board&quot;,&quot;Featured on Meta&quot;,&quot;https://meta.stackexchange.com/questions/419716/free-votes-for-all-that-want-them&quot;,null,null]" data-gps-track="communitybulletin.click({ priority: 3, position: 2, location: questionpage })">Free (votes) for all (that want them)</a>
+            </div>
+        </li>
+        </ul>
+    </div>
+
+<div class="js-zone-container zone-container-sidebar">
+    <div id="dfp-tsb" class="everyonelovesstackoverflow everyoneloves__top-sidebar"></div>
+		<div class="js-report-ad-button-container  ad-report-width-sidebar"></div>
+</div>
+<div class="js-zone-container zone-container-sidebar">
+    <div id="dfp-msb" class="everyonelovesstackoverflow everyoneloves__mid-sidebar"></div>
+		<div class="js-report-ad-button-container  ad-report-width-sidebar"></div>
+</div>
+            <div class="module sidebar-linked">
+	<h3 id="h-linked">Linked</h3>
+	    <div class="linked" data-tracker="lq=1">
+            <div class="spacer js-gps-track" data-gps-track="linkedquestion.click({ source_post_id: 141928, target_question_id: 1129896, position: 0 })">
+				<a href="https://askubuntu.com/questions/1129896/ubuntu-shell-scripting?lq=1" title="Question score (upvotes - downvotes)">
+					<div class="answer-votes  default">3</div>
+				</a>
+				<a href="https://askubuntu.com/questions/1129896/ubuntu-shell-scripting?noredirect=1&amp;lq=1" class="question-hyperlink">Ubuntu shell scripting</a>
+			</div>
+            <div class="spacer js-gps-track" data-gps-track="linkedquestion.click({ source_post_id: 141928, target_question_id: 1117308, position: 1 })">
+				<a href="https://askubuntu.com/questions/1117308/why-xargs-bash-c-is-far-slower-than-xargs-sh-c?lq=1" title="Question score (upvotes - downvotes)">
+					<div class="answer-votes  default">1</div>
+				</a>
+				<a href="https://askubuntu.com/questions/1117308/why-xargs-bash-c-is-far-slower-than-xargs-sh-c?noredirect=1&amp;lq=1" class="question-hyperlink">Why 'xargs bash -c' is far slower than 'xargs sh -c'?</a>
+			</div>
+            <div class="spacer js-gps-track" data-gps-track="linkedquestion.click({ source_post_id: 141928, target_question_id: 504546, position: 2 })">
+				<a href="https://askubuntu.com/questions/504546/error-message-source-not-found-when-running-a-script?lq=1" title="Question score (upvotes - downvotes)">
+					<div class="answer-votes answered-accepted large">103</div>
+				</a>
+				<a href="https://askubuntu.com/questions/504546/error-message-source-not-found-when-running-a-script?noredirect=1&amp;lq=1" class="question-hyperlink">Error message 'source: not found' when running a script</a>
+			</div>
+            <div class="spacer js-gps-track" data-gps-track="linkedquestion.click({ source_post_id: 141928, target_question_id: 466197, position: 3 })">
+				<a href="https://askubuntu.com/questions/466197/clearsigned-file-isnt-valid-from-01-org-package?lq=1" title="Question score (upvotes - downvotes)">
+					<div class="answer-votes answered-accepted default">23</div>
+				</a>
+				<a href="https://askubuntu.com/questions/466197/clearsigned-file-isnt-valid-from-01-org-package?noredirect=1&amp;lq=1" class="question-hyperlink">Clearsigned file isn't valid, from 01.org package?</a>
+			</div>
+            <div class="spacer js-gps-track" data-gps-track="linkedquestion.click({ source_post_id: 141928, target_question_id: 280208, position: 4 })">
+				<a href="https://askubuntu.com/questions/280208/whats-the-difference-between-sudo-command-and-sudo-sh-command?lq=1" title="Question score (upvotes - downvotes)">
+					<div class="answer-votes answered-accepted default">16</div>
+				</a>
+				<a href="https://askubuntu.com/questions/280208/whats-the-difference-between-sudo-command-and-sudo-sh-command?noredirect=1&amp;lq=1" class="question-hyperlink">What's the difference between 'sudo [command]' and 'sudo sh [command]?</a>
+			</div>
+            <div class="spacer js-gps-track" data-gps-track="linkedquestion.click({ source_post_id: 141928, target_question_id: 1277922, position: 5 })">
+				<a href="https://askubuntu.com/questions/1277922/what-are-syntax-differences-between-bash-and-dash?lq=1" title="Question score (upvotes - downvotes)">
+					<div class="answer-votes  default">14</div>
+				</a>
+				<a href="https://askubuntu.com/questions/1277922/what-are-syntax-differences-between-bash-and-dash?noredirect=1&amp;lq=1" class="question-hyperlink">What are syntax differences between bash and dash?</a>
+			</div>
+            <div class="spacer js-gps-track" data-gps-track="linkedquestion.click({ source_post_id: 141928, target_question_id: 422492, position: 6 })">
+				<a href="https://askubuntu.com/questions/422492/why-script-with-bin-bash-is-working-with-bin-sh-not?lq=1" title="Question score (upvotes - downvotes)">
+					<div class="answer-votes answered-accepted default">2</div>
+				</a>
+				<a href="https://askubuntu.com/questions/422492/why-script-with-bin-bash-is-working-with-bin-sh-not?noredirect=1&amp;lq=1" class="question-hyperlink">Why script with /bin/bash is working, with /bin/sh not?</a>
+			</div>
+            <div class="spacer js-gps-track" data-gps-track="linkedquestion.click({ source_post_id: 141928, target_question_id: 1067700, position: 7 })">
+				<a href="https://askubuntu.com/questions/1067700/syntax-error-installation-script?lq=1" title="Question score (upvotes - downvotes)">
+					<div class="answer-votes  default">0</div>
+				</a>
+				<a href="https://askubuntu.com/questions/1067700/syntax-error-installation-script?noredirect=1&amp;lq=1" class="question-hyperlink">Syntax error installation script</a>
+			</div>
+	</div>
+</div>
+
+        
+
+
+        <div class="module sidebar-related">
+            <h3 id="h-related">Related</h3>
+            <div class="related js-gps-related-questions" data-tracker="rq=1">
+                    <div class="spacer" data-question-id="20871">
+                        <a href="https://askubuntu.com/questions/20871/how-do-the-environments-of-a-standard-terminal-command-line-and-a-bash-script-di?rq=1" title="Question score (upvotes - downvotes)">
+                            <div class="answer-votes answered-accepted default">7</div>
+                        </a>
+                        <a href="https://askubuntu.com/questions/20871/how-do-the-environments-of-a-standard-terminal-command-line-and-a-bash-script-di?rq=1" class="question-hyperlink">How do the environments of a standard Terminal command-line and a bash script differ?</a>
+                    </div>
+                    <div class="spacer" data-question-id="107969">
+                        <a href="https://askubuntu.com/questions/107969/what-is-the-difference-between-source-x-x-and-x-in-bash?rq=1" title="Question score (upvotes - downvotes)">
+                            <div class="answer-votes answered-accepted default">15</div>
+                        </a>
+                        <a href="https://askubuntu.com/questions/107969/what-is-the-difference-between-source-x-x-and-x-in-bash?rq=1" class="question-hyperlink">What is the difference between "source x", ". x" and "./x" in Bash?</a>
+                    </div>
+                    <div class="spacer" data-question-id="201662">
+                        <a href="https://askubuntu.com/questions/201662/difference-between-sh-file-sh-and-file-sh?rq=1" title="Question score (upvotes - downvotes)">
+                            <div class="answer-votes default">2</div>
+                        </a>
+                        <a href="https://askubuntu.com/questions/201662/difference-between-sh-file-sh-and-file-sh?rq=1" class="question-hyperlink">Difference between sh file.sh and file.sh</a>
+                    </div>
+                    <div class="spacer" data-question-id="308045">
+                        <a href="https://askubuntu.com/questions/308045/differences-between-bin-sbin-usr-bin-usr-sbin-usr-local-bin-usr-local?rq=1" title="Question score (upvotes - downvotes)">
+                            <div class="answer-votes answered-accepted large">510</div>
+                        </a>
+                        <a href="https://askubuntu.com/questions/308045/differences-between-bin-sbin-usr-bin-usr-sbin-usr-local-bin-usr-local?rq=1" class="question-hyperlink">Differences between /bin, /sbin, /usr/bin, /usr/sbin, /usr/local/bin, /usr/local/sbin</a>
+                    </div>
+                    <div class="spacer" data-question-id="828249">
+                        <a href="https://askubuntu.com/questions/828249/whats-the-difference-between-etc-cron-hourly-and-crontab-e?rq=1" title="Question score (upvotes - downvotes)">
+                            <div class="answer-votes answered-accepted default">1</div>
+                        </a>
+                        <a href="https://askubuntu.com/questions/828249/whats-the-difference-between-etc-cron-hourly-and-crontab-e?rq=1" class="question-hyperlink">What's the difference between /etc/cron.hourly and crontab -e?</a>
+                    </div>
+                    <div class="spacer" data-question-id="920062">
+                        <a href="https://askubuntu.com/questions/920062/bash-script-and-created-processes?rq=1" title="Question score (upvotes - downvotes)">
+                            <div class="answer-votes answered-accepted default">1</div>
+                        </a>
+                        <a href="https://askubuntu.com/questions/920062/bash-script-and-created-processes?rq=1" class="question-hyperlink">Bash script and created processes</a>
+                    </div>
+                    <div class="spacer" data-question-id="959691">
+                        <a href="https://askubuntu.com/questions/959691/sh-script-difference-between-kubuntu-14-04-and-16-04?rq=1" title="Question score (upvotes - downvotes)">
+                            <div class="answer-votes default">0</div>
+                        </a>
+                        <a href="https://askubuntu.com/questions/959691/sh-script-difference-between-kubuntu-14-04-and-16-04?rq=1" class="question-hyperlink">sh script difference between kubuntu 14.04 and 16.04</a>
+                    </div>
+                    <div class="spacer" data-question-id="1096236">
+                        <a href="https://askubuntu.com/questions/1096236/revisiting-bash-vs-source-difference?rq=1" title="Question score (upvotes - downvotes)">
+                            <div class="answer-votes answered-accepted default">2</div>
+                        </a>
+                        <a href="https://askubuntu.com/questions/1096236/revisiting-bash-vs-source-difference?rq=1" class="question-hyperlink">Revisiting Bash vs Source difference</a>
+                    </div>
+                    <div class="spacer" data-question-id="1234110">
+                        <a href="https://askubuntu.com/questions/1234110/what-is-the-difference-in-between-adding-read-or-read-rn1-to-the-end-of-a-b?rq=1" title="Question score (upvotes - downvotes)">
+                            <div class="answer-votes default">0</div>
+                        </a>
+                        <a href="https://askubuntu.com/questions/1234110/what-is-the-difference-in-between-adding-read-or-read-rn1-to-the-end-of-a-b?rq=1" class="question-hyperlink">What is the difference in between adding "read" or "read -rn1" to the end of a bash script?</a>
+                    </div>
+                    <div class="spacer" data-question-id="1465512">
+                        <a href="https://askubuntu.com/questions/1465512/the-difference-between-and?rq=1" title="Question score (upvotes - downvotes)">
+                            <div class="answer-votes default">0</div>
+                        </a>
+                        <a href="https://askubuntu.com/questions/1465512/the-difference-between-and?rq=1" class="question-hyperlink">The difference between ' and "</a>
+                    </div>
+            </div>
+        </div>
+        
+
+<div id="hot-network-questions" class="module tex2jax_ignore">
+    <h4>
+        <a href="https://stackexchange.com/questions?tab=hot" class="js-gps-track s-link s-link__inherit" data-gps-track="posts_hot_network.click({ item_type:1, location:11 })">
+            Hot Network Questions
+        </a>
+    </h4>
+    <ul>
+            <li>
+                <div class="favicon favicon-superuser" title="Super User"></div><a href="https://superuser.com/questions/1940686/how-to-merge-three-event-log-directories-entries-into-one-single-textfile" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:3 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    How to merge three event log "directories"' entries into one single textfile?
+                </a>
+
+            </li>
+            <li>
+                <div class="favicon favicon-physics" title="Physics Stack Exchange"></div><a href="https://physics.stackexchange.com/questions/876532/how-does-artificial-light-cancel-or-dominate-the-light-coming-from-stars" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:151 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    How does artificial light cancel or dominate the light coming from stars?
+                </a>
+
+            </li>
+            <li>
+                <div class="favicon favicon-codereview" title="Code Review Stack Exchange"></div><a href="https://codereview.stackexchange.com/questions/303296/polygontools-java-a-couple-of-methods-to-deal-with-2d-polygons" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:196 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    PolygonTools.java - a couple of methods to deal with 2D polygons
+                </a>
+
+            </li>
+            <li>
+                <div class="favicon favicon-photo" title="Photography Stack Exchange"></div><a href="https://photo.stackexchange.com/questions/138650/when-editing-how-to-balance-underexposure-with-single-channel-clipping" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:61 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    When editing, how to balance underexposure with single-channel clipping?
+                </a>
+
+            </li>
+            <li>
+                <div class="favicon favicon-askubuntu" title="Ask Ubuntu"></div><a href="https://askubuntu.com/questions/1569950/playonlinux-on-ubuntu-26-04" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:89 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    Playonlinux on Ubuntu 26.04
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-music" title="Music: Practice &amp; Theory Stack Exchange"></div><a href="https://music.stackexchange.com/questions/144333/are-cigar-box-guitars-with-the-neck-and-body-not-flush-a-common-or-viable-design" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:240 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    Are cigar box guitars with the neck and body not flush a common or viable design?
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-cs" title="Computer Science Stack Exchange"></div><a href="https://cs.stackexchange.com/questions/176643/what-is-the-approach-to-identify-the-correctness-of-mathematical-induction-based" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:419 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    What is the approach to identify the correctness of mathematical induction based proofs?
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-tex" title="TeX - LaTeX Stack Exchange"></div><a href="https://tex.stackexchange.com/questions/766825/how-do-we-find-an-alternative-to-align-similar-to-beginalignedt-that-allo" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:85 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    How do we find an alternative to align, similar to \begin{aligned}[t], that allows \allowdisplaybreaks in amsart?
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-academia" title="Academia Stack Exchange"></div><a href="https://academia.stackexchange.com/questions/227765/what-knowledge-and-skills-does-a-first-year-college-student-seeking-bachelor-of" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:415 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    What knowledge and skills does a first-year college student seeking bachelor of medicine/engineering need to start researching and developing essays?
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-puzzling" title="Puzzling Stack Exchange"></div><a href="https://puzzling.stackexchange.com/questions/139846/the-corporate-retreat-icebreaker-round-2" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:559 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    The corporate retreat - icebreaker round 2
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-gis" title="Geographic Information Systems Stack Exchange"></div><a href="https://gis.stackexchange.com/questions/501510/making-two-dimensional-wkt-with-2-decimal-places-in-qgis-field-calculator" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:79 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    Making two dimensional WKT with 2 decimal places in QGIS Field Calculator
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-stackoverflow" title="Stack Overflow"></div><a href="https://stackoverflow.com/questions/80007262/is-deleting-both-non-const-and-const-copy-constructor-or-copy-assignment-operat" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:1 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    Is deleting both non-const and const copy constructor, or copy assignment operator, redundant?
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-electronics" title="Electrical Engineering Stack Exchange"></div><a href="https://electronics.stackexchange.com/questions/772320/whats-wrong-with-this-phase-shift-oscillator" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:135 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    What's wrong with this phase shift oscillator?
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-worldbuilding" title="Worldbuilding Stack Exchange"></div><a href="https://worldbuilding.stackexchange.com/questions/274675/could-the-city-of-golds-gold-export-restrictions-justify-high-gold-world-prices" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:579 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    Could the City of Gold's gold export restrictions justify high gold world prices?
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-tex" title="TeX - LaTeX Stack Exchange"></div><a href="https://tex.stackexchange.com/questions/766857/chemfig-distorted-ring" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:85 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    chemfig: distorted ring
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-codegolf" title="Code Golf Stack Exchange"></div><a href="https://codegolf.stackexchange.com/questions/295154/chord-expressed-properly" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:200 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    Chord expressed properly
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-gaming" title="Arqade"></div><a href="https://gaming.stackexchange.com/questions/419631/what-does-the-symbol-with-a-sand-clock-and-a-cog-mean" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:41 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    What does the symbol with a sand clock and a cog mean?
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-askubuntu" title="Ask Ubuntu"></div><a href="https://askubuntu.com/questions/1569966/irfanview-not-opening-on-24-04-5-lts" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:89 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    Irfanview not opening on 24.04.5 LTS
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-christianity" title="Christianity Stack Exchange"></div><a href="https://christianity.stackexchange.com/questions/114760/what-does-the-catholic-church-believe-about-the-greek-septuagint" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:304 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    What does the Catholic Church believe about the Greek Septuagint?
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-hsm" title="History of Science and Mathematics Stack Exchange"></div><a href="https://hsm.stackexchange.com/questions/19689/source-for-a-quote-about-proving-simple-obvious-things" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:587 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    Source for a quote about proving simple/obvious things
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-rpg" title="Role-playing Games Stack Exchange"></div><a href="https://rpg.stackexchange.com/questions/220022/how-to-handle-a-player-who-always-tries-to-barter-scheme-coerce-every-npc" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:122 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    How to handle a Player who always tries to barter/scheme/coerce every NPC?
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-mathematica" title="Mathematica Stack Exchange"></div><a href="https://mathematica.stackexchange.com/questions/320052/custom-image-as-vectorplot-marker" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:387 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    Custom image as VectorPlot Marker
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-math" title="Mathematics Stack Exchange"></div><a href="https://math.stackexchange.com/questions/5150596/how-to-construct-an-equilateral-triangle-about-an-archimedean-triskelion" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:69 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    How to construct an equilateral triangle about an Archimedean triskelion?
+                </a>
+
+            </li>
+            <li class="js-hidden" style="">
+                <div class="favicon favicon-politics" title="Politics Stack Exchange"></div><a href="https://politics.stackexchange.com/questions/95028/why-did-kuwait-start-recruiting-palestinian-teachers-despite-1990-1991-grievance" class="js-gps-track question-hyperlink mb0" data-gps-track="site.switch({ item_type:11, target_site:475 }); posts_hot_network.click({ item_type:2, location:11 })">
+                    Why did Kuwait start recruiting Palestinian teachers despite 1990/1991 grievance?
+                </a>
+
+            </li>
+    </ul>
+
+        
+</div><div class="js-zone-container zone-container-sidebar">
+    <div id="dfp-bsb" class="everyonelovesstackoverflow my8"></div>
+		<div class="js-report-ad-button-container  ad-report-width-sidebar"></div>
+</div>
+                    <div id="feed-link" class="js-feed-link">
+        <a href="/feeds/question/141928" title="Feed of this question and its answers">
+            <svg aria-hidden="true" class="fc-orange-400 svg-icon iconRss" width="18" height="18" viewBox="0 0 18 18"><path d="M3 1a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2zm0 1.5c6.9 0 12.5 5.6 12.5 12.5H13C13 9.55 8.45 5 3 5zm0 5c4.09 0 7.5 3.41 7.5 7.5H8c0-2.72-2.28-5-5-5zm0 5c1.36 0 2.5 1.14 2.5 2.5H3z"></path></svg>
+            Question feed
+        </a>
+    </div>
+    <aside class="s-modal js-feed-link-modal" tabindex="-1" role="dialog" aria-labelledby="feed-modal-title" aria-describedby="feed-modal-description" aria-hidden="true">
+        <div class="s-modal--dialog js-modal-dialog wmx4" role="document" data-controller="se-draggable">
+            <h1 class="s-modal--header fw-bold js-first-tabbable c-move" id="feed-modal-title" data-se-draggable-target="handle" tabindex="0">
+                Subscribe to RSS
+            </h1>
+            <div class="d-flex gs4 gsy fd-column">
+                <div class="flex--item">
+                    <label class="d-block s-label c-default" for="feed-url">
+                        Question feed
+                        <p class="s-description mt2" id="feed-modal-description">To subscribe to this RSS feed, copy and paste this URL into your RSS reader.</p>
+                    </label>
+                </div>
+                <div class="d-flex ps-relative">
+                    <input class="s-input" type="text" name="feed-url" id="feed-url" readonly="readonly" value="https://askubuntu.com/feeds/question/141928">
+                    <svg aria-hidden="true" class="s-input-icon fc-orange-400 svg-icon iconRss" width="18" height="18" viewBox="0 0 18 18"><path d="M3 1a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2zm0 1.5c6.9 0 12.5 5.6 12.5 12.5H13C13 9.55 8.45 5 3 5zm0 5c4.09 0 7.5 3.41 7.5 7.5H8c0-2.72-2.28-5-5-5zm0 5c1.36 0 2.5 1.14 2.5 2.5H3z"></path></svg>
+                </div>
+            </div>
+            <a class="s-modal--close s-btn s-btn__muted js-modal-close js-last-tabbable" href="#" aria-label="Close">
+                <svg aria-hidden="true" class="svg-icon iconClearSm" width="14" height="14" viewBox="0 0 14 14"><path d="M12 3.41 10.59 2 7 5.59 3.41 2 2 3.41 5.59 7 2 10.59 3.41 12 7 8.41 10.59 12 12 10.59 8.41 7z"></path></svg>
+            </a>
+        </div>
+    </aside>
+
+</div>
+
+    </div>
+
+
+<noscript><div><img src="/posts/141928/ivc/6d3f?prg=07965ffe-1c2a-43cc-8fba-abbafb218e5f" class="dno" alt="" width="0" height="0"></div></noscript><div class="d-none" id="js-codeblock-lang">lang-bash</div>
+    <div id="js-follow-ups-flag-modal"><aside role="dialog" class="s-modal" aria-hidden="true" aria-labelledby="follow-ups-flag-modal-title" aria-describedby="follow-ups-flag-modal-description"><div role="document" class="s-modal--dialog ps-relative ws5"><h1 class="s-modal--header" id="follow-ups-flag-modal-title"><!---->Why are you flagging this comment?<!----></h1> <div class="s-modal--body" id="follow-ups-flag-modal-description"><fieldset class="s-check-group mt8"><!----> <div class="s-check-control"><input class="s-radio" type="radio" name="flag-reason" id="CommentRudeOrOffensive" value="20"> <label class="s-label" for="CommentRudeOrOffensive">It contains harassment, bigotry or abuse. <p class="s-description">This comment attacks a person or group. Learn more in our <a href="/conduct/abusive-behavior">Abusive behavior policy</a>.<!----></p><!----></label> <!----><!----></div> <div class="s-check-control"><input class="s-radio" type="radio" name="flag-reason" id="CommentUnwelcoming" value="40"> <label class="s-label" for="CommentUnwelcoming">It's unfriendly or unkind. <p class="s-description">This comment is rude or condescending. Learn more in our <a href="/conduct/abusive-behavior">Code of Conduct</a>.<!----></p></label> <!----><!----></div><!----><!----> <div class="s-check-control"><input class="s-radio" type="radio" name="flag-reason" id="CommentNoLongerNeeded" value="39"> <div class="d-flex fd-column g12 fl-grow1"><label class="s-label" for="CommentNoLongerNeeded">Not needed. <p class="s-description">This comment is not relevant to the post.</p></label> <div class="d-flex fd-column g8 d-none"><div class="d-flex ai-center ps-relative w100"><textarea class="s-textarea ws-pre-wrap break-word hmx3 lh-lg ps-absolute i0 h100 svelte-ttdarg" rows="1" id="no-longer-needed-text-input" placeholder="e.g., “This comment has nothing to do with the post.” (optional)"></textarea> <pre aria-hidden="true" class="s-textarea ws-pre-wrap break-word hmx3 lh-lg v-hidden overflow-hidden svelte-ttdarg"><br></pre></div><!----> <span class="fs-caption fc-black-400">Enter at least 6 characters</span><!----></div> <!----><!----></div></div> <div class="s-check-control"><input class="s-radio" type="radio" name="flag-reason" id="CommentOther" value="19"> <div class="d-flex fd-column g12 fl-grow1"><label class="s-label" for="CommentOther">Something else. <p class="s-description">A problem not listed above. Try to be as specific as possible.</p></label> <div class="d-flex fd-column g8 d-none"><div class="d-flex ai-center ps-relative w100"><textarea class="s-textarea ws-pre-wrap break-word hmx3 lh-lg ps-absolute i0 h100 svelte-ttdarg" rows="1" id="other-text-input" placeholder="e.g., “This comment says my question is spam, even though it’s not.”"></textarea> <pre aria-hidden="true" class="s-textarea ws-pre-wrap break-word hmx3 lh-lg v-hidden overflow-hidden svelte-ttdarg"><br></pre></div><!----> <span class="fs-caption fc-black-400">Enter at least 6 characters</span><!----></div> <!----><!----></div></div></fieldset><!----></div> <div class="d-flex g8 s-modal--footer"><div class="d-flex jc-space-between g8 ai-center w100"><div><!----><button class="s-btn flex--item s-btn__filled" data-testid="confirm-button"><!----><!---->Flag comment</button><!----> <!----><button class="s-btn flex--item"><!----><!---->Cancel</button><!----></div> <span class="fc-black-400">You have 0 flags left today</span><!----></div><!----></div><!----> <!----><button class="s-btn s-modal--close s-btn__muted s-btn__icon" aria-label="Close"><!----><!----><!----><svg aria-hidden="true" class="modal-close svg-icon iconClear" width="18" height="18" viewBox="0 0 18 18"><path d="M15 4.41 13.59 3 9 7.59 4.41 3 3 4.41 7.59 9 3 13.59 4.41 15 9 10.41 13.59 15 15 13.59 10.41 9z"></path></svg></button><!----></div></aside></div>
+    <div id="js-follow-ups-mention"></div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div id="js-follow-ups-experiment-group" data-value="test" class="d-none" data-site-url=""></div>
+
+
+
+<div id="redirect-action-modal-container"><div class="redirect-modal-wrapper"><div class="redirect-modal-wrapper svelte-3dcwtb"><aside role="dialog" class="s-modal" aria-hidden="true" aria-labelledby="upvote-redirect-action-modal-title" aria-describedby="upvote-redirect-action-modal-description"><div role="document" class="s-modal--dialog wmx4 p0"><h1 class="s-modal--header" id="upvote-redirect-action-modal-title"><div class="mrn24"><img class="w100" alt="Illustration of upvote icon after it is clicked" src="https://askubuntu.com/Content/Img/modal/img-upvote.png?v=fce73bd9724d"></div><!----></h1> <div class="s-modal--body" id="upvote-redirect-action-modal-description"><div class="mx32 mt24"><h1 class="fs-title fw-bold mb16 fc-black-600">Hang on, you can't upvote just yet.<!----></h1> <p class="fs-body2">You'll need to complete a few actions and gain 15 reputation points
+        before being able to upvote. <strong>Upvoting</strong> indicates when questions and answers are useful. <a class="s-link s-link__underlined s-link__muted" href="https://stackoverflow.com/help/whats-reputation">What's reputation and how do I get it?</a></p> <p class="fs-body2">Instead, you can save this post to reference later.</p><!----></div><!----></div> <div class="d-flex g8 s-modal--footer"><div class="w100 mx32 d-flex fd-column ai-center"><!----><button class="s-btn w100 mb4 s-btn__filled s-btn__icon"><!----><!----><!----><!----><!----><svg aria-hidden="true" class="svg-icon iconBookmarkAlt" width="18" height="18" viewBox="0 0 18 18"><path d="m9 10.6 4 2.66V3H5v10.26zM3 17V3c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v14l-6-4z"></path></svg><!----> Save this post for later</button><!----> <!----><button class="s-btn w100 mb32"><!----><!----><!---->Not now</button><!----></div><!----></div><!----> <!----><button class="s-btn s-modal--close s-btn__muted s-btn__icon" aria-label="Close"><!----><!----><!----><svg aria-hidden="true" class="modal-close svg-icon iconClear" width="18" height="18" viewBox="0 0 18 18"><path d="M15 4.41 13.59 3 9 7.59 4.41 3 3 4.41 7.59 9 3 13.59 4.41 15 9 10.41 13.59 15 15 13.59 10.41 9z"></path></svg></button><!----></div></aside><!----></div><!----></div><!----></div>
+
+
+
+        </div>
+    </div>
+
+    
+
+        
+    <footer id="footer" class="site-footer js-footer" role="contentinfo">
+        <div class="site-footer--container">
+            <nav class="site-footer--nav" aria-label="Footer">
+                        <div class="site-footer--col">
+                            <h5 class="-title"><a href="https://stackoverflow.co/">Business</a></h5>
+                            <ul class="-list">
+                                <li><a href="https://stackoverflow.co/internal/?utm_medium=referral&amp;utm_source=stackoverflow-community&amp;utm_content=footer" class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 29 })">Stack Internal</a></li>
+                            </ul>
+                        </div>
+                    <div class="site-footer--col">
+                        <h5 class="-title"><a href="/">Ask Ubuntu</a></h5>
+                        <ul class="-list js-primary-footer-links">
+                                    <li><a class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 2 })" href="/tour">Tour</a></li>
+                                <li><a href="/help" class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 3 })">Help</a></li>
+                                    <li><a class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 5 })" href="https://chat.stackexchange.com?tab=site&amp;host=askubuntu.com">Chat</a></li>
+                            <li><a class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 13 })" href="/contact">Contact</a></li>
+                                <li><a class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 14 })" href="https://meta.askubuntu.com">Feedback</a></li>
+                        </ul>
+                    </div>
+                <div class="site-footer--col">
+                    <h5 class="-title"><a class="js-gps-track" data-gps-track="footer.click({ location: 2, link: 1 })" href="https://stackoverflow.co/">Company</a></h5>
+                    <ul class="-list">
+                            <li><a href="https://stackoverflow.com" class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 15})">Stack Overflow</a></li>
+                            <li><a href="https://stackoverflow.co/data-licensing/" class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 44 })">Stack Data Licensing</a></li>
+                            <li><a href="https://stackoverflow.co/advertising/" class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 21 })">Stack Ads</a></li>  
+                                <li><a class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 1 })" href="https://stackoverflow.co/">About</a></li>
+                        <li><a class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 27 })" href="https://stackoverflow.co/company/press/">Press</a></li>
+                        <li><a class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 7 })" href="https://stackoverflow.com/legal">Legal</a></li>
+                        <li><a class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 8 })" href="https://stackoverflow.com/legal/privacy-policy">Privacy Policy</a></li>
+                        <li><a class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 37 })" href="https://stackoverflow.com/legal/terms-of-service/public">Terms of Service</a></li>
+        <li id="consent-footer-link"><button type="button" data-controller="cookie-settings" data-action="click-&gt;cookie-settings#toggle" class="s-btn s-btn__link py4 js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 38 })" data-consent-popup-loader="footer">
+Cookie Settings        </button></li>
+                        <li><a class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link: 39 })" href="https://policies.stackoverflow.co/stack-overflow/cookie-policy">Cookie Policy</a></li>
+                    </ul>
+                </div>
+                <div class="site-footer--col site-footer--categories-nav">
+                    <div>
+                        <h5 class="-title"><a href="https://stackexchange.com" data-gps-track="footer.click({ location: 2, link: 30 })">Stack Overflow’s open communities</a></h5>
+                        <ul class="-list">
+                            <li>
+                                <a href="https://stackexchange.com/sites#technology" class="-link js-gps-track" data-gps-track="footer.click({ location: 2, link: 24 })">
+                                    Technology
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://stackexchange.com/sites#culturerecreation" class="-link js-gps-track" data-gps-track="footer.click({ location: 2, link: 24 })">
+                                    Culture &amp; recreation
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://stackexchange.com/sites#lifearts" class="-link js-gps-track" data-gps-track="footer.click({ location: 2, link: 24 })">
+                                    Life &amp; arts
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://stackexchange.com/sites#science" class="-link js-gps-track" data-gps-track="footer.click({ location: 2, link: 24 })">
+                                    Science
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://stackexchange.com/sites#professional" class="-link js-gps-track" data-gps-track="footer.click({ location: 2, link: 24 })">
+                                    Professional
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://stackexchange.com/sites#business" class="-link js-gps-track" data-gps-track="footer.click({ location: 2, link: 24 })">
+                                    Business
+                                </a>
+                            </li>
+
+                            <li class="mt16 md:mt0">
+                                <a href="https://api.stackexchange.com/" class="-link js-gps-track" data-gps-track="footer.click({ location: 2, link: 24 })">
+                                    API
+                                </a>
+                            </li>
+
+                            <li>
+                                <a href="https://data.stackexchange.com/" class="-link js-gps-track" data-gps-track="footer.click({ location: 2, link: 24 })">
+                                    Data
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </nav>
+            <div class="site-footer--copyright fs-fine md:mt24">
+                <ul class="-list -social md:mb8">
+                    <li><a class="js-gps-track -link" data-gps-track="footer.click({ location: 2, link:4 })" href="https://stackoverflow.blog?blb=1">Blog</a></li>
+                    <li><a href="https://www.facebook.com/officialstackoverflow/" class="-link js-gps-track" data-gps-track="footer.click({ location: 2, link: 31 })">Facebook</a></li>
+                    <li><a href="https://twitter.com/stackoverflow" class="-link js-gps-track" data-gps-track="footer.click({ location: 2, link: 32 })">Twitter</a></li>
+                    <li><a href="https://linkedin.com/company/stack-overflow" class="-link js-gps-track" data-gps-track="footer.click({ location: 2, link: 33 })">LinkedIn</a></li>
+                    <li><a href="https://www.instagram.com/thestackoverflow" class="-link js-gps-track" data-gps-track="footer.click({ location: 2, link: 36 })">Instagram</a></li>
+                </ul>
+
+                <p class="md:mb0">
+                    <span>Site design / logo © 2026 Stack Exchange Inc; </span>
+                    <span>user contributions licensed under </span>
+                    <a class="-link s-link td-underline" href="https://stackoverflow.com/help/licensing">CC BY-SA</a>
+                    <span>. </span>
+                    <span id="svnrev">rev&nbsp;2026.9.30.46091</span>
+                </p>
+            </div>
+        </div>
+
+            <div class="site-footer--extra ai-center">
+                Ubuntu and the circle of friends logo are trade marks of Canonical Limited and are used under licence.
+            </div>
+    </footer>
+
+
+    
+
+
+
+    
+            <!-- Google tag (gtag.js) -->
+            
+            
+        
+
+    
+    
+
+
+
+
+
+
+
+    
+    
+    
+<iframe style="display: none;" name="__tcfapiLocator" title="CMP Locator"></iframe><iframe marginwidth="0" marginheight="0" scrolling="no" frameborder="0" id="1647b8c7bfa5268" width="0" height="0" src="about:blank" name="__pb_locator__" style="display: none; height: 0px; width: 0px; border: 0px;"></iframe><div id="onetrust-consent-sdk" data-nosnippet="true"><div class="onetrust-pc-dark-filter ot-hide ot-fade-in"></div><div id="onetrust-banner-sdk" class="otFloatingRoundedCorner ot-iab-2 ot-bottom-left vertical-align-content" tabindex="0"><div class="ot-sdk-container" role="dialog" aria-label="We care about your privacy"><div class="ot-sdk-row"><div id="onetrust-group-container" class="ot-sdk-twelve ot-sdk-columns"><div id="onetrust-policy"><div class="banner-header"><div class="banner_logo"></div></div><h2 id="onetrust-policy-title">We care about your privacy</h2><div id="onetrust-policy-text">We and our <span class="ot-tcf2-vendor-count ot-text-bold">266</span> partner(s) store and access personal data, like browsing data or unique identifiers, on your device. Selecting Accept all enables tracking technologies to support the purposes shown under we and our partners process data to provide. Selecting Necessary cookies only or withdrawing your consent will disable them. If trackers are disabled, some content and ads you see may not be as relevant to you. You can resurface this menu to change your choices or withdraw consent at any time by clicking the Customize settings link on the bottom of the webpage. Your choices will have effect within our Website. For more details, refer to our Privacy Policy.<a class="ot-cookie-policy-link" href="https://policies.stackoverflow.co/stack-overflow/cookie-policy/" aria-label="More information about your privacy, opens in a new tab" rel="noopener noreferrer" target="_blank">Cookie policy</a></div><div class="ot-dpd-container"><h3 class="ot-dpd-title">We and our partners perform the following based on your settings:</h3><div class="ot-dpd-content"><p class="ot-dpd-desc">Use precise geolocation data. Actively scan device characteristics for identification. Understand audiences through statistics or combinations of data from different sources. Store and/or access information on a device. Develop and improve services. Create profiles to personalise content. Use limited data to select advertising. Measure content performance. Measure advertising performance. Use limited data to select content. Create profiles for personalised advertising. Use profiles to select personalised advertising. Use profiles to select personalised content. <a href="#" class="ot-link-btn onetrust-vendors-list-handler">
+        List of partners (vendors)
+        </a></p></div></div></div><div id="banner-options"><div class="banner-option"><button class="banner-option-input" aria-expanded="false"><span class="banner-option-header"><h4>Declaration</h4><span class="ot-arrow-container"></span></span></button><div class="banner-option-details" id="option-details-1"><ul>
+  <li>Use precise geolocation data</li>
+  <li>Actively scan device characteristics for identification</li>
+  <li>Understand audiences through statistics or combinations of data from different sources</li>
+  <li>Store and/or access information on a device</li>
+  <li>Create profiles to personalise content</li>
+  <li>Develop and improve services</li>
+  <li>Use limited data to select advertising</li>
+  <li>Measure content performance</li>
+  <li>Use limited data to select content</li>
+  <li>Measure advertising performance</li>
+  <li>Create profiles for personalised advertising</li>
+  <li>Use profiles to select personalised advertising</li>
+  <li>Use profiles to select personalised content</li>
+  <li>Personalised advertising and content, advertising and content measurement, and audience research</li>
+</ul></div></div></div></div><div id="onetrust-button-group-parent" class="ot-sdk-twelve ot-sdk-columns has-reject-all-button"><div id="onetrust-button-group"><div class="banner-actions-container"><button id="onetrust-accept-btn-handler">Accept all</button> <button id="onetrust-reject-all-handler">Necessary cookies only</button></div><button id="onetrust-pc-btn-handler" aria-label="Customize settings, Opens the preference center dialog">Customize settings</button></div></div><!-- Close Button --><div id="onetrust-close-btn-container"></div><!-- Close Button END--></div></div></div></div><div id="pb-anchor--wrapper" class="aditude-div-wrapper tude-anchor-wrapper-outer" style="bottom: 0px; left: 0px; position: fixed; text-align: center; width: 100%; z-index: 9999;"><div id="pb-anchor--wrapper-inner" class="tude-anchor-wrapper-inner"><div id="pb-anchor" class="tude-anchor-slot"></div><div class="tude-anchor-close-button" aria-label="Close" tabindex="0"></div></div></div><img width="0" height="0" src="//ams-pageview-public.s3.amazonaws.com/1x1-pixel.png?id=b1ffe3826ebc" alt="." style="height: 0px; width: 0px; border: 0px; display: none;"></body></html>
