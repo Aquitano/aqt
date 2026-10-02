@@ -6,11 +6,12 @@ Both scripts reach the box through `AQT_VPS_HOST`, `root@ubuntu` over Tailscale,
 
 ```sh
 mise run gallery:deploy                 # ops/deploy.sh gallery/apps/server at /srv/docker/aqt-gallery
+mise run tracker:deploy                 # ops/deploy.sh tracker at /opt/aqt-tracker
 ```
 
 The box runs Tailscale SSH in check mode, so every so often a hop is held until a login URL is visited. Both scripts start with `vps.sh`, which makes that first hop on its own, watches for the URL and prints and opens it the moment it appears, then waits for the check to pass (`AQT_VPS_AUTH_WAIT` seconds, default 300). Without that step the URL arrives as an ssh banner, which a piped shell or an agent shows only once the command ends, so a deploy looked like a hang. `mise run vps:auth` runs just that step; do it first from a shell of your own when a deploy is driven by an agent whose command timeout is shorter than the time it takes you to click.
 
-`deploy.sh` pulls the checkout on the VPS, requires `apps/<app>/.env` to exist there, and runs `docker compose up -d --build --wait` in the app's directory with `GIT_SHA` set to the short commit it just pulled, so an image that reads the build arg can report which code is live (the gallery server does, on `GET /`). Compose files live next to each app's Dockerfile, not here; for the gallery that is the server sub-app, whose `.env` is the one `secrets.sh send gallery` writes. Bank's data volume is LUKS and unlocked by hand, so it never auto-restarts.
+`deploy.sh` pulls the checkout on the VPS, requires `apps/<app>/.env` to exist there, and runs `docker compose up -d --build --wait` in the app's directory with `GIT_SHA` set to the short commit it just pulled, so an image that reads the build arg can report which code is live (the gallery server does, on `GET /`; the tracker logs it as `serve` starts). Compose files live next to each app's Dockerfile, not here; for the gallery that is the server sub-app, whose `.env` is the one `secrets.sh send gallery` writes. Bank's and the tracker's data volume is LUKS and unlocked by hand, so neither auto-restarts.
 
 ## secrets
 
