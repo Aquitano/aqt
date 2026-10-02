@@ -11,9 +11,13 @@ final class Outbox {
     private static let healthInterval = Duration.seconds(30)
 
     private(set) var dropped = 0
-    var lastError: String? { storageError ?? deliveryError }
+    var lastError: String? {
+        storageError ?? deliveryError ?? restoreError
+    }
+
     private var storageError: String?
     private var deliveryError: String?
+    private var restoreError: String?
     private(set) var serverReachable = false
 
     var pending: Int {
@@ -36,13 +40,19 @@ final class Outbox {
         client = IngestClient(configuration: configuration, tokens: tokens)
         self.deviceID = deviceID
         file = OutboxFile(url: OutboxFile.defaultURL(deviceID: deviceID))
-        switch file.load() {
-        case let .success(events):
+        switch file.restore() {
+        case let .success(.events(events)):
             queue = events
+        case let .success(.unreadable(error, movedTo: aside)):
+            let path = (aside.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
+            restoreError = "Unreadable outbox moved to \(path)"
+            Log.outbox.error(
+                "unreadable outbox moved to \(path, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
         case let .failure(error):
             canPersist = false
-            storageError = "Could not restore outbox: \(error.localizedDescription)"
-            Log.outbox.error("could not restore outbox: \(error.localizedDescription, privacy: .public)")
+            storageError = "Could not move unreadable outbox aside: \(error.localizedDescription)"
+            Log.outbox.error("could not move unreadable outbox aside: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -121,7 +131,7 @@ final class Outbox {
     }
 
     private func persist() {
-        // Preserve an unreadable queue for recovery instead of overwriting it.
+        // An unreadable queue that could not be moved aside stays for recovery, not overwritten.
         guard canPersist else { return }
         switch file.save(queue) {
         case .success:
