@@ -100,7 +100,7 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 		MediaCount:     len(findAll(focal, quote, isMedia)),
 		Lang:           attr(body, "lang"),
 		Ancestors:      conversation(articles[:i], statusID),
-		Replies:        conversation(articles[i+1:], statusID),
+		Replies:        conversation(repliesBelow(doc, focal), statusID),
 	}
 	// div[data-testid="reply-context"] names the handles answered but carries
 	// no id, so the parent is the nearest post rendered above.
@@ -190,6 +190,26 @@ func readPost(a *html.Node) Post {
 		Text:         text(find(a, quote, isTweetText), nil),
 		PostedAt:     postedAt(a, quote),
 	}
+}
+
+// repliesBelow is every post after the focal one up to the next section
+// heading: below the replies, X adds a "Discover more" section of posts from
+// strangers, which would otherwise be indexed as this thread's.
+func repliesBelow(doc, focal *html.Node) []*html.Node {
+	var replies []*html.Node
+	below := false
+	for _, n := range findAll(doc, nil, func(n *html.Node) bool { return testID(n, "tweet") || isElem(n, "h2") }) {
+		switch {
+		case n == focal:
+			below = true
+		case !below:
+		case isElem(n, "h2"):
+			return replies
+		default:
+			replies = append(replies, n)
+		}
+	}
+	return replies
 }
 
 // conversation reads the posts X renders around the focal one: the thread it
