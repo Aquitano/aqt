@@ -72,7 +72,7 @@ Active time per key, each span clipped to the window. `--since` and `--until` ta
 
 - Recorded: every page opened in the Chromium browser with the extension, and its focused time (tab and window focused, not idle). Pages on sites with an extractor are snapshotted after 5 s of focus; any other page after 30 s, by the `article` fallback. With the desktop agent, the frontmost app and its window title.
 - Never recorded: incognito tabs. Hosts on the extension's private list keep the host and nothing else: no path, title or HTML, so their visits and time exist under the host alone. Apps on the agent's private list (password managers) keep the app name without window titles. Nothing beyond the window title is read from a desktop app; Safari and Firefox show up as apps with window titles only.
-- Absence is not proof: a page left before its dwell has a page view but no record (use `visits`), the extension's pause button stops the clock, and while the server was unreachable nothing was captured.
+- Absence is not proof: a page left before its dwell has a page view but no record (use `visits`), the extension's pause button stops the clock, and a server outage long enough to overflow the extension's outbox (200 captures) dropped the oldest captures.
 
 ## Forgetting
 

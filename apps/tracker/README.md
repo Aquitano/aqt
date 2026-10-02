@@ -30,7 +30,7 @@ mise run tracker:service:stop # stop it and remove the agent
 
 [deploy/com.aqt.tracker.plist](deploy/com.aqt.tracker.plist) is copied to `~/Library/LaunchAgents` and runs `~/.local/bin/tracker`; the tasks use `launchctl bootstrap`/`bootout`, which replace the deprecated `load`/`unload`. Put `TRACKER_*` overrides in its `EnvironmentVariables` and re-run `tracker:service`.
 
-Nothing here starts Postgres. Turn on Docker Desktop's _Start Docker Desktop when you sign in_, and the compose stack comes back with it (`restart: unless-stopped` on every service). Until it does, `serve` exits and launchd retries every 30 s; no data is lost meanwhile, the extension queues its events and pauses capture while the server is unreachable.
+Nothing here starts Postgres. Turn on Docker Desktop's _Start Docker Desktop when you sign in_, and the compose stack comes back with it (`restart: unless-stopped` on every service). Until it does, `serve` exits and launchd retries every 30 s; no data is lost meanwhile, the extension queues its events and captures while the server is unreachable.
 
 ## Backups
 
@@ -196,6 +196,8 @@ Every top-level navigation and SPA URL change as a page view, active time as spa
 
 With the desktop agent installed, the frontmost app, its bundle id and its window title are recorded as spans in the same table while the machine is not idle. Spans map to categories (`Focus/Code`, `Communication`, `Distraction`, `Learning`, `AI`, `Browsing`, `Personal`, `Design`, `System`, `Productivity`) through regex rules in the `category_rules` table, which you edit in SQL; the Grafana dashboard shows minutes per category and per app, context switches per hour and the day's work blocks (spans stitched together while the gap stays under 60 s), all computed from SQL views over the spans.
 
-Never recorded: anything from an incognito tab, and the title or HTML of a host on the private list — those page views keep the host and nothing else. Window titles are capped at 512 characters and nothing beyond the title is read from a desktop app. The desktop agent cannot tell a private browser window from any other, so a browser outside the extension's reach (Safari, Firefox) has its window titles recorded, private windows included, unless its bundle id is on `TRACKER_PRIVATE_BUNDLE_IDS`. Capture pauses entirely while the server is unreachable.
+Never recorded: anything from an incognito tab, and the title or HTML of a host on the private list — those page views keep the host and nothing else. Window titles are capped at 512 characters and nothing beyond the title is read from a desktop app. The desktop agent cannot tell a private browser window from any other, so a browser outside the extension's reach (Safari, Firefox) has its window titles recorded, private windows included, unless its bundle id is on `TRACKER_PRIVATE_BUNDLE_IDS`.
+
+The extension keeps recording while the server is unreachable: page views, spans and captures wait in its outbox and upload once the server answers again. The outbox holds the newest 10,000 events and 200 captures, dropping the oldest past that, so only an outage long enough to overflow it loses anything.
 
 Config via env, see [.env.example](.env.example).
