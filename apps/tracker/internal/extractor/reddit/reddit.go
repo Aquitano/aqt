@@ -48,14 +48,16 @@ func init() { extractor.Register(Extractor{}) }
 func (Extractor) Rule() extractor.Rule {
 	return extractor.Rule{
 		Extractor: Name,
-		Version:   1,
+		Version:   2,
 		Hosts:     []string{"www.reddit.com", "old.reddit.com"},
 		PathRegex: `^/r/[^/]+/comments/[a-z0-9]+(/|$)`,
 		Recapture: extractor.RecaptureAfterChange,
 	}
 }
 
-var threadPath = regexp.MustCompile(`^/r/([^/]+)/comments/([a-z0-9]+)(/|$)`)
+// threadPath also takes a comment permalink, /comments/<id>/comment/<cid>/
+// on www and /comments/<id>/<slug>/<cid>/ on old.reddit.com.
+var threadPath = regexp.MustCompile(`^/r/([^/]+)/comments/([a-z0-9]+)(?:/[^/]+/([a-z0-9]+))?(/|$)`)
 
 func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extractor.Record, error) {
 	m := threadPath.FindStringSubmatch(pageURL.Path)
@@ -74,12 +76,19 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 		data.Subreddit = m[1]
 	}
 
+	// A permalink page shows one comment's subtree. Keyed as the thread, it
+	// would replace the thread's record, since the newest capture wins.
+	canonical := "https://www.reddit.com/r/" + data.Subreddit + "/comments/" + data.ID + "/"
+	if m[3] != "" {
+		canonical += "comment/" + m[3] + "/"
+	}
+
 	search := []string{data.Title, data.URL, data.Author, data.Body}
 	for _, c := range data.Comments {
 		search = append(search, c.Author, c.Body)
 	}
 	return extractor.Record{
-		CanonicalURL: "https://www.reddit.com/r/" + data.Subreddit + "/comments/" + data.ID + "/",
+		CanonicalURL: canonical,
 		Title:        data.Title,
 		SearchText:   strings.TrimSpace(strings.Join(search, "\n")),
 		Data:         data,

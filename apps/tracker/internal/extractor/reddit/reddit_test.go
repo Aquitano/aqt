@@ -122,6 +122,22 @@ func TestExtractCommentsWithTheirDepth(t *testing.T) {
 	}
 }
 
+func TestExtractCommentPermalinkIsItsOwnRecord(t *testing.T) {
+	cases := []struct{ fixture, pageURL, canonical string }{
+		{"www-thread.html", "https://www.reddit.com/r/golang/comments/1wplslx/comment/pbwhwd2/", "https://www.reddit.com/r/golang/comments/1wplslx/comment/pbwhwd2/"},
+		{"old-thread.html", oldThreadURL + "j497eie/", "https://www.reddit.com/r/golang/comments/10b9tto/comment/j497eie/"},
+	}
+	for _, c := range cases {
+		rec, err := extract(t, c.fixture, c.pageURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rec.CanonicalURL != c.canonical {
+			t.Errorf("%s: canonical url = %q, want %q", c.pageURL, rec.CanonicalURL, c.canonical)
+		}
+	}
+}
+
 func TestExtractStaleWhenThePageIsAnotherThread(t *testing.T) {
 	for fixture, pageURL := range map[string]string{
 		"www-thread.html": "https://www.reddit.com/r/golang/comments/1wplsly/",
