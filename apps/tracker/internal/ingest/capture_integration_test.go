@@ -22,7 +22,7 @@ import (
 func TestCaptureTransaction(t *testing.T) {
 	st, schema := storetest.NewNamed(t)
 	woken := 0
-	s := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() { woken++ }, auth.Off())
+	s := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() { woken++ }, auth.Off(), "")
 	h := s.Handler()
 
 	device := uuid.Must(uuid.NewV7())
@@ -30,7 +30,7 @@ func TestCaptureTransaction(t *testing.T) {
 	events, _ := json.Marshal(map[string]any{"device_id": device, "events": []map[string]any{
 		{"type": "page_view", "id": pv, "url": "https://example.com/page", "title": "Page",
 			"started_at": time.Now().UTC().Format(time.RFC3339), "navigation_type": "load"}}})
-	if rec := do(t, h, httptest.NewRequest(http.MethodPost, "/v1/events/batch", bytes.NewReader(events))); rec.Code != http.StatusOK {
+	if rec := do(t, h, httptest.NewRequest(http.MethodPost, server+"/v1/events/batch", bytes.NewReader(events))); rec.Code != http.StatusOK {
 		t.Fatalf("events: %d %s", rec.Code, rec.Body.String())
 	}
 
@@ -63,5 +63,19 @@ func TestCaptureTransaction(t *testing.T) {
 	}
 	if n := storetest.QueryInt(t, schema, `select count(*) from urls where host = 'example.com'`); n != 1 {
 		t.Errorf("%d urls rows for example.com, want 1", n)
+	}
+}
+
+func TestCaptureOfAnUnknownPageViewIsRefusedAndWritesNothing(t *testing.T) {
+	st, schema := storetest.NewNamed(t)
+	h := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off(), "").Handler()
+
+	rec := do(t, h, captureRequest(t, validMeta(), []byte("<html><head><title>Page</title></head></html>")))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, want 422: %s", rec.Code, rec.Body.String())
+	}
+	if n := storetest.QueryInt(t, schema, `select (select count(*) from urls) + (select count(*) from raw_html_blobs)
+		+ (select count(*) from captures) + (select count(*) from derivations)`); n != 0 {
+		t.Errorf("%d rows written for a refused capture", n)
 	}
 }

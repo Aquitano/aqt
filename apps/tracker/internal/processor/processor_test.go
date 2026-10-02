@@ -35,6 +35,11 @@ func newProcessor(t *testing.T) (*Processor, *store.Store, string) {
 
 func ingest(t *testing.T, st *store.Store, pageURL, html string) store.CaptureResult {
 	t.Helper()
+	return ingestAt(t, st, pageURL, html, time.Now())
+}
+
+func ingestAt(t *testing.T, st *store.Store, pageURL, html string, capturedAt time.Time) store.CaptureResult {
+	t.Helper()
 	ctx := context.Background()
 	normalized, host, err := urlnorm.Normalize(pageURL)
 	if err != nil {
@@ -52,7 +57,7 @@ func ingest(t *testing.T, st *store.Store, pageURL, html string) store.CaptureRe
 	payload := blob.Compress(raw)
 	res, err := st.InsertCapture(ctx, store.CaptureInput{
 		Capture: store.Capture{ID: uuid.Must(uuid.NewV7()), PageViewID: pv, DeviceID: device, RawHash: hash[:],
-			Extractor: fake.Name, CapturedAt: time.Now(), Reason: "initial", URL: pageURL},
+			Extractor: fake.Name, CapturedAt: capturedAt, Reason: "initial", URL: pageURL},
 		URL:     key,
 		Blob:    store.RawHTMLBlob{Hash: hash[:], Codec: blob.CodecZstd, RawBytes: len(raw), StoredBytes: len(payload), Payload: payload},
 		Version: fakeVersion,
@@ -104,6 +109,63 @@ func TestSameHTMLTwiceYieldsOneBlobOneDerivationOneRecord(t *testing.T) {
 	}
 }
 
+func TestAPageKeepsOneRecordWithItsNewestContent(t *testing.T) {
+	type capture struct {
+		at    time.Time
+		title string
+	}
+	open := capture{time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC), "open"}
+	closed := capture{open.at.Add(time.Hour), "closed"}
+	for name, order := range map[string][]capture{
+		"in capture order":   {open, closed},
+		"older blob replays": {closed, open},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p, st, schema := newProcessor(t)
+			for _, c := range order {
+				ingestAt(t, st, "https://example.com/issues/1", strings.Replace(pageHTML, "Bun ORM", c.title, 1), c.at)
+				drain(t, p)
+			}
+			if n := storetest.QueryInt(t, schema, `select count(*) from records`); n != 1 {
+				t.Fatalf("%d records for one page, want 1", n)
+			}
+			if n := storetest.QueryInt(t, schema, `select count(*) from records
+				where title = $1 and first_seen_at = $2 and last_seen_at = $3`, closed.title, open.at, closed.at); n != 1 {
+				t.Error("the record does not hold the newest content over the whole seen window")
+			}
+		})
+	}
+}
+
+func TestQueueCapturesRefillsTheQueueFromCaptures(t *testing.T) {
+	p, st, schema := newProcessor(t)
+	ingest(t, st, "https://example.com/bun", pageHTML)
+	ingest(t, st, "https://example.com/other", strings.Replace(pageHTML, "Bun ORM", "Other", 1))
+	storetest.QueryInt(t, schema, `with gone as (delete from derivations returning 1) select count(*) from gone`)
+
+	ctx := context.Background()
+	targets := []store.ExtractorVersion{{Name: fake.Name, Version: fakeVersion}}
+	if queued, err := st.QueueCaptures(ctx, targets); err != nil || queued != 2 {
+		t.Fatalf("queued %d (%v), want 2", queued, err)
+	}
+	if queued, err := st.QueueCaptures(ctx, targets); err != nil || queued != 0 {
+		t.Errorf("a second run queued %d (%v), want 0", queued, err)
+	}
+	if n := drain(t, p); n != 2 {
+		t.Errorf("processed %d, want 2", n)
+	}
+}
+
+func TestNULInExtractedTextIsDroppedRatherThanFailingTheJob(t *testing.T) {
+	p, st, schema := newProcessor(t)
+	ingest(t, st, "https://example.com/nul", `<html><head><title>Bun\0 ORM</title></head><body><p>SQL\0-first</p></body></html>`)
+	drain(t, p)
+	if n := storetest.QueryInt(t, schema, `select count(*) from records
+		where title = 'Bun ORM' and search_text = 'SQL-first' and data->>'title' = 'Bun ORM'`); n != 1 {
+		t.Error("the record was not stored without its NULs")
+	}
+}
+
 func TestReprocessAllRebuildsDerivedTablesFromSource(t *testing.T) {
 	p, st, schema := newProcessor(t)
 	ingest(t, st, "https://example.com/bun", pageHTML)
@@ -139,6 +201,46 @@ func TestReprocessAllRebuildsDerivedTablesFromSource(t *testing.T) {
 	if n := storetest.QueryInt(t, schema, `select count(*) from derivations d join records r on r.id = d.record_id
 		where r.record_hash = (select record_hash from records where title = 'Bun ORM')`); n != 1 {
 		t.Errorf("rebuilt derivation does not point at the rebuilt record (%d)", n)
+	}
+}
+
+func TestReprocessAfterAVersionBumpReplacesTheOldRecords(t *testing.T) {
+	p, st, schema := newProcessor(t)
+	ingest(t, st, "https://example.com/bun", pageHTML)
+	drain(t, p)
+	// Pretend the record came from an older version whose output differed.
+	storetest.QueryInt(t, schema, `with old as (
+		update derivations set extractor_version = $1 returning 1),
+		changed as (update records set record_hash = '\x00', data = '{"old": true}' returning 1)
+		select (select count(*) from old) + (select count(*) from changed)`, fakeVersion-1)
+
+	queued, err := st.Reprocess(context.Background(), store.ReprocessOpts{
+		Targets: []store.ExtractorVersion{{Name: fake.Name, Version: fakeVersion}}})
+	if err != nil || queued != 1 {
+		t.Fatalf("reprocess queued %d (%v), want 1", queued, err)
+	}
+	drain(t, p)
+	if n := storetest.QueryInt(t, schema, `select count(*) from records`); n != 1 {
+		t.Errorf("%d records after the rollout, want the new one only", n)
+	}
+	if n := storetest.QueryInt(t, schema, `select count(*) from derivations where extractor_version <> $1`, fakeVersion); n != 0 {
+		t.Errorf("%d derivations of the old version survived", n)
+	}
+}
+
+func TestAJobWhoseWorkerKeepsDyingIsFailedNotReclaimed(t *testing.T) {
+	p, st, schema := newProcessor(t)
+	ingest(t, st, "https://example.com/bun", pageHTML)
+	storetest.QueryInt(t, schema, `with quiet as (
+		update derivations set status = 'running', claimed_at = now() - interval '1 hour', attempts = $1
+		returning 1) select count(*) from quiet`, store.MaxAttempts)
+
+	if n := drain(t, p); n != 0 {
+		t.Errorf("claimed %d jobs, want none", n)
+	}
+	if n := storetest.QueryInt(t, schema,
+		`select count(*) from derivations where status = 'failed' and error_class = $1`, store.ClassAbandoned); n != 1 {
+		t.Errorf("the abandoned job was not failed (%d rows)", n)
 	}
 }
 

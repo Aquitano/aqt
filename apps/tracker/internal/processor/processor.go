@@ -4,12 +4,15 @@
 package processor
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +35,7 @@ const (
 	ClassParse        = "parse"
 	ClassNoMatch      = "no_match"
 	ClassStale        = "stale"
+	ClassStore        = "store"
 	ClassTimeout      = "timeout"
 	ClassTooLarge     = "too_large"
 	ClassUnregistered = "unregistered"
@@ -108,8 +112,15 @@ func (p *Processor) RunOnce(ctx context.Context) (busy bool, err error) {
 		return true, p.store.FailDerivation(writeCtx, d.Key(), store.Failure{Error: fail.err.Error(), Class: fail.class, Retry: retry})
 	}
 	res, err := p.store.CompleteDerivation(writeCtx, d.Key(), rec, elapsed)
+	if errors.Is(err, store.ErrNotFound) {
+		log.Info("derivation forgotten while it ran")
+		return true, nil
+	}
 	if err != nil {
-		return true, err
+		retry := d.Attempts < store.MaxAttempts
+		p.metrics.Derivations.WithLabelValues(d.Extractor, ClassStore).Inc()
+		log.Warn("derivation failed", "class", ClassStore, "retry", retry, "err", err)
+		return true, errors.Join(err, p.store.FailDerivation(writeCtx, d.Key(), store.Failure{Error: err.Error(), Class: ClassStore, Retry: retry}))
 	}
 	p.metrics.Derivations.WithLabelValues(d.Extractor, ResultDone).Inc()
 	p.metrics.Records.WithLabelValues(d.Extractor, fmt.Sprint(res.Deduplicated)).Inc()
@@ -157,17 +168,64 @@ func (p *Processor) derive(ctx context.Context, d store.Derivation) (store.Recor
 	if err != nil {
 		return store.RecordInput{}, classify(err)
 	}
-	canonical, err := extractor.CanonicalJSON(rec.Data)
+	canonical, err := canonicalData(rec.Data)
 	if err != nil {
 		return store.RecordInput{}, &failure{err: err, class: ClassParse}
 	}
 	hash := blake3.Sum256(canonical)
 	return store.RecordInput{
-		Record: store.Record{Extractor: d.Extractor, RecordHash: hash[:], CanonicalURL: rec.CanonicalURL,
+		Record: store.Record{Extractor: d.Extractor, RecordHash: hash[:], CanonicalURL: canonicalURL(rec.CanonicalURL, normalized),
 			Title: rec.Title, SearchText: rec.SearchText, Data: canonical,
 			FirstSeenAt: summary.FirstSeen, LastSeenAt: summary.LastSeen},
 		URL: store.URLKey{Hash: urlnorm.Hash(normalized), Normalized: normalized, Host: host},
 	}, nil
+}
+
+// canonicalURL is what a page's record is keyed on, so it goes through the
+// same normalisation as every other URL; an extractor that names none, or one
+// that does not parse, leaves the page's own URL.
+func canonicalURL(raw, pageURL string) string {
+	if normalized, _, err := urlnorm.Normalize(raw); err == nil {
+		return normalized
+	}
+	return pageURL
+}
+
+// canonicalData is the record's data as hashed and stored. An extractor that
+// reads JSON embedded in a page can return NUL, which jsonb rejects as \u0000,
+// so it is dropped from every string and key first. bun already leaves NUL
+// out of the text columns.
+func canonicalData(v any) ([]byte, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var generic any
+	if err := dec.Decode(&generic); err != nil {
+		return nil, err
+	}
+	return extractor.CanonicalJSON(withoutNUL(generic))
+}
+
+func withoutNUL(v any) any {
+	switch v := v.(type) {
+	case string:
+		return strings.ReplaceAll(v, "\x00", "")
+	case []any:
+		for i, e := range v {
+			v[i] = withoutNUL(e)
+		}
+		return v
+	case map[string]any:
+		clean := make(map[string]any, len(v))
+		for k, e := range v {
+			clean[strings.ReplaceAll(k, "\x00", "")] = withoutNUL(e)
+		}
+		return clean
+	}
+	return v
 }
 
 type panicError struct{ value any }
@@ -206,7 +264,12 @@ func classify(err error) *failure {
 		return &failure{err: err, class: ClassNoMatch, permanent: true}
 	case errors.Is(err, extractor.ErrStale):
 		return &failure{err: err, class: ClassStale, permanent: true}
-	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+	// Extractors cannot be interrupted, so a timed-out run keeps its goroutine
+	// until it finishes. A retry would start another copy of work that already
+	// took too long.
+	case errors.Is(err, context.DeadlineExceeded):
+		return &failure{err: err, class: ClassTimeout, permanent: true}
+	case errors.Is(err, context.Canceled):
 		return &failure{err: err, class: ClassTimeout}
 	case errors.As(err, &p):
 		return &failure{err: err, class: ClassPanic}

@@ -34,9 +34,10 @@ func TestSpanEndReasons(t *testing.T) {
 	const at = "2026-09-08T10:00:00Z"
 	ev, _ := parseEvents([]wireEvent{
 		{Type: store.EventSpanEnd, ID: uuid.Must(uuid.NewV7()).String(), EndedAt: at, Reason: "app_switch"},
+		{Type: store.EventSpanEnd, ID: uuid.Must(uuid.NewV7()).String(), EndedAt: at, Reason: "paused"},
 		{Type: store.EventSpanEnd, ID: uuid.Must(uuid.NewV7()).String(), EndedAt: at, Reason: "abducted"},
 	})
-	if len(ev.SpanEnds) != 2 || ev.SpanEnds[0].Reason != "app_switch" || ev.SpanEnds[1].Reason != "unknown" {
+	if len(ev.SpanEnds) != 3 || ev.SpanEnds[0].Reason != "app_switch" || ev.SpanEnds[1].Reason != "paused" || ev.SpanEnds[2].Reason != "unknown" {
 		t.Fatalf("span ends = %+v", ev.SpanEnds)
 	}
 }

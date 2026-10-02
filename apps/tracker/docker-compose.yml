@@ -1,0 +1,147 @@
+# ParadeDB (Postgres + pg_search), its daily backup, Grafana over it, and the
+# tracker server in a container. This file alone is the VPS. A laptop runs
+# `tracker serve` natively and adds deploy/docker-compose.laptop.yml on top.
+#
+# Which services start is COMPOSE_PROFILES in .env. Unset, Postgres, its backup
+# and Grafana; `server` adds the tracker. Settings come from .env; see
+# .env.example and README.md.
+#
+# Nothing is published on 0.0.0.0. The tracker and Grafana default to loopback,
+# so a missing .env fails closed; the VPS publishes them on its tailnet address.
+#
+# No service that writes to disk carries a restart policy, deliberately: on
+# the VPS the data lives on a LUKS volume unlocked by hand, so after an
+# unattended reboot the bind paths point at the unencrypted root disk. A
+# restart policy would let Postgres initdb a fresh cluster there; with none,
+# the stack comes back only through the unlock step in README.md. The tracker
+# itself holds nothing, so it alone restarts on failure, which also covers
+# starting before authentik answers.
+#
+# The project name would otherwise be the directory, and the laptop's volumes
+# carry this one.
+name: tracker
+
+services:
+  db:
+    # Pinned: the data directory is named after the Postgres major, so a
+    # floating tag that moves to the next major starts on an empty database.
+    # After a bump, run `alter extension pg_search update` (see README). CI's
+    # test database runs the same digest.
+    image: &paradedb paradedb/paradedb:0.25.10-pg18@sha256:188591a0bc317beb2c6d6d3f9ef0cb3e859d09ecc15a71dda5e9a027876686cf
+    environment:
+      POSTGRES_USER: tracker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tracker}
+      POSTGRES_DB: tracker
+    ports:
+      # Loopback only: for a natively run `tracker serve` and for psql on the
+      # box. The tracker container and Grafana use the compose network.
+      - "127.0.0.1:5435:5432"
+    volumes:
+      # A bare name is a named volume; an absolute path is a bind mount onto
+      # the encrypted volume on the VPS. Postgres 18+ images want the mount at
+      # /var/lib/postgresql (not .../data).
+      - ${TRACKER_PG_DIR:-tracker-pgdata}:/var/lib/postgresql
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracker -d tracker"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # A daily pg_dump. The db image, so pg_dump always matches the server it dumps.
+  backup:
+    image: *paradedb
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-tracker}
+    volumes:
+      - ./deploy/backup.sh:/backup.sh:ro
+      - ${TRACKER_BACKUP_DIR:-tracker-backups}:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    security_opt:
+      - no-new-privileges:true
+
+  tracker:
+    profiles: ["server"]
+    build:
+      context: .
+      args:
+        # ops/deploy.sh sets it to the commit it pulled; serve logs it on start.
+        GIT_SHA: ${GIT_SHA:-dev}
+    image: aqt-tracker:local
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TRACKER_DATABASE_URL: postgres://tracker:${POSTGRES_PASSWORD:-tracker}@db:5432/tracker?sslmode=disable
+      TRACKER_OIDC_ISSUER: ${TRACKER_OIDC_ISSUER:-}
+      TRACKER_OIDC_AUDIENCE: ${TRACKER_OIDC_AUDIENCE:-}
+      TRACKER_WORKERS: ${TRACKER_WORKERS:-3}
+      TRACKER_LOG_LEVEL: ${TRACKER_LOG_LEVEL:-info}
+      TRACKER_EXTENSION_ID: ${TRACKER_EXTENSION_ID:-}
+    restart: on-failure
+    ports:
+      # The tailnet address on the VPS, never 0.0.0.0: serve has no TLS, and
+      # the tailnet is the transport security.
+      - "${TRACKER_LISTEN:-127.0.0.1:8490}:8490"
+    user: "65532:65532"
+    # The process keeps everything in Postgres and writes nothing locally.
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/tracker", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 1m
+      start_interval: 2s
+
+  grafana:
+    image: grafana/grafana-oss:12.4.3@sha256:2e986801428cd689c2358605289c90ab37d2b39e24808874971f54c99bcdc412
+    environment:
+      # Read by deploy/grafana/datasources/postgres.yml.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tracker}
+      # Grafana's datasource runs any SQL it is given, so off the laptop it
+      # sits behind a login. Only read when the grafana volume is empty.
+      GF_SECURITY_ADMIN_PASSWORD: ${TRACKER_GRAFANA_PASSWORD:-admin}
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./deploy/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/tracker.yml:ro
+      - ./deploy/grafana/datasources/postgres.yml:/etc/grafana/provisioning/datasources/postgres.yml:ro
+      # A directory rather than its files, so a pulled change to a dashboard
+      # reaches the running container.
+      - ./deploy/grafana/dashboards/postgres:/etc/grafana/dashboards/postgres:ro
+      - tracker-grafana:/var/lib/grafana
+    ports:
+      - "${TRACKER_GRAFANA_LISTEN:-127.0.0.1:3090}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  tracker-pgdata:
+  tracker-backups:
+  tracker-grafana:

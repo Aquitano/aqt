@@ -1,0 +1,10 @@
+apiVersion: 1
+
+providers:
+  - name: tracker
+    type: file
+    allowUiUpdates: false
+    options:
+      # Every compose file mounts the dashboards that read its datasources in
+      # a directory of their own under here.
+      path: /etc/grafana/dashboards

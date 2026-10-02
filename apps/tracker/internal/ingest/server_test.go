@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,10 @@ import (
 	"github.com/aquitano/aqt/apps/tracker/internal/store"
 )
 
-const fakeMaxBytes = 4096
+const (
+	fakeMaxBytes = 4096
+	server       = "http://127.0.0.1:8490"
+)
 
 func init() {
 	extractor.Register(fake.Extractor{Version: 1, MaxBytes: fakeMaxBytes})
@@ -35,6 +39,8 @@ type fakeStore struct {
 	events   store.Events
 	captures []store.CaptureInput
 	dedup    bool
+	time     store.TimeOpts
+	forgot   []store.ForgetTarget
 }
 
 func (f *fakeStore) Ping(context.Context) error { return nil }
@@ -56,6 +62,27 @@ func (f *fakeStore) Search(context.Context, store.SearchOpts) ([]store.Hit, erro
 	return []store.Hit{}, nil
 }
 
+func (f *fakeStore) URLVisits(context.Context, []byte, time.Time) (store.Visits, error) {
+	return store.Visits{}, nil
+}
+
+func (f *fakeStore) Record(_ context.Context, id int64) (store.RecordDetail, error) {
+	if id != 1 {
+		return store.RecordDetail{}, store.ErrNotFound
+	}
+	return store.RecordDetail{ID: id}, nil
+}
+
+func (f *fakeStore) Time(_ context.Context, o store.TimeOpts) ([]store.TimeRow, error) {
+	f.time = o
+	return []store.TimeRow{}, nil
+}
+
+func (f *fakeStore) Forget(_ context.Context, t store.ForgetTarget) (store.Forgotten, error) {
+	f.forgot = append(f.forgot, t)
+	return store.Forgotten{}, nil
+}
+
 func (f *fakeStore) Stats(context.Context) (store.Stats, error) {
 	return store.Stats{Derivations: map[string]int64{}, Records: map[string]int64{}}, nil
 }
@@ -63,7 +90,21 @@ func (f *fakeStore) Stats(context.Context) (store.Stats, error) {
 func newServer(t *testing.T) (*Server, *fakeStore) {
 	t.Helper()
 	fs := &fakeStore{}
-	return New(fs, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off()), fs
+	return New(fs, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off(), ""), fs
+}
+
+func TestAPinnedExtensionIDLetsInThatExtensionAlone(t *testing.T) {
+	h := New(&fakeStore{}, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off(), "abcdefghijklmnop").Handler()
+	for origin, want := range map[string]int{
+		"chrome-extension://abcdefghijklmnop": http.StatusOK,
+		"chrome-extension://ponmlkjihgfedcba": http.StatusForbidden,
+	} {
+		req := httptest.NewRequest(http.MethodGet, server+"/v1/capture-rules", nil)
+		req.Header.Set("Origin", origin)
+		if rec := do(t, h, req); rec.Code != want {
+			t.Errorf("%s: status %d, want %d", origin, rec.Code, want)
+		}
+	}
 }
 
 func do(t *testing.T, h http.Handler, req *http.Request) *httptest.ResponseRecorder {
@@ -84,13 +125,13 @@ func TestOriginPolicy(t *testing.T) {
 	s, _ := newServer(t)
 	h := s.Handler()
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/capture-rules", nil)
+	req := httptest.NewRequest(http.MethodGet, server+"/v1/capture-rules", nil)
 	req.Header.Set("Origin", "https://evil.example")
 	if rec := do(t, h, req); rec.Code != http.StatusForbidden {
 		t.Errorf("web origin: status %d, want 403", rec.Code)
 	}
 
-	req = httptest.NewRequest(http.MethodGet, "/v1/capture-rules", nil)
+	req = httptest.NewRequest(http.MethodGet, server+"/v1/capture-rules", nil)
 	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
 	rec := do(t, h, req)
 	if rec.Code != http.StatusOK || rec.Header().Get("Access-Control-Allow-Origin") != "chrome-extension://abcdefghijklmnop" {
@@ -104,7 +145,7 @@ func TestOriginPolicy(t *testing.T) {
 		t.Errorf("rules = %+v", rules.Rules)
 	}
 
-	req = httptest.NewRequest(http.MethodOptions, "/v1/captures", nil)
+	req = httptest.NewRequest(http.MethodOptions, server+"/v1/captures", nil)
 	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	rec = do(t, h, req)
@@ -116,8 +157,34 @@ func TestOriginPolicy(t *testing.T) {
 		t.Errorf("preflight allows headers %q, want Authorization among them", rec.Header().Get("Access-Control-Allow-Headers"))
 	}
 
-	if rec := do(t, h, httptest.NewRequest(http.MethodGet, "/healthz", nil)); rec.Code != http.StatusOK {
+	if rec := do(t, h, httptest.NewRequest(http.MethodGet, server+"/healthz", nil)); rec.Code != http.StatusOK {
 		t.Errorf("no origin header: status %d, want 200", rec.Code)
+	}
+}
+
+func TestWithoutAuthOnlyLoopbackHostsAreServed(t *testing.T) {
+	s, _ := newServer(t)
+	h := s.Handler()
+
+	for _, host := range []string{"127.0.0.1:8490", "localhost:8490", "[::1]:8490"} {
+		req := httptest.NewRequest(http.MethodGet, server+"/v1/search?q=bun", nil)
+		req.Host = host
+		if rec := do(t, h, req); rec.Code != http.StatusOK {
+			t.Errorf("host %s: status %d, want 200", host, rec.Code)
+		}
+	}
+
+	// A DNS-rebound page reaches 127.0.0.1 under its own name and, being
+	// same-origin, sends no Origin header on a GET.
+	req := httptest.NewRequest(http.MethodGet, "http://rebind.example:8490/v1/search?q=bun", nil)
+	if rec := do(t, h, req); rec.Code != http.StatusForbidden {
+		t.Errorf("rebound host: status %d, want 403", rec.Code)
+	}
+
+	// Prometheus scrapes through host.docker.internal.
+	req = httptest.NewRequest(http.MethodGet, "http://host.docker.internal:8490/metrics", nil)
+	if rec := do(t, h, req); rec.Code != http.StatusOK {
+		t.Errorf("metrics on another host: status %d, want 200", rec.Code)
 	}
 }
 
@@ -138,7 +205,7 @@ func TestEventsBatchDropsMalformedEventsAndKeepsTheRest(t *testing.T) {
 		},
 	}
 	raw, _ := json.Marshal(body)
-	req := httptest.NewRequest(http.MethodPost, "/v1/events/batch", bytes.NewReader(raw))
+	req := httptest.NewRequest(http.MethodPost, server+"/v1/events/batch", bytes.NewReader(raw))
 	rec := do(t, s.Handler(), req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
@@ -167,7 +234,7 @@ func captureRequest(t *testing.T, meta map[string]any, html []byte) *http.Reques
 	htmlPart, _ := mw.CreateFormFile("html", "page.html")
 	htmlPart.Write(html)
 	mw.Close()
-	req := httptest.NewRequest(http.MethodPost, "/v1/captures", &buf)
+	req := httptest.NewRequest(http.MethodPost, server+"/v1/captures", &buf)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	return req
 }
@@ -224,11 +291,74 @@ func TestCaptureValidation(t *testing.T) {
 
 func TestSearchNeedsAQuery(t *testing.T) {
 	s, _ := newServer(t)
-	if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, "/v1/search", nil)); rec.Code != http.StatusBadRequest {
+	if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+"/v1/search", nil)); rec.Code != http.StatusBadRequest {
 		t.Errorf("status %d, want 400", rec.Code)
 	}
-	if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, "/v1/search?q=bun&limit=0", nil)); rec.Code != http.StatusBadRequest {
+	if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+"/v1/search?q=bun&limit=0", nil)); rec.Code != http.StatusBadRequest {
 		t.Errorf("limit 0: status %d, want 400", rec.Code)
+	}
+}
+
+func TestVisitsNeedAnHTTPURL(t *testing.T) {
+	s, _ := newServer(t)
+	for _, target := range []string{"/v1/visits", "/v1/visits?url=chrome://newtab/", "/v1/visits?url=https://example.com/&before=yesterday"} {
+		if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+target, nil)); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", target, rec.Code)
+		}
+	}
+	rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+"/v1/visits?url=https://Example.com/a%3Futm_source%3Dx", nil))
+	var res struct {
+		URL string `json:"url"`
+	}
+	decode(t, rec, &res)
+	if rec.Code != http.StatusOK || res.URL != "https://example.com/a" {
+		t.Errorf("status %d, url %q, want 200 and the normalised url", rec.Code, res.URL)
+	}
+}
+
+func TestRecordsAnswer404ForAnUnknownID(t *testing.T) {
+	s, _ := newServer(t)
+	for target, want := range map[string]int{"/v1/records/1": http.StatusOK, "/v1/records/42": http.StatusNotFound} {
+		if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+target, nil)); rec.Code != want {
+			t.Errorf("%s: status %d, want %d", target, rec.Code, want)
+		}
+	}
+}
+
+func TestTimeDefaultsToTheLastDayByHost(t *testing.T) {
+	s, fs := newServer(t)
+	if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+"/v1/time", nil)); rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if fs.time.By != "host" || fs.time.To.Sub(fs.time.From) != 24*time.Hour || time.Since(fs.time.To) > time.Minute {
+		t.Errorf("time opts = %+v, want the last 24 h by host", fs.time)
+	}
+	for _, target := range []string{"/v1/time?from=yesterday", "/v1/time?from=2026-10-02T00:00:00Z&to=2026-10-01T00:00:00Z"} {
+		if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+target, nil)); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", target, rec.Code)
+		}
+	}
+}
+
+func TestForgetNeedsOneTargetThatIsNotAPublicSuffix(t *testing.T) {
+	s, fs := newServer(t)
+	post := func(body string) int {
+		return do(t, s.Handler(), httptest.NewRequest(http.MethodPost, server+"/v1/forget", strings.NewReader(body))).Code
+	}
+	for _, body := range []string{`{}`, `{"url":"https://example.com/","host":"example.com"}`,
+		`{"url":"chrome://newtab/"}`, `{"host":"com"}`, `{"host":"co.uk"}`} {
+		if code := post(body); code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", body, code)
+		}
+	}
+	for _, body := range []string{`{"host":" *.Blog.Example.com "}`, `{"host":"localhost"}`, `{"url":"https://Example.com/a?utm_source=x"}`} {
+		if code := post(body); code != http.StatusOK {
+			t.Errorf("%s: status %d, want 200", body, code)
+		}
+	}
+	want := []store.ForgetTarget{{Host: "blog.example.com"}, {Host: "localhost"}, {URL: "https://example.com/a"}}
+	if !slices.Equal(fs.forgot, want) {
+		t.Errorf("forgot %+v, want %+v", fs.forgot, want)
 	}
 }
 
@@ -239,18 +369,18 @@ func TestProtectedRoutesNeedAToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := New(&fakeStore{}, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, a).Handler()
+	h := New(&fakeStore{}, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, a, "").Handler()
 
 	// The extension reads healthz to tell a server that is down from one it
 	// is not signed in to, so it stays open even with auth on.
-	if rec := do(t, h, httptest.NewRequest(http.MethodGet, "/healthz", nil)); rec.Code != http.StatusOK {
+	if rec := do(t, h, httptest.NewRequest(http.MethodGet, server+"/healthz", nil)); rec.Code != http.StatusOK {
 		t.Errorf("healthz: status %d, want 200", rec.Code)
 	}
-	if rec := do(t, h, httptest.NewRequest(http.MethodGet, "/v1/capture-rules", nil)); rec.Code != http.StatusUnauthorized {
+	if rec := do(t, h, httptest.NewRequest(http.MethodGet, server+"/v1/capture-rules", nil)); rec.Code != http.StatusUnauthorized {
 		t.Errorf("no token: status %d, want 401", rec.Code)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/capture-rules", nil)
+	req := httptest.NewRequest(http.MethodGet, server+"/v1/capture-rules", nil)
 	req.Header.Set("Authorization", "Bearer "+iss.Token(t, audience))
 	if rec := do(t, h, req); rec.Code != http.StatusOK {
 		t.Errorf("valid token: status %d, want 200", rec.Code)
@@ -258,7 +388,7 @@ func TestProtectedRoutesNeedAToken(t *testing.T) {
 
 	// A preflight carries no Authorization header. Answering it with 401
 	// would fail every extension request before the real one is ever sent.
-	preflight := httptest.NewRequest(http.MethodOptions, "/v1/captures", nil)
+	preflight := httptest.NewRequest(http.MethodOptions, server+"/v1/captures", nil)
 	preflight.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
 	preflight.Header.Set("Access-Control-Request-Method", "POST")
 	if rec := do(t, h, preflight); rec.Code != http.StatusNoContent {

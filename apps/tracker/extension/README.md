@@ -21,22 +21,34 @@ Open the extension's options page (the popup's "Options" link, or `chrome://exte
 - **Private hosts**, one per line. A host covers its subdomains (`example.com` also covers `mail.example.com`).
 - **Capture HTML** on or off. Off means page views and spans still flow, no HTML is ever serialised.
 
-The popup shows connected/unreachable, pending events and captures in the outbox, the last sync, the last error, the last 100 diagnostic lines, and a "Capture now" button for the active tab.
+The popup has a search box and shows connected/unreachable, pending events and captures in the outbox, the last sync, the last error, the last 100 diagnostic lines, and a "Capture now" button for the active tab. Its other controls:
+
+- **Pause for 1 hour**: nothing is recorded until the hour is over or you click Resume. The open span ends at once, the badge reads `off`, and events already queued still upload.
+- **Make <host> private**: adds the active tab's host to the private hosts and moves the tab to a host-only page view at once.
+- **Forget this page** and **Forget everything on <host>**: click twice to confirm. What is still queued for it is dropped locally, then the server deletes its page views, spans, captures and records, and the popup shows what it deleted.
+
+## Search
+
+Type `t`, a space and a query in the address bar: the extension suggests up to six records from the server's search. Enter on a suggestion opens it; enter on what you typed opens the extension's search page, which lists each hit with its host, extractor, snippet and how often and how long you read it. The popup's search box opens the same page.
+
+Opening a page you have read before puts the number of earlier visits on the toolbar badge; its tooltip says when the last was and how long they add up to. Private hosts are never looked up.
 
 ## What it records
 
-- **Page views**: the URL, the title, when it started, how it was reached (`load`, `spa`, `reload`, `back_forward`), the previous page in the same tab as referrer and a per-tab session id. A new page view starts on every top-level navigation and on SPA URL changes where the path changes or a query key the matching rule lists (for example `v` on YouTube) changes. Hash-only and other query-only changes do not count.
-- **Activity spans**: the time a page view is in the active tab of the focused window while the machine is not idle (60 s threshold), with a heartbeat every 30 s and the reason it ended (tab switch, window blur, idle, navigation, tab closed, or unknown after a browser crash).
-- **HTML captures**: `document.documentElement.outerHTML` of a page whose URL matches a capture rule, once per page view after the rule's dwell time, plus manual captures from the popup. Rules come from the server and are cached for an hour; without cached rules nothing is captured. A capture is skipped when the page exceeds the rule's byte limit or when the server's `/healthz` is failing. Dwell timers use `chrome.alarms`; Chromium honours sub-30 s alarms only for unpacked extensions, a packed build would round a 5 s dwell up to 30 s.
+- **Page views**: the URL, the title, when it started, how it was reached (`load`, `spa`, `reload`, `back_forward`), the previous page in the same tab as referrer and a per-tab session id. A new page view starts on every top-level navigation and on SPA URL changes where the path changes or a query key the matching rule lists (for example `v` on YouTube) changes. Hash-only and other query-only changes do not count. The title is the latest the tab showed: its first change is sent at once, later ones at most once per heartbeat while the page has focus and when the page view ends.
+- **Activity spans**: the time a page view is in the active tab of the focused window while the machine is not idle (60 s threshold), with a heartbeat every 30 s and the reason it ended (tab switch, window blur, idle, navigation, tab closed, paused, or unknown after a browser crash).
+- **HTML captures**: `document.documentElement.outerHTML` of a page whose URL matches a capture rule, once per page view after the rule's dwell time, plus manual captures from the popup. A page whose rule says `after_change` (github, x) is captured again if the document changed since, at most every 5 minutes while you are on the page, and when you leave it. Rules come from the server and are cached for an hour; without cached rules nothing is captured. A capture is skipped when the page exceeds the rule's byte limit. On a YouTube watch page the capture also carries the video's transcript. Dwell timers use `chrome.alarms`; Chromium honours sub-30 s alarms only for unpacked extensions, a packed build would round a 5 s dwell up to 30 s.
+- **YouTube transcripts**: before serialising a watch page, `youtube.content.ts` has YouTube's own app load the current video's transcript into the hidden "Show transcript" panel, the request that button makes, preferring manual captions in the page's language, then manual English, then the auto-generated track. That is one or two requests to YouTube per captured video, none when the panel already holds the video's transcript. The transcript goes into the HTML as `<script type="application/json" id="tracker-transcript">{"video_id","language","kind","segments":[{"start","text"}]}</script>` at the end of `<body>`, so the server reads it from the stored blob. The timedtext caption URLs in the player response return an empty body without a proof-of-origin token, and calling the transcript endpoint directly fails its attestation check; only YouTube's code produces either. A panel you have open is read as it is, never switched to another track. A video without a transcript, or one that takes longer than 4 s, is captured without one.
 
-Everything is queued in IndexedDB and sent to the server with exponential backoff (2 s doubling to 5 min). Rows are deleted after the server confirms with a 2xx. A 4xx other than 408 and 429 is permanent: the row is dropped, counted in the popup, and logged with the server's error text; 408, 429, 5xx and network failures keep retrying.
+Everything is queued in IndexedDB and sent to the server with exponential backoff (2 s doubling to 5 min), captures included while the server is unreachable. The queue keeps the newest 10,000 events and 200 captures; past that the oldest are dropped and counted in the popup. Rows are deleted after the server confirms with a 2xx. Captures wait while any event is queued, because the page view a capture references has to reach the server first. A 4xx other than 401, 403, 404, 405, 408 and 429 is permanent: the row is dropped, counted in the popup, and logged with the server's error text. Those six, 5xx and network failures keep retrying: 408 and 429 clear on their own, 401 and 403 after signing in, and 404 and 405 mean the server URL points at something other than tracker.
 
 ## What it never records
 
+- Anything while tracking is **paused** from the popup.
 - Anything from **incognito** windows: the manifest declares `"incognito": "not_allowed"`, so the extension does not run there at all.
 - Titles or HTML of **private hosts**. Those page views carry only `https://host/` and `private: true`; the popup's manual capture refuses them too.
 - Anything from non-http(s) pages (`chrome://`, `file://`, `about:blank`).
-- Form input, keystrokes, scroll positions, or anything the page does. The content script observes DOM mutations only to keep a dirty flag that nothing acts on yet.
+- Form input, keystrokes, scroll positions, or anything the page does. The content script observes DOM mutations only to tell a recapture whether the document changed since the last capture.
 - Anything sent to a host other than the configured server URL.
 
 ## Layout
@@ -44,17 +56,21 @@ Everything is queued in IndexedDB and sent to the server with exponential backof
 ```
 wxt.config.ts               manifest and permissions
 src/entrypoints/
-  background.ts             service worker: wires browser events to lib/tracker.ts
-  page.content.ts           isolated world: serialises HTML on request, forwards SPA URL changes
+  background.ts             service worker: wires browser events to lib/tracker.ts and lib/omnibox.ts
+  page.content.ts           isolated world: serialises HTML on request with any transcript the page world supplies, tracks whether it changed since, forwards SPA URL changes
   history-hook.content.ts   page world: patches pushState/replaceState to raise an event
-  popup/, options/          plain HTML + TypeScript
+  youtube.content.ts        page world: has YouTube's app load the current video's transcript for a capture
+  popup/, options/, search/ plain HTML + TypeScript
 src/lib/
   tracker.ts                page view, span, capture and sync orchestration
-  rules.ts, page-view.ts, privacy.ts, backoff.ts   pure, unit tested
+  omnibox.ts                address bar suggestions
+  rules.ts, page-view.ts, privacy.ts, recall.ts, backoff.ts, result.ts, uuid.ts   pure, unit tested
+  transcript.ts, youtube.ts transcript handover between the worlds and YouTube's transcript data, unit tested
   outbox.ts                 IndexedDB queue
   api.ts                    HTTP calls, responses decoded with ArkType
+  auth.ts                   OIDC sign-in and token refresh
   storage.ts                typed chrome.storage accessors
   events.ts, messages.ts    wire and message schemas
 ```
 
-`bun run --cwd apps/tracker/extension test` runs the pure-module tests; `typecheck` and `lint` are the usual `tsc --noEmit` and `oxlint --type-aware`.
+`bun run --cwd apps/tracker/extension test` runs the unit tests, `tracker.ts`'s against a fake browser and IndexedDB; `typecheck` and `lint` are the usual `tsc --noEmit` and `oxlint --type-aware`.

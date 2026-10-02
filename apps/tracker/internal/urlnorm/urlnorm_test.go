@@ -21,6 +21,19 @@ func TestNormalize(t *testing.T) {
 			"http://user:pw@localhost:8080/x", "http://localhost:8080/x", "localhost"},
 		{"http default port dropped",
 			"http://example.com:80/", "http://example.com/", "example.com"},
+		{"a query with a semicolon is kept whole",
+			"https://fonts.googleapis.com/css2?family=Roboto:wght@400;700",
+			"https://fonts.googleapis.com/css2?family=Roboto:wght@400;700", "fonts.googleapis.com"},
+		{"a query with a stray percent is kept whole",
+			"https://example.com/p?id=100%", "https://example.com/p?id=100%", "example.com"},
+		{"a stray percent in the path is escaped, a valid escape kept",
+			"https://shop.example/sale-50%-off%20now", "https://shop.example/sale-50%25-off%20now", "shop.example"},
+		{"a fragment route with a stray percent is dropped",
+			"https://app.example/#/search?q=100%", "https://app.example/", "app.example"},
+		{"a fragment with a stray percent is dropped",
+			"https://x.example/page#progress-50%", "https://x.example/page", "x.example"},
+		{"ipv6 host keeps its brackets",
+			"http://[::1]:8080/x", "http://[::1]:8080/x", "::1"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

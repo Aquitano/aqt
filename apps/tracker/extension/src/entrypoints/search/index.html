@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>aqt tracker search</title>
+    <style>
+      body {
+        max-width: 720px;
+        margin: 32px auto;
+        padding: 0 16px;
+        font:
+          14px/1.5 system-ui,
+          sans-serif;
+        color: #222;
+        background: #fff;
+      }
+      form {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+      input[type="search"] {
+        flex: 1;
+        padding: 6px;
+        font: inherit;
+      }
+      #status {
+        color: #666;
+        overflow-wrap: anywhere;
+      }
+      ol {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      li {
+        margin-bottom: 20px;
+      }
+      li a {
+        font-size: 16px;
+        overflow-wrap: anywhere;
+      }
+      li p {
+        margin: 2px 0 0;
+        overflow-wrap: anywhere;
+      }
+      .meta {
+        color: #666;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <form action="search.html" method="get" role="search">
+      <input id="query" name="q" type="search" placeholder="Search what you read" autofocus />
+      <button type="submit">Search</button>
+    </form>
+    <p id="status"></p>
+    <ol id="hits"></ol>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

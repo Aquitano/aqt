@@ -4,7 +4,7 @@ export const NavigationType = type("'load' | 'spa' | 'reload' | 'back_forward'")
 export type NavigationType = typeof NavigationType.infer;
 
 export const EndReason = type(
-  "'tab_switch' | 'window_blur' | 'idle' | 'navigation' | 'tab_closed' | 'unknown'",
+  "'tab_switch' | 'window_blur' | 'idle' | 'navigation' | 'tab_closed' | 'paused' | 'unknown'",
 );
 export type EndReason = typeof EndReason.infer;
 
@@ -60,3 +60,12 @@ export type CaptureMeta = typeof CaptureMeta.infer;
 
 export const CapturePayload = type({ meta: CaptureMeta, html: "string" });
 export type CapturePayload = typeof CapturePayload.infer;
+
+export const ForgetCounts = type({
+  page_views: "number",
+  spans: "number",
+  captures: "number",
+  blobs: "number",
+  records: "number",
+});
+export type ForgetCounts = typeof ForgetCounts.infer;

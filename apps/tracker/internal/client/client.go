@@ -4,6 +4,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -44,7 +45,10 @@ type session struct {
 
 var ErrSignedOut = errors.New("no stored token: run 'tracker login'")
 
-const discoveryTimeout = 10 * time.Second
+const (
+	discoveryTimeout = 10 * time.Second
+	healthTimeout    = 5 * time.Second
+)
 
 func DefaultTokenPath() (string, error) {
 	dir, err := os.UserConfigDir()
@@ -140,12 +144,31 @@ func New(ctx context.Context, c Config) (*Client, error) {
 	if s.Issuer != c.Issuer || s.ClientID != c.ClientID {
 		return nil, fmt.Errorf("stored token is for %s, configured issuer is %s: run 'tracker login'", s.Issuer, c.Issuer)
 	}
+	return &Client{base: base.String(), http: oauth2.NewClient(ctx, s.tokens(ctx, c.TokenPath))}, nil
+}
+
+// Bearer returns the access token of the session stored at path, refreshed
+// and written back first if it is spent. The desktop agent calls it for every
+// request instead of holding a token source, because the CLI may rotate the
+// refresh token in that file at any time.
+func Bearer(ctx context.Context, path string) (string, error) {
+	s, err := load(path)
+	if err != nil {
+		return "", err
+	}
+	token, err := s.tokens(ctx, path).Token()
+	if err != nil {
+		return "", err
+	}
+	return token.AccessToken, nil
+}
+
+func (s session) tokens(ctx context.Context, path string) oauth2.TokenSource {
 	cfg := oauth2.Config{
-		ClientID: c.ClientID,
+		ClientID: s.ClientID,
 		Endpoint: oauth2.Endpoint{DeviceAuthURL: s.DeviceAuthURL, TokenURL: s.TokenURL},
 	}
-	source := &persisting{base: cfg.TokenSource(ctx, s.Token), path: c.TokenPath, session: s}
-	return &Client{base: base.String(), http: oauth2.NewClient(ctx, source)}, nil
+	return &persisting{base: cfg.TokenSource(ctx, s.Token), path: path, session: s}
 }
 
 // persisting writes refreshed tokens back to disk. oauth2 refreshes in
@@ -215,6 +238,26 @@ func save(path string, s session) error {
 	return os.Rename(tmp.Name(), path)
 }
 
+// Healthy reports whether the server answers /healthz, which it does only
+// while its database does. The route is open, so this needs no token.
+func Healthy(ctx context.Context, serverURL string) error {
+	ctx, cancel := context.WithTimeout(ctx, healthTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, serverURL+"/healthz", nil)
+	if err != nil {
+		return err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return httpError(req.URL.String(), res)
+	}
+	return nil
+}
+
 func (c *Client) Search(ctx context.Context, o store.SearchOpts) ([]store.Hit, error) {
 	q := url.Values{"q": {o.Query}, "limit": {strconv.Itoa(o.Limit)}}
 	if o.Extractor != "" {
@@ -225,6 +268,38 @@ func (c *Client) Search(ctx context.Context, o store.SearchOpts) ([]store.Hit, e
 	}
 	err := c.get(ctx, "/v1/search?"+q.Encode(), &reply)
 	return reply.Hits, err
+}
+
+type PageVisits struct {
+	URL    string       `json:"url"`
+	Visits store.Visits `json:"visits"`
+}
+
+func (c *Client) Visits(ctx context.Context, pageURL string) (PageVisits, error) {
+	var page PageVisits
+	err := c.get(ctx, "/v1/visits?"+url.Values{"url": {pageURL}}.Encode(), &page)
+	return page, err
+}
+
+func (c *Client) Record(ctx context.Context, id int64) (store.RecordDetail, error) {
+	var rec store.RecordDetail
+	err := c.get(ctx, "/v1/records/"+strconv.FormatInt(id, 10), &rec)
+	return rec, err
+}
+
+func (c *Client) Time(ctx context.Context, o store.TimeOpts) ([]store.TimeRow, error) {
+	q := url.Values{"from": {o.From.UTC().Format(time.RFC3339)}, "to": {o.To.UTC().Format(time.RFC3339)}, "by": {o.By}}
+	var reply struct {
+		Rows []store.TimeRow `json:"rows"`
+	}
+	err := c.get(ctx, "/v1/time?"+q.Encode(), &reply)
+	return reply.Rows, err
+}
+
+func (c *Client) Forget(ctx context.Context, t store.ForgetTarget) (store.Forgotten, error) {
+	var forgotten store.Forgotten
+	err := c.post(ctx, "/v1/forget", t, &forgotten)
+	return forgotten, err
 }
 
 func (c *Client) Stats(ctx context.Context) (store.Stats, error) {
@@ -238,16 +313,33 @@ func (c *Client) get(ctx context.Context, path string, into any) error {
 	if err != nil {
 		return err
 	}
+	return c.do(req, into)
+}
+
+func (c *Client) post(ctx context.Context, path string, body, into any) error {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return c.do(req, into)
+}
+
+func (c *Client) do(req *http.Request, into any) error {
 	res, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("%s: %w", c.base, err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return httpError(c.base+path, res)
+		return httpError(req.URL.String(), res)
 	}
 	if err := json.NewDecoder(res.Body).Decode(into); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
+		return fmt.Errorf("%s: %w", req.URL.RequestURI(), err)
 	}
 	return nil
 }

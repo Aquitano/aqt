@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -26,6 +27,7 @@ type Hit struct {
 	Score        float64         `json:"score"`
 	LastSeenAt   time.Time       `json:"last_seen_at"`
 	Data         json.RawMessage `json:"data"`
+	Visits       Visits          `json:"visits" bun:"-"`
 }
 
 func (s *Store) Search(ctx context.Context, o SearchOpts) ([]Hit, error) {
@@ -36,7 +38,7 @@ func (s *Store) Search(ctx context.Context, o SearchOpts) ([]Hit, error) {
 		return nil, fmt.Errorf("limit must be 1-%d", MaxSearchLimit)
 	}
 	q := s.db.NewSelect().TableExpr("records r").
-		ColumnExpr("r.id, r.extractor, coalesce(r.title, '') as title, coalesce(r.canonical_url, '') as canonical_url").
+		ColumnExpr("r.id, r.extractor, coalesce(r.title, '') as title, r.canonical_url").
 		ColumnExpr("coalesce(paradedb.snippet(r.search_text, '', '', 160), '') as snippet").
 		ColumnExpr("paradedb.score(r.id) as score, r.last_seen_at, r.data").
 		Where("r.id @@@ paradedb.boolean(should => array[paradedb.match('title', ?, distance => 1), paradedb.match('search_text', ?, distance => 1)])", o.Query, o.Query).
@@ -49,11 +51,20 @@ func (s *Store) Search(ctx context.Context, o SearchOpts) ([]Hit, error) {
 	if err := q.ColumnExpr("r.search_text").Scan(ctx, &rows); err != nil {
 		return nil, err
 	}
+	ids := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	visits, err := recordVisits(ctx, s.db, ids)
+	if err != nil {
+		return nil, err
+	}
 	hits := make([]Hit, 0, len(rows))
 	for _, row := range rows {
 		if row.Snippet == "" {
 			row.Snippet = cutSnippet(row.SearchText, o.Query, snippetWidth)
 		}
+		row.Visits = visits[row.ID]
 		hits = append(hits, row.Hit)
 	}
 	return hits, nil
@@ -68,16 +79,18 @@ type hitRow struct {
 	SearchText string `bun:"search_text"`
 }
 
+// Lowercasing changes the byte length of some runes, so the match is found in
+// text itself rather than in a lowercased copy.
 func cutSnippet(text, query string, width int) string {
-	lower := strings.ToLower(text)
-	start := -1
-	for _, term := range strings.Fields(strings.ToLower(query)) {
-		if i := strings.Index(lower, term); i >= 0 && (start < 0 || i < start) {
-			start = i
-		}
+	terms := strings.Fields(query)
+	for i, term := range terms {
+		terms[i] = regexp.QuoteMeta(term)
 	}
-	if start < 0 {
-		start = 0
+	start := 0
+	if re, err := regexp.Compile("(?i)" + strings.Join(terms, "|")); err == nil {
+		if match := re.FindStringIndex(text); match != nil {
+			start = match[0]
+		}
 	}
 	start = max(0, start-width/4)
 	for start > 0 && !utf8.RuneStart(text[start]) {

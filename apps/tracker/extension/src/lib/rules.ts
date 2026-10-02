@@ -8,19 +8,22 @@ export const Rule = type({
   version: "number",
   hosts: "string[]",
   path_regex: "string",
+  "exclude_path_regex?": "string",
   query_keys: "string[]",
   dwell_ms: "number",
-  recapture: "string",
+  recapture: "'never' | 'after_change'",
   max_bytes: "number",
 });
 export type Rule = typeof Rule.infer;
 
-// Go encodes nil slices as null and unset ints as 0; the wire form is normalised once, here.
+// Go encodes nil slices as null and unset ints as 0, and a server can publish a
+// recapture mode this extension does not know; the wire form is normalised once, here.
 const WireRule = type({
   extractor: "string",
   version: "number",
   hosts: "string[] | null",
   path_regex: "string",
+  "exclude_path_regex?": "string",
   query_keys: "string[] | null",
   dwell_ms: "number",
   recapture: "string",
@@ -34,6 +37,7 @@ export const RulesResponse = type({ rules: WireRule.array() }).pipe(({ rules }) 
     query_keys: rule.query_keys ?? [],
     dwell_ms: rule.dwell_ms > 0 ? rule.dwell_ms : DEFAULT_DWELL_MS,
     max_bytes: rule.max_bytes > 0 ? rule.max_bytes : DEFAULT_MAX_BYTES,
+    recapture: rule.recapture === "after_change" ? "after_change" : "never",
   })),
 );
 
@@ -45,10 +49,10 @@ export function hostMatches(pattern: string, hostname: string): boolean {
   return host === wanted;
 }
 
-function pathMatches(pattern: string, pathname: string): boolean {
-  if (pattern === "") return true;
+function pathMatches(rule: Rule, pathname: string): boolean {
   try {
-    return new RegExp(pattern).test(pathname);
+    if (rule.exclude_path_regex && new RegExp(rule.exclude_path_regex).test(pathname)) return false;
+    return rule.path_regex === "" || new RegExp(rule.path_regex).test(pathname);
   } catch {
     return false;
   }
@@ -63,7 +67,7 @@ function hostClaimed(rule: Rule, url: URL): boolean {
 }
 
 function ruleMatches(rule: Rule, url: URL): boolean {
-  return hostClaimed(rule, url) && pathMatches(rule.path_regex, url.pathname);
+  return hostClaimed(rule, url) && pathMatches(rule, url.pathname);
 }
 
 // Host-specific rules are tried before any wildcard one, whatever order the

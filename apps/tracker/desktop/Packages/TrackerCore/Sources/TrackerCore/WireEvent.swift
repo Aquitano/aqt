@@ -50,15 +50,15 @@ extension WireEvent: Codable {
         let id = try container.decode(String.self, forKey: .id)
         switch try container.decode(String.self, forKey: .type) {
         case "span_start":
-            self = .spanStart(SpanStart(
+            self = try .spanStart(SpanStart(
                 id: id,
-                startedAt: try container.decode(Date.self, forKey: .startedAt),
-                appName: try container.decode(String.self, forKey: .appName),
-                bundleID: try container.decode(String.self, forKey: .bundleID),
-                windowTitle: try container.decodeIfPresent(String.self, forKey: .windowTitle)
+                startedAt: container.decode(Date.self, forKey: .startedAt),
+                appName: container.decode(String.self, forKey: .appName),
+                bundleID: container.decode(String.self, forKey: .bundleID),
+                windowTitle: container.decodeIfPresent(String.self, forKey: .windowTitle)
             ))
         case "span_heartbeat":
-            self = .spanHeartbeat(SpanHeartbeat(id: id, at: try container.decode(Date.self, forKey: .at)))
+            self = try .spanHeartbeat(SpanHeartbeat(id: id, at: container.decode(Date.self, forKey: .at)))
         case "span_end":
             let rawReason = try container.decode(String.self, forKey: .reason)
             guard let reason = EndReason(rawValue: rawReason) else {
@@ -66,7 +66,7 @@ extension WireEvent: Codable {
                     forKey: .reason, in: container, debugDescription: "Unknown end reason"
                 )
             }
-            self = .spanEnd(SpanEnd(id: id, endedAt: try container.decode(Date.self, forKey: .endedAt), reason: reason))
+            self = try .spanEnd(SpanEnd(id: id, endedAt: container.decode(Date.self, forKey: .endedAt), reason: reason))
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Unknown event type")
         }

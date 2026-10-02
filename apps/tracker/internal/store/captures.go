@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
@@ -20,12 +22,23 @@ type CaptureResult struct {
 	Deduplicated bool
 }
 
+// ErrUnknownPageView means a capture names a page view that is not on file.
+// Clients send a page view before its captures, so a retry would fail alike.
+var ErrUnknownPageView = errors.New("store: capture names an unknown page view")
+
 // InsertCapture is the ingest transaction: url, blob, capture, derivation.
 // A blob already on file makes the capture a duplicate; its derivation is
 // left alone and any record it already produced just gets a newer last_seen_at.
 func (s *Store) InsertCapture(ctx context.Context, in CaptureInput) (CaptureResult, error) {
 	res := CaptureResult{CaptureID: in.Capture.ID, RawHash: in.Blob.Hash}
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		known, err := tx.NewSelect().Model((*PageView)(nil)).Where("id = ?", in.Capture.PageViewID).Exists(ctx)
+		if err != nil {
+			return err
+		}
+		if !known {
+			return ErrUnknownPageView
+		}
 		if _, err := upsertURL(ctx, tx, in.URL); err != nil {
 			return err
 		}
@@ -56,4 +69,19 @@ func (s *Store) InsertCapture(ctx context.Context, in CaptureInput) (CaptureResu
 		return CaptureResult{}, err
 	}
 	return res, nil
+}
+
+// LatestCaptureHash is the blob of the most recent capture of the page whose
+// normalised URL hashes to urlHash, matched on the page view it belongs to.
+func (s *Store) LatestCaptureHash(ctx context.Context, urlHash []byte) ([]byte, error) {
+	var hash []byte
+	err := s.db.NewRaw(`select c.raw_hash from captures c
+		join page_views pv on pv.id = c.page_view_id
+		join urls u on u.id = pv.url_id
+		where u.url_hash = ?
+		order by c.captured_at desc, c.id desc limit 1`, urlHash).Scan(ctx, &hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return hash, err
 }

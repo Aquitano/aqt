@@ -3,9 +3,12 @@ package client
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"golang.org/x/oauth2"
 )
@@ -97,5 +100,41 @@ func TestNewWithoutAnIssuerNeedsNoToken(t *testing.T) {
 	}
 	if c.base != "http://127.0.0.1:8490" {
 		t.Errorf("base = %q", c.base)
+	}
+}
+
+// The agent runs unattended for weeks: a spent token must come back refreshed,
+// and the rotated refresh token must reach the file or the next run is
+// signed out.
+func TestBearerRefreshesASpentTokenAndStoresTheRotatedOne(t *testing.T) {
+	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil || r.PostForm.Get("refresh_token") != "refresh" {
+			http.Error(w, "unexpected refresh", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"access_token":"fresh","refresh_token":"rotated","token_type":"Bearer","expires_in":3600}`))
+	}))
+	defer issuer.Close()
+	path := filepath.Join(t.TempDir(), "token.json")
+	spent := testSession(issuer.URL)
+	spent.Token.Expiry = time.Now().Add(-time.Minute)
+	if err := save(path, spent); err != nil {
+		t.Fatal(err)
+	}
+
+	bearer, err := Bearer(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bearer != "fresh" {
+		t.Errorf("bearer = %q, want the refreshed token", bearer)
+	}
+	stored, err := load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Token.RefreshToken != "rotated" {
+		t.Errorf("stored refresh token = %q, want the rotated one", stored.Token.RefreshToken)
 	}
 }

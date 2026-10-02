@@ -12,6 +12,7 @@ AQT_VPS_HOST = "root@ubuntu"
 
 [vars]
 gallery_vps_root = "/srv/docker/aqt-gallery"
+tracker_vps_root = "/opt/aqt-tracker"
 
 [task_config]
 includes = ["tools/tasks"]
@@ -119,6 +120,16 @@ run = "ops/secrets.sh send gallery prod"
 [tasks."gallery:dev"]
 dir = "apps/gallery"
 run = "bun run dev"
+
+[tasks."tracker:deploy"]
+description = "Pull, rebuild and restart the tracker server on the VPS"
+env = { AQT_VPS_ROOT = "{{vars.tracker_vps_root}}" }
+run = "ops/deploy.sh tracker"
+
+[tasks."tracker:secrets:send"]
+description = "Write the prod .env from Infisical onto the VPS"
+env = { AQT_VPS_ROOT = "{{vars.tracker_vps_root}}" }
+run = "ops/secrets.sh send tracker prod"
 
 [tasks."img:check"]
 depends = ["shared:ts", "img:ts"]

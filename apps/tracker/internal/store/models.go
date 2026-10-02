@@ -112,7 +112,7 @@ type Record struct {
 	Extractor    string          `bun:"extractor"`
 	RecordHash   []byte          `bun:"record_hash"`
 	URLID        int64           `bun:"url_id"`
-	CanonicalURL string          `bun:"canonical_url,nullzero"`
+	CanonicalURL string          `bun:"canonical_url"`
 	Title        string          `bun:"title,nullzero"`
 	SearchText   string          `bun:"search_text"`
 	Data         json.RawMessage `bun:"data,type:jsonb"`

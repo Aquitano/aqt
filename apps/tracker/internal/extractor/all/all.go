@@ -6,6 +6,9 @@ package all
 import (
 	_ "github.com/aquitano/aqt/apps/tracker/internal/extractor/article"
 	_ "github.com/aquitano/aqt/apps/tracker/internal/extractor/github"
+	_ "github.com/aquitano/aqt/apps/tracker/internal/extractor/hackernews"
+	_ "github.com/aquitano/aqt/apps/tracker/internal/extractor/reddit"
+	_ "github.com/aquitano/aqt/apps/tracker/internal/extractor/stackexchange"
 	_ "github.com/aquitano/aqt/apps/tracker/internal/extractor/x"
 	_ "github.com/aquitano/aqt/apps/tracker/internal/extractor/youtube"
 )

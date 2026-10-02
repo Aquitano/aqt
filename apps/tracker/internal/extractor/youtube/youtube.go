@@ -1,4 +1,5 @@
-// Package youtube extracts a video's metadata from a youtube.com watch page.
+// Package youtube extracts a video's metadata, and the transcript the
+// extension attaches, from a youtube.com watch page.
 package youtube
 
 import (
@@ -18,15 +19,21 @@ import (
 const Name = "youtube"
 
 type Data struct {
-	VideoID         string   `json:"video_id"`
-	Title           string   `json:"title"`
-	Channel         string   `json:"channel"`
-	ChannelID       string   `json:"channel_id"`
-	DurationSeconds int      `json:"duration_seconds"`
-	Published       string   `json:"published"`
-	Description     string   `json:"description"`
-	ViewCount       int64    `json:"view_count"`
-	Keywords        []string `json:"keywords"`
+	VideoID         string      `json:"video_id"`
+	Title           string      `json:"title"`
+	Channel         string      `json:"channel"`
+	ChannelID       string      `json:"channel_id"`
+	DurationSeconds int         `json:"duration_seconds"`
+	Published       string      `json:"published"`
+	Description     string      `json:"description"`
+	Keywords        []string    `json:"keywords"`
+	Transcript      *Transcript `json:"transcript,omitempty"`
+}
+
+type Transcript struct {
+	Language string `json:"language"`
+	Kind     string `json:"kind"`
+	Text     string `json:"text"`
 }
 
 type Extractor struct{}
@@ -36,8 +43,10 @@ func init() { extractor.Register(Extractor{}) }
 func (Extractor) Rule() extractor.Rule {
 	return extractor.Rule{
 		Extractor: Name,
-		Version:   3,
-		Hosts:     []string{"www.youtube.com", "youtube.com"},
+		Version:   5,
+		// Every subdomain, so studio and music pages never fall through to
+		// the article fallback.
+		Hosts:     []string{"youtube.com", "*.youtube.com"},
 		PathRegex: `^/watch$`,
 		QueryKeys: []string{"v"},
 	}
@@ -52,13 +61,49 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 	if err != nil {
 		return extractor.Record{}, err
 	}
+	data.Transcript = transcript(doc, data.VideoID)
+	searchText := []string{data.Title, data.Channel, data.Description, strings.Join(data.Keywords, " ")}
+	if data.Transcript != nil {
+		searchText = append(searchText, data.Transcript.Text)
+	}
 	return extractor.Record{
 		CanonicalURL: "https://www.youtube.com/watch?v=" + data.VideoID,
 		Title:        data.Title,
-		SearchText: strings.TrimSpace(strings.Join(
-			[]string{data.Title, data.Channel, data.Description, strings.Join(data.Keywords, " ")}, "\n")),
-		Data: data,
+		SearchText:   strings.TrimSpace(strings.Join(searchText, "\n")),
+		Data:         data,
 	}, nil
+}
+
+// The extension appends the transcript YouTube loaded for the video it was
+// showing, which after in-app navigation can be another video than the one
+// read here; only the text is kept, the timestamps stay in the blob.
+func transcript(doc *html.Node, videoID string) *Transcript {
+	script := findNode(doc, func(n *html.Node) bool {
+		return n.Data == "script" && attr(n, "id") == "tracker-transcript" && n.FirstChild != nil
+	})
+	if script == nil {
+		return nil
+	}
+	var attached struct {
+		VideoID  string `json:"video_id"`
+		Language string `json:"language"`
+		Kind     string `json:"kind"`
+		Segments []struct {
+			Text string `json:"text"`
+		} `json:"segments"`
+	}
+	if err := json.Unmarshal([]byte(script.FirstChild.Data), &attached); err != nil || attached.VideoID != videoID {
+		return nil
+	}
+	lines := make([]string, 0, len(attached.Segments))
+	for _, segment := range attached.Segments {
+		lines = append(lines, segment.Text)
+	}
+	text := strings.Join(strings.Fields(strings.Join(lines, " ")), " ")
+	if text == "" {
+		return nil
+	}
+	return &Transcript{Language: attached.Language, Kind: attached.Kind, Text: text}
 }
 
 // YouTube navigation can leave the previous video in scripts and microdata.
@@ -139,7 +184,6 @@ type playerResponse struct {
 		ChannelID        string   `json:"channelId"`
 		LengthSeconds    string   `json:"lengthSeconds"`
 		ShortDescription string   `json:"shortDescription"`
-		ViewCount        string   `json:"viewCount"`
 		Keywords         []string `json:"keywords"`
 	} `json:"videoDetails"`
 	Microformat struct {
@@ -171,7 +215,6 @@ func playerData(doc *html.Node) (Data, bool) {
 		return Data{}, false
 	}
 	length, _ := strconv.Atoi(details.LengthSeconds)
-	views, _ := strconv.ParseInt(details.ViewCount, 10, 64)
 	keywords := details.Keywords
 	if keywords == nil {
 		keywords = []string{}
@@ -184,7 +227,6 @@ func playerData(doc *html.Node) (Data, bool) {
 		DurationSeconds: length,
 		Published:       isoDate(pr.Microformat.PlayerMicroformatRenderer.PublishDate),
 		Description:     details.ShortDescription,
-		ViewCount:       views,
 		Keywords:        keywords,
 	}, true
 }
@@ -244,7 +286,6 @@ func microdata(doc *html.Node) (Data, bool) {
 	if keywords := itemprop(doc, "keywords"); keywords != "" {
 		d.Keywords = strings.Split(keywords, ",")
 	}
-	d.ViewCount = interactionCount(doc, "https://schema.org/WatchAction")
 	return d, true
 }
 
@@ -256,15 +297,6 @@ func itemprop(root *html.Node, name string) string {
 		return ""
 	}
 	return attr(n, "content")
-}
-
-func interactionCount(doc *html.Node, interactionType string) int64 {
-	stat := findNode(doc, func(n *html.Node) bool {
-		return attr(n, "itemprop") == "interactionStatistic" &&
-			itemprop(n, "interactionType") == interactionType
-	})
-	count, _ := strconv.ParseInt(itemprop(stat, "userInteractionCount"), 10, 64)
-	return count
 }
 
 var durationRe = regexp.MustCompile(`^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$`)

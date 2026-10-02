@@ -11,7 +11,13 @@ run = [
 
 ["tracker:go"]
 dir = "apps/tracker"
-run = ["go vet ./...", "go test -race ./...", "golangci-lint run"]
+run = [
+  "go vet ./...",
+  "go test -race ./...",
+  "golangci-lint run",
+  "GOOS=windows go vet ./...",
+  "GOOS=windows golangci-lint run",
+]
 
 ["tracker:dev"]
 dir = "apps/tracker"
@@ -92,3 +98,12 @@ run = [
 ["tracker:desktop:logs"]
 description = "Follow the menu-bar agent's unified log"
 run = "log stream --predicate 'subsystem == \"com.aquitano.tracker-agent\"'"
+
+["tracker:agent:windows:build"]
+dir = "apps/tracker"
+description = "Cross-compile the Windows desktop agent and the CLI it signs in with to dist/"
+env = { GOOS = "windows", GOARCH = "amd64", CGO_ENABLED = "0" }
+run = [
+  "go build -trimpath -ldflags='-H=windowsgui -s -w' -o dist/tracker-agent.exe ./cmd/tracker-agent",
+  "go build -trimpath -ldflags='-s -w' -o dist/tracker.exe ./cmd/tracker",
+]
