@@ -1,13 +1,5 @@
-// Package aichat imports AI conversation history: ChatGPT and Claude.ai data
-// exports, and the local session stores of AI coding harnesses (Claude Code,
-// Codex, OpenCode, Antigravity — see harness.go for the registry that
-// `bank import ai` sweeps). Every source normalizes to the common schema —
-// sender is the role ("user"/"assistant"), thread is the source's stable
-// conversation id and subject its human title — and stable per-message ids
-// keep re-imports idempotent.
-//
-// Titles are not unique (a ChatGPT export holds dozens of "New chat"), so
-// keying threads on them merged unrelated conversations into one.
+// Package aichat imports ChatGPT and Claude.ai conversation exports.
+// Source conversation IDs and stable message IDs keep reimports idempotent.
 package aichat
 
 import (
@@ -51,17 +43,6 @@ type Result struct {
 	// contain — ChatGPT drops expired assets from the download, so a nonzero
 	// count is normal for an old account, not an import failure.
 	MissingMedia int `json:"missing_media,omitempty"`
-	// FailedSessions lists transcript files that could not be read or parsed.
-	// A directory import continues past them, so the paths belong in the
-	// result and not only in a stderr line.
-	FailedSessions []string `json:"failed_sessions,omitempty"`
-	// SubagentSessions counts transcripts that were nothing but subagent
-	// sidechain traffic and were deliberately not imported.
-	SubagentSessions int `json:"subagent_sessions,omitempty"`
-	// UnchangedSessions counts session files a Sync* import skipped because
-	// their exact bytes were already archived — and, since archiving happens
-	// after ingest, already imported — by an earlier run.
-	UnchangedSessions int `json:"unchanged_sessions,omitempty"`
 }
 
 type message struct {
@@ -91,7 +72,7 @@ type assetRef struct {
 }
 
 // media resolves asset ids to their exported bytes. nil media (bare
-// conversations.json, claude, claude-code) imports messages text-only, same
+// conversations.json, claude) imports messages text-only, same
 // as before attachments existed.
 type media struct {
 	blobs *blob.Store
@@ -106,7 +87,7 @@ func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef str
 	for _, m := range msgs {
 		if m.ExternalID == "" {
 			// One malformed export record (a mapping node without an id, a
-			// transcript line without a uuid) must not abort the whole import.
+			// Claude message without a uuid) must not abort the whole import.
 			r.Skipped++
 			named := m.Subject // the title says more to a human than the conversation id
 			if named == "" {
