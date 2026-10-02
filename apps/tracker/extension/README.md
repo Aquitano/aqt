@@ -21,7 +21,11 @@ Open the extension's options page (the popup's "Options" link, or `chrome://exte
 - **Private hosts**, one per line. A host covers its subdomains (`example.com` also covers `mail.example.com`).
 - **Capture HTML** on or off. Off means page views and spans still flow, no HTML is ever serialised.
 
-The popup shows connected/unreachable, pending events and captures in the outbox, the last sync, the last error, the last 100 diagnostic lines, and a "Capture now" button for the active tab.
+The popup has a search box and shows connected/unreachable, pending events and captures in the outbox, the last sync, the last error, the last 100 diagnostic lines, and a "Capture now" button for the active tab.
+
+## Search
+
+Type `t`, a space and a query in the address bar: the extension suggests up to six records from the server's search. Enter on a suggestion opens it; enter on what you typed opens the extension's search page, which lists each hit with its host, extractor, snippet and how often and how long you read it. The popup's search box opens the same page.
 
 ## What it records
 
@@ -44,13 +48,14 @@ Everything is queued in IndexedDB and sent to the server with exponential backof
 ```
 wxt.config.ts               manifest and permissions
 src/entrypoints/
-  background.ts             service worker: wires browser events to lib/tracker.ts
+  background.ts             service worker: wires browser events to lib/tracker.ts and lib/omnibox.ts
   page.content.ts           isolated world: serialises HTML on request, tracks whether it changed since, forwards SPA URL changes
   history-hook.content.ts   page world: patches pushState/replaceState to raise an event
-  popup/, options/          plain HTML + TypeScript
+  popup/, options/, search/ plain HTML + TypeScript
 src/lib/
   tracker.ts                page view, span, capture and sync orchestration
-  rules.ts, page-view.ts, privacy.ts, backoff.ts, result.ts, uuid.ts   pure, unit tested
+  omnibox.ts                address bar suggestions
+  rules.ts, page-view.ts, privacy.ts, recall.ts, backoff.ts, result.ts, uuid.ts   pure, unit tested
   outbox.ts                 IndexedDB queue
   api.ts                    HTTP calls, responses decoded with ArkType
   auth.ts                   OIDC sign-in and token refresh

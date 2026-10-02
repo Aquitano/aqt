@@ -3,6 +3,7 @@ import { browser } from "wxt/browser";
 import { defineBackground } from "wxt/utils/define-background";
 
 import { BackgroundMessage } from "../lib/messages.ts";
+import { onOmniboxEnter, onOmniboxInput } from "../lib/omnibox.ts";
 import {
   IDLE_SECONDS,
   handleMessage,
@@ -51,6 +52,12 @@ export default defineBackground(() => {
     if (area !== "local") return;
     if ("settings" in changes || "authTokens" in changes) void requestSync(["rules", "health"]);
   });
+
+  void browser.omnibox.setDefaultSuggestion({ description: "Search what you read for %s" });
+  browser.omnibox.onInputChanged.addListener(onOmniboxInput);
+  browser.omnibox.onInputEntered.addListener(
+    (text, disposition) => void onOmniboxEnter(text, disposition),
+  );
 
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const parsed = BackgroundMessage(message);

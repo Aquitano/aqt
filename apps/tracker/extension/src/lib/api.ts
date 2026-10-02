@@ -11,6 +11,17 @@ export type { Result } from "./result.ts";
 const HealthReply = type({ ok: "boolean", db: "boolean" });
 const BatchReply = type({ accepted: "number", dropped: "number" });
 const CaptureReply = type({ capture_id: "string", raw_hash: "string", deduplicated: "boolean" });
+const Visits = type({ count: "number", last_at: "string | null", active_seconds: "number" });
+export type Visits = typeof Visits.infer;
+const SearchHit = type({
+  extractor: "string",
+  title: "string",
+  canonical_url: "string",
+  snippet: "string",
+  visits: Visits,
+});
+export type SearchHit = typeof SearchHit.infer;
+const SearchReply = type({ hits: SearchHit.array() }).pipe(({ hits }) => hits);
 const REQUEST_TIMEOUT_MS = 15_000;
 
 // healthz is the one route the server leaves open, so it answers even when
@@ -98,4 +109,9 @@ export function postCapture(serverUrl: string, capture: CapturePayload) {
   form.append("meta", JSON.stringify(capture.meta));
   form.append("html", new Blob([capture.html], { type: "text/html" }), "page.html");
   return call(`${serverUrl}/v1/captures`, { method: "POST", body: form }, CaptureReply);
+}
+
+export function search(serverUrl: string, query: string, limit: number) {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  return call(`${serverUrl}/v1/search?${params}`, undefined, SearchReply);
 }

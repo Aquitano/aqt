@@ -53,6 +53,13 @@
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
+      #search-query {
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 8px;
+        padding: 4px 6px;
+        font: inherit;
+      }
       #outcome {
         min-height: 1.4em;
         margin: 4px 0;
@@ -60,6 +67,9 @@
     </style>
   </head>
   <body>
+    <form id="search" role="search">
+      <input id="search-query" type="search" placeholder="Search what you read" />
+    </form>
     <header>
       <span id="connection" data-state="unknown">checking</span>
       <button id="capture" type="button">Capture now</button>

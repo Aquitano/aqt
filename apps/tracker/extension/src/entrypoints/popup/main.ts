@@ -3,6 +3,7 @@ import { browser } from "wxt/browser";
 
 import { element } from "../../lib/dom.ts";
 import { CaptureNowReply, StatusReply, type PopupMessage } from "../../lib/messages.ts";
+import { searchPagePath } from "../../lib/recall.ts";
 
 const REFRESH_MS = 2000;
 
@@ -47,6 +48,11 @@ async function captureNow(): Promise<void> {
 }
 
 element("capture", HTMLButtonElement).addEventListener("click", () => void captureNow());
+element("search", HTMLFormElement).addEventListener("submit", (event) => {
+  event.preventDefault();
+  const query = element("search-query", HTMLInputElement).value.trim();
+  if (query !== "") void browser.tabs.create({ url: searchPagePath(query) });
+});
 element("options", HTMLAnchorElement).addEventListener("click", (event) => {
   event.preventDefault();
   void browser.runtime.openOptionsPage();
