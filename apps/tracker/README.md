@@ -1,6 +1,6 @@
 # tracker
 
-Browsing memory: a Chromium extension records page views and active time and snapshots the HTML of pages you read; a macOS menu-bar agent records which desktop app and window has focus; a local Go server turns the snapshots into searchable structured records in Postgres and the spans into work blocks and context-switch metrics. Two products of equal weight — recall over what I read, and attention analytics over where the time went. See [DESIGN.md](DESIGN.md) for the architecture.
+Browsing memory: a Chromium extension records page views and active time and snapshots the HTML of pages you read; a macOS menu-bar agent records which desktop app and window has focus; a Go server on the VPS turns the snapshots into searchable structured records in Postgres and the spans into work blocks and context-switch metrics. Two products of equal weight — recall over what I read, and attention analytics over where the time went. See [DESIGN.md](DESIGN.md) for the architecture.
 
 ## Quickstart
 
@@ -19,7 +19,7 @@ Grafana is at <http://127.0.0.1:3090> — anonymous admin, dashboards `tracker` 
 
 ## Always on
 
-`serve` runs as a LaunchAgent, so it starts at login and comes back if it dies:
+On a laptop that is its own server, `serve` runs as a LaunchAgent, so it starts at login and comes back if it dies:
 
 ```sh
 mise run tracker:service      # build the binary, install the agent, start it
@@ -144,14 +144,14 @@ URL, normalised like ingest does, whose most recent capture it writes.
 
 ## Ports
 
-| What            | Address                             |
-| --------------- | ----------------------------------- |
-| Postgres        | `127.0.0.1:5435`, db/user `tracker` |
-| `tracker serve` | `127.0.0.1:8490`                    |
-| Prometheus      | `127.0.0.1:9091`                    |
-| Grafana         | `127.0.0.1:3090`                    |
+| What            | Laptop                              | VPS                       |
+| --------------- | ----------------------------------- | ------------------------- |
+| Postgres        | `127.0.0.1:5435`, db/user `tracker` | `127.0.0.1:5435`          |
+| `tracker serve` | `127.0.0.1:8490`                    | the tailnet address, 8490 |
+| Prometheus      | `127.0.0.1:9091`                    | not run                   |
+| Grafana         | `127.0.0.1:3090`                    | the tailnet address, 3090 |
 
-Everything is loopback-only and unauthenticated by default; requests carrying an `Origin` that is not `chrome-extension://…` (or, with `TRACKER_EXTENSION_ID` set, not that one extension) are rejected, and while authentication is off, so is every request but `/healthz` and `/metrics` whose `Host` is not `127.0.0.1`, `localhost` or `[::1]`. That second check stops a DNS-rebinding page, which is same-origin with the server and sends no `Origin` on a GET.
+Everything is loopback-only and unauthenticated by default; the VPS's `.env` publishes the server and Grafana on its tailnet address and turns authentication on (Deploying to the VPS). Requests carrying an `Origin` that is not `chrome-extension://…` (or, with `TRACKER_EXTENSION_ID` set, not that one extension) are rejected, and while authentication is off, so is every request but `/healthz` and `/metrics` whose `Host` is not `127.0.0.1`, `localhost` or `[::1]`. That second check stops a DNS-rebinding page, which is same-origin with the server and sends no `Origin` on a GET.
 
 ## Authentication
 
@@ -189,6 +189,97 @@ the extension id to `gdhnnekkmghgkiikgmdodggcpgnmbpno` on every machine, so that
 URI is always `https://gdhnnekkmghgkiikgmdodggcpgnmbpno.chromiumapp.org/`, and
 `TRACKER_EXTENSION_ID` set to the id makes `serve` refuse every other extension's
 origin.
+
+## Deploying to the VPS
+
+One server on the VPS, and every machine tracks into it: the extension in each browser, the desktop agent and the CLI on the Mac. [docker-compose.yml](docker-compose.yml) runs it the way bank runs: a static binary on distroless as uid 65532, read-only root filesystem, no capabilities, published on the box's tailnet address only. Postgres and its daily backups live on the LUKS volume at `/data`, which is why nothing restarts on its own. Grafana reads Postgres and is on the tailnet too, behind its own login; Prometheus stays on the laptop. Authentication is on, against authentik.
+
+### authentik
+
+In the admin interface:
+
+1. Applications > Providers > Create an OAuth2/OpenID provider named `tracker`: client type **Public**, a **signing key** selected (RS256; without one tokens are signed with a client secret a public client does not have), and the `offline_access` scope mapping added to the default ones so clients get refresh tokens. Redirect URIs come later, from the extension. Note the client id.
+2. Applications > Create an application with slug `tracker` and that provider. The issuer is then `https://auth.aquitano.me/application/o/tracker/`, trailing slash included.
+3. System > Brands > the brand serving auth.aquitano.me: set a **device code flow**, which `tracker login` needs. authentik ships none; its device code flow docs describe the one to create.
+
+`curl -s https://auth.aquitano.me/application/o/tracker/.well-known/openid-configuration` should then name that issuer and a `device_authorization_endpoint`.
+
+### First deploy
+
+On the box as root, with `/data` unlocked and mounted (bank's [DEPLOY.md](../bank/DEPLOY.md), section 1). The tracker container writes nothing to disk, so no directory has to belong to its uid: Postgres's entrypoint takes `pgdata` over on its first start, and the backup service writes its dumps as root at mode 600.
+
+```sh
+git clone https://github.com/Aquitano/aqt.git /opt/aqt-tracker   # credentials as for the gallery's checkout
+mkdir -p /data/aqt-tracker/pgdata /data/aqt-tracker/backups
+chmod 700 /data/aqt-tracker/backups
+```
+
+`/opt/aqt-tracker/apps/tracker/.env`, mode 600, or keep it in Infisical's `prod` and run `mise run tracker:secrets:send` from the laptop:
+
+```sh
+COMPOSE_PROFILES=server
+POSTGRES_PASSWORD=<openssl rand -hex 24>   # before the first up: Postgres keeps the one it starts with
+TRACKER_PG_DIR=/data/aqt-tracker/pgdata
+TRACKER_BACKUP_DIR=/data/aqt-tracker/backups
+TRACKER_LISTEN=100.x.y.z:8490              # `tailscale ip -4`; never 0.0.0.0, there is no TLS
+TRACKER_GRAFANA_LISTEN=100.x.y.z:3090
+TRACKER_GRAFANA_PASSWORD=<another one>
+TRACKER_OIDC_ISSUER=https://auth.aquitano.me/application/o/tracker/
+TRACKER_OIDC_AUDIENCE=<client id>
+```
+
+On the Mac, stop the local server and dump its database, from `apps/tracker`. The extension and the desktop agent queue meanwhile:
+
+```sh
+mise run tracker:service:stop
+docker compose exec -T db pg_dump -U tracker -d tracker -Fc > ~/tracker.dump
+scp ~/tracker.dump root@ubuntu:/data/aqt-tracker/ && rm ~/tracker.dump
+```
+
+Back on the box, restore it into the empty database before the server first starts, then start everything:
+
+```sh
+cd /opt/aqt-tracker/apps/tracker
+docker compose up -d db
+docker compose exec -T db pg_restore -U tracker -d tracker --clean --if-exists < /data/aqt-tracker/tracker.dump
+docker compose exec db psql -U tracker -d tracker -c "alter database tracker set timezone to 'Europe/Berlin'"
+docker compose up -d --build
+curl -s http://100.x.y.z:8490/healthz      # {"db":true,"ok":true}
+rm /data/aqt-tracker/tracker.dump
+```
+
+The time zone is the one Grafana's per-day panels bucket by; a dump does not carry it. Grafana is at `http://100.x.y.z:3090`, user `admin`. Once the clients below see their history, retire the Mac's stack, keeping its volumes until you no longer want the local copy:
+
+```sh
+docker compose -f docker-compose.yml -f deploy/docker-compose.laptop.yml down
+```
+
+Later deploys are `mise run tracker:deploy` from the laptop. `tracker reprocess`, `migrate` and `blob` run on the box as `docker compose run --rm tracker <command>`.
+
+### Pointing the clients at it
+
+- **Extension**, in each browser on each machine: on the options page, the server URL `http://100.x.y.z:8490`, the issuer and the client id, then sign in. The manifest pins the extension id, so the provider needs one redirect URI for every browser: `https://gdhnnekkmghgkiikgmdodggcpgnmbpno.chromiumapp.org/`.
+- **CLI**, in the shell profile, then `tracker login` once; `tracker stats` shows the restored history:
+  ```sh
+  export TRACKER_SERVER_URL=http://100.x.y.z:8490
+  export TRACKER_OIDC_ISSUER=https://auth.aquitano.me/application/o/tracker/
+  export TRACKER_OIDC_CLIENT_ID=<client id>
+  ```
+- **Desktop agent**: `TRACKER_SERVER_URL` in [deploy/com.aqt.tracker-agent.plist](deploy/com.aqt.tracker-agent.plist), then `mise run tracker:desktop:service`. It signs in with the CLI's token file, so `tracker login` covers it.
+
+### After a reboot
+
+Nothing that writes to disk comes back by itself: the bind paths would point at the unencrypted root disk until `/data` is unlocked. Add the tracker to the step that unlocks `/data` and starts bank:
+
+```sh
+docker compose -f /opt/aqt-tracker/apps/tracker/docker-compose.yml up -d
+```
+
+The server fetches authentik's discovery document as it starts and exits when that fails; its restart policy retries until authentik answers.
+
+### While the server is down
+
+Clients queue and lose nothing short of a long outage. The extension keeps page views, spans and captures in its outbox (the newest 10,000 events and 200 captures) and retries with backoff up to 5 minutes; the desktop agent keeps up to 10,000 events in its outbox file. Search, the seen-before badge and the CLI fail until it is back. The popup counts anything an overflowing outbox dropped.
 
 ## What is recorded
 
