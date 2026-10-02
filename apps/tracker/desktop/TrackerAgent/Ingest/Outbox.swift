@@ -21,10 +21,10 @@ final class Outbox {
     private(set) var serverReachable = false
 
     var pending: Int {
-        queue.count
+        queue.events.count
     }
 
-    private var queue: [WireEvent] = []
+    private var queue: OutboxQueue
     private var failedAttempts = 0
     private var retryAfter: Date?
     private var isFlushing = false
@@ -32,26 +32,29 @@ final class Outbox {
 
     private let client: IngestClient
     private let deviceID: UUID
-    private let file: OutboxFile
-    private var canPersist = true
 
     init(configuration: TrackerConfiguration, deviceID: UUID) {
         let tokens = configuration.tokenPath.map { TokenSource(path: $0) }
         client = IngestClient(configuration: configuration, tokens: tokens)
         self.deviceID = deviceID
-        file = OutboxFile(url: OutboxFile.defaultURL(deviceID: deviceID))
+        let file = OutboxFile(url: OutboxFile.defaultURL(deviceID: deviceID))
         switch file.restore() {
-        case let .success(.events(events)):
-            queue = events
-        case let .success(.unreadable(error, movedTo: aside)):
-            let path = (aside.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
-            restoreError = "Unreadable outbox moved to \(path)"
-            Log.outbox.error(
-                "unreadable outbox moved to \(path, privacy: .public): \(error.localizedDescription, privacy: .public)"
-            )
+        case let .success(restored):
+            queue = OutboxQueue(file: file, events: restored.events, capacity: Self.capacity)
+            dropped = restored.skippedLines
+            if restored.skippedLines > 0 {
+                Log.outbox.error("skipped \(restored.skippedLines, privacy: .public) unreadable outbox lines")
+            }
+            for (aside, error) in restored.movedAside {
+                let path = (aside.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
+                let reason = error.localizedDescription
+                restoreError = "Unreadable outbox moved to \(path)"
+                Log.outbox.error("unreadable outbox moved to \(path, privacy: .public): \(reason, privacy: .public)")
+            }
         case let .failure(error):
-            canPersist = false
-            storageError = "Could not move unreadable outbox aside: \(error.localizedDescription)"
+            // Memory only, so the file that could not be moved aside stays for recovery.
+            queue = OutboxQueue(file: nil, events: [], capacity: Self.capacity)
+            restoreError = "Could not move unreadable outbox aside: \(error.localizedDescription)"
             Log.outbox.error("could not move unreadable outbox aside: \(error.localizedDescription, privacy: .public)")
         }
     }
@@ -81,15 +84,14 @@ final class Outbox {
 
     func enqueue(_ events: [WireEvent]) {
         guard !events.isEmpty else { return }
-        queue.append(contentsOf: events)
+        record(queue.append(events))
         trimToCapacity()
-        persist()
-        guard queue.count >= Self.flushThreshold else { return }
+        guard queue.events.count >= Self.flushThreshold else { return }
         Task { [weak self] in await self?.flush() }
     }
 
     func flush() async {
-        guard !isFlushing, !queue.isEmpty else { return }
+        guard !isFlushing, !queue.events.isEmpty else { return }
         if let retryAfter, retryAfter > .now {
             return
         }
@@ -97,20 +99,19 @@ final class Outbox {
         defer {
             isFlushing = false
             trimToCapacity()
-            persist()
         }
 
-        let events = Array(queue.prefix(Self.maximumBatch))
+        let events = Array(queue.events.prefix(Self.maximumBatch))
         switch await client.send(EventBatch(deviceID: deviceID, events: events)) {
         case let .delivered(_, serverDropped):
-            queue.removeFirst(events.count)
+            record(queue.removeFirst(events.count))
             dropped += serverDropped
             failedAttempts = 0
             retryAfter = nil
             deliveryError = nil
             serverReachable = true
         case let .permanent(message):
-            queue.removeFirst(events.count)
+            record(queue.removeFirst(events.count))
             dropped += events.count
             deliveryError = message
             Log.outbox.error("dropped \(events.count, privacy: .public) events: \(message, privacy: .public)")
@@ -124,16 +125,14 @@ final class Outbox {
     }
 
     func flushOnTerminate(timeout: TimeInterval) {
-        guard !queue.isEmpty else { return }
-        let batch = EventBatch(deviceID: deviceID, events: Array(queue.prefix(Self.maximumBatch)))
+        guard !queue.events.isEmpty else { return }
+        let batch = EventBatch(deviceID: deviceID, events: Array(queue.events.prefix(Self.maximumBatch)))
         guard let request = try? client.batchRequest(batch, token: client.tokens?.mostRecentBearer()) else { return }
         IngestClient.sendBlocking(request, timeout: timeout)
     }
 
-    private func persist() {
-        // An unreadable queue that could not be moved aside stays for recovery, not overwritten.
-        guard canPersist else { return }
-        switch file.save(queue) {
+    private func record(_ written: Result<Void, any Error>) {
+        switch written {
         case .success:
             storageError = nil
         case let .failure(error):
@@ -146,9 +145,9 @@ final class Outbox {
     /// dropping from the front while a batch is in flight would lose the wrong
     /// events.
     private func trimToCapacity() {
-        guard !isFlushing, queue.count > Self.capacity else { return }
-        let overflow = queue.count - Self.capacity
-        queue.removeFirst(overflow)
+        guard !isFlushing else { return }
+        let overflow = queue.dropOverflow()
+        guard overflow > 0 else { return }
         dropped += overflow
         Log.outbox.error("queue full, dropped \(overflow, privacy: .public) oldest events")
     }
