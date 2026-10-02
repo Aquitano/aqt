@@ -8,6 +8,7 @@ final class Outbox {
     private static let flushThreshold = 100
     private static let maximumBatch = 1000
     private static let flushInterval = Duration.seconds(10)
+    private static let flushTolerance = Duration.seconds(5)
     private static let healthInterval = Duration.seconds(30)
 
     private(set) var dropped = 0
@@ -28,6 +29,7 @@ final class Outbox {
     private var failedAttempts = 0
     private var retryAfter: Date?
     private var isFlushing = false
+    private var scheduledFlush: Task<Void, Never>?
     private var tasks: [Task<Void, Never>] = []
 
     private let client: IngestClient
@@ -60,12 +62,7 @@ final class Outbox {
     }
 
     func start() {
-        tasks.append(Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: Outbox.flushInterval)
-                await self?.flush()
-            }
-        })
+        scheduleFlush()
         tasks.append(Task { [weak self] in
             while !Task.isCancelled {
                 let reachable = await self?.client.health() ?? false
@@ -76,6 +73,8 @@ final class Outbox {
     }
 
     func stop() {
+        scheduledFlush?.cancel()
+        scheduledFlush = nil
         for task in tasks {
             task.cancel()
         }
@@ -86,8 +85,23 @@ final class Outbox {
         guard !events.isEmpty else { return }
         record(queue.append(events))
         trimToCapacity()
+        scheduleFlush()
         guard queue.events.count >= Self.flushThreshold else { return }
         Task { [weak self] in await self?.flush() }
+    }
+
+    /// Wakes only while events are pending, and not before a backoff ends.
+    private func scheduleFlush() {
+        guard scheduledFlush == nil, !queue.events.isEmpty else { return }
+        let backoff = retryAfter.map { Duration.seconds($0.timeIntervalSinceNow) } ?? .zero
+        let delay = max(Self.flushInterval, backoff)
+        scheduledFlush = Task { [weak self] in
+            try? await Task.sleep(for: delay, tolerance: Outbox.flushTolerance)
+            guard !Task.isCancelled, let self else { return }
+            scheduledFlush = nil
+            await flush()
+            scheduleFlush()
+        }
     }
 
     func flush() async {
