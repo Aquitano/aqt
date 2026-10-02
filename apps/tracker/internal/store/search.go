@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -68,16 +69,18 @@ type hitRow struct {
 	SearchText string `bun:"search_text"`
 }
 
+// Lowercasing changes the byte length of some runes, so the match is found in
+// text itself rather than in a lowercased copy.
 func cutSnippet(text, query string, width int) string {
-	lower := strings.ToLower(text)
-	start := -1
-	for _, term := range strings.Fields(strings.ToLower(query)) {
-		if i := strings.Index(lower, term); i >= 0 && (start < 0 || i < start) {
-			start = i
-		}
+	terms := strings.Fields(query)
+	for i, term := range terms {
+		terms[i] = regexp.QuoteMeta(term)
 	}
-	if start < 0 {
-		start = 0
+	start := 0
+	if re, err := regexp.Compile("(?i)" + strings.Join(terms, "|")); err == nil {
+		if match := re.FindStringIndex(text); match != nil {
+			start = match[0]
+		}
 	}
 	start = max(0, start-width/4)
 	for start > 0 && !utf8.RuneStart(text[start]) {
