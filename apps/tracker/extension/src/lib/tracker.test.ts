@@ -3,18 +3,30 @@ import { afterAll, afterEach, beforeEach, expect, setSystemTime, spyOn, test } f
 import { fakeBrowser } from "@webext-core/fake-browser";
 import { indexedDB } from "fake-indexeddb";
 
+import type { PageViewEvent } from "./events.ts";
 import { defaultSettings } from "./settings.ts";
 
 Object.assign(globalThis, { chrome: fakeBrowser, browser: fakeBrowser, indexedDB });
 const { checkHealth } = await import("./api.ts");
-const { dueEvents, enqueueEvent, markFailed, pendingCounts } = await import("./outbox.ts");
+const { dueEvents, enqueueCapture, enqueueEvent, markFailed, pendingCounts } =
+  await import("./outbox.ts");
 const { deviceIdStore, openSpanStore, rulesStore, settingsStore, syncStore, tabStore } =
   await import("./storage.ts");
-const { captureTab, flushEvents, reconcile, serialized } = await import("./tracker.ts");
+const { captureTab, flushEvents, reconcile, serialized, uploadCaptures } =
+  await import("./tracker.ts");
 
 const pageURL = "https://example.org/article";
 const timestamp = "2026-09-21T12:00:00.000Z";
 const page = { html: "<html>Article</html>", title: "Article", url: pageURL, dirty: true };
+const pageView: PageViewEvent = {
+  type: "page_view",
+  id: "page",
+  url: pageURL,
+  started_at: timestamp,
+  navigation_type: "load",
+  tab_session_id: "tab",
+  private: false,
+};
 const originalFetch = globalThis.fetch;
 const sendMessage = spyOn(fakeBrowser.tabs, "sendMessage");
 const fetchRequest = spyOn(globalThis, "fetch");
@@ -43,21 +55,7 @@ beforeEach(async () => {
       },
     ],
   });
-  await tabStore(1).set({
-    tabSessionId: "tab",
-    pageView: {
-      event: {
-        type: "page_view",
-        id: "page",
-        url: pageURL,
-        started_at: timestamp,
-        navigation_type: "load",
-        tab_session_id: "tab",
-        private: false,
-      },
-      titled: false,
-    },
-  });
+  await tabStore(1).set({ tabSessionId: "tab", pageView: { event: pageView, titled: false } });
   await pendingCounts();
   await new Promise<void>((resolve, reject) => {
     const request = indexedDB.open("tracker-outbox");
@@ -156,6 +154,27 @@ test("events waiting for retry keep their dependent events behind them", async (
   expect(await dueEvents(100)).toEqual([]);
   setSystemTime(Date.now() + 300000);
   expect((await dueEvents(100)).map((row) => row.payload.type)).toEqual(["span_start", "span_end"]);
+});
+
+test("a capture waits until the page view it references has left the outbox", async () => {
+  await enqueueEvent(pageView);
+  await markFailed("events", await dueEvents(100));
+  await enqueueCapture({
+    meta: {
+      capture_id: "capture",
+      page_view_id: pageView.id,
+      device_id: "device",
+      captured_at: timestamp,
+      url: pageURL,
+      extractor: "article",
+      reason: "initial",
+      raw_char_count: page.html.length,
+    },
+    html: page.html,
+  });
+  await uploadCaptures();
+  expect(fetchRequest).not.toHaveBeenCalled();
+  expect((await pendingCounts()).captures).toBe(1);
 });
 
 test("the extension counts events the server drops", async () => {

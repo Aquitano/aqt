@@ -196,7 +196,11 @@ export async function flushEvents(): Promise<void> {
   if (batch.length === FLUSH_BATCH) return flushEvents();
 }
 
+// The server rejects a capture whose page view it has not seen, for good. A
+// page view is queued before its captures, so an empty events outbox means it
+// has been delivered or dropped.
 export async function uploadCaptures(): Promise<void> {
+  if ((await pendingCounts()).events > 0) return;
   const head = await nextDueCapture();
   if (!head) return;
   const settings = await loadSettings();
