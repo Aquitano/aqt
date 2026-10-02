@@ -112,6 +112,10 @@ func (p *Processor) RunOnce(ctx context.Context) (busy bool, err error) {
 		return true, p.store.FailDerivation(writeCtx, d.Key(), store.Failure{Error: fail.err.Error(), Class: fail.class, Retry: retry})
 	}
 	res, err := p.store.CompleteDerivation(writeCtx, d.Key(), rec, elapsed)
+	if errors.Is(err, store.ErrNotFound) {
+		log.Info("derivation forgotten while it ran")
+		return true, nil
+	}
 	if err != nil {
 		retry := d.Attempts < store.MaxAttempts
 		p.metrics.Derivations.WithLabelValues(d.Extractor, ClassStore).Inc()

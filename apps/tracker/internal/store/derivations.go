@@ -92,10 +92,21 @@ type RecordResult struct {
 // transaction. A page has one record per extractor, keyed by its canonical
 // URL: its seen window always widens, and its content is replaced only by a
 // blob seen at least as late, so replaying an older blob never overwrites a
-// newer one.
+// newer one. A job Forget deleted while its extractor ran writes nothing and
+// returns ErrNotFound, since its record would bring back what was forgotten.
 func (s *Store) CompleteDerivation(ctx context.Context, key DerivationKey, in RecordInput, processing time.Duration) (RecordResult, error) {
 	var res RecordResult
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		var held bool
+		err := tx.NewRaw(`select true from derivations
+			where raw_hash = ? and extractor = ? and extractor_version = ? for update`,
+			key.RawHash, key.Extractor, key.Version).Scan(ctx, &held)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
 		urlID, err := upsertURL(ctx, tx, in.URL)
 		if err != nil {
 			return err

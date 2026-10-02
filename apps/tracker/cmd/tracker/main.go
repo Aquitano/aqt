@@ -46,10 +46,20 @@ Usage:
   tracker logout                                          forget the stored token
   tracker stats [--json]                                  table counts, blob sizes, queue and record totals
   tracker search [--extractor name] [--limit n] [--json] <query>
-                                                          BM25 search over extracted records
+                                                          BM25 search over extracted records, with each
+                                                          hit's visits
+  tracker show [--json] <record-id>                       one record in full: title, URL, visits, search text
+  tracker visits [--json] <url>                           how often and how long a page was open, captured or not
+  tracker time [--since 24h] [--until when] [--by host|app|category] [--json]
+                                                          active time per site, desktop app or category;
+                                                          since and until take a duration back from now
+                                                          (90m, 24h, 7d) or a local date (2026-10-01)
+  tracker forget <url> | --host <host>                    delete everything recorded for a page, or a host and
+                                                          its subdomains; backups keep it until they rotate out
 
-stats and search read the server over HTTP, so they work against a tracker on
-another machine; serve, migrate, reprocess and blob need the database itself.
+stats, search, show, visits, time and forget go over HTTP, so they work
+against a tracker on another machine; serve, migrate, reprocess and blob need
+the database itself.
 
 Environment:
   TRACKER_DATABASE_URL   default postgres://tracker:tracker@127.0.0.1:5435/tracker?sslmode=disable
@@ -87,6 +97,14 @@ func main() {
 		err = cmdStats(ctx, os.Args[2:])
 	case "search":
 		err = cmdSearch(ctx, os.Args[2:])
+	case "show":
+		err = cmdShow(ctx, os.Args[2:])
+	case "visits":
+		err = cmdVisits(ctx, os.Args[2:])
+	case "time":
+		err = cmdTime(ctx, os.Args[2:])
+	case "forget":
+		err = cmdForget(ctx, os.Args[2:])
 	case "help", "--help", "-h":
 		fmt.Print(usage)
 	default:
@@ -381,7 +399,7 @@ func cmdSearch(ctx context.Context, args []string) error {
 		return printJSON(hits)
 	}
 	for _, h := range hits {
-		fmt.Printf("%d  [%s]  %s\n    %s\n", h.ID, h.Extractor, h.Title, h.CanonicalURL)
+		fmt.Printf("%d  [%s]  %s\n    %s\n    %s\n", h.ID, h.Extractor, h.Title, h.CanonicalURL, describeVisits(h.Visits))
 		if h.Snippet != "" {
 			fmt.Printf("    %s\n", h.Snippet)
 		}
@@ -390,6 +408,158 @@ func cmdSearch(ctx context.Context, args []string) error {
 		fmt.Println("no results")
 	}
 	return nil
+}
+
+func cmdShow(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("show", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	id, err := strconv.ParseInt(fs.Arg(0), 10, 64)
+	if fs.NArg() != 1 || err != nil {
+		return errors.New("usage: tracker show [--json] <record-id>")
+	}
+	c, err := newClient(ctx)
+	if err != nil {
+		return err
+	}
+	rec, err := c.Record(ctx, id)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(rec)
+	}
+	fmt.Printf("%s\n%s\n[%s]  %s\n\n%s\n", rec.Title, rec.CanonicalURL, rec.Extractor, describeVisits(rec.Visits), rec.SearchText)
+	return nil
+}
+
+func cmdVisits(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("visits", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: tracker visits [--json] <url>")
+	}
+	c, err := newClient(ctx)
+	if err != nil {
+		return err
+	}
+	page, err := c.Visits(ctx, fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(page)
+	}
+	fmt.Printf("%s\n%s\n", page.URL, describeVisits(page.Visits))
+	return nil
+}
+
+func cmdTime(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("time", flag.ExitOnError)
+	since := fs.String("since", "24h", "")
+	until := fs.String("until", "0s", "")
+	by := fs.String("by", "host", "")
+	asJSON := fs.Bool("json", false, "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return errors.New("usage: tracker time [--since 24h] [--until when] [--by host|app|category] [--json]")
+	}
+	now := time.Now()
+	from, err := pointInTime(*since, now)
+	if err != nil {
+		return err
+	}
+	to, err := pointInTime(*until, now)
+	if err != nil {
+		return err
+	}
+	c, err := newClient(ctx)
+	if err != nil {
+		return err
+	}
+	rows, err := c.Time(ctx, store.TimeOpts{From: from, To: to, By: *by})
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(rows)
+	}
+	if len(rows) == 0 {
+		fmt.Println("no active time")
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
+	for _, r := range rows {
+		fmt.Fprintf(w, "%s\t%s\n", r.Key, activeTime(r.ActiveSeconds))
+	}
+	return w.Flush()
+}
+
+func cmdForget(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("forget", flag.ExitOnError)
+	host := fs.String("host", "", "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	target := store.ForgetTarget{Host: *host}
+	switch {
+	case *host == "" && fs.NArg() == 1:
+		target.URL = fs.Arg(0)
+	case *host == "" || fs.NArg() != 0:
+		return errors.New("usage: tracker forget <url> | tracker forget --host <host>")
+	}
+	c, err := newClient(ctx)
+	if err != nil {
+		return err
+	}
+	f, err := c.Forget(ctx, target)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("forgot %d page views, %d spans, %d captures, %d blobs, %d records\n",
+		f.PageViews, f.Spans, f.Captures, f.Blobs, f.Records)
+	return nil
+}
+
+// pointInTime reads a duration back from now (90m, 24h, 7d) or a date, which
+// means its local midnight.
+func pointInTime(s string, now time.Time) (time.Time, error) {
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		if n, err := strconv.Atoi(days); err == nil {
+			return now.AddDate(0, 0, -n), nil
+		}
+	}
+	if d, err := time.ParseDuration(s); err == nil {
+		return now.Add(-d), nil
+	}
+	if t, err := time.ParseInLocation(time.DateOnly, s, time.Local); err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("%q is neither a duration like 24h or 7d nor a date like 2026-10-01", s)
+}
+
+func describeVisits(v store.Visits) string {
+	if v.LastAt == nil {
+		return "no visits on file"
+	}
+	return fmt.Sprintf("visited %d×, last %s, %s", v.Count, v.LastAt.Local().Format(time.DateOnly), activeTime(v.ActiveSeconds))
+}
+
+func activeTime(seconds int64) string {
+	switch minutes := (seconds + 30) / 60; {
+	case minutes == 0:
+		return "<1 min"
+	case minutes < 60:
+		return fmt.Sprintf("%d min", minutes)
+	default:
+		return fmt.Sprintf("%d h %d min", minutes/60, minutes%60)
+	}
 }
 
 func printJSON(v any) error {

@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +39,8 @@ type fakeStore struct {
 	events   store.Events
 	captures []store.CaptureInput
 	dedup    bool
+	time     store.TimeOpts
+	forgot   []store.ForgetTarget
 }
 
 func (f *fakeStore) Ping(context.Context) error { return nil }
@@ -57,6 +60,27 @@ func (f *fakeStore) InsertCapture(_ context.Context, in store.CaptureInput) (sto
 
 func (f *fakeStore) Search(context.Context, store.SearchOpts) ([]store.Hit, error) {
 	return []store.Hit{}, nil
+}
+
+func (f *fakeStore) URLVisits(context.Context, []byte, time.Time) (store.Visits, error) {
+	return store.Visits{}, nil
+}
+
+func (f *fakeStore) Record(_ context.Context, id int64) (store.RecordDetail, error) {
+	if id != 1 {
+		return store.RecordDetail{}, store.ErrNotFound
+	}
+	return store.RecordDetail{ID: id}, nil
+}
+
+func (f *fakeStore) Time(_ context.Context, o store.TimeOpts) ([]store.TimeRow, error) {
+	f.time = o
+	return []store.TimeRow{}, nil
+}
+
+func (f *fakeStore) Forget(_ context.Context, t store.ForgetTarget) (store.Forgotten, error) {
+	f.forgot = append(f.forgot, t)
+	return store.Forgotten{}, nil
 }
 
 func (f *fakeStore) Stats(context.Context) (store.Stats, error) {
@@ -258,6 +282,69 @@ func TestSearchNeedsAQuery(t *testing.T) {
 	}
 	if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+"/v1/search?q=bun&limit=0", nil)); rec.Code != http.StatusBadRequest {
 		t.Errorf("limit 0: status %d, want 400", rec.Code)
+	}
+}
+
+func TestVisitsNeedAnHTTPURL(t *testing.T) {
+	s, _ := newServer(t)
+	for _, target := range []string{"/v1/visits", "/v1/visits?url=chrome://newtab/", "/v1/visits?url=https://example.com/&before=yesterday"} {
+		if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+target, nil)); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", target, rec.Code)
+		}
+	}
+	rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+"/v1/visits?url=https://Example.com/a%3Futm_source%3Dx", nil))
+	var res struct {
+		URL string `json:"url"`
+	}
+	decode(t, rec, &res)
+	if rec.Code != http.StatusOK || res.URL != "https://example.com/a" {
+		t.Errorf("status %d, url %q, want 200 and the normalised url", rec.Code, res.URL)
+	}
+}
+
+func TestRecordsAnswer404ForAnUnknownID(t *testing.T) {
+	s, _ := newServer(t)
+	for target, want := range map[string]int{"/v1/records/1": http.StatusOK, "/v1/records/42": http.StatusNotFound} {
+		if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+target, nil)); rec.Code != want {
+			t.Errorf("%s: status %d, want %d", target, rec.Code, want)
+		}
+	}
+}
+
+func TestTimeDefaultsToTheLastDayByHost(t *testing.T) {
+	s, fs := newServer(t)
+	if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+"/v1/time", nil)); rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if fs.time.By != "host" || fs.time.To.Sub(fs.time.From) != 24*time.Hour || time.Since(fs.time.To) > time.Minute {
+		t.Errorf("time opts = %+v, want the last 24 h by host", fs.time)
+	}
+	for _, target := range []string{"/v1/time?from=yesterday", "/v1/time?from=2026-10-02T00:00:00Z&to=2026-10-01T00:00:00Z"} {
+		if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+target, nil)); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", target, rec.Code)
+		}
+	}
+}
+
+func TestForgetNeedsOneTargetThatIsNotAPublicSuffix(t *testing.T) {
+	s, fs := newServer(t)
+	post := func(body string) int {
+		return do(t, s.Handler(), httptest.NewRequest(http.MethodPost, server+"/v1/forget", strings.NewReader(body))).Code
+	}
+	for _, body := range []string{`{}`, `{"url":"https://example.com/","host":"example.com"}`,
+		`{"url":"chrome://newtab/"}`, `{"host":"com"}`, `{"host":"co.uk"}`} {
+		if code := post(body); code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", body, code)
+		}
+	}
+	for _, body := range []string{`{"host":" *.Blog.Example.com "}`, `{"host":"localhost"}`, `{"url":"https://Example.com/a?utm_source=x"}`} {
+		if code := post(body); code != http.StatusOK {
+			t.Errorf("%s: status %d, want 200", body, code)
+		}
+	}
+	want := []store.ForgetTarget{{Host: "blog.example.com"}, {Host: "localhost"}, {URL: "https://example.com/a"}}
+	if !slices.Equal(fs.forgot, want) {
+		t.Errorf("forgot %+v, want %+v", fs.forgot, want)
 	}
 }
 

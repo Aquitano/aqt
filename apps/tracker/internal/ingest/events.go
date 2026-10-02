@@ -44,7 +44,7 @@ type wireEvent struct {
 var (
 	navigationTypes = map[string]bool{"load": true, "spa": true, "reload": true, "back_forward": true}
 	endReasons      = map[string]bool{"tab_switch": true, "window_blur": true, "app_switch": true, "window_change": true,
-		"idle": true, "navigation": true, "tab_closed": true, "unknown": true}
+		"idle": true, "paused": true, "navigation": true, "tab_closed": true, "unknown": true}
 )
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {

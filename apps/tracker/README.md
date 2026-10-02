@@ -11,7 +11,7 @@ go run ./cmd/tracker serve                          # migrates on startup
 
 Load the extension unpacked in `chrome://extensions` (developer mode) from `extension/.output/chrome-mv3`, built with `bun run --filter @aqt/tracker-extension build`. Keep it unpacked: Chromium honours the 5 s capture timers only for unpacked extensions. `dev` is for working on the extension; it writes to `chrome-mv3-dev` and opens a browser profile of its own.
 
-Before browsing with it, list your private hosts on the extension's options page: webmail, banking, health portals, anything whose pages you would not want kept forever. The list is empty by default, and the `article` fallback snapshots any page you stay on for 30 seconds.
+Before browsing with it, list your private hosts on the extension's options page: webmail, banking, health portals, anything whose pages you would not want kept forever. The list is empty by default, and the `article` fallback snapshots any page you stay on for 30 seconds. A host added later keeps what was recorded before it was added; `tracker forget --host` removes that.
 
 Grafana is at <http://127.0.0.1:3090> — anonymous admin, dashboard `tracker`, both datasources provisioned. The per-day panels bucket by the database's time zone, UTC unless set: `docker compose -f deploy/docker-compose.yml exec db psql -U tracker -d tracker -c "alter database tracker set timezone to 'Europe/London'"` with your zone, then `docker compose -f deploy/docker-compose.yml restart grafana` so its pooled connections pick it up.
 
@@ -32,7 +32,7 @@ Nothing here starts Postgres. Turn on Docker Desktop's _Start Docker Desktop whe
 
 ## Backups
 
-The compose `backup` service writes a `pg_dump` once a day to `~/Library/Application Support/tracker/backups` (`TRACKER_BACKUP_DIR` overrides it) and keeps the newest three. That directory is only on this disk: Time Machine, or anything else that copies it off the machine, is what makes it a backup. `docker compose -f deploy/docker-compose.yml logs backup` shows each run.
+The compose `backup` service writes a `pg_dump` once a day to `~/Library/Application Support/tracker/backups` (`TRACKER_BACKUP_DIR` overrides it) and keeps the newest three, so what `tracker forget` deletes survives in them for up to three days. That directory is only on this disk: Time Machine, or anything else that copies it off the machine, is what makes it a backup. `docker compose -f deploy/docker-compose.yml logs backup` shows each run.
 
 To restore, stop the server, replace the database with a dump, start it again:
 
@@ -97,12 +97,41 @@ tracker login
 tracker logout
 tracker stats [--json]
 tracker search [--extractor name] [--limit n] [--json] <query>
+tracker show [--json] <record-id>
+tracker visits [--json] <url>
+tracker time [--since 24h] [--until when] [--by host|app|category] [--json]
+tracker forget <url>
+tracker forget --host <host>
 ```
 
 `serve` queues every capture the current extractor versions have not processed yet when it starts, so a release that bumps one needs no manual step. `reprocess` also removes the records only an older version produced; `reprocess --all` rebuilds every derived row from the source tables alone.
 
-`stats` and `search` read the server over HTTP, so they work against a tracker
-on another machine; `serve`, `migrate`, `reprocess` and `blob` need the database.
+`stats`, `search`, `show`, `visits`, `time` and `forget` go over HTTP, so they work
+against a tracker on another machine; `serve`, `migrate`, `reprocess` and `blob` need the
+database.
+
+Each search hit carries its visits: how many page views captured the record's
+page or were at its canonical URL, the first and last of them, and their active
+time. `show` prints one record in full, search text included. `visits` answers
+the same for any URL, normalised like ingest does, captured or not: whether a
+page was seen before and when.
+
+`time` sums active time over a window, each span clipped to it: browser time per
+host, desktop time per app, or both per category, like the dashboard's panels.
+`--since` and `--until` take a duration back from now (`90m`, `24h`, `7d`) or a
+local date (`2026-10-01`, meaning its midnight); the window defaults to the last
+24 hours.
+
+`forget` deletes everything recorded for a page, or for a host and its
+subdomains, and prints what went: page views with their spans and captures, the
+HTML no other capture shares, the records built from either, and the URLs.
+Other pages that linked to it lose the referrer. A record whose HTML another
+page also captured is rebuilt from that page. A public suffix such as `com` is
+refused, since it would take every site under it. The backups still hold what
+was forgotten until they rotate out, three daily dumps later, and so does any
+copy of them, Time Machine's included, for as long as that copy is kept.
+
+Agents get these commands through a Claude Code skill: [skill/README.md](skill/README.md).
 
 `blob` writes the HTML of a stored capture to stdout, for turning a real page
 into an extractor fixture: 64 hex characters name a blob, anything else is a

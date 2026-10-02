@@ -27,6 +27,7 @@ type Hit struct {
 	Score        float64         `json:"score"`
 	LastSeenAt   time.Time       `json:"last_seen_at"`
 	Data         json.RawMessage `json:"data"`
+	Visits       Visits          `json:"visits" bun:"-"`
 }
 
 func (s *Store) Search(ctx context.Context, o SearchOpts) ([]Hit, error) {
@@ -50,11 +51,20 @@ func (s *Store) Search(ctx context.Context, o SearchOpts) ([]Hit, error) {
 	if err := q.ColumnExpr("r.search_text").Scan(ctx, &rows); err != nil {
 		return nil, err
 	}
+	ids := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	visits, err := recordVisits(ctx, s.db, ids)
+	if err != nil {
+		return nil, err
+	}
 	hits := make([]Hit, 0, len(rows))
 	for _, row := range rows {
 		if row.Snippet == "" {
 			row.Snippet = cutSnippet(row.SearchText, o.Query, snippetWidth)
 		}
+		row.Visits = visits[row.ID]
 		hits = append(hits, row.Hit)
 	}
 	return hits, nil

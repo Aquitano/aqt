@@ -27,10 +27,10 @@ What I read and where my attention went, from a browser extension and a macOS me
 
 ```
 apps/tracker/
-  cmd/tracker/            serve | migrate | reprocess | blob | login | logout | stats | search
+  cmd/tracker/            serve | migrate | reprocess | blob | login | logout | stats | search | show | visits | time | forget
   internal/
     store/                bun models, embedded migrations, queries
-    ingest/               HTTP: events, captures, capture-rules, search, stats, healthz, metrics
+    ingest/               HTTP: events, captures, capture-rules, search, visits, records, time, forget, stats, healthz, metrics
     extractor/            Extractor interface, Rule, registry
     extractor/github/     one package per site
     extractor/x/
@@ -45,6 +45,7 @@ apps/tracker/
     metrics/              Prometheus collectors
   extension/              WXT extension (@aqt/tracker-extension)
   desktop/                Swift menu-bar agent (TrackerAgent.app): frontmost app and window spans
+  skill/                  Claude Code skill over the CLI: recall, visits, time, forget
   deploy/
     docker-compose.yml    ParadeDB, backup, Prometheus, Grafana
     backup.sh             daily pg_dump loop the backup service runs
@@ -105,7 +106,7 @@ activity_spans (
   window_title  text,
   started_at    timestamptz not null,
   ended_at      timestamptz not null,           -- advanced by heartbeats
-  end_reason    text,                           -- null while open; tab_switch | window_blur | app_switch | window_change | idle | navigation | tab_closed | unknown
+  end_reason    text,                           -- null while open; tab_switch | window_blur | app_switch | window_change | idle | paused | navigation | tab_closed | unknown
   created_at    timestamptz not null default now(),
   check ((page_view_id is null) <> (app_name is null))
 );
@@ -296,7 +297,7 @@ Any other 4xx means the request can never succeed as sent, and the extension dro
 }
 ```
 
-A `span_start` carries either `page_view_id` (browser, from the extension) or `app_name` (desktop, from the macOS agent under its own `device_id`), never both; `bundle_id` and `window_title` are optional and only kept with `app_name`. `window_title` is truncated at 512 characters, `app_name` and `bundle_id` at 256. `span_end` reasons: `tab_switch | window_blur | app_switch | window_change | idle | navigation | tab_closed | unknown`; an unknown reason is stored as `unknown`.
+A `span_start` carries either `page_view_id` (browser, from the extension) or `app_name` (desktop, from the macOS agent under its own `device_id`), never both; `bundle_id` and `window_title` are optional and only kept with `app_name`. `window_title` is truncated at 512 characters, `app_name` and `bundle_id` at 256. `span_end` reasons: `tab_switch | window_blur | app_switch | window_change | idle | paused | navigation | tab_closed | unknown`; an unknown reason is stored as `unknown`. `paused` is the extension's pause button ending the open span; like `idle`, it is no context switch, so neither `context_switches_hourly` nor `work_blocks` counts it as one.
 
 Every event is idempotent (upsert by id; heartbeats and ends only move `ended_at` forward, except an `idle` end, which is dated to the last input and may pull `ended_at` back to it, never before `started_at`). A `span_*` whose page view is unknown, a `span_start` with both or neither identity, or any single malformed event, is dropped and counted, not an error; only malformed JSON, a missing `device_id` or more than 1000 events fail the batch with 400. A NUL in a title or any other text field is left out when it is stored (Postgres rejects it in text; bun drops it from every string it formats into a query), never an error. Response `200 {"accepted":n,"dropped":n}`. For a private page view the extension sends `url` as `https://host/` and no title.
 
@@ -304,7 +305,17 @@ Every event is idempotent (upsert by id; heartbeats and ends only move `ended_at
 
 `GET /v1/stats` → table counts, blob sizes and per-status derivation and per-extractor record totals (used by `tracker stats`).
 
-`GET /v1/search?q=…&extractor=…&limit=20` → `{"hits":[{id, extractor, title, canonical_url, snippet, score, last_seen_at, data}]}` (used by `tracker search`). The query goes through `paradedb.match` with fuzzy distance 1 over `title` and `search_text`, never through pg_search's query-string parser, so punctuation and typos are fine; a fuzzy hit gets a locally cut snippet because the engine highlights none.
+`GET /v1/search?q=…&extractor=…&limit=20` → `{"hits":[{id, extractor, title, canonical_url, snippet, score, last_seen_at, data, visits}]}` (used by `tracker search`). The query goes through `paradedb.match` with fuzzy distance 1 over `title` and `search_text`, never through pg_search's query-string parser, so punctuation and typos are fine; a fuzzy hit gets a locally cut snippet because the engine highlights none.
+
+A visit is a page view, and `visits` always has one shape: `{"count":3,"first_at":"…","last_at":"…","active_seconds":840}`, the first and last page view start (null when `count` is 0) and the summed duration of their activity spans. A record's visits are the page views that captured any of its blobs (`records ← derivations.record_id`, `derivations.raw_hash → captures.page_view_id`) together with the page views at its canonical URL, each counted once. One query in the store counts them for all three routes.
+
+`GET /v1/visits?url=…&before=<rfc3339>` → `{"url":"<normalised>","visits":{…}}`: the page views whose URL normalises to the same `url_hash`, only those started strictly before `before` when it is given (the extension passes the current page view's start, so the answer means "before this visit"; `tracker visits` passes none). 400 for a missing or non-http(s) `url` or a malformed `before`.
+
+`GET /v1/records/{id}` → `{id, extractor, title, canonical_url, search_text, data, first_seen_at, last_seen_at, visits}` (used by `tracker show`); 404 when no record has the id.
+
+`GET /v1/time?from=<rfc3339>&to=<rfc3339>&by=host|app|category` → `{"rows":[{"key":"github.com","active_seconds":5400}]}`, sorted by `active_seconds` descending (used by `tracker time`): active time per key over the spans of `categorized_spans` clipped to `[from, to)`. Like the dashboard's panels, `host` keys browser spans by host and `app` desktop spans by app name, so each leaves the other source out; `category` covers both, with `uncategorized` for spans no rule matches. `to` defaults to now, `from` to 24 h before `to`, `by` to `host`; 400 for a malformed time, `from` not before `to`, or another `by`.
+
+`POST /v1/forget` with `{"url":"…"}` or `{"host":"example.com"}`, exactly one → `{"page_views":n,"spans":n,"captures":n,"blobs":n,"records":n}` (used by `tracker forget`). The URL is normalised as ingest does; a host is read like an entry of the extension's private-host list (a leading `*.` or a scheme is dropped) and covers its subdomains. One transaction deletes the target's page views with their spans and captures, the blobs and derivations no capture is left for, the records whose canonical URL or page URL is the target or that one of those derivations produced, and the target's `urls` rows; other page views' `referrer_url_id` pointing at it is set null. A deleted record's remaining blobs (HTML another page also captured) get their derivations reset to `pending`, so the worker rebuilds it from what is left, as `reprocess --all` would. `CompleteDerivation` locks its derivation first and writes nothing when the row is gone, so an extraction running during a forget cannot bring the record back. 400 for neither or both, a URL that is not http(s), or a host that is a public suffix (`com`, `co.uk`): one typo would forget every site under it. Backups keep forgotten rows until they rotate out (three daily dumps).
 
 ## Extension behaviour
 
@@ -329,9 +340,13 @@ tracker login
 tracker logout
 tracker stats [--json]
 tracker search [--extractor name] [--limit n] [--json] <query>
+tracker show [--json] <record-id>
+tracker visits [--json] <url>
+tracker time [--since 24h] [--until when] [--by host|app|category] [--json]
+tracker forget <url> | --host <host>
 ```
 
-`serve` runs migrations on startup, like bank. `blob` writes a stored capture's decompressed HTML to stdout: 64 hex characters name a blob; anything else is a URL, normalised as ingest does, and the most recent capture whose page view is at that URL is written. `stats` and `search` go over HTTP so they work against a server whose database is not reachable; `login` is the RFC 8628 device code flow, and the token it stores refreshes itself.
+`serve` runs migrations on startup, like bank. `blob` writes a stored capture's decompressed HTML to stdout: 64 hex characters name a blob; anything else is a URL, normalised as ingest does, and the most recent capture whose page view is at that URL is written. `stats`, `search`, `show`, `visits`, `time` and `forget` go over HTTP so they work against a server whose database is not reachable. `search` prints each hit's visits, `show` one record with its full search text, `visits` the page views of any URL. `time`'s `--since` and `--until` take a duration back from now (`90m`, `24h`, `7d`) or a local date, which means its midnight. `login` is the RFC 8628 device code flow, and the token it stores refreshes itself.
 
 ## Metrics
 
