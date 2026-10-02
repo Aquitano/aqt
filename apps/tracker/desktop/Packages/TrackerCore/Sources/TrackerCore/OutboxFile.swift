@@ -1,6 +1,11 @@
 import Foundation
 
 package struct OutboxFile {
+    package enum Restored {
+        case events([WireEvent])
+        case unreadable(any Error, movedTo: URL)
+    }
+
     package let url: URL
 
     package init(url: URL) {
@@ -19,6 +24,24 @@ package struct OutboxFile {
                 return try JSONDecoder().decode([WireEvent].self, from: Data(contentsOf: url))
             } catch CocoaError.fileReadNoSuchFile {
                 return []
+            }
+        }
+    }
+
+    /// An unreadable file is moved aside, so the fresh queue that replaces it
+    /// persists without overwriting the events it may still hold. A move onto
+    /// an earlier copy fails instead.
+    package func restore(at now: Date = .now) -> Result<Restored, any Error> {
+        switch load() {
+        case let .success(events):
+            return .success(.events(events))
+        case let .failure(error):
+            let stamp = Date.ISO8601FormatStyle(dateSeparator: .omitted, timeSeparator: .omitted).format(now)
+            let name = url.deletingPathExtension().lastPathComponent
+            let destination = url.deletingLastPathComponent().appending(path: "\(name).unreadable-\(stamp).json")
+            return Result {
+                try FileManager.default.moveItem(at: url, to: destination)
+                return .unreadable(error, movedTo: destination)
             }
         }
     }
