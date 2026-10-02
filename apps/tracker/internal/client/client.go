@@ -144,12 +144,31 @@ func New(ctx context.Context, c Config) (*Client, error) {
 	if s.Issuer != c.Issuer || s.ClientID != c.ClientID {
 		return nil, fmt.Errorf("stored token is for %s, configured issuer is %s: run 'tracker login'", s.Issuer, c.Issuer)
 	}
+	return &Client{base: base.String(), http: oauth2.NewClient(ctx, s.tokens(ctx, c.TokenPath))}, nil
+}
+
+// Bearer returns the access token of the session stored at path, refreshed
+// and written back first if it is spent. The desktop agent calls it for every
+// request instead of holding a token source, because the CLI may rotate the
+// refresh token in that file at any time.
+func Bearer(ctx context.Context, path string) (string, error) {
+	s, err := load(path)
+	if err != nil {
+		return "", err
+	}
+	token, err := s.tokens(ctx, path).Token()
+	if err != nil {
+		return "", err
+	}
+	return token.AccessToken, nil
+}
+
+func (s session) tokens(ctx context.Context, path string) oauth2.TokenSource {
 	cfg := oauth2.Config{
-		ClientID: c.ClientID,
+		ClientID: s.ClientID,
 		Endpoint: oauth2.Endpoint{DeviceAuthURL: s.DeviceAuthURL, TokenURL: s.TokenURL},
 	}
-	source := &persisting{base: cfg.TokenSource(ctx, s.Token), path: c.TokenPath, session: s}
-	return &Client{base: base.String(), http: oauth2.NewClient(ctx, source)}, nil
+	return &persisting{base: cfg.TokenSource(ctx, s.Token), path: path, session: s}
 }
 
 // persisting writes refreshed tokens back to disk. oauth2 refreshes in
