@@ -4,7 +4,9 @@ Reads a status page on x.com / twitter.com / mobile.x.com out of the rendered DO
 
 Everything is keyed off `data-testid` (`tweet`, `User-Name`, `tweetText`, `tweetPhoto`, `videoPlayer`, `reply-context`) plus `role="link"` for the quote card, never obfuscated class names; no article carrying the URL's status id, or an article with no text div, is `ErrNoMatch` (login wall, "post is unavailable").
 
-**The fixtures under `testdata/` are synthetic** — hand-written from that DOM description, not captured from X — so every expectation in `x_test.go` is unverified until they are replaced.
+Only `testdata/logged-out.html` is real: `x.com/jack/status/20` rendered by headless Chromium 151 on 2026-10-02 while logged out (the post, three replies, then a login prompt), dumped without the doctype, with script and style blocks removed. X now serves logged-out visitors a separate client (`x-web`: Tailwind classes, no `data-testid`, no `<time>`, `article` per post with the post URL on a `data-href` wrapper), so that page is `ErrNoMatch`. Whether the logged-in app the extension sees still carries the `data-testid` markup is unverified.
+
+**`status-photo.html` and `reply-quote.html` are synthetic**: hand-written from the DOM description above, not captured from X, so every expectation drawn from them is unverified until they are replaced with an extension capture.
 
 To replace one: load a real status page with the extension installed, dwell past `dwell_ms` so `tracker` stores the blob, then write out its most recent capture:
 

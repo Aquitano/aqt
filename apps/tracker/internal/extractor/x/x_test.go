@@ -1,6 +1,5 @@
-// The fixtures under testdata/ are hand-written from X's rendered DOM, not a
-// real capture. Replace them with an extension capture of a live status page
-// (see README.md) and re-check every expectation below against it.
+// status-photo.html and reply-quote.html are hand-written from the logged-in
+// DOM, not captured; logged-out.html is real. See README.md.
 package x
 
 import (
@@ -82,8 +81,8 @@ func TestReplyWithQuote(t *testing.T) {
 	}
 }
 
-func TestShellPageHasNoMatch(t *testing.T) {
-	_, err := extract(t, "shell.html", "https://x.com/dexhorthy/status/1965203819281002523")
+func TestLoggedOutPageHasNoMatch(t *testing.T) {
+	_, err := extract(t, "logged-out.html", "https://x.com/jack/status/20")
 	if !errors.Is(err, extractor.ErrNoMatch) {
 		t.Fatalf("err = %v, want ErrNoMatch", err)
 	}
