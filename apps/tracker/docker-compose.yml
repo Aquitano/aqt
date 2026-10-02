@@ -9,11 +9,13 @@
 # Nothing is published on 0.0.0.0. The tracker and Grafana default to loopback,
 # so a missing .env fails closed; the VPS publishes them on its tailnet address.
 #
-# No service carries a restart policy, deliberately: on the VPS the data lives
-# on a LUKS volume unlocked by hand, so after an unattended reboot the bind
-# paths point at the unencrypted root disk. A restart policy would let Postgres
-# initdb a fresh cluster there; with none, the stack comes back only through
-# the unlock line in README.md.
+# No service that writes to disk carries a restart policy, deliberately: on
+# the VPS the data lives on a LUKS volume unlocked by hand, so after an
+# unattended reboot the bind paths point at the unencrypted root disk. A
+# restart policy would let Postgres initdb a fresh cluster there; with none,
+# the stack comes back only through the unlock step in README.md. The tracker
+# itself holds nothing, so it alone restarts on failure, which also covers
+# starting before authentik answers.
 #
 # The project name would otherwise be the directory, and the laptop's volumes
 # carry this one.
@@ -82,6 +84,8 @@ services:
       TRACKER_OIDC_AUDIENCE: ${TRACKER_OIDC_AUDIENCE:-}
       TRACKER_WORKERS: ${TRACKER_WORKERS:-3}
       TRACKER_LOG_LEVEL: ${TRACKER_LOG_LEVEL:-info}
+      TRACKER_EXTENSION_ID: ${TRACKER_EXTENSION_ID:-}
+    restart: on-failure
     ports:
       # The tailnet address on the VPS, never 0.0.0.0: serve has no TLS, and
       # the tailnet is the transport security.
