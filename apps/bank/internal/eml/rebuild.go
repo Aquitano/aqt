@@ -43,6 +43,7 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 	if err != nil {
 		return report, err
 	}
+	preview := &store.MailPreview{}
 	note := func(message string) {
 		report.Invalid++
 		if len(report.Issues) < 100 {
@@ -63,7 +64,7 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 		if _, err := input.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
-		prefix := "mail-projection-v1:" + identity + ":" + hex.EncodeToString(digest.Sum(nil)) + ":" + string(configuration)
+		prefix := "mail-projection-v2:" + identity + ":" + hex.EncodeToString(digest.Sum(nil)) + ":" + string(configuration)
 		report.Inputs++
 		visit := func(raw []byte) error {
 			if err := ctx.Err(); err != nil {
@@ -86,7 +87,8 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 				report.Missing++
 				return nil
 			}
-			digest := sha256.Sum256(append([]byte(prefix), raw...))
+			contentDigest := sha256.Sum256(raw)
+			digest := sha256.Sum256([]byte(prefix + hex.EncodeToString(contentDigest[:])))
 			workKey := hex.EncodeToString(digest[:])
 			done, err := st.MailRebuildDone(ctx, source, workKey, id)
 			if err != nil {
@@ -96,7 +98,13 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 				report.Skipped++
 				return nil
 			}
-			projection, err := st.ProjectMail(ctx, id, store.MailProjection{MessageID: message.NormalizedMessageID, InReplyTo: message.InReplyTo, References: message.References, NativeThreadID: record.ThreadID, Context: record.Context}, apply, workKey)
+			facts := store.MailProjection{MessageID: message.NormalizedMessageID, InReplyTo: message.InReplyTo, References: message.References, NativeThreadID: record.ThreadID, PreserveNative: true, Context: record.Context}
+			var projection store.MailProjectionResult
+			if apply {
+				projection, err = st.ProjectMail(ctx, id, facts, true, workKey)
+			} else {
+				projection, err = st.PreviewMail(ctx, id, facts, preview)
+			}
 			if err != nil {
 				return err
 			}
@@ -112,6 +120,9 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 			}
 			if projection.Incomplete {
 				report.Incomplete++
+				if !apply {
+					return fmt.Errorf("read-only preview stopped at incomplete grouping; raise the grouping limits before previewing later inputs")
+				}
 			}
 			return nil
 		}

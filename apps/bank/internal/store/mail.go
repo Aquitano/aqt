@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 )
@@ -22,33 +21,6 @@ func (s *Store) ResolveMailMessage(ctx context.Context, source, messageID, exter
 		return id, err
 	}
 	return s.FindMessageID(ctx, source, externalID)
-}
-
-func (s *Store) ObserveMailbox(ctx context.Context, messageID int64, observation archive.MailImportContext) error {
-	if err := observation.Validate(); err != nil {
-		return err
-	}
-	if observation.Kind == "imap" && strings.EqualFold(observation.Mailbox, "INBOX") {
-		observation.Mailbox = "INBOX"
-	}
-	transaction, err := s.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = transaction.Rollback(ctx) }()
-	var source string
-	if err := transaction.QueryRow(ctx, `select source from messages where id=$1 for update`, messageID).Scan(&source); err != nil {
-		return err
-	}
-	var mailboxID int64
-	if err := transaction.QueryRow(ctx, `insert into mailboxes(source,kind,path) values($1,$2,$3)
-		on conflict(source,kind,path) do update set path=excluded.path returning id`, source, observation.Kind, observation.Mailbox).Scan(&mailboxID); err != nil {
-		return err
-	}
-	if _, err := transaction.Exec(ctx, `insert into mailbox_messages(mailbox_id,message_id) values($1,$2) on conflict do nothing`, mailboxID, messageID); err != nil {
-		return err
-	}
-	return transaction.Commit(ctx)
 }
 
 func (s *Store) ListMailboxes(ctx context.Context, source string) ([]Mailbox, error) {

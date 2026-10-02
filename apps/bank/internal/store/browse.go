@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -72,6 +73,9 @@ func (s *Store) BrowseThreads(ctx context.Context, o BrowseOpts) ([]ThreadGroup,
 	if o.Person != "" {
 		contact, err := s.GetContact(ctx, o.Person)
 		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return nil, &ErrNoContact{Name: o.Person}
+			}
 			return nil, err
 		}
 		predicates += " and" + aliasMatch(next(contact.ID))

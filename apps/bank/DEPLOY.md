@@ -249,6 +249,8 @@ restic -r s3:... forget --keep-daily 14 --keep-weekly 8 --keep-monthly 24 --prun
 
 Restore drill: `restic restore latest`, `pg_restore -d bank bank.dump`, point `BANK_DATA_DIR` at the restored dir, then `docker compose run --rm bank verify` — it walks every message, hashes every attachment blob and reports anything the database claims but the disk no longer has. Do this once before trusting the setup.
 
+Include `archive/<source>/.mail-contexts/` in the archive backup. These hidden directories preserve mailbox observations and supplied mail identifiers that raw EML alone cannot recover. Verification checks their digests and raw references. After restoring the database and files, `bank mail rebuild --source <source>` previews mail projection recovery without writes. Add `--apply` only after reviewing the report. Rebuild checkpoints live in the restored database, not on the collector laptop. See [MAIL.md](MAIL.md).
+
 ```sh
 docker compose run --rm bank verify           # read-only report
 docker compose run --rm bank verify --heal    # rebuild what the archived raw inputs still contain

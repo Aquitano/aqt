@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
@@ -16,6 +17,28 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
+
+func TestContextFreeImportPreservesPOSIXFilenames(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("colons and backslashes are POSIX filename characters")
+	}
+	ctx := context.Background()
+	st := storetest.New(t)
+	root := t.TempDir()
+	blobs, err := blob.New(filepath.Join(root, "blobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"receipt:2026.eml", `receipt\2026.eml`} {
+		input := filepath.Join(root, name)
+		if err := os.WriteFile(input, []byte(twoAttachmentMail), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ImportEmlPath(ctx, st, blobs, filepath.Join(root, "archive"), "legacy", input); err != nil {
+			t.Fatalf("legacy filename %q: %v", name, err)
+		}
+	}
+}
 
 func TestMailContextRecoveryAndFilters(t *testing.T) {
 	ctx := context.Background()

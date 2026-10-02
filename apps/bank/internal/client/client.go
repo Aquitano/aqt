@@ -176,6 +176,9 @@ func (c *Client) GetThreadPage(ctx context.Context, source, threadID string, o s
 			q.Set(name, strconv.FormatInt(id, 10))
 		}
 	}
+	if o.Current {
+		q.Set("current", "true")
+	}
 	if o.Latest {
 		q.Set("latest", "true")
 	}

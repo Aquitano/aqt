@@ -10,12 +10,20 @@ import { Kbd } from "@/components/ui/kbd";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { browseThreads, search, SEARCH_PAGE, type Message, type SourceStat, type SearchParams } from "@/lib/api";
+import {
+  browseThreads,
+  search,
+  SEARCH_PAGE,
+  type Message,
+  type SourceStat,
+  type SearchParams,
+} from "@/lib/api";
 import { fmtDate, Highlight, SourceBadge } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -123,7 +131,15 @@ export function SearchView({
       if (!params) return [];
       if (params.q) return search({ ...params, offset: pageParam });
       const groups = await browseThreads({ ...params, order: "desc", offset: pageParam });
-      return groups.map((group) => ({ id: group.last_id, source: group.source, thread_id: group.thread_id, sender: group.sender, subject: group.subject, body: group.preview, sent_at: group.last_at }));
+      return groups.map((group) => ({
+        id: group.last_id,
+        source: group.source,
+        thread_id: group.thread_id,
+        sender: group.sender,
+        subject: group.subject,
+        body: group.preview,
+        sent_at: group.last_at,
+      }));
     },
     getNextPageParam: (last, pages) =>
       last.length === SEARCH_PAGE && pages.length * SEARCH_PAGE <= 10000
@@ -234,16 +250,47 @@ export function SearchView({
             className="h-8 flex-1 text-xs [color-scheme:dark]"
           />
         </div>
-        <MailboxSelect source={source === ALL ? undefined : source} value={mailboxId} onChange={(id) => { setMailboxId(id); submit({ mailbox_id: id }); }} />
+        <MailboxSelect
+          source={source === ALL ? undefined : source}
+          value={mailboxId}
+          onChange={(id) => {
+            setMailboxId(id);
+            submit({ mailbox_id: id });
+          }}
+        />
         <div className="flex gap-2">
-          <Input aria-label="Subject contains" placeholder="subject contains" value={subject} onChange={(event) => setSubject(event.target.value)} onKeyDown={(event) => event.key === "Enter" && submit()} />
-          <Select value={attachment} onValueChange={(value) => { setAttachment(value); submit({ has_attachment: value === "any" ? undefined : value === "true" }); }}>
-            <SelectTrigger aria-label="Attachment presence"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="any">Any attachments</SelectItem><SelectItem value="true">Has attachments</SelectItem><SelectItem value="false">No attachments</SelectItem></SelectContent>
+          <Input
+            aria-label="Subject contains"
+            placeholder="subject contains"
+            value={subject}
+            onChange={(event) => setSubject(event.target.value)}
+            onKeyDown={(event) => event.key === "Enter" && submit()}
+          />
+          <Select
+            value={attachment}
+            onValueChange={(value) => {
+              setAttachment(value);
+              submit({ has_attachment: value === "any" ? undefined : value === "true" });
+            }}
+          >
+            <SelectTrigger aria-label="Attachment presence">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="any">Any attachment status</SelectItem>
+                <SelectItem value="true">Has attachments</SelectItem>
+                <SelectItem value="false">No attachments</SelectItem>
+              </SelectGroup>
+            </SelectContent>
           </Select>
           <Button onClick={() => submit()}>Search</Button>
         </div>
-        {params && !params.q && <p className="text-xs text-muted-foreground">Matching conversations, newest first. Open one to read the full conversation.</p>}
+        {params && !params.q && (
+          <p className="text-xs text-muted-foreground">
+            Matching conversations, newest first. Open one to read the full conversation.
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <Select
             value={match}

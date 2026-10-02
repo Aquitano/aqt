@@ -11,7 +11,13 @@ const attachment = type({
 });
 export type Attachment = typeof attachment.infer;
 
-const mailbox = type({ id: "number", source: "string", kind: "'export' | 'imap'", path: "string", n: "number" });
+const mailbox = type({
+  id: "number",
+  source: "string",
+  kind: "'export' | 'imap'",
+  path: "string",
+  n: "number",
+});
 export type Mailbox = typeof mailbox.infer;
 
 const message = type({
@@ -76,7 +82,13 @@ export type ThreadGroup = typeof threadGroup.infer;
 
 // Failed /v1 requests answer with `{"error": "..."}` in place of the payload.
 const errorBody = type({ error: "string" });
-const mailConflict = type({ code: "'mail_thread_conflict'", source: "string", conflict_key: "string", choices: "string[]", unanchored_path: "string" });
+const mailConflict = type({
+  code: "'mail_thread_conflict'",
+  source: "string",
+  conflict_key: "string",
+  choices: "string[]",
+  unanchored_path: "string",
+});
 export class MailConflictError extends Error {
   readonly conflict: typeof mailConflict.infer;
   constructor(conflict: typeof mailConflict.infer) {
@@ -170,7 +182,7 @@ export interface ThreadPosition {
   latest?: boolean;
 }
 export function getThread(source: string, threadId: string, position: ThreadPosition) {
-  const p = new URLSearchParams({ source, limit: "100" });
+  const p = new URLSearchParams({ source, limit: "100", current: "true" });
   for (const [key, value] of Object.entries(position)) {
     if (value !== undefined) p.set(key, String(value));
   }
@@ -213,7 +225,12 @@ export function getMailboxes(source: string) {
   return api(`/v1/mailboxes?${new URLSearchParams({ source })}`, mailbox.array());
 }
 
-export function browseThreads(opts: Omit<SearchParams, "q" | "match" | "fuzzy" | "offset"> & { order: "asc" | "desc"; offset: number }) {
+export function browseThreads(
+  opts: Omit<SearchParams, "q" | "match" | "fuzzy" | "offset"> & {
+    order: "asc" | "desc";
+    offset: number;
+  },
+) {
   const p = new URLSearchParams({
     order: opts.order,
     offset: String(opts.offset),
@@ -233,7 +250,7 @@ export const SEARCH_PAGE = 50;
 export const CONTEXT_PAGE = 100;
 
 export function getMailConflict(source: string, key: string, before?: number) {
-  const params = new URLSearchParams({source, limit: String(CONTEXT_PAGE)});
+  const params = new URLSearchParams({ source, limit: String(CONTEXT_PAGE) });
   if (before) params.set("before", String(before));
   return api(`/v1/mail-conflicts/${encodeURIComponent(key)}?${params}`, thread);
 }

@@ -279,7 +279,22 @@ function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; s
             <BubbleContent>
               {m.subject ? <div className="mb-1 font-semibold">{m.subject}</div> : null}
               <ReplyContext m={m} />
-              {m.mailboxes?.length ? <div className="mb-2 flex flex-wrap gap-1 text-xs text-muted-foreground" aria-label="Historically observed folders">{m.mailboxes.map((mailbox) => <span key={mailbox.id} className="rounded border px-1.5 py-0.5" title="Historical folder observation">{mailbox.path} ({mailbox.kind})</span>)}</div> : null}
+              {m.mailboxes?.length ? (
+                <div
+                  className="mb-2 flex flex-wrap gap-1 text-xs text-muted-foreground"
+                  aria-label="Historically observed folders"
+                >
+                  {m.mailboxes.map((mailbox) => (
+                    <span
+                      key={mailbox.id}
+                      className="rounded border px-1.5 py-0.5"
+                      title="Historical folder observation"
+                    >
+                      {mailbox.path} ({mailbox.kind})
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               <Body m={m} />
               <Attachments m={m} />
             </BubbleContent>

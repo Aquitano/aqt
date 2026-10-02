@@ -9,6 +9,8 @@ The collector uses read-only `EXAMINE` and `BODY.PEEK[]`. It does not mark mail
 as read, move messages, delete messages, or copy mailbox deletions into Bank.
 The first run imports the existing contents of every selected folder.
 
+Each upload includes its account ID and exact IMAP folder. Bank stores historical folder observations, including duplicates already seen elsewhere. Upgrade the Bank server before this collector: a response without `mail_context_version: 1` keeps the queued file pending and does not advance its checkpoint. See [MAIL.md](MAIL.md) for folder filters and recovery.
+
 ## Start with Proton Bridge on Windows
 
 Run these commands from `apps/bank` after building `bank.exe`:
@@ -126,19 +128,21 @@ the named environment variables and are never written to the checkpoint database
 Unknown JSON fields are rejected. Restart after changing configuration,
 credentials or Bridge's certificate.
 
-| Field | Default | Behavior |
-| --- | --- | --- |
-| `state_dir` | `imap-state` | Collector-owned directory for SQLite state, its lock and pending message files. Use a local disk. |
-| `interval` | `1m` | Delay after a successful account pass. |
-| `timeout` | `2m` | Limit per connection/authentication operation, IMAP command or upload. Increase for slow backfills. |
-| `workers` | `4` | Maximum simultaneous Bank uploads per account, from 1 to 16. |
-| `batch_size` | `32` | Maximum messages per body fetch, from 1 to 256. |
-| `max_message_bytes` | `67108864` | Maximum raw email size, including attachments. Up to 512 MiB. |
-| `accounts[].id` | Required | Stable unique name for local checkpoints. |
-| `accounts[].source` | Required | Bank source name, such as `proton` or `gmail`. |
-| `accounts[].folders` | Required | Exact folder names to collect. No implicit all-folder selection. |
-| `accounts[].tls_ca_file` | System trust | Additional PEM certificates, typically Bridge's self-signed certificate. |
-| `accounts[].tls_server_name` | Address hostname | Certificate identity to verify. |
+Separate accounts require distinct `source` values. Duplicate sources in one configuration are rejected before connecting. If an older configuration combined accounts under one source, choose explicit sources for future imports. Existing messages are not renamed or split automatically. Keep an existing Gmail API source only when the IMAP account represents that same mailbox.
+
+| Field                        | Default          | Behavior                                                                                            |
+| ---------------------------- | ---------------- | --------------------------------------------------------------------------------------------------- |
+| `state_dir`                  | `imap-state`     | Collector-owned directory for SQLite state, its lock and pending message files. Use a local disk.   |
+| `interval`                   | `1m`             | Delay after a successful account pass.                                                              |
+| `timeout`                    | `2m`             | Limit per connection/authentication operation, IMAP command or upload. Increase for slow backfills. |
+| `workers`                    | `4`              | Maximum simultaneous Bank uploads per account, from 1 to 16.                                        |
+| `batch_size`                 | `32`             | Maximum messages per body fetch, from 1 to 256.                                                     |
+| `max_message_bytes`          | `67108864`       | Maximum raw email size, including attachments. Up to 512 MiB.                                       |
+| `accounts[].id`              | Required         | Stable unique name for local checkpoints.                                                           |
+| `accounts[].source`          | Required         | Bank source name, such as `proton` or `gmail`.                                                      |
+| `accounts[].folders`         | Required         | Exact folder names to collect. No implicit all-folder selection.                                    |
+| `accounts[].tls_ca_file`     | System trust     | Additional PEM certificates, typically Bridge's self-signed certificate.                            |
+| `accounts[].tls_server_name` | Address hostname | Certificate identity to verify.                                                                     |
 
 Both `tls` and `starttls` require certificate verification and TLS 1.2 or newer.
 There is no plaintext mode or option to disable certificate verification.

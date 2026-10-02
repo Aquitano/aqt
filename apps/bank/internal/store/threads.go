@@ -24,11 +24,12 @@ type Thread struct {
 // Cursors name messages in this thread. Pages use (sent_at, id), so messages
 // with equal timestamps are neither repeated nor skipped.
 type ThreadOpts struct {
-	Limit  int
-	Before int64
-	After  int64
-	Around int64
-	Latest bool
+	Limit   int
+	Before  int64
+	After   int64
+	Around  int64
+	Latest  bool
+	Current bool
 }
 
 func (o ThreadOpts) Validate() error {
@@ -101,11 +102,13 @@ func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o Th
 			return out, &AmbiguousThreadError{ThreadID: threadID, Sources: sources}
 		}
 	}
-	resolved, resolveErr := s.resolveMailThread(ctx, out.Source, out.ThreadID)
-	if resolveErr != nil {
-		return out, resolveErr
+	if !o.Current {
+		resolved, resolveErr := s.resolveMailThread(ctx, out.Source, out.ThreadID)
+		if resolveErr != nil {
+			return out, resolveErr
+		}
+		out.ThreadID = resolved
 	}
-	out.ThreadID = resolved
 	var anchor Message
 	id := max(o.Before, o.After, o.Around)
 	if id > 0 {

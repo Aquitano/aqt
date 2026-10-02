@@ -205,3 +205,142 @@ func TestMailRebuildReadOnlyRecoveryAndNewContext(t *testing.T) {
 		t.Fatalf("limit retry: %+v %v", projection, err)
 	}
 }
+
+func TestSplitAliasesSurviveReimportAndLimitedCorrections(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	for index, native := range []bool{false, true} {
+		source := fmt.Sprintf("split%d", index)
+		first, err := st.InsertMessage(ctx, store.Message{Source: source, ExternalID: "a", MessageID: "a@example.com"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := st.InsertMessage(ctx, store.Message{Source: source, ExternalID: "b", MessageID: "b@example.com"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		parent := store.MailProjection{MessageID: "a@example.com", References: []string{"b@example.com"}}
+		child := store.MailProjection{MessageID: "b@example.com"}
+		initial, err := st.ProjectMail(ctx, first, parent, true, "original")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.ProjectMail(ctx, second, child, true, ""); err != nil {
+			t.Fatal(err)
+		}
+		if native {
+			parent.NativeThreadID = "native-a"
+			child.NativeThreadID = "native-b"
+			if _, err := st.ProjectMail(ctx, first, parent, true, ""); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.ProjectMail(ctx, second, child, true, ""); err != nil {
+				t.Fatal(err)
+			}
+		}
+		parent.References = nil
+		t.Setenv("BANK_MAIL_MAX_NODES", "1")
+		limited, err := st.ProjectMail(ctx, first, parent, true, "")
+		if err != nil || !limited.Incomplete {
+			t.Fatalf("limited correction: %+v %v", limited, err)
+		}
+		t.Setenv("BANK_MAIL_MAX_NODES", "100")
+		if _, err := st.ProjectMail(ctx, second, child, true, ""); err != nil {
+			t.Fatal(err)
+		}
+		done, err := st.MailRebuildDone(ctx, source, "original", first)
+		if err != nil || done {
+			t.Fatalf("neighbor projection cleared a pending correction: %v %v", done, err)
+		}
+		for range 2 {
+			result, err := st.ProjectMail(ctx, first, parent, true, "")
+			if err != nil || result.Incomplete {
+				t.Fatalf("retry: %+v %v", result, err)
+			}
+			_, err = st.GetThread(ctx, source, initial.ThreadID, 10)
+			var conflict *store.MailThreadConflictError
+			if !errors.As(err, &conflict) || len(conflict.Choices) != 2 {
+				t.Fatalf("historical split was lost: %v", err)
+			}
+			for _, choice := range conflict.Choices {
+				page, err := st.GetThreadPage(ctx, source, choice, store.ThreadOpts{Limit: 10, Current: true})
+				if err != nil || len(page.Messages) != 1 {
+					t.Fatalf("unreadable split choice %s: %+v %v", choice, page, err)
+				}
+			}
+		}
+	}
+}
+
+func TestMailRebuildPreviewIncludesEarlierProposals(t *testing.T) {
+	ctx := context.Background()
+	st, schema := storetest.NewNamed(t)
+	root := t.TempDir()
+	for index, name := range []string{"a", "b"} {
+		header := ""
+		if name == "a" {
+			header = "References: <b@example.com>\r\n"
+		}
+		raw := []byte("Message-ID: <" + name + "@example.com>\r\n" + header + "\r\nmail")
+		reference, err := archive.Write(root, "preview", name+".eml", raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		native := fmt.Sprintf("provider-%d", index)
+		if _, err := st.InsertMessage(ctx, store.Message{Source: "preview", ExternalID: name, MessageID: name + "@example.com", ThreadID: native, RawRef: reference}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := archive.WriteMailContext(root, archive.MailContextRecord{Version: 1, Source: "preview", RawRef: reference, InputKind: "eml", ExternalID: name, ThreadID: "stale-provider"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readOnly, err := store.OpenReadOnly(ctx, storetest.SchemaDSN(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := RebuildMail(ctx, readOnly, root, "preview", false)
+	readOnly.Close()
+	if err != nil || preview.Conflicts != 1 {
+		t.Fatalf("dry preview missed conflict: %+v %v", preview, err)
+	}
+	applied, err := RebuildMail(ctx, st, root, "preview", true)
+	if err != nil || applied.Conflicts != preview.Conflicts || applied.Messages != preview.Messages {
+		t.Fatalf("apply differs: %+v %v", applied, err)
+	}
+	for index := range 2 {
+		thread, err := st.GetThread(ctx, "preview", fmt.Sprintf("provider-%d", index), 10)
+		if err != nil || len(thread.Messages) != 1 {
+			t.Fatalf("historical context overwrote provider ID: %+v %v", thread, err)
+		}
+	}
+}
+
+func TestMailHistoryWorkIsBounded(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	t.Setenv("BANK_MAIL_MAX_NODES", "3")
+	t.Setenv("BANK_MAIL_MAX_EDGES", "1")
+	t.Setenv("BANK_MAIL_MAX_MESSAGES", "1")
+	id, err := st.InsertMessage(ctx, store.Message{Source: "bounded", ExternalID: "mail"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	incomplete := 0
+	for index := range 16 {
+		result, err := st.ProjectMail(ctx, id, store.MailProjection{MessageID: "m@example.com", References: []string{fmt.Sprintf("parent%d@example.com", index)}}, true, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Incomplete {
+			incomplete++
+		}
+	}
+	if incomplete == 0 {
+		t.Fatal("historical resolution bypassed node budget")
+	}
+	t.Setenv("BANK_MAIL_MAX_NODES", "100")
+	result, err := st.ProjectMail(ctx, id, store.MailProjection{MessageID: "m@example.com", References: []string{"parent15@example.com"}}, true, "")
+	if err != nil || result.Incomplete {
+		t.Fatalf("historical limit retry: %+v %v", result, err)
+	}
+}

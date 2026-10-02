@@ -62,6 +62,11 @@ Usage:
   bank import whatsapp <export.zip|.txt>...   WhatsApp "Export chat" files
   bank import eml [--source s] <file|dir>...  .eml files (default source: proton)
   bank import mbox [--source s] <file>...     mbox files (default source: gmail)
+  bank import eml|mbox --mailbox <name> <file>  preserve a folder observation
+  bank import mail-tree --source s --layout eml|thunderbird <root>
+  bank mail mailboxes --source s [--json]    list historically observed folders
+  bank mail rebuild --source s [--apply]    rebuild mail metadata (dry run by default)
+  bank mail conflict <key> --source s       page unanchored mail after a thread split
   bank import discord <package.zip|dir>...    Discord GDPR data package
   bank import linkedin <zip|csv|dir>...       LinkedIn data export
   bank import youtube <takeout.zip|dir|json>  YouTube watch history (Google Takeout)
@@ -87,7 +92,7 @@ Usage:
   bank attachment messages <sha256>          every message with this file, as JSON
   bank attachment stats [--json]              how much of the archive is searchable inside
   bank attachment text <sha256> [--set f]     read, replace or clear that text
-  bank search <query> [flags]                 full-text search (BM25, fuzzy)
+  bank search [query] [flags]                 full-text search, or filtered conversations
   bank thread <id> [--source s] [--limit n]   one conversation page, oldest first
   bank contact <add|list|show|alias|...>      one person across their many identities
   bank show <id|ref> [--json]                 print one message + attachments
@@ -120,6 +125,9 @@ Extraction flags (bank extract):
 
 Search flags:
   --source s     filter by source (whatsapp, gmail, ...)
+  --mailbox-id n  observed folder id from bank mail mailboxes; requires --source
+  --subject text subject contains this literal text, case-insensitive
+  --has-attachment true|false  filter by attachment presence
   --from name    filter by sender (substring, case-insensitive)
   --to name      filter by recipient (substring, case-insensitive)
   --person name  filter by contact, across all their aliases (bank contact)
@@ -132,6 +140,7 @@ Search flags:
   --json         JSON output
 
 Thread flags:
+  --current      read a current subgroup instead of resolving its historical alias
   --around id    center context on this message's numeric id
   --before id    page backward from this message
   --after id     page forward from this message
@@ -303,7 +312,7 @@ func printSyncResult(res gmail.SyncResult) {
 
 func cmdImport(ctx context.Context, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: bank import <inbox|ai|whatsapp|eml|mbox|discord|linkedin|youtube|chatgpt|claude|claude-code|codex|opencode|antigravity|json> <path>...")
+		return fmt.Errorf("usage: bank import <inbox|ai|whatsapp|eml|mbox|mail-tree|discord|linkedin|youtube|chatgpt|claude|claude-code|codex|opencode|antigravity|json> <path>...")
 	}
 	kind := args[0]
 	if kind == "mail-tree" {
@@ -1128,6 +1137,7 @@ func cmdThread(ctx context.Context, args []string) error {
 	fs.Int64Var(&o.After, "after", 0, "")
 	fs.Int64Var(&o.Around, "around", 0, "")
 	fs.BoolVar(&o.Latest, "latest", false, "")
+	fs.BoolVar(&o.Current, "current", false, "")
 	asJSON := fs.Bool("json", false, "")
 	if err := parseFlagsAnywhere(fs, args); err != nil {
 		return err

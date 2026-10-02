@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import { Inbox, ShieldAlert } from "lucide-react";
+import { useState } from "react";
 
 import { Conversation } from "@/components/conversation";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,15 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
-import { CONTEXT_PAGE, getContactMessages, getMessage, getThread, getMailConflict, MailConflictError, type Message } from "@/lib/api";
+import {
+  CONTEXT_PAGE,
+  getContactMessages,
+  getMessage,
+  getThread,
+  getMailConflict,
+  MailConflictError,
+  type Message,
+} from "@/lib/api";
 import { SourceBadge } from "@/lib/format";
 
 export type Selection =
@@ -108,16 +116,39 @@ function SelectedDetail({ selection: initialSelection }: { selection: Selection 
           <EmptyMedia variant="icon">
             <ShieldAlert />
           </EmptyMedia>
-          <EmptyTitle>Could not load</EmptyTitle>
+          <EmptyTitle>
+            {q.error instanceof MailConflictError ? "Conversation split" : "Could not load"}
+          </EmptyTitle>
           <EmptyDescription>{q.error.message}</EmptyDescription>
-          {q.error instanceof MailConflictError && <div className="flex flex-wrap gap-2">
-            {q.error.conflict.choices.map((threadId) => <Button key={threadId} variant="outline" onClick={() => {
-              if (q.error instanceof MailConflictError) setSelection({kind: "thread", source: q.error.conflict.source, threadId});
-            }}>{threadId}</Button>)}
-            <Button variant="outline" onClick={() => {
-              if (q.error instanceof MailConflictError) setSelection({kind: "mail-conflict", source: q.error.conflict.source, key: q.error.conflict.conflict_key});
-            }}>Unanchored messages</Button>
-          </div>}
+          {q.error instanceof MailConflictError && (
+            <div className="flex flex-wrap gap-2">
+              {q.error.conflict.choices.map((threadId) => (
+                <Button
+                  key={threadId}
+                  variant="outline"
+                  onClick={() => {
+                    if (q.error instanceof MailConflictError)
+                      setSelection({ kind: "thread", source: q.error.conflict.source, threadId });
+                  }}
+                >
+                  {threadId}
+                </Button>
+              ))}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (q.error instanceof MailConflictError)
+                    setSelection({
+                      kind: "mail-conflict",
+                      source: q.error.conflict.source,
+                      key: q.error.conflict.conflict_key,
+                    });
+                }}
+              >
+                Unanchored messages
+              </Button>
+            </div>
+          )}
         </EmptyHeader>
       </Empty>
     );
@@ -134,7 +165,9 @@ function SelectedDetail({ selection: initialSelection }: { selection: Selection 
         <span className="truncate">
           {selection.kind === "thread"
             ? selection.title || selection.threadId
-            : selection.kind === "mail-conflict" ? "Unanchored messages" : first?.subject || first?.sender || "Message"}
+            : selection.kind === "mail-conflict"
+              ? "Unanchored messages"
+              : first?.subject || first?.sender || "Message"}
         </span>
       </span>
     );

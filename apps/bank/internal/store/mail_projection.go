@@ -31,6 +31,9 @@ func persistMailFacts(ctx context.Context, transaction pgx.Tx, message Message, 
 		message.ID, message.Source, key, projection.InReplyTo, projection.References, projection.NativeThreadID, incomplete); err != nil {
 		return err
 	}
+	if incomplete {
+		return persistMailboxObservation(ctx, transaction, message, projection)
+	}
 	if _, err := transaction.Exec(ctx, `delete from mail_thread_edges where source=$1 and owner_id=$2`, message.Source, message.ID); err != nil {
 		return err
 	}
@@ -41,6 +44,10 @@ func persistMailFacts(ctx context.Context, transaction pgx.Tx, message Message, 
 	if err := transaction.SendBatch(ctx, batch).Close(); err != nil {
 		return err
 	}
+	return persistMailboxObservation(ctx, transaction, message, projection)
+}
+
+func persistMailboxObservation(ctx context.Context, transaction pgx.Tx, message Message, projection MailProjection) error {
 	if projection.Context != nil {
 		observation := *projection.Context
 		if observation.Kind == "imap" && strings.EqualFold(observation.Mailbox, "INBOX") {
@@ -58,15 +65,7 @@ func persistMailFacts(ctx context.Context, transaction pgx.Tx, message Message, 
 	return nil
 }
 
-func persistMailComponents(ctx context.Context, transaction pgx.Tx, source string, previous map[string]mailNode, components []mailComponent) error {
-	oldGroups := make(map[string][]string)
-	keys := make([]string, 0, len(previous))
-	for key, node := range previous {
-		keys = append(keys, key)
-		if strings.HasPrefix(node.ThreadID, "mail:") {
-			oldGroups[node.ThreadID] = append(oldGroups[node.ThreadID], key)
-		}
-	}
+func persistMailComponents(ctx context.Context, transaction pgx.Tx, source string, components []mailComponent, history []mailHistory) error {
 	for _, component := range components {
 		if _, err := transaction.Exec(ctx, `update mail_thread_nodes set thread_id=$3,conflict_key=$4 where source=$1 and node_key=any($2)`, source, component.Keys, component.ThreadID, component.Conflict); err != nil {
 			return err
@@ -74,15 +73,6 @@ func persistMailComponents(ctx context.Context, transaction pgx.Tx, source strin
 		if _, err := transaction.Exec(ctx, `update messages m set thread_id=case when $4<>'' then d.native_thread_id else $3 end
 			from mail_details d where d.message_id=m.id and d.source=$1 and d.node_key=any($2)`, source, component.Keys, component.ThreadID, component.Conflict); err != nil {
 			return err
-		}
-		if _, err := transaction.Exec(ctx, `update mail_details set incomplete=false where source=$1 and node_key=any($2)`, source, component.Keys); err != nil {
-			return err
-		}
-		if component.Conflict != "" {
-			if _, err := transaction.Exec(ctx, `insert into mail_thread_conflicts(source,conflict_key,node_keys) values($1,$2,$3)
-				on conflict(source,conflict_key) do update set node_keys=excluded.node_keys`, source, component.Conflict, component.Keys); err != nil {
-				return err
-			}
 		}
 		batch := &pgx.Batch{}
 		for _, key := range component.Keys {
@@ -94,42 +84,5 @@ func persistMailComponents(ctx context.Context, transaction pgx.Tx, source strin
 			return err
 		}
 	}
-	for oldID, nodes := range oldGroups {
-		if _, err := transaction.Exec(ctx, `insert into mail_thread_conflicts(source,conflict_key,node_keys) values($1,$2,$3)
-			on conflict(source,conflict_key) do update set node_keys=excluded.node_keys`, source, "history:"+oldID, nodes); err != nil {
-			return err
-		}
-		if _, err := transaction.Exec(ctx, `update mail_thread_aliases set current_id=null,conflict_key=$3 where source=$1 and old_id=$2`, source, oldID, "history:"+oldID); err != nil {
-			return err
-		}
-	}
-	rows, err := transaction.Query(ctx, `select conflict_key,node_keys from mail_thread_conflicts where source=$1 and node_keys && $2`, source, keys)
-	if err != nil {
-		return err
-	}
-	type conflictRecord struct {
-		Key   string
-		Nodes []string
-	}
-	conflicts, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (conflictRecord, error) {
-		var record conflictRecord
-		err := row.Scan(&record.Key, &record.Nodes)
-		return record, err
-	})
-	if err != nil {
-		return err
-	}
-	for _, conflict := range conflicts {
-		var destination string
-		if err := transaction.QueryRow(ctx, `select case when count(distinct thread_id)=1 and bool_and(conflict_key='') then min(thread_id) else '' end
-			from mail_thread_nodes where source=$1 and node_key=any($2)`, source, conflict.Nodes).Scan(&destination); err != nil {
-			return err
-		}
-		if destination != "" {
-			if _, err := transaction.Exec(ctx, `update mail_thread_aliases set current_id=$3,conflict_key=null where source=$1 and conflict_key=$2`, source, conflict.Key, destination); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return persistMailHistory(ctx, transaction, source, history)
 }

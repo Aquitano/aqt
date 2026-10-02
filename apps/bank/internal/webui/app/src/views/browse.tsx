@@ -144,7 +144,13 @@ export function BrowseView({
           </SelectContent>
         </Select>
       </div>
-      <div className="px-3 pb-2"><MailboxSelect source={source === ALL_SOURCES ? undefined : source} value={mailboxId} onChange={(id) => setMailbox({ source, id })} /></div>
+      <div className="px-3 pb-2">
+        <MailboxSelect
+          source={source === ALL_SOURCES ? undefined : source}
+          value={mailboxId}
+          onChange={(id) => setMailbox({ source, id })}
+        />
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
         {q.isLoading ? (
           <ListSkeleton />

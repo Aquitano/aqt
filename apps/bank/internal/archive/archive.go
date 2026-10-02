@@ -141,13 +141,17 @@ func write(archiveDir, source, name string, r io.Reader) (string, error) {
 }
 
 func writeAt(archiveDir, rel string, r io.Reader) (string, error) {
+	return writePublished(archiveDir, rel, r, publishArchiveFile, syncArchiveFile)
+}
+
+func writePublished(archiveDir, rel string, r io.Reader, publish func(string, string) error, syncExisting func(string) error) (string, error) {
 	dir := filepath.Dir(filepath.Join(archiveDir, rel))
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := makeArchiveDirectories(dir); err != nil {
 		return "", err
 	}
 	dest := filepath.Join(archiveDir, rel)
 	if _, err := os.Stat(dest); err == nil {
-		return rel, nil // complete by construction: only renamed-in files exist
+		return rel, syncExisting(dest)
 	}
 	tmp, err := os.CreateTemp(dir, ".partial-*")
 	if err != nil {
@@ -166,7 +170,7 @@ func writeAt(archiveDir, rel string, r io.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.Rename(tmp.Name(), dest); err != nil {
+	if err := publish(tmp.Name(), dest); err != nil {
 		return "", err
 	}
 	return rel, nil

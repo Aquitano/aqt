@@ -20,7 +20,7 @@ type MailThreadConflictError struct {
 }
 
 func (conflict *MailThreadConflictError) Error() string {
-	return fmt.Sprintf("mail conversation has conflicting provider threads (%s); use bank thread <id> --source %s or bank mail conflict %s --source %s for unanchored messages", strings.Join(conflict.Choices, ", "), conflict.Source, conflict.ConflictKey, conflict.Source)
+	return fmt.Sprintf("mail conversation split into current threads (%s); use bank thread <id> --current --source %s or bank mail conflict %s --source %s for unanchored messages", strings.Join(conflict.Choices, ", "), conflict.Source, conflict.ConflictKey, conflict.Source)
 }
 
 func (s *Store) resolveMailThread(ctx context.Context, source, threadID string) (string, error) {

@@ -222,6 +222,13 @@ func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	o := store.ThreadOpts{Limit: limit}
+	if raw := q.Get("current"); raw != "" {
+		o.Current, err = strconv.ParseBool(raw)
+		if err != nil {
+			writeErr(w, 400, "invalid current")
+			return
+		}
+	}
 	for name, dst := range map[string]*int64{"before": &o.Before, "after": &o.After, "around": &o.Around} {
 		if raw := q.Get(name); raw != "" {
 			*dst, err = strconv.ParseInt(raw, 10, 64)

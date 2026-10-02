@@ -20,6 +20,7 @@ type MailProjection struct {
 	InReplyTo      []string
 	References     []string
 	NativeThreadID string
+	PreserveNative bool
 	Context        *archive.MailImportContext
 }
 
@@ -66,6 +67,10 @@ func mailDerivedID(key string) string {
 }
 
 func (s *Store) ProjectMail(ctx context.Context, id int64, projection MailProjection, apply bool, workKey string) (MailProjectionResult, error) {
+	return s.projectMail(ctx, id, projection, apply, workKey, nil)
+}
+
+func (s *Store) projectMail(ctx context.Context, id int64, projection MailProjection, apply bool, workKey string, preview *MailPreview) (MailProjectionResult, error) {
 	var result MailProjectionResult
 	limits, err := MailGroupingLimits()
 	if err != nil {
@@ -111,7 +116,17 @@ func (s *Store) ProjectMail(ctx context.Context, id int64, projection MailProjec
 	if errors.Is(err, pgx.ErrNoRows) {
 		native = message.ThreadID
 	}
-	if projection.NativeThreadID != "" {
+	if preview != nil {
+		if member, exists := preview.members[id]; exists {
+			previousKey, native = member.Key, member.Native
+			node := preview.nodes[member.Key]
+			result.PreviousThreadID = node.ThreadID
+			if node.Conflict != "" {
+				result.PreviousThreadID = native
+			}
+		}
+	}
+	if projection.NativeThreadID != "" && (!projection.PreserveNative || native == "") {
 		native = projection.NativeThreadID
 	}
 	projection.NativeThreadID = native
@@ -123,7 +138,7 @@ func (s *Store) ProjectMail(ctx context.Context, id int64, projection MailProjec
 	for _, edge := range edges {
 		seeds = append(seeds, edge.Left, edge.Right)
 	}
-	nodes, oldEdges, members, incomplete, err := loadMailGraph(ctx, transaction, message.Source, seeds, limits)
+	nodes, oldEdges, members, incomplete, err := loadMailGraph(ctx, transaction, message.Source, seeds, limits, preview)
 	if err != nil {
 		return result, err
 	}
@@ -138,8 +153,15 @@ func (s *Store) ProjectMail(ctx context.Context, id int64, projection MailProjec
 		}
 	}
 	components := []mailComponent{}
+	var history []mailHistory
 	if !result.Incomplete {
 		components = groupMailGraph(nodes, oldEdges, members)
+		history, result.Incomplete, err = planMailHistory(ctx, transaction, message.Source, nodes, components, limits.Nodes, preview)
+		if err != nil {
+			return result, err
+		}
+	}
+	if !result.Incomplete {
 		for _, component := range components {
 			if slices.Contains(component.Keys, key) {
 				result.ThreadID, result.Conflict = component.ThreadID, component.Conflict != ""
@@ -155,9 +177,18 @@ func (s *Store) ProjectMail(ctx context.Context, id int64, projection MailProjec
 		}
 	}
 	if !apply {
+		if preview != nil && !result.Incomplete {
+			if err := preview.remember(id, edges, members, components, history); err != nil {
+				return result, err
+			}
+		}
 		return result, nil
 	}
-	if err := persistMailFacts(ctx, transaction, message, key, projection, edges, result.Incomplete); err != nil {
+	factKey := key
+	if result.Incomplete && previousKey != "" {
+		factKey = previousKey
+	}
+	if err := persistMailFacts(ctx, transaction, message, factKey, projection, edges, result.Incomplete); err != nil {
 		return result, err
 	}
 	if result.Incomplete {
@@ -165,7 +196,7 @@ func (s *Store) ProjectMail(ctx context.Context, id int64, projection MailProjec
 			return result, err
 		}
 	} else {
-		if err := persistMailComponents(ctx, transaction, message.Source, nodes, components); err != nil {
+		if err := persistMailComponents(ctx, transaction, message.Source, components, history); err != nil {
 			return result, err
 		}
 	}
@@ -198,7 +229,7 @@ func mailHeaderEdges(owner int64, key string, projection MailProjection) []mailE
 	return edges
 }
 
-func loadMailGraph(ctx context.Context, transaction pgx.Tx, source string, seeds []string, limits MailLimits) (map[string]mailNode, []mailEdge, []mailMember, bool, error) {
+func loadMailGraph(ctx context.Context, transaction pgx.Tx, source string, seeds []string, limits MailLimits, preview *MailPreview) (map[string]mailNode, []mailEdge, []mailMember, bool, error) {
 	nodes := make(map[string]mailNode)
 	frontier := []string{}
 	add := func(key string) {
@@ -218,6 +249,21 @@ func loadMailGraph(ctx context.Context, transaction pgx.Tx, source string, seeds
 		}
 		current := frontier
 		frontier = nil
+		if preview != nil {
+			for _, key := range current {
+				for edge := range preview.adjacent[key] {
+					if !seenEdges[edge] {
+						seenEdges[edge] = true
+						edges = append(edges, edge)
+						add(edge.Left)
+						add(edge.Right)
+					}
+				}
+			}
+			if len(edges) > limits.Edges || len(nodes) > limits.Nodes {
+				return nodes, edges, nil, true, nil
+			}
+		}
 		rows, err := transaction.Query(ctx, `select owner_id,left_node,right_node from mail_thread_edges
 			where source=$1 and (left_node=any($2) or right_node=any($2)) limit $3`, source, current, limits.Edges+1)
 		if err != nil {
@@ -228,6 +274,11 @@ func loadMailGraph(ctx context.Context, transaction pgx.Tx, source string, seeds
 			if err := rows.Scan(&edge.Owner, &edge.Left, &edge.Right); err != nil {
 				rows.Close()
 				return nil, nil, nil, false, err
+			}
+			if preview != nil {
+				if _, replaced := preview.edges[edge.Owner]; replaced {
+					continue
+				}
 			}
 			if !seenEdges[edge] {
 				seenEdges[edge] = true
@@ -267,6 +318,13 @@ func loadMailGraph(ctx context.Context, transaction pgx.Tx, source string, seeds
 	if err != nil {
 		return nil, nil, nil, false, err
 	}
+	if preview != nil {
+		for key := range nodes {
+			if node, exists := preview.nodes[key]; exists {
+				nodes[key] = node
+			}
+		}
+	}
 	rows, err = transaction.Query(ctx, `select d.message_id,d.node_key,d.native_thread_id,m.thread_id from mail_details d join messages m on m.id=d.message_id where d.source=$1 and d.node_key=any($2) limit $3`, source, keys, limits.Messages+1)
 	if err != nil {
 		return nil, nil, nil, false, err
@@ -279,6 +337,14 @@ func loadMailGraph(ctx context.Context, transaction pgx.Tx, source string, seeds
 			return nil, nil, nil, false, err
 		}
 		members = append(members, member)
+	}
+	if preview != nil {
+		members = slices.DeleteFunc(members, func(member mailMember) bool { _, exists := preview.members[member.ID]; return exists })
+		for key := range nodes {
+			for _, member := range preview.byNode[key] {
+				members = append(members, member)
+			}
+		}
 	}
 	return nodes, edges, members, len(members) > limits.Messages, rows.Err()
 }

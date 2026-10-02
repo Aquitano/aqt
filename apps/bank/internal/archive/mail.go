@@ -16,6 +16,7 @@ import (
 )
 
 const MaxMailContextBytes = 16384
+const maxMailContextRecordBytes = 128 << 10
 
 type MailImportContext struct {
 	Version      int    `json:"version"`
@@ -92,7 +93,7 @@ func (record MailContextRecord) Validate() error {
 	if record.Version != 1 || (record.InputKind != "eml" && record.InputKind != "mbox") {
 		return fmt.Errorf("invalid mail context record version or input kind")
 	}
-	if !safeMailPath(record.RawRef) || !strings.HasPrefix(record.RawRef, record.Source+"/") || strings.Contains(record.RawRef, "/.mail-contexts/") {
+	if !safeRawMailPath(record.RawRef) || !strings.HasPrefix(record.RawRef, record.Source+"/") || strings.Contains(record.RawRef, "/.mail-contexts/") {
 		return fmt.Errorf("mail context raw reference must stay inside its source")
 	}
 	if len(record.ExternalID) > 4096 || len(record.ThreadID) > 4096 || strings.ContainsAny(record.ExternalID+record.ThreadID, "\x00\r\n") {
@@ -120,7 +121,7 @@ func WriteMailContext(root string, record MailContextRecord) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(raw) > 131072 {
+	if len(raw) > maxMailContextRecordBytes {
 		return "", fmt.Errorf("mail context record exceeds 128 KiB")
 	}
 	digest := sha256.Sum256(raw)
@@ -149,11 +150,11 @@ func ReadMailContext(root, source, name string) (MailContextRecord, error) {
 		return record, err
 	}
 	defer file.Close()
-	raw, err := io.ReadAll(io.LimitReader(file, 131073))
+	raw, err := io.ReadAll(io.LimitReader(file, maxMailContextRecordBytes+1))
 	if err != nil {
 		return record, fmt.Errorf("read mail context record: %w", err)
 	}
-	if len(raw) > 131072 {
+	if len(raw) > maxMailContextRecordBytes {
 		return record, fmt.Errorf("mail context record exceeds 128 KiB")
 	}
 	digest := sha256.Sum256(raw)
@@ -184,6 +185,21 @@ func openMailSource(root, source string) (*os.Root, error) {
 	}
 	defer archiveRoot.Close()
 	return archiveRoot.OpenRoot(source)
+}
+
+func safeRawMailPath(value string) bool {
+	if !filepath.IsLocal(filepath.FromSlash(value)) || strings.ContainsRune(value, '\x00') {
+		return false
+	}
+	if filepath.Separator == '\\' && strings.ContainsAny(value, "\\:") {
+		return false
+	}
+	for _, component := range strings.Split(value, "/") {
+		if component == "" || component == "." || component == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 func OpenMailRaw(root string, record MailContextRecord) (*os.File, error) {

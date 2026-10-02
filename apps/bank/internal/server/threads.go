@@ -37,7 +37,8 @@ func (s *Server) handleBrowseThreads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	groups, err := s.read.BrowseThreads(r.Context(), o)
-	if errors.Is(err, store.ErrMailboxSource) {
+	var noContact *store.ErrNoContact
+	if errors.Is(err, store.ErrMailboxSource) || errors.As(err, &noContact) {
 		writeErr(w, 400, err.Error())
 		return
 	}

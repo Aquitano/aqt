@@ -26,6 +26,27 @@ const mailWithAttachments = "From: a@example.com\r\n" +
 	"--B\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=\"two.pdf\"\r\n\r\nSECOND\r\n" +
 	"--B--\r\n"
 
+func TestVerifyChecksMailContextDigests(t *testing.T) {
+	fixture := newFixture(t)
+	if _, err := archive.WriteMailContext(fixture.archiveDir, archive.MailContextRecord{Version: 1, Source: "proton", RawRef: "proton/two.eml", InputKind: "eml"}); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join(fixture.archiveDir, "proton", ".mail-contexts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected one context, got %d", len(entries))
+	}
+	if err := os.WriteFile(filepath.Join(fixture.archiveDir, "proton", ".mail-contexts", entries[0].Name()), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	report, err := Run(context.Background(), fixture.st, fixture.blobs, fixture.archiveDir, Options{Source: "proton"})
+	if err != nil || report.MailContextsChecked != 1 || report.Damaged != 1 || report.Findings[0].Kind != "invalid_mail_context" {
+		t.Fatalf("context verification: %+v %v", report, err)
+	}
+}
+
 type fixture struct {
 	st         *store.Store
 	schema     string

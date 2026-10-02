@@ -364,6 +364,27 @@ func TestFailedFolderDoesNotBlockOtherFolders(t *testing.T) {
 	}
 }
 
+func TestMissingContextAcknowledgementKeepsPendingMail(t *testing.T) {
+	fixture := newFixture(t, "tls")
+	fixture.append(t, "INBOX", rawMessage("pending-context"))
+	oldImporter := func(_ context.Context, _ string, path string, observation eml.MailImportContext) (eml.Result, error) {
+		if observation.Mailbox != "INBOX" || observation.AccountID != fixture.config.Accounts[0].ID || observation.RelativePath != filepath.Base(path) {
+			t.Error("missing queued mail context")
+		}
+		return eml.Result{Inserted: 1}, nil
+	}
+	if _, err := runOnce(t, fixture.config, "old-bank", oldImporter); err == nil {
+		t.Fatal("missing context acknowledgement accepted")
+	}
+	if readCheckpoint(t, fixture.config, "INBOX").UID != 0 {
+		t.Fatal("unacknowledged context advanced checkpoint")
+	}
+	result, err := runOnce(t, fixture.config, "old-bank", acceptingImporter)
+	if err != nil || result.Fetched != 0 || result.Inserted != 1 {
+		t.Fatalf("pending retry: %+v %v", result, err)
+	}
+}
+
 func TestFetchFailureAndOversizedMessageRetainCheckpoint(t *testing.T) {
 	fixture := newFixture(t, "tls")
 	fixture.append(t, "INBOX", rawMessage("one"))
