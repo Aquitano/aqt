@@ -58,7 +58,7 @@ func (Extractor) Rule() extractor.Rule {
 		// never fall through to the article fallback.
 		Hosts:     []string{"x.com", "*.x.com", "twitter.com", "*.twitter.com"},
 		PathRegex: `^/[^/]+/status/\d+`,
-		Recapture: extractor.RecaptureAfterQuiet,
+		Recapture: extractor.RecaptureAfterChange,
 	}
 }
 

@@ -60,7 +60,7 @@ func (Extractor) Rule() extractor.Rule {
 		// GitHub's own two-segment pages look like owner/repo. Some are
 		// secret: /settings/tokens shows a new token in the page.
 		ExcludePathRegex: `^/(settings|login|logout|sessions|session|signup|join|password_reset|account|auth|notifications|issues|pulls|orgs|organizations|new|marketplace|sponsors|apps|codespaces|copilot|github-copilot|dashboard|explore|topics|trending|collections|search|stars|users|enterprises|features|security)(/|$)`,
-		Recapture:        extractor.RecaptureAfterQuiet,
+		Recapture:        extractor.RecaptureAfterChange,
 	}
 }
 

@@ -227,7 +227,7 @@ type Rule struct {
     ExcludePathRegex string   // pages PathRegex matches that are never captured; RE2 has no lookahead
     QueryKeys        []string // query params that distinguish page views (e.g. "v" on YouTube)
     DwellMS          int      // default 5000; article uses 30000
-    Recapture        string   // "never" | "after_quiet"
+    Recapture        string   // "never" | "after_change"
     MaxBytes         int      // default 10 MiB
 }
 
@@ -246,7 +246,7 @@ type Extractor interface {
 
 Registry: `extractor.All()` returns every registered extractor; both the rules endpoint and the worker read it. `*.example.com` in `Hosts` matches subdomains only; list the apex separately when it is wanted. `"*"` matches any host: `MatchRule` tries host-specific rules before wildcard ones and `Rules()` publishes wildcards last, so a site extractor always beats the `article` fallback regardless of order, and a host any site rule names never reaches the fallback at all. `ErrNoMatch` marks a page the rule matched but the extractor could not read (login wall, empty shell, under 200 characters of prose for `article`) and is classified `no_match`, not retried. `ErrStale` marks embedded page state that belongs to another URL, which is what a single-page app leaves behind after navigating in place; classified `stale`, not retried.
 
-`article` runs the readeck fork of go-readability over the page and records title, byline, site name, excerpt, published date, language, the cleaned text and a word count; `github` and `x` recapture `after_quiet`, `youtube` and `article` never.
+`article` runs the readeck fork of go-readability over the page and records title, byline, site name, excerpt, published date, language, the cleaned text and a word count; `github` and `x` recapture `after_change`, `youtube` and `article` never.
 
 An article's canonical URL is its `<link rel=canonical>` only when that is on the page's host (a leading `www.` aside) with a path other than `/`, since some sites point every article at their homepage; otherwise it is the page URL.
 

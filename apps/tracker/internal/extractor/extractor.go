@@ -52,10 +52,10 @@ var ErrNoMatch = errors.New("extractor: page has no readable content")
 var ErrStale = errors.New("extractor: page state belongs to another url")
 
 const (
-	DefaultDwellMS      = 5000
-	DefaultMaxBytes     = 10 << 20
-	RecaptureNever      = "never"
-	RecaptureAfterQuiet = "after_quiet"
+	DefaultDwellMS       = 5000
+	DefaultMaxBytes      = 10 << 20
+	RecaptureNever       = "never"
+	RecaptureAfterChange = "after_change"
 )
 
 var (
