@@ -1,5 +1,4 @@
-// Package dom holds the HTML helpers the site extractors share; the
-// extractors find elements with cascadia selectors.
+// Package dom holds the HTML helpers the site extractors share.
 package dom
 
 import (

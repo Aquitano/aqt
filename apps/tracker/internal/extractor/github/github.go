@@ -1,5 +1,5 @@
-// Package github extracts repository roots, issues and pull requests from
-// github.com pages.
+// Package github extracts repository roots, issues, pull requests and
+// discussions from github.com pages.
 package github
 
 import (
@@ -17,14 +17,16 @@ import (
 	"golang.org/x/net/html"
 
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
+	"github.com/aquitano/aqt/apps/tracker/internal/extractor/dom"
 )
 
 const Name = "github"
 
 const (
-	KindRepo  = "repo"
-	KindIssue = "issue"
-	KindPull  = "pull"
+	KindRepo       = "repo"
+	KindIssue      = "issue"
+	KindPull       = "pull"
+	KindDiscussion = "discussion"
 )
 
 type Data struct {
@@ -37,14 +39,21 @@ type Data struct {
 	Author    string    `json:"author"`
 	Body      string    `json:"body"`
 	Labels    []string  `json:"labels"`
+	Category  string    `json:"category,omitempty"`
+	Score     int       `json:"score,omitempty"`
 	CreatedAt string    `json:"created_at"`
 	Comments  []Comment `json:"comments"`
 }
 
+// Score, Answer and Replies are a discussion comment's upvotes, whether it
+// was marked as the answer, and the replies threaded under it.
 type Comment struct {
-	Author    string `json:"author"`
-	Body      string `json:"body"`
-	CreatedAt string `json:"created_at"`
+	Author    string    `json:"author"`
+	Body      string    `json:"body"`
+	CreatedAt string    `json:"created_at"`
+	Score     int       `json:"score,omitempty"`
+	Answer    bool      `json:"answer,omitempty"`
+	Replies   []Comment `json:"replies,omitempty"`
 }
 
 type Extractor struct{}
@@ -54,9 +63,9 @@ func init() { extractor.Register(Extractor{}) }
 func (Extractor) Rule() extractor.Rule {
 	return extractor.Rule{
 		Extractor: Name,
-		Version:   4,
+		Version:   5,
 		Hosts:     []string{"github.com"},
-		PathRegex: `^/[^/]+/[^/]+(/(issues|pull)/\d+)?/?$`,
+		PathRegex: `^/[^/]+/[^/]+(/(issues|pull|discussions)/\d+)?/?$`,
 		// GitHub's own two-segment pages look like owner/repo. Some are
 		// secret: /settings/tokens shows a new token in the page.
 		ExcludePathRegex: `^/(settings|login|logout|sessions|session|signup|join|password_reset|account|auth|notifications|issues|pulls|orgs|organizations|new|marketplace|sponsors|apps|codespaces|copilot|github-copilot|dashboard|explore|topics|trending|collections|search|stars|users|enterprises|features|security)(/|$)`,
@@ -81,6 +90,8 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 		data, ok = issueData(target, emb, doc)
 	case KindPull:
 		data, ok = pullData(target, emb, doc)
+	case KindDiscussion:
+		data, ok = discussionData(target, doc)
 	default:
 		data, ok = repoData(target, emb, doc)
 	}
@@ -97,12 +108,15 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 	path := "/" + data.Owner + "/" + data.Repo
 	if data.Kind != KindRepo {
 		title = fmt.Sprintf("%s#%d %s", title, data.Number, data.Title)
-		path = fmt.Sprintf("%s/%s/%d", path, issuePathSegment(data.Kind), data.Number)
+		path = fmt.Sprintf("%s/%s/%d", path, pathSegment(data.Kind), data.Number)
 	}
 	canonical := &url.URL{Scheme: pageURL.Scheme, Host: pageURL.Host, Path: path}
-	search := []string{data.Title, data.Body, strings.Join(data.Labels, " ")}
+	search := []string{data.Title, data.Body, strings.Join(data.Labels, " "), data.Category}
 	for _, c := range data.Comments {
 		search = append(search, c.Body)
+		for _, r := range c.Replies {
+			search = append(search, r.Body)
+		}
 	}
 	return extractor.Record{
 		CanonicalURL: canonical.String(),
@@ -112,14 +126,17 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 	}, nil
 }
 
-func issuePathSegment(kind string) string {
-	if kind == KindPull {
+func pathSegment(kind string) string {
+	switch kind {
+	case KindPull:
 		return "pull"
+	case KindDiscussion:
+		return "discussions"
 	}
 	return "issues"
 }
 
-var pathRe = regexp.MustCompile(`^/([^/]+)/([^/]+)(?:/(issues|pull)/(\d+))?/?$`)
+var pathRe = regexp.MustCompile(`^/([^/]+)/([^/]+)(?:/(issues|pull|discussions)/(\d+))?/?$`)
 
 type target struct {
 	kind   string
@@ -139,6 +156,8 @@ func parsePath(p string) (target, bool) {
 		t.kind = KindIssue
 	case "pull":
 		t.kind = KindPull
+	case "discussions":
+		t.kind = KindDiscussion
 	}
 	if m[4] != "" {
 		n, err := strconv.Atoi(m[4])
@@ -216,7 +235,7 @@ type login struct {
 
 func embeddedData(doc *html.Node) *embedded {
 	script := findNode(doc, func(n *html.Node) bool {
-		return n.Data == "script" && attr(n, "data-target") == "react-app.embeddedData"
+		return n.Data == "script" && dom.Attr(n, "data-target") == "react-app.embeddedData"
 	})
 	if script == nil || script.FirstChild == nil {
 		return nil
@@ -256,16 +275,16 @@ func issueData(t target, emb *embedded, doc *html.Node) (Data, bool) {
 		}
 	}
 	if d.Title == "" {
-		d.Title = nodeText(findNode(doc, byAttr("data-testid", "issue-title")))
+		d.Title = dom.Text(findNode(doc, byAttr("data-testid", "issue-title")))
 	}
 	if d.Body == "" {
 		d.Body = markdownBody(doc)
 	}
 	if d.State == "" {
-		d.State = normalizeState(nodeText(findNode(doc, byAttr("data-component", "StateLabel"))))
+		d.State = normalizeState(dom.Text(findNode(doc, byAttr("data-component", "StateLabel"))))
 	}
 	if d.Author == "" {
-		d.Author = nodeText(findNode(doc, byAttr("data-testid", "issue-body-header-author")))
+		d.Author = dom.Text(findNode(doc, byAttr("data-testid", "issue-body-header-author")))
 	}
 	return d, d.Title != ""
 }
@@ -286,13 +305,13 @@ func pullData(t target, emb *embedded, doc *html.Node) (Data, bool) {
 		}
 	}
 	if d.Title == "" {
-		d.Title = nodeText(firstOf(doc, byClass("js-issue-title"), byClass("markdown-title")))
+		d.Title = dom.Text(firstOf(doc, byClass("js-issue-title"), byClass("markdown-title")))
 	}
 	if d.State == "" {
-		d.State = normalizeState(nodeText(findNode(doc, byAttr("data-component", "StateLabel"))))
+		d.State = normalizeState(dom.Text(findNode(doc, byAttr("data-component", "StateLabel"))))
 	}
 	if d.Author == "" {
-		d.Author = nodeText(findNode(doc, byClass("author")))
+		d.Author = dom.Text(findNode(doc, byClass("author")))
 	}
 	// The pull request payload carries no body; the description is server
 	// rendered as the first comment on the page.
@@ -312,13 +331,13 @@ func repoData(t target, emb *embedded, doc *html.Node) (Data, bool) {
 		for _, topic := range sidebar.Topics {
 			d.Labels = append(d.Labels, topic.Name)
 		}
-	} else if name := nodeText(findNode(doc, byAttr("itemprop", "name"))); name != "" {
+	} else if name := dom.Text(findNode(doc, byAttr("itemprop", "name"))); name != "" {
 		d.Repo = name
-		if owner := nodeText(findNode(doc, byAttr("itemprop", "author"))); owner != "" {
+		if owner := dom.Text(findNode(doc, byAttr("itemprop", "author"))); owner != "" {
 			d.Owner = owner
 		}
 	}
-	readme := nodeText(findNode(doc, func(n *html.Node) bool {
+	readme := dom.Text(findNode(doc, func(n *html.Node) bool {
 		return n.Data == "article" && hasClass(n, "markdown-body")
 	}))
 	d.Body = strings.TrimSpace(about + "\n\n" + readme)
@@ -326,7 +345,7 @@ func repoData(t target, emb *embedded, doc *html.Node) (Data, bool) {
 }
 
 func markdownBody(doc *html.Node) string {
-	return nodeText(findNode(doc, byClass("markdown-body")))
+	return dom.Text(findNode(doc, byClass("markdown-body")))
 }
 
 // comments reads every comment body after the description, in the React
@@ -341,16 +360,16 @@ func comments(doc *html.Node) []Comment {
 	walk = func(n *html.Node) {
 		if n.Type == html.ElementNode {
 			switch {
-			case hasClass(n, "js-comment-body") || attr(n, "data-testid") == "markdown-body":
-				if c.Body = nodeText(n); !description && c.Body != "" {
+			case hasClass(n, "js-comment-body") || dom.Attr(n, "data-testid") == "markdown-body":
+				if c.Body = dom.Text(n); !description && c.Body != "" {
 					out = append(out, c)
 				}
 				c, description = Comment{}, false
 				return
-			case n.Data == "a" && (hasClass(n, "author") || attr(n, "data-testid") == "avatar-link"):
-				c.Author = nodeText(n)
+			case n.Data == "a" && (hasClass(n, "author") || dom.Attr(n, "data-testid") == "avatar-link"):
+				c.Author = dom.Text(n)
 			case n.Data == "relative-time":
-				if t, err := time.Parse(time.RFC3339, attr(n, "datetime")); err == nil {
+				if t, err := time.Parse(time.RFC3339, dom.Attr(n, "datetime")); err == nil {
 					c.CreatedAt = t.UTC().Format(time.RFC3339)
 				}
 			}
@@ -363,12 +382,86 @@ func comments(doc *html.Node) []Comment {
 	return out
 }
 
+// discussionBody is the data-url of a discussion's opening post. GitHub
+// swaps the page body in place on navigation, so the discussion the body
+// names is checked against the URL.
+var discussionBody = regexp.MustCompile(`^/([^/]+)/([^/]+)/discussions/(\d+)/body$`)
+
+func discussionData(t target, doc *html.Node) (Data, bool) {
+	d := Data{Kind: KindDiscussion, Owner: t.owner, Repo: t.repo, Number: t.number, Labels: []string{}}
+	opening := findNode(doc, func(n *html.Node) bool { return discussionBody.MatchString(dom.Attr(n, "data-url")) })
+	if opening == nil {
+		return d, false
+	}
+	m := discussionBody.FindStringSubmatch(dom.Attr(opening, "data-url"))
+	d.Owner, d.Repo = m[1], m[2]
+	d.Number, _ = strconv.Atoi(m[3])
+	post := discussionComment(opening)
+	d.Author, d.Body, d.CreatedAt, d.Score = post.Author, post.Body, post.CreatedAt, post.Score
+	d.Title = dom.Text(findNode(doc, byClass("js-issue-title")))
+	d.Category = dom.Text(findNode(doc, func(n *html.Node) bool {
+		return n.Data == "a" && strings.Contains(dom.Attr(n, "href"), "/discussions/categories/")
+	}))
+	d.State = "open"
+	if findNode(doc, func(n *html.Node) bool {
+		return hasClass(n, "State") && strings.HasPrefix(dom.Attr(n, "title"), "Status: Closed")
+	}) != nil {
+		d.State = "closed"
+	}
+	d.Comments = discussionComments(doc)
+	return d, d.Title != ""
+}
+
+// discussionComments reads the comments after the opening post in order,
+// each with the replies GitHub nests in its thread.
+func discussionComments(doc *html.Node) []Comment {
+	out := []Comment{}
+	var walk func(n *html.Node, nested bool)
+	walk = func(n *html.Node, nested bool) {
+		if n.Type == html.ElementNode {
+			nested = nested || hasClass(n, "js-nested-comment-container")
+			if hasClass(n, "discussions-timeline-scroll-target") && strings.HasPrefix(dom.Attr(n, "id"), "discussioncomment-") {
+				c := discussionComment(n)
+				if last := len(out) - 1; nested && last >= 0 {
+					out[last].Replies = append(out[last].Replies, c)
+				} else {
+					out = append(out, c)
+				}
+			}
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			walk(child, nested)
+		}
+	}
+	walk(doc, false)
+	return out
+}
+
+// discussionComment reads one post from its own comment group, which holds
+// none of the replies threaded under it.
+func discussionComment(n *html.Node) Comment {
+	own := findNode(n, byClass("js-discussion-comment"))
+	header := findNode(own, byClass("timeline-comment-header-text"))
+	c := Comment{
+		Author: dom.Text(findNode(header, func(n *html.Node) bool { return n.Data == "a" })),
+		Body:   dom.Text(findNode(own, byClass("js-comment-body"))),
+		Answer: findNode(own, byClass("timeline-chosen-answer")) != nil,
+	}
+	stamp := findNode(header, func(n *html.Node) bool { return n.Data == "relative-time" })
+	if t, err := time.Parse(time.RFC3339, dom.Attr(stamp, "datetime")); err == nil {
+		c.CreatedAt = t.UTC().Format(time.RFC3339)
+	}
+	upvotes := findNode(findNode(own, byClass("js-upvote-button")), func(n *html.Node) bool { return n.Data == "span" })
+	c.Score, _ = strconv.Atoi(dom.Text(upvotes))
+	return c
+}
+
 func normalizeState(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
 func byAttr(key, value string) func(*html.Node) bool {
-	return func(n *html.Node) bool { return attr(n, key) == value }
+	return func(n *html.Node) bool { return dom.Attr(n, key) == value }
 }
 
 func byClass(class string) func(*html.Node) bool {
@@ -399,53 +492,6 @@ func findNode(n *html.Node, pred func(*html.Node) bool) *html.Node {
 	return nil
 }
 
-func attr(n *html.Node, key string) string {
-	for _, a := range n.Attr {
-		if a.Key == key {
-			return a.Val
-		}
-	}
-	return ""
-}
-
 func hasClass(n *html.Node, class string) bool {
-	return slices.Contains(strings.Fields(attr(n, "class")), class)
-}
-
-var blockTags = map[string]bool{
-	"article": true, "blockquote": true, "br": true, "div": true, "h1": true,
-	"h2": true, "h3": true, "h4": true, "h5": true, "h6": true, "li": true,
-	"ol": true, "p": true, "pre": true, "section": true, "table": true,
-	"tr": true, "ul": true,
-}
-
-func nodeText(n *html.Node) string {
-	if n == nil {
-		return ""
-	}
-	var b strings.Builder
-	var walk func(*html.Node)
-	walk = func(n *html.Node) {
-		switch {
-		case n.Type == html.TextNode:
-			b.WriteString(n.Data)
-		case n.Type == html.ElementNode && (n.Data == "script" || n.Data == "style"):
-			return
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c)
-		}
-		if n.Type == html.ElementNode && blockTags[n.Data] {
-			b.WriteByte('\n')
-		}
-	}
-	walk(n)
-	lines := strings.Split(b.String(), "\n")
-	kept := lines[:0]
-	for _, line := range lines {
-		if line = strings.Join(strings.Fields(line), " "); line != "" {
-			kept = append(kept, line)
-		}
-	}
-	return strings.Join(kept, "\n")
+	return slices.Contains(strings.Fields(dom.Attr(n, "class")), class)
 }
