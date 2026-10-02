@@ -160,6 +160,9 @@ func TestCategoryCoverageSeeds(t *testing.T) {
 		{host: "developer.apple.com", category: "Learning"},
 		{host: "docs.python.org", category: "Learning"},
 		{host: "docs.google.com", category: "Productivity"},
+		{app: "Visual Studio Code", category: "Focus/Code"},
+		{app: "Windows Explorer", category: "System"},
+		{app: "Microsoft Outlook", category: "Communication"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.app+tc.host, func(t *testing.T) {

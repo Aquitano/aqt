@@ -25,6 +25,8 @@ linters:
         - (*github.com/jackc/pgx/v5/pgxpool.Pool).Close
         - (*net/http.Server).Close
         - (*net/http.Server).Shutdown
+        - golang.org/x/sys/windows.CloseHandle
+        - (*golang.org/x/sys/windows.LazyProc).Call
   exclusions:
     rules:
       - linters: [errcheck]

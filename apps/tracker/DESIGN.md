@@ -1,6 +1,6 @@
 # tracker — browsing memory
 
-What I read and where my attention went, from a browser extension and a macOS menu-bar agent into a local Postgres. Two products of equal weight: **recall** (search over structured records extracted from pages I read) and **attention analytics** (page views, active time per site and per desktop app, work blocks, context switches). Visits are cheap events; HTML snapshots are content-addressed immutable blobs; extraction is asynchronous, idempotent and replayable.
+What I read and where my attention went, from a browser extension and desktop agents for macOS and Windows into a local Postgres. Two products of equal weight: **recall** (search over structured records extracted from pages I read) and **attention analytics** (page views, active time per site and per desktop app, work blocks, context switches). Visits are cheap events; HTML snapshots are content-addressed immutable blobs; extraction is asynchronous, idempotent and replayable.
 
 ## Decisions (locked 2026-09-08)
 
@@ -12,7 +12,7 @@ What I read and where my attention went, from a browser extension and a macOS me
 | Location      | One server on the VPS, published on its tailnet address only; `127.0.0.1` on a laptop for development                                                                                     | Several machines track into one memory. The tailnet is the transport security, a token says it is the owner; `device_id` + UUIDv7 everywhere let the Mac's history move over in one restore                                                                  |
 | Auth          | None while no OIDC issuer is set; bearer tokens verified against the issuer's JWKS once one is. CLI and agent share one session file, each refreshing it in place                         | Loopback needs none, and the `Origin` header is not a credential off it. `/healthz` and `/metrics` stay open so a scrape and a reachability check need no token. One user, so a token answers "is this the owner" and `device_id` stays a label              |
 | Capture scope | Site rules plus a universal `article` fallback gated on a 30 s dwell; a host a site rule names never falls through to the fallback; the server publishes rules, the extension caches them | Site extractors capture at 5 s; for everything else the dwell is the filter, since a 5 s dwell would capture every page you bounce off. The other pages of a site with its own extractor are app shell. Private hosts and incognito stay the only exclusions |
-| Desktop       | A Swift menu-bar agent posts app/window spans to the same events endpoint, skipping the browsers the extension covers                                                                     | One span table, one ingest path; browser time is counted once, by the source that knows the page                                                                                                                                                             |
+| Desktop       | Desktop agents, Swift on macOS and Go on Windows, post app/window spans to the same events endpoint, skipping the browsers the extension covers                                           | One span table, one ingest path; browser time is counted once, by the source that knows the page                                                                                                                                                             |
 | Categories    | Config tables of regex rules, applied at query time by a view                                                                                                                             | Rules change; a stored category would need a backfill every time. Personal scale makes the regex join cheap                                                                                                                                                  |
 | Work blocks   | SQL function over all devices, spans stitched when the gap is under 60 s                                                                                                                  | One person has one attention stream, and the extension and the agent carry different device ids on the same machine                                                                                                                                          |
 | Extraction    | Per-site extractors in Go returning typed records, run server-side                                                                                                                        | Serialising `outerHTML` is the cheapest thing the browser can do                                                                                                                                                                                             |
@@ -28,6 +28,7 @@ What I read and where my attention went, from a browser extension and a macOS me
 ```
 apps/tracker/
   cmd/tracker/            serve | migrate | reprocess | blob | login | logout | stats | search | show | visits | time | forget | healthcheck
+  cmd/tracker-agent/      Windows tray agent: foreground app and window spans, the Win32 half
   internal/
     store/                bun models, embedded migrations, queries
     ingest/               HTTP: events, captures, capture-rules, search, visits, records, time, forget, stats, healthz, metrics
@@ -44,6 +45,7 @@ apps/tracker/
     auth/                 OIDC bearer verification, off when no issuer is set
     authtest/             throwaway issuer for tests
     client/               device-code login and the CLI's HTTP calls
+    agent/                the Windows agent's platform-free half: span policy, outbox, sync loop
     urlnorm/              normalisation + hash
     blob/                 blake3 + zstd
     metrics/              Prometheus collectors
@@ -306,7 +308,7 @@ Any other 4xx means the request can never succeed as sent, and the extension dro
 }
 ```
 
-A `span_start` carries either `page_view_id` (browser, from the extension) or `app_name` (desktop, from the macOS agent under its own `device_id`), never both; `bundle_id` and `window_title` are optional and only kept with `app_name`. `window_title` is truncated at 512 characters, `app_name` and `bundle_id` at 256. `span_end` reasons: `tab_switch | window_blur | app_switch | window_change | idle | paused | navigation | tab_closed | unknown`; an unknown reason is stored as `unknown`. `paused` is the extension's pause button ending the open span; like `idle`, it is no context switch, so neither `context_switches_hourly` nor `work_blocks` counts it as one.
+A `span_start` carries either `page_view_id` (browser, from the extension) or `app_name` (desktop, from a desktop agent under its own `device_id`; on Windows `bundle_id` is the lowercase exe name), never both; `bundle_id` and `window_title` are optional and only kept with `app_name`. `window_title` is truncated at 512 characters, `app_name` and `bundle_id` at 256. `span_end` reasons: `tab_switch | window_blur | app_switch | window_change | idle | paused | navigation | tab_closed | unknown`; an unknown reason is stored as `unknown`. `paused` is the extension's pause button ending the open span; like `idle`, it is no context switch, so neither `context_switches_hourly` nor `work_blocks` counts it as one.
 
 Every event is idempotent (upsert by id; heartbeats and ends only move `ended_at` forward, except an `idle` end, which is dated to the last input and may pull `ended_at` back to it, never before `started_at`). A `span_*` whose page view is unknown, a `span_start` with both or neither identity, or any single malformed event, is dropped and counted, not an error; only malformed JSON, a missing `device_id` or more than 1000 events fail the batch with 400. A NUL in a title or any other text field is left out when it is stored (Postgres rejects it in text; bun drops it from every string it formats into a query), never an error. Response `200 {"accepted":n,"dropped":n}`. For a private page view the extension sends `url` as `https://host/` and no title.
 
