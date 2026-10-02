@@ -7,6 +7,7 @@ import TrackerCore
 final class AgentCoordinator {
     private static let heartbeatInterval = Duration.seconds(30)
     private static let trustPollInterval = Duration.seconds(30)
+    private static let trustPollTolerance = Duration.seconds(10)
     private static let terminationFlushTimeout: TimeInterval = 2
     private static let deviceIDKey = "device_id"
     private static let menuTitleLimit = 60
@@ -53,7 +54,7 @@ final class AgentCoordinator {
             guard let self else { return }
             outbox.enqueue(tracker.heartbeat(at: .now))
         })
-        timers.append(every(Self.trustPollInterval) { [weak self] in
+        timers.append(every(Self.trustPollInterval, tolerance: Self.trustPollTolerance) { [weak self] in
             guard let self else { return }
             focus.refreshTrust()
             accessibilityTrusted = focus.isTrusted
@@ -85,10 +86,14 @@ final class AgentCoordinator {
         outbox.enqueue(tracker.apply(input, at: .now))
     }
 
-    private func every(_ interval: Duration, _ body: @escaping @MainActor () -> Void) -> Task<Void, Never> {
+    private func every(
+        _ interval: Duration,
+        tolerance: Duration? = nil,
+        _ body: @escaping @MainActor () -> Void
+    ) -> Task<Void, Never> {
         Task { @MainActor in
             while !Task.isCancelled {
-                try? await Task.sleep(for: interval)
+                try? await Task.sleep(for: interval, tolerance: tolerance)
                 guard !Task.isCancelled else { return }
                 body()
             }

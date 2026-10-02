@@ -10,6 +10,7 @@ final class Outbox {
     private static let flushInterval = Duration.seconds(10)
     private static let flushTolerance = Duration.seconds(5)
     private static let healthInterval = Duration.seconds(30)
+    private static let healthTolerance = Duration.seconds(10)
 
     private(set) var dropped = 0
     var lastError: String? {
@@ -67,7 +68,7 @@ final class Outbox {
             while !Task.isCancelled {
                 let reachable = await self?.client.health() ?? false
                 self?.serverReachable = reachable
-                try? await Task.sleep(for: Outbox.healthInterval)
+                try? await Task.sleep(for: Outbox.healthInterval, tolerance: Outbox.healthTolerance)
             }
         })
     }
