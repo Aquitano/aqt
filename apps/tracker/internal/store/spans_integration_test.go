@@ -157,6 +157,8 @@ func TestCategoryCoverageSeeds(t *testing.T) {
 		{host: "www.disneyplus.com", category: "Distraction"},
 		{host: "dash.cloudflare.com", category: "Focus/Code"},
 		{host: "developer.apple.com", category: "Learning"},
+		{host: "docs.python.org", category: "Learning"},
+		{host: "docs.google.com", category: "Productivity"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.app+tc.host, func(t *testing.T) {

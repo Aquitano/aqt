@@ -6,6 +6,7 @@ package urlnorm
 import (
 	"errors"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"lukechampine.com/blake3"
@@ -17,8 +18,16 @@ var strippedKeys = map[string]bool{
 	"fbclid": true, "gclid": true, "ref": true, "si": true, "mc_cid": true, "mc_eid": true,
 }
 
+var percent = regexp.MustCompile(`%(?:[0-9A-Fa-f]{2})?`)
+
 func Normalize(raw string) (normalized, host string, err error) {
-	u, err := url.Parse(strings.TrimSpace(raw))
+	raw, _, _ = strings.Cut(strings.TrimSpace(raw), "#")
+	u, err := url.Parse(raw)
+	if err != nil {
+		// Chrome keeps a '%' that starts no escape, and percent-decoding reads
+		// it as a literal '%'; url.Parse rejects the whole URL instead.
+		u, err = url.Parse(escapeStrayPercents(raw))
+	}
 	if err != nil {
 		return "", "", err
 	}
@@ -39,8 +48,6 @@ func Normalize(raw string) (normalized, host string, err error) {
 		u.Host += ":" + port
 	}
 	u.User = nil
-	u.Fragment = ""
-	u.RawFragment = ""
 	if u.Path == "" {
 		u.Path = "/"
 	}
@@ -57,6 +64,15 @@ func Normalize(raw string) (normalized, host string, err error) {
 	}
 	u.ForceQuery = false
 	return u.String(), host, nil
+}
+
+func escapeStrayPercents(s string) string {
+	return percent.ReplaceAllStringFunc(s, func(m string) string {
+		if m == "%" {
+			return "%25"
+		}
+		return m
+	})
 }
 
 func Hash(normalized string) []byte {

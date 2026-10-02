@@ -12,8 +12,17 @@ const { dueEvents, enqueueCapture, enqueueEvent, markFailed, pendingCounts, remo
   await import("./outbox.ts");
 const { deviceIdStore, openSpanStore, rulesStore, settingsStore, syncStore, tabStore } =
   await import("./storage.ts");
-const { captureTab, flushEvents, onAlarm, reconcile, requestSync, serialized, uploadCaptures } =
-  await import("./tracker.ts");
+const {
+  captureTab,
+  flushEvents,
+  handleMessage,
+  onAlarm,
+  onTitleChanged,
+  reconcile,
+  requestSync,
+  serialized,
+  uploadCaptures,
+} = await import("./tracker.ts");
 
 const pageURL = "https://example.org/article";
 const timestamp = "2026-09-21T12:00:00.000Z";
@@ -103,6 +112,24 @@ test("capture rechecks privacy after the content script replies", async () => {
   });
   expect(await captureTab(1, "manual")).toEqual({ ok: false, error: "private host" });
   expect((await pendingCounts()).captures).toBe(0);
+});
+
+test("making an open host private stops sending its title changes", async () => {
+  await settingsStore.set({ ...defaultSettings, privateHosts: ["example.org"] });
+  await onTitleChanged(1, "Inbox (3)");
+  expect((await pendingCounts()).events).toBe(0);
+});
+
+test("making an open host private leaves only its host as the next page view's referrer", async () => {
+  await settingsStore.set({ ...defaultSettings, privateHosts: ["example.org"] });
+  const tab = await fakeBrowser.tabs.create({ url: pageURL });
+  await handleMessage(
+    { type: "url_changed", url: "https://example.org/inbox", navigation_type: "spa" },
+    { tab, frameId: 0 },
+    Date.now(),
+  );
+  const [event] = (await dueEvents(100)).map((row) => row.payload);
+  expect(event).toMatchObject({ type: "page_view", referrer: "https://example.org/" });
 });
 
 async function withTabFocused<T>(run: () => Promise<T>): Promise<T> {

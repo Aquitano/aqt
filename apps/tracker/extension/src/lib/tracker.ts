@@ -483,7 +483,12 @@ async function recordPageView(
     tab_session_id: tabSessionId,
     private: isPrivate,
   };
-  if (previous?.pageView) event.referrer = previous.pageView.event.url;
+  const referrer = previous?.pageView && URL.parse(previous.pageView.event.url);
+  if (referrer) {
+    event.referrer = isPrivateHost(referrer.hostname, settings.privateHosts)
+      ? privateUrl(referrer)
+      : referrer.href;
+  }
   // By the time this runs the tab may already show another document, such as
   // a redirect target on a private host; its title is not this page's.
   if (!isPrivate && tab.title && tab.url === url) event.title = tab.title;
@@ -498,6 +503,8 @@ export async function onTitleChanged(tabId: number, title: string): Promise<void
   const pageView = state?.pageView;
   if (!state || !pageView || pageView.titled || pageView.event.private) return;
   if (pageView.event.title === title) return;
+  const host = URL.parse(pageView.event.url)?.hostname;
+  if (host === undefined || isPrivateHost(host, (await loadSettings()).privateHosts)) return;
   const event = { ...pageView.event, title };
   await store.set({ ...state, pageView: { ...pageView, event, titled: true } });
   await emit(event);
