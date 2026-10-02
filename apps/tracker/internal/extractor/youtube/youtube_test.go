@@ -16,12 +16,26 @@ import (
 // trimmed of every inline script but the player response and of the style
 // blocks. The live DOM the extension serialises carries the same
 // ytInitialPlayerResponse script and the same schema.org microdata tags.
+//
+// testdata/navigated.html is what the extension serialised in headless
+// Chrome 151 on 2026-10-02 after navigating in-app from iG9CE55wbtY to
+// UF8uR6Z6KLc, trimmed of the same scripts and styles. Its player response
+// and microdata still describe iG9CE55wbtY; the DOM and the attached
+// transcript describe UF8uR6Z6KLc.
 
-const watchURL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+const (
+	watchURL     = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+	navigatedURL = "https://www.youtube.com/watch?v=UF8uR6Z6KLc"
+)
 
 func extractRaw(t *testing.T, raw []byte) (extractor.Record, Data) {
 	t.Helper()
-	u, err := url.Parse(watchURL)
+	return extractAt(t, raw, watchURL)
+}
+
+func extractAt(t *testing.T, raw []byte, pageURL string) (extractor.Record, Data) {
+	t.Helper()
+	u, err := url.Parse(pageURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +52,12 @@ func extractRaw(t *testing.T, raw []byte) (extractor.Record, Data) {
 
 func fixture(t *testing.T) []byte {
 	t.Helper()
-	raw, err := os.ReadFile("testdata/watch.html")
+	return readFixture(t, "watch.html")
+}
+
+func readFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile("testdata/" + name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,6 +96,36 @@ func TestExtractWatchPage(t *testing.T) {
 	}
 	if !strings.Contains(rec.SearchText, "Rick Astley") || !strings.Contains(rec.SearchText, "rickroll") {
 		t.Errorf("search text = %q", rec.SearchText)
+	}
+}
+
+func TestExtractAttachedTranscript(t *testing.T) {
+	rec, data := extractAt(t, readFixture(t, "navigated.html"), navigatedURL)
+
+	if data.VideoID != "UF8uR6Z6KLc" || !strings.Contains(data.Title, "Stanford") {
+		t.Fatalf("video = %q %q", data.VideoID, data.Title)
+	}
+	if data.Transcript == nil || data.Transcript.Language != "en" || data.Transcript.Kind != "manual" {
+		t.Fatalf("transcript = %+v", data.Transcript)
+	}
+	phrase := "Of course it was impossible to connect the dots looking forward when I was in college."
+	if !strings.HasPrefix(data.Transcript.Text, "This program is brought to you by Stanford University.") ||
+		!strings.Contains(data.Transcript.Text, phrase) {
+		t.Errorf("transcript text = %.200q", data.Transcript.Text)
+	}
+	if !strings.Contains(rec.SearchText, phrase) {
+		t.Errorf("search text lacks the transcript")
+	}
+}
+
+func TestExtractDropsTheTranscriptOfAnotherVideo(t *testing.T) {
+	rec, data := extractAt(t, readFixture(t, "navigated.html"), "https://www.youtube.com/watch?v=iG9CE55wbtY")
+
+	if data.VideoID != "iG9CE55wbtY" || data.Transcript != nil {
+		t.Fatalf("video = %q, transcript = %+v", data.VideoID, data.Transcript)
+	}
+	if strings.Contains(rec.SearchText, "connect the dots") {
+		t.Errorf("search text carries the other video's transcript")
 	}
 }
 
