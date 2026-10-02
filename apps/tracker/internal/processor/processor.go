@@ -4,12 +4,15 @@
 package processor
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -161,7 +164,7 @@ func (p *Processor) derive(ctx context.Context, d store.Derivation) (store.Recor
 	if err != nil {
 		return store.RecordInput{}, classify(err)
 	}
-	canonical, err := extractor.CanonicalJSON(rec.Data)
+	canonical, err := canonicalData(rec.Data)
 	if err != nil {
 		return store.RecordInput{}, &failure{err: err, class: ClassParse}
 	}
@@ -182,6 +185,43 @@ func canonicalURL(raw, pageURL string) string {
 		return normalized
 	}
 	return pageURL
+}
+
+// canonicalData is the record's data as hashed and stored. An extractor that
+// reads JSON embedded in a page can return NUL, which jsonb rejects as \u0000,
+// so it is dropped from every string and key first. bun already leaves NUL
+// out of the text columns.
+func canonicalData(v any) ([]byte, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var generic any
+	if err := dec.Decode(&generic); err != nil {
+		return nil, err
+	}
+	return extractor.CanonicalJSON(withoutNUL(generic))
+}
+
+func withoutNUL(v any) any {
+	switch v := v.(type) {
+	case string:
+		return strings.ReplaceAll(v, "\x00", "")
+	case []any:
+		for i, e := range v {
+			v[i] = withoutNUL(e)
+		}
+		return v
+	case map[string]any:
+		clean := make(map[string]any, len(v))
+		for k, e := range v {
+			clean[strings.ReplaceAll(k, "\x00", "")] = withoutNUL(e)
+		}
+		return clean
+	}
+	return v
 }
 
 type panicError struct{ value any }

@@ -156,6 +156,16 @@ func TestQueueCapturesRefillsTheQueueFromCaptures(t *testing.T) {
 	}
 }
 
+func TestNULInExtractedTextIsDroppedRatherThanFailingTheJob(t *testing.T) {
+	p, st, schema := newProcessor(t)
+	ingest(t, st, "https://example.com/nul", `<html><head><title>Bun\0 ORM</title></head><body><p>SQL\0-first</p></body></html>`)
+	drain(t, p)
+	if n := storetest.QueryInt(t, schema, `select count(*) from records
+		where title = 'Bun ORM' and search_text = 'SQL-first' and data->>'title' = 'Bun ORM'`); n != 1 {
+		t.Error("the record was not stored without its NULs")
+	}
+}
+
 func TestReprocessAllRebuildsDerivedTablesFromSource(t *testing.T) {
 	p, st, schema := newProcessor(t)
 	ingest(t, st, "https://example.com/bun", pageHTML)

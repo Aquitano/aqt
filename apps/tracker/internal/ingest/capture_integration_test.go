@@ -65,3 +65,17 @@ func TestCaptureTransaction(t *testing.T) {
 		t.Errorf("%d urls rows for example.com, want 1", n)
 	}
 }
+
+func TestCaptureOfAnUnknownPageViewIsRefusedAndWritesNothing(t *testing.T) {
+	st, schema := storetest.NewNamed(t)
+	h := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off()).Handler()
+
+	rec := do(t, h, captureRequest(t, validMeta(), []byte("<html><head><title>Page</title></head></html>")))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, want 422: %s", rec.Code, rec.Body.String())
+	}
+	if n := storetest.QueryInt(t, schema, `select (select count(*) from urls) + (select count(*) from raw_html_blobs)
+		+ (select count(*) from captures) + (select count(*) from derivations)`); n != 0 {
+		t.Errorf("%d rows written for a refused capture", n)
+	}
+}
