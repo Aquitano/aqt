@@ -88,7 +88,7 @@ Usage:
   bank extract [--ocr] [--status s]           read text out of attachments
   bank attachment list [--status s]           attachment content and its text status
   bank reports [--before ID] [--json]         saved import outcomes and gaps
-  bank attachment find --filename invoice --type pdf [--person alice] [--json]
+  bank attachment find [--filename invoice] [--text phrase] [--type pdf] [--person alice] [--json]
   bank attachment messages <sha256>          every message with this file, as JSON
   bank attachment stats [--json]              how much of the archive is searchable inside
   bank attachment text <sha256> [--set f]     read, replace or clear that text

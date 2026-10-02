@@ -140,8 +140,18 @@ the previous one.
 bank reports --json
 bank reports --before 42 --limit 50
 bank attachment find --filename invoice --type pdf --person alice --since 2025-01-01
+bank attachment find --text "payment due" --type pdf
 bank attachment messages <sha256> --offset 0 --limit 50
 ```
+
+Submitted search filters and selections live in the browser URL. Refreshing,
+switching tabs, and using Back or Forward restore the search. Bookmark the URL
+to keep a search. Each message has a **Message link** based on its stable ref,
+so the link still resolves after rebuilding the archive from the same sources.
+
+The **Contacts** tab can create a contact or attach a suggested identity to an
+existing one. Open a contact and expand **Manage identities** to add or remove
+emails and usernames. Each identity can match one source or all sources.
 
 The **Files** tab searches filenames and filters by extension, MIME type or
 category such as `image`, contact name, and message date. The before-date filter
@@ -149,6 +159,13 @@ is exclusive. Identical bytes share one library entry, even under different
 filenames. Selecting a file shows PDF/image previews, extracted document text
 when available, and every message containing those bytes. Message results include
 occurrences outside the selected filters. Original files remain downloadable.
+
+**Contents contain** searches extracted text within each file, ignoring case.
+It matches the supplied phrase literally. Files without extracted text cannot
+match this filter. Results show a matching excerpt, and **Jump to match** locates
+the query in the text preview. Click an attachment in a conversation to read
+the same preview without leaving the message. The API accepts this filter as
+`text` on `/v1/attachment-library`; the CLI uses `attachment find --text`.
 
 ChatGPT imports retain reply parents and branch identifiers. Alternative answers
 are labeled separately, and **Read branch to here** shows only the selected
