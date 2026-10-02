@@ -32,7 +32,9 @@ apps/tracker/
     store/                bun models, embedded migrations, queries
     ingest/               HTTP: events, captures, capture-rules, search, visits, records, time, forget, stats, healthz, metrics
     extractor/            Extractor interface, Rule, registry
+    extractor/dom/        HTML helpers the site extractors share
     extractor/github/     one package per site
+    extractor/hackernews/
     extractor/x/
     extractor/youtube/
     extractor/article/    universal fallback (readability)
@@ -247,7 +249,7 @@ type Extractor interface {
 
 Registry: `extractor.All()` returns every registered extractor; both the rules endpoint and the worker read it. `*.example.com` in `Hosts` matches subdomains only; list the apex separately when it is wanted. `"*"` matches any host: `MatchRule` tries host-specific rules before wildcard ones and `Rules()` publishes wildcards last, so a site extractor always beats the `article` fallback regardless of order, and a host any site rule names never reaches the fallback at all. `ErrNoMatch` marks a page the rule matched but the extractor could not read (login wall, empty shell, under 200 characters of prose for `article`) and is classified `no_match`, not retried. `ErrStale` marks embedded page state that belongs to another URL, which is what a single-page app leaves behind after navigating in place; classified `stale`, not retried.
 
-`article` runs the readeck fork of go-readability over the page and records title, byline, site name, excerpt, published date, language, the cleaned text and a word count; `github` and `x` recapture `after_change`, `youtube` and `article` never.
+`article` runs the readeck fork of go-readability over the page and records title, byline, site name, excerpt, published date, language, the cleaned text and a word count; `github`, `hackernews` and `x` recapture `after_change`, `youtube` and `article` never.
 
 An article's canonical URL is its `<link rel=canonical>` only when that is on the page's host (a leading `www.` aside) with a path other than `/`, since some sites point every article at their homepage; otherwise it is the page URL.
 

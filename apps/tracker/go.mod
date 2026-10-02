@@ -4,6 +4,7 @@ go 1.27.1
 
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.2
+	github.com/andybalholm/cascadia v1.3.3
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/google/uuid v1.6.0
@@ -18,7 +19,6 @@ require (
 )
 
 require (
-	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c // indirect

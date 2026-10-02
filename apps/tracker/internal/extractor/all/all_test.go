@@ -8,7 +8,7 @@ import (
 )
 
 func TestRegistryListsEverySite(t *testing.T) {
-	want := map[string]bool{"article": false, "github": false, "x": false, "youtube": false}
+	want := map[string]bool{"article": false, "github": false, "hackernews": false, "x": false, "youtube": false}
 	for _, rule := range extractor.Rules() {
 		if _, ok := want[rule.Extractor]; !ok {
 			continue
