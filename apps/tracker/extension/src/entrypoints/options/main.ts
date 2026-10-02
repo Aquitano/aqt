@@ -36,6 +36,7 @@ async function fill(): Promise<void> {
 
 async function save(): Promise<void> {
   await settingsStore.set({
+    ...(await loadSettings()),
     serverUrl: normalizeServerUrl(serverUrl.value),
     privateHosts: privateHosts.value
       .split("\n")

@@ -3,13 +3,22 @@ import { afterAll, afterEach, beforeEach, expect, setSystemTime, spyOn, test } f
 import { fakeBrowser } from "@webext-core/fake-browser";
 import { indexedDB } from "fake-indexeddb";
 
-import type { PageViewEvent } from "./events.ts";
+import type { CapturePayload, PageViewEvent, TrackerEvent } from "./events.ts";
+import { forgets } from "./privacy.ts";
 import type { Rule } from "./rules.ts";
 import { defaultSettings } from "./settings.ts";
 
 Object.assign(globalThis, { chrome: fakeBrowser, browser: fakeBrowser, indexedDB });
-const { dueEvents, enqueueCapture, enqueueEvent, markFailed, pendingCounts, removeRows } =
-  await import("./outbox.ts");
+const {
+  dueEvents,
+  enqueueCapture,
+  enqueueEvent,
+  markFailed,
+  nextDueCapture,
+  pendingCounts,
+  purge,
+  removeRows,
+} = await import("./outbox.ts");
 const { deviceIdStore, openSpanStore, rulesStore, settingsStore, syncStore, tabStore } =
   await import("./storage.ts");
 const {
@@ -118,7 +127,7 @@ test("capture rechecks privacy after the content script replies", async () => {
 
 test("making an open host private stops sending its title changes", async () => {
   await settingsStore.set({ ...defaultSettings, privateHosts: ["example.org"] });
-  await onTitleChanged(1, "Inbox (3)");
+  await onTitleChanged(1, "Inbox (3)", Date.now());
   expect((await pendingCounts()).events).toBe(0);
 });
 
@@ -408,9 +417,9 @@ test("a changing title goes out at once, then only its latest value on each hear
     startedAt: timestamp,
     lastHeartbeatAt: timestamp,
   });
-  await onTitleChanged(1, "Loading…");
-  await onTitleChanged(1, "(1) Inbox");
-  await onTitleChanged(1, "(2) Inbox");
+  await onTitleChanged(1, "Loading…", Date.now());
+  await onTitleChanged(1, "(1) Inbox", Date.now());
+  await onTitleChanged(1, "(2) Inbox", Date.now());
   expect(await titlesSent()).toEqual(["Loading…"]);
   await whileServerHangs(async () => {
     await withTabFocused(() =>
@@ -427,7 +436,7 @@ test("a title held back for the heartbeat goes out when its tab closes", async (
     tabSessionId: "tab",
     pageView: { event: { ...pageView, title: "Loading…" }, titled: true },
   });
-  await onTitleChanged(1, "Article");
+  await onTitleChanged(1, "Article", Date.now());
   expect(await titlesSent()).toEqual([]);
   await serialized((at) => onTabRemoved(1, at));
   expect(await titlesSent()).toEqual(["Article"]);
@@ -484,4 +493,132 @@ test("a private page view is never looked up", async () => {
   answerVisits(3);
   await showSeenBefore(1, { ...pageView, url: "https://example.org/", private: true });
   expect(fetchRequest).not.toHaveBeenCalled();
+});
+
+test("pausing ends the open span at that moment and turns the badge off", async () => {
+  setSystemTime(new Date(timestamp));
+  await openSpanStore.set({
+    id: "span",
+    pageViewId: pageView.id,
+    tabId: 1,
+    startedAt: fiveMinutesBefore,
+    lastHeartbeatAt: timestamp,
+  });
+  await serialized((at) => handleMessage({ type: "pause" }, {}, at));
+  expect((await dueEvents(100)).map((row) => row.payload)).toEqual([
+    { type: "span_end", id: "span", ended_at: timestamp, reason: "paused" },
+  ]);
+  expect((await settingsStore.get())?.pausedUntil).toBe(Date.parse(timestamp) + 3_600_000);
+  expect(await fakeBrowser.action.getBadgeText({})).toBe("off");
+});
+
+test("while paused, focus, titles, navigations and captures record nothing", async () => {
+  await settingsStore.set({ ...defaultSettings, pausedUntil: Date.now() + 60_000 });
+  const tab = await fakeBrowser.tabs.create({ url: pageURL });
+  expect(await captureTab(1, "manual")).toEqual({ ok: false, error: "tracking is paused" });
+  await withTabFocused(async () => {
+    await serialized((at) => reconcile("tab_switch", at));
+    await serialized((at) => onTitleChanged(1, "Inbox (1)", at));
+    await serialized((at) =>
+      handleMessage(
+        { type: "url_changed", url: "https://example.org/next", navigation_type: "spa" },
+        { tab, frameId: 0 },
+        at,
+      ),
+    );
+  });
+  expect(await dueEvents(100)).toEqual([]);
+  expect((await pendingCounts()).captures).toBe(0);
+});
+
+test("the first heartbeat after the pause has passed records again and clears the badge", async () => {
+  setSystemTime(new Date(timestamp));
+  await settingsStore.set({ ...defaultSettings, pausedUntil: Date.parse(timestamp) - 1 });
+  await fakeBrowser.action.setBadgeText({ text: "off" });
+  await whileServerHangs(async () => {
+    await withTabFocused(() =>
+      serialized((at) =>
+        onAlarm({ name: "heartbeat", scheduledTime: at, persistAcrossSessions: true }, at),
+      ),
+    );
+    expect((await dueEvents(100)).map((row) => row.payload.type)).toContain("span_start");
+  });
+  expect((await settingsStore.get())?.pausedUntil).toBeUndefined();
+  expect(await fakeBrowser.action.getBadgeText({})).toBe("");
+});
+
+test("making the active tab's host private moves the tab to a host-only page view at once", async () => {
+  setSystemTime(new Date(timestamp));
+  await fakeBrowser.tabs.create({ url: pageURL });
+  await openSpanStore.set({
+    id: "span",
+    pageViewId: pageView.id,
+    tabId: 1,
+    startedAt: timestamp,
+    lastHeartbeatAt: timestamp,
+  });
+  await withTabFocused(() => serialized((at) => handleMessage({ type: "make_private" }, {}, at)));
+  expect((await settingsStore.get())?.privateHosts).toEqual(["example.org"]);
+  const events = (await dueEvents(100)).map((row) => row.payload);
+  const hostOnly = events.find((event) => event.type === "page_view");
+  expect(hostOnly).toMatchObject({
+    url: "https://example.org/",
+    private: true,
+    referrer: "https://example.org/",
+  });
+  expect(hostOnly).not.toHaveProperty("title");
+  expect(events).toContainEqual({
+    type: "span_end",
+    id: "span",
+    ended_at: timestamp,
+    reason: "navigation",
+  });
+  expect(events.find((event) => event.type === "span_start")).toMatchObject({
+    page_view_id: hostOnly!.id,
+    started_at: timestamp,
+  });
+});
+
+function captureOf(pageViewId: string, url: string): CapturePayload {
+  return {
+    meta: {
+      capture_id: `capture-${pageViewId}`,
+      page_view_id: pageViewId,
+      device_id: "device",
+      captured_at: timestamp,
+      url,
+      extractor: "article",
+      reason: "initial",
+      raw_char_count: page.html.length,
+    },
+    html: page.html,
+  };
+}
+
+test("forgetting a page drops its queued page views, spans and captures, and referrers to it", async () => {
+  const otherURL = "https://example.org/other";
+  const queued: TrackerEvent[] = [
+    pageView,
+    { type: "span_start", id: "span", page_view_id: pageView.id, started_at: timestamp },
+    { type: "span_heartbeat", id: "span", at: timestamp },
+    { type: "span_end", id: "span", ended_at: timestamp, reason: "tab_switch" },
+    { ...pageView, id: "other", url: otherURL, referrer: `${pageURL}#comments` },
+    { type: "span_start", id: "kept", page_view_id: "other", started_at: timestamp },
+  ];
+  await Promise.all(queued.map((event) => enqueueEvent(event)));
+  await enqueueCapture(captureOf(pageView.id, pageURL));
+  await enqueueCapture(captureOf("uploaded", `${pageURL}#top`));
+  await enqueueCapture(captureOf("other", otherURL));
+  await purge(forgets({ url: pageURL }), new Set());
+  const left = (await dueEvents(100)).map((row) => row.payload);
+  expect(left).toHaveLength(2);
+  expect(left).toContainEqual({ ...pageView, id: "other", url: otherURL });
+  expect(left).toContainEqual({
+    type: "span_start",
+    id: "kept",
+    page_view_id: "other",
+    started_at: timestamp,
+  });
+  expect((await pendingCounts()).captures).toBe(1);
+  expect((await nextDueCapture())?.payload.meta.page_view_id).toBe("other");
 });

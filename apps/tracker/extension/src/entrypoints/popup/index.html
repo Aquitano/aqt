@@ -60,6 +60,15 @@
         padding: 4px 6px;
         font: inherit;
       }
+      #controls {
+        display: grid;
+        gap: 4px;
+        margin-bottom: 8px;
+      }
+      #paused {
+        margin: 0;
+        color: #b42318;
+      }
       #outcome {
         min-height: 1.4em;
         margin: 4px 0;
@@ -74,6 +83,13 @@
       <span id="connection" data-state="unknown">checking</span>
       <button id="capture" type="button">Capture now</button>
     </header>
+    <section id="controls">
+      <p id="paused" hidden></p>
+      <button id="pause" type="button">Pause for 1 hour</button>
+      <button id="make-private" type="button" disabled>Make this host private</button>
+      <button id="forget-page" type="button" disabled>Forget this page</button>
+      <button id="forget-host" type="button" disabled>Forget everything on this host</button>
+    </section>
     <dl>
       <dt>Pending events</dt>
       <dd id="pending-events">-</dd>

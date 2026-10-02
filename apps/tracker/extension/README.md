@@ -21,7 +21,11 @@ Open the extension's options page (the popup's "Options" link, or `chrome://exte
 - **Private hosts**, one per line. A host covers its subdomains (`example.com` also covers `mail.example.com`).
 - **Capture HTML** on or off. Off means page views and spans still flow, no HTML is ever serialised.
 
-The popup has a search box and shows connected/unreachable, pending events and captures in the outbox, the last sync, the last error, the last 100 diagnostic lines, and a "Capture now" button for the active tab.
+The popup has a search box and shows connected/unreachable, pending events and captures in the outbox, the last sync, the last error, the last 100 diagnostic lines, and a "Capture now" button for the active tab. Its other controls:
+
+- **Pause for 1 hour**: nothing is recorded until the hour is over or you click Resume. The open span ends at once, the badge reads `off`, and events already queued still upload.
+- **Make <host> private**: adds the active tab's host to the private hosts and moves the tab to a host-only page view at once.
+- **Forget this page** and **Forget everything on <host>**: click twice to confirm. What is still queued for it is dropped locally, then the server deletes its page views, spans, captures and records, and the popup shows what it deleted.
 
 ## Search
 
@@ -32,13 +36,14 @@ Opening a page you have read before puts the number of earlier visits on the too
 ## What it records
 
 - **Page views**: the URL, the title, when it started, how it was reached (`load`, `spa`, `reload`, `back_forward`), the previous page in the same tab as referrer and a per-tab session id. A new page view starts on every top-level navigation and on SPA URL changes where the path changes or a query key the matching rule lists (for example `v` on YouTube) changes. Hash-only and other query-only changes do not count. The title is the latest the tab showed: its first change is sent at once, later ones at most once per heartbeat while the page has focus and when the page view ends.
-- **Activity spans**: the time a page view is in the active tab of the focused window while the machine is not idle (60 s threshold), with a heartbeat every 30 s and the reason it ended (tab switch, window blur, idle, navigation, tab closed, or unknown after a browser crash).
+- **Activity spans**: the time a page view is in the active tab of the focused window while the machine is not idle (60 s threshold), with a heartbeat every 30 s and the reason it ended (tab switch, window blur, idle, navigation, tab closed, paused, or unknown after a browser crash).
 - **HTML captures**: `document.documentElement.outerHTML` of a page whose URL matches a capture rule, once per page view after the rule's dwell time, plus manual captures from the popup. A page whose rule says `after_change` (github, x) is captured again if the document changed since, at most every 5 minutes while you are on the page, and when you leave it. Rules come from the server and are cached for an hour; without cached rules nothing is captured. A capture is skipped when the page exceeds the rule's byte limit or when the server's `/healthz` is failing. Dwell timers use `chrome.alarms`; Chromium honours sub-30 s alarms only for unpacked extensions, a packed build would round a 5 s dwell up to 30 s.
 
 Everything is queued in IndexedDB and sent to the server with exponential backoff (2 s doubling to 5 min). Rows are deleted after the server confirms with a 2xx. Captures wait while any event is queued, because the page view a capture references has to reach the server first. A 4xx other than 401, 403, 404, 405, 408 and 429 is permanent: the row is dropped, counted in the popup, and logged with the server's error text. Those six, 5xx and network failures keep retrying: 408 and 429 clear on their own, 401 and 403 after signing in, and 404 and 405 mean the server URL points at something other than tracker.
 
 ## What it never records
 
+- Anything while tracking is **paused** from the popup.
 - Anything from **incognito** windows: the manifest declares `"incognito": "not_allowed"`, so the extension does not run there at all.
 - Titles or HTML of **private hosts**. Those page views carry only `https://host/` and `private: true`; the popup's manual capture refuses them too.
 - Anything from non-http(s) pages (`chrome://`, `file://`, `about:blank`).

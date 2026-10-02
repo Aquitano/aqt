@@ -2,7 +2,8 @@ import { type Type, type } from "arktype";
 
 import { bearer, refresh } from "./auth.ts";
 import { errorMessage } from "./errors.ts";
-import type { CapturePayload, TrackerEvent } from "./events.ts";
+import { ForgetCounts, type CapturePayload, type TrackerEvent } from "./events.ts";
+import type { ForgetTarget } from "./privacy.ts";
 import type { Result } from "./result.ts";
 import { RulesResponse, type Rule } from "./rules.ts";
 
@@ -120,4 +121,16 @@ export function search(serverUrl: string, query: string, limit: number) {
 export function fetchVisits(serverUrl: string, url: string, before: string) {
   const params = new URLSearchParams({ url, before });
   return call(`${serverUrl}/v1/visits?${params}`, undefined, VisitsReply);
+}
+
+export function postForget(serverUrl: string, target: ForgetTarget) {
+  return call(
+    `${serverUrl}/v1/forget`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(target),
+    },
+    ForgetCounts,
+  );
 }
