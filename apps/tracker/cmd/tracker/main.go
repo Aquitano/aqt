@@ -46,10 +46,13 @@ Usage:
   tracker logout                                          forget the stored token
   tracker stats [--json]                                  table counts, blob sizes, queue and record totals
   tracker search [--extractor name] [--limit n] [--json] <query>
-                                                          BM25 search over extracted records
+                                                          BM25 search over extracted records, with each
+                                                          hit's visits
+  tracker show [--json] <record-id>                       one record in full: title, URL, visits, search text
 
-stats and search read the server over HTTP, so they work against a tracker on
-another machine; serve, migrate, reprocess and blob need the database itself.
+stats, search and show read the server over HTTP, so they work against a
+tracker on another machine; serve, migrate, reprocess and blob need the
+database itself.
 
 Environment:
   TRACKER_DATABASE_URL   default postgres://tracker:tracker@127.0.0.1:5435/tracker?sslmode=disable
@@ -87,6 +90,8 @@ func main() {
 		err = cmdStats(ctx, os.Args[2:])
 	case "search":
 		err = cmdSearch(ctx, os.Args[2:])
+	case "show":
+		err = cmdShow(ctx, os.Args[2:])
 	case "help", "--help", "-h":
 		fmt.Print(usage)
 	default:
@@ -381,7 +386,7 @@ func cmdSearch(ctx context.Context, args []string) error {
 		return printJSON(hits)
 	}
 	for _, h := range hits {
-		fmt.Printf("%d  [%s]  %s\n    %s\n", h.ID, h.Extractor, h.Title, h.CanonicalURL)
+		fmt.Printf("%d  [%s]  %s\n    %s\n    %s\n", h.ID, h.Extractor, h.Title, h.CanonicalURL, describeVisits(h.Visits))
 		if h.Snippet != "" {
 			fmt.Printf("    %s\n", h.Snippet)
 		}
@@ -390,6 +395,49 @@ func cmdSearch(ctx context.Context, args []string) error {
 		fmt.Println("no results")
 	}
 	return nil
+}
+
+func cmdShow(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("show", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	id, err := strconv.ParseInt(fs.Arg(0), 10, 64)
+	if fs.NArg() != 1 || err != nil {
+		return errors.New("usage: tracker show [--json] <record-id>")
+	}
+	c, err := newClient(ctx)
+	if err != nil {
+		return err
+	}
+	rec, err := c.Record(ctx, id)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(rec)
+	}
+	fmt.Printf("%s\n%s\n[%s]  %s\n\n%s\n", rec.Title, rec.CanonicalURL, rec.Extractor, describeVisits(rec.Visits), rec.SearchText)
+	return nil
+}
+
+func describeVisits(v store.Visits) string {
+	if v.LastAt == nil {
+		return "no visits on file"
+	}
+	return fmt.Sprintf("visited %d×, last %s, %s", v.Count, v.LastAt.Local().Format(time.DateOnly), activeTime(v.ActiveSeconds))
+}
+
+func activeTime(seconds int64) string {
+	switch minutes := (seconds + 30) / 60; {
+	case minutes == 0:
+		return "<1 min"
+	case minutes < 60:
+		return fmt.Sprintf("%d min", minutes)
+	default:
+		return fmt.Sprintf("%d h %d min", minutes/60, minutes%60)
+	}
 }
 
 func printJSON(v any) error {

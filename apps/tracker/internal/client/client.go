@@ -227,6 +227,12 @@ func (c *Client) Search(ctx context.Context, o store.SearchOpts) ([]store.Hit, e
 	return reply.Hits, err
 }
 
+func (c *Client) Record(ctx context.Context, id int64) (store.RecordDetail, error) {
+	var rec store.RecordDetail
+	err := c.get(ctx, "/v1/records/"+strconv.FormatInt(id, 10), &rec)
+	return rec, err
+}
+
 func (c *Client) Stats(ctx context.Context) (store.Stats, error) {
 	var stats store.Stats
 	err := c.get(ctx, "/v1/stats", &stats)

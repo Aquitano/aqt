@@ -59,6 +59,17 @@ func (f *fakeStore) Search(context.Context, store.SearchOpts) ([]store.Hit, erro
 	return []store.Hit{}, nil
 }
 
+func (f *fakeStore) URLVisits(context.Context, []byte, time.Time) (store.Visits, error) {
+	return store.Visits{}, nil
+}
+
+func (f *fakeStore) Record(_ context.Context, id int64) (store.RecordDetail, error) {
+	if id != 1 {
+		return store.RecordDetail{}, store.ErrNotFound
+	}
+	return store.RecordDetail{ID: id}, nil
+}
+
 func (f *fakeStore) Stats(context.Context) (store.Stats, error) {
 	return store.Stats{Derivations: map[string]int64{}, Records: map[string]int64{}}, nil
 }
@@ -258,6 +269,32 @@ func TestSearchNeedsAQuery(t *testing.T) {
 	}
 	if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+"/v1/search?q=bun&limit=0", nil)); rec.Code != http.StatusBadRequest {
 		t.Errorf("limit 0: status %d, want 400", rec.Code)
+	}
+}
+
+func TestVisitsNeedAnHTTPURL(t *testing.T) {
+	s, _ := newServer(t)
+	for _, target := range []string{"/v1/visits", "/v1/visits?url=chrome://newtab/", "/v1/visits?url=https://example.com/&before=yesterday"} {
+		if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+target, nil)); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", target, rec.Code)
+		}
+	}
+	rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+"/v1/visits?url=https://Example.com/a%3Futm_source%3Dx", nil))
+	var res struct {
+		URL string `json:"url"`
+	}
+	decode(t, rec, &res)
+	if rec.Code != http.StatusOK || res.URL != "https://example.com/a" {
+		t.Errorf("status %d, url %q, want 200 and the normalised url", rec.Code, res.URL)
+	}
+}
+
+func TestRecordsAnswer404ForAnUnknownID(t *testing.T) {
+	s, _ := newServer(t)
+	for target, want := range map[string]int{"/v1/records/1": http.StatusOK, "/v1/records/42": http.StatusNotFound} {
+		if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+target, nil)); rec.Code != want {
+			t.Errorf("%s: status %d, want %d", target, rec.Code, want)
+		}
 	}
 }
 

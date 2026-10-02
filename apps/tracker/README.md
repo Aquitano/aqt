@@ -97,12 +97,18 @@ tracker login
 tracker logout
 tracker stats [--json]
 tracker search [--extractor name] [--limit n] [--json] <query>
+tracker show [--json] <record-id>
 ```
 
 `serve` queues every capture the current extractor versions have not processed yet when it starts, so a release that bumps one needs no manual step. `reprocess` also removes the records only an older version produced; `reprocess --all` rebuilds every derived row from the source tables alone.
 
-`stats` and `search` read the server over HTTP, so they work against a tracker
-on another machine; `serve`, `migrate`, `reprocess` and `blob` need the database.
+`stats`, `search` and `show` read the server over HTTP, so they work against a
+tracker on another machine; `serve`, `migrate`, `reprocess` and `blob` need the
+database.
+
+Each search hit carries its visits: how many page views captured the record's
+page or were at its canonical URL, the first and last of them, and their active
+time. `show` prints one record in full, search text included.
 
 `blob` writes the HTML of a stored capture to stdout, for turning a real page
 into an extractor fixture: 64 hex characters name a blob, anything else is a

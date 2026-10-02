@@ -7,6 +7,7 @@ package ingest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -27,6 +28,8 @@ type Store interface {
 	ApplyEvents(ctx context.Context, deviceID uuid.UUID, ev store.Events) (store.EventResult, error)
 	InsertCapture(ctx context.Context, in store.CaptureInput) (store.CaptureResult, error)
 	Search(ctx context.Context, o store.SearchOpts) ([]store.Hit, error)
+	URLVisits(ctx context.Context, urlHash []byte, before time.Time) (store.Visits, error)
+	Record(ctx context.Context, id int64) (store.RecordDetail, error)
 	Stats(ctx context.Context) (store.Stats, error)
 }
 
@@ -54,6 +57,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/events/batch", s.protect(s.handleEvents))
 	mux.Handle("POST /v1/captures", s.protect(s.handleCapture))
 	mux.Handle("GET /v1/search", s.protect(s.handleSearch))
+	mux.Handle("GET /v1/visits", s.protect(s.handleVisits))
+	mux.Handle("GET /v1/records/{id}", s.protect(s.handleRecord))
 	mux.Handle("GET /v1/stats", s.protect(s.handleStats))
 	return s.observe(mux)
 }
@@ -183,6 +188,46 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"hits": hits})
+}
+
+func (s *Server) handleVisits(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	key, ok := urlKey(q.Get("url"))
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "url must be an http(s) url")
+		return
+	}
+	var before time.Time
+	if raw := q.Get("before"); raw != "" {
+		if before = parseTime(raw); before.IsZero() {
+			writeErr(w, http.StatusBadRequest, "before must be an RFC 3339 time")
+			return
+		}
+	}
+	visits, err := s.store.URLVisits(r.Context(), key.Hash, before)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"url": key.Normalized, "visits": visits})
+}
+
+func (s *Server) handleRecord(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "id must be a record id")
+		return
+	}
+	rec, err := s.store.Record(r.Context(), id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeErr(w, http.StatusNotFound, "no record "+strconv.FormatInt(id, 10))
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
