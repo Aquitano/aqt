@@ -259,7 +259,7 @@ An article's canonical URL is its `<link rel=canonical>` only when that is on th
 
 ## HTTP API
 
-All routes on `127.0.0.1:8490`. JSON bodies, `Content-Type: application/json`. A request with an `Origin` header that does not start with `chrome-extension://` gets 403. While no issuer is configured, a request to any route but `/healthz` and `/metrics` whose `Host` is not loopback (`127.0.0.1`, `localhost`, `[::1]`) gets 403 too: a DNS-rebound page is same-origin and sends no `Origin` on a GET. CORS headers allow `chrome-extension://*` and the `Authorization` header.
+All routes on `127.0.0.1:8490`. JSON bodies, `Content-Type: application/json`. A request with an `Origin` header that does not start with `chrome-extension://` gets 403; with `TRACKER_EXTENSION_ID` set, so does one from any other extension than that id. While no issuer is configured, a request to any route but `/healthz` and `/metrics` whose `Host` is not loopback (`127.0.0.1`, `localhost`, `[::1]`) gets 403 too: a DNS-rebound page is same-origin and sends no `Origin` on a GET. CORS headers allow `chrome-extension://*` and the `Authorization` header.
 
 With an issuer configured, every route below except `/healthz` and `/metrics` needs `Authorization: Bearer <jwt>` and answers 401 without one. 401 is never treated as permanent by a client: the fix is a login, not dropping the data.
 

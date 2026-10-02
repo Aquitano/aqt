@@ -21,7 +21,7 @@ import (
 // into a query, which is what keeps one title from failing the whole batch.
 func TestEventsWithNULInATitleAreStoredWithoutIt(t *testing.T) {
 	st, schema := storetest.NewNamed(t)
-	h := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off()).Handler()
+	h := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off(), "").Handler()
 
 	at := time.Now().UTC().Format(time.RFC3339)
 	body, _ := json.Marshal(map[string]any{"device_id": uuid.Must(uuid.NewV7()), "events": []map[string]any{

@@ -38,18 +38,29 @@ type Store interface {
 }
 
 type Server struct {
-	store   Store
-	metrics *metrics.Metrics
-	log     *slog.Logger
-	wake    func()
-	auth    *auth.Authenticator
+	store       Store
+	metrics     *metrics.Metrics
+	log         *slog.Logger
+	wake        func()
+	auth        *auth.Authenticator
+	extensionID string
 }
 
-func New(st Store, m *metrics.Metrics, log *slog.Logger, wake func(), a *auth.Authenticator) *Server {
-	return &Server{store: st, metrics: m, log: log, wake: wake, auth: a}
+// New serves the API. An empty extensionID lets any extension's origin in;
+// a set one lets in that extension alone, which is what keeps another
+// installed extension from reading search results.
+func New(st Store, m *metrics.Metrics, log *slog.Logger, wake func(), a *auth.Authenticator, extensionID string) *Server {
+	return &Server{store: st, metrics: m, log: log, wake: wake, auth: a, extensionID: extensionID}
 }
 
-const extensionOrigin = "chrome-extension://"
+const extensionScheme = "chrome-extension://"
+
+func (s *Server) allowedOrigin(origin string) bool {
+	if s.extensionID == "" {
+		return strings.HasPrefix(origin, extensionScheme)
+	}
+	return origin == extensionScheme+s.extensionID
+}
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -101,7 +112,7 @@ func (s *Server) observe(next http.Handler) http.Handler {
 		rw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		route := "rejected"
 		switch origin := r.Header.Get("Origin"); {
-		case origin != "" && !strings.HasPrefix(origin, extensionOrigin):
+		case origin != "" && !s.allowedOrigin(origin):
 			writeErr(rw, http.StatusForbidden, "origin not allowed")
 		case r.Method == http.MethodOptions:
 			route = "preflight"

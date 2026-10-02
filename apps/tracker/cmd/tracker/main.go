@@ -71,6 +71,7 @@ Environment:
   TRACKER_OIDC_AUDIENCE  audience serve requires in a token, usually the client id
   TRACKER_OIDC_CLIENT_ID client id the CLI signs in as
   TRACKER_TOKEN_PATH     default <user config dir>/tracker/token.json
+  TRACKER_EXTENSION_ID   the one extension whose origin serve accepts; unset, any
 `
 
 func main() {
@@ -174,7 +175,7 @@ func cmdServe(ctx context.Context, args []string) error {
 	proc := processor.New(st, m, log, *workers)
 	srv := &http.Server{
 		Addr:              *listen,
-		Handler:           ingest.New(st, m, log, proc.Wake, authenticator).Handler(),
+		Handler:           ingest.New(st, m, log, proc.Wake, authenticator, os.Getenv("TRACKER_EXTENSION_ID")).Handler(),
 		ReadHeaderTimeout: 15 * time.Second,
 	}
 

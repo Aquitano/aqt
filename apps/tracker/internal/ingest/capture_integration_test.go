@@ -22,7 +22,7 @@ import (
 func TestCaptureTransaction(t *testing.T) {
 	st, schema := storetest.NewNamed(t)
 	woken := 0
-	s := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() { woken++ }, auth.Off())
+	s := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() { woken++ }, auth.Off(), "")
 	h := s.Handler()
 
 	device := uuid.Must(uuid.NewV7())
@@ -68,7 +68,7 @@ func TestCaptureTransaction(t *testing.T) {
 
 func TestCaptureOfAnUnknownPageViewIsRefusedAndWritesNothing(t *testing.T) {
 	st, schema := storetest.NewNamed(t)
-	h := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off()).Handler()
+	h := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off(), "").Handler()
 
 	rec := do(t, h, captureRequest(t, validMeta(), []byte("<html><head><title>Page</title></head></html>")))
 	if rec.Code != http.StatusUnprocessableEntity {
