@@ -16,7 +16,8 @@ import (
 
 // The fixtures are logged-out pages rendered by headless Chromium and dumped
 // without the doctype, as the extension's outerHTML would be, trimmed of style
-// blocks and of every script but the embeddedData one.
+// blocks and of every script but the react-app embeddedData one, which a
+// discussion page does not have.
 
 func extract(t *testing.T, fixture, pageURL string) (extractor.Record, Data) {
 	t.Helper()
@@ -128,20 +129,20 @@ func TestExtractComments(t *testing.T) {
 		want             []Comment // Body is a prefix
 	}{
 		{"issue-51419.html", "https://github.com/golang/go/issues/51419", []Comment{
-			{"adamdecaf", "Context, we have a 13 character fixed width field", "2022-03-01T23:49:58Z"},
-			{"robpike", "Padding a string with zeros doesn't seem right", "2022-03-02T01:31:31Z"},
-			{"adamdecaf", "I didn't see this existing test", "2022-03-02T18:37:51Z"},
-			{"robpike", "It is very odd to right-pad a string with zeros.", "2022-03-02T20:59:29Z"},
-			{"adamdecaf", "Agreed. There's been a test rejecting this behavior since 2016", "2022-03-02T22:16:23Z"},
-			{"gopherbot", "Change https://go.dev/cl/389434 mentions this issue", "2022-03-02T23:07:32Z"},
-			{"cagedmantis", "/cc @martisch", "2022-03-05T00:02:12Z"},
-			{"gopherbot", "Change https://go.dev/cl/390674 mentions this issue", "2022-03-08T00:30:45Z"},
+			{Author: "adamdecaf", Body: "Context, we have a 13 character fixed width field", CreatedAt: "2022-03-01T23:49:58Z"},
+			{Author: "robpike", Body: "Padding a string with zeros doesn't seem right", CreatedAt: "2022-03-02T01:31:31Z"},
+			{Author: "adamdecaf", Body: "I didn't see this existing test", CreatedAt: "2022-03-02T18:37:51Z"},
+			{Author: "robpike", Body: "It is very odd to right-pad a string with zeros.", CreatedAt: "2022-03-02T20:59:29Z"},
+			{Author: "adamdecaf", Body: "Agreed. There's been a test rejecting this behavior since 2016", CreatedAt: "2022-03-02T22:16:23Z"},
+			{Author: "gopherbot", Body: "Change https://go.dev/cl/389434 mentions this issue", CreatedAt: "2022-03-02T23:07:32Z"},
+			{Author: "cagedmantis", Body: "/cc @martisch", CreatedAt: "2022-03-05T00:02:12Z"},
+			{Author: "gopherbot", Body: "Change https://go.dev/cl/390674 mentions this issue", CreatedAt: "2022-03-08T00:30:45Z"},
 		}},
 		{"pull-11513.html", "https://github.com/cli/cli/pull/11513", []Comment{
-			{"BagToad", "Thank you for this one @ankddev", "2025-08-18T19:01:35Z"},
-			{"ankddev", "@BagToad Done!", "2025-08-19T05:28:06Z"},
-			{"BagToad", "Sorry @ankddev, one more thing", "2025-08-21T16:50:58Z"},
-			{"BagToad", "LGTM - thanks @ankddev!", "2025-08-21T18:44:48Z"},
+			{Author: "BagToad", Body: "Thank you for this one @ankddev", CreatedAt: "2025-08-18T19:01:35Z"},
+			{Author: "ankddev", Body: "@BagToad Done!", CreatedAt: "2025-08-19T05:28:06Z"},
+			{Author: "BagToad", Body: "Sorry @ankddev, one more thing", CreatedAt: "2025-08-21T16:50:58Z"},
+			{Author: "BagToad", Body: "LGTM - thanks @ankddev!", CreatedAt: "2025-08-21T18:44:48Z"},
 		}},
 	}
 	for _, c := range cases {
@@ -158,6 +159,73 @@ func TestExtractComments(t *testing.T) {
 			if !strings.Contains(rec.SearchText, got.Body) {
 				t.Errorf("%s: search text misses comment %d", c.fixture, i)
 			}
+		}
+	}
+}
+
+func TestExtractDiscussion(t *testing.T) {
+	rec, data := extract(t, "discussion-3659.html", "https://github.com/cli/cli/discussions/3659")
+
+	want := Data{
+		Kind: KindDiscussion, Owner: "cli", Repo: "cli", Number: 3659,
+		Title:     "gh auth login with AWS CodeStar Connection",
+		State:     "open",
+		Author:    "mariaines",
+		Labels:    []string{},
+		Category:  "Q&A",
+		Score:     4,
+		CreatedAt: "2021-05-18T20:21:01Z",
+	}
+	got := data
+	got.Body, got.Comments = "", nil
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+	if !strings.HasPrefix(data.Body, "I'm trying to use gh in an AWS CodeBuild project") {
+		t.Errorf("body = %q", firstLines(data.Body, 3))
+	}
+	if rec.Title != "cli/cli#3659 gh auth login with AWS CodeStar Connection" {
+		t.Errorf("title = %q", rec.Title)
+	}
+	if rec.CanonicalURL != "https://github.com/cli/cli/discussions/3659" {
+		t.Errorf("canonical url = %q", rec.CanonicalURL)
+	}
+}
+
+func TestExtractDiscussionCommentsAndReplies(t *testing.T) {
+	rec, data := extract(t, "discussion-3659.html", "https://github.com/cli/cli/discussions/3659")
+
+	want := []Comment{ // Body is a prefix
+		{Author: "vilmibm", Body: "Hi!\nTo clarify, when you ran gh auth login", CreatedAt: "2021-05-18T23:25:24Z", Score: 1, Replies: []Comment{
+			{Author: "mariaines", Body: "First I tried without setting the hostname", CreatedAt: "2021-05-18T23:34:52Z"},
+		}},
+		{Author: "mislav", Body: "I'm not familiar with AWS CodePipeline", CreatedAt: "2021-05-19T10:49:57Z", Score: 2, Answer: true, Replies: []Comment{
+			{Author: "vilmibm", Body: "ah, I thought perhaps it was just forwarding requests", CreatedAt: "2021-05-19T15:46:17Z"},
+			{Author: "mariaines", Body: "Got it, that makes sense. Thank you!", CreatedAt: "2021-05-19T16:23:36Z"},
+			{Author: "ltshb", Body: "@mariaines Did you managed to use gh", CreatedAt: "2025-04-14T07:41:06Z"},
+			{Author: "mariaines", Body: "@ltshb I didn't, I just used the regular REST api", CreatedAt: "2025-04-14T16:29:17Z"},
+		}},
+		{Author: "Alex-Wenner-FHR", Body: "Is there any additional information here?", CreatedAt: "2024-01-10T15:54:11Z", Score: 3},
+	}
+	var matches func(got, want Comment) bool
+	matches = func(got, want Comment) bool {
+		if got.Author != want.Author || got.CreatedAt != want.CreatedAt || got.Score != want.Score ||
+			got.Answer != want.Answer || !strings.HasPrefix(got.Body, want.Body) || len(got.Replies) != len(want.Replies) {
+			return false
+		}
+		for i := range want.Replies {
+			if !matches(got.Replies[i], want.Replies[i]) || !strings.Contains(rec.SearchText, got.Replies[i].Body) {
+				return false
+			}
+		}
+		return true
+	}
+	if len(data.Comments) != len(want) {
+		t.Fatalf("%d comments, want %d: %+v", len(data.Comments), len(want), data.Comments)
+	}
+	for i, w := range want {
+		if !matches(data.Comments[i], w) {
+			t.Errorf("comment %d = %+v\nwant %+v", i, data.Comments[i], w)
 		}
 	}
 }
@@ -182,10 +250,11 @@ func TestExtractRepo(t *testing.T) {
 	}
 }
 
-func TestExtractStaleWhenTheEmbeddedDataIsAnotherPage(t *testing.T) {
+func TestExtractStaleWhenThePageStateIsAnotherPage(t *testing.T) {
 	for fixture, pageURL := range map[string]string{
-		"pull-11513.html": "https://github.com/cli/cli/pull/11514",
-		"repo.html":       "https://github.com/uptrace/bun-debug",
+		"pull-11513.html":      "https://github.com/cli/cli/pull/11514",
+		"repo.html":            "https://github.com/uptrace/bun-debug",
+		"discussion-3659.html": "https://github.com/cli/cli/discussions/3660",
 	} {
 		raw, err := os.ReadFile("testdata/" + fixture)
 		if err != nil {
@@ -210,24 +279,27 @@ func TestExtractNoMatchOnLoginWall(t *testing.T) {
 func TestMatchRule(t *testing.T) {
 	rules := []extractor.Rule{Extractor{}.Rule().WithDefaults()}
 	cases := map[string]bool{
-		"https://github.com/uptrace/bun":                   true,
-		"https://github.com/uptrace/bun/":                  true,
-		"https://github.com/uptrace/bun/issues/1":          true,
-		"https://github.com/uptrace/bun/issues/1#issue-42": true,
-		"https://github.com/uptrace/bun/pull/900":          true,
-		"https://github.com/uptrace/bun/pull/900/files":    false,
-		"https://github.com/settings/tokens":               false,
-		"https://github.com/sessions/two-factor":           false,
-		"https://github.com/issues/assigned":               false,
-		"https://github.com/notifications/subscriptions":   false,
-		"https://github.com/uptrace/bun/issues":            false,
-		"https://github.com/uptrace/bun/pull/abc":          false,
-		"https://github.com/uptrace":                       false,
-		"https://github.com/uptrace/bun/blob/master/db.go": false,
-		"https://gist.github.com/uptrace/bun":              false,
-		"https://example.com/uptrace/bun":                  false,
-		"https://github.com/uptrace/bun/issues/1?utm=x":    true,
-		"https://github.com/uptrace/bun/discussions/1200":  false,
+		"https://github.com/uptrace/bun":                            true,
+		"https://github.com/uptrace/bun/":                           true,
+		"https://github.com/uptrace/bun/issues/1":                   true,
+		"https://github.com/uptrace/bun/issues/1#issue-42":          true,
+		"https://github.com/uptrace/bun/pull/900":                   true,
+		"https://github.com/uptrace/bun/pull/900/files":             false,
+		"https://github.com/settings/tokens":                        false,
+		"https://github.com/sessions/two-factor":                    false,
+		"https://github.com/issues/assigned":                        false,
+		"https://github.com/notifications/subscriptions":            false,
+		"https://github.com/uptrace/bun/issues":                     false,
+		"https://github.com/uptrace/bun/pull/abc":                   false,
+		"https://github.com/uptrace":                                false,
+		"https://github.com/uptrace/bun/blob/master/db.go":          false,
+		"https://gist.github.com/uptrace/bun":                       false,
+		"https://example.com/uptrace/bun":                           false,
+		"https://github.com/uptrace/bun/issues/1?utm=x":             true,
+		"https://github.com/uptrace/bun/discussions/1200":           true,
+		"https://github.com/uptrace/bun/discussions":                false,
+		"https://github.com/uptrace/bun/discussions/categories/q-a": false,
+		"https://github.com/orgs/community/discussions/1":           false,
 	}
 	for raw, want := range cases {
 		u, err := url.Parse(raw)
