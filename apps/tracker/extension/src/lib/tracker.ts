@@ -1,7 +1,14 @@
 import { type } from "arktype";
 import { browser, type Browser } from "wxt/browser";
 
-import { checkHealth, fetchRules, postCapture, postEvents, type Result } from "./api.ts";
+import {
+  checkHealth,
+  fetchRules,
+  fetchVisits,
+  postCapture,
+  postEvents,
+  type Result,
+} from "./api.ts";
 import { authState } from "./auth.ts";
 import { errorMessage } from "./errors.ts";
 import type {
@@ -29,6 +36,7 @@ import {
 } from "./outbox.ts";
 import { isNewPageView, navigationTypeFor, spaNavigationType } from "./page-view.ts";
 import { isPrivateHost, privateUrl } from "./privacy.ts";
+import { describeVisits } from "./recall.ts";
 import { isPermanentFailure } from "./result.ts";
 import { matchRule, type Rule } from "./rules.ts";
 import {
@@ -467,6 +475,7 @@ async function recordPageView(
   at: number,
 ): Promise<void> {
   await sendLatestTitle(tabId);
+  await clearSeenBefore(tabId);
   const store = tabStore(tabId);
   const previous = await store.get();
   const tabSessionId = previous?.tabSessionId ?? uuidv7();
@@ -498,6 +507,27 @@ async function recordPageView(
   await store.set({ tabSessionId, pageView: { event, titled: false } });
   await emit(event);
   await diag(`page view ${event.url} (${navigationType})`);
+  void showSeenBefore(tabId, event);
+}
+
+async function clearSeenBefore(tabId: number): Promise<void> {
+  await browser.action.setBadgeText({ tabId });
+  await browser.action.setTitle({ tabId, title: "" });
+}
+
+// The lookup runs outside the queue; by the time it answers, the tab may
+// have moved on to another page view, whose badge this is not.
+export async function showSeenBefore(tabId: number, event: PageViewEvent): Promise<void> {
+  if (event.private) return;
+  const result = await fetchVisits((await loadSettings()).serverUrl, event.url, event.started_at);
+  if (!result.ok) return;
+  const seen = describeVisits("Seen", result.value, Date.now());
+  if (seen === undefined) return;
+  await serialized(async () => {
+    if ((await tabStore(tabId).get())?.pageView?.event.id !== event.id) return;
+    await browser.action.setBadgeText({ tabId, text: String(result.value.count) });
+    await browser.action.setTitle({ tabId, title: seen });
+  });
 }
 
 async function isPrivateNow(event: PageViewEvent): Promise<boolean> {

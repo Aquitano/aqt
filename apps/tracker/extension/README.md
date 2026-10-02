@@ -27,6 +27,8 @@ The popup has a search box and shows connected/unreachable, pending events and c
 
 Type `t`, a space and a query in the address bar: the extension suggests up to six records from the server's search. Enter on a suggestion opens it; enter on what you typed opens the extension's search page, which lists each hit with its host, extractor, snippet and how often and how long you read it. The popup's search box opens the same page.
 
+Opening a page you have read before puts the number of earlier visits on the toolbar badge; its tooltip says when the last was and how long they add up to. Private hosts are never looked up.
+
 ## What it records
 
 - **Page views**: the URL, the title, when it started, how it was reached (`load`, `spa`, `reload`, `back_forward`), the previous page in the same tab as referrer and a per-tab session id. A new page view starts on every top-level navigation and on SPA URL changes where the path changes or a query key the matching rule lists (for example `v` on YouTube) changes. Hash-only and other query-only changes do not count. The title is the latest the tab showed: its first change is sent at once, later ones at most once per heartbeat while the page has focus and when the page view ends.

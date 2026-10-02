@@ -22,6 +22,7 @@ const SearchHit = type({
 });
 export type SearchHit = typeof SearchHit.infer;
 const SearchReply = type({ hits: SearchHit.array() }).pipe(({ hits }) => hits);
+const VisitsReply = type({ visits: Visits }).pipe(({ visits }) => visits);
 const REQUEST_TIMEOUT_MS = 15_000;
 
 // healthz is the one route the server leaves open, so it answers even when
@@ -114,4 +115,9 @@ export function postCapture(serverUrl: string, capture: CapturePayload) {
 export function search(serverUrl: string, query: string, limit: number) {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   return call(`${serverUrl}/v1/search?${params}`, undefined, SearchReply);
+}
+
+export function fetchVisits(serverUrl: string, url: string, before: string) {
+  const params = new URLSearchParams({ url, before });
+  return call(`${serverUrl}/v1/visits?${params}`, undefined, VisitsReply);
 }

@@ -22,6 +22,7 @@ const {
   reconcile,
   requestSync,
   serialized,
+  showSeenBefore,
   uploadCaptures,
 } = await import("./tracker.ts");
 
@@ -430,4 +431,57 @@ test("a title held back for the heartbeat goes out when its tab closes", async (
   expect(await titlesSent()).toEqual([]);
   await serialized((at) => onTabRemoved(1, at));
   expect(await titlesSent()).toEqual(["Article"]);
+});
+
+function answerVisits(count: number, beforeAnswering = async () => {}) {
+  fetchRequest.mockImplementation(
+    fakeFetch(async () => {
+      await beforeAnswering();
+      const last_at = count > 0 ? "2026-09-19T12:00:00.000Z" : null;
+      return Response.json({ url: pageURL, visits: { count, last_at, active_seconds: 840 } });
+    }),
+  );
+}
+
+test("a page seen before shows how often on its tab's badge", async () => {
+  setSystemTime(new Date(timestamp));
+  answerVisits(3);
+  await showSeenBefore(1, pageView);
+  const [input = ""] = fetchRequest.mock.calls[0] ?? [];
+  const asked = new URL(input instanceof Request ? input.url : input);
+  expect([asked.pathname, asked.searchParams.get("url"), asked.searchParams.get("before")]).toEqual(
+    ["/v1/visits", pageURL, timestamp],
+  );
+  expect(await fakeBrowser.action.getBadgeText({ tabId: 1 })).toBe("3");
+  expect(await fakeBrowser.action.getTitle({ tabId: 1 })).toBe(
+    "Seen 3 times, last 2 days ago, 14 min in total",
+  );
+});
+
+test("an answer about a page view the tab has already left is not shown", async () => {
+  answerVisits(3, () =>
+    tabStore(1).set({
+      tabSessionId: "tab",
+      pageView: { event: { ...pageView, id: "next" }, titled: false },
+    }),
+  );
+  await showSeenBefore(1, pageView);
+  expect(await fakeBrowser.action.getBadgeText({ tabId: 1 })).toBe("");
+});
+
+test("navigating clears the badge before the next page's answer arrives", async () => {
+  await fakeBrowser.action.setBadgeText({ tabId: 1, text: "3" });
+  const tab = await fakeBrowser.tabs.create({ url: pageURL });
+  await handleMessage(
+    { type: "url_changed", url: "https://example.org/next", navigation_type: "spa" },
+    { tab, frameId: 0 },
+    Date.now(),
+  );
+  expect(await fakeBrowser.action.getBadgeText({ tabId: 1 })).toBe("");
+});
+
+test("a private page view is never looked up", async () => {
+  answerVisits(3);
+  await showSeenBefore(1, { ...pageView, url: "https://example.org/", private: true });
+  expect(fetchRequest).not.toHaveBeenCalled();
 });
