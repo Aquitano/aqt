@@ -19,21 +19,26 @@ import (
 )
 
 type IngestOpts struct {
-	Source     string
-	ExternalID string // default: Message-ID header, else sha256 of the raw bytes
-	ThreadID   string
-	SentAt     time.Time // overrides the Date header (e.g. Gmail internalDate)
-	RawRef     string
+	MailContext *MailImportContext
+	ArchiveDir  string
+	Source      string
+	ExternalID  string // default: Message-ID header, else sha256 of the raw bytes
+	ThreadID    string
+	SentAt      time.Time // overrides the Date header (e.g. Gmail internalDate)
+	RawRef      string
 }
+
+type MailImportContext = archive.MailImportContext
 
 // maxWarnings bounds how many parser complaints one Result carries; the count
 // stays exact either way.
 const maxWarnings = 20
 
 type Result struct {
-	Inserted    int `json:"inserted"`
-	Duplicates  int `json:"duplicates"`
-	Attachments int `json:"attachments"`
+	MailContextVersion int `json:"mail_context_version,omitempty"`
+	Inserted           int `json:"inserted"`
+	Duplicates         int `json:"duplicates"`
+	Attachments        int `json:"attachments"`
 	// Healed counts attachment rows that repaired an already-archived message
 	// whose blobs never made it the first time.
 	Healed int `json:"healed"`
@@ -74,6 +79,17 @@ type IngestResult struct {
 // and blob-store failure is wrapped with fail.Op so callers can tell "this
 // message was malformed" from "the archive is broken".
 func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte, o IngestOpts) (IngestResult, error) {
+	if o.MailContext != nil {
+		if err := o.MailContext.Validate(); err != nil {
+			return IngestResult{}, fail.Opf("mail context: %w", err)
+		}
+	}
+	if o.ArchiveDir != "" {
+		_, err := archive.WriteMailContext(o.ArchiveDir, archive.MailContextRecord{Version: 1, Source: o.Source, RawRef: o.RawRef, InputKind: "eml", Context: o.MailContext, ExternalID: o.ExternalID, ThreadID: o.ThreadID, SentAt: o.SentAt})
+		if err != nil {
+			return IngestResult{}, fail.Opf("archive mail context: %w", err)
+		}
+	}
 	m, err := Parse(raw)
 	if err != nil {
 		return IngestResult{}, err
@@ -95,7 +111,7 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 	// Message-ID dedups across id schemes: a mail synced via the Gmail API
 	// (external_id = API id) and the same mail from a Takeout mbox
 	// (external_id = Message-ID) must not both be inserted.
-	id, err := st.FindByEmailMessageID(ctx, o.Source, m.MessageID)
+	id, err := st.ResolveMailMessage(ctx, o.Source, m.MessageID, externalID)
 	if err != nil {
 		return res, fail.Opf("look up message-id %q: %w", m.MessageID, err)
 	}
@@ -117,16 +133,27 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 		}
 		if id != 0 {
 			res.Inserted = true
-		} else if id, err = st.FindMessageID(ctx, o.Source, externalID); err != nil {
+		} else if id, err = st.ResolveMailMessage(ctx, o.Source, m.MessageID, externalID); err != nil {
 			return res, fail.Opf("look up message: %w", err)
 		}
 	}
 	if id == 0 {
-		// Insert lost a race on the Message-ID index against a concurrent
-		// worker; that worker owns the attachments.
-		return res, nil
+		return res, fail.Opf("canonical mail row could not be resolved after insert")
 	}
-	return res, syncAttachments(ctx, st, blobs, id, m.Attachments, res.Inserted, &res)
+	if err := syncAttachments(ctx, st, blobs, id, m.Attachments, res.Inserted, &res); err != nil {
+		return res, err
+	}
+	projection, err := st.ProjectMail(ctx, id, store.MailProjection{MessageID: m.NormalizedMessageID, InReplyTo: m.InReplyTo, References: m.References, NativeThreadID: o.ThreadID, Context: o.MailContext}, true, "")
+	if err != nil {
+		return res, fail.Opf("persist mail metadata: %w", err)
+	}
+	if projection.Incomplete {
+		res.Warnings = append(res.Warnings, "mail grouping incomplete: component limit exceeded; rebuild with higher limits")
+	}
+	if projection.Conflict {
+		res.Warnings = append(res.Warnings, "mail grouping conflict: multiple provider threads; unanchored messages remain separate")
+	}
+	return res, nil
 }
 
 // defaultExternalID is what a message is keyed by when the caller names no id
@@ -148,38 +175,27 @@ func syncAttachments(ctx context.Context, st *store.Store, blobs *blob.Store, me
 	if len(atts) == 0 {
 		return nil
 	}
-	have := map[string]int{}
-	if !fresh {
-		var err error
-		if have, err = st.AttachmentKeys(ctx, messageID); err != nil {
-			return fail.Opf("read attachments of message %d: %w", messageID, err)
-		}
-	}
+	attachments := make([]store.Attachment, 0, len(atts))
 	for _, a := range atts {
-		sum := sha256.Sum256(a.Data)
-		key := store.AttachmentKey(hex.EncodeToString(sum[:]), a.Filename)
-		if have[key] > 0 {
-			have[key]--
-			continue
-		}
 		stored, size, err := blobs.Put(bytes.NewReader(a.Data))
 		if err != nil {
 			return fail.Opf("store attachment %q: %w", a.Filename, err)
 		}
-		err = st.InsertAttachment(ctx, store.Attachment{
+		attachments = append(attachments, store.Attachment{
 			MessageID: messageID,
 			Filename:  a.Filename,
 			MimeType:  a.MimeType,
 			SizeBytes: size,
 			SHA256:    stored,
 		})
-		if err != nil {
-			return fail.Opf("insert attachment %q: %w", a.Filename, err)
-		}
-		res.Attachments++
-		if !fresh {
-			res.Healed++
-		}
+	}
+	inserted, err := st.ReconcileMailAttachments(ctx, messageID, attachments)
+	if err != nil {
+		return fail.Opf("reconcile attachments: %w", err)
+	}
+	res.Attachments += inserted
+	if !fresh {
+		res.Healed += inserted
 	}
 	return nil
 }
@@ -197,13 +213,21 @@ func (r *Result) record(out IngestResult) {
 
 // ImportEmlPath ingests a single .eml file, or every .eml under a directory
 // (the layout proton-mail-export produces).
-func ImportEmlPath(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string) (Result, error) {
+func ImportEmlPath(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string, contexts ...*MailImportContext) (Result, error) {
+	observation, err := importContext(contexts)
+	if err != nil {
+		return Result{}, err
+	}
 	return store.RunImport(ctx, st, "eml", path, func(ctx context.Context) (Result, error) {
-		return importEmlPathUnreported(ctx, st, blobs, archiveDir, source, path)
+		result, err := importEmlPathUnreported(ctx, st, blobs, archiveDir, source, path, observation)
+		if err == nil && observation != nil {
+			result.MailContextVersion = 1
+		}
+		return result, err
 	})
 }
 
-func importEmlPathUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string) (Result, error) {
+func importEmlPathUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string, observation *MailImportContext) (Result, error) {
 	var res Result
 	if err := archive.ValidSource(source); err != nil {
 		return res, err
@@ -211,6 +235,9 @@ func importEmlPathUnreported(ctx context.Context, st *store.Store, blobs *blob.S
 	info, err := os.Stat(path)
 	if err != nil {
 		return res, err
+	}
+	if info.IsDir() && observation != nil {
+		return res, fmt.Errorf("mail context imports require one file; use mail-tree for directories")
 	}
 	one := func(p string) error {
 		raw, err := os.ReadFile(p)
@@ -221,7 +248,7 @@ func importEmlPathUnreported(ctx context.Context, st *store.Store, blobs *blob.S
 		if err != nil {
 			return fail.Opf("archive %s: %w", p, err)
 		}
-		out, err := Ingest(ctx, st, blobs, raw, IngestOpts{Source: source, RawRef: rel})
+		out, err := Ingest(ctx, st, blobs, raw, IngestOpts{Source: source, RawRef: rel, MailContext: observation, ArchiveDir: archiveDir})
 		if err != nil {
 			if fail.IsOp(err) {
 				return err
@@ -246,13 +273,21 @@ func importEmlPathUnreported(ctx context.Context, st *store.Store, blobs *blob.S
 }
 
 // ImportMbox ingests a Gmail Takeout style .mbox file.
-func ImportMbox(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string) (Result, error) {
+func ImportMbox(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string, contexts ...*MailImportContext) (Result, error) {
+	observation, err := importContext(contexts)
+	if err != nil {
+		return Result{}, err
+	}
 	return store.RunImport(ctx, st, "mbox", path, func(ctx context.Context) (Result, error) {
-		return importMboxUnreported(ctx, st, blobs, archiveDir, source, path)
+		result, err := importMboxUnreported(ctx, st, blobs, archiveDir, source, path, observation)
+		if err == nil && observation != nil {
+			result.MailContextVersion = 1
+		}
+		return result, err
 	})
 }
 
-func importMboxUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string) (Result, error) {
+func importMboxUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string, observation *MailImportContext) (Result, error) {
 	var res Result
 	if err := archive.ValidSource(source); err != nil {
 		return res, err
@@ -260,6 +295,9 @@ func importMboxUnreported(ctx context.Context, st *store.Store, blobs *blob.Stor
 	rel, err := archive.Copy(archiveDir, source, path)
 	if err != nil {
 		return res, fail.Opf("archive %s: %w", path, err)
+	}
+	if _, err := archive.WriteMailContext(archiveDir, archive.MailContextRecord{Version: 1, Source: source, RawRef: rel, InputKind: "mbox", Context: observation}); err != nil {
+		return res, fail.Opf("archive mail context: %w", err)
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -275,7 +313,7 @@ func importMboxUnreported(ctx context.Context, st *store.Store, blobs *blob.Stor
 		} else {
 			only = nil
 		}
-		out, err := Ingest(ctx, st, blobs, raw, IngestOpts{Source: source, RawRef: rel})
+		out, err := Ingest(ctx, st, blobs, raw, IngestOpts{Source: source, RawRef: rel, MailContext: observation})
 		if err != nil {
 			if fail.IsOp(err) {
 				return err
@@ -293,4 +331,14 @@ func importMboxUnreported(ctx context.Context, st *store.Store, blobs *blob.Stor
 			"Do not delete the export; report the separator line.\n", path)
 	}
 	return res, err
+}
+
+func importContext(contexts []*MailImportContext) (*MailImportContext, error) {
+	if len(contexts) > 1 {
+		return nil, fmt.Errorf("only one mail context is allowed")
+	}
+	if len(contexts) == 0 || contexts[0] == nil {
+		return nil, nil
+	}
+	return contexts[0], contexts[0].Validate()
 }

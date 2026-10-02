@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -45,12 +46,13 @@ type Finding struct {
 }
 
 type Report struct {
-	MessagesChecked    int64     `json:"messages_checked"`
-	AttachmentsChecked int64     `json:"attachments_checked"`
-	Damaged            int       `json:"damaged"`
-	Repaired           int       `json:"repaired"`
-	Unrecoverable      int       `json:"unrecoverable"`
-	Findings           []Finding `json:"findings"`
+	MessagesChecked     int64     `json:"messages_checked"`
+	AttachmentsChecked  int64     `json:"attachments_checked"`
+	Damaged             int       `json:"damaged"`
+	Repaired            int       `json:"repaired"`
+	Unrecoverable       int       `json:"unrecoverable"`
+	Findings            []Finding `json:"findings"`
+	MailContextsChecked int       `json:"mail_contexts_checked"`
 }
 
 type Options struct {
@@ -72,7 +74,55 @@ func Run(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir str
 	err := st.EachArchivedMessage(ctx, o.Source, func(m store.ArchivedMessage) error {
 		return v.message(ctx, m)
 	})
+	if err == nil {
+		err = v.mailContexts(ctx)
+	}
 	return rep, err
+}
+
+func (v *verifier) mailContexts(ctx context.Context) error {
+	if v.opts.Source != "" {
+		if err := archive.ValidSource(v.opts.Source); err != nil {
+			return err
+		}
+	}
+	sources, err := os.ReadDir(v.archiveDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, source := range sources {
+		if !source.IsDir() || (v.opts.Source != "" && v.opts.Source != source.Name()) {
+			continue
+		}
+		entries, err := os.ReadDir(filepath.Join(v.archiveDir, source.Name(), ".mail-contexts"))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			v.rep.MailContextsChecked++
+			record, err := archive.ReadMailContext(v.archiveDir, source.Name(), entry.Name())
+			if err == nil {
+				var input *os.File
+				input, err = archive.OpenMailRaw(v.archiveDir, record)
+				if err == nil {
+					err = input.Close()
+				}
+			}
+			if err != nil {
+				v.add(Finding{Kind: "invalid_mail_context", Detail: source.Name() + "/" + entry.Name() + ": " + err.Error()}, false)
+			}
+		}
+	}
+	return nil
 }
 
 type verifier struct {

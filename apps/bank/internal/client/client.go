@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aquitano/aqt/apps/bank/internal/archive"
+
 	"github.com/aquitano/aqt/apps/bank/internal/generic"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -58,6 +60,13 @@ func (c *Client) request(ctx context.Context, method, path string, q url.Values,
 	}
 	if resp.StatusCode/100 != 2 {
 		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusConflict {
+			var conflict store.MailThreadConflictError
+			if err := json.NewDecoder(io.LimitReader(resp.Body, 65536)).Decode(&conflict); err == nil && conflict.Code == "mail_thread_conflict" {
+				return nil, &conflict
+			}
+			return nil, fmt.Errorf("%s %s: conflicting mail conversation", method, path)
+		}
 		return nil, fmt.Errorf("%s %s: %s", method, path, errorMessage(resp))
 	}
 	return resp, nil
@@ -95,6 +104,13 @@ func (c *Client) Search(ctx context.Context, query string, o store.SearchOpts) (
 		}
 	}
 	set("source", o.Source)
+	set("subject", o.Subject)
+	if o.MailboxID != 0 {
+		set("mailbox_id", strconv.FormatInt(o.MailboxID, 10))
+	}
+	if o.HasAttachment != nil {
+		set("has_attachment", strconv.FormatBool(*o.HasAttachment))
+	}
 	set("from", o.From)
 	set("to", o.To)
 	set("person", o.Person)
@@ -284,8 +300,28 @@ func (c *Client) ImportJSON(ctx context.Context, source string, body []byte) (ge
 
 // ImportFile uploads one file and decodes that importer's Result, e.g.
 // ImportFile[whatsapp.Result](ctx, c, "whatsapp", "", path).
-func ImportFile[T any](ctx context.Context, c *Client, kind, source, path string) (T, error) {
+func ImportFile[T any](ctx context.Context, c *Client, kind, source, path string, contexts ...*archive.MailImportContext) (T, error) {
 	var res T
+	var contextJSON []byte
+	if len(contexts) > 1 {
+		return res, fmt.Errorf("only one mail context is allowed")
+	}
+	if len(contexts) == 1 && contexts[0] != nil {
+		if kind != "eml" && kind != "mbox" {
+			return res, fmt.Errorf("mail context requires an EML or MBOX import")
+		}
+		if err := contexts[0].Validate(); err != nil {
+			return res, err
+		}
+		var err error
+		contextJSON, err = json.Marshal(contexts[0])
+		if err != nil {
+			return res, err
+		}
+		if len(contextJSON) > archive.MaxMailContextBytes {
+			return res, fmt.Errorf("mail context is too large")
+		}
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return res, err
@@ -296,6 +332,12 @@ func ImportFile[T any](ctx context.Context, c *Client, kind, source, path string
 	defer pr.Close()
 	mw := multipart.NewWriter(pw)
 	go func() {
+		if contextJSON != nil {
+			if err := mw.WriteField("mail_context", string(contextJSON)); err != nil {
+				_ = pw.CloseWithError(err)
+				return
+			}
+		}
 		part, err := mw.CreateFormFile("file", filepath.Base(path))
 		if err == nil {
 			_, err = io.Copy(part, f)
@@ -328,5 +370,17 @@ func ImportFile[T any](ctx context.Context, c *Client, kind, source, path string
 	if resp.StatusCode/100 != 2 {
 		return res, fmt.Errorf("import %s: %s", kind, errorMessage(resp))
 	}
-	return res, json.NewDecoder(resp.Body).Decode(&res)
+	var raw json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return res, err
+	}
+	if contextJSON != nil {
+		var ack struct {
+			Version int `json:"mail_context_version"`
+		}
+		if err := json.Unmarshal(raw, &ack); err != nil || ack.Version != 1 {
+			return res, fmt.Errorf("server did not acknowledge mail context version 1; upgrade Bank before retrying")
+		}
+	}
+	return res, json.Unmarshal(raw, &res)
 }

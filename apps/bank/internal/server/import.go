@@ -57,14 +57,19 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, cleanup, err := saveUpload(r, s.dataDir)
+	var observation *eml.MailImportContext
+	path, cleanup, err := saveUpload(r, s.dataDir, &observation)
 	if err != nil {
 		writeCause(w, err)
 		return
 	}
 	defer cleanup()
+	if observation != nil && kind != "eml" && kind != "mbox" {
+		writeErr(w, http.StatusBadRequest, "mail context requires an EML or MBOX import")
+		return
+	}
 
-	res, err := s.importFile(r.Context(), kind, source, path)
+	res, err := s.importFile(r.Context(), kind, source, path, observation)
 	if err != nil {
 		writeCause(w, err)
 		return
@@ -113,7 +118,7 @@ func (s *Server) importJSONInput(ctx context.Context, source string, body []byte
 	return generic.Import(ctx, s.db, s.blobs, source, rawRef, body, time.Now(), false)
 }
 
-func (s *Server) importFile(ctx context.Context, kind, source, path string) (any, error) {
+func (s *Server) importFile(ctx context.Context, kind, source, path string, contexts ...*eml.MailImportContext) (any, error) {
 	if source == "" {
 		source = map[string]string{"eml": "proton", "mbox": "gmail"}[kind]
 	}
@@ -121,9 +126,9 @@ func (s *Server) importFile(ctx context.Context, kind, source, path string) (any
 	case "whatsapp":
 		return whatsapp.Import(ctx, s.db, s.blobs, s.archiveDir, path)
 	case "eml":
-		return eml.ImportEmlPath(ctx, s.db, s.blobs, s.archiveDir, source, path)
+		return eml.ImportEmlPath(ctx, s.db, s.blobs, s.archiveDir, source, path, contexts...)
 	case "mbox":
-		return eml.ImportMbox(ctx, s.db, s.blobs, s.archiveDir, source, path)
+		return eml.ImportMbox(ctx, s.db, s.blobs, s.archiveDir, source, path, contexts...)
 	case "discord":
 		return discord.Import(ctx, s.db, s.archiveDir, path)
 	case "linkedin":
@@ -192,7 +197,7 @@ func pruneUploads(dataDir string, maxAge time.Duration) error {
 // saveUpload writes the multipart "file" part into a fresh temp dir, keeping the
 // original basename — importers derive thread names and sources from it. Staged
 // under the data dir, not /tmp: uploads can be Takeout-sized and tmpfs is small.
-func saveUpload(r *http.Request, dataDir string) (string, func(), error) {
+func saveUpload(r *http.Request, dataDir string, observation **eml.MailImportContext) (string, func(), error) {
 	mr, err := r.MultipartReader()
 	if err != nil {
 		return "", nil, fmt.Errorf("expected multipart/form-data with a file field: %w", err)
@@ -204,6 +209,23 @@ func saveUpload(r *http.Request, dataDir string) (string, func(), error) {
 		}
 		if err != nil {
 			return "", nil, err
+		}
+		if part.FormName() == "mail_context" {
+			if *observation != nil {
+				_ = part.Close()
+				return "", nil, fmt.Errorf("duplicate mail context field")
+			}
+			raw, err := io.ReadAll(io.LimitReader(part, archive.MaxMailContextBytes+1))
+			if err != nil {
+				return "", nil, err
+			}
+			context, err := archive.DecodeMailContext(raw)
+			if err != nil {
+				return "", nil, err
+			}
+			_ = part.Close()
+			*observation = context
+			continue
 		}
 		if part.FormName() != "file" {
 			part.Close()
@@ -252,6 +274,10 @@ func saveUpload(r *http.Request, dataDir string) (string, func(), error) {
 				return "", nil, fail.Opf("saving upload: %w", err)
 			}
 			return "", nil, fmt.Errorf("saving upload: %w", err)
+		}
+		if _, err := mr.NextPart(); !errors.Is(err, io.EOF) {
+			cleanup()
+			return "", nil, fmt.Errorf("file must be the final multipart field")
 		}
 		return path, cleanup, nil
 	}

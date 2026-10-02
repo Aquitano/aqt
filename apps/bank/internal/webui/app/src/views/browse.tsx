@@ -3,6 +3,7 @@ import { MessagesSquare } from "lucide-react";
 import { useState } from "react";
 
 import type { Selection } from "@/components/detail-pane";
+import { MailboxSelect } from "@/components/mailbox-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,7 +63,7 @@ function GroupRow({
         {threaded && g.n > 1 && (
           <Badge variant="secondary" className="h-4 shrink-0 gap-1 px-1.5 text-[10px] font-medium">
             <MessagesSquare className="size-2.5" />
-            {g.n}
+            {g.n} matching messages
           </Badge>
         )}
         <span className="ml-auto shrink-0 text-xs text-muted-foreground/70 tabular-nums">
@@ -93,13 +94,16 @@ export function BrowseView({
   onSourceChange: (s: string) => void;
 }) {
   const [order, setOrder] = useState<"asc" | "desc">("desc");
+  const [mailbox, setMailbox] = useState<{ source: string; id?: number }>({ source });
+  const mailboxId = mailbox.source === source ? mailbox.id : undefined;
 
   const q = useInfiniteQuery({
-    queryKey: ["browse", source, order],
+    queryKey: ["browse", source, order, mailboxId],
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       browseThreads({
         source: source === ALL_SOURCES ? undefined : source,
+        mailbox_id: mailboxId,
         order,
         offset: pageParam,
       }),
@@ -140,6 +144,7 @@ export function BrowseView({
           </SelectContent>
         </Select>
       </div>
+      <div className="px-3 pb-2"><MailboxSelect source={source === ALL_SOURCES ? undefined : source} value={mailboxId} onChange={(id) => setMailbox({ source, id })} /></div>
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
         {q.isLoading ? (
           <ListSkeleton />

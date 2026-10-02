@@ -519,6 +519,14 @@ func TestPruneUploadsKeepsActiveStaging(t *testing.T) {
 	}
 }
 
+func (f *fakeReader) ListMailboxes(context.Context, string) ([]store.Mailbox, error) {
+	return []store.Mailbox{}, nil
+}
+
+func (f *fakeReader) MailConflictMessages(context.Context, string, string, int64, int) (store.Thread, error) {
+	return store.Thread{}, nil
+}
+
 func (f *fakeReader) BrowseThreads(context.Context, store.BrowseOpts) ([]store.ThreadGroup, error) {
 	return []store.ThreadGroup{}, nil
 }

@@ -182,6 +182,7 @@ func fetchAll(ctx context.Context, c *client, st *store.Store, blobs *blob.Store
 				return fail.Opf("archive gmail %s: %w", id, err)
 			}
 			out, err := eml.Ingest(ctx, st, blobs, msg.Raw, eml.IngestOpts{
+				ArchiveDir: archiveDir,
 				Source:     "gmail",
 				ExternalID: msg.ID,
 				ThreadID:   msg.ThreadID,

@@ -18,6 +18,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	messagemail "github.com/emersion/go-message/mail"
+
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/htmlindex"
 )
@@ -29,14 +31,17 @@ type Attachment struct {
 }
 
 type Message struct {
-	MessageID   string
-	From        string
-	To          []string
-	Cc          []string
-	Subject     string
-	Date        time.Time
-	Body        string
-	Attachments []Attachment
+	NormalizedMessageID string
+	InReplyTo           []string
+	References          []string
+	MessageID           string
+	From                string
+	To                  []string
+	Cc                  []string
+	Subject             string
+	Date                time.Time
+	Body                string
+	Attachments         []Attachment
 	// Warnings names structure the parser could not read as written — a
 	// malformed Content-Type, a multipart part with no usable boundary.
 	// Importers surface these so damaged mail is visible instead of quietly
@@ -61,6 +66,36 @@ func Parse(raw []byte) (*Message, error) {
 		To:        addressList(h.Get("To")),
 		Cc:        addressList(h.Get("Cc")),
 		Subject:   decodeHeader(h.Get("Subject")),
+	}
+	mailHeader := messagemail.HeaderFromMap(map[string][]string(h))
+	out.NormalizedMessageID, _ = mailHeader.MessageID()
+	if out.NormalizedMessageID == "" && !strings.ContainsAny(out.MessageID, "<> \t\r\n()") && strings.Contains(out.MessageID, "@") {
+		out.NormalizedMessageID = out.MessageID
+	}
+	if len(out.NormalizedMessageID) > 1024 {
+		out.NormalizedMessageID = ""
+		out.Warnings = append(out.Warnings, "Message-ID exceeds email grouping limit")
+	}
+	for name, destination := range map[string]*[]string{"In-Reply-To": &out.InReplyTo, "References": &out.References} {
+		if len(h.Get(name)) > 65536 {
+			out.Warnings = append(out.Warnings, name+" exceeds email grouping limit")
+			continue
+		}
+		ids, err := mailHeader.MsgIDList(name)
+		if err != nil {
+			out.Warnings = append(out.Warnings, "malformed "+name+": "+err.Error())
+		}
+		seen := make(map[string]bool)
+		for _, id := range ids {
+			if len(id) > 1024 || len(*destination) >= 128 {
+				out.Warnings = append(out.Warnings, name+" exceeds email grouping limit")
+				break
+			}
+			if !seen[id] && id != "" {
+				*destination = append(*destination, id)
+				seen[id] = true
+			}
+		}
 	}
 	if d, err := mail.ParseDate(h.Get("Date")); err == nil {
 		out.Date = d

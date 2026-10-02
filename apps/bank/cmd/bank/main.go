@@ -161,6 +161,8 @@ func main() {
 		err = cmdSync(ctx, os.Args[2:])
 	case "imap":
 		err = cmdIMAP(ctx, os.Args[2:])
+	case "mail":
+		err = cmdMail(ctx, os.Args[2:])
 	case "import":
 		err = cmdImport(ctx, os.Args[2:])
 	case "reimport":
@@ -304,6 +306,9 @@ func cmdImport(ctx context.Context, args []string) error {
 		return fmt.Errorf("usage: bank import <inbox|ai|whatsapp|eml|mbox|discord|linkedin|youtube|chatgpt|claude|claude-code|codex|opencode|antigravity|json> <path>...")
 	}
 	kind := args[0]
+	if kind == "mail-tree" {
+		return cmdImportMailTree(ctx, args[1:])
+	}
 	if kind == "inbox" {
 		return cmdImportInbox(ctx, args[1:])
 	}
@@ -312,6 +317,7 @@ func cmdImport(ctx context.Context, args []string) error {
 	}
 	fs := flag.NewFlagSet("import "+kind, flag.ExitOnError)
 	source := fs.String("source", defaultSource(kind), "")
+	mailbox := fs.String("mailbox", "", "historical mailbox observation for an EML or MBOX file")
 	noExtract := fs.Bool("no-extract", false, "")
 	if err := parseFlagsAnywhere(fs, args[1:]); err != nil {
 		return err
@@ -323,6 +329,12 @@ func cmdImport(ctx context.Context, args []string) error {
 		if err := archive.ValidSource(*source); err != nil {
 			return err
 		}
+	}
+	if *mailbox != "" {
+		if kind != "eml" && kind != "mbox" {
+			return fmt.Errorf("--mailbox requires eml or mbox")
+		}
+		return importMailboxFiles(ctx, kind, *source, *mailbox, fs.Args(), *noExtract)
 	}
 	if c := client.FromEnv(); c != nil {
 		return importRemote(ctx, c, kind, *source, fs.Args())
@@ -1004,6 +1016,9 @@ func cmdSearch(ctx context.Context, args []string) error {
 	fs.StringVar(&o.From, "from", "", "")
 	fs.StringVar(&o.To, "to", "", "")
 	fs.StringVar(&o.Person, "person", "", "")
+	fs.Int64Var(&o.MailboxID, "mailbox-id", 0, "")
+	fs.StringVar(&o.Subject, "subject", "", "")
+	attachment := fs.String("has-attachment", "", "true or false")
 	fs.StringVar(&o.Match, "match", "any", "")
 	fs.StringVar(&since, "since", "", "")
 	fs.StringVar(&until, "until", "", "")
@@ -1015,8 +1030,12 @@ func cmdSearch(ctx context.Context, args []string) error {
 		return err
 	}
 	query := strings.Join(fs.Args(), " ")
-	if query == "" {
-		return fmt.Errorf("usage: bank search <query> [flags]")
+	if *attachment != "" {
+		value, err := strconv.ParseBool(*attachment)
+		if err != nil || (*attachment != "true" && *attachment != "false") {
+			return fmt.Errorf("has-attachment must be true or false")
+		}
+		o.HasAttachment = &value
 	}
 	var err error
 	if o.Since, err = parseDate(since); err != nil {
@@ -1028,8 +1047,13 @@ func cmdSearch(ctx context.Context, args []string) error {
 	// Checked before the query so local and remote modes reject the same
 	// values with the same message, instead of one returning nothing and the
 	// other a database error.
-	if err := o.ValidateQuery(query); err != nil {
+	if err := o.Validate(); err != nil {
 		return err
+	}
+	if query != "" {
+		if err := o.ValidateQuery(query); err != nil {
+			return err
+		}
 	}
 
 	b, closeBackend, err := openBackend(ctx)
@@ -1037,6 +1061,20 @@ func cmdSearch(ctx context.Context, args []string) error {
 		return err
 	}
 	defer closeBackend()
+	if query == "" {
+		groups, err := b.BrowseThreads(ctx, store.BrowseOpts{Source: o.Source, MailboxID: o.MailboxID, Subject: o.Subject, HasAttachment: o.HasAttachment, From: o.From, To: o.To, Person: o.Person, Since: o.Since, Until: o.Until, Limit: o.Limit, Offset: o.Offset})
+		if err != nil {
+			return err
+		}
+		if asJSON {
+			return printJSON(groups)
+		}
+		for _, group := range groups {
+			fmt.Printf("%6d  %s  %-12s  %d matching messages  %s\n", group.LastID, group.LastAt.Format("2006-01-02"), group.Source, group.Count, group.Subject)
+		}
+		printMorePages(len(groups), o.Limit, o.Offset)
+		return nil
+	}
 	msgs, err := b.Search(ctx, query, o)
 	if err != nil {
 		return err
@@ -1233,6 +1271,9 @@ func cmdShow(ctx context.Context, args []string) error {
 // remote `bank serve` answer to the same method names, so no command below
 // has to know which it is talking to.
 type backend interface {
+	ListMailboxes(context.Context, string) ([]store.Mailbox, error)
+	BrowseThreads(context.Context, store.BrowseOpts) ([]store.ThreadGroup, error)
+	MailConflictMessages(context.Context, string, string, int64, int) (store.Thread, error)
 	ImportReports(context.Context, int64, int) ([]store.ImportReport, error)
 	AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error)
 	AttachmentMessages(context.Context, string, int, int) ([]store.Message, error)

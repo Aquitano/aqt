@@ -1,0 +1,178 @@
+package eml
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
+)
+
+type RebuildReport struct {
+	Apply          bool     `json:"apply"`
+	Inputs         int      `json:"inputs"`
+	Messages       int      `json:"messages"`
+	Skipped        int      `json:"skipped"`
+	Missing        int      `json:"missing"`
+	UnknownFolders int      `json:"unknown_folders"`
+	ThreadChanges  int      `json:"thread_changes"`
+	Conflicts      int      `json:"conflicts"`
+	Incomplete     int      `json:"incomplete"`
+	Invalid        int      `json:"invalid"`
+	Issues         []string `json:"issues"`
+}
+
+func RebuildMail(ctx context.Context, st *store.Store, root, source string, apply bool) (RebuildReport, error) {
+	report := RebuildReport{Apply: apply, Issues: []string{}}
+	if err := archive.ValidSource(source); err != nil {
+		return report, err
+	}
+	limits, err := store.MailGroupingLimits()
+	if err != nil {
+		return report, err
+	}
+	configuration, err := json.Marshal(limits)
+	if err != nil {
+		return report, err
+	}
+	note := func(message string) {
+		report.Invalid++
+		if len(report.Issues) < 100 {
+			report.Issues = append(report.Issues, message)
+		}
+	}
+	project := func(record archive.MailContextRecord, identity string) error {
+		input, err := archive.OpenMailRaw(root, record)
+		if err != nil {
+			note(record.RawRef + ": " + err.Error())
+			return nil
+		}
+		defer input.Close()
+		digest := sha256.New()
+		if _, err := io.Copy(digest, input); err != nil {
+			return err
+		}
+		if _, err := input.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+		prefix := "mail-projection-v1:" + identity + ":" + hex.EncodeToString(digest.Sum(nil)) + ":" + string(configuration)
+		report.Inputs++
+		visit := func(raw []byte) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			message, err := Parse(raw)
+			if err != nil {
+				note(record.RawRef + ": " + err.Error())
+				return nil
+			}
+			externalID := record.ExternalID
+			if externalID == "" {
+				externalID = defaultExternalID(message, raw)
+			}
+			id, err := st.ResolveMailMessage(ctx, source, message.MessageID, externalID)
+			if err != nil {
+				return err
+			}
+			if id == 0 {
+				report.Missing++
+				return nil
+			}
+			digest := sha256.Sum256(append([]byte(prefix), raw...))
+			workKey := hex.EncodeToString(digest[:])
+			done, err := st.MailRebuildDone(ctx, source, workKey, id)
+			if err != nil {
+				return err
+			}
+			if done {
+				report.Skipped++
+				return nil
+			}
+			projection, err := st.ProjectMail(ctx, id, store.MailProjection{MessageID: message.NormalizedMessageID, InReplyTo: message.InReplyTo, References: message.References, NativeThreadID: record.ThreadID, Context: record.Context}, apply, workKey)
+			if err != nil {
+				return err
+			}
+			report.Messages++
+			if record.Context == nil {
+				report.UnknownFolders++
+			}
+			if projection.ThreadID != projection.PreviousThreadID {
+				report.ThreadChanges++
+			}
+			if projection.Conflict {
+				report.Conflicts++
+			}
+			if projection.Incomplete {
+				report.Incomplete++
+			}
+			return nil
+		}
+		if record.InputKind == "mbox" {
+			return SplitMbox(input, visit)
+		}
+		raw, err := io.ReadAll(io.LimitReader(input, int64(maxMboxMessage)+1))
+		if err != nil {
+			return err
+		}
+		if len(raw) > maxMboxMessage {
+			note(record.RawRef + ": EML exceeds message size limit")
+			return nil
+		}
+		return visit(raw)
+	}
+	known := make(map[string]bool)
+	contexts, err := os.ReadDir(filepath.Join(root, source, ".mail-contexts"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return report, err
+	}
+	for _, entry := range contexts {
+		if err := ctx.Err(); err != nil {
+			return report, err
+		}
+		record, err := archive.ReadMailContext(root, source, entry.Name())
+		if err != nil {
+			note(entry.Name() + ": " + err.Error())
+			continue
+		}
+		known[record.RawRef] = true
+		if err := project(record, entry.Name()); err != nil {
+			return report, err
+		}
+	}
+	entries, err := os.ReadDir(filepath.Join(root, source))
+	if err != nil {
+		return report, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		extension := strings.ToLower(filepath.Ext(entry.Name()))
+		if extension != ".eml" && extension != ".mbox" {
+			continue
+		}
+		reference := source + "/" + entry.Name()
+		if known[reference] {
+			continue
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			note(reference + ": symlink skipped")
+			continue
+		}
+		if err := project(archive.MailContextRecord{Version: 1, Source: source, RawRef: reference, InputKind: strings.TrimPrefix(extension, ".")}, "raw"); err != nil {
+			return report, err
+		}
+	}
+	if report.Invalid > 0 {
+		return report, fmt.Errorf("%d invalid archive inputs; see rebuild issues", report.Invalid)
+	}
+	return report, nil
+}

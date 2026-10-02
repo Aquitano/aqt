@@ -137,11 +137,14 @@ func write(archiveDir, source, name string, r io.Reader) (string, error) {
 	if err := ValidName(name); err != nil {
 		return "", err
 	}
-	dir := filepath.Join(archiveDir, source)
+	return writeAt(archiveDir, filepath.Join(source, name), r)
+}
+
+func writeAt(archiveDir, rel string, r io.Reader) (string, error) {
+	dir := filepath.Dir(filepath.Join(archiveDir, rel))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	rel := filepath.Join(source, name)
 	dest := filepath.Join(archiveDir, rel)
 	if _, err := os.Stat(dest); err == nil {
 		return rel, nil // complete by construction: only renamed-in files exist

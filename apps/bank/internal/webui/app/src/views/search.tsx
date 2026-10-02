@@ -3,6 +3,7 @@ import { Search as SearchIcon } from "lucide-react";
 import { useState } from "react";
 
 import type { Selection } from "@/components/detail-pane";
+import { MailboxSelect } from "@/components/mailbox-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
@@ -14,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { search, SEARCH_PAGE, type Message, type SourceStat, type SearchParams } from "@/lib/api";
+import { browseThreads, search, SEARCH_PAGE, type Message, type SourceStat, type SearchParams } from "@/lib/api";
 import { fmtDate, Highlight, SourceBadge } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -110,13 +111,20 @@ export function SearchView({
   const [match, setMatch] = useState<"any" | "all" | "phrase">("any");
   const [fuzzy, setFuzzy] = useState(1);
   const [params, setParams] = useState<SearchParams | null>(null);
+  const [mailboxId, setMailboxId] = useState<number>();
+  const [subject, setSubject] = useState("");
+  const [attachment, setAttachment] = useState("any");
 
   const q = useInfiniteQuery({
     queryKey: ["search", params],
     enabled: params !== null,
     initialPageParam: 0,
-    queryFn: ({ pageParam }) =>
-      params ? search({ ...params, offset: pageParam }) : Promise.resolve([]),
+    queryFn: async ({ pageParam }): Promise<Message[]> => {
+      if (!params) return [];
+      if (params.q) return search({ ...params, offset: pageParam });
+      const groups = await browseThreads({ ...params, order: "desc", offset: pageParam });
+      return groups.map((group) => ({ id: group.last_id, source: group.source, thread_id: group.thread_id, sender: group.sender, subject: group.subject, body: group.preview, sent_at: group.last_at }));
+    },
     getNextPageParam: (last, pages) =>
       last.length === SEARCH_PAGE && pages.length * SEARCH_PAGE <= 10000
         ? pages.length * SEARCH_PAGE
@@ -125,7 +133,6 @@ export function SearchView({
 
   const submit = (over?: Partial<SearchParams>) => {
     const query = input.trim();
-    if (!query) return;
     const p = {
       source: source === ALL ? "" : source,
       from,
@@ -135,6 +142,9 @@ export function SearchView({
       fuzzy,
       since,
       until,
+      mailbox_id: mailboxId,
+      subject,
+      has_attachment: attachment === "any" ? undefined : attachment === "true",
       ...over,
     };
     setParams({
@@ -147,6 +157,9 @@ export function SearchView({
       fuzzy: p.fuzzy,
       since: p.since || undefined,
       until: p.until || undefined,
+      mailbox_id: p.mailbox_id,
+      subject: p.subject || undefined,
+      has_attachment: p.has_attachment,
     });
   };
 
@@ -179,7 +192,8 @@ export function SearchView({
             value={source}
             onValueChange={(v) => {
               setSource(v);
-              submit({ source: v === ALL ? "" : v });
+              setMailboxId(undefined);
+              submit({ source: v === ALL ? "" : v, mailbox_id: undefined });
             }}
           >
             <SelectTrigger size="sm" className="flex-1 text-xs">
@@ -220,6 +234,16 @@ export function SearchView({
             className="h-8 flex-1 text-xs [color-scheme:dark]"
           />
         </div>
+        <MailboxSelect source={source === ALL ? undefined : source} value={mailboxId} onChange={(id) => { setMailboxId(id); submit({ mailbox_id: id }); }} />
+        <div className="flex gap-2">
+          <Input aria-label="Subject contains" placeholder="subject contains" value={subject} onChange={(event) => setSubject(event.target.value)} onKeyDown={(event) => event.key === "Enter" && submit()} />
+          <Select value={attachment} onValueChange={(value) => { setAttachment(value); submit({ has_attachment: value === "any" ? undefined : value === "true" }); }}>
+            <SelectTrigger aria-label="Attachment presence"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="any">Any attachments</SelectItem><SelectItem value="true">Has attachments</SelectItem><SelectItem value="false">No attachments</SelectItem></SelectContent>
+          </Select>
+          <Button onClick={() => submit()}>Search</Button>
+        </div>
+        {params && !params.q && <p className="text-xs text-muted-foreground">Matching conversations, newest first. Open one to read the full conversation.</p>}
         <div className="flex flex-wrap items-center gap-2">
           <Select
             value={match}

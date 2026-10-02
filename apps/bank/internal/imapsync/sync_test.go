@@ -194,8 +194,8 @@ func rawMessage(id string) []byte {
 	return []byte("Message-ID: <" + id + "@example.com>\r\nFrom: sender@example.com\r\nTo: test@example.com\r\nDate: Fri, 02 Oct 2026 12:00:00 +0000\r\nSubject: Fixture\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=parts\r\n\r\n--parts\r\nContent-Type: text/plain\r\n\r\nHello from IMAP.\r\n--parts\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename=sample.bin\r\nContent-Transfer-Encoding: base64\r\n\r\nAAECAwQ=\r\n--parts--\r\n")
 }
 
-func acceptingImporter(context.Context, string, string) (eml.Result, error) {
-	return eml.Result{Inserted: 1}, nil
+func acceptingImporter(context.Context, string, string, eml.MailImportContext) (eml.Result, error) {
+	return eml.Result{Inserted: 1, MailContextVersion: 1}, nil
 }
 
 func runOnce(tb testing.TB, config Config, destination string, importer Importer) (Result, error) {
@@ -255,6 +255,16 @@ func TestSyncHTTPResumeAndUIDValidity(t *testing.T) {
 					t.Error(err)
 					return
 				}
+				var observation eml.MailImportContext
+				if part.FormName() != "mail_context" || json.NewDecoder(part).Decode(&observation) != nil || observation.Mailbox != "INBOX" {
+					t.Error("missing mailbox context")
+					return
+				}
+				part, err = reader.NextPart()
+				if err != nil {
+					t.Error(err)
+					return
+				}
 				raw, err := io.ReadAll(part)
 				if err != nil {
 					t.Error(err)
@@ -270,9 +280,9 @@ func TestSyncHTTPResumeAndUIDValidity(t *testing.T) {
 				}
 				mutex.Lock()
 				defer mutex.Unlock()
-				outcome := eml.Result{Inserted: 1}
+				outcome := eml.Result{Inserted: 1, MailContextVersion: 1}
 				if stored[message.MessageID] {
-					outcome = eml.Result{Duplicates: 1}
+					outcome = eml.Result{Duplicates: 1, MailContextVersion: 1}
 				}
 				stored[message.MessageID] = true
 				if message.MessageID == "three@example.com" && !lostResponse {
@@ -284,8 +294,8 @@ func TestSyncHTTPResumeAndUIDValidity(t *testing.T) {
 			}))
 			defer server.Close()
 			remote := client.New(server.URL, "test-token")
-			importer := func(ctx context.Context, source, path string) (eml.Result, error) {
-				return client.ImportFile[eml.Result](ctx, remote, "eml", source, path)
+			importer := func(ctx context.Context, source, path string, observation eml.MailImportContext) (eml.Result, error) {
+				return client.ImportFile[eml.Result](ctx, remote, "eml", source, path, &observation)
 			}
 			if _, err := runOnce(t, fixture.config, server.URL, importer); err == nil {
 				t.Fatal("lost HTTP response reported as success")
@@ -331,7 +341,7 @@ func TestFailedFolderDoesNotBlockOtherFolders(t *testing.T) {
 	fixture.config.Accounts[0].Folders = []string{"INBOX", "Sent"}
 	fixture.append(t, "INBOX", rawMessage("reject"))
 	fixture.append(t, "Sent", rawMessage("sent"))
-	importer := func(_ context.Context, _, path string) (eml.Result, error) {
+	importer := func(_ context.Context, _, path string, _ eml.MailImportContext) (eml.Result, error) {
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return eml.Result{}, err
@@ -339,7 +349,7 @@ func TestFailedFolderDoesNotBlockOtherFolders(t *testing.T) {
 		if bytes.Contains(raw, []byte("reject@example.com")) {
 			return eml.Result{Rejected: 1}, nil
 		}
-		return eml.Result{Inserted: 1}, nil
+		return eml.Result{Inserted: 1, MailContextVersion: 1}, nil
 	}
 	result, err := runOnce(t, fixture.config, "bank-test", importer)
 	if err == nil || result.Inserted != 1 {
@@ -506,9 +516,9 @@ func TestTruncatedBodyIsNeverUploaded(t *testing.T) {
 	fixture.append(t, "INBOX", rawMessage("one"))
 	fixture.truncate.Store(true)
 	var uploads atomic.Int64
-	importer := func(context.Context, string, string) (eml.Result, error) {
+	importer := func(context.Context, string, string, eml.MailImportContext) (eml.Result, error) {
 		uploads.Add(1)
-		return eml.Result{Inserted: 1}, nil
+		return eml.Result{Inserted: 1, MailContextVersion: 1}, nil
 	}
 	if _, err := runOnce(t, fixture.config, "bank-test", importer); err == nil {
 		t.Fatal("truncated literal accepted")
@@ -537,9 +547,9 @@ func TestBodyDownloadFailuresReleaseConnection(t *testing.T) {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 				var uploads atomic.Int64
-				importer := func(context.Context, string, string) (eml.Result, error) {
+				importer := func(context.Context, string, string, eml.MailImportContext) (eml.Result, error) {
 					uploads.Add(1)
-					return eml.Result{Inserted: 1}, nil
+					return eml.Result{Inserted: 1, MailContextVersion: 1}, nil
 				}
 				done := make(chan error, 1)
 				go func() { done <- Run(ctx, fixture.config, "bank-test", importer, true, nil) }()
@@ -575,13 +585,13 @@ func TestBodyBeforeUIDAndChangedSequenceMapping(t *testing.T) {
 			fixture.append(t, "INBOX", raw)
 			fixture.bodyReply = fmt.Sprintf("* 1 FETCH (BODY[] {%d}\r\n%s UID %d)\r\n", len(raw), raw, returnedUID)
 			var uploads atomic.Int64
-			importer := func(_ context.Context, _, path string) (eml.Result, error) {
+			importer := func(_ context.Context, _, path string, _ eml.MailImportContext) (eml.Result, error) {
 				body, err := os.ReadFile(path)
 				if err != nil || !bytes.Equal(body, raw) {
 					return eml.Result{}, fmt.Errorf("unexpected body: %w", err)
 				}
 				uploads.Add(1)
-				return eml.Result{Inserted: 1}, nil
+				return eml.Result{Inserted: 1, MailContextVersion: 1}, nil
 			}
 			result, err := runOnce(t, fixture.config, "bank-test", importer)
 			if returnedUID == 1 {
@@ -623,7 +633,7 @@ func TestPendingMailSurvivesRestartAndMailboxDeletion(t *testing.T) {
 	fixture.config.Accounts[0].Folders = []string{"INBOX", "Sent"}
 	raw := rawMessage("queued")
 	fixture.append(t, "INBOX", raw)
-	failing := func(context.Context, string, string) (eml.Result, error) {
+	failing := func(context.Context, string, string, eml.MailImportContext) (eml.Result, error) {
 		return eml.Result{}, fmt.Errorf("Bank unavailable")
 	}
 	if _, err := runOnce(t, fixture.config, "bank-test", failing); err == nil {
@@ -639,7 +649,7 @@ func TestPendingMailSurvivesRestartAndMailboxDeletion(t *testing.T) {
 	if err := fixture.user.Create("INBOX", nil); err != nil {
 		t.Fatal(err)
 	}
-	importer := func(_ context.Context, _, path string) (eml.Result, error) {
+	importer := func(_ context.Context, _, path string, _ eml.MailImportContext) (eml.Result, error) {
 		queued, err := os.ReadFile(path)
 		if err != nil {
 			return eml.Result{}, err
@@ -647,7 +657,7 @@ func TestPendingMailSurvivesRestartAndMailboxDeletion(t *testing.T) {
 		if !bytes.Equal(queued, raw) {
 			return eml.Result{}, fmt.Errorf("queued message differs from original")
 		}
-		return eml.Result{Inserted: 1}, nil
+		return eml.Result{Inserted: 1, MailContextVersion: 1}, nil
 	}
 	result, err := runOnce(t, fixture.config, "bank-test", importer)
 	if err != nil || result.Fetched != 0 || result.Inserted != 1 || fixture.fetches.Load() != 1 {
@@ -679,11 +689,11 @@ func TestDaemonRetriesAccountsIndependently(t *testing.T) {
 	second.ID, second.Source = "second", "gmail"
 	fixture.config.Accounts = append(fixture.config.Accounts, second)
 	var failed atomic.Bool
-	importer := func(_ context.Context, source, _ string) (eml.Result, error) {
+	importer := func(_ context.Context, source, _ string, _ eml.MailImportContext) (eml.Result, error) {
 		if source == "proton" && failed.CompareAndSwap(false, true) {
 			return eml.Result{}, fmt.Errorf("temporary upload failure")
 		}
-		return eml.Result{Inserted: 1}, nil
+		return eml.Result{Inserted: 1, MailContextVersion: 1}, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()

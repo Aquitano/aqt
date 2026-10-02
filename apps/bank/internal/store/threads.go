@@ -63,7 +63,7 @@ func (e *AmbiguousThreadError) Error() string {
 }
 
 func (s *Store) threadSources(ctx context.Context, threadID string) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `select distinct source from messages where thread_id = $1 order by source`, threadID)
+	rows, err := s.pool.Query(ctx, `select source from messages where thread_id = $1 union select source from mail_thread_aliases where old_id=$1 order by source`, threadID)
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +101,11 @@ func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o Th
 			return out, &AmbiguousThreadError{ThreadID: threadID, Sources: sources}
 		}
 	}
+	resolved, resolveErr := s.resolveMailThread(ctx, out.Source, out.ThreadID)
+	if resolveErr != nil {
+		return out, resolveErr
+	}
+	out.ThreadID = resolved
 	var anchor Message
 	id := max(o.Before, o.After, o.Around)
 	if id > 0 {
@@ -217,5 +222,9 @@ func (s *Store) loadAttachments(ctx context.Context, messages []MessageDetail) e
 		i := byID[a.MessageID]
 		messages[i].Attachments = append(messages[i].Attachments, a)
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+	return s.loadMailboxes(ctx, messages)
 }

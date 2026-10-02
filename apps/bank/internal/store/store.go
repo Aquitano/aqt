@@ -30,7 +30,8 @@ type Store struct {
 }
 
 type Message struct {
-	ID int64 `json:"id"`
+	Mailboxes []Mailbox `json:"mailboxes,omitempty"`
+	ID        int64     `json:"id"`
 	// Ref is the stable citation id: 12 hex characters derived from the source
 	// and the message's own identifier. ID is a row serial and changes when the
 	// archive is rebuilt from its raw inputs, so a note citing "bank:<id>"
@@ -165,6 +166,23 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 }
 
 func (s *Store) Close() { s.pool.Close() }
+
+func OpenReadOnly(ctx context.Context, databaseURL string) (*Store, error) {
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, err
+	}
+	config.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	return &Store{pool: pool}, nil
+}
 
 // migrate applies pending migrations under a session-level advisory lock, so
 // concurrent startups serialize instead of racing check-then-apply. A failure
@@ -611,8 +629,9 @@ func (s *Store) GetMessage(ctx context.Context, id int64) (Message, []Attachment
 	if err != nil {
 		return m, nil, err
 	}
-	atts, err := s.messageAttachments(ctx, m.ID)
-	return m, atts, err
+	details := []MessageDetail{{Message: m}}
+	err = s.loadAttachments(ctx, details)
+	return details[0].Message, details[0].Attachments, err
 }
 
 // GetMessageByRef resolves a citation. There is no index on the ref: the
@@ -632,31 +651,9 @@ func (s *Store) GetMessageByRef(ctx context.Context, ref string) (Message, []Att
 	if err != nil {
 		return m, nil, err
 	}
-	atts, err := s.messageAttachments(ctx, m.ID)
-	return m, atts, err
-}
-
-func (s *Store) messageAttachments(ctx context.Context, id int64) ([]Attachment, error) {
-	rows, err := s.pool.Query(ctx, `
-		select a.id, a.message_id, a.filename, a.mime_type, a.size_bytes, a.sha256,
-		       coalesce(t.status, '`+StatusPending+`'), coalesce(length(t.text), 0)
-		from attachments a
-		left join blob_text t on t.sha256 = a.sha256
-		where a.message_id = $1 order by a.id`, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var atts []Attachment
-	for rows.Next() {
-		var a Attachment
-		if err := rows.Scan(&a.ID, &a.MessageID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.SHA256,
-			&a.TextStatus, &a.TextChars); err != nil {
-			return nil, err
-		}
-		atts = append(atts, a)
-	}
-	return atts, rows.Err()
+	details := []MessageDetail{{Message: m}}
+	err = s.loadAttachments(ctx, details)
+	return details[0].Message, details[0].Attachments, err
 }
 
 type SourceStats struct {

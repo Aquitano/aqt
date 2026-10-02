@@ -55,8 +55,8 @@ func cmdIMAP(ctx context.Context, args []string) error {
 		return fmt.Errorf("bank imap requires BANK_URL (http/https, without credentials, query or fragment) and BANK_TOKEN")
 	}
 	remote := client.New(destination, os.Getenv("BANK_TOKEN"))
-	importer := func(ctx context.Context, source, path string) (eml.Result, error) {
-		return client.ImportFile[eml.Result](ctx, remote, "eml", source, path)
+	importer := func(ctx context.Context, source, path string, observation eml.MailImportContext) (eml.Result, error) {
+		return client.ImportFile[eml.Result](ctx, remote, "eml", source, path, &observation)
 	}
 	err = imapsync.Run(ctx, config, destination, importer, *once, func(event imapsync.Event) {
 		if err := encoder.Encode(event); err != nil {

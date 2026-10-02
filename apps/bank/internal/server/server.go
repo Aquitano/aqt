@@ -26,11 +26,13 @@ import (
 // reader is the read side of the store, an interface only so the handlers can
 // be exercised without a database.
 type reader interface {
+	ListMailboxes(context.Context, string) ([]store.Mailbox, error)
 	BrowseThreads(context.Context, store.BrowseOpts) ([]store.ThreadGroup, error)
 	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
 	GetMessage(ctx context.Context, id int64) (store.Message, []store.Attachment, error)
 	GetMessageByRef(ctx context.Context, ref string) (store.Message, []store.Attachment, error)
 	GetThreadPage(ctx context.Context, source, threadID string, o store.ThreadOpts) (store.Thread, error)
+	MailConflictMessages(context.Context, string, string, int64, int) (store.Thread, error)
 	Stats(ctx context.Context) ([]store.SourceStats, error)
 	ListContacts(ctx context.Context) ([]store.Contact, error)
 	GetContact(ctx context.Context, name string) (store.Contact, error)
@@ -63,9 +65,11 @@ const maxUpload = 16 << 30
 func (s *Server) Handler() http.Handler {
 	v1 := http.NewServeMux()
 	v1.HandleFunc("GET /v1/search", s.handleSearch)
+	v1.HandleFunc("GET /v1/mailboxes", s.handleMailboxes)
 	v1.HandleFunc("GET /v1/threads", s.handleBrowseThreads)
 	v1.HandleFunc("GET /v1/messages/{id}", s.handleMessage)
 	v1.HandleFunc("GET /v1/threads/{id}", s.handleThread)
+	v1.HandleFunc("GET /v1/mail-conflicts/{id}", s.handleMailConflict)
 	v1.HandleFunc("GET /v1/blobs/{sha256}", s.handleBlob)
 	v1.HandleFunc("GET /v1/stats", s.handleStats)
 	v1.HandleFunc("PUT /v1/sources/{source}/coverage", s.handleCoverage)
@@ -132,6 +136,10 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	o := store.SearchOpts{Source: q.Get("source"), From: q.Get("from"), To: q.Get("to"),
 		Person: q.Get("person"), Match: q.Get("match"), Fuzzy: 1, Limit: 20}
 	var err error
+	if o.MailboxID, o.Subject, o.HasAttachment, err = parseMailFilters(q); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
 	if o.Since, err = parseDate(q.Get("since")); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -159,6 +167,10 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msgs, err := s.read.Search(r.Context(), query, o)
+	if errors.Is(err, store.ErrMailboxSource) {
+		writeErr(w, 400, err.Error())
+		return
+	}
 	var noContact *store.ErrNoContact
 	if errors.As(err, &noContact) {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -232,6 +244,7 @@ func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
 	}
 	thread, err := s.read.GetThreadPage(r.Context(), q.Get("source"), r.PathValue("id"), o)
 	var ambiguous *store.AmbiguousThreadError
+	var conflict *store.MailThreadConflictError
 	switch {
 	case err == nil:
 		writeJSON(w, http.StatusOK, thread)
@@ -239,6 +252,8 @@ func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, fmt.Sprintf("no thread %q", r.PathValue("id")))
 	case errors.As(err, &ambiguous):
 		writeErr(w, http.StatusBadRequest, err.Error())
+	case errors.As(err, &conflict):
+		writeJSON(w, http.StatusConflict, conflict)
 	default:
 		writeErr(w, http.StatusInternalServerError, err.Error())
 	}

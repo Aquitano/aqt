@@ -23,7 +23,7 @@ import (
 const uidWindow = 10000
 const batchBytes = 16 << 20
 
-type Importer func(context.Context, string, string) (eml.Result, error)
+type Importer func(context.Context, string, string, eml.MailImportContext) (eml.Result, error)
 
 type Result struct {
 	Fetched    int   `json:"fetched"`
@@ -284,9 +284,13 @@ func flushQueued(ctx context.Context, st *state, config Config, account Account,
 		group.Go(func() error {
 			requestCtx, cancel := context.WithTimeout(groupCtx, timeout)
 			defer cancel()
-			outcome, err := importer(requestCtx, account.Source, file.Path)
+			observation := eml.MailImportContext{Version: 1, Kind: "imap", Mailbox: folder, RelativePath: filepath.Base(file.Path), AccountID: account.ID}
+			outcome, err := importer(requestCtx, account.Source, file.Path, observation)
 			if err != nil {
 				return fmt.Errorf("UID %d import failed: %w", file.UID, err)
+			}
+			if outcome.MailContextVersion != 1 {
+				return fmt.Errorf("UID %d mail context was not acknowledged; upgrade Bank before retrying", file.UID)
 			}
 			if outcome.Rejected != 0 || outcome.Inserted+outcome.Duplicates != 1 {
 				return fmt.Errorf("UID %d was not acknowledged as one imported message (inserted=%d duplicates=%d rejected=%d)", file.UID, outcome.Inserted, outcome.Duplicates, outcome.Rejected)

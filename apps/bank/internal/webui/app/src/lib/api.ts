@@ -11,6 +11,9 @@ const attachment = type({
 });
 export type Attachment = typeof attachment.infer;
 
+const mailbox = type({ id: "number", source: "string", kind: "'export' | 'imap'", path: "string", n: "number" });
+export type Mailbox = typeof mailbox.infer;
+
 const message = type({
   id: "number",
   source: "string",
@@ -27,6 +30,7 @@ const message = type({
   "attachment_snippet?": "string",
   sent_at: "string",
   "attachments?": attachment.array().or("null"),
+  "mailboxes?": mailbox.array().or("null"),
 });
 export type Message = typeof message.infer;
 
@@ -72,11 +76,23 @@ export type ThreadGroup = typeof threadGroup.infer;
 
 // Failed /v1 requests answer with `{"error": "..."}` in place of the payload.
 const errorBody = type({ error: "string" });
+const mailConflict = type({ code: "'mail_thread_conflict'", source: "string", conflict_key: "string", choices: "string[]", unanchored_path: "string" });
+export class MailConflictError extends Error {
+  readonly conflict: typeof mailConflict.infer;
+  constructor(conflict: typeof mailConflict.infer) {
+    super("This conversation contains conflicting provider threads.");
+    this.conflict = conflict;
+  }
+}
 
 async function send(path: string, init?: RequestInit) {
   const r = await fetch(path, init);
   const body: unknown = await r.json().catch(() => undefined);
   if (r.ok) return body;
+  if (r.status === 409) {
+    const conflict = mailConflict(body);
+    if (!(conflict instanceof type.errors)) throw new MailConflictError(conflict);
+  }
   const failure = errorBody(body);
   throw new Error(failure instanceof type.errors ? r.statusText : failure.error || r.statusText);
 }
@@ -95,6 +111,9 @@ async function api<T extends Type>(
 
 export interface SearchParams {
   q: string;
+  mailbox_id?: number;
+  subject?: string;
+  has_attachment?: boolean;
   source?: string;
   from?: string;
   since?: string;
@@ -108,6 +127,9 @@ export interface SearchParams {
 
 export function search({
   q,
+  mailbox_id,
+  subject,
+  has_attachment,
   source,
   from,
   since,
@@ -126,6 +148,9 @@ export function search({
     fuzzy: String(fuzzy),
   });
   if (source) p.set("source", source);
+  if (mailbox_id) p.set("mailbox_id", String(mailbox_id));
+  if (subject) p.set("subject", subject);
+  if (has_attachment !== undefined) p.set("has_attachment", String(has_attachment));
   if (from) p.set("from", from);
   if (to) p.set("to", to);
   if (person) p.set("person", person);
@@ -184,19 +209,34 @@ export async function createContactWithAlias(name: string, alias: string) {
   });
 }
 
-export function browseThreads(opts: { source?: string; order: "asc" | "desc"; offset: number }) {
+export function getMailboxes(source: string) {
+  return api(`/v1/mailboxes?${new URLSearchParams({ source })}`, mailbox.array());
+}
+
+export function browseThreads(opts: Omit<SearchParams, "q" | "match" | "fuzzy" | "offset"> & { order: "asc" | "desc"; offset: number }) {
   const p = new URLSearchParams({
     order: opts.order,
     offset: String(opts.offset),
     limit: String(BROWSE_PAGE),
   });
   if (opts.source) p.set("source", opts.source);
+  if (opts.mailbox_id) p.set("mailbox_id", String(opts.mailbox_id));
+  if (opts.has_attachment !== undefined) p.set("has_attachment", String(opts.has_attachment));
+  for (const key of ["subject", "from", "to", "person", "since", "until"] as const) {
+    if (opts[key]) p.set(key, opts[key]);
+  }
   return api(`/v1/threads?${p}`, threadGroup.array());
 }
 
 export const BROWSE_PAGE = 50;
 export const SEARCH_PAGE = 50;
 export const CONTEXT_PAGE = 100;
+
+export function getMailConflict(source: string, key: string, before?: number) {
+  const params = new URLSearchParams({source, limit: String(CONTEXT_PAGE)});
+  if (before) params.set("before", String(before));
+  return api(`/v1/mail-conflicts/${encodeURIComponent(key)}?${params}`, thread);
+}
 
 const libraryFile = type({
   sha256: "string",

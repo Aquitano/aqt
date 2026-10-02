@@ -23,10 +23,13 @@ const MaxFuzzyDistance = 2
 const MaxSearchOffset = 10000
 
 type SearchOpts struct {
-	Match  string // any (default), all, or phrase
-	Source string
-	From   string
-	To     string
+	MailboxID     int64
+	Subject       string
+	HasAttachment *bool
+	Match         string // any (default), all, or phrase
+	Source        string
+	From          string
+	To            string
 	// Person is a contact name: the filter resolves through that contact's
 	// aliases, so one query covers every source the person appears in.
 	Person string
@@ -43,6 +46,9 @@ type SearchOpts struct {
 // results or a raw database error. Both the CLI and the HTTP handler call it,
 // so local and remote modes fail the same way.
 func (o SearchOpts) Validate() error {
+	if o.MailboxID < 0 || (o.MailboxID != 0 && o.Source == "") {
+		return fmt.Errorf("mailbox_id must be positive and requires a source")
+	}
 	switch o.Match {
 	case "", "any", "all", "phrase":
 	default:
@@ -90,6 +96,9 @@ func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Messa
 		return nil, err
 	}
 	query = strings.TrimSpace(query)
+	if err := s.validateMailbox(ctx, o.Source, o.MailboxID); err != nil {
+		return nil, err
+	}
 	args := []any{query}
 	if o.Match != "phrase" {
 		args = append(args, o.Fuzzy)
@@ -114,6 +123,7 @@ func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Messa
 	if o.Source != "" {
 		sql += " and m.source = " + next(o.Source)
 	}
+	sql += mailPredicates(o.MailboxID, o.Subject, o.HasAttachment, next)
 	if o.From != "" {
 		sql += " and m.sender ilike " + next("%"+o.From+"%")
 	}

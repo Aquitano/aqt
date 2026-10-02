@@ -95,6 +95,7 @@ func (config Config) validate() error {
 		return fmt.Errorf("configure 1..32 accounts")
 	}
 	seen := make(map[string]bool)
+	sources := make(map[string]bool)
 	for _, account := range config.Accounts {
 		if err := archive.ValidSource(account.ID); err != nil {
 			return fmt.Errorf("account id: %w", err)
@@ -103,6 +104,10 @@ func (config Config) validate() error {
 			return fmt.Errorf("duplicate account id %q", account.ID)
 		}
 		seen[account.ID] = true
+		if sources[account.Source] {
+			return fmt.Errorf("each IMAP account needs a distinct source; duplicate %q", account.Source)
+		}
+		sources[account.Source] = true
 		if err := archive.ValidSource(account.Source); err != nil {
 			return fmt.Errorf("account %s source: %w", account.ID, err)
 		}
