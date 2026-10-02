@@ -141,6 +141,10 @@ func cmdServe(ctx context.Context, args []string) error {
 		return err
 	}
 	defer st.Close()
+	queued, err := st.QueueCaptures(ctx, extractorVersions(""))
+	if err != nil {
+		return fmt.Errorf("queue captures: %w", err)
+	}
 	m := metrics.New()
 	proc := processor.New(st, m, log, *workers)
 	srv := &http.Server{
@@ -167,7 +171,7 @@ func cmdServe(ctx context.Context, args []string) error {
 	}()
 
 	log.Info("serving", "listen", *listen, "workers", *workers,
-		"extractors", len(extractor.All()), "auth", authenticator.Enabled())
+		"extractors", len(extractor.All()), "queued", queued, "auth", authenticator.Enabled())
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		stop()
 		<-workersDone
@@ -196,13 +200,7 @@ func cmdReprocess(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	var targets []store.ExtractorVersion
-	for _, e := range extractor.All() {
-		r := e.Rule()
-		if *name == "" || *name == r.Extractor {
-			targets = append(targets, store.ExtractorVersion{Name: r.Extractor, Version: r.Version})
-		}
-	}
+	targets := extractorVersions(*name)
 	if len(targets) == 0 {
 		return fmt.Errorf("no registered extractor matches %q", *name)
 	}
@@ -217,6 +215,19 @@ func cmdReprocess(ctx context.Context, args []string) error {
 	}
 	fmt.Printf("queued %d derivations; a running 'tracker serve' picks them up\n", n)
 	return nil
+}
+
+// extractorVersions lists every registered extractor at its current version,
+// or only the one name picks.
+func extractorVersions(name string) []store.ExtractorVersion {
+	var targets []store.ExtractorVersion
+	for _, e := range extractor.All() {
+		r := e.Rule()
+		if name == "" || name == r.Extractor {
+			targets = append(targets, store.ExtractorVersion{Name: r.Extractor, Version: r.Version})
+		}
+	}
+	return targets
 }
 
 func clientConfig() (client.Config, error) {

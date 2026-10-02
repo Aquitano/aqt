@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/net/html"
+
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
 )
 
@@ -80,6 +82,29 @@ func TestExtractPost(t *testing.T) {
 	}
 	if !strings.HasPrefix(rec.SearchText, "Backpressure is a product decision\nIda Ferreira\nMercury Notes\n") {
 		t.Errorf("search text = %q", firstLines(rec.SearchText, 4))
+	}
+}
+
+func TestCanonicalURLOnlyNamesAnArticleOnTheSameSite(t *testing.T) {
+	const page = "https://www.notes.mercury.example/backpressure-is-a-product-decision"
+	pageURL, err := url.Parse(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]string{
+		"https://notes.mercury.example/2024/backpressure": "https://notes.mercury.example/2024/backpressure",
+		"https://notes.mercury.example/":                  page,
+		"https://notes.mercury.example":                   page,
+		"https://syndication.example/backpressure":        page,
+	}
+	for href, want := range cases {
+		doc, err := html.Parse(strings.NewReader(`<html><head><link rel="canonical" href="` + href + `"></head></html>`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := canonicalURL(doc, pageURL); got != want {
+			t.Errorf("canonical %s on %s = %s, want %s", href, page, got, want)
+		}
 	}
 }
 

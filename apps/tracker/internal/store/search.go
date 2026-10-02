@@ -36,7 +36,7 @@ func (s *Store) Search(ctx context.Context, o SearchOpts) ([]Hit, error) {
 		return nil, fmt.Errorf("limit must be 1-%d", MaxSearchLimit)
 	}
 	q := s.db.NewSelect().TableExpr("records r").
-		ColumnExpr("r.id, r.extractor, coalesce(r.title, '') as title, coalesce(r.canonical_url, '') as canonical_url").
+		ColumnExpr("r.id, r.extractor, coalesce(r.title, '') as title, r.canonical_url").
 		ColumnExpr("coalesce(paradedb.snippet(r.search_text, '', '', 160), '') as snippet").
 		ColumnExpr("paradedb.score(r.id) as score, r.last_seen_at, r.data").
 		Where("r.id @@@ paradedb.boolean(should => array[paradedb.match('title', ?, distance => 1), paradedb.match('search_text', ?, distance => 1)])", o.Query, o.Query).
