@@ -93,7 +93,7 @@ refresh token included, so it keeps running without anyone at a terminal.
 `cmd/tracker-agent` is the desktop agent for Windows, in Go: a notification-area icon that records which app and window has focus and posts the same span events as the macOS agent. One static exe, no console window, no admin rights.
 
 ```sh
-mise run tracker:agent:windows:build   # cross-compiles dist/tracker-agent.exe from any OS
+mise run tracker:agent:windows:build   # cross-compiles dist/tracker-agent.exe and dist/tracker.exe from any OS
 ```
 
 Copy the exe where it will stay, such as `%LOCALAPPDATA%\Programs\tracker\tracker-agent.exe`, and run it from there:
@@ -105,7 +105,7 @@ tracker-agent.exe uninstall   # stop starting at sign-in; Quit in the tray stops
 
 `install` writes the exe's path to `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, so run it again after moving the exe. One agent runs per sign-in session; starting another does nothing. Nothing restarts the agent after a crash, as launchd does on macOS: it comes back at the next sign-in, or when you start it.
 
-The tray menu shows whether the server answers, what is tracked, the queue, the last error, and Pause for 1 hour, Resume and Quit. Pause ends the open span as `paused`, like the extension's pause; Quit, and signing out, end it as `unknown` and flush the queue. With authentication on, sign in once with the CLI built for Windows (`GOOS=windows go build ./cmd/tracker`, then `tracker.exe login`); the agent reads and refreshes the same `%APPDATA%\tracker\token.json`.
+The tray menu shows whether the server answers, what is tracked, the queue, the last error, and Pause for 1 hour, Resume and Quit. Pause ends the open span as `paused`, like the extension's pause; Quit, and signing out, end it as `unknown` and flush the queue. With authentication on, sign in once with the CLI built beside it (`tracker.exe login`); the agent reads and refreshes the same `%APPDATA%\tracker\token.json`.
 
 What it records matches the macOS agent: one span at a time with the app name, the bundle id and the window title, ended with `app_switch`, `window_change`, `idle` (60 s without input, a locked session or a sleeping machine; dated to the last input) or `unknown`, heartbeats every 30 s. The app name is the exe's file description (`Visual Studio Code` for `Code.exe`), or the exe name without one; the bundle id is the exe name in lower case (`code.exe`); a store app counts as itself, not as the `ApplicationFrameHost.exe` that draws its frame. Window titles need no permission on Windows. A title change counts once it has held for a second, so a title that ticks or follows typing does not split the span per keystroke.
 
