@@ -24,6 +24,6 @@
     "@aqt/config": "workspace:*",
     "@types/bun": "catalog:",
     "typescript": "catalog:",
-    "wrangler": "^4.129.1"
+    "wrangler": "^4.141.0"
   }
 }

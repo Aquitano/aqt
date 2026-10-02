@@ -11,7 +11,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "arktype": "^2.2.3",
+    "arktype": "^2.2.5",
     "oauth4webapi": "^3.8.8"
   },
   "devDependencies": {
