@@ -240,7 +240,7 @@ One server on the VPS, and every machine tracks into it: the extension in each b
 
 In the admin interface:
 
-1. Applications > Providers > Create an OAuth2/OpenID provider named `tracker`: client type **Public**, a **signing key** selected (RS256; without one tokens are signed with a client secret a public client does not have), and the `offline_access` scope mapping added to the default ones so clients get refresh tokens. Redirect URIs come later, from the extension. Note the client id.
+1. Applications > Providers > Create an OAuth2/OpenID provider named `tracker`: client type **Public**, a **signing key** selected (RS256; without one tokens are signed with a client secret a public client does not have), and the `offline_access` scope mapping added to the default ones so clients get refresh tokens. Its one redirect URI, strict, is `https://gdhnnekkmghgkiikgmdodggcpgnmbpno.chromiumapp.org/`: the manifest pins the extension id on every machine. Note the client id.
 2. Applications > Create an application with slug `tracker` and that provider. The issuer is then `https://auth.aquitano.me/application/o/tracker/`, trailing slash included.
 3. System > Brands > the brand serving auth.aquitano.me: set a **device code flow**, which `tracker login` needs. authentik ships none; its device code flow docs describe the one to create.
 
