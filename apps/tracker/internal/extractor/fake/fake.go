@@ -70,7 +70,10 @@ func (Extractor) Extract(ctx context.Context, raw []byte, pageURL *url.URL) (ext
 		<-ctx.Done()
 		return extractor.Record{}, ctx.Err()
 	}
-	words := strings.Fields(text.String())
+	// No HTML parser lets NUL through, but an extractor reading JSON embedded
+	// in the page can return one; `\0` in the page stands in for it.
+	title = strings.ReplaceAll(title, `\0`, "\x00")
+	words := strings.Fields(strings.ReplaceAll(text.String(), `\0`, "\x00"))
 	canonical := &url.URL{Scheme: pageURL.Scheme, Host: pageURL.Host, Path: pageURL.Path}
 	return extractor.Record{
 		CanonicalURL: canonical.String(),

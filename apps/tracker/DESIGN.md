@@ -196,8 +196,8 @@ Source data: `urls`, `page_views`, `activity_spans`, `raw_html_blobs`, `captures
 
 1. Read multipart: `meta` (JSON) and `html` (text/html). Reject over 25 MiB before buffering; reject over the rule's `max_bytes` with 413.
 2. `hash = blake3(html)`, `payload = zstd(html, level 3)`.
-3. One transaction: upsert `urls`; `INSERT raw_html_blobs ON CONFLICT DO NOTHING`; `INSERT captures`; `INSERT derivations (hash, extractor, current version, pending) ON CONFLICT DO NOTHING`.
-4. Respond `201 {capture_id, raw_hash (hex), deduplicated: bool}`. On any failure respond 5xx with nothing written; the extension keeps the capture in its outbox.
+3. One transaction: check that `page_view_id` is on file; upsert `urls`; `INSERT raw_html_blobs ON CONFLICT DO NOTHING`; `INSERT captures`; `INSERT derivations (hash, extractor, current version, pending) ON CONFLICT DO NOTHING`.
+4. Respond `201 {capture_id, raw_hash (hex), deduplicated: bool}`. An unknown page view gets 422 with nothing written: the extension uploads a capture only once the events queued before it are acknowledged, so a retry could never succeed. On any other failure respond 5xx with nothing written; the extension keeps the capture in its outbox.
 
 ## Worker
 
@@ -212,7 +212,7 @@ where (raw_hash, extractor, extractor_version) in (
 returning *;
 ```
 
-Then, outside any transaction: fetch blob, decompress, run the extractor with a 30 s context timeout and panic recovery. Then one short transaction: upsert `records` on `(extractor, canonical_url)`, set derivation `done` with `record_id`. The upsert always widens the seen window (`first_seen_at`, `last_seen_at` from the blob's captures) and replaces `record_hash`, `url_id`, `title`, `search_text` and `data` only when the blob was last seen no earlier than the record, so replaying an older blob never overwrites newer content. On error, including a failed write (`store`): `failed` once `attempts >= 5`, else back to `pending` with `last_error`/`error_class`. `no_match`, `stale` (the page's embedded state belongs to another URL: a single-page app navigated in place, so an extractor checks what it reads against the URL), `unregistered` (a derivation for an extractor or version this binary does not carry) and `timeout` (an extractor cannot be interrupted, so a retry would run beside the copy still going) fail on the first attempt. A stale `running` row that has used its 5 attempts is failed as `abandoned` rather than claimed again. Idle workers sleep 2 s; a successful ingest wakes them through a channel.
+Then, outside any transaction: fetch blob, decompress, run the extractor with a 30 s context timeout and panic recovery. Then one short transaction: upsert `records` on `(extractor, canonical_url)`, set derivation `done` with `record_id`. The upsert always widens the seen window (`first_seen_at`, `last_seen_at` from the blob's captures) and replaces `record_hash`, `url_id`, `title`, `search_text` and `data` only when the blob was last seen no earlier than the record, so replaying an older blob never overwrites newer content. NUL is dropped from every string and key in the record's data before it is hashed, since jsonb rejects `\u0000`. On error, including a failed write (`store`): `failed` once `attempts >= 5`, else back to `pending` with `last_error`/`error_class`. `no_match`, `stale` (the page's embedded state belongs to another URL: a single-page app navigated in place, so an extractor checks what it reads against the URL), `unregistered` (a derivation for an extractor or version this binary does not carry) and `timeout` (an extractor cannot be interrupted, so a retry would run beside the copy still going) fail on the first attempt. A stale `running` row that has used its 5 attempts is failed as `abandoned` rather than claimed again. Idle workers sleep 2 s; a successful ingest wakes them through a channel.
 
 `serve`, after migrating, queues every capture under each registered extractor's current version wherever that version has no derivation yet, so neither a version bump nor a migration that clears the derived tables waits on a manual step; the new version's records land on the same `(extractor, canonical_url)` as the old ones. `reprocess` without flags does the same and also deletes the older versions' derivations and the records only they produced, which drops a page a new version no longer reads or keys differently; `--failed` resets failed rows; `--all` deletes the targets' derivations and records and re-queues from `captures`; `--extractor` narrows any of them. Workers in `serve` pick the rows up.
 
@@ -256,6 +256,8 @@ All routes on `127.0.0.1:8490`. JSON bodies, `Content-Type: application/json`. A
 
 With an issuer configured, every route below except `/healthz` and `/metrics` needs `Authorization: Bearer <jwt>` and answers 401 without one. 401 is never treated as permanent by a client: the fix is a login, not dropping the data.
 
+Any other 4xx means the request can never succeed as sent, and the extension drops it (except 408 and 429). A 5xx is retried; its body says only `internal server error`, and the error itself goes to the log.
+
 `GET /healthz` → `200 {"ok":true,"db":true}` or 503. Never authenticated.
 
 `GET /metrics` → Prometheus text. Never authenticated.
@@ -296,9 +298,9 @@ With an issuer configured, every route below except `/healthz` and `/metrics` ne
 
 A `span_start` carries either `page_view_id` (browser, from the extension) or `app_name` (desktop, from the macOS agent under its own `device_id`), never both; `bundle_id` and `window_title` are optional and only kept with `app_name`. `window_title` is truncated at 512 characters, `app_name` and `bundle_id` at 256. `span_end` reasons: `tab_switch | window_blur | app_switch | window_change | idle | navigation | tab_closed | unknown`; an unknown reason is stored as `unknown`.
 
-Every event is idempotent (upsert by id; heartbeats and ends only move `ended_at` forward, except an `idle` end, which is dated to the last input and may pull `ended_at` back to it, never before `started_at`). A `span_*` whose page view is unknown, a `span_start` with both or neither identity, or any single malformed event, is dropped and counted, not an error; only malformed JSON, a missing `device_id` or more than 1000 events fail the batch with 400. Response `200 {"accepted":n,"dropped":n}`. For a private page view the extension sends `url` as `https://host/` and no title.
+Every event is idempotent (upsert by id; heartbeats and ends only move `ended_at` forward, except an `idle` end, which is dated to the last input and may pull `ended_at` back to it, never before `started_at`). A `span_*` whose page view is unknown, a `span_start` with both or neither identity, or any single malformed event, is dropped and counted, not an error; only malformed JSON, a missing `device_id` or more than 1000 events fail the batch with 400. A NUL in a title or any other text field is left out when it is stored (Postgres rejects it in text; bun drops it from every string it formats into a query), never an error. Response `200 {"accepted":n,"dropped":n}`. For a private page view the extension sends `url` as `https://host/` and no title.
 
-`POST /v1/captures` multipart/form-data: part `meta` = `{"capture_id","page_view_id","device_id","captured_at","url","title","extractor","reason","raw_char_count"}`, part `html` = the document. Response above.
+`POST /v1/captures` multipart/form-data: part `meta` = `{"capture_id","page_view_id","device_id","captured_at","url","title","extractor","reason","raw_char_count"}`, part `html` = the document. Response above; 422 when `page_view_id` is not on file.
 
 `GET /v1/stats` → table counts, blob sizes and per-status derivation and per-extractor record totals (used by `tracker stats`).
 

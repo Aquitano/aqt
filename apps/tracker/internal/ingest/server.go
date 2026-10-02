@@ -195,9 +195,9 @@ func writeErr(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// fail answers a server-side error; the client only ever sees the status,
-// so the message lands in the log.
+// fail answers a server-side error with a generic message; the error itself,
+// which can carry SQL and data, only goes to the log.
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	s.log.Error("request failed", "route", r.Pattern, "err", err)
-	writeErr(w, http.StatusInternalServerError, err.Error())
+	writeErr(w, http.StatusInternalServerError, "internal server error")
 }

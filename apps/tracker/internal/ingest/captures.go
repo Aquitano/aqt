@@ -67,6 +67,11 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 		Blob:    store.RawHTMLBlob{Hash: hash[:], Codec: blob.CodecZstd, RawBytes: len(html), StoredBytes: len(payload), Payload: payload},
 		Version: rule.Version,
 	})
+	if errors.Is(err, store.ErrUnknownPageView) {
+		s.log.Warn("capture for an unknown page view", "capture_id", meta.CaptureID, "page_view_id", meta.PageViewID)
+		writeErr(w, http.StatusUnprocessableEntity, "page_view_id is unknown: send its page_view event before the capture")
+		return
+	}
 	if err != nil {
 		s.fail(w, r, err)
 		return
