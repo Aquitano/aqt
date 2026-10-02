@@ -46,7 +46,8 @@ apps/tracker/
   extension/              WXT extension (@aqt/tracker-extension)
   desktop/                Swift menu-bar agent (TrackerAgent.app): frontmost app and window spans
   deploy/
-    docker-compose.yml    ParadeDB, Prometheus, Grafana
+    docker-compose.yml    ParadeDB, backup, Prometheus, Grafana
+    backup.sh             daily pg_dump loop the backup service runs
     com.aqt.tracker.plist launchd agent for `serve`
     com.aqt.tracker-agent.plist
                           launchd agent for TrackerAgent.app
@@ -163,7 +164,7 @@ derivations (
   attempts          integer not null default 0,
   claimed_at        timestamptz,
   last_error        text,
-  error_class       text,                       -- panic | parse | no_match | stale | timeout | too_large | unregistered
+  error_class       text,                       -- panic | parse | no_match | stale | timeout | too_large | unregistered | store | abandoned
   record_id         bigint references records,
   processing_ms     integer,
   created_at        timestamptz not null default now(),
@@ -211,22 +212,23 @@ where (raw_hash, extractor, extractor_version) in (
 returning *;
 ```
 
-Then, outside any transaction: fetch blob, decompress, run the extractor with a 30 s context timeout and panic recovery. Then one short transaction: upsert `records` on `(extractor, record_hash)` (bump `last_seen_at`), set derivation `done` with `record_id`. On error: `failed` once `attempts >= 5`, else back to `pending` with `last_error`/`error_class`. `no_match`, `stale` (the page's embedded state belongs to another URL: a single-page app navigated in place, so an extractor checks what it reads against the URL) and `unregistered` (a derivation for an extractor or version this binary does not carry) fail on the first attempt. Idle workers sleep 2 s; a successful ingest wakes them through a channel.
+Then, outside any transaction: fetch blob, decompress, run the extractor with a 30 s context timeout and panic recovery. Then one short transaction: upsert `records` on `(extractor, record_hash)` (bump `last_seen_at`), set derivation `done` with `record_id`. On error, including a failed write (`store`): `failed` once `attempts >= 5`, else back to `pending` with `last_error`/`error_class`. `no_match`, `stale` (the page's embedded state belongs to another URL: a single-page app navigated in place, so an extractor checks what it reads against the URL), `unregistered` (a derivation for an extractor or version this binary does not carry) and `timeout` (an extractor cannot be interrupted, so a retry would run beside the copy still going) fail on the first attempt. A stale `running` row that has used its 5 attempts is failed as `abandoned` rather than claimed again. Idle workers sleep 2 s; a successful ingest wakes them through a channel.
 
-`reprocess` without flags queues every capture under each extractor's current version (the rollout after a version bump); `--failed` resets failed rows; `--all` deletes the targets' derivations and records and re-queues from `captures`; `--extractor` narrows any of them. Workers in `serve` pick the rows up.
+`reprocess` without flags queues every capture under each extractor's current version and deletes the older versions' derivations and the records only they produced (the rollout after a version bump); `--failed` resets failed rows; `--all` deletes the targets' derivations and records and re-queues from `captures`; `--extractor` narrows any of them. Workers in `serve` pick the rows up.
 
 ## Extractor interface
 
 ```go
 type Rule struct {
-    Extractor string   // package name, unique
-    Version   int
-    Hosts     []string // exact, "*.example.com", or "*" for every host
-    PathRegex string   // RE2 and JS compatible; keep it simple
-    QueryKeys []string // query params that distinguish page views (e.g. "v" on YouTube)
-    DwellMS   int      // default 5000; article uses 30000
-    Recapture string   // "never" | "after_quiet"
-    MaxBytes  int      // default 10 MiB
+    Extractor        string   // package name, unique
+    Version          int
+    Hosts            []string // exact, "*.example.com", or "*" for every host
+    PathRegex        string   // RE2 and JS compatible; keep it simple
+    ExcludePathRegex string   // pages PathRegex matches that are never captured; RE2 has no lookahead
+    QueryKeys        []string // query params that distinguish page views (e.g. "v" on YouTube)
+    DwellMS          int      // default 5000; article uses 30000
+    Recapture        string   // "never" | "after_quiet"
+    MaxBytes         int      // default 10 MiB
 }
 
 type Record struct {
@@ -248,7 +250,7 @@ Registry: `extractor.All()` returns every registered extractor; both the rules e
 
 ## HTTP API
 
-All routes on `127.0.0.1:8490`. JSON bodies, `Content-Type: application/json`. A request with an `Origin` header that does not start with `chrome-extension://` gets 403. CORS headers allow `chrome-extension://*` and the `Authorization` header.
+All routes on `127.0.0.1:8490`. JSON bodies, `Content-Type: application/json`. A request with an `Origin` header that does not start with `chrome-extension://` gets 403. While no issuer is configured, a request to any route but `/healthz` and `/metrics` whose `Host` is not loopback (`127.0.0.1`, `localhost`, `[::1]`) gets 403 too: a DNS-rebound page is same-origin and sends no `Origin` on a GET. CORS headers allow `chrome-extension://*` and the `Authorization` header.
 
 With an issuer configured, every route below except `/healthz` and `/metrics` needs `Authorization: Bearer <jwt>` and answers 401 without one. 401 is never treated as permanent by a client: the fix is a login, not dropping the data.
 
@@ -256,7 +258,7 @@ With an issuer configured, every route below except `/healthz` and `/metrics` ne
 
 `GET /metrics` → Prometheus text. Never authenticated.
 
-`GET /v1/capture-rules` → `{"rules":[Rule…]}` with JSON keys `extractor, version, hosts, path_regex, query_keys, dwell_ms, recapture, max_bytes`.
+`GET /v1/capture-rules` → `{"rules":[Rule…]}` with JSON keys `extractor, version, hosts, path_regex, exclude_path_regex, query_keys, dwell_ms, recapture, max_bytes`.
 
 `POST /v1/events/batch`
 

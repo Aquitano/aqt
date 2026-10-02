@@ -12,6 +12,19 @@ describe("isPrivateHost", () => {
     expect(isPrivateHost("wiki.internal", hosts)).toBe(true);
   });
 
+  test("reads entries pasted as URLs, with ports or as Unicode", () => {
+    const pasted = [
+      "https://mail.google.com/mail/u/0/",
+      "bank.example/",
+      "localhost:3000",
+      "bücher.de",
+    ];
+    expect(isPrivateHost("mail.google.com", pasted)).toBe(true);
+    expect(isPrivateHost("online.bank.example", pasted)).toBe(true);
+    expect(isPrivateHost("localhost", pasted)).toBe(true);
+    expect(isPrivateHost("xn--bcher-kva.de", pasted)).toBe(true);
+  });
+
   test("does not match lookalikes or blank entries", () => {
     expect(isPrivateHost("notbank.example", hosts)).toBe(false);
     expect(isPrivateHost("example.com", hosts)).toBe(false);

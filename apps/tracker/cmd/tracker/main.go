@@ -155,7 +155,11 @@ func cmdServe(ctx context.Context, args []string) error {
 		defer close(workersDone)
 		proc.Run(ctx)
 	}()
+	// ListenAndServe returns as soon as Shutdown starts, not when it has
+	// drained, so the store must outlive this rather than that.
+	drained := make(chan struct{})
 	go func() {
+		defer close(drained)
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -169,6 +173,7 @@ func cmdServe(ctx context.Context, args []string) error {
 		<-workersDone
 		return err
 	}
+	<-drained
 	<-workersDone
 	log.Info("stopped")
 	return nil

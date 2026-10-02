@@ -39,6 +39,9 @@ package struct SpanTracker: Sendable {
     private var focus: FocusTarget?
     private var windowTitle: String?
     private var isIdle = false
+    /// Titles reported while an ignored overlay is frontmost are its own, not
+    /// those of the app whose span it leaves open underneath.
+    private var ignoredInFront = false
 
     package private(set) var openSpan: OpenSpan?
 
@@ -74,7 +77,8 @@ package struct SpanTracker: Sendable {
     }
 
     private mutating func focusChanged(to target: FocusTarget, title: String?, at now: Date) -> [WireEvent] {
-        guard !configuration.isIgnored(target.bundleID) else { return [] }
+        ignoredInFront = configuration.isIgnored(target.bundleID)
+        guard !ignoredInFront else { return [] }
         guard target != focus else { return titleChanged(to: title, at: now) }
         focus = target
         windowTitle = title
@@ -82,7 +86,8 @@ package struct SpanTracker: Sendable {
     }
 
     private mutating func titleChanged(to title: String?, at now: Date) -> [WireEvent] {
-        guard let focus, !configuration.isPrivate(focus.bundleID), title != windowTitle else { return [] }
+        guard !ignoredInFront, let focus, title != windowTitle else { return [] }
+        guard !configuration.isPrivate(focus.bundleID) else { return [] }
         windowTitle = title
         guard openSpan != nil else { return [] }
         return close(.windowChange, at: now) + open(at: now)

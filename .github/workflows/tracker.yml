@@ -13,6 +13,22 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      db:
+        # The image apps/tracker/deploy/docker-compose.yml pins.
+        image: paradedb/paradedb:0.25.10-pg18@sha256:188591a0bc317beb2c6d6d3f9ef0cb3e859d09ecc15a71dda5e9a027876686cf
+        env:
+          POSTGRES_USER: tracker
+          POSTGRES_PASSWORD: tracker
+          POSTGRES_DB: tracker
+        ports: ["5435:5432"]
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U tracker -d tracker"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TRACKER_TEST_DATABASE_URL: postgres://tracker:tracker@localhost:5435/tracker?sslmode=disable
     defaults:
       run:
         working-directory: apps/tracker

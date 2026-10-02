@@ -5,13 +5,15 @@ Browsing memory: a Chromium extension records page views and active time and sna
 ## Quickstart
 
 ```sh
-docker compose -f deploy/docker-compose.yml up -d   # ParadeDB, Prometheus, Grafana
+docker compose -f deploy/docker-compose.yml up -d   # ParadeDB, daily backups, Prometheus, Grafana
 go run ./cmd/tracker serve                          # migrates on startup
 ```
 
-Load the extension unpacked in `chrome://extensions` (developer mode) from `extension/.output/chrome-mv3`, built with `bun run --filter @aqt/tracker-extension dev`.
+Load the extension unpacked in `chrome://extensions` (developer mode) from `extension/.output/chrome-mv3`, built with `bun run --filter @aqt/tracker-extension build`. Keep it unpacked: Chromium honours the 5 s capture timers only for unpacked extensions. `dev` is for working on the extension; it writes to `chrome-mv3-dev` and opens a browser profile of its own.
 
-Grafana is at <http://127.0.0.1:3090> — anonymous admin, dashboard `tracker`, both datasources provisioned.
+Before browsing with it, list your private hosts on the extension's options page: webmail, banking, health portals, anything whose pages you would not want kept forever. The list is empty by default, and the `article` fallback snapshots any page you stay on for 30 seconds.
+
+Grafana is at <http://127.0.0.1:3090> — anonymous admin, dashboard `tracker`, both datasources provisioned. The per-day panels bucket by the database's time zone, UTC unless set: `docker compose -f deploy/docker-compose.yml exec db psql -U tracker -d tracker -c "alter database tracker set timezone to 'Europe/London'"` with your zone, then `docker compose -f deploy/docker-compose.yml restart grafana` so its pooled connections pick it up.
 
 ## Always on
 
@@ -26,7 +28,29 @@ mise run tracker:service:stop # stop it and remove the agent
 
 [deploy/com.aqt.tracker.plist](deploy/com.aqt.tracker.plist) is copied to `~/Library/LaunchAgents` and runs `~/.local/bin/tracker`; the tasks use `launchctl bootstrap`/`bootout`, which replace the deprecated `load`/`unload`. Put `TRACKER_*` overrides in its `EnvironmentVariables` and re-run `tracker:service`.
 
-Nothing here starts Postgres. Turn on Docker Desktop's _Start Docker Desktop when you sign in_, and the compose stack comes back with it (`restart: unless-stopped` on all three). Until it does, `serve` exits and launchd retries every 30 s; no data is lost meanwhile, the extension queues its events and pauses capture while the server is unreachable.
+Nothing here starts Postgres. Turn on Docker Desktop's _Start Docker Desktop when you sign in_, and the compose stack comes back with it (`restart: unless-stopped` on every service). Until it does, `serve` exits and launchd retries every 30 s; no data is lost meanwhile, the extension queues its events and pauses capture while the server is unreachable.
+
+## Backups
+
+The compose `backup` service writes a `pg_dump` once a day to `~/Library/Application Support/tracker/backups` (`TRACKER_BACKUP_DIR` overrides it) and keeps the newest three. That directory is only on this disk: Time Machine, or anything else that copies it off the machine, is what makes it a backup. `docker compose -f deploy/docker-compose.yml logs backup` shows each run.
+
+To restore, stop the server, replace the database with a dump, start it again:
+
+```sh
+mise run tracker:service:stop
+docker compose -f deploy/docker-compose.yml exec -T db \
+  pg_restore -U tracker -d tracker --clean --if-exists < "$HOME/Library/Application Support/tracker/backups/tracker-<stamp>.dump"
+mise run tracker:service
+```
+
+## Upgrading ParadeDB
+
+The image is pinned by version and digest in [deploy/docker-compose.yml](deploy/docker-compose.yml). Stay on the `-pg18` line: the data directory is named after the Postgres major, so another major starts on an empty one and needs a dump and restore. After changing the pin:
+
+```sh
+docker compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/docker-compose.yml exec db psql -U tracker -d tracker -c 'alter extension pg_search update'
+```
 
 ## Desktop agent
 
@@ -39,7 +63,7 @@ mise run tracker:desktop:build        # rebuild only
 mise run tracker:desktop:service:stop # stop it and remove the agent
 ```
 
-[deploy/com.aqt.tracker-agent.plist](deploy/com.aqt.tracker-agent.plist) is copied to `~/Library/LaunchAgents` and runs `~/Applications/TrackerAgent.app`. Put `TRACKER_*` overrides in its `EnvironmentVariables` and re-run `tracker:desktop:service`.
+[deploy/com.aqt.tracker-agent.plist](deploy/com.aqt.tracker-agent.plist) is copied to `~/Library/LaunchAgents` and runs `~/Applications/TrackerAgent.app`. Put `TRACKER_*` overrides in its `EnvironmentVariables` and re-run `tracker:desktop:service`. launchd restarts the agent after a crash but not after Quit, so Quit pauses tracking until the next login.
 
 Window titles need Accessibility. Grant it in System Settings > Privacy & Security > Accessibility for `~/Applications/TrackerAgent.app`, the copy launchd runs, not the one in `DerivedData`; the menu has an item that opens that pane. Without the grant the agent records app-level spans with no title and re-checks every 30 seconds, so granting takes effect without a restart. The app is ad-hoc signed, so its identity changes on every rebuild and macOS may drop the grant: if titles stop appearing after `tracker:desktop:service`, remove the entry from the Accessibility list and add it again.
 
@@ -88,7 +112,7 @@ on another machine; `serve`, `migrate` and `reprocess` need the database.
 | Prometheus      | `127.0.0.1:9091`                    |
 | Grafana         | `127.0.0.1:3090`                    |
 
-Everything is loopback-only and unauthenticated by default; requests carrying an `Origin` that is not `chrome-extension://…` are rejected.
+Everything is loopback-only and unauthenticated by default; requests carrying an `Origin` that is not `chrome-extension://…` are rejected, and while authentication is off, so is every request but `/healthz` and `/metrics` whose `Host` is not `127.0.0.1`, `localhost` or `[::1]`. That second check stops a DNS-rebinding page, which is same-origin with the server and sends no `Origin` on a GET.
 
 ## Authentication
 
@@ -127,10 +151,10 @@ without one Chrome reassigns the extension id, and the URI changes with it.
 
 ## What is recorded
 
-Every top-level navigation and SPA URL change as a page view, active time as spans (tab focused, window focused, not idle), and the full HTML of pages you read. Site extractors (github, x, youtube) snapshot after 5 s of active time; every page on a host without its own extractor is snapshotted by the `article` fallback after 30 s, which strips navigation, ads and footers with readability and keeps the prose and its metadata. A host a site extractor names is that extractor's alone, so a YouTube home page or a GitHub issue list is never snapshotted as an article. Pages with under 200 characters of prose are recorded as `no_match`. The popup's capture-now button works on any page. Rules marked `after_quiet` (github, x) are snapshotted again once the page has stopped changing for 30 seconds and at least 5 minutes have passed since the last snapshot, so a thread or a pull request that grew while the tab stayed open is stored in its final state; an unchanged page is never snapshotted twice. Raw HTML is kept forever, zstd-compressed and content-addressed, so a fixed extractor can be replayed over it. X records also keep the post URL and each photo's image URL and alt text. Photo-only posts are indexed by author and descriptive alt text. Image URLs reference X's hosted files; the tracker does not download the image files.
+Every top-level navigation and SPA URL change as a page view, active time as spans (tab focused, window focused, not idle), and the full HTML of pages you read. Site extractors (github, x, youtube) snapshot after 5 s of active time; every page on a host without its own extractor is snapshotted by the `article` fallback after 30 s, which strips navigation, ads and footers with readability and keeps the prose and its metadata. A host a site extractor names is that extractor's alone, so a YouTube home page or a GitHub issue list is never snapshotted as an article. GitHub's own pages (settings, sign-in, notifications and the like) are never snapshotted at all: a new access token is shown on one of them. Pages with under 200 characters of prose are recorded as `no_match`. The popup's capture-now button works on any page. Rules marked `after_quiet` (github, x) are snapshotted again once the page has stopped changing for 30 seconds and at least 5 minutes have passed since the last snapshot, so a thread or a pull request that grew while the tab stayed open is stored in its final state; an unchanged page is never snapshotted twice. Raw HTML is kept forever, zstd-compressed and content-addressed, so a fixed extractor can be replayed over it. X records also keep the post URL and each photo's original-size image URL and alt text. Photo-only posts are indexed by author and descriptive alt text. Image URLs reference X's hosted files; the tracker does not download the image files.
 
 With the desktop agent installed, the frontmost app, its bundle id and its window title are recorded as spans in the same table while the machine is not idle. Spans map to categories (`Focus/Code`, `Communication`, `Distraction`, `Learning`, `AI`, `Browsing`, `Personal`, `Design`, `System`, `Productivity`) through regex rules in the `category_rules` table, which you edit in SQL; the Grafana dashboard shows minutes per category and per app, context switches per hour and the day's work blocks (spans stitched together while the gap stays under 60 s), all computed from SQL views over the spans.
 
-Never recorded: anything from an incognito tab, and the title or HTML of a host on the private list — those page views keep the host and nothing else. Window titles are capped at 512 characters and nothing beyond the title is read from a desktop app. Capture pauses entirely while the server is unreachable.
+Never recorded: anything from an incognito tab, and the title or HTML of a host on the private list — those page views keep the host and nothing else. Window titles are capped at 512 characters and nothing beyond the title is read from a desktop app. The desktop agent cannot tell a private browser window from any other, so a browser outside the extension's reach (Safari, Firefox) has its window titles recorded, private windows included, unless its bundle id is on `TRACKER_PRIVATE_BUNDLE_IDS`. Capture pauses entirely while the server is unreachable.
 
 Config via env, see [.env.example](.env.example).

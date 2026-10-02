@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	maxEventBody     = 4 << 20
+	maxEventBody     = 64 << 20
 	maxEventsPerPost = 1000
 	maxAppChars      = 256
 	maxTitleChars    = 512

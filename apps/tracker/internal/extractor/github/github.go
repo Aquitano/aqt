@@ -46,10 +46,13 @@ func init() { extractor.Register(Extractor{}) }
 func (Extractor) Rule() extractor.Rule {
 	return extractor.Rule{
 		Extractor: Name,
-		Version:   2,
+		Version:   3,
 		Hosts:     []string{"github.com"},
-		PathRegex: `^/[^/]+/[^/]+(/?$|/(issues|pull)/\d+)`,
-		Recapture: extractor.RecaptureAfterQuiet,
+		PathRegex: `^/[^/]+/[^/]+(/(issues|pull)/\d+)?/?$`,
+		// GitHub's own two-segment pages look like owner/repo. Some are
+		// secret: /settings/tokens shows a new token in the page.
+		ExcludePathRegex: `^/(settings|login|logout|sessions|session|signup|join|password_reset|account|auth|notifications|issues|pulls|orgs|organizations|new|marketplace|sponsors|apps|codespaces|copilot|github-copilot|dashboard|explore|topics|trending|collections|search|stars|users|enterprises|features|security)(/|$)`,
+		Recapture:        extractor.RecaptureAfterQuiet,
 	}
 }
 
@@ -104,7 +107,7 @@ func issuePathSegment(kind string) string {
 	return "issues"
 }
 
-var pathRe = regexp.MustCompile(`^/([^/]+)/([^/]+)(?:/(issues|pull)/(\d+)(?:/.*)?)?/?$`)
+var pathRe = regexp.MustCompile(`^/([^/]+)/([^/]+)(?:/(issues|pull)/(\d+))?/?$`)
 
 type target struct {
 	kind   string
