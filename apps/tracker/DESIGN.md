@@ -45,6 +45,7 @@ apps/tracker/
     metrics/              Prometheus collectors
   extension/              WXT extension (@aqt/tracker-extension)
   desktop/                Swift menu-bar agent (TrackerAgent.app): frontmost app and window spans
+  skill/                  Claude Code skill over the CLI: recall, visits, time, forget
   deploy/
     docker-compose.yml    ParadeDB, backup, Prometheus, Grafana
     backup.sh             daily pg_dump loop the backup service runs

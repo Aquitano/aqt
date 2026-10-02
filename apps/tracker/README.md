@@ -131,6 +131,8 @@ refused, since it would take every site under it. The backups still hold what
 was forgotten until they rotate out, three daily dumps later, and so does any
 copy of them, Time Machine's included, for as long as that copy is kept.
 
+Agents get these commands through a Claude Code skill: [skill/README.md](skill/README.md).
+
 `blob` writes the HTML of a stored capture to stdout, for turning a real page
 into an extractor fixture: 64 hex characters name a blob, anything else is a
 URL, normalised like ingest does, whose most recent capture it writes.
