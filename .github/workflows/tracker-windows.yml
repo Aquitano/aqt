@@ -1,0 +1,44 @@
+name: tracker-windows
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/tracker/cmd/tracker-agent/**"
+      - "apps/tracker/internal/agent/**"
+      - "apps/tracker/internal/client/**"
+      - "apps/tracker/go.mod"
+      - "apps/tracker/go.sum"
+      - ".golangci.yml"
+      - ".github/workflows/tracker-windows.yml"
+  pull_request:
+    paths:
+      - "apps/tracker/cmd/tracker-agent/**"
+      - "apps/tracker/internal/agent/**"
+      - "apps/tracker/internal/client/**"
+      - "apps/tracker/go.mod"
+      - "apps/tracker/go.sum"
+      - ".golangci.yml"
+      - ".github/workflows/tracker-windows.yml"
+permissions:
+  contents: read
+concurrency:
+  group: tracker-windows-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  agent:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/tracker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/tracker/go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.2
+          working-directory: apps/tracker
+          args: ./cmd/tracker-agent/... ./internal/agent/...
+      - run: go test ./internal/agent/...
+      - run: go build -trimpath -ldflags "-H=windowsgui -s -w" -o tracker-agent.exe ./cmd/tracker-agent
