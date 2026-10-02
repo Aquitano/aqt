@@ -1,0 +1,46 @@
+name: tracker-desktop
+on:
+  push:
+    branches: [main]
+    paths:
+      [
+        "apps/tracker/desktop/**",
+        ".swiftformat",
+        ".swiftlint.yml",
+        ".swiftlint-baseline.json",
+        ".github/workflows/tracker-desktop.yml",
+      ]
+  pull_request:
+    paths:
+      [
+        "apps/tracker/desktop/**",
+        ".swiftformat",
+        ".swiftlint.yml",
+        ".swiftlint-baseline.json",
+        ".github/workflows/tracker-desktop.yml",
+      ]
+permissions:
+  contents: read
+concurrency:
+  group: tracker-desktop-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: swiftformat swiftlint xcodegen
+      - run: swiftformat --lint apps/tracker/desktop
+      - run: swiftlint lint --strict --quiet apps/tracker/desktop
+      - run: xcodegen generate
+        working-directory: apps/tracker/desktop
+      - run: swift test --package-path Packages/TrackerCore
+        working-directory: apps/tracker/desktop
+      - run: >-
+          xcodebuild -project TrackerAgent.xcodeproj -scheme TrackerAgent -configuration Debug
+          -destination platform=macOS -derivedDataPath DerivedData -quiet build CODE_SIGNING_ALLOWED=NO
+        working-directory: apps/tracker/desktop
