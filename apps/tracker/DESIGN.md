@@ -105,7 +105,7 @@ activity_spans (
   window_title  text,
   started_at    timestamptz not null,
   ended_at      timestamptz not null,           -- advanced by heartbeats
-  end_reason    text,                           -- null while open; tab_switch | window_blur | app_switch | window_change | idle | navigation | tab_closed | unknown
+  end_reason    text,                           -- null while open; tab_switch | window_blur | app_switch | window_change | idle | paused | navigation | tab_closed | unknown
   created_at    timestamptz not null default now(),
   check ((page_view_id is null) <> (app_name is null))
 );
@@ -296,7 +296,7 @@ Any other 4xx means the request can never succeed as sent, and the extension dro
 }
 ```
 
-A `span_start` carries either `page_view_id` (browser, from the extension) or `app_name` (desktop, from the macOS agent under its own `device_id`), never both; `bundle_id` and `window_title` are optional and only kept with `app_name`. `window_title` is truncated at 512 characters, `app_name` and `bundle_id` at 256. `span_end` reasons: `tab_switch | window_blur | app_switch | window_change | idle | navigation | tab_closed | unknown`; an unknown reason is stored as `unknown`.
+A `span_start` carries either `page_view_id` (browser, from the extension) or `app_name` (desktop, from the macOS agent under its own `device_id`), never both; `bundle_id` and `window_title` are optional and only kept with `app_name`. `window_title` is truncated at 512 characters, `app_name` and `bundle_id` at 256. `span_end` reasons: `tab_switch | window_blur | app_switch | window_change | idle | paused | navigation | tab_closed | unknown`; an unknown reason is stored as `unknown`. `paused` is the extension's pause button ending the open span; like `idle`, it is no context switch, so neither `context_switches_hourly` nor `work_blocks` counts it as one.
 
 Every event is idempotent (upsert by id; heartbeats and ends only move `ended_at` forward, except an `idle` end, which is dated to the last input and may pull `ended_at` back to it, never before `started_at`). A `span_*` whose page view is unknown, a `span_start` with both or neither identity, or any single malformed event, is dropped and counted, not an error; only malformed JSON, a missing `device_id` or more than 1000 events fail the batch with 400. A NUL in a title or any other text field is left out when it is stored (Postgres rejects it in text; bun drops it from every string it formats into a query), never an error. Response `200 {"accepted":n,"dropped":n}`. For a private page view the extension sends `url` as `https://host/` and no title.
 
