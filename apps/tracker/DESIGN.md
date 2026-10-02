@@ -27,7 +27,7 @@ What I read and where my attention went, from a browser extension and a macOS me
 
 ```
 apps/tracker/
-  cmd/tracker/            serve | migrate | reprocess | blob | login | logout | stats | search | show | time | forget
+  cmd/tracker/            serve | migrate | reprocess | blob | login | logout | stats | search | show | visits | time | forget
   internal/
     store/                bun models, embedded migrations, queries
     ingest/               HTTP: events, captures, capture-rules, search, visits, records, time, forget, stats, healthz, metrics
@@ -308,7 +308,7 @@ Every event is idempotent (upsert by id; heartbeats and ends only move `ended_at
 
 A visit is a page view, and `visits` always has one shape: `{"count":3,"first_at":"…","last_at":"…","active_seconds":840}`, the first and last page view start (null when `count` is 0) and the summed duration of their activity spans. A record's visits are the page views that captured any of its blobs (`records ← derivations.record_id`, `derivations.raw_hash → captures.page_view_id`) together with the page views at its canonical URL, each counted once. One query in the store counts them for all three routes.
 
-`GET /v1/visits?url=…&before=<rfc3339>` → `{"url":"<normalised>","visits":{…}}`: the page views whose URL normalises to the same `url_hash`, only those started strictly before `before` when it is given (the extension passes the current page view's start, so the answer means "before this visit"). 400 for a missing or non-http(s) `url` or a malformed `before`.
+`GET /v1/visits?url=…&before=<rfc3339>` → `{"url":"<normalised>","visits":{…}}`: the page views whose URL normalises to the same `url_hash`, only those started strictly before `before` when it is given (the extension passes the current page view's start, so the answer means "before this visit"; `tracker visits` passes none). 400 for a missing or non-http(s) `url` or a malformed `before`.
 
 `GET /v1/records/{id}` → `{id, extractor, title, canonical_url, search_text, data, first_seen_at, last_seen_at, visits}` (used by `tracker show`); 404 when no record has the id.
 
@@ -340,11 +340,12 @@ tracker logout
 tracker stats [--json]
 tracker search [--extractor name] [--limit n] [--json] <query>
 tracker show [--json] <record-id>
+tracker visits [--json] <url>
 tracker time [--since 24h] [--until when] [--by host|app|category] [--json]
 tracker forget <url> | --host <host>
 ```
 
-`serve` runs migrations on startup, like bank. `blob` writes a stored capture's decompressed HTML to stdout: 64 hex characters name a blob; anything else is a URL, normalised as ingest does, and the most recent capture whose page view is at that URL is written. `stats`, `search`, `show`, `time` and `forget` go over HTTP so they work against a server whose database is not reachable. `search` prints each hit's visits, `show` one record with its full search text. `time`'s `--since` and `--until` take a duration back from now (`90m`, `24h`, `7d`) or a local date, which means its midnight. `login` is the RFC 8628 device code flow, and the token it stores refreshes itself.
+`serve` runs migrations on startup, like bank. `blob` writes a stored capture's decompressed HTML to stdout: 64 hex characters name a blob; anything else is a URL, normalised as ingest does, and the most recent capture whose page view is at that URL is written. `stats`, `search`, `show`, `visits`, `time` and `forget` go over HTTP so they work against a server whose database is not reachable. `search` prints each hit's visits, `show` one record with its full search text, `visits` the page views of any URL. `time`'s `--since` and `--until` take a duration back from now (`90m`, `24h`, `7d`) or a local date, which means its midnight. `login` is the RFC 8628 device code flow, and the token it stores refreshes itself.
 
 ## Metrics
 

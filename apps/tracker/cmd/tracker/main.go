@@ -49,17 +49,17 @@ Usage:
                                                           BM25 search over extracted records, with each
                                                           hit's visits
   tracker show [--json] <record-id>                       one record in full: title, URL, visits, search text
+  tracker visits [--json] <url>                           how often and how long a page was open, captured or not
   tracker time [--since 24h] [--until when] [--by host|app|category] [--json]
                                                           active time per site, desktop app or category;
                                                           since and until take a duration back from now
                                                           (90m, 24h, 7d) or a local date (2026-10-01)
-
   tracker forget <url> | --host <host>                    delete everything recorded for a page, or a host and
                                                           its subdomains; backups keep it until they rotate out
 
-stats, search, show, time and forget go over HTTP, so they work against a
-tracker on another machine; serve, migrate, reprocess and blob need the
-database itself.
+stats, search, show, visits, time and forget go over HTTP, so they work
+against a tracker on another machine; serve, migrate, reprocess and blob need
+the database itself.
 
 Environment:
   TRACKER_DATABASE_URL   default postgres://tracker:tracker@127.0.0.1:5435/tracker?sslmode=disable
@@ -99,6 +99,8 @@ func main() {
 		err = cmdSearch(ctx, os.Args[2:])
 	case "show":
 		err = cmdShow(ctx, os.Args[2:])
+	case "visits":
+		err = cmdVisits(ctx, os.Args[2:])
 	case "time":
 		err = cmdTime(ctx, os.Args[2:])
 	case "forget":
@@ -430,6 +432,30 @@ func cmdShow(ctx context.Context, args []string) error {
 		return printJSON(rec)
 	}
 	fmt.Printf("%s\n%s\n[%s]  %s\n\n%s\n", rec.Title, rec.CanonicalURL, rec.Extractor, describeVisits(rec.Visits), rec.SearchText)
+	return nil
+}
+
+func cmdVisits(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("visits", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: tracker visits [--json] <url>")
+	}
+	c, err := newClient(ctx)
+	if err != nil {
+		return err
+	}
+	page, err := c.Visits(ctx, fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(page)
+	}
+	fmt.Printf("%s\n%s\n", page.URL, describeVisits(page.Visits))
 	return nil
 }
 

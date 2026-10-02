@@ -228,6 +228,17 @@ func (c *Client) Search(ctx context.Context, o store.SearchOpts) ([]store.Hit, e
 	return reply.Hits, err
 }
 
+type PageVisits struct {
+	URL    string       `json:"url"`
+	Visits store.Visits `json:"visits"`
+}
+
+func (c *Client) Visits(ctx context.Context, pageURL string) (PageVisits, error) {
+	var page PageVisits
+	err := c.get(ctx, "/v1/visits?"+url.Values{"url": {pageURL}}.Encode(), &page)
+	return page, err
+}
+
 func (c *Client) Record(ctx context.Context, id int64) (store.RecordDetail, error) {
 	var rec store.RecordDetail
 	err := c.get(ctx, "/v1/records/"+strconv.FormatInt(id, 10), &rec)
