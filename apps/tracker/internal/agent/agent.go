@@ -12,7 +12,7 @@ import (
 
 const (
 	heartbeatInterval = 30 * time.Second
-	inputPollInterval = 5 * time.Second
+	idlePollInterval  = 5 * time.Second
 	idleThreshold     = 60 * time.Second
 	titleDebounce     = time.Second
 	pauseLength       = time.Hour
@@ -79,8 +79,8 @@ func (a *Agent) Status() Status {
 func (a *Agent) Run(ctx context.Context, signals <-chan Signal, commands <-chan Command) {
 	heartbeat := time.NewTicker(heartbeatInterval)
 	defer heartbeat.Stop()
-	inputPoll := time.NewTicker(inputPollInterval)
-	defer inputPoll.Stop()
+	inputCheck := time.NewTimer(0)
+	defer inputCheck.Stop()
 	// A retitled tab or a title bar that counts down renames the window per
 	// keystroke or per second; one span each is not attention data.
 	retitled := time.NewTimer(titleDebounce)
@@ -101,16 +101,25 @@ func (a *Agent) Run(ctx context.Context, signals <-chan Signal, commands <-chan 
 				continue
 			}
 			a.handle(s, time.Now())
+			if s != FocusChanged {
+				a.recheck(inputCheck, idlePollInterval)
+			}
 		case now := <-retitled.C:
 			a.refocus(now)
 		case now := <-heartbeat.C:
 			a.emit(a.tracker.Heartbeat(now))
-		case now := <-inputPoll.C:
+		case now := <-inputCheck.C:
 			// By the wall clock: a monotonic clock may stop while the machine
 			// sleeps, and the last input's age keeps counting.
 			a.lastInput = a.desktop.LastInput().Round(0)
-			a.inputIdle = now.Sub(a.lastInput) >= idleThreshold
+			age := now.Sub(a.lastInput)
+			a.inputIdle = age >= idleThreshold
 			a.settle(now)
+			next := idlePollInterval
+			if !a.inputIdle {
+				next = idleThreshold - age
+			}
+			a.recheck(inputCheck, next)
 		case c := <-commands:
 			now := time.Now()
 			switch c {
@@ -147,6 +156,18 @@ func (a *Agent) handle(s Signal, now time.Time) {
 		a.asleep, a.inputIdle = false, false
 	}
 	a.settle(now)
+}
+
+// recheck schedules the next read of the last input. Recent input cannot
+// cross the threshold before it has been quiet that long; once idle, only a
+// poll notices input resuming. Locked or asleep is idle whatever the counter
+// says, so it is not read until the machine is back.
+func (a *Agent) recheck(timer *time.Timer, after time.Duration) {
+	if a.locked || a.asleep {
+		timer.Stop()
+		return
+	}
+	timer.Reset(after)
 }
 
 func (a *Agent) settle(now time.Time) {

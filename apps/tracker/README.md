@@ -128,7 +128,7 @@ Everything else lives under `%LOCALAPPDATA%\tracker`:
 | `device-id`                | the agent's `device_id`, a UUIDv7 made on the first run |
 | `agent.log`                | the log, rotated at 1 MB with one old file kept         |
 
-The outbox flushes every 10 s or at 100 pending, with backoff to 5 minutes while the server cannot take a batch. An enqueue appends a line; the file is rewritten only after a batch is acknowledged. It keeps up to 10,000 events and drops the oldest on overflow. A crash in the middle of an append costs that event, not the queue. An outbox that cannot be read is renamed to `<device-id>.jsonl.unreadable-<n>`, never overwritten, and a new one is started.
+The outbox flushes every 10 s or at 100 pending, with backoff to 5 minutes while the server cannot take a batch. Idle input is checked when the last input could first be 60 s old, every 5 s once idle, and not at all while the session is locked or the machine asleep. An enqueue appends a line; the file is rewritten only after a batch is acknowledged. It keeps up to 10,000 events and drops the oldest on overflow. A crash in the middle of an append costs that event, not the queue. An outbox that cannot be read is renamed to `<device-id>.jsonl.unreadable-<n>`, never overwritten, and a new one is started.
 
 ## CLI
 
