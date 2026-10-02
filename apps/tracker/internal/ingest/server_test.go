@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -39,6 +40,7 @@ type fakeStore struct {
 	captures []store.CaptureInput
 	dedup    bool
 	time     store.TimeOpts
+	forgot   []store.ForgetTarget
 }
 
 func (f *fakeStore) Ping(context.Context) error { return nil }
@@ -74,6 +76,11 @@ func (f *fakeStore) Record(_ context.Context, id int64) (store.RecordDetail, err
 func (f *fakeStore) Time(_ context.Context, o store.TimeOpts) ([]store.TimeRow, error) {
 	f.time = o
 	return []store.TimeRow{}, nil
+}
+
+func (f *fakeStore) Forget(_ context.Context, t store.ForgetTarget) (store.Forgotten, error) {
+	f.forgot = append(f.forgot, t)
+	return store.Forgotten{}, nil
 }
 
 func (f *fakeStore) Stats(context.Context) (store.Stats, error) {
@@ -316,6 +323,28 @@ func TestTimeDefaultsToTheLastDayByHost(t *testing.T) {
 		if rec := do(t, s.Handler(), httptest.NewRequest(http.MethodGet, server+target, nil)); rec.Code != http.StatusBadRequest {
 			t.Errorf("%s: status %d, want 400", target, rec.Code)
 		}
+	}
+}
+
+func TestForgetNeedsOneTargetThatIsNotAPublicSuffix(t *testing.T) {
+	s, fs := newServer(t)
+	post := func(body string) int {
+		return do(t, s.Handler(), httptest.NewRequest(http.MethodPost, server+"/v1/forget", strings.NewReader(body))).Code
+	}
+	for _, body := range []string{`{}`, `{"url":"https://example.com/","host":"example.com"}`,
+		`{"url":"chrome://newtab/"}`, `{"host":"com"}`, `{"host":"co.uk"}`} {
+		if code := post(body); code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", body, code)
+		}
+	}
+	for _, body := range []string{`{"host":" *.Blog.Example.com "}`, `{"host":"localhost"}`, `{"url":"https://Example.com/a?utm_source=x"}`} {
+		if code := post(body); code != http.StatusOK {
+			t.Errorf("%s: status %d, want 200", body, code)
+		}
+	}
+	want := []store.ForgetTarget{{Host: "blog.example.com"}, {Host: "localhost"}, {URL: "https://example.com/a"}}
+	if !slices.Equal(fs.forgot, want) {
+		t.Errorf("forgot %+v, want %+v", fs.forgot, want)
 	}
 }
 

@@ -4,6 +4,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -242,6 +243,12 @@ func (c *Client) Time(ctx context.Context, o store.TimeOpts) ([]store.TimeRow, e
 	return reply.Rows, err
 }
 
+func (c *Client) Forget(ctx context.Context, t store.ForgetTarget) (store.Forgotten, error) {
+	var forgotten store.Forgotten
+	err := c.post(ctx, "/v1/forget", t, &forgotten)
+	return forgotten, err
+}
+
 func (c *Client) Stats(ctx context.Context) (store.Stats, error) {
 	var stats store.Stats
 	err := c.get(ctx, "/v1/stats", &stats)
@@ -253,16 +260,33 @@ func (c *Client) get(ctx context.Context, path string, into any) error {
 	if err != nil {
 		return err
 	}
+	return c.do(req, into)
+}
+
+func (c *Client) post(ctx context.Context, path string, body, into any) error {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return c.do(req, into)
+}
+
+func (c *Client) do(req *http.Request, into any) error {
 	res, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("%s: %w", c.base, err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return httpError(c.base+path, res)
+		return httpError(req.URL.String(), res)
 	}
 	if err := json.NewDecoder(res.Body).Decode(into); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
+		return fmt.Errorf("%s: %w", req.URL.RequestURI(), err)
 	}
 	return nil
 }

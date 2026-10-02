@@ -54,8 +54,11 @@ Usage:
                                                           since and until take a duration back from now
                                                           (90m, 24h, 7d) or a local date (2026-10-01)
 
-stats, search, show and time read the server over HTTP, so they work against
-a tracker on another machine; serve, migrate, reprocess and blob need the
+  tracker forget <url> | --host <host>                    delete everything recorded for a page, or a host and
+                                                          its subdomains; backups keep it until they rotate out
+
+stats, search, show, time and forget go over HTTP, so they work against a
+tracker on another machine; serve, migrate, reprocess and blob need the
 database itself.
 
 Environment:
@@ -98,6 +101,8 @@ func main() {
 		err = cmdShow(ctx, os.Args[2:])
 	case "time":
 		err = cmdTime(ctx, os.Args[2:])
+	case "forget":
+		err = cmdForget(ctx, os.Args[2:])
 	case "help", "--help", "-h":
 		fmt.Print(usage)
 	default:
@@ -468,6 +473,32 @@ func cmdTime(ctx context.Context, args []string) error {
 		fmt.Fprintf(w, "%s\t%s\n", r.Key, activeTime(r.ActiveSeconds))
 	}
 	return w.Flush()
+}
+
+func cmdForget(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("forget", flag.ExitOnError)
+	host := fs.String("host", "", "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	target := store.ForgetTarget{Host: *host}
+	switch {
+	case *host == "" && fs.NArg() == 1:
+		target.URL = fs.Arg(0)
+	case *host == "" || fs.NArg() != 0:
+		return errors.New("usage: tracker forget <url> | tracker forget --host <host>")
+	}
+	c, err := newClient(ctx)
+	if err != nil {
+		return err
+	}
+	f, err := c.Forget(ctx, target)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("forgot %d page views, %d spans, %d captures, %d blobs, %d records\n",
+		f.PageViews, f.Spans, f.Captures, f.Blobs, f.Records)
+	return nil
 }
 
 // pointInTime reads a duration back from now (90m, 24h, 7d) or a date, which

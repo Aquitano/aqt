@@ -33,6 +33,7 @@ type Store interface {
 	URLVisits(ctx context.Context, urlHash []byte, before time.Time) (store.Visits, error)
 	Record(ctx context.Context, id int64) (store.RecordDetail, error)
 	Time(ctx context.Context, o store.TimeOpts) ([]store.TimeRow, error)
+	Forget(ctx context.Context, t store.ForgetTarget) (store.Forgotten, error)
 	Stats(ctx context.Context) (store.Stats, error)
 }
 
@@ -63,6 +64,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/visits", s.protect(s.handleVisits))
 	mux.Handle("GET /v1/records/{id}", s.protect(s.handleRecord))
 	mux.Handle("GET /v1/time", s.protect(s.handleTime))
+	mux.Handle("POST /v1/forget", s.protect(s.handleForget))
 	mux.Handle("GET /v1/stats", s.protect(s.handleStats))
 	return s.observe(mux)
 }
