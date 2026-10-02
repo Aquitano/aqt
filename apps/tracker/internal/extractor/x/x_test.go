@@ -43,6 +43,14 @@ func TestPlainStatus(t *testing.T) {
 		PostedAt:     "2026-09-05T14:23:11Z",
 		MediaCount:   1,
 		Lang:         "en",
+		Ancestors:    []Post{},
+		Replies: []Post{{
+			StatusID:     "1965209999999999999",
+			AuthorHandle: "someone",
+			AuthorName:   "Someone Else",
+			Text:         "Congrats!",
+			PostedAt:     "2026-09-05T15:01:00Z",
+		}},
 	}
 	if got := rec.Data.(Data); !reflect.DeepEqual(got, want) {
 		t.Errorf("data\ngot  %+v\nwant %+v", got, want)
@@ -53,7 +61,7 @@ func TestPlainStatus(t *testing.T) {
 	if rec.Title != "@dexhorthy: Shipped the extractor 🚀 today. Fixtures next." {
 		t.Errorf("title = %q", rec.Title)
 	}
-	if rec.SearchText != "dexhorthy\nDex 🛠 Horthy\nShipped the extractor 🚀 today.\nFixtures next." {
+	if rec.SearchText != "dexhorthy\nDex 🛠 Horthy\nShipped the extractor 🚀 today.\nFixtures next.\nsomeone\nSomeone Else\nCongrats!" {
 		t.Errorf("search text = %q", rec.SearchText)
 	}
 }
@@ -75,6 +83,14 @@ func TestReplyWithQuote(t *testing.T) {
 		QuotedStatusID:  "1965000000000000009",
 		MediaCount:      1,
 		Lang:            "de",
+		Ancestors: []Post{{
+			StatusID:     "1965100000000000001",
+			AuthorHandle: "simonw",
+			AuthorName:   "Simon Willison",
+			Text:         "Scraping rendered DOM is mostly a parser problem.",
+			PostedAt:     "2026-09-04T08:12:00Z",
+		}},
+		Replies: []Post{},
 	}
 	if got := rec.Data.(Data); !reflect.DeepEqual(got, want) {
 		t.Errorf("data\ngot  %+v\nwant %+v", got, want)

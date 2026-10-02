@@ -56,7 +56,7 @@ func TestExtractIssue(t *testing.T) {
 		Labels:    []string{"Documentation", "FrozenDueToAge", "NeedsFix"},
 	}
 	got := data
-	got.Body = ""
+	got.Body, got.Comments = "", nil
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
@@ -107,7 +107,7 @@ func TestExtractPull(t *testing.T) {
 		Labels:    []string{},
 	}
 	got := data
-	got.Body = ""
+	got.Body, got.Comments = "", nil
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
@@ -119,6 +119,46 @@ func TestExtractPull(t *testing.T) {
 	}
 	if rec.CanonicalURL != "https://github.com/cli/cli/pull/11513" {
 		t.Errorf("canonical url = %q", rec.CanonicalURL)
+	}
+}
+
+func TestExtractComments(t *testing.T) {
+	cases := []struct {
+		fixture, pageURL string
+		want             []Comment // Body is a prefix
+	}{
+		{"issue-51419.html", "https://github.com/golang/go/issues/51419", []Comment{
+			{"adamdecaf", "Context, we have a 13 character fixed width field", "2022-03-01T23:49:58Z"},
+			{"robpike", "Padding a string with zeros doesn't seem right", "2022-03-02T01:31:31Z"},
+			{"adamdecaf", "I didn't see this existing test", "2022-03-02T18:37:51Z"},
+			{"robpike", "It is very odd to right-pad a string with zeros.", "2022-03-02T20:59:29Z"},
+			{"adamdecaf", "Agreed. There's been a test rejecting this behavior since 2016", "2022-03-02T22:16:23Z"},
+			{"gopherbot", "Change https://go.dev/cl/389434 mentions this issue", "2022-03-02T23:07:32Z"},
+			{"cagedmantis", "/cc @martisch", "2022-03-05T00:02:12Z"},
+			{"gopherbot", "Change https://go.dev/cl/390674 mentions this issue", "2022-03-08T00:30:45Z"},
+		}},
+		{"pull-11513.html", "https://github.com/cli/cli/pull/11513", []Comment{
+			{"BagToad", "Thank you for this one @ankddev", "2025-08-18T19:01:35Z"},
+			{"ankddev", "@BagToad Done!", "2025-08-19T05:28:06Z"},
+			{"BagToad", "Sorry @ankddev, one more thing", "2025-08-21T16:50:58Z"},
+			{"BagToad", "LGTM - thanks @ankddev!", "2025-08-21T18:44:48Z"},
+		}},
+	}
+	for _, c := range cases {
+		rec, data := extract(t, c.fixture, c.pageURL)
+		if len(data.Comments) != len(c.want) {
+			t.Errorf("%s: %d comments, want %d: %+v", c.fixture, len(data.Comments), len(c.want), data.Comments)
+			continue
+		}
+		for i, want := range c.want {
+			got := data.Comments[i]
+			if got.Author != want.Author || got.CreatedAt != want.CreatedAt || !strings.HasPrefix(got.Body, want.Body) {
+				t.Errorf("%s comment %d = %+v, want %+v", c.fixture, i, got, want)
+			}
+			if !strings.Contains(rec.SearchText, got.Body) {
+				t.Errorf("%s: search text misses comment %d", c.fixture, i)
+			}
+		}
 	}
 }
 
