@@ -146,7 +146,7 @@ URL, normalised like ingest does, whose most recent capture it writes.
 | Prometheus      | `127.0.0.1:9091`                    |
 | Grafana         | `127.0.0.1:3090`                    |
 
-Everything is loopback-only and unauthenticated by default; requests carrying an `Origin` that is not `chrome-extension://…` are rejected, and while authentication is off, so is every request but `/healthz` and `/metrics` whose `Host` is not `127.0.0.1`, `localhost` or `[::1]`. That second check stops a DNS-rebinding page, which is same-origin with the server and sends no `Origin` on a GET.
+Everything is loopback-only and unauthenticated by default; requests carrying an `Origin` that is not `chrome-extension://…` (or, with `TRACKER_EXTENSION_ID` set, not that one extension) are rejected, and while authentication is off, so is every request but `/healthz` and `/metrics` whose `Host` is not `127.0.0.1`, `localhost` or `[::1]`. That second check stops a DNS-rebinding page, which is same-origin with the server and sends no `Origin` on a GET.
 
 ## Authentication
 
@@ -179,9 +179,11 @@ back, so signing in is a once-per-refresh-token-lifetime thing. The desktop
 agent reads and refreshes the same file, so one login covers both.
 
 The extension signs in from its options page. Paste the issuer and client id
-there, then use the redirect URI it shows for the provider. Pin a `key` in the
-manifest if you want that URI to survive a reload of the unpacked extension —
-without one Chrome reassigns the extension id, and the URI changes with it.
+there, then use the redirect URI it shows for the provider. The manifest pins
+the extension id to `gdhnnekkmghgkiikgmdodggcpgnmbpno` on every machine, so that
+URI is always `https://gdhnnekkmghgkiikgmdodggcpgnmbpno.chromiumapp.org/`, and
+`TRACKER_EXTENSION_ID` set to the id makes `serve` refuse every other extension's
+origin.
 
 ## What is recorded
 

@@ -90,7 +90,21 @@ func (f *fakeStore) Stats(context.Context) (store.Stats, error) {
 func newServer(t *testing.T) (*Server, *fakeStore) {
 	t.Helper()
 	fs := &fakeStore{}
-	return New(fs, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off()), fs
+	return New(fs, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off(), ""), fs
+}
+
+func TestAPinnedExtensionIDLetsInThatExtensionAlone(t *testing.T) {
+	h := New(&fakeStore{}, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off(), "abcdefghijklmnop").Handler()
+	for origin, want := range map[string]int{
+		"chrome-extension://abcdefghijklmnop": http.StatusOK,
+		"chrome-extension://ponmlkjihgfedcba": http.StatusForbidden,
+	} {
+		req := httptest.NewRequest(http.MethodGet, server+"/v1/capture-rules", nil)
+		req.Header.Set("Origin", origin)
+		if rec := do(t, h, req); rec.Code != want {
+			t.Errorf("%s: status %d, want %d", origin, rec.Code, want)
+		}
+	}
 }
 
 func do(t *testing.T, h http.Handler, req *http.Request) *httptest.ResponseRecorder {
@@ -355,7 +369,7 @@ func TestProtectedRoutesNeedAToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := New(&fakeStore{}, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, a).Handler()
+	h := New(&fakeStore{}, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, a, "").Handler()
 
 	// The extension reads healthz to tell a server that is down from one it
 	// is not signed in to, so it stays open even with auth on.
