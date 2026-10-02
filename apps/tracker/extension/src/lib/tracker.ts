@@ -57,7 +57,8 @@ const FLUSH_DELAY_MS = 10_000;
 const FLUSH_BATCH = 100;
 const STALE_SPAN_MS = 90_000;
 
-const now = () => new Date().toISOString();
+const iso = (ms: number) => new Date(ms).toISOString();
+const now = () => iso(Date.now());
 const failure = (error: string): CaptureNowReply => ({ ok: false, error });
 const captureAlarm = (tabId: number, pageViewId: string) =>
   `${CAPTURE_ALARM_PREFIX}${tabId}:${pageViewId}`;
@@ -79,11 +80,13 @@ let chain: Promise<void> = Promise.resolve();
 // Every handler runs through one queue so storage read-modify-write cycles
 // never interleave. Queued tasks stay short and local: network calls go through
 // requestSync, which queues its own storage writes, so a task awaiting a sync
-// would wait on itself.
-export function serialized<T>(task: () => Promise<T>): Promise<T | undefined> {
+// would wait on itself. A task gets the time it was queued, which for a handler
+// is when its event fired; it may run well after that.
+export function serialized<T>(task: (queuedAt: number) => Promise<T>): Promise<T | undefined> {
+  const queuedAt = Date.now();
   const run = chain.then(async () => {
     try {
-      return await task();
+      return await task(queuedAt);
     } catch (error) {
       await diag(`error: ${errorMessage(error)}`);
       return undefined;
@@ -276,35 +279,36 @@ export async function uploadCaptures(): Promise<void> {
 
 type FocusTarget = { tabId: number; pageView: PageViewState };
 
-async function focusedTarget(): Promise<FocusTarget | undefined> {
+async function focusedTarget(at: number): Promise<FocusTarget | undefined> {
   const focusedWindow = await browser.windows.getLastFocused().catch(() => undefined);
   if (!focusedWindow?.focused || focusedWindow.id === undefined) return undefined;
   const [tab] = await browser.tabs.query({ active: true, windowId: focusedWindow.id });
   if (tab?.id === undefined) return undefined;
   if ((await browser.idle.queryState(IDLE_SECONDS)) !== "active") return undefined;
   const state = await tabStore(tab.id).get();
-  const pageView = state ? state.pageView : await adoptTab(tab.id, tab);
+  const pageView = state ? state.pageView : await adoptTab(tab.id, tab, at);
   return pageView ? { tabId: tab.id, pageView } : undefined;
 }
 
 // The stale check comes first because a worker that survives a sleep sees
 // the wake before any idle or lock event: without it, the span would run
 // through the night.
-export async function reconcile(reason: EndReason, endedAt = now()): Promise<void> {
+export async function reconcile(reason: EndReason, at: number, endedAt = at): Promise<void> {
   await closeStaleSpan(STALE_SPAN_MS);
-  const target = await focusedTarget();
+  const target = await focusedTarget(at);
   const open = await openSpanStore.get();
   if (open && target && open.pageViewId === target.pageView.event.id) return;
-  if (open) await closeSpan(open, reason, endedAt > open.startedAt ? endedAt : open.startedAt);
-  if (target) await startSpan(target);
+  if (open) await closeSpan(open, reason, iso(Math.max(endedAt, Date.parse(open.startedAt))));
+  if (target) await startSpan(target, at);
 }
 
 // chrome.idle reports idle a full detection interval after the last input,
 // which is when attention actually stopped; locking the screen is an input.
-export async function onIdleStateChanged(state: `${Browser.idle.IdleState}`): Promise<void> {
-  const endedAt =
-    state === "idle" ? new Date(Date.now() - IDLE_SECONDS * 1000).toISOString() : now();
-  await reconcile("idle", endedAt);
+export async function onIdleStateChanged(
+  state: `${Browser.idle.IdleState}`,
+  at: number,
+): Promise<void> {
+  await reconcile("idle", at, state === "idle" ? at - IDLE_SECONDS * 1000 : at);
 }
 
 async function closeSpan(open: OpenSpan, reason: EndReason, endedAt: string): Promise<void> {
@@ -314,8 +318,8 @@ async function closeSpan(open: OpenSpan, reason: EndReason, endedAt: string): Pr
   await diag(`span closed (${reason})`);
 }
 
-async function startSpan(target: FocusTarget): Promise<void> {
-  const startedAt = now();
+async function startSpan(target: FocusTarget, at: number): Promise<void> {
+  const startedAt = iso(at);
   const span: OpenSpan = {
     id: uuidv7(),
     pageViewId: target.pageView.event.id,
@@ -350,13 +354,13 @@ async function armCapture(): Promise<void> {
   });
 }
 
-async function heartbeat(): Promise<void> {
-  await reconcile("unknown");
+async function heartbeat(at: number): Promise<void> {
+  await reconcile("unknown", at);
   const open = await openSpanStore.get();
   if (!open) return;
-  const at = now();
-  await openSpanStore.set({ ...open, lastHeartbeatAt: at });
-  await emit({ type: "span_heartbeat", id: open.id, at });
+  const lastHeartbeatAt = iso(at);
+  await openSpanStore.set({ ...open, lastHeartbeatAt });
+  await emit({ type: "span_heartbeat", id: open.id, at: lastHeartbeatAt });
 }
 
 async function closeStaleSpan(maxAgeMs: number): Promise<void> {
@@ -394,19 +398,26 @@ export async function onCommitted(
     details.tabId,
     details.url,
     navigationTypeFor(details.transitionType, details.transitionQualifiers),
+    details.timeStamp,
   );
 }
 
 export async function onHistoryStateUpdated(
   details: Browser.webNavigation.WebNavigationTransitionCallbackDetails,
 ): Promise<void> {
-  await onSpaChange(details.tabId, details.url, spaNavigationType(details.transitionQualifiers));
+  await onSpaChange(
+    details.tabId,
+    details.url,
+    spaNavigationType(details.transitionQualifiers),
+    details.timeStamp,
+  );
 }
 
 async function onSpaChange(
   tabId: number,
   url: string,
   navigationType: "spa" | "back_forward",
+  at: number,
 ): Promise<void> {
   const current = (await tabStore(tabId).get())?.pageView;
   if (current) {
@@ -417,26 +428,31 @@ async function onSpaChange(
     const rule = parsed ? matchRule(await cachedRules(), parsed) : undefined;
     if (!isNewPageView(current.event.url, next, rule)) return;
   }
-  await beginPageView(tabId, url, navigationType);
+  await beginPageView(tabId, url, navigationType, at);
 }
 
 async function beginPageView(
   tabId: number,
   url: string,
   navigationType: PageViewEvent["navigation_type"],
+  at: number,
 ): Promise<void> {
   const tab = await browser.tabs.get(tabId).catch(() => undefined);
   if (!tab || tab.incognito) return;
-  await recordPageView(tabId, tab, url, navigationType);
-  await reconcile("navigation");
+  await recordPageView(tabId, tab, url, navigationType, at);
+  await reconcile("navigation", at);
 }
 
 // A tab open before the extension loaded has no state and would go
 // unrecorded until it navigates; the first time it takes focus it is
 // recorded as of then.
-async function adoptTab(tabId: number, tab: Browser.tabs.Tab): Promise<PageViewState | undefined> {
+async function adoptTab(
+  tabId: number,
+  tab: Browser.tabs.Tab,
+  at: number,
+): Promise<PageViewState | undefined> {
   if (tab.incognito || tab.url === undefined) return undefined;
-  await recordPageView(tabId, tab, tab.url, "load");
+  await recordPageView(tabId, tab, tab.url, "load", at);
   return (await tabStore(tabId).get())?.pageView;
 }
 
@@ -445,6 +461,7 @@ async function recordPageView(
   tab: Browser.tabs.Tab,
   url: string,
   navigationType: PageViewEvent["navigation_type"],
+  at: number,
 ): Promise<void> {
   await clearRecaptureAlarms(tabId);
   const store = tabStore(tabId);
@@ -461,7 +478,7 @@ async function recordPageView(
     type: "page_view",
     id: uuidv7(),
     url: isPrivate ? privateUrl(parsed) : parsed.href,
-    started_at: now(),
+    started_at: iso(at),
     navigation_type: navigationType,
     tab_session_id: tabSessionId,
     private: isPrivate,
@@ -486,18 +503,18 @@ export async function onTitleChanged(tabId: number, title: string): Promise<void
   await emit(event);
 }
 
-export async function onTabRemoved(tabId: number): Promise<void> {
+export async function onTabRemoved(tabId: number, at: number): Promise<void> {
   await closeStaleSpan(STALE_SPAN_MS);
   const open = await openSpanStore.get();
-  if (open?.tabId === tabId) await closeSpan(open, "tab_closed", now());
+  if (open?.tabId === tabId) await closeSpan(open, "tab_closed", iso(at));
   await clearRecaptureAlarms(tabId);
   await tabStore(tabId).remove();
-  await reconcile("tab_closed");
+  await reconcile("tab_closed", at);
 }
 
-export async function onAlarm(alarm: Browser.alarms.Alarm): Promise<void> {
+export async function onAlarm(alarm: Browser.alarms.Alarm, at: number): Promise<void> {
   if (alarm.name === HEARTBEAT_ALARM) {
-    await heartbeat();
+    await heartbeat(at);
     void requestSync(["health"]);
     return;
   }
@@ -648,12 +665,13 @@ async function status(): Promise<StatusReply> {
 export async function handleMessage(
   message: BackgroundMessage,
   sender: Browser.runtime.MessageSender,
+  at: number,
 ): Promise<StatusReply | CaptureNowReply | undefined> {
   if (message.type === "status") return status();
   if (message.type === "capture_now") return captureActiveTab();
   const tabId = sender.tab?.id;
   if (tabId === undefined || sender.frameId !== 0) return undefined;
   if (message.type === "quiet") await onQuiet(tabId);
-  else await onSpaChange(tabId, message.url, message.navigation_type);
+  else await onSpaChange(tabId, message.url, message.navigation_type, at);
   return undefined;
 }

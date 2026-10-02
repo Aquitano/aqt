@@ -128,7 +128,7 @@ test("a span that outlived a sleep ends at its last heartbeat, not at the wake",
   });
   try {
     setSystemTime(new Date("2026-09-22T06:00:00.000Z"));
-    await serialized(() => reconcile("unknown"));
+    await serialized((at) => reconcile("unknown", at));
     const events = (await dueEvents(100)).map((row) => row.payload);
     expect(events).toContainEqual({
       type: "span_end",
@@ -141,6 +141,30 @@ test("a span that outlived a sleep ends at its last heartbeat, not at the wake",
     Object.assign(tabs, { query: originals.query });
     Object.assign(idle, { queryState: originals.queryState });
   }
+});
+
+test("a handler that runs late records when its event fired", async () => {
+  const startedAt = "2026-09-21T11:59:30.000Z";
+  await openSpanStore.set({
+    id: "span",
+    pageViewId: "page",
+    tabId: 1,
+    startedAt,
+    lastHeartbeatAt: startedAt,
+  });
+  setSystemTime(new Date(timestamp));
+  const busy = Promise.withResolvers<void>();
+  void serialized(() => busy.promise);
+  const switched = serialized((at) => reconcile("tab_switch", at));
+  setSystemTime(new Date("2026-09-21T12:00:20.000Z"));
+  busy.resolve();
+  await switched;
+  expect((await dueEvents(100)).map((row) => row.payload)).toContainEqual({
+    type: "span_end",
+    id: "span",
+    ended_at: timestamp,
+    reason: "tab_switch",
+  });
 });
 
 test("events waiting for retry keep their dependent events behind them", async () => {
@@ -208,8 +232,8 @@ test("a hanging server does not hold up the handlers queued behind it", async ()
       return Response.json({ ok: true, db: true });
     }),
   );
-  await serialized(() =>
-    onAlarm({ name: "heartbeat", scheduledTime: Date.now(), persistAcrossSessions: true }),
+  await serialized((at) =>
+    onAlarm({ name: "heartbeat", scheduledTime: at, persistAcrossSessions: true }, at),
   );
   await requested.promise;
   expect(await serialized(async () => "handled")).toBe("handled");
