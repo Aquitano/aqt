@@ -27,7 +27,7 @@ What I read and where my attention went, from a browser extension and a macOS me
 
 ```
 apps/tracker/
-  cmd/tracker/            serve | migrate | reprocess | blob | login | logout | stats | search | show | visits | time | forget
+  cmd/tracker/            serve | migrate | reprocess | blob | login | logout | stats | search | show | visits | time | forget | healthcheck
   internal/
     store/                bun models, embedded migrations, queries
     ingest/               HTTP: events, captures, capture-rules, search, visits, records, time, forget, stats, healthz, metrics
@@ -50,14 +50,17 @@ apps/tracker/
   extension/              WXT extension (@aqt/tracker-extension)
   desktop/                Swift menu-bar agent (TrackerAgent.app): frontmost app and window spans
   skill/                  Claude Code skill over the CLI: recall, visits, time, forget
+  Dockerfile              static binary on distroless, `serve` on 0.0.0.0:8490 inside the container
+  docker-compose.yml      ParadeDB, backup, Grafana, and the server under the `server` profile: the VPS
   deploy/
-    docker-compose.yml    ParadeDB, backup, Prometheus, Grafana
+    docker-compose.laptop.yml
+                          overlay for a laptop running `serve` natively: Prometheus, restart policies, anonymous Grafana
     backup.sh             daily pg_dump loop the backup service runs
     com.aqt.tracker.plist launchd agent for `serve`
     com.aqt.tracker-agent.plist
                           launchd agent for TrackerAgent.app
     prometheus.yml
-    grafana/provisioning/ datasources (Prometheus, Postgres) + dashboards
+    grafana/              datasources and dashboards split by datasource: Postgres everywhere, Prometheus in the laptop overlay
   README.md, DESIGN.md
 ```
 
@@ -356,9 +359,10 @@ tracker show [--json] <record-id>
 tracker visits [--json] <url>
 tracker time [--since 24h] [--until when] [--by host|app|category] [--json]
 tracker forget <url> | --host <host>
+tracker healthcheck
 ```
 
-`serve` runs migrations on startup, like bank. `blob` writes a stored capture's decompressed HTML to stdout: 64 hex characters name a blob; anything else is a URL, normalised as ingest does, and the most recent capture whose page view is at that URL is written. `stats`, `search`, `show`, `visits`, `time` and `forget` go over HTTP so they work against a server whose database is not reachable. `search` prints each hit's visits, `show` one record with its full search text, `visits` the page views of any URL. `time`'s `--since` and `--until` take a duration back from now (`90m`, `24h`, `7d`) or a local date, which means its midnight. `login` is the RFC 8628 device code flow, and the token it stores refreshes itself.
+`serve` runs migrations on startup, like bank. `blob` writes a stored capture's decompressed HTML to stdout: 64 hex characters name a blob; anything else is a URL, normalised as ingest does, and the most recent capture whose page view is at that URL is written. `stats`, `search`, `show`, `visits`, `time`, `forget` and `healthcheck` go over HTTP so they work against a server whose database is not reachable; `healthcheck` reads only the open `/healthz` and is what the container's healthcheck runs. `search` prints each hit's visits, `show` one record with its full search text, `visits` the page views of any URL. `time`'s `--since` and `--until` take a duration back from now (`90m`, `24h`, `7d`) or a local date, which means its midnight. `login` is the RFC 8628 device code flow, and the token it stores refreshes itself.
 
 ## Metrics
 

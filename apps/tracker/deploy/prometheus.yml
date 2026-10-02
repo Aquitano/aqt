@@ -4,6 +4,6 @@ global:
 scrape_configs:
   - job_name: tracker
     # The binary runs on the host; host.docker.internal is aliased to the
-    # host gateway in docker-compose.yml.
+    # host gateway in docker-compose.laptop.yml.
     static_configs:
       - targets: ["host.docker.internal:8490"]

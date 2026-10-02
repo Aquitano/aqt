@@ -192,92 +192,12 @@
       ]
     },
     {
-      "id": 8,
-      "type": "timeseries",
-      "title": "Derivation queue depth",
-      "datasource": { "type": "prometheus", "uid": "tracker-prom" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "editorMode": "code",
-          "expr": "tracker_derivations_pending",
-          "legendFormat": "pending"
-        }
-      ]
-    },
-    {
-      "id": 9,
-      "type": "timeseries",
-      "title": "Oldest pending derivation",
-      "datasource": { "type": "prometheus", "uid": "tracker-prom" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "editorMode": "code",
-          "expr": "tracker_derivations_oldest_age_seconds",
-          "legendFormat": "age"
-        }
-      ]
-    },
-    {
-      "id": 10,
-      "type": "timeseries",
-      "title": "HTTP requests by status",
-      "datasource": { "type": "prometheus", "uid": "tracker-prom" },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 34 },
-      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "editorMode": "code",
-          "expr": "sum by (status) (rate(tracker_http_requests_total[5m]))",
-          "legendFormat": "{{status}}"
-        }
-      ]
-    },
-    {
-      "id": 11,
-      "type": "timeseries",
-      "title": "Extract duration p95 by extractor",
-      "datasource": { "type": "prometheus", "uid": "tracker-prom" },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 34 },
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, extractor) (rate(tracker_extract_duration_seconds_bucket[5m])))",
-          "legendFormat": "{{extractor}}"
-        }
-      ]
-    },
-    {
-      "id": 12,
-      "type": "timeseries",
-      "title": "Table size",
-      "datasource": { "type": "prometheus", "uid": "tracker-prom" },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 34 },
-      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "editorMode": "code",
-          "expr": "tracker_table_bytes",
-          "legendFormat": "{{table}}"
-        }
-      ]
-    },
-    {
       "id": 13,
       "type": "timeseries",
       "title": "Active minutes per category per day",
       "description": "Spans matched to the highest-priority rule in category_rules; spans no rule matches are uncategorized.",
       "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 42 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 26 },
       "fieldConfig": {
         "defaults": {
           "unit": "m",
@@ -310,7 +230,7 @@
       "title": "Active minutes per app per day (top 15)",
       "description": "Desktop spans only.",
       "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 52 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 36 },
       "fieldConfig": {
         "defaults": {
           "unit": "m",
@@ -343,7 +263,7 @@
       "title": "Context switches per hour",
       "description": "Spans closed by a tab switch, a window blur or an app switch, against every span that closed.",
       "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 62 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 46 },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -371,7 +291,7 @@
       "title": "Work blocks",
       "description": "Runs of activity across every device, split where nothing was active for more than a minute.",
       "datasource": { "type": "grafana-postgresql-datasource", "uid": "tracker-pg" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 62 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 46 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
         {

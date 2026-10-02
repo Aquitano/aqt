@@ -5,15 +5,17 @@ Browsing memory: a Chromium extension records page views and active time and sna
 ## Quickstart
 
 ```sh
-docker compose -f deploy/docker-compose.yml up -d   # ParadeDB, daily backups, Prometheus, Grafana
-go run ./cmd/tracker serve                          # migrates on startup
+docker compose -f docker-compose.yml -f deploy/docker-compose.laptop.yml up -d   # ParadeDB, daily backups, Prometheus, Grafana
+go run ./cmd/tracker serve                                                        # migrates on startup
 ```
+
+[docker-compose.yml](docker-compose.yml) is the stack the VPS runs, the server itself included under the `server` profile. [deploy/docker-compose.laptop.yml](deploy/docker-compose.laptop.yml) adds what a laptop running `serve` natively wants on top: Prometheus, the dashboard that reads it, Grafana without a login, and restart policies. Pass both files to `up`; every other `docker compose` command below works with the first alone, from this directory.
 
 Load the extension unpacked in `chrome://extensions` (developer mode) from `extension/.output/chrome-mv3`, built with `bun run --filter @aqt/tracker-extension build`. Keep it unpacked: Chromium honours the 5 s capture timers only for unpacked extensions. `dev` is for working on the extension; it writes to `chrome-mv3-dev` and opens a browser profile of its own.
 
 Before browsing with it, list your private hosts on the extension's options page: webmail, banking, health portals, anything whose pages you would not want kept forever. The list is empty by default, and the `article` fallback snapshots any page you stay on for 30 seconds. A host added later keeps what was recorded before it was added; `tracker forget --host` removes that.
 
-Grafana is at <http://127.0.0.1:3090> — anonymous admin, dashboard `tracker`, both datasources provisioned. The per-day panels bucket by the database's time zone, UTC unless set: `docker compose -f deploy/docker-compose.yml exec db psql -U tracker -d tracker -c "alter database tracker set timezone to 'Europe/London'"` with your zone, then `docker compose -f deploy/docker-compose.yml restart grafana` so its pooled connections pick it up.
+Grafana is at <http://127.0.0.1:3090> — anonymous admin, dashboards `tracker` (Postgres) and `tracker server` (Prometheus). The per-day panels bucket by the database's time zone, UTC unless set: `docker compose exec db psql -U tracker -d tracker -c "alter database tracker set timezone to 'Europe/London'"` with your zone, then `docker compose restart grafana` so its pooled connections pick it up.
 
 ## Always on
 
@@ -32,24 +34,24 @@ Nothing here starts Postgres. Turn on Docker Desktop's _Start Docker Desktop whe
 
 ## Backups
 
-The compose `backup` service writes a `pg_dump` once a day to `~/Library/Application Support/tracker/backups` (`TRACKER_BACKUP_DIR` overrides it) and keeps the newest three, so what `tracker forget` deletes survives in them for up to three days. That directory is only on this disk: Time Machine, or anything else that copies it off the machine, is what makes it a backup. `docker compose -f deploy/docker-compose.yml logs backup` shows each run.
+The compose `backup` service writes a `pg_dump` once a day to `~/Library/Application Support/tracker/backups` (`TRACKER_BACKUP_DIR` overrides it) and keeps the newest three, so what `tracker forget` deletes survives in them for up to three days. That directory is only on this disk: Time Machine, or anything else that copies it off the machine, is what makes it a backup. `docker compose logs backup` shows each run.
 
 To restore, stop the server, replace the database with a dump, start it again:
 
 ```sh
 mise run tracker:service:stop
-docker compose -f deploy/docker-compose.yml exec -T db \
+docker compose exec -T db \
   pg_restore -U tracker -d tracker --clean --if-exists < "$HOME/Library/Application Support/tracker/backups/tracker-<stamp>.dump"
 mise run tracker:service
 ```
 
 ## Upgrading ParadeDB
 
-The image is pinned by version and digest in [deploy/docker-compose.yml](deploy/docker-compose.yml). Stay on the `-pg18` line: the data directory is named after the Postgres major, so another major starts on an empty one and needs a dump and restore. After changing the pin:
+The image is pinned by version and digest in [docker-compose.yml](docker-compose.yml). Stay on the `-pg18` line: the data directory is named after the Postgres major, so another major starts on an empty one and needs a dump and restore. After changing the pin:
 
 ```sh
-docker compose -f deploy/docker-compose.yml up -d
-docker compose -f deploy/docker-compose.yml exec db psql -U tracker -d tracker -c 'alter extension pg_search update'
+docker compose -f docker-compose.yml -f deploy/docker-compose.laptop.yml up -d
+docker compose exec db psql -U tracker -d tracker -c 'alter extension pg_search update'
 ```
 
 ## Desktop agent
@@ -102,13 +104,16 @@ tracker visits [--json] <url>
 tracker time [--since 24h] [--until when] [--by host|app|category] [--json]
 tracker forget <url>
 tracker forget --host <host>
+tracker healthcheck
 ```
 
 `serve` queues every capture the current extractor versions have not processed yet when it starts, so a release that bumps one needs no manual step. `reprocess` also removes the records only an older version produced; `reprocess --all` rebuilds every derived row from the source tables alone.
 
-`stats`, `search`, `show`, `visits`, `time` and `forget` go over HTTP, so they work
-against a tracker on another machine; `serve`, `migrate`, `reprocess` and `blob` need the
-database.
+`stats`, `search`, `show`, `visits`, `time`, `forget` and `healthcheck` go over
+HTTP, so they work against a tracker on another machine; `serve`, `migrate`,
+`reprocess` and `blob` need the database. `healthcheck` exits 0 when the server's
+`/healthz` answers, which needs no token; it is the container's healthcheck, since
+the image has no shell or HTTP client of its own.
 
 Each search hit carries its visits: how many page views captured the record's
 page or were at its canonical URL, the first and last of them, and their active
