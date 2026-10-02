@@ -5,12 +5,14 @@
 package ingest
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +32,7 @@ type Store interface {
 	Search(ctx context.Context, o store.SearchOpts) ([]store.Hit, error)
 	URLVisits(ctx context.Context, urlHash []byte, before time.Time) (store.Visits, error)
 	Record(ctx context.Context, id int64) (store.RecordDetail, error)
+	Time(ctx context.Context, o store.TimeOpts) ([]store.TimeRow, error)
 	Stats(ctx context.Context) (store.Stats, error)
 }
 
@@ -59,6 +62,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/search", s.protect(s.handleSearch))
 	mux.Handle("GET /v1/visits", s.protect(s.handleVisits))
 	mux.Handle("GET /v1/records/{id}", s.protect(s.handleRecord))
+	mux.Handle("GET /v1/time", s.protect(s.handleTime))
 	mux.Handle("GET /v1/stats", s.protect(s.handleStats))
 	return s.observe(mux)
 }
@@ -197,12 +201,10 @@ func (s *Server) handleVisits(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "url must be an http(s) url")
 		return
 	}
-	var before time.Time
-	if raw := q.Get("before"); raw != "" {
-		if before = parseTime(raw); before.IsZero() {
-			writeErr(w, http.StatusBadRequest, "before must be an RFC 3339 time")
-			return
-		}
+	before, ok := timeParam(q, "before", time.Time{})
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "before must be an RFC 3339 time")
+		return
 	}
 	visits, err := s.store.URLVisits(r.Context(), key.Hash, before)
 	if err != nil {
@@ -228,6 +230,41 @@ func (s *Server) handleRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rec)
+}
+
+func (s *Server) handleTime(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	to, ok := timeParam(q, "to", time.Now())
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "to must be an RFC 3339 time")
+		return
+	}
+	from, ok := timeParam(q, "from", to.Add(-24*time.Hour))
+	if !ok || !from.Before(to) {
+		writeErr(w, http.StatusBadRequest, "from must be an RFC 3339 time before to")
+		return
+	}
+	rows, err := s.store.Time(r.Context(), store.TimeOpts{From: from, To: to, By: cmp.Or(q.Get("by"), "host")})
+	if errors.Is(err, store.ErrUnknownGrouping) {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rows": rows})
+}
+
+// timeParam reads an optional RFC 3339 query parameter; ok is false when it is
+// there but does not parse.
+func timeParam(q url.Values, name string, fallback time.Time) (t time.Time, ok bool) {
+	raw := q.Get(name)
+	if raw == "" {
+		return fallback, true
+	}
+	t = parseTime(raw)
+	return t, !t.IsZero()
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

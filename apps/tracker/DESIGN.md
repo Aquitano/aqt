@@ -27,10 +27,10 @@ What I read and where my attention went, from a browser extension and a macOS me
 
 ```
 apps/tracker/
-  cmd/tracker/            serve | migrate | reprocess | blob | login | logout | stats | search | show
+  cmd/tracker/            serve | migrate | reprocess | blob | login | logout | stats | search | show | time
   internal/
     store/                bun models, embedded migrations, queries
-    ingest/               HTTP: events, captures, capture-rules, search, visits, records, stats, healthz, metrics
+    ingest/               HTTP: events, captures, capture-rules, search, visits, records, time, stats, healthz, metrics
     extractor/            Extractor interface, Rule, registry
     extractor/github/     one package per site
     extractor/x/
@@ -312,6 +312,8 @@ A visit is a page view, and `visits` always has one shape: `{"count":3,"first_at
 
 `GET /v1/records/{id}` → `{id, extractor, title, canonical_url, search_text, data, first_seen_at, last_seen_at, visits}` (used by `tracker show`); 404 when no record has the id.
 
+`GET /v1/time?from=<rfc3339>&to=<rfc3339>&by=host|app|category` → `{"rows":[{"key":"github.com","active_seconds":5400}]}`, sorted by `active_seconds` descending (used by `tracker time`): active time per key over the spans of `categorized_spans` clipped to `[from, to)`. Like the dashboard's panels, `host` keys browser spans by host and `app` desktop spans by app name, so each leaves the other source out; `category` covers both, with `uncategorized` for spans no rule matches. `to` defaults to now, `from` to 24 h before `to`, `by` to `host`; 400 for a malformed time, `from` not before `to`, or another `by`.
+
 ## Extension behaviour
 
 - On install: generate `device_id` (UUIDv7), store in `chrome.storage.local`. Options page: server URL (default above), private hosts list, capture on/off, OIDC issuer and client id.
@@ -336,9 +338,10 @@ tracker logout
 tracker stats [--json]
 tracker search [--extractor name] [--limit n] [--json] <query>
 tracker show [--json] <record-id>
+tracker time [--since 24h] [--until when] [--by host|app|category] [--json]
 ```
 
-`serve` runs migrations on startup, like bank. `blob` writes a stored capture's decompressed HTML to stdout: 64 hex characters name a blob; anything else is a URL, normalised as ingest does, and the most recent capture whose page view is at that URL is written. `stats`, `search` and `show` go over HTTP so they work against a server whose database is not reachable. `search` prints each hit's visits, `show` one record with its full search text. `login` is the RFC 8628 device code flow, and the token it stores refreshes itself.
+`serve` runs migrations on startup, like bank. `blob` writes a stored capture's decompressed HTML to stdout: 64 hex characters name a blob; anything else is a URL, normalised as ingest does, and the most recent capture whose page view is at that URL is written. `stats`, `search`, `show` and `time` go over HTTP so they work against a server whose database is not reachable. `search` prints each hit's visits, `show` one record with its full search text. `time`'s `--since` and `--until` take a duration back from now (`90m`, `24h`, `7d`) or a local date, which means its midnight. `login` is the RFC 8628 device code flow, and the token it stores refreshes itself.
 
 ## Metrics
 

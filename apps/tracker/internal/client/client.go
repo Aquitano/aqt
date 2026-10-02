@@ -233,6 +233,15 @@ func (c *Client) Record(ctx context.Context, id int64) (store.RecordDetail, erro
 	return rec, err
 }
 
+func (c *Client) Time(ctx context.Context, o store.TimeOpts) ([]store.TimeRow, error) {
+	q := url.Values{"from": {o.From.UTC().Format(time.RFC3339)}, "to": {o.To.UTC().Format(time.RFC3339)}, "by": {o.By}}
+	var reply struct {
+		Rows []store.TimeRow `json:"rows"`
+	}
+	err := c.get(ctx, "/v1/time?"+q.Encode(), &reply)
+	return reply.Rows, err
+}
+
 func (c *Client) Stats(ctx context.Context) (store.Stats, error) {
 	var stats store.Stats
 	err := c.get(ctx, "/v1/stats", &stats)

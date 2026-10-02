@@ -49,9 +49,13 @@ Usage:
                                                           BM25 search over extracted records, with each
                                                           hit's visits
   tracker show [--json] <record-id>                       one record in full: title, URL, visits, search text
+  tracker time [--since 24h] [--until when] [--by host|app|category] [--json]
+                                                          active time per site, desktop app or category;
+                                                          since and until take a duration back from now
+                                                          (90m, 24h, 7d) or a local date (2026-10-01)
 
-stats, search and show read the server over HTTP, so they work against a
-tracker on another machine; serve, migrate, reprocess and blob need the
+stats, search, show and time read the server over HTTP, so they work against
+a tracker on another machine; serve, migrate, reprocess and blob need the
 database itself.
 
 Environment:
@@ -92,6 +96,8 @@ func main() {
 		err = cmdSearch(ctx, os.Args[2:])
 	case "show":
 		err = cmdShow(ctx, os.Args[2:])
+	case "time":
+		err = cmdTime(ctx, os.Args[2:])
 	case "help", "--help", "-h":
 		fmt.Print(usage)
 	default:
@@ -420,6 +426,65 @@ func cmdShow(ctx context.Context, args []string) error {
 	}
 	fmt.Printf("%s\n%s\n[%s]  %s\n\n%s\n", rec.Title, rec.CanonicalURL, rec.Extractor, describeVisits(rec.Visits), rec.SearchText)
 	return nil
+}
+
+func cmdTime(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("time", flag.ExitOnError)
+	since := fs.String("since", "24h", "")
+	until := fs.String("until", "0s", "")
+	by := fs.String("by", "host", "")
+	asJSON := fs.Bool("json", false, "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return errors.New("usage: tracker time [--since 24h] [--until when] [--by host|app|category] [--json]")
+	}
+	now := time.Now()
+	from, err := pointInTime(*since, now)
+	if err != nil {
+		return err
+	}
+	to, err := pointInTime(*until, now)
+	if err != nil {
+		return err
+	}
+	c, err := newClient(ctx)
+	if err != nil {
+		return err
+	}
+	rows, err := c.Time(ctx, store.TimeOpts{From: from, To: to, By: *by})
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(rows)
+	}
+	if len(rows) == 0 {
+		fmt.Println("no active time")
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
+	for _, r := range rows {
+		fmt.Fprintf(w, "%s\t%s\n", r.Key, activeTime(r.ActiveSeconds))
+	}
+	return w.Flush()
+}
+
+// pointInTime reads a duration back from now (90m, 24h, 7d) or a date, which
+// means its local midnight.
+func pointInTime(s string, now time.Time) (time.Time, error) {
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		if n, err := strconv.Atoi(days); err == nil {
+			return now.AddDate(0, 0, -n), nil
+		}
+	}
+	if d, err := time.ParseDuration(s); err == nil {
+		return now.Add(-d), nil
+	}
+	if t, err := time.ParseInLocation(time.DateOnly, s, time.Local); err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("%q is neither a duration like 24h or 7d nor a date like 2026-10-01", s)
 }
 
 func describeVisits(v store.Visits) string {

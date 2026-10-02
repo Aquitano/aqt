@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -175,5 +176,41 @@ func TestCategoryCoverageSeeds(t *testing.T) {
 				t.Fatalf("expected category %q", tc.category)
 			}
 		})
+	}
+}
+
+func TestTimeClipsSpansToTheWindow(t *testing.T) {
+	st := storetest.New(t)
+	device := uuid.Must(uuid.NewV7())
+	from := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+	github, elsewhere := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	apply(t, st, device, store.Events{PageViews: []store.PageViewEvent{
+		{ID: github, URL: urlKey(t, "https://github.com/aquitano/aqt"), StartedAt: from.Add(-10 * time.Minute), NavigationType: "load"},
+		{ID: elsewhere, URL: urlKey(t, "https://example.org/"), StartedAt: from.Add(45 * time.Minute), NavigationType: "load"},
+	}})
+	desktop := func(start time.Time, length time.Duration) store.Events {
+		id := uuid.Must(uuid.NewV7())
+		return store.Events{
+			SpanStarts: []store.SpanStartEvent{{ID: id, AppName: "Code", StartedAt: start}},
+			SpanEnds:   []store.SpanEndEvent{{ID: id, EndedAt: start.Add(length), Reason: "app_switch"}},
+		}
+	}
+	apply(t, st, device, browserSpan(github, from.Add(-10*time.Minute), 30*time.Minute))
+	apply(t, st, device, browserSpan(elsewhere, from.Add(45*time.Minute), 5*time.Minute))
+	apply(t, st, device, desktop(from.Add(30*time.Minute), 10*time.Minute))
+	apply(t, st, device, desktop(from.Add(-2*time.Hour), 10*time.Minute))
+
+	for by, want := range map[string][]store.TimeRow{
+		"host":     {{Key: "github.com", ActiveSeconds: 1200}, {Key: "example.org", ActiveSeconds: 300}},
+		"app":      {{Key: "Code", ActiveSeconds: 600}},
+		"category": {{Key: "Focus/Code", ActiveSeconds: 1800}, {Key: "uncategorized", ActiveSeconds: 300}},
+	} {
+		rows, err := st.Time(context.Background(), store.TimeOpts{From: from, To: from.Add(time.Hour), By: by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(rows, want) {
+			t.Errorf("by %s: %+v, want %+v", by, rows, want)
+		}
 	}
 }
