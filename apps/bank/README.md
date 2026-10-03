@@ -2,6 +2,9 @@
 
 Personal message archive: every message from every source in one Postgres, full-text searchable from a CLI by me and my agents. See [DESIGN.md](DESIGN.md) for architecture and roadmap.
 
+Bank imports personal ChatGPT and Claude.ai exports. Turnstash owns coding-session
+ingestion. Removing an importer does not delete previously archived records.
+
 See [MAIL.md](MAIL.md) for folder-preserving imports, mail filters, conversation grouping, and metadata recovery. See [IMAP.md](IMAP.md) for the Proton Bridge and Gmail collector.
 
 ## Quickstart
@@ -29,11 +32,6 @@ go build -o bank ./cmd/bank
                                                 #  along as attachments, and re-importing
                                                 #  heals an earlier text-only pass)
 ./bank import claude claude-export.zip          # Claude.ai data export
-./bank import claude-code ~/.claude/projects    # Claude Code transcripts
-./bank import codex ~/.codex/sessions           # Codex CLI rollouts
-./bank import opencode ~/.local/share/opencode  # OpenCode session database
-./bank import antigravity ~/.gemini/antigravity-cli/brain  # Antigravity transcripts
-./bank import ai                                # all four from their default locations
 echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source notes -
 
 ./bank import inbox                             # sweep $BANK_DATA_DIR/inbox/<kind>/
@@ -140,8 +138,18 @@ the previous one.
 bank reports --json
 bank reports --before 42 --limit 50
 bank attachment find --filename invoice --type pdf --person alice --since 2025-01-01
+bank attachment find --text "payment due" --type pdf
 bank attachment messages <sha256> --offset 0 --limit 50
 ```
+
+Submitted search filters and selections live in the browser URL. Refreshing,
+switching tabs, and using Back or Forward restore the search. Bookmark the URL
+to keep a search. Each message has a **Message link** based on its stable ref,
+so the link still resolves after rebuilding the archive from the same sources.
+
+The **Contacts** tab can create a contact or attach a suggested identity to an
+existing one. Open a contact and expand **Manage identities** to add or remove
+emails and usernames. Each identity can match one source or all sources.
 
 The **Files** tab searches filenames and filters by extension, MIME type or
 category such as `image`, contact name, and message date. The before-date filter
@@ -150,12 +158,19 @@ filenames. Selecting a file shows PDF/image previews, extracted document text
 when available, and every message containing those bytes. Message results include
 occurrences outside the selected filters. Original files remain downloadable.
 
+**Contents contain** searches extracted text within each file, ignoring case.
+It matches the supplied phrase literally. Files without extracted text cannot
+match this filter. Results show a matching excerpt, and **Jump to match** locates
+the query in the text preview. Click an attachment in a conversation to read
+the same preview without leaving the message. The API accepts this filter as
+`text` on `/v1/attachment-library`; the CLI uses `attachment find --text`.
+
 ChatGPT imports retain reply parents and branch identifiers. Alternative answers
 are labeled separately, and **Read branch to here** shows only the selected
 message's reply path. **View parent message** also works when the parent lies
-outside the loaded page. Claude and Claude Code imports retain explicit parent
-IDs when the export supplies them. `bank show`, `bank thread`, and their JSON
-output include the relationships.
+outside the loaded page. Claude imports retain explicit parent IDs when the
+export supplies them. `bank show`, `bank thread`, and their JSON output include
+the relationships.
 
 Reimport existing ChatGPT exports to fill in branch metadata. Reimporting keeps
 message IDs and existing bodies. A bare ChatGPT JSON export retains asset-only

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -102,6 +104,47 @@ func TestAttachmentLibraryFiltersAndFindsEveryOccurrence(t *testing.T) {
 	absent, err := st.AttachmentLibrary(ctx, store.AttachmentFilter{FileType: "image"})
 	if err != nil || len(absent) != 0 {
 		t.Fatalf("image filter: %+v %v", absent, err)
+	}
+}
+
+func TestAttachmentLibraryMatchesEachFilesOwnText(t *testing.T) {
+	st := storetest.New(t)
+	ctx := context.Background()
+	id, err := st.InsertMessage(ctx, store.Message{Source: "mail", ExternalID: "files", SentAt: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, contents := range []string{strings.Repeat("preface ", 60) + "Payment 100% due tomorrow", "Unrelated document", "payment 100% without valid extraction"} {
+		sum := strings.Repeat(string(rune('a'+i)), 64)
+		if err := st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: fmt.Sprintf("file%d.pdf", i), MimeType: "application/pdf", SHA256: sum}); err != nil {
+			t.Fatal(err)
+		}
+		status := "ok"
+		if i == 2 {
+			status = "failed"
+		}
+		if err := st.PutBlobText(ctx, store.BlobText{SHA256: sum, Text: contents, Status: status}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, status := range []string{"ok", "manual"} {
+		sum := strings.Repeat("a", 64)
+		if status == "manual" {
+			if err := st.PutBlobText(ctx, store.BlobText{SHA256: sum, Text: "Payment 100% due tomorrow", Status: status}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		files, err := st.AttachmentLibrary(ctx, store.AttachmentFilter{Text: "PAYMENT 100%", FileType: "pdf"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(files) != 1 || files[0].SHA256 != sum || !strings.Contains(files[0].Snippet, "Payment 100%") || len(files[0].Snippet) > 240 {
+			t.Fatalf("%s contents filter: %+v", status, files)
+		}
+	}
+	files, err := st.AttachmentLibrary(ctx, store.AttachmentFilter{Text: "payment 100%", Filename: "file1"})
+	if err != nil || len(files) != 0 {
+		t.Fatalf("combined filters: %+v %v", files, err)
 	}
 }
 

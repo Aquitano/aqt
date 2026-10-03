@@ -46,6 +46,7 @@ func cmdAttachmentFind(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("attachment find", flag.ContinueOnError)
 	var o store.AttachmentFilter
 	fs.StringVar(&o.Filename, "filename", "", "")
+	fs.StringVar(&o.Text, "text", "", "")
 	fs.StringVar(&o.FileType, "type", "", "")
 	fs.StringVar(&o.Person, "person", "", "")
 	since := fs.String("since", "", "")

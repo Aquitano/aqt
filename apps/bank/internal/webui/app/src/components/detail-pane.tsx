@@ -1,8 +1,9 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Inbox, ShieldAlert } from "lucide-react";
-import { useState } from "react";
 
+import { ContactEditor } from "@/components/contact-editor";
 import { Conversation } from "@/components/conversation";
+import { FileDetail } from "@/components/file-preview";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -22,20 +23,8 @@ import {
   type Message,
 } from "@/lib/api";
 import { SourceBadge } from "@/lib/format";
-
-export type Selection =
-  | {
-      kind: "thread";
-      source: string;
-      threadId: string;
-      title?: string;
-      flashId?: number;
-      current?: boolean;
-    }
-  | { kind: "message"; id: number }
-  | { kind: "contact"; name: string }
-  | { kind: "mail-conflict"; source: string; key: string }
-  | null;
+import { navigate, select, useLocation, type Selection } from "@/lib/navigation";
+export type { Selection } from "@/lib/navigation";
 
 interface Position {
   before?: number;
@@ -49,13 +38,69 @@ interface Page {
 const initialPosition: Position = {};
 
 export function DetailPane({ selection }: { selection: Selection }) {
+  if (selection?.kind === "file")
+    return <FileDetail key={selection.file.sha256} file={selection.file} />;
+  if (selection?.kind === "message") return <LinkedMessage key={selection.id} id={selection.id} />;
+  if (selection?.kind === "contact")
+    return (
+      <div key={selection.name} className="flex h-full min-h-0 flex-col">
+        <ContactEditor name={selection.name} />
+        <div className="min-h-0 flex-1">
+          <SelectedDetail selection={selection} />
+        </div>
+      </div>
+    );
   return <SelectedDetail key={JSON.stringify(selection)} selection={selection} />;
 }
 
-function SelectedDetail({ selection: initialSelection }: { selection: Selection }) {
-  const [selection, setSelection] = useState(initialSelection);
-  const conversationChoices = JSON.stringify(selection) !== JSON.stringify(initialSelection) && (
-    <Button variant="outline" size="sm" onClick={() => setSelection(initialSelection)}>
+function LinkedMessage({ id }: { id: number | string }) {
+  const message = useQuery({ queryKey: ["message", id], queryFn: () => getMessage(id) });
+  if (message.isPending)
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  if (message.isError)
+    return (
+      <p role="alert" className="p-6 text-destructive">
+        {message.error.message}
+      </p>
+    );
+  const m = message.data;
+  return (
+    <SelectedDetail
+      selection={
+        m.thread_id
+          ? {
+              kind: "thread",
+              source: m.source,
+              threadId: m.thread_id,
+              title: m.subject,
+              flashId: m.id,
+              current: true,
+            }
+          : { kind: "message", id: m.id }
+      }
+      message={m}
+    />
+  );
+}
+
+function SelectedDetail({ selection, message }: { selection: Selection; message?: Message }) {
+  const location = useLocation();
+  const choices = new URLSearchParams(location).get("choices");
+  const conversationChoices = choices && (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() =>
+        navigate((params) => {
+          Array.from(params.keys()).forEach((key) => params.delete(key));
+          new URLSearchParams(choices).forEach((value, key) => params.append(key, value));
+        })
+      }
+    >
       Back to conversation choices
     </Button>
   );
@@ -79,10 +124,12 @@ function SelectedDetail({ selection: initialSelection }: { selection: Selection 
           });
         case "message":
           return {
-            messages: [await getMessage(selection.id)],
+            messages: [message ?? (await getMessage(selection.id))],
             has_before: false,
             has_after: false,
           };
+        case "file":
+          return { messages: [], has_before: false, has_after: false };
         case "contact": {
           const messages = await getContactMessages(selection.name, pageParam.before);
           return {
@@ -140,12 +187,15 @@ function SelectedDetail({ selection: initialSelection }: { selection: Selection 
                   variant="outline"
                   onClick={() => {
                     if (q.error instanceof MailConflictError)
-                      setSelection({
-                        kind: "thread",
-                        source: q.error.conflict.source,
-                        threadId,
-                        current: true,
-                      });
+                      select(
+                        {
+                          kind: "thread",
+                          source: q.error.conflict.source,
+                          threadId,
+                          current: true,
+                        },
+                        choices || location,
+                      );
                   }}
                 >
                   {threadId}
@@ -155,11 +205,14 @@ function SelectedDetail({ selection: initialSelection }: { selection: Selection 
                 variant="outline"
                 onClick={() => {
                   if (q.error instanceof MailConflictError)
-                    setSelection({
-                      kind: "mail-conflict",
-                      source: q.error.conflict.source,
-                      key: q.error.conflict.conflict_key,
-                    });
+                    select(
+                      {
+                        kind: "mail-conflict",
+                        source: q.error.conflict.source,
+                        key: q.error.conflict.conflict_key,
+                      },
+                      choices || location,
+                    );
                 }}
               >
                 Unanchored messages
@@ -181,7 +234,7 @@ function SelectedDetail({ selection: initialSelection }: { selection: Selection 
         />
         <span className="truncate">
           {selection.kind === "thread"
-            ? selection.title || selection.threadId
+            ? selection.title || first?.subject || selection.threadId
             : selection.kind === "mail-conflict"
               ? "Unanchored messages"
               : first?.subject || first?.sender || "Message"}
@@ -189,42 +242,46 @@ function SelectedDetail({ selection: initialSelection }: { selection: Selection 
       </span>
     );
   return (
-    <Conversation
-      title={title}
-      meta={`${messages.length} messages${q.hasPreviousPage || q.hasNextPage ? " loaded" : ""}`}
-      messages={messages}
-      flashId={selection.kind === "thread" ? selection.flashId : undefined}
-      navigation={
-        <>
-          {conversationChoices}
-          {q.hasPreviousPage && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={q.isFetching}
-              onClick={() => q.fetchPreviousPage()}
-            >
-              Load earlier
-            </Button>
-          )}
-          {q.hasNextPage && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={q.isFetching}
-              onClick={() => q.fetchNextPage()}
-            >
-              Load later
-            </Button>
-          )}
-          {q.isFetching && <Spinner className="size-4" />}
-          {q.isError && (
-            <span role="alert" className="text-xs text-destructive">
-              {q.error.message}
-            </span>
-          )}
-        </>
-      }
-    />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1">
+        <Conversation
+          title={title}
+          meta={`${messages.length} messages${q.hasPreviousPage || q.hasNextPage ? " loaded" : ""}`}
+          messages={messages}
+          flashId={selection.kind === "thread" ? selection.flashId : undefined}
+          navigation={
+            <>
+              {conversationChoices}
+              {q.hasPreviousPage && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={q.isFetching}
+                  onClick={() => q.fetchPreviousPage()}
+                >
+                  Load earlier
+                </Button>
+              )}
+              {q.hasNextPage && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={q.isFetching}
+                  onClick={() => q.fetchNextPage()}
+                >
+                  Load later
+                </Button>
+              )}
+              {q.isFetching && <Spinner className="size-4" />}
+              {q.isError && (
+                <span role="alert" className="text-xs text-destructive">
+                  {q.error.message}
+                </span>
+              )}
+            </>
+          }
+        />
+      </div>
+    </div>
   );
 }

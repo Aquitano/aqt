@@ -8,7 +8,6 @@ const SOURCE_HUES = new Map([
   ["linkedin", 205],
   ["chatgpt", 170],
   ["claude", 25],
-  ["claude-code", 40],
 ]);
 
 export function sourceHue(src: string): number {
@@ -39,7 +38,7 @@ const ME = /thomas breindl|breindlthomas|^thomas$|^(user|human|me)$/i;
 export const isMe = (sender?: string | null) => ME.test((sender ?? "").trim());
 
 // Sources whose message bodies are markdown worth rendering as such
-const AI_SOURCES = new Set(["chatgpt", "claude", "claude-code", "codex", "opencode"]);
+const AI_SOURCES = new Set(["chatgpt", "claude"]);
 export const isMarkdownSource = (source: string) => AI_SOURCES.has(source);
 
 const URL_RE = /https?:\/\/[^\s<>"'()[\]]+/g;

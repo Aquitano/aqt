@@ -58,10 +58,10 @@ func TestStageRestoresOriginalName(t *testing.T) {
 	if err := os.WriteFile(src, []byte(`{"type":"user"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Copy(root, "claude-code", src); err != nil {
+	if _, err := Copy(root, "sample", src); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := List(root, "claude-code")
+	entries, err := List(root, "sample")
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("entries, err = %v, %v", entries, err)
 	}
@@ -81,7 +81,7 @@ func TestStageRestoresOriginalName(t *testing.T) {
 	// Re-archiving the staged copy must dedup onto the existing reference,
 	// not add a second file: this is what keeps a replay from growing the
 	// archive.
-	ref, err := Copy(root, "claude-code", staged)
+	ref, err := Copy(root, "sample", staged)
 	if err != nil {
 		t.Fatal(err)
 	}

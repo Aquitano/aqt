@@ -224,51 +224,6 @@ func TestParseClaudeConversationWithoutText(t *testing.T) {
 	}
 }
 
-func TestParseClaudeCodeSession(t *testing.T) {
-	lines := strings.Join([]string{
-		`{"type":"summary","summary":"Fixing the mbox splitter","leafUuid":"x"}`,
-		`{"type":"user","uuid":"u-1","timestamp":"2026-08-17T10:00:00.000Z","sessionId":"s1","message":{"role":"user","content":"the mbox import drops the last message"}}`,
-		`{"type":"assistant","uuid":"a-1","timestamp":"2026-08-17T10:00:10.000Z","sessionId":"s1","message":{"role":"assistant","content":[{"type":"text","text":"Looking at the splitter now."},{"type":"tool_use","id":"t1","name":"Read","input":{}}]}}`,
-		`{"type":"user","uuid":"u-2","timestamp":"2026-08-17T10:00:20.000Z","sessionId":"s1","isMeta":true,"message":{"role":"user","content":"meta line"}}`,
-		`{"type":"user","uuid":"u-3","timestamp":"2026-08-17T10:00:30.000Z","sessionId":"s1","message":{"role":"user","content":[{"type":"tool_result","content":"file contents"}]}}`,
-		`not json at all`,
-	}, "\n")
-	msgs, _, err := parseClaudeCodeSession(strings.NewReader(lines), "session-file")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(msgs) != 2 {
-		t.Fatalf("got %d messages, want 2 (meta + tool_result-only skipped): %+v", len(msgs), msgs)
-	}
-	// The summary is the subject; the session the file is named after is the
-	// thread, so two sessions summarised the same way stay apart.
-	if msgs[0].Thread != "session-file" || msgs[0].Subject != "Fixing the mbox splitter" {
-		t.Errorf("first = %+v", msgs[0])
-	}
-	if msgs[1].Body != "Looking at the splitter now." {
-		t.Errorf("assistant body = %q (tool_use must be dropped)", msgs[1].Body)
-	}
-}
-
-// Subagent transcripts are machine traffic: the "user" is a generated prompt.
-// Their lines are marked isSidechain and must not import as conversations.
-func TestParseClaudeCodeSessionSkipsSidechains(t *testing.T) {
-	lines := strings.Join([]string{
-		`{"type":"user","uuid":"u-1","timestamp":"2026-08-17T10:00:00.000Z","isSidechain":true,"message":{"role":"user","content":"machine-written prompt"}}`,
-		`{"type":"assistant","uuid":"a-1","timestamp":"2026-08-17T10:00:10.000Z","isSidechain":true,"message":{"role":"assistant","content":"subagent answer"}}`,
-	}, "\n")
-	msgs, sidechain, err := parseClaudeCodeSession(strings.NewReader(lines), "agent-x")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(msgs) != 0 {
-		t.Fatalf("subagent traffic imported: %+v", msgs)
-	}
-	if !sidechain {
-		t.Fatal("an all-sidechain transcript must be reported as one, not as empty")
-	}
-}
-
 // Titles repeat — a ChatGPT export holds dozens of "New chat" — so two
 // conversations sharing one must still be two threads.
 func TestSameTitleConversationsStayApart(t *testing.T) {
@@ -289,16 +244,6 @@ func TestSameTitleConversationsStayApart(t *testing.T) {
 		}
 		return parseClaudeConversation(c)
 	}
-	claudeCode := func(session string) []message {
-		line := `{"type":"summary","summary":"New chat"}` + "\n" +
-			`{"type":"user","uuid":"` + session + `-m","timestamp":"2026-08-17T10:00:00.000Z",` +
-			`"message":{"role":"user","content":"hi"}}`
-		msgs, _, err := parseClaudeCodeSession(strings.NewReader(line), session)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return msgs
-	}
 	for _, tc := range []struct {
 		source string
 		parse  func(string) []message
@@ -306,7 +251,6 @@ func TestSameTitleConversationsStayApart(t *testing.T) {
 	}{
 		{"chatgpt", chatgpt, [2]string{"conv-1", "conv-2"}},
 		{"claude", claude, [2]string{"c-1", "c-2"}},
-		{"claude-code", claudeCode, [2]string{"s-1", "s-2"}},
 	} {
 		t.Run(tc.source, func(t *testing.T) {
 			first, second := tc.parse(tc.ids[0]), tc.parse(tc.ids[1])

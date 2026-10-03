@@ -10,9 +10,9 @@ import (
 )
 
 type AttachmentFilter struct {
-	Filename, FileType, Person string
-	Since, Until               time.Time
-	Limit, Offset              int
+	Filename, Text, FileType, Person string
+	Since, Until                     time.Time
+	Limit, Offset                    int
 }
 
 type LibraryFile struct {
@@ -22,6 +22,7 @@ type LibraryFile struct {
 	SizeBytes int64     `json:"size_bytes"`
 	Messages  int       `json:"messages"`
 	LastAt    time.Time `json:"last_at"`
+	Snippet   string    `json:"snippet,omitempty"`
 }
 
 func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]LibraryFile, error) {
@@ -36,6 +37,12 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	arg := func(v any) string { args = append(args, v); return fmt.Sprintf("$%d", len(args)) }
 	if o.Filename != "" {
 		where += " and strpos(lower(a.filename), lower(" + arg(o.Filename) + "))>0"
+	}
+	snippet := "''"
+	if o.Text != "" {
+		p := arg(o.Text)
+		where += " and exists (select 1 from blob_text b where b.sha256=a.sha256 and b.status in ('ok','manual') and strpos(lower(b.text),lower(" + p + "))>0)"
+		snippet = "(select substring(b.text from greatest(1,strpos(lower(b.text),lower(" + p + "))-80) for 240) from blob_text b where b.sha256=matched.sha256)"
 	}
 	if o.FileType != "" {
 		typ := strings.ToLower(strings.TrimPrefix(o.FileType, "."))
@@ -62,7 +69,7 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
  select a.sha256,min(a.filename) filename,min(a.mime_type) mime_type,max(a.size_bytes) size_bytes,max(m.sent_at) last_at
  from attachments a join messages m on m.id=a.message_id where `+where+` group by a.sha256
  ) select sha256,filename,mime_type,size_bytes,
- (select count(distinct message_id) from attachments a where a.sha256=matched.sha256),last_at
+ (select count(distinct message_id) from attachments a where a.sha256=matched.sha256),last_at,`+snippet+`
  from matched order by last_at desc,sha256 limit `+arg(o.Limit)+` offset `+arg(o.Offset), args...)
 	if err != nil {
 		return nil, err
@@ -71,7 +78,7 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	out := []LibraryFile{}
 	for rows.Next() {
 		var a LibraryFile
-		if err := rows.Scan(&a.SHA256, &a.Filename, &a.MimeType, &a.SizeBytes, &a.Messages, &a.LastAt); err != nil {
+		if err := rows.Scan(&a.SHA256, &a.Filename, &a.MimeType, &a.SizeBytes, &a.Messages, &a.LastAt, &a.Snippet); err != nil {
 			return nil, err
 		}
 		out = append(out, a)

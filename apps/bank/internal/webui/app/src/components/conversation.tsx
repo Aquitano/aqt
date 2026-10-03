@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { Download, Paperclip } from "lucide-react";
+import { Paperclip } from "lucide-react";
 import { memo, useState, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { FilePreview } from "@/components/file-preview";
 import { MessageProvenance } from "@/components/message-provenance";
 import {
   Attachment,
@@ -31,6 +32,7 @@ import {
 } from "@/components/ui/message-scroller";
 import { getMessageBranch, getMessageParent, type Message as BankMessage } from "@/lib/api";
 import { fmtDay, fmtTime, isMarkdownSource, isMe, Linkified, sourceHue } from "@/lib/format";
+import { messageLink } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 function initials(name: string) {
@@ -64,37 +66,52 @@ function fmtBytes(n?: number) {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function MessageLink({ m }: { m: BankMessage }) {
+  return m.ref ? (
+    <a className="text-xs text-muted-foreground underline" href={messageLink(m.ref)}>
+      Message link
+    </a>
+  ) : null;
+}
+
 function Attachments({ m }: { m: BankMessage }) {
+  const [open, setOpen] = useState<string | null>(null);
   if (!m.attachments?.length) return null;
   return (
     <div className="flex flex-col gap-1.5">
       {m.attachments.map((a) => (
-        <a
-          key={a.sha256 + a.filename}
-          href={`/v1/blobs/${a.sha256}`}
-          download={a.filename}
-          className="group/att block"
-        >
-          <Attachment size="sm" className="hover:bg-accent">
-            <AttachmentMedia>
-              <Paperclip className="size-3.5" />
-            </AttachmentMedia>
-            <AttachmentContent>
-              <AttachmentTitle>{a.filename}</AttachmentTitle>
-              {a.text_status && !["ok", "manual"].includes(a.text_status) && (
-                <AttachmentDescription>
-                  {a.text_status === "needs_ocr"
-                    ? "Needs OCR to search text"
-                    : `Text: ${a.text_status.replaceAll("_", " ")}`}
-                </AttachmentDescription>
-              )}
-              {fmtBytes(a.size_bytes) && (
-                <AttachmentDescription>{fmtBytes(a.size_bytes)}</AttachmentDescription>
-              )}
-            </AttachmentContent>
-            <Download className="mr-1 size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover/att:opacity-100" />
-          </Attachment>
-        </a>
+        <div key={a.sha256 + a.filename}>
+          <button
+            type="button"
+            className="block w-full text-left"
+            aria-expanded={open === a.sha256 + a.filename}
+            onClick={() => setOpen(open === a.sha256 + a.filename ? null : a.sha256 + a.filename)}
+          >
+            <Attachment size="sm" className="hover:bg-accent">
+              <AttachmentMedia>
+                <Paperclip className="size-3.5" />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle>{a.filename}</AttachmentTitle>
+                {a.text_status && !["ok", "manual"].includes(a.text_status) && (
+                  <AttachmentDescription>
+                    {a.text_status === "needs_ocr"
+                      ? "Needs OCR to search text"
+                      : `Text: ${a.text_status.replaceAll("_", " ")}`}
+                  </AttachmentDescription>
+                )}
+                {fmtBytes(a.size_bytes) && (
+                  <AttachmentDescription>{fmtBytes(a.size_bytes)}</AttachmentDescription>
+                )}
+              </AttachmentContent>
+            </Attachment>
+          </button>
+          {open === a.sha256 + a.filename && (
+            <div className="mt-2 rounded border p-3">
+              <FilePreview file={a} />
+            </div>
+          )}
+        </div>
       ))}
     </div>
   );
@@ -173,6 +190,7 @@ function BranchReader({ id }: { id: number }) {
             <p className="mb-1 font-medium text-muted-foreground">{message.sender}</p>
             <Body m={message} />
             <Attachments m={message} />
+            <MessageLink m={message} />
           </li>
         ))}
       </ol>
@@ -301,6 +319,7 @@ function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; s
               <MessageProvenance message={m} />
             </BubbleContent>
           </Bubble>
+          <MessageLink m={m} />
           {showFooter && (
             <MessageFooter className="text-[10px] text-muted-foreground/50">
               {fmtTime(m.sent_at)}
@@ -335,6 +354,7 @@ function DocumentView({ title, meta, m }: { title: ReactNode; meta: string; m: B
             <span className="ml-auto">
               {fmtDay(m.sent_at)}, {fmtTime(m.sent_at)}
             </span>
+            <MessageLink m={m} />
           </div>
           <div className="text-sm leading-relaxed">
             <ReplyContext m={m} />

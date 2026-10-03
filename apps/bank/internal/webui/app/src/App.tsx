@@ -1,10 +1,21 @@
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Landmark } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
-import { DetailPane, type Selection } from "@/components/detail-pane";
+import { DetailPane } from "@/components/detail-pane";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getStats } from "@/lib/api";
+import {
+  isView,
+  navigate,
+  readSearch,
+  readSelection,
+  select,
+  useLocation,
+  writeSearch,
+  writeSelection,
+  type View,
+} from "@/lib/navigation";
 import { AttachmentsView } from "@/views/attachments";
 import { ALL_SOURCES, BrowseView } from "@/views/browse";
 import { ContactsView } from "@/views/contacts";
@@ -16,15 +27,18 @@ const client = new QueryClient({
   defaultOptions: { queries: { staleTime: 60_000, retry: 1, refetchOnWindowFocus: false } },
 });
 
-const VIEWS = ["search", "browse", "contacts", "attachments", "imports", "stats"] as const;
-type View = (typeof VIEWS)[number];
-
-const isView = (value: string): value is View => VIEWS.some((candidate) => candidate === value);
+function setView(view: View) {
+  navigate((params) => params.set("view", view));
+}
 
 function Shell() {
-  const [view, setView] = useState<View>("search");
-  const [selection, setSelection] = useState<Selection>(null);
-  const [browseSource, setBrowseSource] = useState(ALL_SOURCES);
+  const location = useLocation();
+  const url = new URLSearchParams(location);
+  const requestedView = url.get("view") || "search";
+  const view = isView(requestedView) ? requestedView : "search";
+  const selection = readSelection(url);
+  const searchParams = readSearch(url);
+  const browseSource = url.get("browseSource") || ALL_SOURCES;
   const searchRef = useRef<HTMLInputElement>(null);
 
   const statsQ = useQuery({ queryKey: ["stats"], queryFn: getStats });
@@ -34,7 +48,7 @@ function Shell() {
   // Global keys: "/" focuses search, arrows (or j/k) walk the list pane.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target instanceof HTMLElement ? e.target : null;
       const field =
         target !== null &&
@@ -50,8 +64,8 @@ function Shell() {
       const down = e.key === "ArrowDown" || (e.key === "j" && field === null);
       const up = e.key === "ArrowUp" || (e.key === "k" && field === null);
       if (!down && !up) return;
-      // arrows from the search input jump into the results; otherwise skip fields
-      if (field !== null && !field.matches("input[type=text],input:not([type])")) return;
+      if (field !== null && field !== searchRef.current) return;
+      if (target?.closest('[role="combobox"], [role="listbox"], [role="option"]')) return;
       const rows = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-row]"));
       if (!rows.length) return;
       const cur = rows.findIndex((r) => r.dataset.selected !== undefined);
@@ -117,8 +131,10 @@ function Shell() {
           <StatsView
             stats={stats}
             onOpenSource={(s) => {
-              setBrowseSource(s);
-              setView("browse");
+              navigate((params) => {
+                params.set("browseSource", s);
+                params.set("view", "browse");
+              });
             }}
           />
         </main>
@@ -127,9 +143,17 @@ function Shell() {
           <div className="flex w-[44%] max-w-[560px] min-w-[380px] flex-col border-r">
             {view === "search" && (
               <SearchView
+                key={JSON.stringify(searchParams)}
+                params={searchParams}
+                onSearch={(search) =>
+                  navigate((params) => {
+                    writeSearch(params, search);
+                    writeSelection(params, null);
+                  })
+                }
                 stats={stats}
                 selection={selection}
-                onSelect={setSelection}
+                onSelect={select}
                 searchRef={searchRef}
               />
             )}
@@ -137,13 +161,15 @@ function Shell() {
               <BrowseView
                 stats={stats}
                 selection={selection}
-                onSelect={setSelection}
+                onSelect={select}
                 source={browseSource}
-                onSourceChange={setBrowseSource}
+                onSourceChange={(source) =>
+                  navigate((params) => params.set("browseSource", source))
+                }
               />
             )}
-            {view === "attachments" && <AttachmentsView onSelect={setSelection} />}
-            {view === "contacts" && <ContactsView selection={selection} onSelect={setSelection} />}
+            {view === "attachments" && <AttachmentsView onSelect={select} />}
+            {view === "contacts" && <ContactsView selection={selection} onSelect={select} />}
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             <DetailPane selection={selection} />

@@ -31,7 +31,7 @@ func (s *Server) handleLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	o := store.AttachmentFilter{Filename: q.Get("q"), FileType: q.Get("type"), Person: q.Get("person"), Limit: limit, Offset: offset}
+	o := store.AttachmentFilter{Filename: q.Get("q"), Text: q.Get("text"), FileType: q.Get("type"), Person: q.Get("person"), Limit: limit, Offset: offset}
 	var err error
 	if o.Since, err = parseDate(q.Get("since")); err != nil {
 		writeErr(w, 400, "invalid since")
