@@ -39,7 +39,7 @@ jobs:
           go-version-file: apps/tracker/go.mod
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13.2
+          version: v2.14.0
           working-directory: apps/tracker
       - run: go vet ./...
       - run: go test -race ./...

@@ -11,7 +11,6 @@ DerivedData/
 *.xcodeproj/
 xcuserdata/
 perf-results/
-graphify-out/
 .claude/worktrees/
 coverage/
 .build/
