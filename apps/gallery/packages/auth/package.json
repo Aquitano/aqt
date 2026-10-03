@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@aqt/gallery-env": "workspace:*",
-    "@clerk/backend": "^3.7.0"
+    "@clerk/backend": "^3.22.0"
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",
