@@ -20,12 +20,12 @@
     "@aqt/gallery-env": "workspace:*",
     "dotenv": "catalog:",
     "drizzle-orm": "^0.45.3",
-    "pg": "^8.17.1",
+    "pg": "^8.23.1",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",
-    "@types/pg": "^8.16.0",
+    "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",
     "typescript": "catalog:"
   }

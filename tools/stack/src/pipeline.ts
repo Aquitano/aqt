@@ -7,8 +7,8 @@ import type { ShellRunner } from "./shell.ts";
 import { buildCi, getTemplates } from "./templates.ts";
 
 // Bump these together with a real scaffold/build smoke test.
-export const NEXT_GENERATOR = "create-next-app@16.3.4";
-export const SHADCN_CLI = "shadcn@4.21.0";
+export const NEXT_GENERATOR = "create-next-app@16.3.8";
+export const SHADCN_CLI = "shadcn@4.21.1";
 export const WORKSPACE_ROOT = resolve(import.meta.dir, "../../..");
 
 export type StepRunner = (
