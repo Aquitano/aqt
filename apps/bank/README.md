@@ -91,6 +91,10 @@ Stats shows each source's last import, recorded sync checkpoint, and coverage no
 Sources flagged as stale by the API show **No recent imports**. A recent sync does
 not imply that new messages were imported.
 
+Run `bun run check:dist` in `internal/webui/app` to rebuild and check the embedded
+assets against Git. Commit the rebuilt `dist/` with its source changes. CI and
+`mise run bank:ts` run the same check.
+
 Agents on a client machine get the CLI handed to them by a Claude Code skill: [skill/README.md](skill/README.md).
 
 Deployment (VPS, LUKS, containerized server, restic, cron): [DEPLOY.md](DEPLOY.md).

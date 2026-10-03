@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "check:dist": "bun run build && bun check-dist.ts",
     "preview": "vite preview",
     "check": "tsc -b && oxlint --type-aware src",
     "typecheck": "tsc -b"

@@ -10,5 +10,5 @@
     "erasableSyntaxOnly": true,
     "moduleResolution": "nodenext"
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "check-dist.ts"]
 }
