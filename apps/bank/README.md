@@ -1,6 +1,6 @@
 # aqt-bank
 
-Personal message archive: every message from every source in one Postgres, full-text searchable from a CLI by me and my agents. See [DESIGN.md](DESIGN.md) for architecture and roadmap.
+Personal archive and library: messages, media, viewing activity, playlists, files, and selected Markdown pages in one searchable Postgres database. See [LIBRARY.md](LIBRARY.md) for the library model, imports, and Brain search. See [DESIGN.md](DESIGN.md) for architecture.
 
 Bank imports personal ChatGPT and Claude.ai exports. Turnstash owns coding-session
 ingestion. Removing an importer does not delete previously archived records.
@@ -32,6 +32,10 @@ go build -o bank ./cmd/bank
                                                 #  along as attachments, and re-importing
                                                 #  heals an earlier text-only pass)
 ./bank import claude claude-export.zip          # Claude.ai data export
+./bank import netflix NetflixViewingHistory.csv --account thomas
+./bank import youtube-media takeout.zip --account thomas
+./bank library upload soundtrack.flac notes.pdf
+./bank library index ~/brain/wiki --source brain --account wiki
 echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source notes -
 
 ./bank import inbox                             # sweep $BANK_DATA_DIR/inbox/<kind>/

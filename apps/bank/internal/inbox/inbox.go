@@ -21,7 +21,7 @@ import (
 )
 
 // Kinds are the importer names that double as inbox subdirectory names.
-var Kinds = []string{"whatsapp", "eml", "mbox", "discord", "linkedin", "youtube", "chatgpt", "claude", "json"}
+var Kinds = []string{"whatsapp", "eml", "mbox", "discord", "linkedin", "youtube", "chatgpt", "claude", "json", "netflix", "youtube-media", "library"}
 
 // Outcome is what a router reports back about one imported file, reduced to
 // the three numbers the sweep needs to pick a disposition.

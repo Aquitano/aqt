@@ -64,6 +64,7 @@ const maxUpload = 16 << 30
 
 func (s *Server) Handler() http.Handler {
 	v1 := http.NewServeMux()
+	s.registerLibraryRoutes(v1)
 	v1.HandleFunc("GET /v1/search", s.handleSearch)
 	v1.HandleFunc("GET /v1/mailboxes", s.handleMailboxes)
 	v1.HandleFunc("GET /v1/threads", s.handleBrowseThreads)

@@ -20,6 +20,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 
 	"github.com/aquitano/aqt/apps/bank/internal/generic"
+	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -60,7 +61,13 @@ func (c *Client) request(ctx context.Context, method, path string, q url.Values,
 	}
 	if resp.StatusCode/100 != 2 {
 		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound && strings.HasPrefix(path, "/v1/library/") {
+			return nil, fmt.Errorf("%s: %w", path, store.ErrNotFound)
+		}
 		if resp.StatusCode == http.StatusConflict {
+			if strings.HasPrefix(path, "/v1/library/") {
+				return nil, fmt.Errorf("%s: %w", errorMessage(resp), library.ErrConflict)
+			}
 			var conflict store.MailThreadConflictError
 			if err := json.NewDecoder(io.LimitReader(resp.Body, 65536)).Decode(&conflict); err == nil && conflict.Code == "mail_thread_conflict" {
 				return nil, &conflict

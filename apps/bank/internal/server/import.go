@@ -21,6 +21,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/generic"
 	"github.com/aquitano/aqt/apps/bank/internal/linkedin"
+	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/whatsapp"
 	"github.com/aquitano/aqt/apps/bank/internal/youtube"
@@ -69,7 +70,12 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := s.importFile(r.Context(), kind, source, path, observation)
+	var res any
+	if kind == "netflix" || kind == "youtube-media" || kind == "library" {
+		res, err = mediaimport.Import(r.Context(), s.db, s.blobs, s.archiveDir, kind, path, mediaimport.Options{Source: source, Account: r.URL.Query().Get("account")})
+	} else {
+		res, err = s.importFile(r.Context(), kind, source, path, observation)
+	}
 	if err != nil {
 		writeCause(w, err)
 		return

@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -27,8 +28,10 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/gmail"
+	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/verify"
@@ -70,7 +73,9 @@ Usage:
   bank attachment messages <sha256>          every message with this file, as JSON
   bank attachment stats [--json]              how much of the archive is searchable inside
   bank attachment text <sha256> [--set f]     read, replace or clear that text
-  bank search [query] [flags]                 full-text search, or filtered conversations
+  bank library <command>                     media, activity, collections, files, page indexing
+  bank library help                          library commands and JSON edit formats
+  bank search [query] [flags]                 grouped archive search, or filtered conversations
   bank thread <id> [--source s] [--limit n]   one conversation page, oldest first
   bank contact <add|list|show|alias|...>      one person across their many identities
   bank show <id|ref> [--json] [--provenance]   print one message + attachments
@@ -103,6 +108,8 @@ Extraction flags (bank extract):
 
 Search flags:
   --source s     filter by source (whatsapp, gmail, ...)
+  --kind k       message, item, activity, collection, file, page, or media subtype
+  --account a    filter library records by source account
   --mailbox-id n  observed folder id from bank mail mailboxes; requires --source
   --subject text subject contains this literal text, case-insensitive
   --has-attachment true|false  filter by attachment presence
@@ -154,6 +161,8 @@ func main() {
 		err = cmdImport(ctx, os.Args[2:])
 	case "reimport":
 		err = cmdReimport(ctx, os.Args[2:])
+	case "library":
+		err = cmdLibrary(ctx, os.Args[2:])
 	case "search":
 		err = cmdSearch(ctx, os.Args[2:])
 	case "thread":
@@ -290,6 +299,8 @@ func printSyncResult(res gmail.SyncResult) {
 
 func cmdSearch(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("search", flag.ExitOnError)
+	kind := fs.String("kind", "", "")
+	account := fs.String("account", "", "")
 	var o store.SearchOpts
 	var since, until string
 	var asJSON bool
@@ -343,6 +354,9 @@ func cmdSearch(ctx context.Context, args []string) error {
 	}
 	defer closeBackend()
 	if query == "" {
+		if *kind != "" || *account != "" {
+			return fmt.Errorf("kind/account require a search query; use bank library list to browse library records")
+		}
 		groups, err := b.BrowseThreads(ctx, store.BrowseOpts{Source: o.Source, MailboxID: o.MailboxID, Subject: o.Subject, HasAttachment: o.HasAttachment, From: o.From, To: o.To, Person: o.Person, Since: o.Since, Until: o.Until, Limit: o.Limit, Offset: o.Offset})
 		if err != nil {
 			return err
@@ -356,33 +370,20 @@ func cmdSearch(ctx context.Context, args []string) error {
 		printMorePages(len(groups), o.Limit, o.Offset)
 		return nil
 	}
-	msgs, err := b.Search(ctx, query, o)
+	options := library.ListOptions{Query: query, Source: o.Source, Account: *account, Kind: *kind, Since: since, Until: until, Limit: o.Limit, Offset: o.Offset}
+	var result catalog.Result
+	if remote, ok := b.(*client.Client); ok {
+		result, err = remote.Find(ctx, query, o, options)
+	} else {
+		result, err = catalog.Find(ctx, b, query, o, options)
+	}
 	if err != nil {
 		return err
 	}
 	if asJSON {
-		return printJSON(msgs)
+		return printJSON(result)
 	}
-	if len(msgs) == 0 {
-		fmt.Println("no matches")
-		return nil
-	}
-	for _, m := range msgs {
-		title := m.Subject
-		if title == "" {
-			title = excerpt(m.Body, 100)
-		}
-		fmt.Printf("%6d  %s  %-8s  %-22s  %s\n",
-			m.ID, m.SentAt.Format("2006-01-02"), m.Source, excerpt(m.Sender, 22), title)
-		if m.Snippet != "" && m.Snippet != title {
-			fmt.Printf("        %s\n", excerpt(m.Snippet, 160))
-		}
-		if m.AttachmentSnippet != "" {
-			fmt.Printf("        in attachment: %s\n", excerpt(m.AttachmentSnippet, 160))
-		}
-	}
-	printMorePages(len(msgs), o.Limit, o.Offset)
-	return nil
+	return printCatalog(result, o.Limit, o.Offset)
 }
 
 // printMorePages says how to reach the next page. A full page is the signal
@@ -584,6 +585,7 @@ type backend interface {
 	AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error)
 	AttachmentMessages(context.Context, string, int, int) ([]store.Message, error)
 	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
+	SearchLibrary(context.Context, library.ListOptions) (library.SearchResult, error)
 	GetMessageDetail(ctx context.Context, id int64) (store.MessageDetail, error)
 	GetMessageDetailByRef(ctx context.Context, ref string) (store.MessageDetail, error)
 	GetThreadPage(ctx context.Context, source, threadID string, o store.ThreadOpts) (store.Thread, error)
@@ -872,15 +874,18 @@ func cmdVerify(ctx context.Context, args []string) error {
 		if f.Repaired {
 			state = "repaired"
 		}
-		fmt.Printf("%-9s message %d %-20s %s\n", state, f.MessageID, f.Kind, f.Detail)
+		if f.LibraryID != "" {
+			fmt.Printf("%-9s %s %s %-20s %s\n", state, f.LibraryKind, f.LibraryID, f.Kind, f.Detail)
+		} else {
+			fmt.Printf("%-9s message %d %-20s %s\n", state, f.MessageID, f.Kind, f.Detail)
+		}
 	}
+	checked := fmt.Sprintf("%d messages, %d attachments, %d library records, %d library files checked", rep.MessagesChecked, rep.AttachmentsChecked, rep.LibraryRecordsChecked, rep.LibraryFilesChecked)
 	if rep.Damaged == 0 {
-		fmt.Printf("%d messages, %d attachments checked: no damage found\n",
-			rep.MessagesChecked, rep.AttachmentsChecked)
+		fmt.Printf("%s: no damage found\n", checked)
 		return nil
 	}
-	fmt.Printf("%d messages, %d attachments checked: %s (%d repaired, %d unrecoverable)\n",
-		rep.MessagesChecked, rep.AttachmentsChecked, plural(rep.Damaged, "problem"), rep.Repaired, rep.Unrecoverable)
+	fmt.Printf("%s: %s (%d repaired, %d unrecoverable)\n", checked, plural(rep.Damaged, "problem"), rep.Repaired, rep.Unrecoverable)
 	if len(rep.Findings) < rep.Damaged {
 		fmt.Printf("(showing the first %d findings)\n", len(rep.Findings))
 	}
@@ -915,6 +920,7 @@ func cmdUI(args []string) error {
 	fs := flag.NewFlagSet("ui", flag.ExitOnError)
 	listen := fs.String("listen", "127.0.0.1:8481", "")
 	noOpen := fs.Bool("no-open", false, "")
+	allowedHost := fs.String("allowed-host", "", "hostname accepted by the local UI proxy")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -926,12 +932,23 @@ func cmdUI(args []string) error {
 	if err != nil {
 		return fmt.Errorf("invalid BANK_URL: %w", err)
 	}
+	listenHost, _, err := net.SplitHostPort(*listen)
+	if err != nil {
+		return fmt.Errorf("invalid UI listen address: %w", err)
+	}
+	if (listenHost == "" || listenHost == "0.0.0.0" || listenHost == "::") && *allowedHost == "" {
+		return fmt.Errorf("wildcard UI listener requires --allowed-host with the hostname used to open it")
+	}
+	acceptedHosts := []string{listenHost}
+	if *allowedHost != "" {
+		acceptedHosts = append(acceptedHosts, *allowedHost)
+	}
 	addr := "http://" + *listen
 	fmt.Printf("bank ui: %s -> %s\n", addr, base)
 	if !*noOpen {
 		openBrowser(addr)
 	}
-	srv := &http.Server{Addr: *listen, Handler: webui.Handler(apiBase, os.Getenv("BANK_TOKEN")),
+	srv := &http.Server{Addr: *listen, Handler: webui.Handler(apiBase, os.Getenv("BANK_TOKEN"), acceptedHosts...),
 		ReadHeaderTimeout: 15 * time.Second}
 	return srv.ListenAndServe()
 }

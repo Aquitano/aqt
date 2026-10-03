@@ -1,8 +1,8 @@
 // Package verify checks that the archive still holds what the database claims,
 // and repairs what the archived raw inputs can rebuild.
 //
-// Three things can drift apart: the message rows, the attachment rows, and the
-// bytes on disk (raw inputs under archive/, attachment content under blobs/).
+// Message and library records can drift from the bytes on disk: raw inputs
+// under archive/ and file content under blobs/.
 // An import that died between writing a row and writing its bytes leaves
 // damage that no later import notices, because deduplication stops at the
 // message row. This is the pass that finds it.
@@ -30,13 +30,15 @@ import (
 // Kinds of damage, stable strings so JSON consumers can branch on them.
 const (
 	MissingRaw         = "missing_raw"         // raw_ref names an archive file that is gone
-	MissingBlob        = "missing_blob"        // attachment row without bytes
+	MissingBlob        = "missing_blob"        // file reference without bytes
 	CorruptBlob        = "corrupt_blob"        // bytes do not hash to the recorded digest
 	WrongSize          = "wrong_size"          // bytes exist but size_bytes lies
 	MissingAttachments = "missing_attachments" // the archived mail carries attachments the database does not
 )
 
 type Finding struct {
+	LibraryID    string `json:"library_id,omitempty"`
+	LibraryKind  string `json:"library_kind,omitempty"`
 	MessageID    int64  `json:"message_id"`
 	AttachmentID int64  `json:"attachment_id,omitempty"`
 	Kind         string `json:"kind"`
@@ -46,13 +48,15 @@ type Finding struct {
 }
 
 type Report struct {
-	MessagesChecked     int64     `json:"messages_checked"`
-	AttachmentsChecked  int64     `json:"attachments_checked"`
-	Damaged             int       `json:"damaged"`
-	Repaired            int       `json:"repaired"`
-	Unrecoverable       int       `json:"unrecoverable"`
-	Findings            []Finding `json:"findings"`
-	MailContextsChecked int       `json:"mail_contexts_checked"`
+	LibraryFilesChecked   int64     `json:"library_files_checked"`
+	LibraryRecordsChecked int64     `json:"library_records_checked"`
+	MessagesChecked       int64     `json:"messages_checked"`
+	AttachmentsChecked    int64     `json:"attachments_checked"`
+	Damaged               int       `json:"damaged"`
+	Repaired              int       `json:"repaired"`
+	Unrecoverable         int       `json:"unrecoverable"`
+	Findings              []Finding `json:"findings"`
+	MailContextsChecked   int       `json:"mail_contexts_checked"`
 }
 
 type Options struct {
@@ -76,6 +80,9 @@ func Run(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir str
 	})
 	if err == nil {
 		err = v.mailContexts(ctx)
+	}
+	if err == nil {
+		err = st.EachArchivedLibraryRecord(ctx, o.Source, v.libraryRecord)
 	}
 	return rep, err
 }
@@ -133,8 +140,9 @@ type verifier struct {
 	rep        *Report
 	// raw caches the parse of the message currently being checked, so a mail
 	// with five broken attachments is read from disk once.
-	rawPath string
-	rawMail *eml.Message
+	rawPath          string
+	rawMail          *eml.Message
+	libraryRawChecks map[string]libraryRawCheck
 }
 
 func (v *verifier) message(ctx context.Context, m store.ArchivedMessage) error {

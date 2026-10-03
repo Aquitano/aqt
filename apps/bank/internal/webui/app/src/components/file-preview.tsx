@@ -41,6 +41,24 @@ export function FilePreview({ file }: { file: Attachment }) {
           </Button>
         )}
       </div>
+      {file.mime_type?.startsWith("audio/") && (
+        <audio
+          controls
+          preload="metadata"
+          src={`/v1/attachments/${file.sha256}/preview`}
+          className="w-full"
+          aria-label={file.filename}
+        />
+      )}
+      {file.mime_type?.startsWith("video/") && (
+        <video
+          controls
+          preload="metadata"
+          src={`/v1/attachments/${file.sha256}/preview`}
+          className="max-h-96 w-full rounded-lg"
+          aria-label={file.filename}
+        />
+      )}
       {file.mime_type === "application/pdf" && (
         <object
           aria-label={file.filename}

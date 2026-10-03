@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { Landmark } from "lucide-react";
+import { ArrowLeft, Landmark } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { DetailPane } from "@/components/detail-pane";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getStats } from "@/lib/api";
 import {
@@ -16,10 +17,14 @@ import {
   writeSelection,
   type View,
 } from "@/lib/navigation";
+import { cn } from "@/lib/utils";
 import { AttachmentsView } from "@/views/attachments";
 import { ALL_SOURCES, BrowseView } from "@/views/browse";
+import { CollectionsView } from "@/views/collections";
 import { ContactsView } from "@/views/contacts";
 import { ImportsView } from "@/views/imports";
+import { LibraryView, ActivityView } from "@/views/library";
+import { MediaFilesView } from "@/views/media-files";
 import { SearchView } from "@/views/search";
 import { StatsView } from "@/views/stats";
 
@@ -28,13 +33,17 @@ const client = new QueryClient({
 });
 
 function setView(view: View) {
-  navigate((params) => params.set("view", view));
+  navigate((params) => {
+    params.set("view", view);
+    writeSelection(params, null);
+  });
 }
 
 function Shell() {
   const location = useLocation();
   const url = new URLSearchParams(location);
-  const requestedView = url.get("view") || "search";
+  const requestedView =
+    url.get("view") || (url.has("message") || url.has("q") ? "search" : "library");
   const view = isView(requestedView) ? requestedView : "search";
   const selection = readSelection(url);
   const searchParams = readSearch(url);
@@ -81,43 +90,42 @@ function Shell() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      <header className="flex shrink-0 items-center gap-5 border-b bg-card px-4 py-2">
-        <h1 className="flex items-center gap-1.5 text-sm font-semibold tracking-wide">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b bg-card px-4 py-3">
+        <h1 className="flex shrink-0 items-center gap-2 text-sm font-semibold tracking-wide">
           <Landmark className="size-4 text-primary" />
-          <span>
-            <span className="text-primary">aqt</span>-bank
-          </span>
+          <span>aqt-bank</span>
         </h1>
-        <Tabs
-          value={view}
-          onValueChange={(v) => {
-            if (isView(v)) setView(v);
-          }}
-        >
-          <TabsList className="h-8">
-            <TabsTrigger value="search" className="text-xs">
-              Search
-            </TabsTrigger>
-            <TabsTrigger value="browse" className="text-xs">
-              Browse
-            </TabsTrigger>
-            <TabsTrigger value="contacts" className="text-xs">
-              Contacts
-            </TabsTrigger>
-            <TabsTrigger value="attachments" className="text-xs">
-              Files
-            </TabsTrigger>
-            <TabsTrigger value="imports" className="text-xs">
-              Imports
-            </TabsTrigger>
-            <TabsTrigger value="stats" className="text-xs">
-              Stats
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <div className="ml-auto text-xs text-muted-foreground/70 tabular-nums">
+        <div className="order-3 min-w-0 basis-full overflow-x-auto lg:order-none lg:flex-1 lg:basis-auto">
+          <Tabs
+            value={view === "attachments" ? "media-files" : view}
+            onValueChange={(value) => {
+              if (isView(value)) setView(value);
+            }}
+          >
+            <TabsList className="w-max">
+              {(
+                [
+                  { value: "library", label: "Library" },
+                  { value: "activity", label: "Activity" },
+                  { value: "collections", label: "Collections" },
+                  { value: "search", label: "Search" },
+                  { value: "browse", label: "Messages" },
+                  { value: "media-files", label: "Files" },
+                  { value: "contacts", label: "Contacts" },
+                  { value: "imports", label: "Imports" },
+                  { value: "stats", label: "Sources" },
+                ] as const
+              ).map((tab) => (
+                <TabsTrigger key={tab.value} value={tab.value}>
+                  {tab.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
+        <div className="ml-auto text-xs text-muted-foreground tabular-nums">
           {statsQ.isError
-            ? "archive unreachable"
+            ? "Archive unavailable"
             : total
               ? `${total.toLocaleString("en")} messages`
               : ""}
@@ -140,7 +148,30 @@ function Shell() {
         </main>
       ) : (
         <main className="flex min-h-0 flex-1">
-          <div className="flex w-[44%] max-w-[560px] min-w-[380px] flex-col border-r">
+          <div
+            className={cn(
+              "min-h-0 w-full flex-col border-r md:flex md:w-[44%] md:max-w-[560px] md:min-w-[320px]",
+              selection ? "hidden" : "flex",
+            )}
+          >
+            {view === "library" && <LibraryView selection={selection} />}
+            {view === "activity" && <ActivityView selection={selection} />}
+            {view === "collections" && <CollectionsView selection={selection} />}
+            {(view === "attachments" || view === "media-files") && (
+              <Tabs
+                className="shrink-0 px-4 pt-4"
+                value={view}
+                onValueChange={(value) => {
+                  if (isView(value)) setView(value);
+                }}
+              >
+                <TabsList>
+                  <TabsTrigger value="media-files">Library files</TabsTrigger>
+                  <TabsTrigger value="attachments">Message attachments</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
+            {view === "media-files" && <MediaFilesView />}
             {view === "search" && (
               <SearchView
                 key={JSON.stringify(searchParams)}
@@ -171,8 +202,21 @@ function Shell() {
             {view === "attachments" && <AttachmentsView onSelect={select} />}
             {view === "contacts" && <ContactsView selection={selection} onSelect={select} />}
           </div>
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <DetailPane selection={selection} />
+          <div
+            className={cn(
+              "min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex",
+              selection ? "flex" : "hidden",
+            )}
+          >
+            <div className="shrink-0 border-b p-2 md:hidden">
+              <Button variant="ghost" size="sm" onClick={() => select(null)}>
+                <ArrowLeft data-icon="inline-start" />
+                Back to results
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <DetailPane selection={selection} />
+            </div>
           </div>
         </main>
       )}

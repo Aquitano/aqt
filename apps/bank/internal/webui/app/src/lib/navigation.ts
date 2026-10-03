@@ -2,7 +2,18 @@ import { useSyncExternalStore } from "react";
 
 import type { Attachment, SearchParams } from "@/lib/api";
 
-export const VIEWS = ["search", "browse", "contacts", "attachments", "imports", "stats"] as const;
+export const VIEWS = [
+  "library",
+  "activity",
+  "collections",
+  "search",
+  "browse",
+  "contacts",
+  "attachments",
+  "media-files",
+  "imports",
+  "stats",
+] as const;
 export type View = (typeof VIEWS)[number];
 export const isView = (value: string): value is View => VIEWS.some((view) => view === value);
 
@@ -15,6 +26,9 @@ export type Selection =
       flashId?: number;
       current?: boolean;
     }
+  | { kind: "item"; id: string }
+  | { kind: "collection"; id: string }
+  | { kind: "page"; id: string }
   | { kind: "message"; id: number | string }
   | { kind: "contact"; name: string }
   | { kind: "mail-conflict"; source: string; key: string }
@@ -22,6 +36,9 @@ export type Selection =
   | null;
 
 const selectionKeys = [
+  "item",
+  "collection",
+  "page",
   "message",
   "thread",
   "threadSource",
@@ -72,6 +89,12 @@ export function navigate(update: (params: URLSearchParams) => void) {
 }
 
 export function readSelection(params: URLSearchParams): Selection {
+  const item = params.get("item");
+  if (item) return { kind: "item", id: item };
+  const collection = params.get("collection");
+  if (collection) return { kind: "collection", id: collection };
+  const page = params.get("page");
+  if (page) return { kind: "page", id: page };
   const message = params.get("message");
   if (message && (/^[a-f0-9]{12}$/.test(message) || /^[1-9]\d*$/.test(message)))
     return { kind: "message", id: message };
@@ -108,6 +131,11 @@ export function writeSelection(params: URLSearchParams, selection: Selection) {
   for (const key of selectionKeys) params.delete(key);
   if (!selection) return;
   switch (selection.kind) {
+    case "item":
+    case "collection":
+    case "page":
+      params.set(selection.kind, selection.id);
+      break;
     case "message":
       params.set("message", String(selection.id));
       break;

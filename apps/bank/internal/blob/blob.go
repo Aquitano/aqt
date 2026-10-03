@@ -68,6 +68,11 @@ func (s *Store) put(r io.Reader, overwrite bool) (string, int64, error) {
 		return "", 0, err
 	}
 	if err := os.Rename(tmp.Name(), dest); err != nil {
+		if !overwrite {
+			if info, statErr := os.Stat(dest); statErr == nil && info.Mode().IsRegular() && info.Size() == size {
+				return sum, size, nil
+			}
+		}
 		return "", 0, err
 	}
 	return sum, size, nil

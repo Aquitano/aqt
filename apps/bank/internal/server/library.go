@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -31,7 +32,11 @@ func (s *Server) handleLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	o := store.AttachmentFilter{Filename: q.Get("q"), Text: q.Get("text"), FileType: q.Get("type"), Person: q.Get("person"), Limit: limit, Offset: offset}
+	o := store.AttachmentFilter{Query: q.Get("query"), Source: q.Get("source"), Match: q.Get("match"), Filename: q.Get("q"), Text: q.Get("text"), FileType: q.Get("type"), Person: q.Get("person"), Limit: limit, Offset: offset}
+	if err := (library.ListOptions{Query: o.Query, Match: o.Match}).Validate(); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
 	var err error
 	if o.Since, err = parseDate(q.Get("since")); err != nil {
 		writeErr(w, 400, "invalid since")
@@ -125,7 +130,7 @@ func (s *Server) handleAttachmentPreview(w http.ResponseWriter, r *http.Request)
 	}
 	typ := http.DetectContentType(head[:n])
 	switch typ {
-	case "application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp":
+	case "application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp", "audio/mpeg", "audio/ogg", "audio/wave", "audio/aiff", "audio/midi", "video/mp4", "video/webm", "video/ogg", "video/avi":
 	default:
 		writeErr(w, 415, "preview uses extracted text for this file type")
 		return

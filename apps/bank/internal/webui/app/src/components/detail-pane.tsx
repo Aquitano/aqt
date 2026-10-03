@@ -4,6 +4,7 @@ import { Inbox, ShieldAlert } from "lucide-react";
 import { ContactEditor } from "@/components/contact-editor";
 import { Conversation } from "@/components/conversation";
 import { FileDetail } from "@/components/file-preview";
+import { ItemDetail, PageDetail } from "@/components/library-detail";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/api";
 import { SourceBadge } from "@/lib/format";
 import { navigate, select, useLocation, type Selection } from "@/lib/navigation";
+import { CollectionDetail } from "@/views/collections";
 export type { Selection } from "@/lib/navigation";
 
 interface Position {
@@ -38,6 +40,10 @@ interface Page {
 const initialPosition: Position = {};
 
 export function DetailPane({ selection }: { selection: Selection }) {
+  if (selection?.kind === "item") return <ItemDetail key={selection.id} id={selection.id} />;
+  if (selection?.kind === "collection")
+    return <CollectionDetail key={selection.id} id={selection.id} />;
+  if (selection?.kind === "page") return <PageDetail key={selection.id} id={selection.id} />;
   if (selection?.kind === "file")
     return <FileDetail key={selection.file.sha256} file={selection.file} />;
   if (selection?.kind === "message") return <LinkedMessage key={selection.id} id={selection.id} />;
@@ -87,7 +93,14 @@ function LinkedMessage({ id }: { id: number | string }) {
   );
 }
 
-function SelectedDetail({ selection, message }: { selection: Selection; message?: Message }) {
+type ConversationSelection = Exclude<Selection, { kind: "item" | "collection" | "page" }>;
+function SelectedDetail({
+  selection,
+  message,
+}: {
+  selection: ConversationSelection;
+  message?: Message;
+}) {
   const location = useLocation();
   const choices = new URLSearchParams(location).get("choices");
   const conversationChoices = choices && (
@@ -157,7 +170,7 @@ function SelectedDetail({ selection, message }: { selection: Selection; message?
             <Inbox />
           </EmptyMedia>
           <EmptyTitle>Nothing selected</EmptyTitle>
-          <EmptyDescription>Pick a message or thread from the list</EmptyDescription>
+          <EmptyDescription>Select an item to see its details</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );

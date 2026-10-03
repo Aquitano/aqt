@@ -11,15 +11,17 @@ package webui
 import (
 	"embed"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 )
 
 //go:embed all:app/dist
 var content embed.FS
 
-func Handler(apiBase *url.URL, token string) http.Handler {
+func Handler(apiBase *url.URL, token string, allowedHosts ...string) http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.SetURL(apiBase)
@@ -34,7 +36,47 @@ func Handler(apiBase *url.URL, token string) http.Handler {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/v1/", proxy)
+	mux.Handle("/v1/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !allowedHost(r.Host, allowedHosts) {
+			http.Error(w, "unrecognized local UI host", http.StatusForbidden)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			origin := r.Header.Get("Origin")
+			if origin != "" {
+				u, err := url.Parse(origin)
+				if err != nil || u.Host != r.Host || (u.Scheme != "http" && u.Scheme != "https") {
+					http.Error(w, "cross-origin writes are not allowed", http.StatusForbidden)
+					return
+				}
+			}
+			if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+				http.Error(w, "cross-site writes are not allowed", http.StatusForbidden)
+				return
+			}
+		}
+		proxy.ServeHTTP(w, r)
+	}))
 	mux.Handle("/", http.FileServerFS(dist))
 	return mux
+}
+
+func allowedHost(authority string, configured []string) bool {
+	host, _, err := net.SplitHostPort(authority)
+	if err != nil {
+		host = authority
+	}
+	host = strings.TrimSuffix(strings.ToLower(strings.Trim(host, "[]")), ".")
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	for _, value := range configured {
+		if host == strings.TrimSuffix(strings.ToLower(strings.Trim(value, "[]")), ".") {
+			return true
+		}
+	}
+	return false
 }

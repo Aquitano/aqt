@@ -1,6 +1,6 @@
-# aqt-bank — personal message archive
+# aqt-bank architecture
 
-One place for every message I've ever sent or received, searchable in milliseconds from a CLI, by me and by my agents.
+Bank stores correspondence, a personal media library, activity, collections, files, and published Markdown pages. The CLI and web UI search these records together. The library contracts and ownership rules are documented in [LIBRARY.md](LIBRARY.md).
 
 ## Decisions (locked 2026-08-17)
 
@@ -32,7 +32,7 @@ Deliberately inside ToS everywhere. If WhatsApp manual export gets old, the esca
 
 ## Data model
 
-Everything normalizes to one `messages` table; source-specific richness stays in the raw archive.
+Correspondence normalizes to `messages`; source-specific richness stays in the raw archive. Media and personal tracking use separate typed tables introduced by `0014_library.sql`. Their search projections do not change message identities or citations.
 
 - `messages(id, source, external_id, thread_id, sender, recipients[], subject, body, sent_at, raw_ref, ingested_at)`
   - `unique (source, external_id)` makes every importer idempotent — re-importing a dump is always safe.

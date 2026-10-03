@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/jackc/pgx/v5"
 	"strings"
 	"time"
 )
 
 type AttachmentFilter struct {
+	Query, Source, Match             string
 	Filename, Text, FileType, Person string
 	Since, Until                     time.Time
 	Limit, Offset                    int
@@ -26,6 +28,9 @@ type LibraryFile struct {
 }
 
 func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]LibraryFile, error) {
+	if err := (library.ListOptions{Query: o.Query, Match: o.Match}).Validate(); err != nil {
+		return nil, err
+	}
 	if o.Limit <= 0 || o.Limit > 100 {
 		o.Limit = 50
 	}
@@ -35,6 +40,13 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	where := "true"
 	args := []any{}
 	arg := func(v any) string { args = append(args, v); return fmt.Sprintf("$%d", len(args)) }
+	if o.Source != "" {
+		where += " and m.source=" + arg(o.Source)
+	}
+	if o.Query != "" {
+		p := arg(o.Query)
+		where += " and to_tsvector('simple',a.filename || ' ' || regexp_replace(a.filename,'[._-]+',' ','g') || ' ' || coalesce((select b.text from blob_text b where b.sha256=a.sha256 and b.status in ('ok','manual')),'')) @@ " + libraryTextQuery(o.Match, p)
+	}
 	if o.Filename != "" {
 		where += " and strpos(lower(a.filename), lower(" + arg(o.Filename) + "))>0"
 	}
