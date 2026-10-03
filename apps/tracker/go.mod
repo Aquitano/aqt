@@ -3,7 +3,7 @@ module github.com/aquitano/aqt/apps/tracker
 go 1.27.1
 
 require (
-	codeberg.org/readeck/go-readability/v2 v2.1.2
+	codeberg.org/readeck/go-readability/v2 v2.1.3
 	fyne.io/systray v1.12.2
 	github.com/andybalholm/cascadia v1.3.5
 	github.com/coreos/go-oidc/v3 v3.21.0
