@@ -71,6 +71,9 @@ const sourceStat = type({
   earliest: "string",
   latest: "string",
   last_ingest: "string",
+  last_sync: "string | null",
+  "coverage?": "string",
+  stale: "boolean",
 });
 export type SourceStat = typeof sourceStat.infer;
 

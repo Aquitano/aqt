@@ -1,4 +1,5 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SourceStat } from "@/lib/api";
 import { fmtDay, SourceBadge } from "@/lib/format";
 
@@ -14,18 +15,33 @@ export function StatsView({
       {stats.map((s) => (
         <Card
           key={s.source}
-          className="cursor-pointer gap-0 py-4 transition-colors hover:border-primary/50"
+          className="cursor-pointer gap-3 py-4 transition-colors hover:border-primary/50"
           onClick={() => onOpenSource(s.source)}
         >
-          <CardContent className="px-4">
-            <SourceBadge source={s.source} />
+          <CardHeader>
+            <CardTitle>
+              <SourceBadge source={s.source} />
+            </CardTitle>
+            {s.stale && (
+              <CardAction>
+                <Badge variant="outline">No recent imports</Badge>
+              </CardAction>
+            )}
+          </CardHeader>
+          <CardContent>
             <div className="mt-1.5 text-2xl font-bold tabular-nums">
               {s.messages.toLocaleString("en")}
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
               {fmtDay(s.earliest)} → {fmtDay(s.latest)}
             </div>
-            <div className="text-xs text-muted-foreground/70">ingested {fmtDay(s.last_ingest)}</div>
+            <div className="text-xs text-muted-foreground">
+              Last import: {fmtDay(s.last_ingest)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Last sync: {s.last_sync ? fmtDay(s.last_sync) : "not recorded"}
+            </div>
+            {s.coverage && <p className="mt-3 text-sm text-muted-foreground">{s.coverage}</p>}
           </CardContent>
         </Card>
       ))}
