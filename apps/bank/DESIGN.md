@@ -59,7 +59,9 @@ archive/<source>/.mail-contexts/<sha256>.json  immutable mail provenance, includ
 archive/<source>/…      raw inputs exactly as received (mbox, zips, CSV, EML) — re-ingestable forever.
                         The one exception: a YouTube Takeout archives only its history file — the
                         rest of the export is other sources' data, archived under their own names
-inbox/<source>/         drop zone for manual exports; `bank import inbox` sweeps and moves to archive/
+inbox/<kind>/           drop zone for manual exports; `bank import inbox` sweeps supported import kinds
+inbox/.done/<kind>/     processed exports, including duplicates
+inbox/.rejected/<kind>/ exports the importer could not read; operational failures stay in the drop zone
 ```
 
 ## CLI
@@ -77,7 +79,10 @@ bank contact alias add|rm <name> <email|handle|source:name>...
 bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--offset n] [--json]
 bank contact suggest [--limit n]        # identities in the archive no contact claims yet
 bank contact import <file|-> [--json]   # a whole contact book at once (JSON array or NDJSON)
-bank thread <id> [--source s] [--limit n] [--json]   # one whole conversation, oldest first
+bank thread <id> [--source s] [--limit n] [--json]   # a page of the conversation, oldest first
+bank thread <id> --source s --around <message-id>   # context centered on a message
+bank thread <id> --source s --before <message-id>   # the preceding page
+bank thread <id> --source s --after <message-id>    # the following page
 bank show <id|ref> [--json]             # full message + attachment refs
 bank stats [--json]                     # counts, date ranges, last import, last sync, coverage
 bank coverage <source> <text>           # note what a source holds (empty text clears)
