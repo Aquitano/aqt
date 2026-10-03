@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 const ALL = "__all__";
 
 export function selectMessage(m: Message): Selection {
+  if (m.ref) return { kind: "message", id: m.ref };
   return m.thread_id
     ? {
         kind: "thread",
@@ -103,25 +104,30 @@ export function SearchView({
   selection,
   onSelect,
   searchRef,
+  params,
+  onSearch,
 }: {
   stats: SourceStat[];
   selection: Selection;
   onSelect: (s: Selection) => void;
   searchRef: React.RefObject<HTMLInputElement | null>;
+  params: SearchParams | null;
+  onSearch: (params: SearchParams) => void;
 }) {
-  const [input, setInput] = useState("");
-  const [source, setSource] = useState(ALL);
-  const [from, setFrom] = useState("");
-  const [since, setSince] = useState("");
-  const [until, setUntil] = useState("");
-  const [to, setTo] = useState("");
-  const [person, setPerson] = useState("");
-  const [match, setMatch] = useState<"any" | "all" | "phrase">("any");
-  const [fuzzy, setFuzzy] = useState(1);
-  const [params, setParams] = useState<SearchParams | null>(null);
-  const [mailboxId, setMailboxId] = useState<number>();
-  const [subject, setSubject] = useState("");
-  const [attachment, setAttachment] = useState("any");
+  const [input, setInput] = useState(params?.q ?? "");
+  const [source, setSource] = useState(params?.source ?? ALL);
+  const [from, setFrom] = useState(params?.from ?? "");
+  const [since, setSince] = useState(params?.since ?? "");
+  const [until, setUntil] = useState(params?.until ?? "");
+  const [to, setTo] = useState(params?.to ?? "");
+  const [person, setPerson] = useState(params?.person ?? "");
+  const [match, setMatch] = useState<"any" | "all" | "phrase">(params?.match ?? "any");
+  const [fuzzy, setFuzzy] = useState(params?.fuzzy ?? 1);
+  const [mailboxId, setMailboxId] = useState(params?.mailbox_id);
+  const [subject, setSubject] = useState(params?.subject ?? "");
+  const [attachment, setAttachment] = useState(
+    params?.has_attachment === undefined ? "any" : String(params.has_attachment),
+  );
 
   const q = useInfiniteQuery({
     queryKey: ["search", params],
@@ -163,7 +169,7 @@ export function SearchView({
       has_attachment: attachment === "any" ? undefined : attachment === "true",
       ...over,
     };
-    setParams({
+    onSearch({
       q: query,
       source: p.source || undefined,
       from: p.from || undefined,
@@ -355,7 +361,10 @@ export function SearchView({
                 key={m.id}
                 m={m}
                 query={params?.q}
-                selected={m.id === selectedId}
+                selected={
+                  selectedId !== undefined &&
+                  (String(m.id) === String(selectedId) || m.ref === selectedId)
+                }
                 onClick={() => onSelect(selectMessage(m))}
               />
             ))}

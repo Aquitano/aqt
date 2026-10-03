@@ -2,14 +2,25 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserPlus } from "lucide-react";
 import { useState } from "react";
 
+import { AliasScope, refreshContacts } from "@/components/contact-editor";
 import type { Selection } from "@/components/detail-pane";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import {
-  createContactWithAlias,
+  createContact,
+  addContactAlias,
   getContacts,
   suggestContacts,
+  type Contact,
   type ContactSuggestion,
 } from "@/lib/api";
 import { isMe, SourceBadge } from "@/lib/format";
@@ -34,18 +45,26 @@ function isContactable(s: ContactSuggestion) {
   return !isMe(s.identity) && s.identity !== "assistant";
 }
 
-function SuggestionRow({ s }: { s: ContactSuggestion }) {
+function SuggestionRow({ s, contacts }: { s: ContactSuggestion; contacts: Contact[] }) {
   const qc = useQueryClient();
+  const [target, setTarget] = useState("new");
+  const [name, setName] = useState(suggestedName(s));
+  const [source, setSource] = useState(s.sources.length === 1 ? s.sources[0] : "");
+  const [created, setCreated] = useState<string | null>(null);
   const add = useMutation({
-    mutationFn: () => createContactWithAlias(suggestedName(s), s.identity),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["contacts"] });
-      void qc.invalidateQueries({ queryKey: ["contact-suggestions"] });
+    mutationFn: async () => {
+      const contactName = target === "new" ? (created ?? name.trim()) : target.slice(2);
+      if (target === "new" && !created) {
+        await createContact(contactName);
+        setCreated(contactName);
+      }
+      await addContactAlias(contactName, s.identity, source);
     },
+    onSettled: () => refreshContacts(qc),
   });
   return (
-    <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5">
-      <div className="min-w-0 flex-1">
+    <details className="rounded-lg px-2.5 py-2">
+      <summary className="cursor-pointer">
         <div className="flex items-baseline gap-2">
           <span className="truncate text-sm">{suggestedName(s)}</span>
           <span className="shrink-0 text-xs text-muted-foreground/60 tabular-nums">
@@ -58,19 +77,65 @@ function SuggestionRow({ s }: { s: ContactSuggestion }) {
           ))}
           <span className="truncate">{s.identity}</span>
         </div>
-      </div>
-      <Button
-        variant="outline"
-        size="xs"
-        className="shrink-0"
-        disabled={add.isPending}
-        onClick={() => add.mutate()}
-        title={`Create contact "${suggestedName(s)}" with alias ${s.identity}`}
+      </summary>
+      <form
+        className="mt-3 grid grid-cols-2 gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          add.mutate();
+        }}
       >
-        {add.isPending ? <Spinner className="size-3" /> : <UserPlus className="size-3" />}
-        Add
-      </Button>
-    </div>
+        <Select
+          value={target}
+          onValueChange={setTarget}
+          disabled={add.isPending || created !== null}
+        >
+          <SelectTrigger className="col-span-2 w-full" aria-label={`Contact for ${s.identity}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem value="new">Create a new contact</SelectItem>
+              {contacts.map((contact) => (
+                <SelectItem key={contact.name} value={`c:${contact.name}`}>
+                  {contact.name}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        {target === "new" && (
+          <Input
+            className="col-span-2"
+            aria-label={`Name for ${s.identity}`}
+            value={name}
+            required
+            disabled={add.isPending || created !== null}
+            onChange={(event) => setName(event.target.value)}
+          />
+        )}
+        <AliasScope
+          source={source}
+          sources={s.sources}
+          onChange={setSource}
+          disabled={add.isPending}
+        />
+        <Button
+          type="submit"
+          variant="outline"
+          disabled={add.isPending || (target === "new" && !name.trim())}
+        >
+          {add.isPending ? <Spinner className="size-3" /> : <UserPlus className="size-3" />}
+          {target === "new" && !created ? "Create and attach" : "Attach identity"}
+        </Button>
+        {add.isError && (
+          <p role="alert" className="col-span-2 text-sm text-destructive">
+            {created && `Contact ${created} was created. `}
+            {add.error.message}
+          </p>
+        )}
+      </form>
+    </details>
   );
 }
 
@@ -82,6 +147,16 @@ export function ContactsView({
   onSelect: (s: Selection) => void;
 }) {
   const [filter, setFilter] = useState("");
+  const [name, setName] = useState("");
+  const client = useQueryClient();
+  const create = useMutation({
+    mutationFn: () => createContact(name.trim()),
+    onSuccess: async (contact) => {
+      setName("");
+      await refreshContacts(client);
+      onSelect({ kind: "contact", name: contact.name });
+    },
+  });
   const q = useQuery({ queryKey: ["contacts"], queryFn: getContacts });
   const sugg = useQuery({ queryKey: ["contact-suggestions"], queryFn: () => suggestContacts(40) });
 
@@ -92,15 +167,8 @@ export function ContactsView({
       c.name.toLowerCase().includes(f) ||
       (c.aliases ?? []).some((a) => a.value.toLowerCase().includes(f)),
   );
-  const known = new Set(
-    (q.data ?? []).flatMap((c) => [
-      c.name.toLowerCase(),
-      ...(c.aliases ?? []).map((a) => a.value.toLowerCase()),
-    ]),
-  );
   const suggestions = (sugg.data ?? [])
     .filter(isContactable)
-    .filter((s) => !known.has(s.identity.toLowerCase()))
     .filter((s) => !f || s.identity.includes(f) || suggestedName(s).toLowerCase().includes(f));
 
   return (
@@ -112,8 +180,37 @@ export function ContactsView({
           placeholder="Filter contacts and suggestions…"
           className="h-8 text-sm"
         />
+        <form
+          className="mt-2 flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (name.trim()) create.mutate();
+          }}
+        >
+          <Input
+            aria-label="New contact name"
+            placeholder="New contact name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            required
+            disabled={create.isPending}
+          />
+          <Button type="submit" variant="outline" disabled={create.isPending || !name.trim()}>
+            Create
+          </Button>
+        </form>
+        {create.isError && (
+          <p role="alert" className="mt-2 text-sm text-destructive">
+            {create.error.message}
+          </p>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
+        {sugg.isError && (
+          <p role="alert" className="p-3 text-sm text-destructive">
+            {sugg.error.message}
+          </p>
+        )}
         {q.isLoading ? (
           <ListSkeleton />
         ) : q.isError ? (
@@ -150,7 +247,11 @@ export function ContactsView({
                   Suggested from the archive
                 </div>
                 {suggestions.map((s) => (
-                  <SuggestionRow key={s.identity} s={s} />
+                  <SuggestionRow
+                    key={JSON.stringify([s.identity, s.sources])}
+                    s={s}
+                    contacts={q.data ?? []}
+                  />
                 ))}
               </>
             )}

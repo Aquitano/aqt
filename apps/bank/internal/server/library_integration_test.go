@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -26,6 +27,19 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 	for _, path := range []string{"/v1/attachment-library?type=pdf", "/v1/attachments/" + testDigest + "/messages", "/v1/import-reports"} {
 		if w := request(path); w.Code != 200 {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
+		}
+	}
+	if err := st.PutBlobText(context.Background(), store.BlobText{SHA256: testDigest, Text: "Payment due tomorrow", Status: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{"payment", "missing"} {
+		w := request("/v1/attachment-library?text=" + query)
+		var files []store.LibraryFile
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &files) != nil {
+			t.Fatalf("text search: %d %s", w.Code, w.Body)
+		}
+		if query == "payment" && (len(files) != 1 || files[0].Snippet != "Payment due tomorrow") || query == "missing" && len(files) != 0 {
+			t.Fatalf("text=%s: %+v", query, files)
 		}
 	}
 	for _, path := range []string{"/v1/attachment-library?since=invalid", "/v1/attachment-library?offset=-1", "/v1/attachment-library?person=absent", "/v1/import-reports?before=-1", "/v1/attachments/invalid/messages"} {

@@ -97,6 +97,13 @@ export type ThreadGroup = typeof threadGroup.infer;
 
 // Failed /v1 requests answer with `{"error": "..."}` in place of the payload.
 const errorBody = type({ error: "string" });
+export class RequestError extends Error {
+  readonly status: number;
+  constructor(status: number, description: string) {
+    super(description);
+    this.status = status;
+  }
+}
 const mailConflict = type({
   code: "'mail_thread_conflict'",
   source: "string",
@@ -121,7 +128,10 @@ async function send(path: string, init?: RequestInit) {
     if (!(conflict instanceof type.errors)) throw new MailConflictError(conflict);
   }
   const failure = errorBody(body);
-  throw new Error(failure instanceof type.errors ? r.statusText : failure.error || r.statusText);
+  throw new RequestError(
+    r.status,
+    failure instanceof type.errors ? r.statusText : failure.error || r.statusText,
+  );
 }
 
 async function api<T extends Type>(
@@ -186,7 +196,7 @@ export function search({
   return api(`/v1/search?${p}`, message.array());
 }
 
-export function getMessage(id: number) {
+export function getMessage(id: number | string) {
   return api(`/v1/messages/${id}`, message);
 }
 
@@ -213,6 +223,31 @@ export function getContacts() {
   return api("/v1/contacts", contact.array());
 }
 
+export function createContact(name: string) {
+  return api("/v1/contacts", contact, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function addContactAlias(name: string, value: string, source = "") {
+  return send(`/v1/contacts/${encodeURIComponent(name)}/aliases`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source, value }),
+  });
+}
+
+export function removeContactAlias(name: string, value: string, source = "") {
+  return send(
+    `/v1/contacts/${encodeURIComponent(name)}/aliases?${new URLSearchParams({ source, value })}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
 export function getContactMessages(name: string, before?: number) {
   return api(
     `/v1/contacts/${encodeURIComponent(name)}/messages?limit=100${before ? `&before=${before}` : ""}`,
@@ -222,19 +257,6 @@ export function getContactMessages(name: string, before?: number) {
 
 export function suggestContacts(limit = 40) {
   return api(`/v1/contacts/suggest?limit=${limit}`, contactSuggestion.array());
-}
-
-export async function createContactWithAlias(name: string, alias: string) {
-  await send("/v1/contacts", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
-  });
-  await send(`/v1/contacts/${encodeURIComponent(name)}/aliases`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source: "", value: alias }),
-  });
 }
 
 export function getMailboxes(source: string) {
@@ -278,10 +300,11 @@ const libraryFile = type({
   size_bytes: "number",
   messages: "number",
   last_at: "string",
+  "snippet?": "string",
 });
 export type LibraryFile = typeof libraryFile.infer;
 export function getLibrary(
-  filters: { q: string; type: string; person: string; since: string; until: string },
+  filters: { q: string; text: string; type: string; person: string; since: string; until: string },
   offset: number,
 ) {
   return api(
