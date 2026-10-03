@@ -12,25 +12,10 @@ updates:
     directory: /apps/tracker
     schedule: { interval: weekly }
     groups: { tracker-go: { patterns: ["*"] } }
-  - package-ecosystem: gradle
-    directory: /apps/health
-    schedule: { interval: weekly }
-    groups: { health-gradle: { patterns: ["*"] } }
-    # ktor's OpenAPI compiler plugin is built against one Kotlin minor; Kotlin moves by hand when ktor does.
-    # Dependabot names the kotlin("jvm") plugin "jvm".
-    ignore:
-      - dependency-name: "org.jetbrains.kotlin*"
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: jvm
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
   - package-ecosystem: docker
     directory: /apps/bank
     schedule: { interval: weekly }
     groups: { bank-docker: { patterns: ["*"] } }
-  - package-ecosystem: docker
-    directory: /apps/health
-    schedule: { interval: weekly }
-    groups: { health-docker: { patterns: ["*"] } }
   - package-ecosystem: docker
     directory: /apps/gallery/apps/server
     schedule: { interval: weekly }

@@ -1,7 +1,6 @@
 [tools]
 bun = "1.4.2"
 go = "1.27.1"
-java = "temurin-25"
 golangci-lint = "2.13.2"
 swiftformat = "0.63.0"
 swiftlint = "0.65.1"
@@ -68,33 +67,6 @@ run = ["go vet ./...", "go test -race ./...", "golangci-lint run"]
 [tasks."bank:dev"]
 dir = "apps/bank"
 run = "go run ./cmd/bank serve"
-
-[tasks."health:check"]
-description = "Needs Docker or AQT_HEALTH_TEST_JDBC_URL"
-depends = ["shared:ts", "health:ts", "health:kotlin"]
-
-[tasks."health:ts"]
-run = [
-  "bun run --cwd apps/health/frontend lint",
-  "bunx --no-install oxfmt --check apps/health",
-  "bun run --cwd apps/health/frontend typecheck",
-  "bun run --cwd apps/health/frontend test",
-]
-
-[tasks."health:kotlin"]
-dir = "apps/health"
-run = "./gradlew check --continue"
-
-[tasks."health:dev"]
-depends = ["health:dev:api", "health:dev:web"]
-
-[tasks."health:dev:api"]
-dir = "apps/health"
-run = "./gradlew run"
-
-[tasks."health:dev:web"]
-dir = "apps/health/frontend"
-run = "bun run dev"
 
 [tasks."gallery:check"]
 depends = ["shared:ts", "gallery:ts"]

@@ -2,7 +2,9 @@
 
 Personal software workspace: the things I build for myself, in one repository.
 
-Every app under `apps/` is a self-contained project with its own native build. The root only adds toolchain pins, lint and format configuration, shared packages, and ops.
+Health is maintained in [Aquitano/aqt-health](https://github.com/Aquitano/aqt-health). Its former monorepo directory contains a redirect.
+
+Every active app under `apps/` is a self-contained project with its own native build. The root only adds toolchain pins, lint and format configuration, shared packages, and ops.
 
 | Path                   | What                                                                             |
 | ---------------------- | -------------------------------------------------------------------------------- |
@@ -20,7 +22,7 @@ mise install
 bun install
 ```
 
-mise pins bun, go, java, golangci-lint, swiftformat, swiftlint and xcodegen. Activate it in your shell (`mise activate`) or prefix commands with `mise exec --`.
+mise pins bun, go, golangci-lint, swiftformat, swiftlint and xcodegen. Activate it in your shell (`mise activate`) or prefix commands with `mise exec --`.
 
 ## Checks
 
@@ -32,7 +34,7 @@ mise run ts:check     # TypeScript only, including existing tests
 mise run check        # everything
 ```
 
-Each task wraps the app's own tooling (`go test`, `./gradlew check`, `turbo`, `xcodebuild`). TypeScript app checks include lint, formatting, types, and existing tests, plus checks of shared TypeScript packages. mise runs each shared task once per invocation. Go and Kotlin checks can run alongside TypeScript checks; `health:check` needs Docker or `AQT_HEALTH_TEST_JDBC_URL`.
+Each task wraps the app's own tooling (`go test`, `turbo`, `xcodebuild`). TypeScript app checks include lint, formatting, types, and existing tests, plus checks of shared TypeScript packages. mise runs each shared task once per invocation. Go checks can run alongside TypeScript checks.
 
 Tasks live in `mise.toml` and `tools/tasks/*.toml`. The stack generator registers each new app there after its checks and build pass. Root `check` discovers `*:check` tasks, and `ts:check` discovers `*:ts` tasks, so new apps join both aggregates automatically. `workspace:check` covers formatting outside app and shared-package tasks. Gallery keeps its scoped Turbo typechecks and cache.
 

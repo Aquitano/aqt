@@ -3,7 +3,7 @@ set -eu
 
 usage() {
   echo "usage: ops/secrets.sh <pull|push|diff|send> <target> [env]" >&2
-  echo "targets: bank health health-frontend gallery gallery-web img tracker" >&2
+  echo "targets: bank gallery gallery-web img tracker" >&2
   exit 2
 }
 
@@ -14,8 +14,6 @@ slug=${3:-dev}
 
 case $target in
 bank) app=apps/bank rel=.env folder=/ ;;
-health) app=apps/health rel=.env folder=/ ;;
-health-frontend) app=apps/health rel=frontend/.env folder=/frontend ;;
 gallery) app=apps/gallery rel=apps/server/.env folder=/ ;;
 gallery-web) app=apps/gallery rel=apps/web/.env folder=/web ;;
 img) app=apps/img rel=.env folder=/ ;;

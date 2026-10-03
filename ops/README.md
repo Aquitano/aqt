@@ -23,7 +23,7 @@ The box runs Tailscale SSH in check mode, so every so often a hop is held until 
 
 Give the file a `"domain"` key only to send one app somewhere else, such as a self-hosted instance; a domain in the file wins over the default. Adding `"domain": "https://eu.infisical.com"` by hand is still worth it if you run bare `infisical` commands in that directory, since those know nothing about this script and will otherwise reach for US cloud.
 
-The project comes from that file, so nothing has to be set in the environment. An app with more than one `.env` keeps the extras in a folder inside its own project rather than a project of its own: `health-frontend` is `/frontend` in health, `gallery-web` is `/web` in gallery. A folder is not created on demand and a push into a missing one fails, so make it once per environment first:
+The project comes from that file, so nothing has to be set in the environment. An app with more than one `.env` keeps the extras in a folder inside its own project rather than a project of its own: `gallery-web` is `/web` in gallery. A folder is not created on demand and a push into a missing one fails, so make it once per environment first:
 
 ```sh
 cd apps/gallery && infisical secrets folders create -n web --env dev
@@ -33,10 +33,10 @@ cd apps/gallery && infisical secrets folders create -n web --env dev
 ops/secrets.sh pull gallery              # write apps/gallery/apps/server/.env from dev
 ops/secrets.sh diff gallery              # what drifted; exits non-zero if anything did
 ops/secrets.sh push gallery              # upload the local file, after confirming
-ops/secrets.sh send health prod          # prod straight to the VPS, then ops/deploy.sh health
+mise run gallery:secrets:send            # prod straight to the VPS
 ```
 
-Targets are `bank`, `health`, `health-frontend`, `gallery`, `gallery-web`, `img` and `tracker`; each one names the `.env` path it owns. `pull`, `diff` and `push` all work on the checkout they run in, so they default to `dev` — the environment you actually develop against.
+Targets are `bank`, `gallery`, `gallery-web`, `img` and `tracker`; each one names the `.env` path it owns. `pull`, `diff` and `push` all work on the checkout they run in, so they default to `dev` — the environment you actually develop against.
 
 The VPS holds no Infisical credentials. `send` fetches an environment here and writes it over ssh to `$AQT_VPS_HOST:$AQT_VPS_ROOT` (`mise run gallery:secrets:send` supplies both), never touching the local file, so pushing prod at the box does not disturb the dev `.env` in the checkout. It lands through a temporary name under `umask 077`, so an interrupted transfer cannot leave the box with half a file. `deploy.sh` is deliberately separate: it keeps using whatever `.env` is already there, and an Infisical outage can never block a deploy.
 

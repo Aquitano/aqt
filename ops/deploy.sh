@@ -2,6 +2,13 @@
 set -eu
 
 app=${1:?usage: ops/deploy.sh <app>}
+case $app in
+health | health/*)
+  echo "Health is maintained at https://github.com/Aquitano/aqt-health" >&2
+  exit 1
+  ;;
+esac
+
 host=${AQT_VPS_HOST:?set AQT_VPS_HOST}
 root=${AQT_VPS_ROOT:?set AQT_VPS_ROOT}
 
