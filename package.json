@@ -7,7 +7,6 @@
       "apps/gallery/apps/*",
       "apps/gallery/packages/*",
       "apps/img/cli",
-      "apps/health/frontend",
       "apps/bank/internal/webui/app",
       "apps/bank/scripts",
       "apps/tracker/extension",

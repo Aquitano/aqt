@@ -108,8 +108,6 @@ describe("mise registration", () => {
           "bank:ts",
           "example:ts",
           "gallery:ts",
-          "health:kotlin",
-          "health:ts",
           "img:ts",
           "notch:lint",
           "notch:test",
@@ -124,7 +122,6 @@ describe("mise registration", () => {
           "bank:ts",
           "example:ts",
           "gallery:ts",
-          "health:ts",
           "img:ts",
           "shared:ts",
           "stack:ts",
@@ -135,11 +132,7 @@ describe("mise registration", () => {
           resolve(fixture, "apps/example"),
         );
         expect((await run("example:dev"))[0]?.cwd).toBe(resolve(fixture, "apps/example"));
-        for (const native of ["bank:go", "health:kotlin"]) {
-          // Each run resets the same marker file, so native checks must run serially.
-          // oxlint-disable-next-line no-await-in-loop
-          expect((await run(native)).map((entry) => entry.task)).toEqual([native]);
-        }
+        expect((await run("bank:go")).map((entry) => entry.task)).toEqual(["bank:go"]);
         await Bun.write(
           resolve(fixture, "tools/tasks/other.toml"),
           '["existing:dev"]\nhide = true\nalias = "taken:dev"\nrun = "true"\n',

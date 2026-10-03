@@ -6,7 +6,6 @@
 !bun.lock
 !apps/*/package.json
 !apps/img/cli/package.json
-!apps/health/frontend/package.json
 !apps/bank/internal/webui/app/package.json
 !apps/bank/scripts/package.json
 !apps/tracker/extension/package.json
