@@ -139,18 +139,6 @@ func (s *Server) importFile(ctx context.Context, kind, source, path string, cont
 		return aichat.ImportChatGPT(ctx, s.db, s.blobs, s.archiveDir, path)
 	case "claude":
 		return aichat.ImportClaude(ctx, s.db, s.archiveDir, path)
-	// The harness kinds sync rather than import: `bank import ai` re-uploads
-	// every discovered session on every run, and a file whose exact bytes are
-	// already archived was fully ingested last time. Reimport never comes
-	// through here — it replays the server's own archive locally.
-	case "claude-code":
-		return aichat.SyncClaudeCode(ctx, s.db, s.archiveDir, path)
-	case "codex":
-		return aichat.SyncCodex(ctx, s.db, s.archiveDir, path)
-	case "opencode":
-		return aichat.SyncOpenCode(ctx, s.db, s.archiveDir, path)
-	case "antigravity":
-		return aichat.SyncAntigravity(ctx, s.db, s.archiveDir, path)
 	}
 	return nil, fmt.Errorf("unknown import kind %q", kind)
 }

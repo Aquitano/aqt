@@ -2,6 +2,9 @@
 
 Personal message archive: every message from every source in one Postgres, full-text searchable from a CLI by me and my agents. See [DESIGN.md](DESIGN.md) for architecture and roadmap.
 
+Bank imports personal ChatGPT and Claude.ai exports. Turnstash owns coding-session
+ingestion. Removing an importer does not delete previously archived records.
+
 See [MAIL.md](MAIL.md) for folder-preserving imports, mail filters, conversation grouping, and metadata recovery. See [IMAP.md](IMAP.md) for the Proton Bridge and Gmail collector.
 
 ## Quickstart
@@ -29,11 +32,6 @@ go build -o bank ./cmd/bank
                                                 #  along as attachments, and re-importing
                                                 #  heals an earlier text-only pass)
 ./bank import claude claude-export.zip          # Claude.ai data export
-./bank import claude-code ~/.claude/projects    # Claude Code transcripts
-./bank import codex ~/.codex/sessions           # Codex CLI rollouts
-./bank import opencode ~/.local/share/opencode  # OpenCode session database
-./bank import antigravity ~/.gemini/antigravity-cli/brain  # Antigravity transcripts
-./bank import ai                                # all four from their default locations
 echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source notes -
 
 ./bank import inbox                             # sweep $BANK_DATA_DIR/inbox/<kind>/
@@ -170,9 +168,9 @@ the same preview without leaving the message. The API accepts this filter as
 ChatGPT imports retain reply parents and branch identifiers. Alternative answers
 are labeled separately, and **Read branch to here** shows only the selected
 message's reply path. **View parent message** also works when the parent lies
-outside the loaded page. Claude and Claude Code imports retain explicit parent
-IDs when the export supplies them. `bank show`, `bank thread`, and their JSON
-output include the relationships.
+outside the loaded page. Claude imports retain explicit parent IDs when the
+export supplies them. `bank show`, `bank thread`, and their JSON output include
+the relationships.
 
 Reimport existing ChatGPT exports to fill in branch metadata. Reimporting keeps
 message IDs and existing bodies. A bare ChatGPT JSON export retains asset-only

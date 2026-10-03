@@ -57,8 +57,6 @@ func TestImportersReportADatabaseOutageAsOperational(t *testing.T) {
 		"claude": write("claude/conversations.json",
 			`[{"uuid":"c-1","name":"t","chat_messages":[{"uuid":"m-1","sender":"human",`+
 				`"created_at":"2024-05-13T21:08:00Z","text":"hello"}]}]`),
-		"claude-code": filepath.Dir(write("claude-code/s.jsonl",
-			`{"type":"user","uuid":"u-1","timestamp":"2026-08-17T10:00:00.000Z","message":{"role":"user","content":"hello"}}`+"\n")),
 		"discord": filepath.Join(dir, "discord"),
 	}
 

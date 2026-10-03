@@ -45,35 +45,3 @@ func TestWriteAcceptsOrdinarySources(t *testing.T) {
 		}
 	}
 }
-
-func TestReplaceSupersedes(t *testing.T) {
-	dir := t.TempDir()
-	ref, err := Replace(dir, "codex", "s.jsonl", []byte("v1"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !Identical(dir, "codex", "s.jsonl", []byte("v1")) {
-		t.Fatal("archived content not identical to what was written")
-	}
-	ref2, err := Replace(dir, "codex", "s.jsonl", []byte("v1 grown"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ref2 != ref {
-		t.Fatalf("replacing must keep the reference stable: %q vs %q", ref2, ref)
-	}
-	if Identical(dir, "codex", "s.jsonl", []byte("v1")) {
-		t.Fatal("old content still reported as archived after replace")
-	}
-	entries, err := os.ReadDir(filepath.Join(dir, "codex"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("replace accumulated %d files, want exactly one", len(entries))
-	}
-	got, err := os.ReadFile(filepath.Join(dir, ref))
-	if err != nil || string(got) != "v1 grown" {
-		t.Fatalf("archived content = %q, %v", got, err)
-	}
-}
