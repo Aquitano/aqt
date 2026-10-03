@@ -57,10 +57,10 @@ type ListBlobsOpts struct {
 	// Statuses filters by extraction status; StatusPending selects blobs with
 	// no row yet. Empty means every blob.
 	Statuses []string
-	// Source restricts to blobs carried by messages of one source.
+	// Source restricts to files or message attachments of one source.
 	Source string
 	Limit  int
-	// NewestFirst orders by the most recently stored attachment row instead of
+	// NewestFirst orders by the most recently stored file instead of
 	// by size. The pass that runs after an import needs it: with a backlog of
 	// large pending blobs, the default order would spend a bounded batch
 	// before ever reaching the file that just landed.
@@ -97,13 +97,15 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 			       min(a.mime_type) as mime_type,
 			       max(a.size_bytes) as size_bytes,
 			       count(distinct a.message_id) as messages,
-			       max(a.newest) as newest
+			       max(a.newest) as newest,
+			       max(a.attachment_id) as attachment_id
 			from (
-                select a.sha256,a.filename,a.mime_type,a.size_bytes,a.message_id,a.id as newest,m.source
+                select a.sha256,a.filename,a.mime_type,a.size_bytes,a.message_id,
+                       coalesce(a.ingested_at,m.ingested_at) as newest,a.id as attachment_id,m.source
                 from attachments a join messages m on m.id=a.message_id
                 union all
                 select f.sha256,f.filename,f.mime_type,f.size_bytes,null::bigint,
-                       (select coalesce(max(id),0) from attachments) + row_number() over(order by f.ingested_at,f.id),f.source
+                       f.ingested_at,0::bigint,f.source
                 from library_files f
             ) a` + where + `
 			group by a.sha256
@@ -112,11 +114,9 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 	if len(o.Statuses) > 0 {
 		sql += " where coalesce(t.status, '" + StatusPending + "') = any(" + next(o.Statuses) + ")"
 	}
-	// attachments.id only ever increases, so the highest one for a digest is
-	// when that content was last stored.
 	order := "b.size_bytes desc"
 	if o.NewestFirst {
-		order = "b.newest desc"
+		order = "b.newest desc, b.attachment_id desc"
 	}
 	sql += " order by " + order + ", b.sha256 limit " + next(o.Limit)
 

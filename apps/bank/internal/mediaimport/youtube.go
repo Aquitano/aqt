@@ -132,7 +132,30 @@ func parseYouTube(inputPath string, opts Options) (Parsed, error) {
 		return Parsed{}, err
 	}
 	p := Parsed{Batch: emptyBatch(), Inputs: []RawInput{}, Diagnostics: []string{}}
-	seen := map[string]bool{}
+	seen := map[string]int{}
+	addItem := func(item library.Item) {
+		index, exists := seen[item.ID]
+		if !exists {
+			seen[item.ID] = len(p.Batch.Items)
+			p.Batch.Items = append(p.Batch.Items, item)
+			return
+		}
+		existing := &p.Batch.Items[index]
+		if item.Title != item.ProviderID || existing.Title == existing.ProviderID {
+			existing.Title = item.Title
+		}
+		if item.URL != "" {
+			existing.URL = item.URL
+		}
+		if len(item.Creators) > 0 {
+			existing.Creators = item.Creators
+		}
+		if item.Album != "" {
+			existing.Album = item.Album
+		}
+		existing.Evidence = append(existing.Evidence, existing.Provenance)
+		existing.Provenance = item.Provenance
+	}
 	jsonHistory := false
 	for _, input := range inputs {
 		if strings.HasSuffix(strings.ToLower(input.Name), "watch-history.json") {
@@ -171,10 +194,7 @@ func parseYouTube(inputPath string, opts Options) (Parsed, error) {
 				if event.Channel != "" {
 					item.Creators = []string{event.Channel}
 				}
-				if !seen[itemID] {
-					p.Batch.Items = append(p.Batch.Items, item)
-					seen[itemID] = true
-				}
+				addItem(item)
 				activityIdentity := identity(opts, event.ExternalID)
 				p.Batch.Activity = append(p.Batch.Activity, library.Activity{Identity: activityIdentity, ID: library.StableID("activity", activityIdentity), ItemID: itemID, Kind: "watch", Title: event.Title, Occurred: library.Date{Value: event.WatchedAt.Format(time.RFC3339Nano), Precision: "instant"}, Provenance: prov})
 			}
@@ -201,10 +221,7 @@ func parseYouTube(inputPath string, opts Options) (Parsed, error) {
 			continue
 		}
 		for _, item := range items {
-			if !seen[item.ID] {
-				p.Batch.Items = append(p.Batch.Items, item)
-				seen[item.ID] = true
-			}
+			addItem(item)
 		}
 		p.Batch.Collections = append(p.Batch.Collections, collections...)
 		p.Diagnostics = append(p.Diagnostics, diagnostics...)
@@ -293,6 +310,7 @@ func parseYouTubeCSV(input RawInput, opts Options) ([]library.Item, []library.Co
 	fields := map[string]int{}
 	active := -1
 	collectionIndex := map[string]int{}
+	entrySections := map[int]bool{}
 	music := strings.Contains(strings.ToLower(input.Name), "library") || strings.Contains(strings.ToLower(input.Name), "songs")
 	title := ""
 	native := ""
@@ -332,13 +350,23 @@ func parseYouTubeCSV(input RawInput, opts Options) ([]library.Item, []library.Co
 		}
 		candidate := csvFields(values)
 		isHeader := false
+		entryHeader := false
 		for _, key := range []string{"videoid", "trackid", "songid", "playlistid", "tracktitle", "songtitle"} {
 			if _, ok := candidate[key]; ok {
 				isHeader = true
+				entryHeader = entryHeader || key != "playlistid"
 			}
 		}
 		if isHeader {
 			fields = candidate
+			if entryHeader {
+				if _, perRowPlaylist := fields["playlistid"]; !perRowPlaylist && active < 0 {
+					active = ensure(native, title, description)
+				}
+				if active >= 0 {
+					entrySections[active] = true
+				}
+			}
 			continue
 		}
 		if len(fields) == 0 {
@@ -392,7 +420,7 @@ func parseYouTubeCSV(input RawInput, opts Options) ([]library.Item, []library.Co
 		snapshot.Entries = append(snapshot.Entries, library.Entry{ItemID: item.ID, Position: position, ExternalID: entryID, Added: added})
 	}
 	for i := range collections {
-		if len(collections[i].Snapshot.Entries) == 0 {
+		if len(collections[i].Snapshot.Entries) == 0 && !entrySections[i] {
 			collections[i].Snapshot = nil
 		}
 	}

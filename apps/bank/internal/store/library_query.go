@@ -77,7 +77,11 @@ func listLibrary[T any](ctx context.Context, s *Store, table string, o library.L
 			predicate = "to_tsvector('simple',r.search_text || ' ' || regexp_replace(r.filename,'[._-]+',' ','g') || ' ' || coalesce((select bt.text from blob_text bt where bt.sha256=r.sha256 and bt.status in ('ok','manual')),'')) @@ " + match
 		}
 		if table == "library_items" {
-			predicate = "(" + predicate + " or exists(select 1 from library_state st where st.item_id=r.id and to_tsvector('simple',st.notes || ' ' || array_to_string(st.tags,' ')) @@ " + match + "))"
+			stateVector := "to_tsvector('simple',st.notes || ' ' || array_to_string(st.tags,' '))"
+			if o.Match == "all" {
+				stateVector = "(to_tsvector('simple',r.search_text) || " + stateVector + ")"
+			}
+			predicate = "(" + predicate + " or exists(select 1 from library_state st where st.item_id=r.id and " + stateVector + " @@ " + match + "))"
 		}
 		clauses = append(clauses, predicate)
 	}

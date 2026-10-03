@@ -165,6 +165,82 @@ func TestYouTubeJSONCollectionExplicitCompleteness(t *testing.T) {
 	}
 }
 
+func TestYouTubeCSVImportRetainsEmptySnapshots(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	root := t.TempDir()
+	archiveDir := filepath.Join(root, "archive")
+	opts := Options{Account: "owner"}
+	path := fixture(t, root, "playlist.csv", "Playlist ID,Title\nPL1,Saved\nVideo ID,Time Added\nabc,\n")
+	if _, err := Import(ctx, st, nil, archiveDir, "youtube-media", path, opts); err != nil {
+		t.Fatal(err)
+	}
+	path = fixture(t, root, "playlist.csv", "Playlist ID,Title\nPL1,Saved\nVideo ID,Time Added\n")
+	if _, err := Import(ctx, st, nil, archiveDir, "youtube-media", path, opts); err != nil {
+		t.Fatal(err)
+	}
+	id := library.StableID("collection", library.Identity{Source: "youtube", Account: "owner", ExternalID: "PL1"})
+	current, err := st.LibraryCollection(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Snapshot == nil || len(current.Snapshot.Entries) != 0 {
+		t.Fatalf("empty export did not become current: %+v", current.Snapshot)
+	}
+	path = fixture(t, root, "playlist.csv", "Playlist ID,Title\nPL1,Saved\n")
+	parsed, err := Parse("youtube-media", path, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Batch.Collections[0].Snapshot != nil {
+		t.Fatal("metadata-only export invented an empty snapshot")
+	}
+	if _, err = Import(ctx, st, nil, archiveDir, "youtube-media", path, opts); err != nil {
+		t.Fatal(err)
+	}
+	history, err := st.LibraryCollectionSnapshots(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 2 || len(history[0].Entries) != 0 || len(history[1].Entries) != 1 {
+		t.Fatalf("snapshot history: %+v", history)
+	}
+}
+
+func TestYouTubeImportMergesItemMetadataAndEvidence(t *testing.T) {
+	root := t.TempDir()
+	exports := filepath.Join(root, "exports")
+	fixture(t, exports, "playlists/00.csv", "Video ID,Time Added\nabc,\n")
+	fixture(t, exports, "playlists/01.csv", "Video ID,Video Title,Channel Title\nabc,A careful voyage,Named creator\n")
+	fixture(t, exports, "playlists/02.csv", "Video ID,Time Added\nabc,\n")
+	ctx := context.Background()
+	st := storetest.New(t)
+	archiveDir := filepath.Join(root, "archive")
+	result, err := Import(ctx, st, nil, archiveDir, "youtube-media", exports, Options{Account: "owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Items != 1 || result.Collections != 3 {
+		t.Fatalf("counts: %+v", result)
+	}
+	id := library.StableID("item", library.Identity{Source: "youtube", Account: "owner", ExternalID: "video:abc"})
+	item, err := st.LibraryItem(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.Title != "A careful voyage" || !reflect.DeepEqual(item.Creators, []string{"Named creator"}) || len(item.Evidence) != 3 {
+		t.Fatalf("lost metadata or evidence: %+v", item)
+	}
+	for _, evidence := range item.Evidence {
+		if strings.HasPrefix(evidence.RawRef, "input:") {
+			t.Fatalf("unresolved evidence: %+v", evidence)
+		}
+		if _, err := os.ReadFile(filepath.Join(archiveDir, evidence.RawRef)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestMarkdownPublicationPrivacyAndProvenance(t *testing.T) {
 	root := t.TempDir()
 	fixture(t, root, "CLAUDE.md", "vault")

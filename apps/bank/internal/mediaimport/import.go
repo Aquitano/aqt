@@ -138,6 +138,9 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 		}
 		for i := range parsed.Batch.Items {
 			replace(&parsed.Batch.Items[i].Provenance)
+			for j := range parsed.Batch.Items[i].Evidence {
+				replace(&parsed.Batch.Items[i].Evidence[j])
+			}
 		}
 		for i := range parsed.Batch.Activity {
 			replace(&parsed.Batch.Activity[i].Provenance)

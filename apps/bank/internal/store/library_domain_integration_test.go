@@ -208,6 +208,31 @@ func TestLibraryPersonalEditsAreRevisionedAndImportSafe(t *testing.T) {
 	}
 }
 
+func TestLibraryItemSearchMatchesMetadataAndPersonalState(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	item := libraryItem("arrival")
+	item.Title = "Arrival"
+	if _, err := st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Items: []library.Item{item}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SetLibraryState(ctx, item.ID, library.StateEdit{Notes: "Clever story", Tags: []string{"weekend"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		query, match string
+		count        int
+	}{{"arrival clever weekend", "all", 1}, {"arrival missing", "all", 0}, {"clever missing", "any", 1}, {"clever story", "phrase", 1}, {"story clever", "phrase", 0}} {
+		result, err := st.SearchLibrary(ctx, library.ListOptions{Query: test.query, Match: test.match, Kind: "item"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Items) != test.count {
+			t.Errorf("%s %q: got %d want %d", test.match, test.query, len(result.Items), test.count)
+		}
+	}
+}
+
 func TestLibraryPublishedPagesAndStandaloneFilesAreSearchable(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)

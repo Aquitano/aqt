@@ -3,10 +3,12 @@ package store_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
@@ -77,6 +79,43 @@ func TestBlobTextRoundTrip(t *testing.T) {
 	}
 	if err := st.DeleteBlobText(ctx, digestA); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound on a second delete", err)
+	}
+}
+
+func TestListBlobsNewestFirstAcrossLibraryAndMail(t *testing.T) {
+	ctx := context.Background()
+	st, schema := storetest.NewNamed(t)
+	id := seedMessage(t, st, "old", "Old message", "old.pdf", digestA)
+	storetest.Exec(t, schema, `update messages set ingested_at='1999-01-01'`)
+	storetest.Exec(t, schema, `update attachments set ingested_at=null`)
+	files := []library.File{}
+	for i := range 201 {
+		files = append(files, library.File{Identity: library.Identity{Source: "files", Account: "owner", ExternalID: fmt.Sprint(i)}, SHA256: fmt.Sprintf("%064x", i+1), Filename: fmt.Sprintf("old-%d.txt", i), MimeType: "text/plain", SizeBytes: 1})
+	}
+	if _, err := st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: files}); err != nil {
+		t.Fatal(err)
+	}
+	storetest.Exec(t, schema, `update library_files set ingested_at='2000-01-01'`)
+	if err := st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: "fresh.pdf", MimeType: "application/pdf", SizeBytes: 1, SHA256: digestB}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := st.ListBlobs(ctx, store.ListBlobsOpts{Statuses: []string{store.StatusPending}, Limit: 200, NewestFirst: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 200 || rows[0].SHA256 != digestB {
+		t.Fatalf("new attachment to an old message was displaced: %+v", rows)
+	}
+	file := library.File{Identity: library.Identity{Source: "files", Account: "owner", ExternalID: "fresh"}, SHA256: strings.Repeat("c", 64), Filename: "fresh.txt", MimeType: "text/plain", SizeBytes: 1}
+	if _, err := st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: []library.File{file}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = st.ListBlobs(ctx, store.ListBlobsOpts{NewestFirst: true, Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].SHA256 != file.SHA256 {
+		t.Fatalf("new library file was displaced: %+v", rows)
 	}
 }
 
