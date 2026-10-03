@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -91,8 +92,8 @@ func (s *Store) ApplyEvents(ctx context.Context, deviceID uuid.UUID, ev Events) 
 					return err
 				}
 			}
-			row := PageView{ID: pv.ID, DeviceID: deviceID, URLID: urlID, TabSessionID: pv.TabSessionID,
-				Title: pv.Title, StartedAt: pv.StartedAt, NavigationType: pv.NavigationType,
+			row := PageView{ID: pv.ID, DeviceID: deviceID, URLID: urlID, TabSessionID: strings.ReplaceAll(pv.TabSessionID, "\x00", ""),
+				Title: strings.ReplaceAll(pv.Title, "\x00", ""), StartedAt: pv.StartedAt, NavigationType: pv.NavigationType,
 				ReferrerURLID: refID, Private: pv.Private}
 			if _, err := tx.NewInsert().Model(&row).
 				On("conflict (id) do update set title = excluded.title").
@@ -107,7 +108,8 @@ func (s *Store) ApplyEvents(ctx context.Context, deviceID uuid.UUID, ev Events) 
 		}
 		for _, sp := range ev.SpanStarts {
 			row := ActivitySpan{ID: sp.ID, DeviceID: deviceID, StartedAt: sp.StartedAt, EndedAt: sp.StartedAt,
-				AppName: sp.AppName, BundleID: sp.BundleID, WindowTitle: sp.WindowTitle}
+				AppName: strings.ReplaceAll(sp.AppName, "\x00", ""), BundleID: strings.ReplaceAll(sp.BundleID, "\x00", ""),
+				WindowTitle: strings.ReplaceAll(sp.WindowTitle, "\x00", "")}
 			if sp.PageViewID != uuid.Nil {
 				if !known[sp.PageViewID] {
 					res.Dropped[EventSpanStart]++

@@ -37,15 +37,16 @@ func (s *Store) Search(ctx context.Context, o SearchOpts) ([]Hit, error) {
 	if o.Limit < 1 || o.Limit > MaxSearchLimit {
 		return nil, fmt.Errorf("limit must be 1-%d", MaxSearchLimit)
 	}
+	o.Query = strings.ReplaceAll(o.Query, "\x00", "")
 	q := s.db.NewSelect().TableExpr("records r").
 		ColumnExpr("r.id, r.extractor, coalesce(r.title, '') as title, r.canonical_url").
 		ColumnExpr("coalesce(paradedb.snippet(r.search_text, '', '', 160), '') as snippet").
 		ColumnExpr("paradedb.score(r.id) as score, r.last_seen_at, r.data").
 		Where("r.id @@@ paradedb.boolean(should => array[paradedb.match('title', ?, distance => 1), paradedb.match('search_text', ?, distance => 1)])", o.Query, o.Query).
 		OrderExpr("paradedb.score(r.id) desc, r.last_seen_at desc, r.id desc").
-		Limit(o.Limit)
+		Limit(int64(o.Limit))
 	if o.Extractor != "" {
-		q = q.Where("r.extractor = ?", o.Extractor)
+		q = q.Where("r.extractor = ?", strings.ReplaceAll(o.Extractor, "\x00", ""))
 	}
 	rows := []hitRow{}
 	if err := q.ColumnExpr("r.search_text").Scan(ctx, &rows); err != nil {

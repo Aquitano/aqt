@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
@@ -30,6 +31,7 @@ var ErrUnknownPageView = errors.New("store: capture names an unknown page view")
 // A blob already on file makes the capture a duplicate; its derivation is
 // left alone and any record it already produced just gets a newer last_seen_at.
 func (s *Store) InsertCapture(ctx context.Context, in CaptureInput) (CaptureResult, error) {
+	in.Capture.BrowserTitle = strings.ReplaceAll(in.Capture.BrowserTitle, "\x00", "")
 	res := CaptureResult{CaptureID: in.Capture.ID, RawHash: in.Blob.Hash}
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		known, err := tx.NewSelect().Model((*PageView)(nil)).Where("id = ?", in.Capture.PageViewID).Exists(ctx)

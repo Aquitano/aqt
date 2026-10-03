@@ -72,6 +72,12 @@ func TestRecordVisitsCountEachPageViewOnce(t *testing.T) {
 	if err != nil || len(hits) != 1 {
 		t.Fatalf("hits = %+v (%v)", hits, err)
 	}
+	t.Run("NUL in query and extractor", func(t *testing.T) {
+		got, err := st.Search(ctx, store.SearchOpts{Query: "post\x00gres", Extractor: "fa\x00ke", Limit: 10})
+		if err != nil || len(got) != 1 || got[0].ID != id {
+			t.Fatalf("hits = %+v (%v), want record %d", got, err, id)
+		}
+	})
 	v := hits[0].Visits
 	if v.Count != 2 || v.ActiveSeconds != 135 || v.FirstAt == nil || !v.FirstAt.Equal(start) ||
 		v.LastAt == nil || !v.LastAt.Equal(start.Add(24*time.Hour)) {
