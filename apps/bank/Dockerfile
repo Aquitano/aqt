@@ -39,7 +39,7 @@ CMD ["extract", "--ocr"]
 # The tz database is compiled into the binary instead (see cmd/bank/main.go).
 #
 # This stage is last, so a plain `docker build .` produces the server image.
-FROM gcr.io/distroless/static-debian12:nonroot AS server
+FROM gcr.io/distroless/static-debian13:nonroot AS server
 
 COPY --from=build /out/bank /usr/local/bin/bank
 

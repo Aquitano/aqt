@@ -175,7 +175,7 @@ func (p *Processor) derive(ctx context.Context, d store.Derivation) (store.Recor
 	hash := blake3.Sum256(canonical)
 	return store.RecordInput{
 		Record: store.Record{Extractor: d.Extractor, RecordHash: hash[:], CanonicalURL: canonicalURL(rec.CanonicalURL, normalized),
-			Title: rec.Title, SearchText: rec.SearchText, Data: canonical,
+			Title: strings.ReplaceAll(rec.Title, "\x00", ""), SearchText: strings.ReplaceAll(rec.SearchText, "\x00", ""), Data: canonical,
 			FirstSeenAt: summary.FirstSeen, LastSeenAt: summary.LastSeen},
 		URL: store.URLKey{Hash: urlnorm.Hash(normalized), Normalized: normalized, Host: host},
 	}, nil
@@ -193,8 +193,7 @@ func canonicalURL(raw, pageURL string) string {
 
 // canonicalData is the record's data as hashed and stored. An extractor that
 // reads JSON embedded in a page can return NUL, which jsonb rejects as \u0000,
-// so it is dropped from every string and key first. bun already leaves NUL
-// out of the text columns.
+// so it is dropped from every string and key first.
 func canonicalData(v any) ([]byte, error) {
 	raw, err := json.Marshal(v)
 	if err != nil {

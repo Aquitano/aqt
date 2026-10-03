@@ -17,8 +17,8 @@ import (
 	"github.com/aquitano/aqt/apps/tracker/internal/storetest"
 )
 
-// Postgres rejects NUL in text. bun leaves it out of every string it formats
-// into a query, which is what keeps one title from failing the whole batch.
+// Postgres rejects NUL in text. The store strips it so one title cannot fail
+// the whole batch.
 func TestEventsWithNULInATitleAreStoredWithoutIt(t *testing.T) {
 	st, schema := storetest.NewNamed(t)
 	h := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off(), "").Handler()

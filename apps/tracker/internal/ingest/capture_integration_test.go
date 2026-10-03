@@ -38,6 +38,7 @@ func TestCaptureTransaction(t *testing.T) {
 	post := func() (int, bool) {
 		meta := validMeta()
 		meta["device_id"], meta["page_view_id"] = device, pv
+		meta["browser_title"] = "Pa\x00ge"
 		rec := do(t, h, captureRequest(t, meta, html))
 		var res struct {
 			Deduplicated bool `json:"deduplicated"`
@@ -63,6 +64,9 @@ func TestCaptureTransaction(t *testing.T) {
 	}
 	if n := storetest.QueryInt(t, schema, `select count(*) from urls where host = 'example.com'`); n != 1 {
 		t.Errorf("%d urls rows for example.com, want 1", n)
+	}
+	if n := storetest.QueryInt(t, schema, `select count(*) from captures where browser_title = 'Page'`); n != 2 {
+		t.Errorf("%d captures without NUL in their browser title, want 2", n)
 	}
 }
 
