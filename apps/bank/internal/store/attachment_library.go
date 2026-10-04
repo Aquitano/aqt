@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/jackc/pgx/v5"
 	"strings"
 	"time"
 )
 
 type AttachmentFilter struct {
+	Query, Source, Match             string
 	Filename, Text, FileType, Person string
 	Since, Until                     time.Time
 	Limit, Offset                    int
@@ -26,15 +28,26 @@ type LibraryFile struct {
 }
 
 func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]LibraryFile, error) {
-	if o.Limit <= 0 || o.Limit > 100 {
+	if err := (library.ListOptions{Query: o.Query, Match: o.Match, Limit: o.Limit, Offset: o.Offset}).Validate(); err != nil {
+		return nil, err
+	}
+	if o.Limit == 0 {
 		o.Limit = 50
 	}
 	if o.Offset < 0 || o.Offset > MaxSearchOffset {
 		return nil, fmt.Errorf("invalid offset")
 	}
 	where := "true"
+	ctes := ""
+	queryParameter := ""
 	args := []any{}
 	arg := func(v any) string { args = append(args, v); return fmt.Sprintf("$%d", len(args)) }
+	if o.Source != "" {
+		where += " and m.source=" + arg(o.Source)
+	}
+	if o.Query != "" {
+		queryParameter = arg(o.Query)
+	}
 	if o.Filename != "" {
 		where += " and strpos(lower(a.filename), lower(" + arg(o.Filename) + "))>0"
 	}
@@ -65,7 +78,17 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	if !o.Until.IsZero() {
 		where += " and m.sent_at<" + arg(o.Until)
 	}
-	rows, err := s.pool.Query(ctx, `with matched as (
+	if queryParameter != "" {
+		metadataVector := "to_tsvector('simple',n.filename || ' ' || regexp_replace(n.filename,'[._-]+',' ','g'))"
+		ctes = `attachment_names as materialized (
+ select distinct a.sha256,a.filename from attachments a join messages m on m.id=a.message_id where ` + where + `
+ ), ` + libraryTextMatches(queryParameter, "select distinct sha256 from attachment_names") + `, matching_names as materialized (
+ select n.sha256,n.filename from attachment_names n left join text_matches b on b.sha256=n.sha256
+ where (` + metadataVector + ` || coalesce(b.search_vector,''::tsvector)) @@ ` + libraryTextQuery(o.Match, queryParameter) + `
+ ), `
+		where += " and exists(select 1 from matching_names n where n.sha256=a.sha256 and n.filename=a.filename)"
+	}
+	rows, err := s.pool.Query(ctx, `with `+ctes+`matched as (
  select a.sha256,min(a.filename) filename,min(a.mime_type) mime_type,max(a.size_bytes) size_bytes,max(m.sent_at) last_at
  from attachments a join messages m on m.id=a.message_id where `+where+` group by a.sha256
  ) select sha256,filename,mime_type,size_bytes,

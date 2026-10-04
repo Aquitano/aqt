@@ -1,6 +1,6 @@
 # aqt-bank
 
-Personal message archive: every message from every source in one Postgres, full-text searchable from a CLI by me and my agents. See [DESIGN.md](DESIGN.md) for architecture and roadmap.
+Personal archive and library: messages, media, viewing activity, playlists, files, and selected Markdown pages in one searchable Postgres database. See [LIBRARY.md](LIBRARY.md) for the library model, imports, and Brain search. See [DESIGN.md](DESIGN.md) for architecture.
 
 Bank imports personal ChatGPT and Claude.ai exports. Turnstash owns coding-session
 ingestion. Removing an importer does not delete previously archived records.
@@ -32,6 +32,10 @@ go build -o bank ./cmd/bank
                                                 #  along as attachments, and re-importing
                                                 #  heals an earlier text-only pass)
 ./bank import claude claude-export.zip          # Claude.ai data export
+./bank import netflix NetflixViewingHistory.csv --account thomas
+./bank import youtube-media takeout.zip --account thomas
+./bank library upload soundtrack.flac notes.pdf
+./bank library index ~/brain/wiki --source brain --account wiki
 echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source notes -
 
 ./bank import inbox                             # sweep $BANK_DATA_DIR/inbox/<kind>/
@@ -86,6 +90,14 @@ export BANK_TOKEN=$(ssh vps 'cd /opt/aqt-bank && docker compose run --rm -T bank
 ```
 
 `bank ui` opens a local archive browser (search, thread-grouped browse, contacts, stats) at `127.0.0.1:8481`. It needs `BANK_URL`/`BANK_TOKEN` and attaches the token server-side, so it never reaches the browser. The page is a Vite + React + shadcn/ui app in `internal/webui/app`; its built `dist/` is committed and embedded, so `go build` needs no JS toolchain — after changing the app, rebuild with `bun run build` there.
+
+Stats shows each source's last import, recorded sync checkpoint, and coverage note.
+Sources flagged as stale by the API show **No recent imports**. A recent sync does
+not imply that new messages were imported.
+
+Run `bun run check:dist` in `internal/webui/app` to rebuild and check the embedded
+assets against Git. Commit the rebuilt `dist/` with its source changes. CI and
+`mise run bank:ts` run the same check.
 
 Agents on a client machine get the CLI handed to them by a Claude Code skill: [skill/README.md](skill/README.md).
 
@@ -151,12 +163,12 @@ The **Contacts** tab can create a contact or attach a suggested identity to an
 existing one. Open a contact and expand **Manage identities** to add or remove
 emails and usernames. Each identity can match one source or all sources.
 
-The **Files** tab searches filenames and filters by extension, MIME type or
+Open **Files**, then **Message attachments** to search filenames and filter by extension, MIME type or
 category such as `image`, contact name, and message date. The before-date filter
 is exclusive. Identical bytes share one library entry, even under different
 filenames. Selecting a file shows PDF/image previews, extracted document text
 when available, and every message containing those bytes. Message results include
-occurrences outside the selected filters. Original files remain downloadable.
+occurrences outside the selected filters. Original files remain downloadable. The **Library files** subtab lists uploaded standalone files.
 
 **Contents contain** searches extracted text within each file, ignoring case.
 It matches the supplied phrase literally. Files without extracted text cannot

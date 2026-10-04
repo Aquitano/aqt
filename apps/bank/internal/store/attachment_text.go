@@ -57,10 +57,10 @@ type ListBlobsOpts struct {
 	// Statuses filters by extraction status; StatusPending selects blobs with
 	// no row yet. Empty means every blob.
 	Statuses []string
-	// Source restricts to blobs carried by messages of one source.
+	// Source restricts to files or message attachments of one source.
 	Source string
 	Limit  int
-	// NewestFirst orders by the most recently stored attachment row instead of
+	// NewestFirst orders by the most recently stored file instead of
 	// by size. The pass that runs after an import needs it: with a backlog of
 	// large pending blobs, the default order would spend a bounded batch
 	// before ever reaching the file that just landed.
@@ -85,7 +85,7 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 	}
 	where := ""
 	if o.Source != "" {
-		where = " where exists (select 1 from messages m where m.id = a.message_id and m.source = " + next(o.Source) + ")"
+		where = " where a.source = " + next(o.Source)
 	}
 	sql := `
 		select b.sha256, b.filename, b.mime_type, b.size_bytes, b.messages,
@@ -97,19 +97,26 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 			       min(a.mime_type) as mime_type,
 			       max(a.size_bytes) as size_bytes,
 			       count(distinct a.message_id) as messages,
-			       max(a.id) as newest
-			from attachments a` + where + `
+			       max(a.newest) as newest,
+			       max(a.attachment_id) as attachment_id
+			from (
+                select a.sha256,a.filename,a.mime_type,a.size_bytes,a.message_id,
+                       coalesce(a.ingested_at,m.ingested_at) as newest,a.id as attachment_id,m.source
+                from attachments a join messages m on m.id=a.message_id
+                union all
+                select f.sha256,f.filename,f.mime_type,f.size_bytes,null::bigint,
+                       f.ingested_at,0::bigint,f.source
+                from library_files f
+            ) a` + where + `
 			group by a.sha256
 		) b
 		left join blob_text t on t.sha256 = b.sha256`
 	if len(o.Statuses) > 0 {
 		sql += " where coalesce(t.status, '" + StatusPending + "') = any(" + next(o.Statuses) + ")"
 	}
-	// attachments.id only ever increases, so the highest one for a digest is
-	// when that content was last stored.
 	order := "b.size_bytes desc"
 	if o.NewestFirst {
-		order = "b.newest desc"
+		order = "b.newest desc, b.attachment_id desc"
 	}
 	sql += " order by " + order + ", b.sha256 limit " + next(o.Limit)
 
@@ -187,12 +194,12 @@ func (s *Store) DeleteBlobText(ctx context.Context, sha256 string) error {
 	return nil
 }
 
-// KnownAttachment reports whether any message carries this content, so a
+// KnownAttachment reports whether the archive holds this content, so a
 // caller cannot store text for a digest the archive has never seen.
 func (s *Store) KnownAttachment(ctx context.Context, sha256 string) (bool, error) {
 	var exists bool
 	err := s.pool.QueryRow(ctx,
-		`select exists (select 1 from attachments where sha256 = $1)`, sha256).Scan(&exists)
+		`select exists (select 1 from attachments where sha256 = $1) or exists(select 1 from library_files where sha256=$1)`, sha256).Scan(&exists)
 	return exists, err
 }
 
@@ -240,7 +247,7 @@ func (s *Store) ExtractionStats(ctx context.Context) ([]ExtractionStat, error) {
 		       count(*), coalesce(sum(b.size_bytes), 0), coalesce(sum(length(t.text)), 0)
 		from (
 			select sha256, max(size_bytes) as size_bytes
-			from attachments group by sha256
+			from (select sha256,size_bytes from attachments union all select sha256,size_bytes from library_files) files group by sha256
 		) b
 		left join blob_text t on t.sha256 = b.sha256
 		group by 1 order by 1`)

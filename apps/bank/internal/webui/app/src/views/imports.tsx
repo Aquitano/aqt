@@ -1,5 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 
+import { LibraryImportForm } from "@/components/library-import";
 import { Button } from "@/components/ui/button";
 import { getImportReports } from "@/lib/api";
 
@@ -13,6 +14,7 @@ export function ImportsView() {
   });
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
+      <LibraryImportForm />
       <h2 className="text-lg font-semibold">Import reports</h2>
       <p className="mb-5 text-sm text-muted-foreground">
         Each attempt stays here, including gaps and failures. Reports start with imports made after
@@ -33,7 +35,12 @@ export function ImportsView() {
             ]),
           ];
           const counters = [
-            ["Messages imported", r.inserted],
+            [
+              ["netflix", "youtube-media", "library", "markdown"].includes(report.kind)
+                ? "Records imported"
+                : "Messages imported",
+              r.inserted,
+            ],
             ["Already present", r.duplicates],
             ["New files preserved", r.files_preserved],
             ["Missing assets", r.missing_media],
@@ -55,7 +62,7 @@ export function ImportsView() {
                   {report.status === "running"
                     ? "Unfinished or running"
                     : report.status === "gaps"
-                      ? "Completed with gaps"
+                      ? "Completed with notes"
                       : report.status}
                 </span>
                 <time className="ml-auto text-xs text-muted-foreground">

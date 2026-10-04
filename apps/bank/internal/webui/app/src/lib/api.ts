@@ -31,7 +31,7 @@ const mailProvenance = type({
   conflict_key: "string",
 });
 
-const message = type({
+export const message = type({
   id: "number",
   source: "string",
   "ref?": "string",
@@ -71,6 +71,9 @@ const sourceStat = type({
   earliest: "string",
   latest: "string",
   last_ingest: "string",
+  last_sync: "string | null",
+  "coverage?": "string",
+  stale: "boolean",
 });
 export type SourceStat = typeof sourceStat.infer;
 
@@ -134,7 +137,7 @@ async function send(path: string, init?: RequestInit) {
   );
 }
 
-async function api<T extends Type>(
+export async function api<T extends Type>(
   path: string,
   schema: T,
   init?: RequestInit,
@@ -293,7 +296,7 @@ export function getMailConflict(source: string, key: string, before?: number) {
   return api(`/v1/mail-conflicts/${encodeURIComponent(key)}?${params}`, thread);
 }
 
-const libraryFile = type({
+export const libraryFile = type({
   sha256: "string",
   filename: "string",
   mime_type: "string",

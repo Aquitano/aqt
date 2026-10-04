@@ -1,6 +1,6 @@
-# aqt-bank — personal message archive
+# aqt-bank architecture
 
-One place for every message I've ever sent or received, searchable in milliseconds from a CLI, by me and by my agents.
+Bank stores correspondence, a personal media library, activity, collections, files, and published Markdown pages. The CLI and web UI search these records together. The library contracts and ownership rules are documented in [LIBRARY.md](LIBRARY.md).
 
 ## Decisions (locked 2026-08-17)
 
@@ -32,7 +32,7 @@ Deliberately inside ToS everywhere. If WhatsApp manual export gets old, the esca
 
 ## Data model
 
-Everything normalizes to one `messages` table; source-specific richness stays in the raw archive.
+Correspondence normalizes to `messages`; source-specific richness stays in the raw archive. Media and personal tracking use separate typed tables introduced by `0014_library.sql`. Their search projections do not change message identities or citations.
 
 - `messages(id, source, external_id, thread_id, sender, recipients[], subject, body, sent_at, raw_ref, ingested_at)`
   - `unique (source, external_id)` makes every importer idempotent — re-importing a dump is always safe.
@@ -56,11 +56,14 @@ Provider thread IDs remain authoritative. Generic mail uses deterministic derive
 ```
 blobs/ab/abcdef…        content-addressed attachments (sha256, two-char fan-out)
 archive/<source>/.mail-contexts/<sha256>.json  immutable mail provenance, included in backups
-archive/<source>/…      raw inputs exactly as received (mbox, zips, CSV, EML) — re-ingestable forever.
-                        The one exception: a YouTube Takeout archives only its history file — the
-                        rest of the export is other sources' data, archived under their own names
-inbox/<source>/         drop zone for manual exports; `bank import inbox` sweeps and moves to archive/
+archive/<source>/…      raw correspondence inputs (mbox, zips, CSV, EML)
+archive/library/<source>/…  raw library imports and Markdown publications
+inbox/<kind>/           drop zone for manual exports; `bank import inbox` sweeps supported import kinds
+inbox/.done/<kind>/     processed exports, including duplicates
+inbox/.rejected/<kind>/ exports the importer could not read; operational failures stay in the drop zone
 ```
+
+The `youtube` correspondence importer archives only the Takeout history file. Library inputs stay separate from correspondence replay. Earlier raw references remain valid.
 
 ## CLI
 
@@ -77,7 +80,10 @@ bank contact alias add|rm <name> <email|handle|source:name>...
 bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--offset n] [--json]
 bank contact suggest [--limit n]        # identities in the archive no contact claims yet
 bank contact import <file|-> [--json]   # a whole contact book at once (JSON array or NDJSON)
-bank thread <id> [--source s] [--limit n] [--json]   # one whole conversation, oldest first
+bank thread <id> [--source s] [--limit n] [--json]   # a page of the conversation, oldest first
+bank thread <id> --source s --around <message-id>   # context centered on a message
+bank thread <id> --source s --before <message-id>   # the preceding page
+bank thread <id> --source s --after <message-id>    # the following page
 bank show <id|ref> [--json]             # full message + attachment refs
 bank stats [--json]                     # counts, date ranges, last import, last sync, coverage
 bank coverage <source> <text>           # note what a source holds (empty text clears)

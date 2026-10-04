@@ -83,3 +83,37 @@ func (s *Store) SetAttachmentSize(ctx context.Context, id, size int64) error {
 	_, err := s.pool.Exec(ctx, `update attachments set size_bytes = $2 where id = $1`, id, size)
 	return err
 }
+
+type ArchivedLibraryRecord struct {
+	ID        string
+	Kind      string
+	RawRefs   []string
+	Snapshot  string
+	SHA256    string
+	SizeBytes int64
+}
+
+func (s *Store) EachArchivedLibraryRecord(ctx context.Context, source string, fn func(ArchivedLibraryRecord) error) error {
+	rows, err := s.pool.Query(ctx, `
+  select id,kind,raw_refs,snapshot,sha256,size_bytes from (
+   select i.id,'item' as kind,i.source,array(select distinct ref from (select coalesce(i.provenance->>'raw_ref','') as ref union select e.raw_ref from library_item_evidence e where e.item_id=i.id) evidence where ref<>'') as raw_refs,'' as snapshot,'' as sha256,0::bigint as size_bytes from library_items i
+   union all select a.id,'activity',a.source,array(select distinct ref from (select coalesce(a.provenance->>'raw_ref','') as ref union select e.raw_ref from library_activity_evidence e where e.activity_id=a.id) evidence where ref<>''),'','',0::bigint from library_activity a
+   union all select c.id,'collection',c.source,array[coalesce(s.provenance->>'raw_ref','')],s.external_id,'',0::bigint from library_snapshots s join library_collections c on c.id=s.collection_id
+   union all select id,'file',source,array[coalesce(provenance->>'raw_ref','')],'',sha256,size_bytes from library_files
+   union all select id,'page',source,array[coalesce(provenance->>'raw_ref','')],'','',0::bigint from library_pages
+  ) records where ($1='' or source=$1) order by kind,id,snapshot`, source)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var record ArchivedLibraryRecord
+		if err := rows.Scan(&record.ID, &record.Kind, &record.RawRefs, &record.Snapshot, &record.SHA256, &record.SizeBytes); err != nil {
+			return err
+		}
+		if err := fn(record); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}

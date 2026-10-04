@@ -115,6 +115,38 @@ func TestMigrationCollapsesDuplicateMessageIDs(t *testing.T) {
 	}
 }
 
+func TestAttachmentIngestionMigrationPreservesLegacyRows(t *testing.T) {
+	schema := storetest.NewSchema(t)
+	storetest.Exec(t, schema, `create table schema_migrations (filename text primary key, applied_at timestamptz not null default now())`)
+	files, err := os.ReadDir("migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if file.Name() >= "0016_attachment_ingestion.sql" {
+			break
+		}
+		sql, err := os.ReadFile("migrations/" + file.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		storetest.Exec(t, schema, string(sql))
+		storetest.Exec(t, schema, `insert into schema_migrations (filename) values ($1)`, file.Name())
+	}
+	storetest.Exec(t, schema, `insert into messages (source,external_id,sent_at,ingested_at) values ('proton','old',now(),'2000-01-01')`)
+	storetest.Exec(t, schema, `insert into attachments (message_id,filename,size_bytes,sha256) select id,'old.pdf',1,$1 from messages`, digestA)
+	st := storetest.Open(t, schema)
+	if n := storetest.QueryInt(t, schema, `select count(*) from attachments where sha256=$1 and ingested_at is null`, digestA); n != 1 {
+		t.Fatal("legacy attachment was assigned a new ingestion time")
+	}
+	if err := st.InsertAttachment(context.Background(), store.Attachment{MessageID: 1, Filename: "new.pdf", SizeBytes: 1, SHA256: digestB}); err != nil {
+		t.Fatal(err)
+	}
+	if n := storetest.QueryInt(t, schema, `select count(*) from attachments where sha256=$1 and ingested_at > '2000-01-01'`, digestB); n != 1 {
+		t.Fatal("new attachment did not receive an ingestion time")
+	}
+}
+
 func TestConcurrentMigrationsSerialize(t *testing.T) {
 	schema := storetest.NewSchema(t)
 	dsn := storetest.SchemaDSN(t, schema)

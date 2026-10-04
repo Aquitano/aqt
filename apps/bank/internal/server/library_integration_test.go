@@ -1,12 +1,17 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -66,6 +71,97 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 			}
 		} else if w.Code != 200 || w.Header().Get("Content-Type") != "application/pdf" || w.Header().Get("Content-Security-Policy") != "default-src 'none'; frame-ancestors 'self'" {
 			t.Fatalf("PDF preview: %d %+v", w.Code, w.Header())
+		}
+	}
+}
+
+func TestLibraryStateRejectsInvalidTextWithoutAdvancingRevision(t *testing.T) {
+	s, st := attachmentServer(t)
+	item := library.Item{Identity: library.Identity{Source: "manual", ExternalID: "invalid-notes"}, Kind: "movie", Title: "Example"}
+	if _, err := st.ImportLibrary(context.Background(), library.ImportBatch{Version: 1, Items: []library.Item{item}}); err != nil {
+		t.Fatal(err)
+	}
+	token, err := NewToken(s.dataDir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := s.Handler()
+	for _, test := range []struct {
+		notes string
+		code  int
+	}{{"bad\x00notes", 400}, {"valid notes", 200}} {
+		body, err := json.Marshal(library.StateEdit{Notes: test.notes})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest("PUT", "/v1/library/items/"+library.StableID("item", item.Identity)+"/state", bytes.NewReader(body))
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != test.code {
+			t.Fatalf("notes %q: %d %s", test.notes, w.Code, w.Body)
+		}
+	}
+}
+
+func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
+	s, st := attachmentServer(t)
+	token, err := NewToken(s.dataDir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := st.FindMessageID(context.Background(), "proton", "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct{ filename, mime string }{{"soundtrack.flac", "audio/flac"}, {"raw.mp3", "audio/mpeg"}, {"soundtrack.aac", "audio/aac"}} {
+		encoded, err := os.ReadFile(filepath.Join("testdata", "preview", test.filename+".base64"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(encoded)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum, size, err := s.blobs.Put(bytes.NewReader(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Filename: test.filename, MimeType: "application/octet-stream", SHA256: sum, SizeBytes: size}); err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest("GET", "/v1/attachments/"+sum+"/preview", nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		if w.Code != 200 || w.Header().Get("Content-Type") != test.mime || w.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Fatalf("%s: %d %+v %s", test.filename, w.Code, w.Header(), w.Body)
+		}
+	}
+}
+
+func TestLibraryRemoteNetflixDateOrder(t *testing.T) {
+	ctx := context.Background()
+	c, _ := libraryClient(t)
+	input := filepath.Join(t.TempDir(), "viewing.csv")
+	if err := os.WriteFile(input, []byte("Title,Date\nA Film,03/04/2024\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ImportMediaFile(ctx, "netflix", "", "dates", input, "dmy"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := c.ListLibraryActivity(ctx, library.ListOptions{Source: "netflix", Account: "dates"})
+	if err != nil || len(rows) != 1 || rows[0].Occurred.Value != "2024-04-03" {
+		t.Fatalf("remote day-first date: %+v %v", rows, err)
+	}
+	s, token := testServer(t)
+	for _, path := range []string{"/v1/import/netflix?date_order=ymd", "/v1/import/youtube-media?date_order=dmy"} {
+		r := httptest.NewRequest("POST", path, nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		if w.Code != 400 || !strings.Contains(w.Body.String(), "date_order") {
+			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
 	}
 }

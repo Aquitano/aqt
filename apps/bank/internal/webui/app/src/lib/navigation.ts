@@ -1,8 +1,20 @@
 import { useSyncExternalStore } from "react";
 
 import type { Attachment, SearchParams } from "@/lib/api";
+import type { LibraryFilters } from "@/lib/library-api";
 
-export const VIEWS = ["search", "browse", "contacts", "attachments", "imports", "stats"] as const;
+export const VIEWS = [
+  "library",
+  "activity",
+  "collections",
+  "search",
+  "browse",
+  "contacts",
+  "attachments",
+  "media-files",
+  "imports",
+  "stats",
+] as const;
 export type View = (typeof VIEWS)[number];
 export const isView = (value: string): value is View => VIEWS.some((view) => view === value);
 
@@ -15,6 +27,9 @@ export type Selection =
       flashId?: number;
       current?: boolean;
     }
+  | { kind: "item"; id: string }
+  | { kind: "collection"; id: string }
+  | { kind: "page"; id: string }
   | { kind: "message"; id: number | string }
   | { kind: "contact"; name: string }
   | { kind: "mail-conflict"; source: string; key: string }
@@ -22,6 +37,9 @@ export type Selection =
   | null;
 
 const selectionKeys = [
+  "item",
+  "collection",
+  "page",
   "message",
   "thread",
   "threadSource",
@@ -72,6 +90,12 @@ export function navigate(update: (params: URLSearchParams) => void) {
 }
 
 export function readSelection(params: URLSearchParams): Selection {
+  const item = params.get("item");
+  if (item) return { kind: "item", id: item };
+  const collection = params.get("collection");
+  if (collection) return { kind: "collection", id: collection };
+  const page = params.get("page");
+  if (page) return { kind: "page", id: page };
   const message = params.get("message");
   if (message && (/^[a-f0-9]{12}$/.test(message) || /^[1-9]\d*$/.test(message)))
     return { kind: "message", id: message };
@@ -108,6 +132,11 @@ export function writeSelection(params: URLSearchParams, selection: Selection) {
   for (const key of selectionKeys) params.delete(key);
   if (!selection) return;
   switch (selection.kind) {
+    case "item":
+    case "collection":
+    case "page":
+      params.set(selection.kind, selection.id);
+      break;
     case "message":
       params.set("message", String(selection.id));
       break;
@@ -171,4 +200,37 @@ export function writeSearch(params: URLSearchParams, search: SearchParams) {
   for (const [key, value] of Object.entries(search)) {
     if (value !== undefined && key !== "offset") params.set(key, String(value));
   }
+}
+
+const libraryFilterKeys = ["q", "source", "account", "kind", "item_id"] as const;
+type LibraryView = "library" | "activity" | "collections" | "media-files";
+
+export function readLibraryFilters(params: URLSearchParams, view: LibraryView): LibraryFilters {
+  const filters: LibraryFilters = {};
+  for (const key of libraryFilterKeys) {
+    const value = params.get(`${view}.${key}`);
+    if (value) filters[key] = value;
+  }
+  return filters;
+}
+
+export function writeLibraryFilters(
+  params: URLSearchParams,
+  view: LibraryView,
+  filters: LibraryFilters,
+) {
+  for (const key of libraryFilterKeys) {
+    params.delete(`${view}.${key}`);
+    const value = filters[key];
+    if (value) params.set(`${view}.${key}`, value);
+  }
+}
+
+export function useLibraryFilters(view: LibraryView) {
+  const location = useLocation();
+  const filters = readLibraryFilters(new URLSearchParams(location), view);
+  function setFilters(next: LibraryFilters) {
+    navigate((params) => writeLibraryFilters(params, view, next));
+  }
+  return [filters, setFilters] as const;
 }
