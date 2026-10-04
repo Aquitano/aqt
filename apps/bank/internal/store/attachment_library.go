@@ -39,24 +39,14 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	}
 	where := "true"
 	ctes := ""
+	queryParameter := ""
 	args := []any{}
 	arg := func(v any) string { args = append(args, v); return fmt.Sprintf("$%d", len(args)) }
 	if o.Source != "" {
 		where += " and m.source=" + arg(o.Source)
 	}
 	if o.Query != "" {
-		p := arg(o.Query)
-		metadataVector := "to_tsvector('simple',filename || ' ' || regexp_replace(filename,'[._-]+',' ','g'))"
-		ctes = `text_matches as materialized (
- select sha256,search_vector from blob_text where status in ('ok','manual') and search_vector @@ ` + libraryTextQuery("any", p) + `
- union all select sha256,blob_text_query_vector(text,` + p + `) from blob_text where status in ('ok','manual') and search_vector is null
- ), attachment_names as materialized (
- select distinct sha256,filename from attachments
- ), matching_names as materialized (
- select n.sha256,n.filename from attachment_names n left join text_matches b on b.sha256=n.sha256
- where (` + metadataVector + ` || coalesce(b.search_vector,''::tsvector)) @@ ` + libraryTextQuery(o.Match, p) + `
- ), `
-		where += " and exists(select 1 from matching_names n where n.sha256=a.sha256 and n.filename=a.filename)"
+		queryParameter = arg(o.Query)
 	}
 	if o.Filename != "" {
 		where += " and strpos(lower(a.filename), lower(" + arg(o.Filename) + "))>0"
@@ -87,6 +77,16 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	}
 	if !o.Until.IsZero() {
 		where += " and m.sent_at<" + arg(o.Until)
+	}
+	if queryParameter != "" {
+		metadataVector := "to_tsvector('simple',n.filename || ' ' || regexp_replace(n.filename,'[._-]+',' ','g'))"
+		ctes = `attachment_names as materialized (
+ select distinct a.sha256,a.filename from attachments a join messages m on m.id=a.message_id where ` + where + `
+ ), ` + libraryTextMatches(queryParameter, "select distinct sha256 from attachment_names") + `, matching_names as materialized (
+ select n.sha256,n.filename from attachment_names n left join text_matches b on b.sha256=n.sha256
+ where (` + metadataVector + ` || coalesce(b.search_vector,''::tsvector)) @@ ` + libraryTextQuery(o.Match, queryParameter) + `
+ ), `
+		where += " and exists(select 1 from matching_names n where n.sha256=a.sha256 and n.filename=a.filename)"
 	}
 	rows, err := s.pool.Query(ctx, `with `+ctes+`matched as (
  select a.sha256,min(a.filename) filename,min(a.mime_type) mime_type,max(a.size_bytes) size_bytes,max(m.sent_at) last_at

@@ -60,6 +60,33 @@ func TestBlobTextSearchMigrationPreservesOversizedDocuments(t *testing.T) {
 	if err != nil || len(files) != 1 {
 		t.Fatalf("oversized standalone text: %+v %v", files, err)
 	}
+	outside := strings.Repeat("b", 64)
+	if _, err = conn.Exec(ctx, `insert into blob_text(sha256,text,status) select $1,'outside scope ' || text,'ok' from blob_text where sha256=$2`, outside, sum); err != nil {
+		t.Fatal(err)
+	}
+	outsideID, err := st.InsertMessage(ctx, store.Message{Source: "excluded", ExternalID: "oversized", SentAt: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = st.InsertAttachment(ctx, store.Attachment{MessageID: outsideID, Filename: "outside.pdf", SHA256: outside}); err != nil {
+		t.Fatal(err)
+	}
+	outsideFile := library.File{Identity: library.Identity{Source: "excluded", Account: "owner", ExternalID: "oversized"}, SHA256: outside, Filename: "outside.pdf"}
+	if _, err = st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: []library.File{outsideFile}}); err != nil {
+		t.Fatal(err)
+	}
+	storetest.Exec(t, schema, `alter function blob_text_query_vector(text,text) rename to original_blob_text_query_vector;
+ create function blob_text_query_vector(document text,query text) returns tsvector language plpgsql stable as $$
+ begin
+ if document like 'outside scope %' then raise exception 'parsed an excluded document'; end if;
+ return original_blob_text_query_vector(document,query);
+ end $$`)
+	if matches, err := st.AttachmentLibrary(ctx, store.AttachmentFilter{Query: "suffixneedle", Source: "mail"}); err != nil || len(matches) != 1 {
+		t.Fatalf("attachment search parsed excluded overflow text: %+v %v", matches, err)
+	}
+	if matches, err := st.ListLibraryFiles(ctx, library.ListOptions{Query: "suffixneedle", Source: "files"}); err != nil || len(matches) != 1 {
+		t.Fatalf("standalone search parsed excluded overflow text: %+v %v", matches, err)
+	}
 	for i, document := range []string{"red-bird.txt foo@example.com a & b 123 foo-bar", "quiet ocean quasar quiet ocean", "a " + strings.Repeat("x", 3000) + " b", "it's a \\slash and quoted 'word'"} {
 		query := document
 		if i == 2 {

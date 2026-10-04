@@ -8,5 +8,6 @@ export function moveEntry<T>(entries: T[], index: number, direction: number, vis
 
 export function appendEntry<T>(entries: T[], entry: T, visible: number) {
   const next = [...entries, entry];
-  return { entries: next, visible: Math.max(visible, next.length) };
+  const count = Math.max(1, visible);
+  return { entries: next, visible: count, start: Math.max(0, next.length - count) };
 }

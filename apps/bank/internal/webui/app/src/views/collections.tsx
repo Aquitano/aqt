@@ -252,7 +252,9 @@ function CollectionEditor({ collection }: { collection: Collection }) {
   const [search, setSearch] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [visible, setVisible] = useState(50);
-  const titles = useEntryTitles(entries.slice(0, visible).map(({ entry }) => entry));
+  const [entryStart, setEntryStart] = useState(0);
+  const start = Math.min(entryStart, Math.max(0, entries.length - visible));
+  const titles = useEntryTitles(entries.slice(start, start + visible).map(({ entry }) => entry));
   const items = useQuery({
     queryKey: ["library", "items", { q: submittedSearch }],
     queryFn: () => getItems({ q: submittedSearch }),
@@ -281,9 +283,11 @@ function CollectionEditor({ collection }: { collection: Collection }) {
     },
   });
   function move(index: number, direction: number) {
-    const next = moveEntry(entries, index, direction, visible);
+    const next = moveEntry(entries, index, direction, start + visible);
+    const nextStart = Math.min(start, Math.max(0, index + direction));
     setEntries(() => next.entries);
-    setVisible(next.visible);
+    setEntryStart(nextStart);
+    setVisible(next.visible - nextStart);
   }
   return (
     <div className="flex flex-col gap-5">
@@ -321,53 +325,68 @@ function CollectionEditor({ collection }: { collection: Collection }) {
           <h3 className="text-sm font-medium">{entries.length} entries</h3>
           <p className="text-xs text-muted-foreground">Repeated items are preserved.</p>
         </div>
+        {start > 0 && (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Showing entries {start + 1} through {Math.min(start + visible, entries.length)}.
+            </p>
+            <Button type="button" variant="outline" onClick={() => setEntryStart(0)}>
+              Show first entries
+            </Button>
+          </div>
+        )}
         <ol className="flex flex-col gap-2">
-          {entries.slice(0, visible).map(({ entry, key }, index) => (
-            <li key={key} className="flex items-center gap-2 rounded-lg border p-2">
-              <span className="w-7 shrink-0 text-center text-xs text-muted-foreground tabular-nums">
-                {index + 1}
-              </span>
-              <EntryTitle
-                id={entry.item_id}
-                item={titles.items.get(entry.item_id)}
-                loading={titles.pending}
-              />
-              <div className="flex shrink-0 gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Move entry ${index + 1} up`}
-                  disabled={index === 0}
-                  onClick={() => move(index, -1)}
-                >
-                  <ArrowUp />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Move entry ${index + 1} down`}
-                  disabled={index === entries.length - 1}
-                  onClick={() => move(index, 1)}
-                >
-                  <ArrowDown />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Remove entry ${index + 1}`}
-                  onClick={() => setEntries((current) => current.filter((row) => row.key !== key))}
-                >
-                  <X />
-                </Button>
-              </div>
-            </li>
-          ))}
+          {entries.slice(start, start + visible).map(({ entry, key }, rowIndex) => {
+            const index = start + rowIndex;
+            return (
+              <li key={key} className="flex items-center gap-2 rounded-lg border p-2">
+                <span className="w-7 shrink-0 text-center text-xs text-muted-foreground tabular-nums">
+                  {index + 1}
+                </span>
+                <EntryTitle
+                  id={entry.item_id}
+                  item={titles.items.get(entry.item_id)}
+                  loading={titles.pending}
+                />
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Move entry ${index + 1} up`}
+                    disabled={index === 0}
+                    onClick={() => move(index, -1)}
+                  >
+                    <ArrowUp />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Move entry ${index + 1} down`}
+                    disabled={index === entries.length - 1}
+                    onClick={() => move(index, 1)}
+                  >
+                    <ArrowDown />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Remove entry ${index + 1}`}
+                    onClick={() =>
+                      setEntries((current) => current.filter((row) => row.key !== key))
+                    }
+                  >
+                    <X />
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
         </ol>
         {titles.error && <ErrorNotice error={titles.error} />}
-        {entries.length > visible && (
+        {entries.length > start + visible && (
           <Button type="button" variant="outline" onClick={() => setVisible(visible + 50)}>
             Show more entries
           </Button>
@@ -453,6 +472,7 @@ function CollectionEditor({ collection }: { collection: Collection }) {
                 );
                 setEntries(() => next.entries);
                 setVisible(next.visible);
+                setEntryStart(next.start);
               }}
             >
               <Plus data-icon="inline-start" />

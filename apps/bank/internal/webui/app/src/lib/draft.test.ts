@@ -3,9 +3,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 
-import { createDraft, isDirty, keepLatest, refreshDraft, saveDraft, type Draft } from "./draft";
+import {
+  createDraft,
+  isDirty,
+  keepLatest,
+  refreshDraft,
+  releaseCleanDraft,
+  saveDraft,
+  type Draft,
+} from "./draft";
 
 void test("dirty draft cache survives library invalidation and keeps the original expected revision", async () => {
   const client = new QueryClient();
@@ -57,5 +65,26 @@ void test("a delayed save response cannot downgrade newer cached data or draft r
   assert.equal(accepted.revision, 2);
   assert.ok(latest.revision > accepted.revision);
   assert.equal(keepLatest(undefined, response), response);
+  client.clear();
+});
+
+void test("inactive clean drafts are released while active and unsaved drafts survive", () => {
+  const client = new QueryClient();
+  const key = ["draft", "collection", "large"];
+  const baseline = { entries: Array.from({ length: 10_000 }, (_, index) => index) };
+  const clean = createDraft(baseline, 1);
+  client.setQueryData(key, clean);
+  const observer = new QueryObserver(client, { queryKey: key, enabled: false });
+  const unsubscribe = observer.subscribe(() => {});
+  releaseCleanDraft(client, key);
+  assert.deepEqual(client.getQueryData(key), clean);
+  const dirty = { ...clean, value: { entries: [...baseline.entries, 10_000] } };
+  client.setQueryData(key, dirty);
+  unsubscribe();
+  releaseCleanDraft(client, key);
+  assert.deepEqual(client.getQueryData(key), dirty);
+  client.setQueryData(key, saveDraft(dirty, dirty.value, 2, dirty.value));
+  releaseCleanDraft(client, key);
+  assert.equal(client.getQueryData(key), undefined);
   client.clear();
 });

@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 
 export interface Draft<T> {
@@ -32,6 +32,13 @@ export function keepLatest<T extends { revision: number }>(current: T | undefine
   return current && current.revision > received.revision ? current : received;
 }
 
+export function releaseCleanDraft(client: QueryClient, key: readonly string[]) {
+  const query = client.getQueryCache().find({ queryKey: key, exact: true });
+  const draft = client.getQueryData<Draft<unknown>>(key);
+  if (query?.getObserversCount() === 0 && draft && !isDirty(draft))
+    client.removeQueries({ queryKey: key, exact: true });
+}
+
 export function useDraft<T>(kind: string, id: string, initial: T, revision: number) {
   const client = useQueryClient();
   const key = useMemo(() => ["draft", kind, id], [kind, id]);
@@ -48,6 +55,7 @@ export function useDraft<T>(kind: string, id: string, initial: T, revision: numb
       current ? refreshDraft(current, initial, revision) : createDraft(initial, revision),
     );
   }, [client, key, initial, revision]);
+  useEffect(() => () => queueMicrotask(() => releaseCleanDraft(client, key)), [client, key]);
   function setValue(update: (value: T) => T) {
     client.setQueryData<Draft<T>>(key, (current = draft) => ({
       ...current,
@@ -68,6 +76,7 @@ export function useDraft<T>(kind: string, id: string, initial: T, revision: numb
     client.setQueryData<Draft<T>>(key, (current = draft) =>
       saveDraft(current, value, savedRevision, submitted),
     );
+    releaseCleanDraft(client, key);
   }
   return {
     value: draft.value,

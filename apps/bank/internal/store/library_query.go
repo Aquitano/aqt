@@ -16,7 +16,7 @@ const librarySnapshotJSON = `(to_jsonb(s)-'collection_id') || jsonb_build_object
 const librarySnapshotSummaryJSON = `(to_jsonb(s)-'collection_id') || jsonb_build_object('entry_count',(select count(*) from library_entries e where e.snapshot_id=s.id))`
 const librarySnapshotOrder = `case s.captured->>'precision' when 'instant' then (s.captured->>'value')::timestamptz when 'day' then (s.captured->>'value')::date::timestamp at time zone 'UTC' end desc nulls last,s.id desc`
 const libraryItemJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('evidence',coalesce((select jsonb_agg(jsonb_build_object('raw_ref',e.raw_ref,'locator',e.locator) order by e.raw_ref,e.locator) from library_item_evidence e where e.item_id=r.id),'[]'::jsonb),'state',coalesce((select to_jsonb(st)-'item_id' from library_state st where st.item_id=r.id),'{"revision":0,"status":"","favorite":false,"progress":0,"progress_unit":"","notes":"","tags":[]}'::jsonb),'file_ids',coalesce((select jsonb_agg(f.file_id order by f.file_id) from library_item_files f where f.item_id=r.id),'[]'::jsonb))`
-const libraryCollectionJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('snapshot',(select ` + librarySnapshotJSON + ` from library_snapshots s where s.collection_id=r.id order by case s.captured->>'precision' when 'instant' then (s.captured->>'value')::timestamptz when 'day' then (s.captured->>'value')::date::timestamp at time zone 'UTC' end desc nulls last,s.id desc limit 1))`
+const libraryCollectionJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('snapshot',(select ` + librarySnapshotJSON + ` from library_snapshots s where s.collection_id=r.id order by ` + librarySnapshotOrder + ` limit 1))`
 const libraryCollectionSummaryJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('snapshot',(select ` + librarySnapshotSummaryJSON + ` from library_snapshots s where s.collection_id=r.id order by ` + librarySnapshotOrder + ` limit 1))`
 const libraryActivityJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('evidence',coalesce((select jsonb_agg(jsonb_build_object('raw_ref',e.raw_ref,'locator',e.locator) order by e.raw_ref,e.locator) from library_activity_evidence e where e.activity_id=r.id),'[]'::jsonb))`
 const libraryFileJSON = `(to_jsonb(r)-'search_text'-'ingested_at') || jsonb_build_object('item_ids',coalesce((select jsonb_agg(f.item_id order by f.item_id) from library_item_files f where f.file_id=r.id),'[]'::jsonb),'text_status',coalesce((select status from blob_text where sha256=r.sha256),'pending'))`
@@ -59,6 +59,7 @@ func listLibrary[T any](ctx context.Context, s *Store, table string, o library.L
 	next := func(v any) string { args = append(args, v); return fmt.Sprintf("$%d", len(args)) }
 	clauses := []string{"true"}
 	ctes := ""
+	from := table + " r"
 	if o.Source != "" {
 		clauses = append(clauses, "r.source="+next(o.Source))
 	}
@@ -81,8 +82,10 @@ func listLibrary[T any](ctx context.Context, s *Store, table string, o library.L
 		match := libraryTextQuery(o.Match, q)
 		predicate := "to_tsvector('simple',r.search_text) @@ " + match
 		if table == "library_files" {
-			ctes = "with text_matches as materialized(select sha256,search_vector from blob_text where status in ('ok','manual') and search_vector @@ " + libraryTextQuery("any", q) + " union all select sha256,blob_text_query_vector(text," + q + ") from blob_text where status in ('ok','manual') and search_vector is null) "
-			predicate = "(to_tsvector('simple',r.search_text || ' ' || regexp_replace(r.filename,'[._-]+',' ','g')) || coalesce((select bt.search_vector from text_matches bt where bt.sha256=r.sha256),''::tsvector)) @@ " + match
+			ctes = "with candidate_files as materialized(select r.* from library_files r where " + strings.Join(clauses, " and ") + "), " + libraryTextMatches(q, "select distinct sha256 from candidate_files") + " "
+			from = "candidate_files r left join text_matches bt on bt.sha256=r.sha256"
+			clauses = []string{"true"}
+			predicate = "(to_tsvector('simple',r.search_text || ' ' || regexp_replace(r.filename,'[._-]+',' ','g')) || coalesce(bt.search_vector,''::tsvector)) @@ " + match
 		}
 		if table == "library_items" {
 			stateVector := "to_tsvector('simple',st.notes || ' ' || array_to_string(st.tags,' '))"
@@ -120,7 +123,7 @@ func listLibrary[T any](ctx context.Context, s *Store, table string, o library.L
 	if len(projections) > 0 {
 		projection = projections[0]
 	}
-	query := ctes + "select " + projection + " from " + table + " r where " + strings.Join(clauses, " and ") + " order by " + order + " limit " + next(o.Limit) + " offset " + next(o.Offset)
+	query := ctes + "select " + projection + " from " + from + " where " + strings.Join(clauses, " and ") + " order by " + order + " limit " + next(o.Limit) + " offset " + next(o.Offset)
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return out, err
@@ -329,4 +332,15 @@ func libraryTextQuery(mode, parameter string) string {
 	default:
 		return "to_tsquery('simple',replace(plainto_tsquery('simple'," + parameter + ")::text,' & ',' | '))"
 	}
+}
+
+func libraryTextMatches(parameter, digests string) string {
+	return `candidate_digests as materialized (` + digests + `), oversized_text as materialized (
+ select b.sha256,b.text from blob_text b join candidate_digests d on d.sha256=b.sha256
+ where b.status in ('ok','manual') and b.search_vector is null
+ ), text_matches as materialized (
+ select b.sha256,b.search_vector from blob_text b join candidate_digests d on d.sha256=b.sha256
+ where b.status in ('ok','manual') and b.search_vector @@ ` + libraryTextQuery("any", parameter) + `
+ union all select sha256,blob_text_query_vector(text,` + parameter + `) from oversized_text
+ )`
 }

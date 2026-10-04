@@ -83,7 +83,7 @@ func TestAttachmentLibraryFiltersAndFindsEveryOccurrence(t *testing.T) {
 	if _, err := st.AddAlias(ctx, "alice", "", "alice@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	files, err := st.AttachmentLibrary(ctx, store.AttachmentFilter{Filename: "100%", FileType: "pdf", Person: "alice", Since: at, Until: at.AddDate(0, 0, 1)})
+	files, err := st.AttachmentLibrary(ctx, store.AttachmentFilter{Query: "invoice", Filename: "100%", FileType: "pdf", Person: "alice", Since: at, Until: at.AddDate(0, 0, 1)})
 	if err != nil {
 		t.Fatal(err)
 	}
