@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http/httptest"
 	"os"
@@ -83,17 +85,22 @@ func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, test := range []struct{ filename, mime string }{{"soundtrack.flac", "audio/flac"}, {"raw.mp3", "audio/mpeg"}, {"soundtrack.aac", "audio/aac"}} {
-		f, err := os.Open(filepath.Join("testdata", "preview", test.filename))
+	for _, test := range []struct{ filename, mime string }{{"soundtrack.flac", "audio/flac"}, {"raw.mp3.base64", "audio/mpeg"}, {"soundtrack.aac", "audio/aac"}} {
+		raw, err := os.ReadFile(filepath.Join("testdata", "preview", test.filename))
 		if err != nil {
 			t.Fatal(err)
 		}
-		sum, size, err := s.blobs.Put(f)
-		f.Close()
+		if strings.HasSuffix(test.filename, ".base64") {
+			raw, err = base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		sum, size, err := s.blobs.Put(bytes.NewReader(raw))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err = st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Filename: test.filename, MimeType: "application/octet-stream", SHA256: sum, SizeBytes: size}); err != nil {
+		if err = st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Filename: strings.TrimSuffix(test.filename, ".base64"), MimeType: "application/octet-stream", SHA256: sum, SizeBytes: size}); err != nil {
 			t.Fatal(err)
 		}
 		r := httptest.NewRequest("GET", "/v1/attachments/"+sum+"/preview", nil)
