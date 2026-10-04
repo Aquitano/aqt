@@ -9,6 +9,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/gabriel-vasile/mimetype"
 )
 
 func libraryPage(w http.ResponseWriter, r *http.Request) (int, int, bool) {
@@ -122,15 +123,18 @@ func (s *Server) handleAttachmentPreview(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer f.Close()
-	head := make([]byte, 512)
+	head := make([]byte, 3072)
 	n, err := f.Read(head)
 	if err != nil && !errors.Is(err, io.EOF) {
 		writeErr(w, 500, err.Error())
 		return
 	}
 	typ := http.DetectContentType(head[:n])
+	if typ == "application/octet-stream" {
+		typ = mimetype.Detect(head[:n]).String()
+	}
 	switch typ {
-	case "application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp", "audio/mpeg", "audio/ogg", "audio/wave", "audio/aiff", "audio/midi", "video/mp4", "video/webm", "video/ogg", "video/avi":
+	case "application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp", "audio/mpeg", "audio/aac", "audio/flac", "audio/x-flac", "audio/ogg", "audio/wave", "audio/aiff", "audio/midi", "video/mp4", "video/webm", "video/ogg", "video/avi":
 	default:
 		writeErr(w, 415, "preview uses extracted text for this file type")
 		return

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/jackc/pgx/v5"
@@ -82,6 +83,8 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 		}
 		if inserted {
 			r.Items++
+		} else {
+			r.Duplicates++
 		}
 	}
 	if len(b.Items) > 0 {
@@ -115,6 +118,10 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 		if err != nil {
 			return r, err
 		}
+		id, err = reconcileNetflixActivity(ctx, tx, id, v)
+		if err != nil {
+			return r, err
+		}
 		tag, err := tx.Exec(ctx, `insert into library_activity(id,source,account,external_id,item_id,kind,title,occurred,duration_seconds,provenance,search_text)
    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict(id) do nothing`, id, v.Source, v.Account, v.ExternalID, v.ItemID, v.Kind, v.Title, libraryDate(v.Occurred), v.DurationSeconds, v.Provenance, v.Title+" "+v.Kind)
 		if err != nil {
@@ -122,15 +129,31 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 		}
 		if tag.RowsAffected() == 0 {
 			var raw []byte
-			if err = tx.QueryRow(ctx, `select to_jsonb(a) from library_activity a where id=$1`, id).Scan(&raw); err != nil {
+			var youtubeWatch bool
+			if err = tx.QueryRow(ctx, `select to_jsonb(a),a.kind='watch' and a.external_id ~ '^[0-9a-f]{64}$' and exists(select 1 from library_items i where i.id=a.item_id and i.source=a.source and i.account=a.account and i.kind='video' and ((i.provider='youtube' and i.external_id='video:' || i.provider_id) or (i.provider='' and i.external_id ~ '^unavailable-title:[0-9a-f]{64}$'))) from library_activity a where id=$1 for update`, id).Scan(&raw, &youtubeWatch); err != nil {
 				return r, err
 			}
 			var existing library.Activity
 			if err = json.Unmarshal(raw, &existing); err != nil {
 				return r, err
 			}
-			if existing.ItemID != v.ItemID || existing.Kind != v.Kind || existing.Occurred != libraryDate(v.Occurred) || !sameLibraryNumber(existing.DurationSeconds, v.DurationSeconds) {
+			occurred, compatible := reconcileActivityDate(existing.Occurred, libraryDate(v.Occurred), youtubeWatch)
+			if existing.ItemID != v.ItemID || existing.Kind != v.Kind || !compatible || !sameLibraryNumber(existing.DurationSeconds, v.DurationSeconds) {
 				return r, fmt.Errorf("activity identity already refers to different observation: %w", library.ErrConflict)
+			}
+			if occurred != existing.Occurred {
+				if _, err = tx.Exec(ctx, `update library_activity set occurred=$2 where id=$1`, id, occurred); err != nil {
+					return r, err
+				}
+			}
+			r.Duplicates++
+		}
+		for _, reference := range append([]library.Provenance{v.Provenance}, v.Evidence...) {
+			if reference.RawRef == "" {
+				continue
+			}
+			if _, err = tx.Exec(ctx, `insert into library_activity_evidence(activity_id,raw_ref,locator) values($1,$2,$3) on conflict do nothing`, id, reference.RawRef, reference.Locator); err != nil {
+				return r, err
 			}
 		}
 		r.Activity += int(tag.RowsAffected())
@@ -151,6 +174,8 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 		}
 		if inserted {
 			r.Collections++
+		} else {
+			r.Duplicates++
 		}
 		if v.Snapshot != nil {
 			if _, err := insertLibrarySnapshot(ctx, tx, id, *v.Snapshot); err != nil {
@@ -174,6 +199,8 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 		}
 		if inserted {
 			r.Files++
+		} else {
+			r.Duplicates++
 		}
 		for _, itemID := range v.ItemIDs {
 			if _, err := tx.Exec(ctx, `insert into library_item_files(item_id,file_id) values($1,$2) on conflict do nothing`, itemID, id); err != nil {
@@ -201,6 +228,8 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 		}
 		if inserted {
 			r.Pages++
+		} else {
+			r.Duplicates++
 		}
 	}
 	return r, nil
@@ -303,4 +332,47 @@ func sameLibraryNumber(a, b *int) bool {
 		return a == nil && b == nil
 	}
 	return *a == *b
+}
+
+func reconcileActivityDate(existing, incoming library.Date, allowPrecision bool) (library.Date, bool) {
+	if existing == incoming {
+		return existing, true
+	}
+	if existing.Precision != "instant" || incoming.Precision != "instant" {
+		return existing, false
+	}
+	a, err := time.Parse(time.RFC3339Nano, existing.Value)
+	if err != nil {
+		return existing, false
+	}
+	b, err := time.Parse(time.RFC3339Nano, incoming.Value)
+	if err != nil {
+		return existing, false
+	}
+	aDigits, bDigits := instantFractionDigits(existing.Value), instantFractionDigits(incoming.Value)
+	resolution := time.Second
+	for range min(aDigits, bDigits) {
+		resolution /= 10
+	}
+	if !a.Equal(b) && (!allowPrecision || aDigits == bDigits || !a.Truncate(resolution).Equal(b.Truncate(resolution))) {
+		return existing, false
+	}
+	if bDigits > aDigits {
+		return incoming, true
+	}
+	return existing, true
+}
+
+func instantFractionDigits(value string) int {
+	if len(value) <= 19 || (value[19] != '.' && value[19] != ',') {
+		return 0
+	}
+	digits := 0
+	for _, c := range value[20:] {
+		if c < '0' || c > '9' {
+			break
+		}
+		digits++
+	}
+	return min(digits, 9)
 }

@@ -18,15 +18,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  createItem,
-  getActivity,
-  getItems,
-  LIBRARY_PAGE,
-  type LibraryFilters as Filters,
-  type MediaItem,
-} from "@/lib/library-api";
-import { select, type Selection } from "@/lib/navigation";
+import { createItem, getActivity, getItems, LIBRARY_PAGE, type MediaItem } from "@/lib/library-api";
+import { select, useLibraryFilters, type Selection } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { ListSkeleton } from "@/views/search";
 
@@ -161,7 +154,7 @@ function AddItem({ onClose }: { onClose: () => void }) {
   );
 }
 export function LibraryView({ selection }: { selection: Selection }) {
-  const [filters, setFilters] = useState<Filters>({});
+  const [filters, setFilters] = useLibraryFilters("library");
   const [adding, setAdding] = useState(false);
   const query = useInfiniteQuery({
     queryKey: ["library", "items", filters],
@@ -185,7 +178,13 @@ export function LibraryView({ selection }: { selection: Selection }) {
           Add
         </Button>
       </div>
-      <LibraryFilters noun="library" kinds={ITEM_KINDS} onChange={setFilters} />
+      <LibraryFilters
+        key={JSON.stringify(filters)}
+        filters={filters}
+        noun="library"
+        kinds={ITEM_KINDS}
+        onChange={setFilters}
+      />
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-4">
         {adding && <AddItem onClose={() => setAdding(false)} />}
         {query.isPending ? (
@@ -225,7 +224,7 @@ export function LibraryView({ selection }: { selection: Selection }) {
   );
 }
 export function ActivityView({ selection }: { selection: Selection }) {
-  const [filters, setFilters] = useState<Filters>({});
+  const [filters, setFilters] = useLibraryFilters("activity");
   const query = useInfiniteQuery({
     queryKey: ["library", "activity", filters],
     initialPageParam: 0,
@@ -243,6 +242,8 @@ export function ActivityView({ selection }: { selection: Selection }) {
         </p>
       </div>
       <LibraryFilters
+        key={JSON.stringify(filters)}
+        filters={filters}
         noun="activity"
         kinds={["watch", "listen", "read", "play", "view", "purchase", "other"]}
         onChange={setFilters}

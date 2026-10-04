@@ -24,6 +24,7 @@ There is no new service or second search database. The existing Go binary serves
 
 ```sh
 bank import netflix NetflixViewingHistory.csv --account thomas
+bank import netflix NetflixViewingHistory.csv --account thomas --date-order dmy
 bank import youtube-media takeout.zip --account thomas
 bank library upload film.mp4 soundtrack.flac notes.pdf
 bank library upload cover.jpg subtitles.srt --item-id item_ID
@@ -32,13 +33,15 @@ bank import library bundle.json
 
 Keep `--account` stable for a profile or provider account. Identities use the source, account, and source record ID. Two accounts can import the same provider title without overwriting each other's records. Provider IDs remain searchable metadata. Bank does not automatically merge titles across source or account identities. Reimports retain earlier source references in `library_item_evidence`, so metadata enriched from several exports keeps its provenance.
 
-The Netflix importer accepts CSV `Title` and `Date` columns. Day-only dates stay day-only. A viewing row does not mark a series complete. Netflix supplies no stable event ID in this export, so replaying the same file deduplicates exactly; overlapping different exports can contain repeated observations. Import diagnostics state this limitation.
+The Netflix importer accepts CSV `Title` and `Date` columns. Slash dates default to month-first. Use `--date-order dmy` for day-first slash dates. ISO dates, timestamps, and dotted day-first dates retain their existing interpretation. Day-only dates stay day-only. A viewing row does not mark a series complete.
 
-The `youtube-media` importer reads Takeout ZIP files, extracted directories, watch-history JSON or HTML, and supported playlist or music library CSV/JSON files. It prefers JSON history when both history formats exist. Playlist snapshots preserve repeated songs and distinguish complete, partial, and unknown exports. The existing `youtube` importer remains available for its message representation.
+Netflix supplies no stable event ID in this export. Bank identifies observations by their exact title, date, and occurrence number within matching rows. Reordered and overlapping exports reuse these identities while repeated rows within one export remain separate observations. Earlier file-based records retain their IDs and provenance. Aliases let new imports reuse matching earlier observations without deleting ambiguous historical duplicates. Localized or changed titles remain separate identities.
+
+The `youtube-media` importer reads Takeout ZIP files, extracted directories, watch-history JSON or HTML, and supported playlist or music library CSV/JSON files. Selected input bytes are limited to 512 MiB in total. It prefers JSON history when both history formats exist. Playlist snapshots preserve repeated songs, exported positions, and complete, partial, or unknown coverage. The existing `youtube` importer remains available for its message representation.
 
 The local inbox accepts `netflix`, `youtube-media`, and `library` directories in addition to its existing source directories. Use direct imports with `--account` for multiple profiles. HTTP imports accept files; package a Takeout directory as a ZIP for a remote Bank.
 
-Files upload in batches of up to 100. The API streams their bytes into the existing blob store. PDF and Office text extraction uses the existing extraction queue. OCR still uses `bank extract --ocr`. Supported image, PDF, audio, and video formats can preview in the UI; other files remain downloadable and searchable when text is available.
+Files upload in batches of up to 100. The API streams their bytes into the existing blob store. PDF and Office text extraction uses the existing extraction queue. OCR still uses `bank extract --ocr`. Previews validate file bytes. Supported image and PDF files can preview in the UI. Audio previews include MP3, FLAC, and AAC, and playback depends on the browser's codec support. Supported video formats can also preview. Other files remain downloadable and searchable when text is available.
 
 ## Publish Brain pages for search
 

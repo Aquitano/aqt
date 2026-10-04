@@ -57,6 +57,10 @@ Usage:
   bank import discord <package.zip|dir>...    Discord GDPR data package
   bank import linkedin <zip|csv|dir>...       LinkedIn data export
   bank import youtube <takeout.zip|dir|json>  YouTube watch history (Google Takeout)
+  bank import youtube-media <zip|dir|csv|json> YouTube history, playlists and music library
+  bank import netflix <csv> [--date-order mdy|dmy]  Netflix viewing activity
+  bank import library <json>                 versioned media library bundle
+  bank import markdown <root>                checked Markdown page publication
   bank import chatgpt <export.zip|json|dir>   ChatGPT data export
   bank import claude <export.zip|json|dir>    Claude.ai data export
   bank import json [--source s] <file|->      arbitrary JSON/NDJSON messages

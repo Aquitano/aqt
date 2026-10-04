@@ -6,6 +6,7 @@ require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
+	github.com/gabriel-vasile/mimetype v1.4.15
 	github.com/gofrs/flock v0.13.1
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/ledongthuc/pdf v0.0.0-20260907135840-6c8c28e0e8a0

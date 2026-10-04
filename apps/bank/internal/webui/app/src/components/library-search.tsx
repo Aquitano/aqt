@@ -5,7 +5,8 @@ import { recordedDate, SourceLabel } from "@/components/library-common";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { type find } from "@/lib/library-api";
-import { select } from "@/lib/navigation";
+import { select, type Selection } from "@/lib/navigation";
+import { cn } from "@/lib/utils";
 import { ItemRow } from "@/views/library";
 
 type Results = Awaited<ReturnType<typeof find>>;
@@ -26,17 +27,23 @@ function ResultRow({
   description,
   source,
   onClick,
+  selected,
 }: {
   title: string;
   description?: string;
   source?: string;
   onClick: () => void;
+  selected: boolean;
 }) {
   return (
     <button
       data-row
+      data-selected={selected || undefined}
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-lg p-3 text-left hover:bg-accent/50"
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg p-3 text-left hover:bg-accent/50",
+        selected && "bg-accent",
+      )}
     >
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="line-clamp-2 text-sm font-medium break-words">{title}</span>
@@ -47,7 +54,13 @@ function ResultRow({
     </button>
   );
 }
-export function LibrarySearchGroups({ pages }: { pages: Results[] }) {
+export function LibrarySearchGroups({
+  pages,
+  selection,
+}: {
+  pages: Results[];
+  selection: Selection;
+}) {
   const items = pages.flatMap((page) => page.items);
   const activity = pages.flatMap((page) => page.activity);
   const collections = pages.flatMap((page) => page.collections);
@@ -69,13 +82,18 @@ export function LibrarySearchGroups({ pages }: { pages: Results[] }) {
       )}
       <Group title="Library" count={items.length}>
         {items.map((item) => (
-          <ItemRow key={item.id} item={item} />
+          <ItemRow
+            key={item.id}
+            item={item}
+            selected={selection?.kind === "item" && selection.id === item.id}
+          />
         ))}
       </Group>
       <Group title="Activity" count={activity.length}>
         {activity.map((event) => (
           <ResultRow
             key={event.id}
+            selected={selection?.kind === "item" && selection.id === event.item_id}
             title={event.title}
             description={`${event.kind} · ${recordedDate(event.occurred)}`}
             source={event.source}
@@ -87,8 +105,9 @@ export function LibrarySearchGroups({ pages }: { pages: Results[] }) {
         {collections.map((collection) => (
           <ResultRow
             key={collection.id}
+            selected={selection?.kind === "collection" && selection.id === collection.id}
             title={collection.title}
-            description={`${collection.kind} · ${collection.snapshot?.entries?.length ?? 0} entries · ${collection.snapshot?.completeness ?? "unknown"} coverage`}
+            description={`${collection.kind} · ${collection.snapshot?.entry_count ?? 0} entries · ${collection.snapshot?.completeness ?? "unknown"} coverage`}
             source={collection.source}
             onClick={() => select({ kind: "collection", id: collection.id })}
           />
@@ -98,6 +117,7 @@ export function LibrarySearchGroups({ pages }: { pages: Results[] }) {
         {files.map((file) => (
           <ResultRow
             key={file.id}
+            selected={selection?.kind === "file" && selection.file.sha256 === file.sha256}
             title={file.filename}
             description={file.mime_type}
             source={file.source}
@@ -109,6 +129,7 @@ export function LibrarySearchGroups({ pages }: { pages: Results[] }) {
         {attachments.map((file) => (
           <ResultRow
             key={file.sha256}
+            selected={selection?.kind === "file" && selection.file.sha256 === file.sha256}
             title={file.filename}
             description={file.snippet || file.mime_type}
             onClick={() => select({ kind: "file", file })}
@@ -119,6 +140,7 @@ export function LibrarySearchGroups({ pages }: { pages: Results[] }) {
         {notes.map((page) => (
           <ResultRow
             key={page.id}
+            selected={selection?.kind === "page" && selection.id === page.id}
             title={page.title}
             description={`${page.path} · revision ${page.revision || "unknown"}`}
             source={page.source}

@@ -163,12 +163,12 @@ The **Contacts** tab can create a contact or attach a suggested identity to an
 existing one. Open a contact and expand **Manage identities** to add or remove
 emails and usernames. Each identity can match one source or all sources.
 
-The **Files** tab searches filenames and filters by extension, MIME type or
+Open **Files**, then **Message attachments** to search filenames and filter by extension, MIME type or
 category such as `image`, contact name, and message date. The before-date filter
 is exclusive. Identical bytes share one library entry, even under different
 filenames. Selecting a file shows PDF/image previews, extracted document text
 when available, and every message containing those bytes. Message results include
-occurrences outside the selected filters. Original files remain downloadable.
+occurrences outside the selected filters. Original files remain downloadable. The **Library files** subtab lists uploaded standalone files.
 
 **Contents contain** searches extracted text within each file, ignoring case.
 It matches the supplied phrase literally. Files without extracted text cannot

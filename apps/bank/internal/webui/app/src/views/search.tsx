@@ -379,14 +379,14 @@ export function SearchView({
           <div className="py-12 text-center text-sm text-muted-foreground">{q.error.message}</div>
         ) : params && hits.length === 0 && !libraryHits ? (
           <>
-            <LibrarySearchGroups pages={q.data?.pages ?? []} />
+            <LibrarySearchGroups pages={q.data?.pages ?? []} selection={selection} />
             <div className="py-12 text-center text-sm text-muted-foreground">
               No matching records in the available sources. Coverage gaps remain unknown.
             </div>
           </>
         ) : (
           <>
-            {q.data && <LibrarySearchGroups pages={q.data.pages} />}
+            {q.data && <LibrarySearchGroups pages={q.data.pages} selection={selection} />}
             {hits.length > 0 && (
               <h3 className="px-3 py-2 text-xs font-semibold text-muted-foreground">
                 Messages · {hits.length} shown

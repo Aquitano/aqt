@@ -30,7 +30,7 @@ On the VPS itself there is no `BANK_URL`; `DATABASE_URL` points at Postgres and 
 ## Reading
 
 ```sh
-bank search "query" [--source s] [--from name] [--to name] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--match any|all|phrase] [--fuzzy 0-2] [--limit n] [--offset n] [--json]
+bank search "query" [--kind message|item|activity|collection|file|page] [--source s] [--from name] [--to name] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--match any|all|phrase] [--fuzzy 0-2] [--limit n] [--offset n] [--json]
 bank thread <id> [--source s] [--around id|--before id|--after id|--latest] [--limit n] [--json]
 bank contact list|show <name> [--json]               # who the owner has named, and their identities
 bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--before id|--offset n] [--json]
@@ -44,10 +44,10 @@ bank query --schema              # list tables and columns before writing the fi
 
 Semantics that matter:
 
-- Always pass `--json` when you are consuming the output; the plain text form truncates bodies to one line. Empty results are `[]`, never `null`.
-- **Cite by `ref`, never by `id`.** Every result carries `ref`, 12 hex characters derived from the message itself. `id` is a row number: rebuild the archive from its raw inputs and the same `id` points at a different message, so a note citing `bank:47` silently rots. Write `bank:<ref>` (e.g. `bank:c5e63bfc3750`). `bank show` takes either form, so an old numeric citation still resolves — replace it with the ref when you touch it.
-- Ranking is BM25 over subject, body, sender, recipients and text extracted from attachments, with typo tolerance (`--fuzzy 1` by default, max 2). The default `--match any` matches words independently. Use `--match all` to require every term across fields, or `--match phrase` for adjacent words in order within one field. Phrase matching ignores `--fuzzy`. Exact and subject matches receive extra ranking weight.
-- Each result carries a `snippet`: a bounded plain-text window of the body around the match, with no markup, so it is safe to print or quote directly. It is the cheapest way to see why something ranked.
+- Always pass `--json` when consuming output. A query search returns an object with `messages`, `items`, `activity`, `collections`, `files`, `pages`, and `attachments` arrays, plus library `coverage` notes. Empty groups are `[]`. `--kind message` restricts the search but keeps this object shape. Search without a query returns a thread array. Thread and contact-history commands also return their existing response shapes.
+- **Cite messages by `ref`, never by `id`.** Each `.messages[]` entry carries `ref`, 12 hex characters derived from the message itself. `id` is a row number that can change after rebuilding the archive. Write `bank:<ref>`, for example `bank:c5e63bfc3750`. `bank show` accepts either form. Library records have typed IDs and source provenance, not message citation refs.
+- Message ranking is BM25 over subject, body, sender, recipients, and extracted attachment text, with typo tolerance (`--fuzzy 1` by default, max 2). Library groups use Postgres full-text search without fuzzy matching. Scores from separate groups are not comparable. The default `--match any` matches words independently. Use `--match all` to require every term across searchable fields, or `--match phrase` for adjacent words in order. Message phrase matching ignores `--fuzzy`.
+- Each message result carries a `snippet`: a bounded plain-text window around the match. Read message fields from `.messages[]`; item, activity, collection, file, page, and attachment results have different schemas.
 - A result may also carry `attachment_snippet`, meaning the match is inside an attached document rather than the message body — quote it as coming from the attachment, not from what the sender wrote. It is only set for exact-token matches; a fuzzy hit inside a document leaves it empty.
 - Searching finds text inside PDFs, Office and OpenDocument files, HTML and text attachments. It does **not** find text in scanned pages or photographs unless someone has OCR'd them: `bank show <id>` reports `text_status` per attachment, where `needs_ocr` means the words are pixels and invisible to search. If a document ought to contain something and does not match, check that before concluding the archive lacks it.
 - `--from` is a case-insensitive substring of the sender field, so `--from alice` matches `Alice Example` and `alice@example.com`. `--to` is the same against recipients.
@@ -55,9 +55,9 @@ Semantics that matter:
 - `--person <contact>` is the better filter when you know who you mean: a contact ties one person's email addresses, WhatsApp display name and Discord handle together, so it catches them across sources where `--from alice` only catches one spelling. Run `bank contact list` to see which exist; an unknown name is an error, not an empty result.
 - `--until` is exclusive; both dates are plain `YYYY-MM-DD`.
 - `--limit` defaults to 20 and must be between 1 and 500; `--fuzzy` between 0 and 2. Out-of-range values are a usage error, not an empty result. Start generous (50-100), then narrow with `--source`/`--from`/dates rather than re-running blind.
-- `--offset` reaches past the first page: `--limit 100 --offset 100` is the second hundred. A page shorter than `--limit` means you have reached the end, so page until that happens rather than guessing a total. The results are ordered by score, then date, then id, so a page means the same thing on a second run. `--offset` is capped at 10000 — needing more than that means the query is too broad, so narrow it instead. `bank contact messages` takes the same flag, and is the one most likely to need it.
-- `search` returns bodies already, so only `bank show <id>` when you need recipients, `external_id`, `raw_ref` or attachments.
-- `bank thread` takes a search hit's `thread_id` and `source`. Pass `--around <hit.id> --limit 100` to include that hit in context. Pages include attachments and `has_before`/`has_after`; continue with `--before <first.id>` or `--after <last.id>`. Use `--latest` for recent history. Positions are mutually exclusive, page size is capped at 2000, and there is no total history cap. Numeric IDs are paging cursors for the current archive; keep using `ref` for durable citations.
+- `--offset` reaches past the first page: `--limit 100 --offset 100` is the second hundred in each selected result group. Check each group's array length separately. A short `.messages` page does not establish that `.items` or `.files` is exhausted. Use `--kind` to page one category. Each category keeps its own ordering. `--offset` is capped at 10000. Narrow the query if you need more. Contact message history retains its separate array pagination.
+- `.messages[]` contains message bodies already. Use `bank show <id>` when you need recipients, `external_id`, `raw_ref`, or attachments.
+- `bank thread` takes a `.messages[]` hit's `thread_id` and `source`. Pass `--around <hit.id> --limit 100` to include that hit in context. Pages include attachments and `has_before`/`has_after`; continue with `--before <first.id>` or `--after <last.id>`. Use `--latest` for recent history. Positions are mutually exclusive, page size is capped at 2000, and there is no total history cap. Numeric IDs are paging cursors for the current archive; keep using `ref` for durable citations.
 - Contact history can continue with `bank contact messages <name> --before <last.id>`, beyond the offset limit. Results are newest-first. Use a positive cursor without `--offset`.
 - `bank contact show <name>` lists a person's attached identities and how many messages each source contributes — the quickest way to tell whether `--person` will actually reach the conversation you want, or whether an identity is still unattached.
 - `bank stats --json` includes `last_ingest` per source, and `last_sync` for sync-backed ones. Use it to say "the archive has nothing after X" instead of assuming a gap means nothing happened.
@@ -76,7 +76,7 @@ bank search "pgvector" --source chatgpt --limit 50 --json
 bank search "hetzner invoise" --fuzzy 2 --limit 5
 
 # one hit is rarely the answer — pull the surrounding conversation
-bank search "release plan" --json     # -> thread_id, source
+bank search "release plan" --kind message --json     # messages[].thread_id, messages[].source
 bank thread "release plan chat" --source whatsapp --around 42 --limit 100 --json
 
 # "what did I send to bob about the deck"

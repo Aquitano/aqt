@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import type { Attachment, SearchParams } from "@/lib/api";
+import type { LibraryFilters } from "@/lib/library-api";
 
 export const VIEWS = [
   "library",
@@ -199,4 +200,37 @@ export function writeSearch(params: URLSearchParams, search: SearchParams) {
   for (const [key, value] of Object.entries(search)) {
     if (value !== undefined && key !== "offset") params.set(key, String(value));
   }
+}
+
+const libraryFilterKeys = ["q", "source", "account", "kind", "item_id"] as const;
+type LibraryView = "library" | "activity" | "collections" | "media-files";
+
+export function readLibraryFilters(params: URLSearchParams, view: LibraryView): LibraryFilters {
+  const filters: LibraryFilters = {};
+  for (const key of libraryFilterKeys) {
+    const value = params.get(`${view}.${key}`);
+    if (value) filters[key] = value;
+  }
+  return filters;
+}
+
+export function writeLibraryFilters(
+  params: URLSearchParams,
+  view: LibraryView,
+  filters: LibraryFilters,
+) {
+  for (const key of libraryFilterKeys) {
+    params.delete(`${view}.${key}`);
+    const value = filters[key];
+    if (value) params.set(`${view}.${key}`, value);
+  }
+}
+
+export function useLibraryFilters(view: LibraryView) {
+  const location = useLocation();
+  const filters = readLibraryFilters(new URLSearchParams(location), view);
+  function setFilters(next: LibraryFilters) {
+    navigate((params) => writeLibraryFilters(params, view, next));
+  }
+  return [filters, setFilters] as const;
 }

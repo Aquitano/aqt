@@ -1,6 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { File } from "lucide-react";
-import { useState } from "react";
 
 import {
   ErrorNotice,
@@ -11,12 +10,13 @@ import {
 } from "@/components/library-common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getMediaFiles, LIBRARY_PAGE, type LibraryFilters as Filters } from "@/lib/library-api";
-import { select } from "@/lib/navigation";
+import { getMediaFiles, LIBRARY_PAGE } from "@/lib/library-api";
+import { select, useLibraryFilters, type Selection } from "@/lib/navigation";
+import { cn } from "@/lib/utils";
 import { ListSkeleton } from "@/views/search";
 
-export function MediaFilesView() {
-  const [filters, setFilters] = useState<Filters>({});
+export function MediaFilesView({ selection }: { selection: Selection }) {
+  const [filters, setFilters] = useLibraryFilters("media-files");
   const query = useInfiniteQuery({
     queryKey: ["library", "files", filters],
     initialPageParam: 0,
@@ -33,7 +33,13 @@ export function MediaFilesView() {
           Uploaded originals and media linked to your library.
         </p>
       </div>
-      <LibraryFilters noun="files" kinds={[]} onChange={setFilters} />
+      <LibraryFilters
+        key={JSON.stringify(filters)}
+        filters={filters}
+        noun="files"
+        kinds={[]}
+        onChange={setFilters}
+      />
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
         <div className="mb-5 rounded-xl border p-3">
           <UploadFiles />
@@ -52,8 +58,14 @@ export function MediaFilesView() {
             <button
               key={file.id}
               data-row
+              data-selected={
+                (selection?.kind === "file" && selection.file.sha256 === file.sha256) || undefined
+              }
               onClick={() => select({ kind: "file", file })}
-              className="flex w-full items-start gap-3 rounded-lg p-3 text-left hover:bg-accent/50"
+              className={cn(
+                "flex w-full items-start gap-3 rounded-lg p-3 text-left hover:bg-accent/50",
+                selection?.kind === "file" && selection.file.sha256 === file.sha256 && "bg-accent",
+              )}
             >
               <File className="mt-1 size-5 shrink-0 text-muted-foreground" />
               <div className="flex min-w-0 flex-col gap-1.5">

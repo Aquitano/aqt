@@ -1,7 +1,14 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Copy, ListMusic, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { DraftRecovery } from "@/components/draft-recovery";
 import {
   Choice,
   ErrorNotice,
@@ -18,20 +25,24 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { RequestError } from "@/lib/api";
+import { appendEntry, moveEntry } from "@/lib/collection-entries";
+import { keepLatest, useDraft } from "@/lib/draft";
 import {
   createCollection,
   getCollection,
   getCollections,
   getCollectionSnapshots,
-  getItem,
+  getCollectionSnapshot,
+  getItemSummaries,
   getItems,
   LIBRARY_PAGE,
   saveCollection,
   type Collection,
   type CollectionEntry,
-  type LibraryFilters as Filters,
+  type ItemSummary,
+  type SnapshotSummary,
 } from "@/lib/library-api";
-import { select, type Selection } from "@/lib/navigation";
+import { select, useLibraryFilters, type Selection } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { ListSkeleton } from "@/views/search";
 
@@ -97,7 +108,7 @@ function AddCollection({ onClose }: { onClose: () => void }) {
   );
 }
 export function CollectionsView({ selection }: { selection: Selection }) {
-  const [filters, setFilters] = useState<Filters>({});
+  const [filters, setFilters] = useLibraryFilters("collections");
   const [adding, setAdding] = useState(false);
   const query = useInfiniteQuery({
     queryKey: ["library", "collections", filters],
@@ -121,7 +132,13 @@ export function CollectionsView({ selection }: { selection: Selection }) {
           New
         </Button>
       </div>
-      <LibraryFilters noun="collections" kinds={KINDS} onChange={setFilters} />
+      <LibraryFilters
+        key={JSON.stringify(filters)}
+        filters={filters}
+        noun="collections"
+        kinds={KINDS}
+        onChange={setFilters}
+      />
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         {adding && <AddCollection onClose={() => setAdding(false)} />}
         {query.isPending ? (
@@ -157,7 +174,7 @@ export function CollectionsView({ selection }: { selection: Selection }) {
                   <Badge variant="outline">{collection.kind}</Badge>
                   <Badge variant="secondary">{collection.personal ? "Personal" : "Imported"}</Badge>
                   <span className="text-xs text-muted-foreground">
-                    {collection.snapshot?.entries?.length ?? 0} entries
+                    {collection.snapshot?.entry_count ?? 0} entries
                   </span>
                 </div>
               </div>
@@ -178,8 +195,24 @@ export function CollectionsView({ selection }: { selection: Selection }) {
     </div>
   );
 }
-function EntryTitle({ id }: { id: string }) {
-  const item = useQuery({ queryKey: ["library", "item", id], queryFn: () => getItem(id) });
+function useEntryTitles(entries: CollectionEntry[]) {
+  const ids = [...new Set(entries.map((entry) => entry.item_id))];
+  const batches: string[][] = [];
+  for (let offset = 0; offset < ids.length; offset += LIBRARY_PAGE)
+    batches.push(ids.slice(offset, offset + LIBRARY_PAGE));
+  const queries = useQueries({
+    queries: batches.map((batch) => ({
+      queryKey: ["library", "item-summaries", batch],
+      queryFn: () => getItemSummaries(batch),
+    })),
+  });
+  return {
+    items: new Map(queries.flatMap((query) => query.data ?? []).map((item) => [item.id, item])),
+    pending: queries.some((query) => query.isPending),
+    error: queries.find((query) => query.isError)?.error,
+  };
+}
+function EntryTitle({ id, item, loading }: { id: string; item?: ItemSummary; loading: boolean }) {
   return (
     <button
       type="button"
@@ -187,56 +220,70 @@ function EntryTitle({ id }: { id: string }) {
       className="min-w-0 flex-1 text-left text-sm hover:underline"
     >
       <span className="line-clamp-2">
-        {item.data?.title ?? (item.isError ? `Unavailable item: ${id}` : "Loading title…")}
+        {item?.title ?? (loading ? "Loading title…" : `Unavailable item: ${id}`)}
       </span>
-      {item.data && (
+      {item && (
         <span className="text-xs text-muted-foreground">
-          {item.data.kind} · {item.data.source || "Source unknown"}
+          {item.kind} · {item.source || "Source unknown"}
         </span>
       )}
     </button>
   );
 }
+function collectionValues(collection: Collection) {
+  return {
+    title: collection.title,
+    description: collection.description,
+    entries: (collection.snapshot?.entries ?? [])
+      .toSorted((a, b) => a.position - b.position)
+      .map((entry) => ({ entry, key: `${entry.position}:${entry.item_id}` })),
+  };
+}
+type EntryRow = ReturnType<typeof collectionValues>["entries"][number];
+
 function CollectionEditor({ collection }: { collection: Collection }) {
   const client = useQueryClient();
-  const [title, setTitle] = useState(collection.title);
-  const [description, setDescription] = useState(collection.description);
-  const [entries, setEntries] = useState(() =>
-    (collection.snapshot?.entries ?? [])
-      .toSorted((a, b) => a.position - b.position)
-      .map((entry) => ({ entry, key: crypto.randomUUID() })),
-  );
+  const initial = useMemo(() => collectionValues(collection), [collection]);
+  const draft = useDraft("collection", collection.id, initial, collection.revision);
+  const { title, description, entries } = draft.value;
+  function setEntries(update: (current: EntryRow[]) => EntryRow[]) {
+    draft.setValue((current) => ({ ...current, entries: update(current.entries) }));
+  }
   const [search, setSearch] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [visible, setVisible] = useState(50);
+  const titles = useEntryTitles(entries.slice(0, visible).map(({ entry }) => entry));
   const items = useQuery({
     queryKey: ["library", "items", { q: submittedSearch }],
     queryFn: () => getItems({ q: submittedSearch }),
     enabled: submittedSearch.length > 0,
   });
   const mutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (submitted: ReturnType<typeof collectionValues>) =>
       saveCollection(collection.id, {
-        expected_revision: collection.revision,
-        title: title.trim(),
-        description,
-        entries: entries.map(({ entry }, position) => ({ ...entry, position })),
+        expected_revision: draft.revision,
+        title: submitted.title.trim(),
+        description: submitted.description,
+        entries: submitted.entries.map(({ entry }, position) => ({ ...entry, position })),
       }),
-    onSuccess: async (updated) => {
-      client.setQueryData(["library", "collection", collection.id], updated);
+    onSuccess: async (updated, submitted) => {
+      draft.acceptSaved(collectionValues(updated), updated.revision, submitted);
+      client.setQueryData<Collection>(["library", "collection", collection.id], (current) =>
+        keepLatest(current, updated),
+      );
       await client.invalidateQueries({ queryKey: ["library", "collections"] });
       await client.invalidateQueries({ queryKey: ["library", "snapshots", collection.id] });
       await client.invalidateQueries({ queryKey: ["find"] });
     },
+    onError: (error) => {
+      if (error instanceof RequestError && error.status === 409)
+        void client.invalidateQueries({ queryKey: ["library", "collection", collection.id] });
+    },
   });
   function move(index: number, direction: number) {
-    setEntries((current) => {
-      const next = [...current];
-      const target = index + direction;
-      if (target < 0 || target >= next.length) return current;
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
+    const next = moveEntry(entries, index, direction, visible);
+    setEntries(() => next.entries);
+    setVisible(next.visible);
   }
   return (
     <div className="flex flex-col gap-5">
@@ -244,7 +291,7 @@ function CollectionEditor({ collection }: { collection: Collection }) {
         className="flex flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault();
-          mutation.mutate();
+          if (!draft.newer) mutation.mutate(draft.value);
         }}
       >
         <FieldGroup className="gap-4">
@@ -254,7 +301,9 @@ function CollectionEditor({ collection }: { collection: Collection }) {
               id="edit-collection-title"
               required
               value={title}
-              onChange={(event) => setTitle(event.target.value)}
+              onChange={(event) =>
+                draft.setValue((current) => ({ ...current, title: event.target.value }))
+              }
             />
           </Field>
           <Field>
@@ -262,7 +311,9 @@ function CollectionEditor({ collection }: { collection: Collection }) {
             <Textarea
               id="edit-collection-description"
               value={description}
-              onChange={(event) => setDescription(event.target.value)}
+              onChange={(event) =>
+                draft.setValue((current) => ({ ...current, description: event.target.value }))
+              }
             />
           </Field>
         </FieldGroup>
@@ -276,7 +327,11 @@ function CollectionEditor({ collection }: { collection: Collection }) {
               <span className="w-7 shrink-0 text-center text-xs text-muted-foreground tabular-nums">
                 {index + 1}
               </span>
-              <EntryTitle id={entry.item_id} />
+              <EntryTitle
+                id={entry.item_id}
+                item={titles.items.get(entry.item_id)}
+                loading={titles.pending}
+              />
               <div className="flex shrink-0 gap-1">
                 <Button
                   type="button"
@@ -311,32 +366,42 @@ function CollectionEditor({ collection }: { collection: Collection }) {
             </li>
           ))}
         </ol>
+        {titles.error && <ErrorNotice error={titles.error} />}
         {entries.length > visible && (
           <Button type="button" variant="outline" onClick={() => setVisible(visible + 50)}>
             Show more entries
           </Button>
         )}
-        {mutation.isError && (
-          <ErrorNotice error={mutation.error}>
-            {mutation.error instanceof RequestError && mutation.error.status === 409 && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() =>
-                  void client.invalidateQueries({
-                    queryKey: ["library", "collection", collection.id],
-                  })
-                }
-              >
-                Discard draft and reload current collection
-              </Button>
-            )}
-          </ErrorNotice>
+        {mutation.isError && <ErrorNotice error={mutation.error} />}
+        {(draft.newer ||
+          (draft.dirty &&
+            mutation.error instanceof RequestError &&
+            mutation.error.status === 409)) && (
+          <DraftRecovery
+            newer={draft.newer}
+            pending={mutation.isPending}
+            onReload={() =>
+              void client.invalidateQueries({ queryKey: ["library", "collection", collection.id] })
+            }
+            onReapply={() => {
+              draft.reapply();
+              mutation.reset();
+            }}
+            onDiscard={() => {
+              draft.reset();
+              mutation.reset();
+            }}
+          >
+            <p className="font-medium">{collection.title}</p>
+            <p className="whitespace-pre-wrap">{collection.description || "No description"}</p>
+            <SnapshotEntries entries={collection.snapshot?.entries ?? []} />
+          </DraftRecovery>
         )}
         <div>
-          <Button disabled={!title.trim() || mutation.isPending}>
+          <Button disabled={!title.trim() || mutation.isPending || draft.newer}>
             {mutation.isPending ? "Saving…" : "Save collection"}
           </Button>
+          {draft.dirty && <p className="mt-2 text-xs text-muted-foreground">Unsaved draft</p>}
         </div>
       </form>
       <Card>
@@ -372,20 +437,23 @@ function CollectionEditor({ collection }: { collection: Collection }) {
               type="button"
               variant="outline"
               className="h-auto justify-start whitespace-normal"
-              onClick={() =>
-                setEntries((current) => [
-                  ...current,
+              onClick={() => {
+                const next = appendEntry(
+                  entries,
                   {
                     key: crypto.randomUUID(),
                     entry: {
                       item_id: item.id,
-                      position: current.length,
+                      position: entries.length,
                       external_id: "",
                       added: { value: new Date().toISOString(), precision: "instant" },
                     },
                   },
-                ])
-              }
+                  visible,
+                );
+                setEntries(() => next.entries);
+                setVisible(next.visible);
+              }}
             >
               <Plus data-icon="inline-start" />
               <span className="min-w-0 text-left">
@@ -411,23 +479,27 @@ function CollectionEditor({ collection }: { collection: Collection }) {
 }
 function SnapshotEntries({ entries }: { entries: CollectionEntry[] }) {
   const [visible, setVisible] = useState(50);
+  const rows = entries.toSorted((a, b) => a.position - b.position).slice(0, visible);
+  const titles = useEntryTitles(rows);
   return (
     <>
       <ol className="flex flex-col gap-2">
-        {entries
-          .toSorted((a, b) => a.position - b.position)
-          .slice(0, visible)
-          .map((entry) => (
-            <li key={entry.position} className="flex items-center gap-3 rounded-lg border p-3">
-              <span className="w-7 shrink-0 text-xs text-muted-foreground tabular-nums">
-                {entry.position + 1}
-              </span>
-              <EntryTitle id={entry.item_id} />
-            </li>
-          ))}
+        {rows.map((entry) => (
+          <li key={entry.position} className="flex items-center gap-3 rounded-lg border p-3">
+            <span className="w-7 shrink-0 text-xs text-muted-foreground tabular-nums">
+              {entry.position + 1}
+            </span>
+            <EntryTitle
+              id={entry.item_id}
+              item={titles.items.get(entry.item_id)}
+              loading={titles.pending}
+            />
+          </li>
+        ))}
       </ol>
+      {titles.error && <ErrorNotice error={titles.error} />}
       {entries.length > visible && (
-        <Button variant="outline" onClick={() => setVisible(visible + 50)}>
+        <Button type="button" variant="outline" onClick={() => setVisible(visible + 50)}>
           Show more entries
         </Button>
       )}
@@ -435,23 +507,31 @@ function SnapshotEntries({ entries }: { entries: CollectionEntry[] }) {
   );
 }
 function HistoricalSnapshot({
+  collectionId,
   snapshot,
 }: {
-  snapshot: Awaited<ReturnType<typeof getCollectionSnapshots>>[number];
+  collectionId: string;
+  snapshot: SnapshotSummary;
 }) {
   const [open, setOpen] = useState(false);
+  const query = useQuery({
+    queryKey: ["library", "snapshot", collectionId, snapshot.id],
+    queryFn: () => getCollectionSnapshot(collectionId, snapshot.id),
+    enabled: open,
+  });
   return (
     <details
       className="rounded-lg border p-3"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary className="cursor-pointer text-xs text-muted-foreground">
-        {recordedDate(snapshot.captured)} · {snapshot.completeness} ·{" "}
-        {snapshot.entries?.length ?? 0} entries
+        {recordedDate(snapshot.captured)} · {snapshot.completeness} · {snapshot.entry_count} entries
       </summary>
       {open && (
         <div className="mt-3 flex flex-col gap-3">
-          <SnapshotEntries entries={snapshot.entries ?? []} />
+          {query.isPending && <Spinner />}
+          {query.isError && <ErrorNotice error={query.error} />}
+          {query.data && <SnapshotEntries entries={query.data.entries ?? []} />}
         </div>
       )}
     </details>
@@ -464,9 +544,12 @@ export function CollectionDetail({ id }: { id: string }) {
     queryKey: ["library", "collection", id],
     queryFn: () => getCollection(id),
   });
-  const history = useQuery({
+  const history = useInfiniteQuery({
     queryKey: ["library", "snapshots", id],
-    queryFn: () => getCollectionSnapshots(id),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => getCollectionSnapshots(id, pageParam),
+    getNextPageParam: (last, pages) =>
+      last.length === LIBRARY_PAGE ? pages.length * LIBRARY_PAGE : undefined,
     enabled: historyOpen,
   });
   const copy = useMutation({
@@ -517,10 +600,7 @@ export function CollectionDetail({ id }: { id: string }) {
           )}
         </header>
         {collection.personal ? (
-          <CollectionEditor
-            key={`${collection.id}:${collection.revision}`}
-            collection={collection}
-          />
+          <CollectionEditor key={collection.id} collection={collection} />
         ) : (
           <>
             <p className="text-sm whitespace-pre-wrap text-muted-foreground">
@@ -556,11 +636,23 @@ export function CollectionDetail({ id }: { id: string }) {
             {history.isPending && <Spinner />}
             {history.isError && <ErrorNotice error={history.error} />}
             {historyOpen &&
-              history.data?.map((snapshot) => (
-                <HistoricalSnapshot key={snapshot.external_id} snapshot={snapshot} />
-              ))}
-            {history.data?.length === 0 && (
+              history.data?.pages
+                .flat()
+                .map((snapshot) => (
+                  <HistoricalSnapshot key={snapshot.id} collectionId={id} snapshot={snapshot} />
+                ))}
+            {history.data?.pages[0].length === 0 && (
               <p className="text-sm text-muted-foreground">No earlier snapshots are available.</p>
+            )}
+            {history.hasNextPage && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={history.isFetchingNextPage}
+                onClick={() => void history.fetchNextPage()}
+              >
+                Load more snapshots
+              </Button>
             )}
           </div>
         </details>

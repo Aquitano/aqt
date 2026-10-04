@@ -74,6 +74,144 @@ func TestNetflixDatesAndExactReplayIdentity(t *testing.T) {
 	}
 }
 
+func TestNetflixOverlappingExportsPreserveMultiplicity(t *testing.T) {
+	root := t.TempDir()
+	firstPath := fixture(t, root, "first.csv", "Title,Date\nA Film,9/19/26\nA Film,9/19/26\nOther,9/18/26\n")
+	secondPath := fixture(t, root, "second.csv", "Title,Date\nNew,9/20/26\nOther,9/18/26\nA Film,9/19/26\nA Film,9/19/26\nA Film,9/19/26\n")
+	first, err := Parse("netflix", firstPath, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Parse("netflix", secondPath, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, j := range []int{2, 3, 1} {
+		if first.Batch.Activity[i].ID != second.Batch.Activity[j].ID {
+			t.Fatalf("overlap changed identity: %+v %+v", first.Batch.Activity[i], second.Batch.Activity[j])
+		}
+	}
+	if second.Batch.Activity[4].ID == second.Batch.Activity[3].ID || second.Batch.Activity[2].Provenance.Locator != "second.csv: CSV row 4" {
+		t.Fatal("lost extra occurrence or its exported row")
+	}
+}
+
+func TestNetflixDateOrder(t *testing.T) {
+	path := fixture(t, t.TempDir(), "viewing.csv", "Title,Date\nAmbiguous,3/4/26\nDay first,19/9/2026\nISO,2026-09-18\n")
+	parsed, err := Parse("netflix", path, Options{NetflixDateOrder: "dmy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Batch.Activity) != 3 || parsed.Batch.Activity[0].Occurred.Value != "2026-04-03" || parsed.Batch.Activity[1].Occurred.Value != "2026-09-19" {
+		t.Fatalf("wrong day-first interpretation: %+v", parsed)
+	}
+	parsed, err = Parse("netflix", path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Skipped != 1 || parsed.Batch.Activity[0].Occurred.Value != "2026-03-04" {
+		t.Fatalf("default date order changed: %+v", parsed)
+	}
+	if _, err := Parse("netflix", path, Options{NetflixDateOrder: "auto"}); err == nil {
+		t.Fatal("accepted unsupported date order")
+	}
+}
+
+func TestYouTubeMixedPositions(t *testing.T) {
+	for _, format := range []struct{ name, body string }{
+		{"playlist.csv", "Video ID,Position\nfirst,\nsecond,0\nthird,7\nfourth,\n"},
+		{"playlist.json", `{"items":[{"videoId":"first"},{"videoId":"second","position":0},{"videoId":"third","position":7},{"videoId":"fourth"}]}`},
+	} {
+		t.Run(format.name, func(t *testing.T) {
+			path := fixture(t, t.TempDir(), format.name, format.body)
+			parsed, err := Parse("youtube-media", path, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i, expected := range []int{1, 0, 7, 2} {
+				if got := parsed.Batch.Collections[0].Snapshot.Entries[i].Position; got != expected {
+					t.Fatalf("entry %d position %d, expected %d", i, got, expected)
+				}
+			}
+		})
+	}
+	for _, body := range []string{`{"items":[{"videoId":"a","position":0},{"videoId":"b","position":0}]}`, `{"items":[{"videoId":"a","position":-1}]}`} {
+		path := fixture(t, t.TempDir(), "playlist.json", body)
+		if _, err := Parse("youtube-media", path, Options{}); err == nil {
+			t.Fatal("accepted invalid exported position")
+		}
+	}
+}
+
+func TestYouTubeRenamedHistoryAndPlaylistMusicClassification(t *testing.T) {
+	root := t.TempDir()
+	historyPath := fixture(t, root, "renamed.json", `[{"title":"Watched A","titleUrl":"https://www.youtube.com/watch?v=abc","time":"2026-09-18T12:00:00Z"}]`)
+	parsed, err := Parse("youtube-media", historyPath, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Batch.Activity) != 1 || len(parsed.Batch.Collections) != 0 {
+		t.Fatalf("history became a collection: %+v", parsed.Batch)
+	}
+	malformedHistory := fixture(t, root, "partial.json", `[{"title":"Unreadable"},{"title":"Watched A","titleUrl":"https://www.youtube.com/watch?v=abc","time":"2026-09-18T12:00:00Z"}]`)
+	if _, err := Parse("youtube-media", malformedHistory, Options{}); err == nil {
+		t.Fatal("partly unreadable history became a collection")
+	}
+	for _, format := range []struct{ name, body string }{
+		{"Favorite songs.csv", "Video ID,Video Title\nabc,A video\n"},
+		{"Favorite songs.json", `{"items":[{"videoId":"abc","title":"A video"}]}`},
+	} {
+		parsed, err := Parse("youtube-media", fixture(t, root, format.name, format.body), Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if parsed.Batch.Items[0].Kind != "video" || parsed.Batch.Collections[0].Kind != "playlist" {
+			t.Fatalf("filename inferred music: %+v", parsed.Batch)
+		}
+	}
+	musicPath := fixture(t, root, "renamed-music.csv", "Playlist ID,Title\nPL1,Saved tracks\nTrack ID,Track Title\nabc,A track\n")
+	parsed, err = Parse("youtube-media", musicPath, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Batch.Collections[0].Kind != "library" || parsed.Batch.Items[0].Kind != "track" {
+		t.Fatalf("explicit track metadata lost: %+v", parsed.Batch)
+	}
+}
+
+func TestYouTubeInputsShareByteBudget(t *testing.T) {
+	root := t.TempDir()
+	fixture(t, root, "playlists/a.csv", "1234")
+	fixture(t, root, "playlists/b.csv", "5678")
+	if _, err := readYouTubeInputsWithin(root, 7); err == nil {
+		t.Fatal("directory inputs exceeded aggregate budget")
+	}
+	if inputs, err := readYouTubeInputsWithin(root, 8); err != nil || len(inputs) != 2 {
+		t.Fatalf("exact budget failed: %d %v", len(inputs), err)
+	}
+	var raw bytes.Buffer
+	writer := zip.NewWriter(&raw)
+	for _, name := range []string{"playlists/a.csv", "playlists/b.csv"} {
+		entry, err := writer.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := entry.Write([]byte("1234")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	zipPath := filepath.Join(t.TempDir(), "takeout.zip")
+	if err := os.WriteFile(zipPath, raw.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readYouTubeInputsWithin(zipPath, 7); err == nil {
+		t.Fatal("ZIP inputs exceeded aggregate budget")
+	}
+}
+
 func TestYouTubeTakeoutZIPPreservesHistoryAndCollectionPositions(t *testing.T) {
 	history := `[{"title":"Watched First","titleUrl":"https://www.youtube.com/watch?v=abc","time":"2026-09-18T12:00:00Z","subtitles":[{"name":"Creator","url":"https://www.youtube.com/channel/UC1"}]},{"title":"Watched First","titleUrl":"https://youtu.be/abc","time":"2026-09-18T13:00:00Z"}]`
 	inputs := map[string]string{
@@ -348,7 +486,7 @@ func TestBundleRequiresOneObjectAndPreservedFileBytes(t *testing.T) {
 func TestNetflixImportPreservesRawAndReplays(t *testing.T) {
 	st := storetest.New(t)
 	root := t.TempDir()
-	path := fixture(t, root, "history.csv", "Title,Date\nA Film,9/19/26\nA Film,9/19/26\n")
+	path := fixture(t, root, "history.csv", "Title,Date\nA Film,9/19/26\nA Film,9/19/26\nBroken,not-a-date\n")
 	archiveDir := filepath.Join(root, "archive")
 	ctx := context.Background()
 	first, err := Import(ctx, st, nil, archiveDir, "netflix", path, Options{Account: "owner"})
@@ -359,7 +497,7 @@ func TestNetflixImportPreservesRawAndReplays(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Items != 1 || first.Activity != 2 || second.Items != 0 || second.Activity != 0 {
+	if first.Items != 1 || first.Activity != 2 || second.Items != 0 || second.Activity != 0 || second.Duplicates != 3 || second.Skipped != 1 {
 		t.Fatalf("wrong replay counts: %+v %+v", first, second)
 	}
 	rows, err := st.ListLibraryActivity(ctx, library.ListOptions{Source: "netflix"})
@@ -379,6 +517,18 @@ func TestNetflixImportPreservesRawAndReplays(t *testing.T) {
 	}
 	if !bytes.Equal(raw, original) {
 		t.Fatal("raw source changed")
+	}
+	overlapPath := fixture(t, root, "new-history.csv", "Title,Date\nNew Film,9/20/26\nA Film,9/19/26\nA Film,9/19/26\nA Film,9/19/26\n")
+	overlap, err := Import(ctx, st, nil, archiveDir, "netflix", overlapPath, Options{Account: "owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overlap.Items != 1 || overlap.Activity != 2 || overlap.Duplicates != 3 {
+		t.Fatalf("overlap lost multiplicity or repeated observations: %+v", overlap)
+	}
+	rows, err = st.ListLibraryActivity(ctx, library.ListOptions{Source: "netflix"})
+	if err != nil || len(rows) != 4 {
+		t.Fatalf("wrong recurring export activity: %d %v", len(rows), err)
 	}
 }
 

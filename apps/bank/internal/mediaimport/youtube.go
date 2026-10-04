@@ -34,19 +34,28 @@ func youtubeDataFile(name string) bool {
 }
 
 func readYouTubeInputs(inputPath string) ([]RawInput, error) {
+	return readYouTubeInputsWithin(inputPath, maxYouTubeFile)
+}
+
+func readYouTubeInputsWithin(inputPath string, budget int64) ([]RawInput, error) {
 	info, err := os.Stat(inputPath)
 	if err != nil {
 		return nil, err
 	}
 	inputs := []RawInput{}
 	read := func(name string, r io.Reader) error {
-		raw, err := io.ReadAll(io.LimitReader(r, maxYouTubeFile+1))
+		limit := min(int64(maxYouTubeFile), budget)
+		raw, err := io.ReadAll(io.LimitReader(r, limit+1))
 		if err != nil {
 			return err
 		}
 		if len(raw) > maxYouTubeFile {
 			return fmt.Errorf("YouTube input %s exceeds 512 MiB", name)
 		}
+		if int64(len(raw)) > budget {
+			return fmt.Errorf("selected YouTube inputs exceed the total byte limit at %s", name)
+		}
+		budget -= int64(len(raw))
 		inputs = append(inputs, RawInput{Name: filepath.ToSlash(name), Bytes: raw})
 		return nil
 	}
@@ -94,6 +103,9 @@ func readYouTubeInputs(inputPath string) ([]RawInput, error) {
 			}
 			if entry.UncompressedSize64 > maxYouTubeFile {
 				return nil, fmt.Errorf("YouTube input %s exceeds 512 MiB", entry.Name)
+			}
+			if entry.UncompressedSize64 > uint64(budget) {
+				return nil, fmt.Errorf("selected YouTube inputs exceed the total byte limit at %s", entry.Name)
 			}
 			input, e := entry.Open()
 			if e != nil {
@@ -158,13 +170,13 @@ func parseYouTube(inputPath string, opts Options) (Parsed, error) {
 	}
 	jsonHistory := false
 	for _, input := range inputs {
-		if strings.HasSuffix(strings.ToLower(input.Name), "watch-history.json") {
+		if youtubeHistoryJSON(input) {
 			jsonHistory = true
 		}
 	}
 	for _, input := range inputs {
 		lower := strings.ToLower(input.Name)
-		if strings.HasSuffix(lower, "watch-history.json") || strings.HasSuffix(lower, "watch-history.html") {
+		if youtubeHistoryJSON(input) || strings.HasSuffix(lower, "watch-history.html") {
 			if jsonHistory && strings.HasSuffix(lower, "watch-history.html") {
 				continue
 			}
@@ -233,6 +245,58 @@ func parseYouTube(inputPath string, opts Options) (Parsed, error) {
 	return p, nil
 }
 
+func youtubeHistoryJSON(input RawInput) bool {
+	if !strings.EqualFold(filepath.Ext(input.Name), ".json") {
+		return false
+	}
+	if strings.HasSuffix(strings.ToLower(input.Name), "watch-history.json") {
+		return true
+	}
+	decoder := json.NewDecoder(bytes.NewReader(input.Bytes))
+	if token, err := decoder.Token(); err != nil || token != json.Delim('[') || !decoder.More() {
+		return false
+	}
+	var first struct {
+		Time     json.RawMessage `json:"time"`
+		TitleURL json.RawMessage `json:"titleUrl"`
+		Header   json.RawMessage `json:"header"`
+	}
+	if err := decoder.Decode(&first); err != nil {
+		return false
+	}
+	return len(first.Time) > 0 && (len(first.TitleURL) > 0 || len(first.Header) > 0)
+}
+
+func youtubeMusicFile(name string) bool {
+	base := strings.ToLower(filepath.Base(name))
+	return base == "music-library-songs.csv" || base == "music-library-songs.json"
+}
+
+func allocateMissingPositions(entries []library.Entry) error {
+	used := map[int]bool{}
+	for _, entry := range entries {
+		if entry.Position == -1 {
+			continue
+		}
+		if entry.Position < 0 || used[entry.Position] {
+			return fmt.Errorf("collection entries require unique nonnegative exported positions")
+		}
+		used[entry.Position] = true
+	}
+	next := 0
+	for i := range entries {
+		if entries[i].Position != -1 {
+			continue
+		}
+		for used[next] {
+			next++
+		}
+		entries[i].Position = next
+		used[next] = true
+	}
+	return nil
+}
+
 func youtubeVideoID(value string) string {
 	u, err := url.Parse(value)
 	if err != nil {
@@ -252,7 +316,7 @@ func youtubeVideoID(value string) string {
 	return ""
 }
 
-func collectionFor(input RawInput, opts Options, native, title, description string, music bool) library.Collection {
+func collectionFor(input RawInput, sum string, opts Options, native, title, description string, music bool) library.Collection {
 	kind := "playlist"
 	external := native
 	if title == "" {
@@ -267,17 +331,17 @@ func collectionFor(input RawInput, opts Options, native, title, description stri
 		external = "playlist-file:" + title
 	}
 	id := identity(opts, external)
-	return library.Collection{Identity: id, ID: library.StableID("collection", id), Kind: kind, Title: title, Description: description, Snapshot: &library.Snapshot{ExternalID: digest([]byte(external + "\x00" + digest(input.Bytes))), Captured: opts.CapturedAt, Completeness: "unknown", Provenance: provenance(input.Name, "collection export"), Entries: []library.Entry{}}}
+	return library.Collection{Identity: id, ID: library.StableID("collection", id), Kind: kind, Title: title, Description: description, Snapshot: &library.Snapshot{ExternalID: digest([]byte(external + "\x00" + sum)), Captured: opts.CapturedAt, Completeness: "unknown", Provenance: provenance(input.Name, "collection export"), Entries: []library.Entry{}}}
 }
 
-func youtubeCollectionItem(input RawInput, opts Options, row int, native, title, urlValue, creator, album string, music bool) library.Item {
+func youtubeCollectionItem(input RawInput, sum string, opts Options, row int, native, title, urlValue, creator, album string, music bool) library.Item {
 	kind := "video"
 	if music {
 		kind = "track"
 	}
 	external := kind + ":" + native
 	if native == "" {
-		external = "file:" + digest(input.Bytes) + ":row:" + strconv.Itoa(row)
+		external = "file:" + sum + ":row:" + strconv.Itoa(row)
 	}
 	if title == "" {
 		if native != "" {
@@ -311,7 +375,8 @@ func parseYouTubeCSV(input RawInput, opts Options) ([]library.Item, []library.Co
 	active := -1
 	collectionIndex := map[string]int{}
 	entrySections := map[int]bool{}
-	music := strings.Contains(strings.ToLower(input.Name), "library") || strings.Contains(strings.ToLower(input.Name), "songs")
+	music := youtubeMusicFile(input.Name)
+	sum := digest(input.Bytes)
 	title := ""
 	native := ""
 	description := ""
@@ -327,7 +392,7 @@ func parseYouTubeCSV(input RawInput, opts Options) ([]library.Item, []library.Co
 			return index
 		}
 		collectionIndex[key] = len(collections)
-		collections = append(collections, collectionFor(input, opts, id, name, desc, music))
+		collections = append(collections, collectionFor(input, sum, opts, id, name, desc, music))
 		return len(collections) - 1
 	}
 	for row := 1; ; row++ {
@@ -359,6 +424,16 @@ func parseYouTubeCSV(input RawInput, opts Options) ([]library.Item, []library.Co
 		}
 		if isHeader {
 			fields = candidate
+			for _, field := range []string{"trackid", "songid", "tracktitle", "songtitle"} {
+				if _, present := fields[field]; present {
+					music = true
+				}
+			}
+			if music {
+				for i := range collections {
+					collections[i].Kind = "library"
+				}
+			}
 			if entryHeader {
 				if _, perRowPlaylist := fields["playlistid"]; !perRowPlaylist && active < 0 {
 					active = ensure(native, title, description)
@@ -397,7 +472,7 @@ func parseYouTubeCSV(input RawInput, opts Options) ([]library.Item, []library.Co
 		if active < 0 {
 			active = ensure(native, title, description)
 		}
-		item := youtubeCollectionItem(input, opts, row, video, entryTitle, urlValue, csvValue(values, fields, "artistname", "artist", "channelname", "channeltitle"), csvValue(values, fields, "albumtitle", "album"), music)
+		item := youtubeCollectionItem(input, sum, opts, row, video, entryTitle, urlValue, csvValue(values, fields, "artistname", "artist", "channelname", "channeltitle"), csvValue(values, fields, "albumtitle", "album"), music)
 		items = append(items, item)
 		addedValue := csvValue(values, fields, "timeadded", "dateadded", "playlistvideocreationtimestamp", "addedat", "timestamp")
 		added, err := exportDate(addedValue)
@@ -408,9 +483,9 @@ func parseYouTubeCSV(input RawInput, opts Options) ([]library.Item, []library.Co
 		snapshot := collections[active].Snapshot
 		entryID := csvValue(values, fields, "playlistitemid", "entryid")
 		if entryID == "" {
-			entryID = "file:" + digest(input.Bytes) + ":row:" + strconv.Itoa(row)
+			entryID = "file:" + sum + ":row:" + strconv.Itoa(row)
 		}
-		position := len(snapshot.Entries)
+		position := -1
 		if exportedPosition := csvValue(values, fields, "position", "playlistposition"); exportedPosition != "" {
 			position, err = strconv.Atoi(exportedPosition)
 			if err != nil || position < 0 {
@@ -420,6 +495,9 @@ func parseYouTubeCSV(input RawInput, opts Options) ([]library.Item, []library.Co
 		snapshot.Entries = append(snapshot.Entries, library.Entry{ItemID: item.ID, Position: position, ExternalID: entryID, Added: added})
 	}
 	for i := range collections {
+		if err := allocateMissingPositions(collections[i].Snapshot.Entries); err != nil {
+			return nil, nil, nil, err
+		}
 		if len(collections[i].Snapshot.Entries) == 0 && !entrySections[i] {
 			collections[i].Snapshot = nil
 		}
@@ -428,20 +506,22 @@ func parseYouTubeCSV(input RawInput, opts Options) ([]library.Item, []library.Co
 }
 
 type youtubeEntryJSON struct {
-	VideoID  string `json:"videoId"`
-	TrackID  string `json:"trackId"`
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	URL      string `json:"url"`
-	TitleURL string `json:"titleUrl"`
-	Artist   string `json:"artist"`
-	Album    string `json:"album"`
-	Added    string `json:"timeAdded"`
-	AddedAt  string `json:"addedAt"`
-	EntryID  string `json:"entryId"`
-	Position *int   `json:"position"`
+	VideoID  string          `json:"videoId"`
+	TrackID  string          `json:"trackId"`
+	ID       string          `json:"id"`
+	Title    string          `json:"title"`
+	URL      string          `json:"url"`
+	TitleURL string          `json:"titleUrl"`
+	Artist   string          `json:"artist"`
+	Album    string          `json:"album"`
+	Added    string          `json:"timeAdded"`
+	AddedAt  string          `json:"addedAt"`
+	EntryID  string          `json:"entryId"`
+	Position *int            `json:"position"`
+	Time     json.RawMessage `json:"time"`
 }
 type youtubeCollectionJSON struct {
+	Kind         string             `json:"kind"`
 	PlaylistID   string             `json:"playlistId"`
 	ID           string             `json:"id"`
 	Title        string             `json:"title"`
@@ -468,8 +548,6 @@ func parseYouTubeCollectionJSON(input RawInput, opts Options) ([]library.Item, [
 	if payload.PlaylistID == "" {
 		payload.PlaylistID = payload.ID
 	}
-	music := strings.Contains(strings.ToLower(input.Name), "library") || strings.Contains(strings.ToLower(input.Name), "songs")
-	collection := collectionFor(input, opts, payload.PlaylistID, payload.Title, payload.Description, music)
 	entries := payload.Items
 	if entries == nil {
 		entries = payload.Entries
@@ -477,6 +555,12 @@ func parseYouTubeCollectionJSON(input RawInput, opts Options) ([]library.Item, [
 	if entries == nil {
 		return []library.Item{}, []library.Collection{}, []string{}, nil
 	}
+	music := youtubeMusicFile(input.Name) || payload.Kind == "library"
+	for _, entry := range entries {
+		music = music || entry.TrackID != ""
+	}
+	sum := digest(input.Bytes)
+	collection := collectionFor(input, sum, opts, payload.PlaylistID, payload.Title, payload.Description, music)
 	if payload.Completeness != "" {
 		collection.Snapshot.Completeness = payload.Completeness
 	}
@@ -486,6 +570,9 @@ func parseYouTubeCollectionJSON(input RawInput, opts Options) ([]library.Item, [
 	items := []library.Item{}
 	diagnostics := []string{}
 	for i, entry := range entries {
+		if len(entry.Time) > 0 {
+			return nil, nil, nil, fmt.Errorf("entry %d contains watch-history time; import it as YouTube watch history", i+1)
+		}
 		native := entry.VideoID
 		if native == "" {
 			native = entry.TrackID
@@ -503,7 +590,7 @@ func parseYouTubeCollectionJSON(input RawInput, opts Options) ([]library.Item, [
 		if native == "" && entry.Title == "" {
 			return nil, nil, nil, fmt.Errorf("collection entry %d has neither identity nor title", i+1)
 		}
-		item := youtubeCollectionItem(input, opts, i+1, native, entry.Title, u, entry.Artist, entry.Album, music)
+		item := youtubeCollectionItem(input, sum, opts, i+1, native, entry.Title, u, entry.Artist, entry.Album, music)
 		items = append(items, item)
 		addedValue := entry.Added
 		if addedValue == "" {
@@ -515,13 +602,19 @@ func parseYouTubeCollectionJSON(input RawInput, opts Options) ([]library.Item, [
 		}
 		external := entry.EntryID
 		if external == "" {
-			external = "file:" + digest(input.Bytes) + ":row:" + strconv.Itoa(i+1)
+			external = "file:" + sum + ":row:" + strconv.Itoa(i+1)
 		}
-		position := i
+		position := -1
 		if entry.Position != nil {
 			position = *entry.Position
+			if position < 0 {
+				return nil, nil, nil, fmt.Errorf("entry %d has an invalid playlist position", i+1)
+			}
 		}
 		collection.Snapshot.Entries = append(collection.Snapshot.Entries, library.Entry{ItemID: item.ID, Position: position, ExternalID: external, Added: added})
+	}
+	if err := allocateMissingPositions(collection.Snapshot.Entries); err != nil {
+		return nil, nil, nil, err
 	}
 	return items, []library.Collection{collection}, diagnostics, nil
 }

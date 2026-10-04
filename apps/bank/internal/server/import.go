@@ -33,6 +33,11 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
 	kind := r.PathValue("kind")
 	source := r.URL.Query().Get("source")
+	dateOrder := r.URL.Query().Get("date_order")
+	if dateOrder != "" && (kind != "netflix" || dateOrder != "mdy" && dateOrder != "dmy") {
+		writeErr(w, http.StatusBadRequest, "date_order requires a Netflix import and must be mdy or dmy")
+		return
+	}
 	// The source names a directory under the archive root and arrives here
 	// straight from a query string, so it is checked before any bytes are
 	// written rather than deep inside an importer.
@@ -72,7 +77,7 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 
 	var res any
 	if kind == "netflix" || kind == "youtube-media" || kind == "library" {
-		res, err = mediaimport.Import(r.Context(), s.db, s.blobs, s.archiveDir, kind, path, mediaimport.Options{Source: source, Account: r.URL.Query().Get("account")})
+		res, err = mediaimport.Import(r.Context(), s.db, s.blobs, s.archiveDir, kind, path, mediaimport.Options{Source: source, Account: r.URL.Query().Get("account"), NetflixDateOrder: dateOrder})
 	} else {
 		res, err = s.importFile(r.Context(), kind, source, path, observation)
 	}

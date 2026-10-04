@@ -53,13 +53,14 @@ type Item struct {
 
 type Activity struct {
 	Identity
-	ID              string     `json:"id"`
-	ItemID          string     `json:"item_id"`
-	Kind            string     `json:"kind"`
-	Title           string     `json:"title"`
-	Occurred        Date       `json:"occurred"`
-	DurationSeconds *int       `json:"duration_seconds,omitempty"`
-	Provenance      Provenance `json:"provenance"`
+	ID              string       `json:"id"`
+	ItemID          string       `json:"item_id"`
+	Kind            string       `json:"kind"`
+	Title           string       `json:"title"`
+	Occurred        Date         `json:"occurred"`
+	DurationSeconds *int         `json:"duration_seconds,omitempty"`
+	Provenance      Provenance   `json:"provenance"`
+	Evidence        []Provenance `json:"evidence"`
 }
 
 type Entry struct {
@@ -70,11 +71,55 @@ type Entry struct {
 }
 
 type Snapshot struct {
+	ID           int64      `json:"id,omitempty"`
 	ExternalID   string     `json:"external_id"`
 	Captured     Date       `json:"captured"`
 	Completeness string     `json:"completeness"`
 	Provenance   Provenance `json:"provenance"`
 	Entries      []Entry    `json:"entries"`
+}
+
+type SnapshotSummary struct {
+	ID           int64      `json:"id"`
+	ExternalID   string     `json:"external_id"`
+	Captured     Date       `json:"captured"`
+	Completeness string     `json:"completeness"`
+	Provenance   Provenance `json:"provenance"`
+	EntryCount   int        `json:"entry_count"`
+}
+
+type CollectionSummary struct {
+	Identity
+	ID          string           `json:"id"`
+	Kind        string           `json:"kind"`
+	Title       string           `json:"title"`
+	Description string           `json:"description"`
+	Personal    bool             `json:"personal"`
+	Revision    int64            `json:"revision"`
+	Snapshot    *SnapshotSummary `json:"snapshot,omitempty"`
+}
+
+type ItemSummary struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Kind   string `json:"kind"`
+	Source string `json:"source"`
+}
+
+type ItemSummaryRequest struct {
+	IDs []string `json:"ids"`
+}
+
+func (r ItemSummaryRequest) Validate() error {
+	if len(r.IDs) > 50 {
+		return fmt.Errorf("at most 50 item IDs are allowed")
+	}
+	for _, id := range r.IDs {
+		if id == "" || len(id) > 4096 || strings.ContainsRune(id, 0) {
+			return fmt.Errorf("invalid item ID")
+		}
+	}
+	return nil
 }
 
 type Collection struct {
@@ -154,6 +199,7 @@ type ImportBatch struct {
 }
 
 type ImportResult struct {
+	Duplicates  int `json:"duplicates"`
 	Items       int `json:"items"`
 	Activity    int `json:"activity"`
 	Collections int `json:"collections"`
@@ -175,12 +221,12 @@ type ListOptions struct {
 }
 
 type SearchResult struct {
-	Items       []Item       `json:"items"`
-	Activity    []Activity   `json:"activity"`
-	Collections []Collection `json:"collections"`
-	Files       []File       `json:"files"`
-	Pages       []Page       `json:"pages"`
-	Coverage    []string     `json:"coverage"`
+	Items       []Item              `json:"items"`
+	Activity    []Activity          `json:"activity"`
+	Collections []CollectionSummary `json:"collections"`
+	Files       []File              `json:"files"`
+	Pages       []Page              `json:"pages"`
+	Coverage    []string            `json:"coverage"`
 }
 
 func StableID(kind string, identity Identity) string {
@@ -334,6 +380,11 @@ func (b ImportBatch) Validate() error {
 	for _, v := range b.Activity {
 		if err := v.Provenance.Validate(); err != nil {
 			return err
+		}
+		for _, evidence := range v.Evidence {
+			if err := evidence.Validate(); err != nil {
+				return err
+			}
 		}
 		if err := validIdentity(v.Identity); err != nil {
 			return err

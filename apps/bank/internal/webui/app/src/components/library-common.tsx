@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { uploadFiles, type RecordedDate } from "@/lib/library-api";
+import { uploadFiles, type LibraryFilters as Filters, type RecordedDate } from "@/lib/library-api";
 
 export const ITEM_KINDS = [
   "movie",
@@ -117,15 +117,17 @@ export function Choice({
 export function LibraryFilters({
   noun,
   kinds,
+  filters,
   onChange,
 }: {
   noun: string;
   kinds: string[];
+  filters: Filters;
   onChange: (filters: { q: string; kind: string; source: string }) => void;
 }) {
-  const [text, setText] = useState("");
-  const [kind, setKind] = useState("all");
-  const [source, setSource] = useState("");
+  const [text, setText] = useState(filters.q ?? "");
+  const [kind, setKind] = useState(filters.kind || "all");
+  const [source, setSource] = useState(filters.source ?? "");
   return (
     <form
       className="px-4 pb-4"

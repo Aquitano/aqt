@@ -49,6 +49,7 @@ function Shell() {
   const searchParams = readSearch(url);
   const browseSource = url.get("browseSource") || ALL_SOURCES;
   const searchRef = useRef<HTMLInputElement>(null);
+  const rowRef = useRef<HTMLButtonElement>(null);
 
   const statsQ = useQuery({ queryKey: ["stats"], queryFn: getStats });
   const stats = statsQ.data ?? [];
@@ -77,15 +78,29 @@ function Shell() {
       if (target?.closest('[role="combobox"], [role="listbox"], [role="option"]')) return;
       const rows = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-row]"));
       if (!rows.length) return;
-      const cur = rows.findIndex((r) => r.dataset.selected !== undefined);
+      const cursor = rows.findIndex(
+        (row) => row === rowRef.current && row.dataset.selected !== undefined,
+      );
+      const cur = cursor >= 0 ? cursor : rows.findIndex((r) => r.dataset.selected !== undefined);
       const next = rows[Math.min(rows.length - 1, Math.max(0, cur + (down ? 1 : -1)))];
       if (!next) return;
       e.preventDefault();
+      rowRef.current = next;
       next.click();
       next.scrollIntoView({ block: "nearest" });
     };
+    const onClick = (event: MouseEvent) => {
+      if (event.target instanceof Element) {
+        const row = event.target.closest<HTMLButtonElement>("button[data-row]");
+        if (row) rowRef.current = row;
+      }
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("click", onClick);
+    };
   }, []);
 
   return (
@@ -171,7 +186,7 @@ function Shell() {
                 </TabsList>
               </Tabs>
             )}
-            {view === "media-files" && <MediaFilesView />}
+            {view === "media-files" && <MediaFilesView selection={selection} />}
             {view === "search" && (
               <SearchView
                 key={JSON.stringify(searchParams)}

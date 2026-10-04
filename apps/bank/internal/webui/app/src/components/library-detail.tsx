@@ -1,9 +1,10 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Film, Heart } from "lucide-react";
-import { useState } from "react";
+import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { DraftRecovery } from "@/components/draft-recovery";
 import { FilePreview } from "@/components/file-preview";
 import {
   Choice,
@@ -23,6 +24,7 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { RequestError } from "@/lib/api";
+import { keepLatest, useDraft } from "@/lib/draft";
 import {
   getActivity,
   getItem,
@@ -31,42 +33,61 @@ import {
   LIBRARY_PAGE,
   saveState,
   type MediaItem,
+  type MediaState,
 } from "@/lib/library-api";
+
+function trackingValues(state: MediaState) {
+  return {
+    status: state.status || "unset",
+    rating: state.rating === undefined ? "unset" : String(state.rating),
+    favorite: state.favorite,
+    notes: state.notes,
+    tags: (state.tags ?? []).join(", "),
+    progress: String(state.progress ?? 0),
+    unit: state.progress_unit || "unset",
+  };
+}
+type TrackingValues = ReturnType<typeof trackingValues>;
 
 function StateEditor({ item }: { item: MediaItem }) {
   const client = useQueryClient();
-  const [status, setStatus] = useState(item.state.status || "unset");
-  const [rating, setRating] = useState(
-    item.state.rating === undefined ? "unset" : String(item.state.rating),
-  );
-  const [favorite, setFavorite] = useState(item.state.favorite);
-  const [notes, setNotes] = useState(item.state.notes);
-  const [tags, setTags] = useState((item.state.tags ?? []).join(", "));
-  const [progress, setProgress] = useState(String(item.state.progress ?? 0));
-  const [unit, setUnit] = useState(item.state.progress_unit || "unset");
+  const initial = useMemo(() => trackingValues(item.state), [item.state]);
+  const draft = useDraft("tracking", item.id, initial, item.state.revision);
+  const { status, rating, favorite, notes, tags, progress, unit } = draft.value;
+  function setField<K extends keyof TrackingValues>(key: K, value: TrackingValues[K]) {
+    draft.setValue((current) => ({ ...current, [key]: value }));
+  }
   const mutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (submitted: TrackingValues) =>
       saveState(item.id, {
-        expected_revision: item.state.revision,
-        status: status === "unset" ? "" : status,
-        rating: rating === "unset" ? undefined : Number(rating),
-        favorite,
-        notes,
+        expected_revision: draft.revision,
+        status: submitted.status === "unset" ? "" : submitted.status,
+        rating: submitted.rating === "unset" ? undefined : Number(submitted.rating),
+        favorite: submitted.favorite,
+        notes: submitted.notes,
         tags: [
           ...new Set(
-            tags
+            submitted.tags
               .split(",")
               .map((tag) => tag.trim())
               .filter(Boolean),
           ),
         ],
-        progress: unit === "unset" ? 0 : Number(progress),
-        progress_unit: unit === "unset" ? "" : unit,
+        progress: submitted.unit === "unset" ? 0 : Number(submitted.progress),
+        progress_unit: submitted.unit === "unset" ? "" : submitted.unit,
       }),
-    onSuccess: async (state) => {
-      client.setQueryData(["library", "item", item.id], { ...item, state });
+    onSuccess: async (state, submitted) => {
+      draft.acceptSaved(trackingValues(state), state.revision, submitted);
+      client.setQueryData<MediaItem>(["library", "item", item.id], (current) => ({
+        ...(current ?? item),
+        state: keepLatest(current?.state, state),
+      }));
       await client.invalidateQueries({ queryKey: ["library", "items"] });
       await client.invalidateQueries({ queryKey: ["find"] });
+    },
+    onError: (error) => {
+      if (error instanceof RequestError && error.status === 409)
+        void client.invalidateQueries({ queryKey: ["library", "item", item.id] });
     },
   });
   return (
@@ -82,7 +103,7 @@ function StateEditor({ item }: { item: MediaItem }) {
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
-            mutation.mutate();
+            if (!draft.newer) mutation.mutate(draft.value);
           }}
         >
           <FieldGroup className="gap-4">
@@ -93,7 +114,7 @@ function StateEditor({ item }: { item: MediaItem }) {
                   id="item-status"
                   label="Status"
                   value={status}
-                  onChange={setStatus}
+                  onChange={(value) => setField("status", value)}
                   options={STATUSES}
                 />
               </Field>
@@ -103,7 +124,7 @@ function StateEditor({ item }: { item: MediaItem }) {
                   id="item-rating"
                   label="Rating"
                   value={rating}
-                  onChange={setRating}
+                  onChange={(value) => setField("rating", value)}
                   options={[
                     { value: "unset", label: "Not rated" },
                     ...[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: `${n} / 5` })),
@@ -122,7 +143,7 @@ function StateEditor({ item }: { item: MediaItem }) {
                   step="1"
                   disabled={unit === "unset"}
                   value={progress}
-                  onChange={(event) => setProgress(event.target.value)}
+                  onChange={(event) => setField("progress", event.target.value)}
                 />
               </Field>
               <Field>
@@ -131,7 +152,7 @@ function StateEditor({ item }: { item: MediaItem }) {
                   id="item-progress-unit"
                   label="Progress unit"
                   value={unit}
-                  onChange={setUnit}
+                  onChange={(value) => setField("unit", value)}
                   options={[
                     { value: "unset", label: "Not recorded" },
                     ...["episodes", "pages", "seconds", "percent"].map((value) => ({
@@ -147,7 +168,7 @@ function StateEditor({ item }: { item: MediaItem }) {
                 id="item-favorite"
                 type="checkbox"
                 checked={favorite}
-                onChange={(event) => setFavorite(event.target.checked)}
+                onChange={(event) => setField("favorite", event.target.checked)}
                 className="size-4 accent-primary"
               />
               <FieldLabel htmlFor="item-favorite">
@@ -160,7 +181,7 @@ function StateEditor({ item }: { item: MediaItem }) {
               <Input
                 id="item-tags"
                 value={tags}
-                onChange={(event) => setTags(event.target.value)}
+                onChange={(event) => setField("tags", event.target.value)}
                 placeholder="Separate tags with commas"
               />
             </Field>
@@ -170,31 +191,62 @@ function StateEditor({ item }: { item: MediaItem }) {
                 id="item-notes"
                 rows={4}
                 value={notes}
-                onChange={(event) => setNotes(event.target.value)}
+                onChange={(event) => setField("notes", event.target.value)}
                 placeholder="Your thoughts about this item"
               />
             </Field>
           </FieldGroup>
-          {mutation.isError && (
-            <ErrorNotice error={mutation.error}>
-              {mutation.error instanceof RequestError && mutation.error.status === 409 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() =>
-                    void client.invalidateQueries({ queryKey: ["library", "item", item.id] })
-                  }
-                >
-                  Discard draft and reload current state
-                </Button>
-              )}
-            </ErrorNotice>
+          {mutation.isError && <ErrorNotice error={mutation.error} />}
+          {(draft.newer ||
+            (draft.dirty &&
+              mutation.error instanceof RequestError &&
+              mutation.error.status === 409)) && (
+            <DraftRecovery
+              newer={draft.newer}
+              pending={mutation.isPending}
+              onReload={() =>
+                void client.invalidateQueries({ queryKey: ["library", "item", item.id] })
+              }
+              onReapply={() => {
+                draft.reapply();
+                mutation.reset();
+              }}
+              onDiscard={() => {
+                draft.reset();
+                mutation.reset();
+              }}
+            >
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 break-words">
+                <dt>Status</dt>
+                <dd>
+                  {STATUSES.find((option) => option.value === initial.status)?.label ??
+                    initial.status}
+                </dd>
+                <dt>Rating</dt>
+                <dd>{initial.rating === "unset" ? "Not rated" : `${initial.rating} / 5`}</dd>
+                <dt>Favorite</dt>
+                <dd>{initial.favorite ? "Yes" : "No"}</dd>
+                <dt>Progress</dt>
+                <dd>
+                  {initial.unit === "unset"
+                    ? "Not recorded"
+                    : `${initial.progress} ${initial.unit}`}
+                </dd>
+                <dt>Tags</dt>
+                <dd>{initial.tags || "None"}</dd>
+                <dt>Notes</dt>
+                <dd className="whitespace-pre-wrap">{initial.notes || "None"}</dd>
+              </dl>
+            </DraftRecovery>
           )}
           <div className="flex items-center gap-3">
-            <Button disabled={mutation.isPending}>
+            <Button disabled={mutation.isPending || draft.newer}>
               {mutation.isPending ? "Saving…" : "Save tracking"}
             </Button>
-            <span className="text-xs text-muted-foreground">Revision {item.state.revision}</span>
+            <span className="text-xs text-muted-foreground">
+              Revision {draft.revision}
+              {draft.dirty ? " · Unsaved draft" : ""}
+            </span>
           </div>
         </form>
       </CardContent>
@@ -335,7 +387,7 @@ export function ItemDetail({ id }: { id: string }) {
             </div>
           )}
         </header>
-        <StateEditor key={`${item.id}:${item.state.revision}`} item={item} />
+        <StateEditor key={item.id} item={item} />
         <ItemActivity id={id} />
         <ItemFiles id={id} />
         <details className="text-xs text-muted-foreground">

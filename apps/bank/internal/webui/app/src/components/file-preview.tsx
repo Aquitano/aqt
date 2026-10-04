@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { getFileMessages, getFileText, RequestError, type Attachment } from "@/lib/api";
@@ -13,6 +13,7 @@ export function FilePreview({ file }: { file: Attachment }) {
   const query = params.get("view") === "attachments" ? params.get("fileText") : params.get("q");
   const phrase = params.get("view") === "attachments";
   const preview = useRef<HTMLPreElement>(null);
+  const [failedPreview, setFailedPreview] = useState("");
   const text = useQuery({
     queryKey: ["file-text", file.sha256],
     queryFn: () => getFileText(file.sha256),
@@ -41,22 +42,29 @@ export function FilePreview({ file }: { file: Attachment }) {
           </Button>
         )}
       </div>
-      {file.mime_type?.startsWith("audio/") && (
+      {failedPreview === file.sha256 && (
+        <p role="status" className="text-sm text-muted-foreground">
+          This media cannot be previewed here. Download the original to play it.
+        </p>
+      )}
+      {file.mime_type?.startsWith("audio/") && failedPreview !== file.sha256 && (
         <audio
           controls
           preload="metadata"
           src={`/v1/attachments/${file.sha256}/preview`}
           className="w-full"
           aria-label={file.filename}
+          onError={() => setFailedPreview(file.sha256)}
         />
       )}
-      {file.mime_type?.startsWith("video/") && (
+      {file.mime_type?.startsWith("video/") && failedPreview !== file.sha256 && (
         <video
           controls
           preload="metadata"
           src={`/v1/attachments/${file.sha256}/preview`}
           className="max-h-96 w-full rounded-lg"
           aria-label={file.filename}
+          onError={() => setFailedPreview(file.sha256)}
         />
       )}
       {file.mime_type === "application/pdf" && (

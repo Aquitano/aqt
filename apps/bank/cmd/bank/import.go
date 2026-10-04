@@ -32,7 +32,7 @@ import (
 
 func cmdImport(ctx context.Context, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: bank import <inbox|whatsapp|eml|mbox|mail-tree|discord|linkedin|youtube|chatgpt|claude|json> <path>...")
+		return fmt.Errorf("usage: bank import <inbox|whatsapp|eml|mbox|mail-tree|discord|linkedin|youtube|youtube-media|netflix|library|markdown|chatgpt|claude|json> <path>...")
 	}
 	kind := args[0]
 	if kind == "netflix" || kind == "youtube-media" || kind == "library" || kind == "markdown" {
@@ -414,7 +414,7 @@ func printHealResult(source string, res eml.HealResult) {
 func importOutcome(res any) inbox.Outcome {
 	switch r := res.(type) {
 	case mediaimport.Result:
-		return inbox.Outcome{Inserted: r.Items + r.Activity + r.Collections + r.Files + r.Pages, Rejected: r.Skipped, Result: r}
+		return inbox.Outcome{Inserted: r.Items + r.Activity + r.Collections + r.Files + r.Pages, Duplicates: r.Duplicates, Rejected: r.Skipped, Result: r}
 	case eml.Result:
 		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Rejected: r.Rejected, Result: r}
 	case whatsapp.Result:
@@ -436,7 +436,7 @@ func importOutcome(res any) inbox.Outcome {
 func printImportResult(kind, source, path string, res any) {
 	switch r := res.(type) {
 	case mediaimport.Result:
-		fmt.Printf("%s (%s): %d items, %d activity records, %d collections, %d files, %d pages, %d skipped\n", kind, filepath.Base(path), r.Items, r.Activity, r.Collections, r.Files, r.Pages, r.Skipped)
+		fmt.Printf("%s (%s): %d items, %d activity records, %d collections, %d files, %d pages, %d already known, %d skipped\n", kind, filepath.Base(path), r.Items, r.Activity, r.Collections, r.Files, r.Pages, r.Duplicates, r.Skipped)
 		for _, diagnostic := range r.Diagnostics {
 			fmt.Fprintln(os.Stderr, "bank: "+diagnostic)
 		}

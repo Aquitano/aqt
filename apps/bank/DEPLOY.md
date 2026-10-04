@@ -266,8 +266,10 @@ the stack itself. Everything below runs on the VPS in `/opt/aqt-bank`.
 docker compose stop bank                       # no writes while wiping; db stays up
 
 docker compose exec -T db psql -U bank -d bank -c \
-  "truncate messages, attachments, blob_text, contacts, contact_aliases,
-   message_id_collapsed, sync_state restart identity;"
+  "truncate messages, blob_text, contacts, message_id_collapsed, sync_state,
+   import_reports, mailboxes, mail_thread_nodes, mail_thread_conflicts,
+   mail_thread_aliases, mail_rebuild_progress, library_items,
+   library_collections, library_files, library_pages restart identity cascade;"
 
 # blobs, raw import archives and upload staging (host side; BANK_DATA_DIR
 # from .env). tokens/, gmail/ and inbox/ deliberately survive.
@@ -277,7 +279,10 @@ docker compose up -d                           # bank serve comes back empty
 docker compose run --rm bank stats             # every source should be gone
 ```
 
+The cascade also clears dependent attachments, mailbox membership, library activity,
+tracking state, collection snapshots, edit history, item links, and provenance evidence.
+This includes `library_activity_aliases` and `library_activity_evidence`.
 `schema_migrations` stays, so no migration re-runs; `restart identity` resets
-the message ids so the fresh archive starts at 1. If a backup cron from §7 is
+generated row IDs. If a backup cron from §7 is
 live, take one last snapshot first — the wipe is exactly the kind of action the
 backups exist for.

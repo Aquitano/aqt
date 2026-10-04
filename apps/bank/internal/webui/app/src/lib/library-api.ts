@@ -48,11 +48,20 @@ const activity = type({
 });
 const entry = type({ item_id: "string", position: "number", external_id: "string", added: date });
 const snapshot = type({
+  id: "number",
   external_id: "string",
   captured: date,
   completeness: "string",
   provenance,
   entries: entry.array().or("null"),
+});
+const snapshotSummary = type({
+  id: "number",
+  external_id: "string",
+  captured: date,
+  completeness: "string",
+  provenance,
+  entry_count: "number",
 });
 const collection = type({
   ...identity,
@@ -64,6 +73,8 @@ const collection = type({
   revision: "number",
   "snapshot?": snapshot,
 });
+const collectionSummary = collection.omit("snapshot").and(type({ "snapshot?": snapshotSummary }));
+const itemSummary = item.pick("id", "title", "kind", "source");
 const mediaFileSchema = type({
   ...identity,
   id: "string",
@@ -92,7 +103,7 @@ const page = type({
 const groups = {
   items: item.array(),
   activity: activity.array(),
-  collections: collection.array(),
+  collections: collectionSummary.array(),
   files: mediaFileSchema.array(),
   pages: page.array(),
   coverage: "string[]",
@@ -112,6 +123,8 @@ export type MediaState = typeof state.infer;
 export type Activity = typeof activity.infer;
 export type Collection = typeof collection.infer;
 export type CollectionEntry = typeof entry.infer;
+export type ItemSummary = typeof itemSummary.infer;
+export type SnapshotSummary = typeof snapshotSummary.infer;
 export type MediaFile = typeof mediaFileSchema.infer;
 export type KnowledgePage = typeof page.infer;
 export type RecordedDate = typeof date.infer;
@@ -145,6 +158,9 @@ export function getItems(filters: LibraryFilters = {}, offset = 0) {
 export function getItem(id: string) {
   return api(`/v1/library/items/${encodeURIComponent(id)}`, item);
 }
+export function getItemSummaries(ids: string[]) {
+  return api("/v1/library/items/summaries", itemSummary.array(), json("POST", { ids }));
+}
 export function createItem(value: Pick<MediaItem, "title" | "kind" | "description" | "url">) {
   return api("/v1/library/items", item, json("POST", value));
 }
@@ -155,7 +171,7 @@ export function getActivity(filters: LibraryFilters = {}, offset = 0) {
   return api(`/v1/library/activity?${query(filters, offset)}`, activity.array());
 }
 export function getCollections(filters: LibraryFilters = {}, offset = 0) {
-  return api(`/v1/library/collections?${query(filters, offset)}`, collection.array());
+  return api(`/v1/library/collections?${query(filters, offset)}`, collectionSummary.array());
 }
 export function getCollection(id: string) {
   return api(`/v1/library/collections/${encodeURIComponent(id)}`, collection);
@@ -214,6 +230,12 @@ export function importLibrary(kind: string, file: File, account: string) {
   });
 }
 
-export function getCollectionSnapshots(id: string) {
-  return api(`/v1/library/collections/${encodeURIComponent(id)}/snapshots`, snapshot.array());
+export function getCollectionSnapshots(id: string, offset = 0) {
+  return api(
+    `/v1/library/collections/${encodeURIComponent(id)}/snapshots?${query({}, offset)}`,
+    snapshotSummary.array(),
+  );
+}
+export function getCollectionSnapshot(id: string, snapshotId: number) {
+  return api(`/v1/library/collections/${encodeURIComponent(id)}/snapshots/${snapshotId}`, snapshot);
 }

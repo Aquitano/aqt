@@ -14,8 +14,18 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
 )
 
-func (c *Client) ImportMediaFile(ctx context.Context, kind, source, account, path string) (mediaimport.Result, error) {
+func (c *Client) ImportMediaFile(ctx context.Context, kind, source, account, path string, dateOrders ...string) (mediaimport.Result, error) {
 	var result mediaimport.Result
+	if len(dateOrders) > 1 {
+		return result, fmt.Errorf("at most one Netflix date order is allowed")
+	}
+	dateOrder := ""
+	if len(dateOrders) > 0 {
+		dateOrder = dateOrders[0]
+	}
+	if dateOrder != "" && (kind != "netflix" || (dateOrder != "mdy" && dateOrder != "dmy")) {
+		return result, fmt.Errorf("date order requires Netflix and must be mdy or dmy")
+	}
 	if kind != "netflix" && kind != "youtube-media" && kind != "library" {
 		return result, fmt.Errorf("unsupported media import %q", kind)
 	}
@@ -38,6 +48,9 @@ func (c *Client) ImportMediaFile(ctx context.Context, kind, source, account, pat
 		_ = writer.CloseWithError(err)
 	}()
 	query := url.Values{"source": {source}, "account": {account}}
+	if dateOrder != "" {
+		query.Set("date_order", dateOrder)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/v1/import/"+kind+"?"+query.Encode(), reader)
 	if err != nil {
 		return result, err

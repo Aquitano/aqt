@@ -35,7 +35,12 @@ func (c *Client) ListLibraryActivity(ctx context.Context, o library.ListOptions)
 	return getJSON[[]library.Activity](ctx, c, "/v1/library/activity", libraryQuery(o))
 }
 func (c *Client) ListLibraryCollections(ctx context.Context, o library.ListOptions) ([]library.Collection, error) {
-	return getJSON[[]library.Collection](ctx, c, "/v1/library/collections", libraryQuery(o))
+	q := libraryQuery(o)
+	q.Set("projection", "full")
+	return getJSON[[]library.Collection](ctx, c, "/v1/library/collections", q)
+}
+func (c *Client) ListLibraryCollectionSummaries(ctx context.Context, o library.ListOptions) ([]library.CollectionSummary, error) {
+	return getJSON[[]library.CollectionSummary](ctx, c, "/v1/library/collections", libraryQuery(o))
 }
 func (c *Client) ListLibraryFiles(ctx context.Context, o library.ListOptions) ([]library.File, error) {
 	return getJSON[[]library.File](ctx, c, "/v1/library/files", libraryQuery(o))
@@ -47,7 +52,20 @@ func (c *Client) LibraryCollection(ctx context.Context, id string) (library.Coll
 	return getJSON[library.Collection](ctx, c, "/v1/library/collections/"+url.PathEscape(id), nil)
 }
 func (c *Client) LibraryCollectionSnapshots(ctx context.Context, id string) ([]library.Snapshot, error) {
-	return getJSON[[]library.Snapshot](ctx, c, "/v1/library/collections/"+url.PathEscape(id)+"/snapshots", nil)
+	return getJSON[[]library.Snapshot](ctx, c, "/v1/library/collections/"+url.PathEscape(id)+"/snapshots", url.Values{"projection": {"full"}})
+}
+func (c *Client) LibraryCollectionSnapshotSummaries(ctx context.Context, id string, o library.ListOptions) ([]library.SnapshotSummary, error) {
+	return getJSON[[]library.SnapshotSummary](ctx, c, "/v1/library/collections/"+url.PathEscape(id)+"/snapshots", libraryQuery(o))
+}
+func (c *Client) LibraryCollectionSnapshot(ctx context.Context, id string, snapshotID int64) (library.Snapshot, error) {
+	return getJSON[library.Snapshot](ctx, c, "/v1/library/collections/"+url.PathEscape(id)+"/snapshots/"+strconv.FormatInt(snapshotID, 10), nil)
+}
+func (c *Client) LibraryItemSummaries(ctx context.Context, ids []string) ([]library.ItemSummary, error) {
+	request := library.ItemSummaryRequest{IDs: ids}
+	if err := request.Validate(); err != nil {
+		return nil, err
+	}
+	return postJSON[[]library.ItemSummary](ctx, c, "/v1/library/items/summaries", nil, request)
 }
 func (c *Client) LibraryFile(ctx context.Context, id string) (library.File, error) {
 	return getJSON[library.File](ctx, c, "/v1/library/files/"+url.PathEscape(id), nil)

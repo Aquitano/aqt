@@ -22,6 +22,7 @@ import (
 type Options struct {
 	Source            string
 	Account           string
+	NetflixDateOrder  string
 	CapturedAt        library.Date
 	MaxSensitivity    string
 	AllowConfidential bool
@@ -144,6 +145,9 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 		}
 		for i := range parsed.Batch.Activity {
 			replace(&parsed.Batch.Activity[i].Provenance)
+			for j := range parsed.Batch.Activity[i].Evidence {
+				replace(&parsed.Batch.Activity[i].Evidence[j])
+			}
 		}
 		for i := range parsed.Batch.Collections {
 			if s := parsed.Batch.Collections[i].Snapshot; s != nil {

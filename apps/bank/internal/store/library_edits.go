@@ -179,6 +179,7 @@ func writeLibraryCollectionEdit(ctx context.Context, tx pgx.Tx, id string, revis
 	if err != nil {
 		return library.Snapshot{}, err
 	}
+	snapshot.ID = snapshotID
 	_, err = tx.Exec(ctx, `insert into library_collection_edits(collection_id,revision,title,description,snapshot_id) values($1,$2,$3,$4,$5)`, id, revision, edit.Title, edit.Description, snapshotID)
 	return snapshot, err
 }

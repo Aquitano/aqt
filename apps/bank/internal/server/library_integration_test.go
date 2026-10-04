@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -66,6 +69,65 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 			}
 		} else if w.Code != 200 || w.Header().Get("Content-Type") != "application/pdf" || w.Header().Get("Content-Security-Policy") != "default-src 'none'; frame-ancestors 'self'" {
 			t.Fatalf("PDF preview: %d %+v", w.Code, w.Header())
+		}
+	}
+}
+
+func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
+	s, st := attachmentServer(t)
+	token, err := NewToken(s.dataDir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := st.FindMessageID(context.Background(), "proton", "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct{ filename, mime string }{{"soundtrack.flac", "audio/flac"}, {"raw.mp3", "audio/mpeg"}, {"soundtrack.aac", "audio/aac"}} {
+		f, err := os.Open(filepath.Join("testdata", "preview", test.filename))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum, size, err := s.blobs.Put(f)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Filename: test.filename, MimeType: "application/octet-stream", SHA256: sum, SizeBytes: size}); err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest("GET", "/v1/attachments/"+sum+"/preview", nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		if w.Code != 200 || w.Header().Get("Content-Type") != test.mime || w.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Fatalf("%s: %d %+v %s", test.filename, w.Code, w.Header(), w.Body)
+		}
+	}
+}
+
+func TestLibraryRemoteNetflixDateOrder(t *testing.T) {
+	ctx := context.Background()
+	c, _ := libraryClient(t)
+	input := filepath.Join(t.TempDir(), "viewing.csv")
+	if err := os.WriteFile(input, []byte("Title,Date\nA Film,03/04/2024\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ImportMediaFile(ctx, "netflix", "", "dates", input, "dmy"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := c.ListLibraryActivity(ctx, library.ListOptions{Source: "netflix", Account: "dates"})
+	if err != nil || len(rows) != 1 || rows[0].Occurred.Value != "2024-04-03" {
+		t.Fatalf("remote day-first date: %+v %v", rows, err)
+	}
+	s, token := testServer(t)
+	for _, path := range []string{"/v1/import/netflix?date_order=ymd", "/v1/import/youtube-media?date_order=dmy"} {
+		r := httptest.NewRequest("POST", path, nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		if w.Code != 400 || !strings.Contains(w.Body.String(), "date_order") {
+			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
 	}
 }

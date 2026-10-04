@@ -14,6 +14,7 @@ func cmdMediaImport(ctx context.Context, kind string, args []string) error {
 	fs := flag.NewFlagSet("import "+kind, flag.ContinueOnError)
 	source := fs.String("source", "", "source identity")
 	account := fs.String("account", "", "profile or account identity; keep this stable across imports")
+	dateOrder := fs.String("date-order", "", "Netflix slash-date order: mdy (default) or dmy")
 	sensitivity := fs.String("max-sensitivity", "normal", "maximum Markdown sensitivity: normal or personal")
 	confidential := fs.Bool("allow-confidential", false, "explicitly publish confidential Markdown pages")
 	asJSON := fs.Bool("json", false, "print structured results")
@@ -24,7 +25,10 @@ func cmdMediaImport(ctx context.Context, kind string, args []string) error {
 	if fs.NArg() == 0 {
 		return fmt.Errorf("usage: bank import %s <path>... [--account NAME] [--json]", kind)
 	}
-	opts := mediaimport.Options{Source: *source, Account: *account, MaxSensitivity: *sensitivity, AllowConfidential: *confidential}
+	if *dateOrder != "" && (kind != "netflix" || (*dateOrder != "mdy" && *dateOrder != "dmy")) {
+		return fmt.Errorf("--date-order requires netflix and must be mdy or dmy")
+	}
+	opts := mediaimport.Options{Source: *source, Account: *account, NetflixDateOrder: *dateOrder, MaxSensitivity: *sensitivity, AllowConfidential: *confidential}
 	results := []mediaimport.Result{}
 	remote := client.FromEnv()
 	var d *local
@@ -50,7 +54,7 @@ func cmdMediaImport(ctx context.Context, kind string, args []string) error {
 				result, err = remote.PublishLibraryPages(ctx, publication)
 			}
 		default:
-			result, err = remote.ImportMediaFile(ctx, kind, *source, *account, path)
+			result, err = remote.ImportMediaFile(ctx, kind, *source, *account, path, *dateOrder)
 		}
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)

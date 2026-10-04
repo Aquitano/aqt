@@ -28,16 +28,17 @@ type LibraryFile struct {
 }
 
 func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]LibraryFile, error) {
-	if err := (library.ListOptions{Query: o.Query, Match: o.Match}).Validate(); err != nil {
+	if err := (library.ListOptions{Query: o.Query, Match: o.Match, Limit: o.Limit, Offset: o.Offset}).Validate(); err != nil {
 		return nil, err
 	}
-	if o.Limit <= 0 || o.Limit > 100 {
+	if o.Limit == 0 {
 		o.Limit = 50
 	}
 	if o.Offset < 0 || o.Offset > MaxSearchOffset {
 		return nil, fmt.Errorf("invalid offset")
 	}
 	where := "true"
+	ctes := ""
 	args := []any{}
 	arg := func(v any) string { args = append(args, v); return fmt.Sprintf("$%d", len(args)) }
 	if o.Source != "" {
@@ -45,7 +46,17 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	}
 	if o.Query != "" {
 		p := arg(o.Query)
-		where += " and to_tsvector('simple',a.filename || ' ' || regexp_replace(a.filename,'[._-]+',' ','g') || ' ' || coalesce((select b.text from blob_text b where b.sha256=a.sha256 and b.status in ('ok','manual')),'')) @@ " + libraryTextQuery(o.Match, p)
+		metadataVector := "to_tsvector('simple',filename || ' ' || regexp_replace(filename,'[._-]+',' ','g'))"
+		ctes = `text_matches as materialized (
+ select sha256,search_vector from blob_text where status in ('ok','manual') and search_vector @@ ` + libraryTextQuery("any", p) + `
+ union all select sha256,blob_text_query_vector(text,` + p + `) from blob_text where status in ('ok','manual') and search_vector is null
+ ), attachment_names as materialized (
+ select distinct sha256,filename from attachments
+ ), matching_names as materialized (
+ select n.sha256,n.filename from attachment_names n left join text_matches b on b.sha256=n.sha256
+ where (` + metadataVector + ` || coalesce(b.search_vector,''::tsvector)) @@ ` + libraryTextQuery(o.Match, p) + `
+ ), `
+		where += " and exists(select 1 from matching_names n where n.sha256=a.sha256 and n.filename=a.filename)"
 	}
 	if o.Filename != "" {
 		where += " and strpos(lower(a.filename), lower(" + arg(o.Filename) + "))>0"
@@ -77,7 +88,7 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	if !o.Until.IsZero() {
 		where += " and m.sent_at<" + arg(o.Until)
 	}
-	rows, err := s.pool.Query(ctx, `with matched as (
+	rows, err := s.pool.Query(ctx, `with `+ctes+`matched as (
  select a.sha256,min(a.filename) filename,min(a.mime_type) mime_type,max(a.size_bytes) size_bytes,max(m.sent_at) last_at
  from attachments a join messages m on m.id=a.message_id where `+where+` group by a.sha256
  ) select sha256,filename,mime_type,size_bytes,

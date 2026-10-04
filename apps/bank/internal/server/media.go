@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
@@ -25,6 +26,7 @@ func (s *Server) registerLibraryRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/library/search", s.handleMediaSearch)
 	mux.HandleFunc("GET /v1/library/items", s.handleMediaItems)
 	mux.HandleFunc("POST /v1/library/items", s.handleMediaCreate)
+	mux.HandleFunc("POST /v1/library/items/summaries", s.handleMediaItemSummaries)
 	mux.HandleFunc("GET /v1/library/items/{id}", s.handleMediaItem)
 	mux.HandleFunc("PUT /v1/library/items/{id}/state", s.handleMediaState)
 	mux.HandleFunc("GET /v1/library/activity", s.handleMediaActivity)
@@ -32,6 +34,7 @@ func (s *Server) registerLibraryRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/library/collections", s.handleCollectionCreate)
 	mux.HandleFunc("GET /v1/library/collections/{id}", s.handleCollection)
 	mux.HandleFunc("GET /v1/library/collections/{id}/snapshots", s.handleCollectionSnapshots)
+	mux.HandleFunc("GET /v1/library/collections/{id}/snapshots/{snapshotId}", s.handleCollectionSnapshot)
 	mux.HandleFunc("PUT /v1/library/collections/{id}", s.handleCollectionEdit)
 	mux.HandleFunc("GET /v1/library/files", s.handleMediaFiles)
 	mux.HandleFunc("POST /v1/library/files", s.handleFileUpload)
@@ -177,7 +180,16 @@ func (s *Server) handleMediaCollections(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, 400, err.Error())
 		return
 	}
-	rows, err := s.db.ListLibraryCollections(r.Context(), o)
+	if r.URL.Query().Get("projection") == "full" {
+		rows, err := s.db.ListLibraryCollections(r.Context(), o)
+		if err != nil {
+			libraryFailure(w, err)
+			return
+		}
+		writeJSON(w, 200, rows)
+		return
+	}
+	rows, err := s.db.ListLibraryCollectionSummaries(r.Context(), o)
 	if err != nil {
 		libraryFailure(w, err)
 		return
@@ -227,7 +239,52 @@ func (s *Server) handleCollection(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCollectionSnapshots(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.LibraryCollectionSnapshots(r.Context(), r.PathValue("id"))
+	if r.URL.Query().Get("projection") == "full" {
+		rows, err := s.db.LibraryCollectionSnapshots(r.Context(), r.PathValue("id"))
+		if err != nil {
+			libraryFailure(w, err)
+			return
+		}
+		writeJSON(w, 200, rows)
+		return
+	}
+	o, err := parseLibraryOptions(r)
+	if err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	rows, err := s.db.LibraryCollectionSnapshotSummaries(r.Context(), r.PathValue("id"), o)
+	if err != nil {
+		libraryFailure(w, err)
+		return
+	}
+	writeJSON(w, 200, rows)
+}
+
+func (s *Server) handleCollectionSnapshot(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("snapshotId"), 10, 64)
+	if err != nil || id <= 0 {
+		writeErr(w, 400, "invalid snapshot ID")
+		return
+	}
+	row, err := s.db.LibraryCollectionSnapshot(r.Context(), r.PathValue("id"), id)
+	if err != nil {
+		libraryFailure(w, err)
+		return
+	}
+	writeJSON(w, 200, row)
+}
+
+func (s *Server) handleMediaItemSummaries(w http.ResponseWriter, r *http.Request) {
+	var request library.ItemSummaryRequest
+	if !decodeLibraryJSON(w, r, &request) {
+		return
+	}
+	if err := request.Validate(); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	rows, err := s.db.LibraryItemSummaries(r.Context(), request.IDs)
 	if err != nil {
 		libraryFailure(w, err)
 		return

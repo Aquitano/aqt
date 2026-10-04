@@ -25,7 +25,7 @@ type Result struct {
 
 func Find(ctx context.Context, reader Reader, query string, messages store.SearchOpts, options library.ListOptions) (Result, error) {
 	result := Result{Messages: []store.Message{}, Attachments: []store.LibraryFile{}, SearchResult: library.SearchResult{
-		Items: []library.Item{}, Activity: []library.Activity{}, Collections: []library.Collection{},
+		Items: []library.Item{}, Activity: []library.Activity{}, Collections: []library.CollectionSummary{},
 		Files: []library.File{}, Pages: []library.Page{}, Coverage: []string{},
 	}}
 	if err := messages.ValidateQuery(query); err != nil {
