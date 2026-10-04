@@ -15,26 +15,39 @@ import (
 
 func TestBlobTextSearchMigrationPreservesOversizedDocuments(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	schema := storetest.NewSchema(t)
 	conn, err := pgx.Connect(ctx, storetest.SchemaDSN(t, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	if _, err = conn.Exec(ctx, `drop index blob_text_oversized_search; drop index blob_text_search; alter table blob_text drop column search_vector; drop function blob_text_query_vector(text,text); drop function blob_text_search_vector(text)`); err != nil {
+	if _, err = conn.Exec(ctx, `create table schema_migrations(filename text primary key,applied_at timestamptz not null default now())`); err != nil {
 		t.Fatal(err)
+	}
+	migrationFiles, err := os.ReadDir("migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range migrationFiles {
+		if file.Name() >= "0018_blob_text_search.sql" {
+			break
+		}
+		migration, err := os.ReadFile("migrations/" + file.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = conn.Exec(ctx, string(migration)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = conn.Exec(ctx, `insert into schema_migrations(filename) values($1)`, file.Name()); err != nil {
+			t.Fatal(err)
+		}
 	}
 	sum := strings.Repeat("a", 64)
 	if _, err = conn.Exec(ctx, `insert into blob_text(sha256,text,status) select $1,'phrase head ' || string_agg('term'||g,' ') || ' suffixneedle','ok' from generate_series(1,300000)g`, sum); err != nil {
 		t.Fatal(err)
 	}
-	migration, err := os.ReadFile("migrations/0018_blob_text_search.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = conn.Exec(ctx, string(migration)); err != nil {
-		t.Fatalf("existing large document blocked migration: %v", err)
-	}
+	st := storetest.Open(t, schema)
 	var oversized bool
 	if err = conn.QueryRow(ctx, `select search_vector is null from blob_text where sha256=$1`, sum).Scan(&oversized); err != nil || !oversized {
 		t.Fatalf("oversized vector not guarded: %t %v", oversized, err)

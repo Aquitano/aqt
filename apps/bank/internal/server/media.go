@@ -74,6 +74,10 @@ func decodeLibraryJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 
 func libraryFailure(w http.ResponseWriter, err error) {
 	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && (strings.HasPrefix(pgErr.Code, "22") || pgErr.Code == "54000") {
+		writeErr(w, 400, pgErr.Message)
+		return
+	}
 	if errors.As(err, &pgErr) && (pgErr.Code == "23503" || pgErr.Code == "23514") {
 		writeErr(w, 400, "invalid library record or missing linked item")
 		return
@@ -83,7 +87,7 @@ func libraryFailure(w http.ResponseWriter, err error) {
 		writeJSON(w, 409, map[string]string{"code": "library_revision_conflict", "error": "This record changed. Reload it before saving again."})
 	case errors.Is(err, catalog.ErrFilters):
 		writeErr(w, 400, err.Error())
-	case errors.Is(err, library.ErrReadOnly):
+	case errors.Is(err, library.ErrReadOnly), errors.Is(err, library.ErrInvalid):
 		writeErr(w, 400, err.Error())
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, 404, "library record not found")

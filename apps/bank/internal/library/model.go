@@ -12,6 +12,7 @@ import (
 
 var ErrConflict = errors.New("library revision conflict")
 var ErrReadOnly = errors.New("imported collections cannot be edited; create a personal collection")
+var ErrInvalid = errors.New("invalid library input")
 
 type Identity struct {
 	Source     string `json:"source"`

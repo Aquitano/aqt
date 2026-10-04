@@ -141,3 +141,39 @@ func TestLibraryVerificationRetainsOlderItemEvidence(t *testing.T) {
 		t.Fatalf("older item evidence not verified: %+v", report)
 	}
 }
+
+func TestLibraryVerificationChecksSecondaryActivityEvidence(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	item := library.Item{Identity: library.Identity{Source: "manual", Account: "owner", ExternalID: "video"}, Kind: "video", Title: "Example"}
+	item.ID = library.StableID("item", item.Identity)
+	if _, err := f.st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Items: []library.Item{item}}); err != nil {
+		t.Fatal(err)
+	}
+	old, err := archive.Write(f.archiveDir, "library-test", "older.json", []byte("older activity source"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	activity := library.Activity{Identity: library.Identity{Source: "library-test", Account: "owner", ExternalID: "watch"}, ItemID: item.ID, Kind: "watch", Provenance: library.Provenance{RawRef: old}}
+	if _, err := f.st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Activity: []library.Activity{activity}}); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := archive.Write(f.archiveDir, "library-test", "latest.json", []byte("latest activity source"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	activity.Provenance.RawRef = latest
+	if _, err := f.st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Activity: []library.Activity{activity}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(f.archiveDir, filepath.FromSlash(latest))); err != nil {
+		t.Fatal(err)
+	}
+	report, err := Run(ctx, f.st, f.blobs, f.archiveDir, Options{Source: "library-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.LibraryRecordsChecked != 1 || report.Damaged != 1 || report.Findings[0].LibraryID != library.StableID("activity", activity.Identity) || report.Findings[0].Kind != MissingRaw || report.Findings[0].Detail != latest {
+		t.Fatalf("secondary activity evidence not verified: %+v", report)
+	}
+}

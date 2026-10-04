@@ -11,12 +11,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Options struct {
@@ -52,6 +54,14 @@ func identity(opts Options, external string) library.Identity {
 }
 func provenance(name, locator string) library.Provenance {
 	return library.Provenance{RawRef: "input:" + name, Locator: name + ": " + locator}
+}
+func preserveLibraryInput(archiveDir, source string, input RawInput) (string, error) {
+	name := digest(input.Bytes) + "-" + filepath.Base(input.Name)
+	ref, err := archive.Write(filepath.Join(archiveDir, "library"), source, name, input.Bytes)
+	if err != nil {
+		return "", err
+	}
+	return "library/" + filepath.ToSlash(ref), nil
 }
 func emptyBatch() library.ImportBatch {
 	return library.ImportBatch{Version: 1, Items: []library.Item{}, Activity: []library.Activity{}, Collections: []library.Collection{}, Files: []library.File{}, Pages: []library.Page{}}
@@ -125,8 +135,7 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 		}
 		refs := map[string]string{}
 		for _, input := range parsed.Inputs {
-			name := digest(input.Bytes) + "-" + filepath.Base(input.Name)
-			ref, err := archive.Write(archiveDir, opts.Source, name, input.Bytes)
+			ref, err := preserveLibraryInput(archiveDir, opts.Source, input)
 			if err != nil {
 				return result, fail.Opf("preserve %s: %w", input.Name, err)
 			}
@@ -161,8 +170,17 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 			replace(&parsed.Batch.Pages[i].Provenance)
 		}
 		result.ImportResult, err = st.ImportLibrary(ctx, parsed.Batch)
-		return result, fail.Op(err)
+		return result, importFailure(err)
 	})
+}
+
+func importFailure(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.Is(err, library.ErrConflict) || errors.Is(err, library.ErrInvalid) ||
+		(errors.As(err, &pgErr) && (strings.HasPrefix(pgErr.Code, "22") || strings.HasPrefix(pgErr.Code, "23") || pgErr.Code == "54000")) {
+		return err
+	}
+	return fail.Op(err)
 }
 
 func parseBundle(inputPath string, opts Options) (Parsed, error) {

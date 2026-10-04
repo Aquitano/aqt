@@ -10,9 +10,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/inbox"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/apps/bank/internal/youtube"
@@ -532,6 +535,57 @@ func TestNetflixImportPreservesRawAndReplays(t *testing.T) {
 	}
 }
 
+func TestLibraryRawInputsStayOutsideLegacyYouTubeReplay(t *testing.T) {
+	st := storetest.New(t)
+	root := t.TempDir()
+	archiveDir := filepath.Join(root, "archive")
+	ctx := context.Background()
+	history := fixture(t, root, "watch-history.json", `[{"title":"Watched Legacy video","titleUrl":"https://www.youtube.com/watch?v=legacy","time":"2026-10-02T12:00:00Z"}]`)
+	if result, err := youtube.Import(ctx, st, archiveDir, history); err != nil || result.Inserted != 1 {
+		t.Fatalf("legacy history import: %+v %v", result, err)
+	}
+	playlist := fixture(t, root, "playlist.csv", "Video ID,Video Title\nnew-video,Playlist video\n")
+	if _, err := Import(ctx, st, nil, archiveDir, "youtube-media", playlist, Options{Account: "owner"}); err != nil {
+		t.Fatal(err)
+	}
+	notes := filepath.Join(root, "notes")
+	fixture(t, notes, "page.md", "# Selected page\nPublished body\n")
+	publication, err := BuildPublication(notes, Options{Source: "youtube", Account: "wiki"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Publish(ctx, st, archiveDir, publication); err != nil {
+		t.Fatal(err)
+	}
+	collections, err := st.ListLibraryCollections(ctx, library.ListOptions{Source: "youtube", Account: "owner"})
+	if err != nil || len(collections) != 1 || collections[0].Snapshot == nil {
+		t.Fatalf("imported collection: %+v %v", collections, err)
+	}
+	pages, err := st.ListLibraryPages(ctx, library.ListOptions{Source: "youtube", Account: "wiki"})
+	if err != nil || len(pages) != 1 {
+		t.Fatalf("published page: %+v %v", pages, err)
+	}
+	for _, ref := range []string{collections[0].Snapshot.Provenance.RawRef, pages[0].Provenance.RawRef} {
+		if !strings.HasPrefix(ref, "library/youtube/") || strings.Contains(ref, "\\") {
+			t.Fatalf("library input has an incompatible archive reference: %s", ref)
+		}
+		if _, err := os.ReadFile(filepath.Join(archiveDir, filepath.FromSlash(ref))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entries, err := archive.List(archiveDir, "youtube")
+	if err != nil || len(entries) != 1 || entries[0].Name != "watch-history.json" {
+		t.Fatalf("library inputs entered legacy replay: %+v %v", entries, err)
+	}
+	staged, err := archive.Stage(archiveDir, entries[0], t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := youtube.Import(ctx, st, archiveDir, staged); err != nil || result.Inserted != 0 || result.Duplicates != 1 {
+		t.Fatalf("legacy history replay: %+v %v", result, err)
+	}
+}
+
 func TestMarkdownPublicationRevokesReclassifiedPages(t *testing.T) {
 	st := storetest.New(t)
 	root := t.TempDir()
@@ -556,7 +610,7 @@ func TestMarkdownPublicationRevokesReclassifiedPages(t *testing.T) {
 	if len(pages) != 0 {
 		t.Fatal("reclassified page remains searchable")
 	}
-	entries, err := os.ReadDir(filepath.Join(archiveDir, "markdown"))
+	entries, err := os.ReadDir(filepath.Join(archiveDir, "library", "markdown"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -590,12 +644,77 @@ func TestPublicationFailureKeepsPriorPagesAndRejectsSecretBytes(t *testing.T) {
 	if len(pages) != 1 || pages[0].Title != "Published" || !strings.Contains(pages[0].Body, "Original body") {
 		t.Fatalf("failed publication changed prior pages: %+v", pages)
 	}
-	entries, err := os.ReadDir(filepath.Join(archiveDir, "markdown"))
+	entries, err := os.ReadDir(filepath.Join(archiveDir, "library", "markdown"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(entries) != 1 {
 		t.Fatal("archived unvalidated confidential bytes")
+	}
+}
+
+func TestInboxRejectsInvalidLibraryRecordsAndContinues(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	root := t.TempDir()
+	item := library.Item{Identity: library.Identity{Source: "example", ExternalID: "existing"}, Kind: "movie", Title: "Existing"}
+	item.ID = library.StableID("item", item.Identity)
+	event := library.Activity{Identity: library.Identity{Source: "example", ExternalID: "event"}, ItemID: item.ID, Kind: "watch", Occurred: library.Date{Precision: "day", Value: "2026-10-01"}}
+	if _, err := st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Items: []library.Item{item}, Activity: []library.Activity{event}}); err != nil {
+		t.Fatal(err)
+	}
+	missing := event
+	missing.ExternalID = "missing"
+	missing.ItemID = "item_missing"
+	mismatch := item
+	mismatch.ID = "item_wrong"
+	conflict := event
+	conflict.Occurred.Value = "2026-10-02"
+	good := item
+	good.ExternalID = "good"
+	good.ID = ""
+	nul := good
+	nul.ExternalID = "nul"
+	nul.Title = "bad\x00title"
+	inputs := map[string]library.ImportBatch{
+		"a-missing.json":  {Version: 1, Activity: []library.Activity{missing}},
+		"b-mismatch.json": {Version: 1, Items: []library.Item{mismatch}},
+		"c-conflict.json": {Version: 1, Activity: []library.Activity{conflict}},
+		"d-nul.json":      {Version: 1, Items: []library.Item{nul}},
+		"e-good.json":     {Version: 1, Items: []library.Item{good}},
+	}
+	inboxDir := filepath.Join(root, "inbox")
+	for name, batch := range inputs {
+		raw, err := json.Marshal(batch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := fixture(t, filepath.Join(inboxDir, "library"), name, string(raw))
+		settled := time.Now().Add(-time.Hour)
+		if err := os.Chtimes(path, settled, settled); err != nil {
+			t.Fatal(err)
+		}
+	}
+	invalidCSV := fixture(t, filepath.Join(inboxDir, "netflix"), "invalid-encoding.csv", "Title,Date\nCaf\xe9 Show,2026-10-01\n")
+	settled := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(invalidCSV, settled, settled); err != nil {
+		t.Fatal(err)
+	}
+	route := func(ctx context.Context, kind, path string) (inbox.Outcome, error) {
+		result, err := Import(ctx, st, nil, filepath.Join(root, "archive"), kind, path, Options{})
+		return inbox.Outcome{Inserted: result.Items + result.Activity, Duplicates: result.Duplicates}, err
+	}
+	result, err := inbox.Sweep(ctx, inboxDir, route)
+	if err != nil || result.Rejected != 5 || result.Imported != 1 || result.Failed != 0 {
+		t.Fatalf("invalid input stalled the inbox: %+v %v", result, err)
+	}
+	second, err := inbox.Sweep(ctx, inboxDir, route)
+	if err != nil || len(second.Files) != 0 {
+		t.Fatalf("rejected input retried: %+v %v", second, err)
+	}
+	rows, err := st.ListLibraryItems(ctx, library.ListOptions{Source: "example"})
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("valid input was not preserved: %+v %v", rows, err)
 	}
 }
 

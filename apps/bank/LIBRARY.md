@@ -20,6 +20,8 @@ The SVG diagrams and web UI are views. They do not hold the archive. Back up the
 
 There is no new service or second search database. The existing Go binary serves the API and embedded React UI. Postgres stores structured records, and the existing blob store holds files.
 
+New library imports and Markdown publications preserve their original inputs under `archive/library/<source>/`. Correspondence reimports read their existing source directories separately. Earlier library references remain valid.
+
 ## Import media and files
 
 ```sh
@@ -38,6 +40,8 @@ The Netflix importer accepts CSV `Title` and `Date` columns. Slash dates default
 Netflix supplies no stable event ID in this export. Bank identifies observations by their exact title, date, and occurrence number within matching rows. Reordered and overlapping exports reuse these identities while repeated rows within one export remain separate observations. Earlier file-based records retain their IDs and provenance. Aliases let new imports reuse matching earlier observations without deleting ambiguous historical duplicates. Localized or changed titles remain separate identities.
 
 The `youtube-media` importer reads Takeout ZIP files, extracted directories, watch-history JSON or HTML, and supported playlist or music library CSV/JSON files. Selected input bytes are limited to 512 MiB in total. It prefers JSON history when both history formats exist. Playlist snapshots preserve repeated songs, exported positions, and complete, partial, or unknown coverage. The existing `youtube` importer remains available for its message representation.
+
+HTML timestamp parsing depends on the importing machine's timezone. Prefer JSON history when moving imports between machines with different timezone settings.
 
 The local inbox accepts `netflix`, `youtube-media`, and `library` directories in addition to its existing source directories. Use direct imports with `--account` for multiple profiles. HTTP imports accept files; package a Takeout directory as a ZIP for a remote Bank.
 
@@ -76,6 +80,8 @@ bank library snapshots collection_ID
 ```
 
 Correspondence-specific filters such as sender, recipient, mailbox, and contact restrict combined search to correspondence. Account filters restrict it to the library because mail has a different account model. Message fuzzy matching stays in ParadeDB; library text search uses Postgres full-text indexes. Scores from these indexes are not treated as comparable. Date filters apply to correspondence, dated activity, and message attachments. Items, collections, standalone files, and pages have no event date, so they remain unfiltered by those dates. Undated activity is excluded when a date filter is present. Bank rejects combinations of correspondence filters with a library kind or account.
+
+Pages, notes and extracted text retain their full contents when they exceed PostgreSQL's vector limit. Search parses the selected oversized text for each query, so its cost grows with those documents.
 
 The UI can add titles, edit personal tracking state, create playlists and watchlists, reorder entries, copy imported collections into personal ones, upload files, and inspect imported history. Imported playlists stay read-only so an export and a personal edit cannot silently replace each other.
 

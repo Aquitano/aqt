@@ -135,8 +135,7 @@ func Publish(ctx context.Context, st *store.Store, archiveDir string, publicatio
 		pages := append([]library.Page{}, publication.Pages...)
 		refs := map[string]string{}
 		for _, input := range publication.Inputs {
-			name := digest(input.Bytes) + "-" + filepath.Base(input.Name)
-			ref, err := archive.Write(archiveDir, publication.Source, name, input.Bytes)
+			ref, err := preserveLibraryInput(archiveDir, publication.Source, input)
 			if err != nil {
 				return result, fail.Opf("preserve %s: %w", input.Name, err)
 			}
@@ -147,6 +146,6 @@ func Publish(ctx context.Context, st *store.Store, archiveDir string, publicatio
 		}
 		var err error
 		result.ImportResult, err = st.PublishLibraryPages(ctx, publication.Source, publication.Account, pages)
-		return result, fail.Op(err)
+		return result, importFailure(err)
 	})
 }

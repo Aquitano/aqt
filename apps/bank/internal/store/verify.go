@@ -97,7 +97,7 @@ func (s *Store) EachArchivedLibraryRecord(ctx context.Context, source string, fn
 	rows, err := s.pool.Query(ctx, `
   select id,kind,raw_refs,snapshot,sha256,size_bytes from (
    select i.id,'item' as kind,i.source,array(select distinct ref from (select coalesce(i.provenance->>'raw_ref','') as ref union select e.raw_ref from library_item_evidence e where e.item_id=i.id) evidence where ref<>'') as raw_refs,'' as snapshot,'' as sha256,0::bigint as size_bytes from library_items i
-   union all select id,'activity',source,array[coalesce(provenance->>'raw_ref','')],'','',0::bigint from library_activity
+   union all select a.id,'activity',a.source,array(select distinct ref from (select coalesce(a.provenance->>'raw_ref','') as ref union select e.raw_ref from library_activity_evidence e where e.activity_id=a.id) evidence where ref<>''),'','',0::bigint from library_activity a
    union all select c.id,'collection',c.source,array[coalesce(s.provenance->>'raw_ref','')],s.external_id,'',0::bigint from library_snapshots s join library_collections c on c.id=s.collection_id
    union all select id,'file',source,array[coalesce(provenance->>'raw_ref','')],'',sha256,size_bytes from library_files
    union all select id,'page',source,array[coalesce(provenance->>'raw_ref','')],'','',0::bigint from library_pages

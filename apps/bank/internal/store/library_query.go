@@ -15,9 +15,10 @@ import (
 const librarySnapshotJSON = `(to_jsonb(s)-'collection_id') || jsonb_build_object('entries',coalesce((select jsonb_agg(to_jsonb(e)-'snapshot_id' order by e.position) from library_entries e where e.snapshot_id=s.id),'[]'::jsonb))`
 const librarySnapshotSummaryJSON = `(to_jsonb(s)-'collection_id') || jsonb_build_object('entry_count',(select count(*) from library_entries e where e.snapshot_id=s.id))`
 const librarySnapshotOrder = `case s.captured->>'precision' when 'instant' then (s.captured->>'value')::timestamptz when 'day' then (s.captured->>'value')::date::timestamp at time zone 'UTC' end desc nulls last,s.id desc`
+const libraryCurrentSnapshot = `s.collection_id=r.id and (not r.personal or s.id=(select e.snapshot_id from library_collection_edits e where e.collection_id=r.id and e.revision=r.revision))`
 const libraryItemJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('evidence',coalesce((select jsonb_agg(jsonb_build_object('raw_ref',e.raw_ref,'locator',e.locator) order by e.raw_ref,e.locator) from library_item_evidence e where e.item_id=r.id),'[]'::jsonb),'state',coalesce((select to_jsonb(st)-'item_id' from library_state st where st.item_id=r.id),'{"revision":0,"status":"","favorite":false,"progress":0,"progress_unit":"","notes":"","tags":[]}'::jsonb),'file_ids',coalesce((select jsonb_agg(f.file_id order by f.file_id) from library_item_files f where f.item_id=r.id),'[]'::jsonb))`
-const libraryCollectionJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('snapshot',(select ` + librarySnapshotJSON + ` from library_snapshots s where s.collection_id=r.id order by ` + librarySnapshotOrder + ` limit 1))`
-const libraryCollectionSummaryJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('snapshot',(select ` + librarySnapshotSummaryJSON + ` from library_snapshots s where s.collection_id=r.id order by ` + librarySnapshotOrder + ` limit 1))`
+const libraryCollectionJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('snapshot',(select ` + librarySnapshotJSON + ` from library_snapshots s where ` + libraryCurrentSnapshot + ` order by ` + librarySnapshotOrder + ` limit 1))`
+const libraryCollectionSummaryJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('snapshot',(select ` + librarySnapshotSummaryJSON + ` from library_snapshots s where ` + libraryCurrentSnapshot + ` order by ` + librarySnapshotOrder + ` limit 1))`
 const libraryActivityJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('evidence',coalesce((select jsonb_agg(jsonb_build_object('raw_ref',e.raw_ref,'locator',e.locator) order by e.raw_ref,e.locator) from library_activity_evidence e where e.activity_id=r.id),'[]'::jsonb))`
 const libraryFileJSON = `(to_jsonb(r)-'search_text'-'ingested_at') || jsonb_build_object('item_ids',coalesce((select jsonb_agg(f.item_id order by f.item_id) from library_item_files f where f.file_id=r.id),'[]'::jsonb),'text_status',coalesce((select status from blob_text where sha256=r.sha256),'pending'))`
 
@@ -31,6 +32,8 @@ func libraryProjection(table string) string {
 		return libraryActivityJSON
 	case "library_files":
 		return libraryFileJSON
+	case "library_pages":
+		return "to_jsonb(r)-'search_text'-'search_vector'"
 	default:
 		return "to_jsonb(r)-'search_text'"
 	}
@@ -88,11 +91,19 @@ func listLibrary[T any](ctx context.Context, s *Store, table string, o library.L
 			predicate = "(to_tsvector('simple',r.search_text || ' ' || regexp_replace(r.filename,'[._-]+',' ','g')) || coalesce(bt.search_vector,''::tsvector)) @@ " + match
 		}
 		if table == "library_items" {
-			stateVector := "to_tsvector('simple',st.notes || ' ' || array_to_string(st.tags,' '))"
+			document := "st.notes || ' ' || array_to_string(st.tags,' ')"
 			if o.Match == "all" {
-				stateVector = "(to_tsvector('simple',r.search_text) || " + stateVector + ")"
+				document = "r.search_text || ' ' || " + document
 			}
+			stateVector := "coalesce(blob_text_search_vector(" + document + "),blob_text_query_vector(" + document + "," + q + "))"
 			predicate = "(" + predicate + " or exists(select 1 from library_state st where st.item_id=r.id and " + stateVector + " @@ " + match + "))"
+		}
+		if table == "library_pages" {
+			filters := strings.Join(clauses, " and ")
+			ctes = "with oversized_pages as materialized(select r.id,r.search_text from library_pages r where " + filters + " and r.search_vector is null), page_matches as materialized(select r.id from library_pages r where " + filters + " and r.search_vector @@ " + match + " union all select id from oversized_pages where blob_text_query_vector(search_text," + q + ") @@ " + match + ") "
+			from = "library_pages r join page_matches matched on matched.id=r.id"
+			clauses = []string{"true"}
+			predicate = "true"
 		}
 		clauses = append(clauses, predicate)
 	}

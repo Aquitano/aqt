@@ -75,6 +75,35 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 	}
 }
 
+func TestLibraryStateRejectsInvalidTextWithoutAdvancingRevision(t *testing.T) {
+	s, st := attachmentServer(t)
+	item := library.Item{Identity: library.Identity{Source: "manual", ExternalID: "invalid-notes"}, Kind: "movie", Title: "Example"}
+	if _, err := st.ImportLibrary(context.Background(), library.ImportBatch{Version: 1, Items: []library.Item{item}}); err != nil {
+		t.Fatal(err)
+	}
+	token, err := NewToken(s.dataDir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := s.Handler()
+	for _, test := range []struct {
+		notes string
+		code  int
+	}{{"bad\x00notes", 400}, {"valid notes", 200}} {
+		body, err := json.Marshal(library.StateEdit{Notes: test.notes})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest("PUT", "/v1/library/items/"+library.StableID("item", item.Identity)+"/state", bytes.NewReader(body))
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != test.code {
+			t.Fatalf("notes %q: %d %s", test.notes, w.Code, w.Body)
+		}
+	}
+}
+
 func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
 	s, st := attachmentServer(t)
 	token, err := NewToken(s.dataDir, "test")

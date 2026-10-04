@@ -15,7 +15,7 @@ import (
 func libraryID(kind string, identity library.Identity, supplied string) (string, error) {
 	id := library.StableID(kind, identity)
 	if supplied != "" && supplied != id {
-		return "", fmt.Errorf("%s id does not match its source identity", kind)
+		return "", fmt.Errorf("%s id does not match its source identity: %w", kind, library.ErrInvalid)
 	}
 	return id, nil
 }
