@@ -56,13 +56,14 @@ Provider thread IDs remain authoritative. Generic mail uses deterministic derive
 ```
 blobs/ab/abcdef…        content-addressed attachments (sha256, two-char fan-out)
 archive/<source>/.mail-contexts/<sha256>.json  immutable mail provenance, included in backups
-archive/<source>/…      raw inputs exactly as received (mbox, zips, CSV, EML) — re-ingestable forever.
-                        The one exception: a YouTube Takeout archives only its history file — the
-                        rest of the export is other sources' data, archived under their own names
+archive/<source>/…      raw correspondence inputs (mbox, zips, CSV, EML)
+archive/library/<source>/…  raw library imports and Markdown publications
 inbox/<kind>/           drop zone for manual exports; `bank import inbox` sweeps supported import kinds
 inbox/.done/<kind>/     processed exports, including duplicates
 inbox/.rejected/<kind>/ exports the importer could not read; operational failures stay in the drop zone
 ```
+
+The `youtube` correspondence importer archives only the Takeout history file. Library inputs stay separate from correspondence replay. Earlier raw references remain valid.
 
 ## CLI
 
