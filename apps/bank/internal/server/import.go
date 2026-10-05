@@ -121,6 +121,9 @@ func (s *Server) extractAfterImport(received time.Time) {
 	if !s.extraction.running || received.Before(s.extraction.since) {
 		s.extraction.since = received
 	}
+	if s.extraction.arrived.IsZero() || received.Before(s.extraction.arrived) {
+		s.extraction.arrived = received
+	}
 	if s.extraction.running {
 		s.extraction.again = true
 		return
@@ -134,23 +137,25 @@ type extraction struct {
 	running bool
 	again   bool
 	since   time.Time
+	arrived time.Time
 	done    sync.WaitGroup
 }
 
 // extractUntilCurrent refreshes, after each pass, only what changed since the
 // previous pass started, which is earlier than that pass's own refresh and so
-// leaves no gap. A cutoff lowered by a late-finishing upload restarts that
-// window from the new cutoff.
+// leaves no gap. An upload commits before it schedules extraction, so one that
+// committed after a refresh is covered by starting the next window no later
+// than its arrival.
 func (s *Server) extractUntilCurrent() {
-	var previous, refreshSince time.Time
+	var refreshSince time.Time
 	for {
 		s.extraction.mu.Lock()
 		since := s.extraction.since
-		s.extraction.mu.Unlock()
-		if previous.IsZero() || since.Before(previous) {
-			refreshSince = since
+		if arrived := s.extraction.arrived; !arrived.IsZero() && (refreshSince.IsZero() || arrived.Before(refreshSince)) {
+			refreshSince = arrived
 		}
-		previous = since
+		s.extraction.arrived = time.Time{}
+		s.extraction.mu.Unlock()
 		started := time.Now()
 		backlog := s.extractPending(context.Background(), since, refreshSince)
 		refreshSince = started
