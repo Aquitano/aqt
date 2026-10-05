@@ -223,16 +223,19 @@ func (s *Store) KnownAttachment(ctx context.Context, sha256 string) (bool, error
 // extracted, and text corrected by hand, without any of them needing to know
 // about the others.
 //
-// A non-zero since limits it to messages with attachments stored at or after
-// since, which is all the passes after an upload can have changed.
+// A non-zero since limits it to messages with an attachment stored or
+// extracted at or after since, which is all a pass after an upload can have
+// changed, including older messages sharing content it just read.
 func (s *Store) RefreshAttachmentText(ctx context.Context, since time.Time) (int64, error) {
 	args := []any{MaxAttachmentTextChars}
 	scope := ""
 	if !since.IsZero() {
 		args = append(args, since)
 		scope = `where a.message_id in (
-				select s.message_id from attachments s join messages sm on sm.id = s.message_id
-				where coalesce(s.ingested_at, sm.ingested_at) >= $2)`
+				select s.message_id from attachments s
+				join messages sm on sm.id = s.message_id
+				left join blob_text st on st.sha256 = s.sha256
+				where coalesce(s.ingested_at, sm.ingested_at) >= $2 or st.extracted_at >= $2)`
 	}
 	tag, err := s.pool.Exec(ctx, `
 		update messages m

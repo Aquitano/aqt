@@ -36,6 +36,9 @@ type Selection struct {
 	// order would spend the whole batch before reaching it.
 	NewestFirst bool
 	StoredSince time.Time
+	// RefreshSince limits the closing refresh to messages whose attachments
+	// were stored or extracted since it; zero refreshes every message.
+	RefreshSince time.Time
 }
 
 // Summary is what a run did, in the shape `--json` prints.
@@ -125,7 +128,7 @@ func Run(ctx context.Context, a Archive, sel Selection, o Options, progress func
 	// Always refresh, even when nothing was extracted: a message imported
 	// after its attachment's text was already known still needs the text
 	// copied onto its row.
-	if sum.Reindexed, err = a.RefreshAttachmentText(ctx, sel.StoredSince); err != nil {
+	if sum.Reindexed, err = a.RefreshAttachmentText(ctx, sel.RefreshSince); err != nil {
 		return sum, err
 	}
 	return sum, nil

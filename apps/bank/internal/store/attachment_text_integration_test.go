@@ -161,21 +161,27 @@ func TestRefreshAttachmentTextSharesOneExtractionAcrossMessages(t *testing.T) {
 	}
 }
 
-func TestRefreshAttachmentTextSinceSkipsOlderMessages(t *testing.T) {
+// A scoped refresh reaches recent messages and older ones sharing freshly
+// extracted content, and leaves the rest to a full refresh.
+func TestRefreshAttachmentTextSinceCoversRecentChanges(t *testing.T) {
 	ctx := context.Background()
 	st, schema := storetest.NewNamed(t)
-	older := seedMessage(t, st, "m1", "first mail", "invoice.pdf", digestA)
+	sharing := seedMessage(t, st, "m1", "first mail", "invoice.pdf", digestA)
 	seedMessage(t, st, "m2", "forwarded", "invoice.pdf", digestA)
-	storetest.Exec(t, schema, `update attachments set ingested_at = now() - interval '1 hour' where message_id = $1`, older)
-	if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestA, Text: "netherfield", Extractor: "pdf", Status: "ok"}); err != nil {
-		t.Fatal(err)
+	untouched := seedMessage(t, st, "m3", "old mail", "scan.pdf", digestB)
+	for _, digest := range []string{digestA, digestB} {
+		if err := st.PutBlobText(ctx, store.BlobText{SHA256: digest, Text: "netherfield", Extractor: "pdf", Status: "ok"}); err != nil {
+			t.Fatal(err)
+		}
 	}
+	storetest.Exec(t, schema, `update attachments set ingested_at = now() - interval '1 hour' where message_id in ($1, $2)`, sharing, untouched)
+	storetest.Exec(t, schema, `update blob_text set extracted_at = now() - interval '1 hour' where sha256 = $1`, digestB)
 
-	if n, err := st.RefreshAttachmentText(ctx, time.Now().Add(-time.Minute)); err != nil || n != 1 {
-		t.Fatalf("scoped refresh: %d rows, %v; want only the recent message", n, err)
+	if n, err := st.RefreshAttachmentText(ctx, time.Now().Add(-time.Minute)); err != nil || n != 2 {
+		t.Fatalf("scoped refresh: %d rows, %v; want the recent message and the one sharing its content", n, err)
 	}
 	if n, err := st.RefreshAttachmentText(ctx, time.Time{}); err != nil || n != 1 {
-		t.Fatalf("full refresh: %d rows, %v; want the older message left behind", n, err)
+		t.Fatalf("full refresh: %d rows, %v; want only the untouched message left", n, err)
 	}
 }
 

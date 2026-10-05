@@ -137,12 +137,23 @@ type extraction struct {
 	done    sync.WaitGroup
 }
 
+// extractUntilCurrent refreshes, after each pass, only what changed since the
+// previous pass started, which is earlier than that pass's own refresh and so
+// leaves no gap. A cutoff lowered by a late-finishing upload restarts that
+// window from the new cutoff.
 func (s *Server) extractUntilCurrent() {
+	var previous, refreshSince time.Time
 	for {
 		s.extraction.mu.Lock()
 		since := s.extraction.since
 		s.extraction.mu.Unlock()
-		backlog := s.extractPending(context.Background(), since)
+		if previous.IsZero() || since.Before(previous) {
+			refreshSince = since
+		}
+		previous = since
+		started := time.Now()
+		backlog := s.extractPending(context.Background(), since, refreshSince)
+		refreshSince = started
 		s.extraction.mu.Lock()
 		again := backlog || s.extraction.again
 		s.extraction.again = false
@@ -154,10 +165,10 @@ func (s *Server) extractUntilCurrent() {
 	}
 }
 
-func (s *Server) extractPending(ctx context.Context, since time.Time) (backlog bool) {
+func (s *Server) extractPending(ctx context.Context, since, refreshSince time.Time) (backlog bool) {
 	o := extract.DefaultOptions()
 	o.TempDir = uploadStagingDir(s.dataDir)
-	sel := extract.Selection{Limit: extract.PostImportLimit, NewestFirst: true, StoredSince: since}
+	sel := extract.Selection{Limit: extract.PostImportLimit, NewestFirst: true, StoredSince: since, RefreshSince: refreshSince}
 	summary, err := extract.Run(ctx, extract.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bank: reading attachment text: %v\n", err)
