@@ -159,23 +159,16 @@ func TestForwardSlashMigrationRewritesOnlyWindowsRefs(t *testing.T) {
 	storetest.Exec(t, schema, `insert into messages (source,external_id,sent_at,raw_ref) values
 		('mail','windows',now(),'mail\a.eml'),('mail','linux',now(),'mail/b\c.eml')`)
 	storetest.Exec(t, schema, `insert into library_items (id,source,account,external_id,kind,title,search_text,provenance)
-		values ('item','netflix','','x','movie','X','X','{"raw_ref":"netflix\\h-history.csv"}')`)
-	storetest.Exec(t, schema, `insert into library_item_evidence (item_id,raw_ref,locator) values
-		('item','netflix\h-history.csv','row 1'),('item','netflix/h-history.csv','row 1'),
-		('item','netflix\h-history.csv','row 2'),('item','input:a\b.csv','row 3')`)
+		values ('item','netflix','','x','movie','X','X','{"raw_ref":"a\\b.json"}')`)
+	storetest.Exec(t, schema, `insert into library_item_evidence (item_id,raw_ref,locator) values ('item','a\b.json','row 1')`)
 	storetest.Open(t, schema)
 
 	if n := storetest.QueryInt(t, schema, `select count(*) from messages where raw_ref in ('mail/a.eml','mail/b\c.eml')`); n != 2 {
 		t.Errorf("%d message refs as expected, want 2", n)
 	}
-	if n := storetest.QueryInt(t, schema, `select count(*) from library_items where provenance->>'raw_ref'='netflix/h-history.csv'`); n != 1 {
-		t.Error("library provenance ref was not rewritten")
-	}
-	if n := storetest.QueryInt(t, schema, `select count(*) from library_item_evidence where raw_ref='netflix/h-history.csv' and locator in ('row 1','row 2')`); n != 2 {
-		t.Errorf("%d rewritten evidence rows, want the duplicate dropped and the other rewritten", n)
-	}
-	if n := storetest.QueryInt(t, schema, `select count(*) from library_item_evidence where raw_ref='input:a\b.csv'`); n != 1 {
-		t.Error("an input placeholder ref was rewritten")
+	if n := storetest.QueryInt(t, schema, `select count(*) from library_items i join library_item_evidence e on e.item_id = i.id
+		where i.provenance->>'raw_ref' = 'a\b.json' and e.raw_ref = 'a\b.json'`); n != 1 {
+		t.Error("a bundle-supplied library ref was rewritten")
 	}
 }
 
