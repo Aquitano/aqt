@@ -193,9 +193,7 @@ func (s *Store) projectMail(ctx context.Context, id int64, projection MailProjec
 	}
 	if !apply {
 		if preview != nil && !result.Incomplete {
-			if err := preview.remember(id, edges, members, components, history); err != nil {
-				return result, err
-			}
+			preview.remember(id, edges, members, components, history)
 			preview.headers[id] = mailHeaders{MessageID: projection.MessageID, RawRef: projection.RawRef, InReplyTo: projection.InReplyTo, References: projection.References}
 		}
 		return result, nil

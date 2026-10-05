@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/mail"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -29,6 +30,7 @@ type RebuildReport struct {
 	Conflicts      int      `json:"conflicts"`
 	Incomplete     int      `json:"incomplete"`
 	Invalid        int      `json:"invalid"`
+	PreviewResets  int      `json:"preview_resets,omitempty"`
 	Issues         []string `json:"issues"`
 }
 
@@ -87,6 +89,9 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 				}
 			}
 			id, err := st.ResolveMailMessage(ctx, source, message.MessageID, externalID)
+			if err == nil && id == 0 && record.ExternalID == "" && source == "gmail" && record.InputKind == "eml" {
+				id, err = st.FindMessageID(ctx, source, strings.TrimSuffix(path.Base(record.RawRef), ".eml"))
+			}
 			if err != nil {
 				return err
 			}
@@ -183,6 +188,7 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 			return report, err
 		}
 	}
+	report.PreviewResets = preview.Resets
 	if report.Invalid > 0 {
 		return report, fmt.Errorf("%d invalid archive inputs; see rebuild issues", report.Invalid)
 	}

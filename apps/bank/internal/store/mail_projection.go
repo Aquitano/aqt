@@ -68,18 +68,20 @@ func persistMailboxObservation(ctx context.Context, transaction pgx.Tx, message 
 
 func persistMailComponents(ctx context.Context, transaction pgx.Tx, source string, components []mailComponent, history []mailHistory) error {
 	for _, component := range components {
-		if _, err := transaction.Exec(ctx, `update mail_thread_nodes set thread_id=$3,conflict_key=$4 where source=$1 and node_key=any($2)`, source, component.Keys, component.ThreadID, component.Conflict); err != nil {
+		if _, err := transaction.Exec(ctx, `update mail_thread_nodes set thread_id=$3,conflict_key=$4 where source=$1 and node_key=any($2) and (thread_id,conflict_key) is distinct from ($3,$4)`, source, component.Keys, component.ThreadID, component.Conflict); err != nil {
 			return err
 		}
 		if _, err := transaction.Exec(ctx, `update messages m set thread_id=case when $4<>'' then d.native_thread_id else $3 end
-			from mail_details d where d.message_id=m.id and d.source=$1 and d.node_key=any($2)`, source, component.Keys, component.ThreadID, component.Conflict); err != nil {
+			from mail_details d where d.message_id=m.id and d.source=$1 and d.node_key=any($2)
+			and m.thread_id is distinct from case when $4<>'' then d.native_thread_id else $3 end`, source, component.Keys, component.ThreadID, component.Conflict); err != nil {
 			return err
 		}
 		batch := &pgx.Batch{}
 		for _, key := range component.Keys {
 			batch.Queue(`insert into mail_thread_aliases(source,old_id,current_id,conflict_key)
 				select $1,$2,nullif($3,''),nullif($4,'') where not exists(select 1 from mail_details where source=$1 and native_thread_id=$2)
-				on conflict(source,old_id) do update set current_id=excluded.current_id,conflict_key=excluded.conflict_key`, source, mailDerivedID(key), component.ThreadID, component.Conflict)
+				on conflict(source,old_id) do update set current_id=excluded.current_id,conflict_key=excluded.conflict_key
+				where (mail_thread_aliases.current_id,mail_thread_aliases.conflict_key) is distinct from (excluded.current_id,excluded.conflict_key)`, source, mailDerivedID(key), component.ThreadID, component.Conflict)
 		}
 		if err := transaction.SendBatch(ctx, batch).Close(); err != nil {
 			return err

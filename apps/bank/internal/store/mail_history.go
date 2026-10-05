@@ -98,7 +98,8 @@ func persistMailHistory(ctx context.Context, transaction pgx.Tx, source string, 
 	for _, record := range history {
 		keys = append(keys, record.Key)
 		batch.Queue(`insert into mail_thread_conflicts(source,conflict_key,node_keys) values($1,$2,$3)
-			on conflict(source,conflict_key) do update set node_keys=excluded.node_keys`, source, record.Key, record.Nodes)
+			on conflict(source,conflict_key) do update set node_keys=excluded.node_keys
+			where mail_thread_conflicts.node_keys is distinct from excluded.node_keys`, source, record.Key, record.Nodes)
 	}
 	if err := transaction.SendBatch(ctx, batch).Close(); err != nil {
 		return err
@@ -130,6 +131,7 @@ func persistMailHistory(ctx context.Context, transaction pgx.Tx, source string, 
 		}
 		batch.Queue(`update mail_thread_aliases a set current_id=nullif($3,''),conflict_key=nullif($4,'')
 			where a.source=$1 and (a.conflict_key=$2 or a.old_id=$5)
+			and (a.current_id,a.conflict_key) is distinct from (nullif($3,''),nullif($4,''))
 			and not exists(select 1 from mail_details where source=$1 and native_thread_id=a.old_id)`, source, destination.Key, destination.Thread, conflict, oldID)
 	}
 	return transaction.SendBatch(ctx, batch).Close()

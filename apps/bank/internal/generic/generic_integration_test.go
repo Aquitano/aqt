@@ -14,9 +14,6 @@ import (
 )
 
 func TestImportHealsAttachmentsOnReimport(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions, so blob writes cannot be made to fail")
-	}
 	ctx := context.Background()
 	st, schema := storetest.NewNamed(t)
 
@@ -33,14 +30,17 @@ func TestImportHealsAttachmentsOnReimport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(blobRoot, 0o700) })
 
 	input := []byte(fmt.Sprintf(
 		`[{"external_id":"note-1","body":"quarterly report","attachments":[{"path":%q},{"path":%q}]}]`,
 		first, second))
 	now := time.Date(2024, 5, 13, 21, 8, 0, 0, time.UTC)
 
-	if err := os.Chmod(blobRoot, 0o500); err != nil {
+	parked := blobRoot + ".parked"
+	if err := os.Rename(blobRoot, parked); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(blobRoot, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	res, err := Import(ctx, st, blobs, "notes", "json/one.json", input, now, true)
@@ -58,7 +58,10 @@ func TestImportHealsAttachmentsOnReimport(t *testing.T) {
 		t.Fatalf("message not found: %d %v", id, err)
 	}
 
-	if err := os.Chmod(blobRoot, 0o700); err != nil {
+	if err := os.Remove(blobRoot); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(parked, blobRoot); err != nil {
 		t.Fatal(err)
 	}
 	res, err = Import(ctx, st, blobs, "notes", "json/one.json", input, now, true)
