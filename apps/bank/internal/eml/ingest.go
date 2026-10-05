@@ -186,10 +186,15 @@ func syncAttachments(ctx context.Context, st *store.Store, blobs *blob.Store, me
 	for _, a := range atts {
 		sum := sha256.Sum256(a.Data)
 		digest := hex.EncodeToString(sum[:])
-		if key := store.AttachmentKey(digest, a.Filename); have[key] > 0 {
+		key := store.AttachmentKey(digest, a.Filename)
+		recorded := have[key] > 0
+		if recorded {
 			have[key]--
-		} else if _, _, err := blobs.Put(bytes.NewReader(a.Data)); err != nil {
-			return fail.Opf("store attachment %q: %w", a.Filename, err)
+		}
+		if _, statErr := os.Stat(blobs.Path(digest)); !recorded || statErr != nil {
+			if _, _, err := blobs.Put(bytes.NewReader(a.Data)); err != nil {
+				return fail.Opf("store attachment %q: %w", a.Filename, err)
+			}
 		}
 		attachments = append(attachments, store.Attachment{
 			MessageID: messageID,

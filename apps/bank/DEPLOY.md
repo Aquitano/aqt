@@ -81,12 +81,13 @@ docker compose run --rm bank token list
 
 ```sh
 cd /opt/aqt-bank
-docker compose exec -T db pg_dump -U bank -Fc bank > /data/backup/bank.dump
-git pull
-docker compose up -d --build
+docker compose exec -T db pg_dump -U bank -Fc bank > /data/backup/pre-upgrade.dump.tmp &&
+    mv /data/backup/pre-upgrade.dump.tmp /data/backup/pre-upgrade.dump &&
+    git pull &&
+    docker compose up -d --build
 ```
 
-Migrations run when the server starts, and in any `docker compose run` that opens the database first. Take the dump before that, because no migration has a down step.
+Migrations run when the server starts, and in any `docker compose run` that opens the database first. Take the dump before that, because no migration has a down step. The chain stops if the dump fails, so a stopped database never leaves a truncated dump behind and never gets upgraded without one.
 
 Mail imported before the mail metadata migrations (0011 to 0013) stays ungrouped until it is rebuilt. Proton and other EML or MBOX mail shows one conversation per message. Gmail keeps its threads but has no folders or provenance. Rebuild each mail source once, reading the preview before applying it:
 

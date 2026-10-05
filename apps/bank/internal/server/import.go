@@ -91,7 +91,8 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 }
 
 // extractAfterImport reads text out of newly stored attachments so an upload
-// is searchable inside its documents straight away. Newest first and bounded:
+// becomes searchable inside its documents shortly after it lands. Newest first
+// and bounded:
 // the batch has to reach what this upload stored even when a large backlog is
 // waiting, and it must not turn one upload into a whole-archive pass.
 //
@@ -107,7 +108,8 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 // It runs after the response, in the background: a client that times out
 // waiting for extraction retries an import that already committed. One run is
 // in flight at a time; uploads arriving meanwhile request a single rerun, so a
-// backfill does not queue a pass per message.
+// backfill does not queue a pass per message, and a full batch runs again until
+// the backlog those uploads left behind is drained.
 func (s *Server) extractAfterImport() {
 	if os.Getenv("BANK_EXTRACT") == "off" {
 		return
@@ -131,9 +133,9 @@ type extraction struct {
 
 func (s *Server) extractUntilCurrent() {
 	for {
-		s.extractPending(context.Background())
+		backlog := s.extractPending(context.Background())
 		s.extraction.mu.Lock()
-		again := s.extraction.again
+		again := backlog || s.extraction.again
 		s.extraction.again = false
 		s.extraction.running = again
 		s.extraction.mu.Unlock()
@@ -143,13 +145,16 @@ func (s *Server) extractUntilCurrent() {
 	}
 }
 
-func (s *Server) extractPending(ctx context.Context) {
+func (s *Server) extractPending(ctx context.Context) (backlog bool) {
 	o := extract.DefaultOptions()
 	o.TempDir = uploadStagingDir(s.dataDir)
 	sel := extract.Selection{Limit: extract.PostImportLimit, NewestFirst: true}
-	if _, err := extract.Run(ctx, extract.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil); err != nil {
+	summary, err := extract.Run(ctx, extract.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "bank: reading attachment text: %v\n", err)
+		return false
 	}
+	return summary.Considered == extract.PostImportLimit
 }
 
 func (s *Server) importJSON(ctx context.Context, source string, body []byte) (generic.Result, error) {

@@ -162,7 +162,9 @@ prevent other folders from being collected. Connection failures end that
 account's current pass. Other accounts continue.
 
 The collector fetches metadata in bounded UID windows and bodies in batches of
-at most 16 MiB, except that one allowed larger message occupies its own batch.
+at most 16 MiB by the sizes the server reports, except that one larger message
+occupies its own batch. A server that under-reports sizes can make a batch
+larger; each body is still refused above `max_message_bytes`.
 Bodies stream to files rather than accumulating in memory. Completed downloads
 are flushed to disk before publication. On POSIX, the collector syncs the batch
 directory and its parent. On Windows, it publishes files and the batch directory

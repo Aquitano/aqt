@@ -107,15 +107,28 @@ func TestIngestHealsAttachmentsOnReimport(t *testing.T) {
 		t.Fatalf("%d attachment rows, want 2", n)
 	}
 
-	// Healing is idempotent: nothing is left to repair, nothing is duplicated,
-	// and stored attachments are not written to the blob store again.
-	setWritable(false)
+	// A blob file lost after its row was recorded comes back from the re-import,
+	// without duplicating the row.
+	keys, err := st.AttachmentKeys(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lost string
+	for key := range keys {
+		lost, _, _ = strings.Cut(key, "\x00")
+	}
+	if err := os.Remove(blobs.Path(lost)); err != nil {
+		t.Fatal(err)
+	}
 	res, err = Ingest(ctx, st, blobs, raw, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Healed != 0 || countAttachments(t, st, id) != 2 {
 		t.Fatalf("a third import changed something: %+v", res)
+	}
+	if _, err := os.Stat(blobs.Path(lost)); err != nil {
+		t.Fatalf("the lost blob was not restored: %v", err)
 	}
 }
 
