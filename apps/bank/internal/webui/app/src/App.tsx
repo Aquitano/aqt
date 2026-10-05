@@ -11,6 +11,7 @@ import {
   navigate,
   readSearch,
   readSelection,
+  replacingHistoryDuring,
   select,
   useLocation,
   writeSearch,
@@ -86,7 +87,7 @@ function Shell() {
       if (!next) return;
       e.preventDefault();
       rowRef.current = next;
-      next.click();
+      replacingHistoryDuring(() => next.click());
       next.scrollIntoView({ block: "nearest" });
     };
     const onClick = (event: MouseEvent) => {
@@ -189,7 +190,6 @@ function Shell() {
             {view === "media-files" && <MediaFilesView selection={selection} />}
             {view === "search" && (
               <SearchView
-                key={JSON.stringify(searchParams)}
                 params={searchParams}
                 onSearch={(search) =>
                   navigate((params) => {

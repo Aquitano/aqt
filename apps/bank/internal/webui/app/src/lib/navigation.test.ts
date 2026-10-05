@@ -29,3 +29,14 @@ void test("submitted filters survive selection, view changes, and URL round trip
   assert.deepEqual(readLibraryFilters(restored, "library"), {});
   assert.equal(readLibraryFilters(restored, "collections").q, "Watch later");
 });
+
+void test("message selections read back from the URL with the id they were written with", () => {
+  for (const id of ["42", "0123456789ab"]) {
+    const params = new URLSearchParams();
+    writeSelection(params, { kind: "message", id });
+    assert.deepEqual(readSelection(new URLSearchParams(params.toString())), {
+      kind: "message",
+      id,
+    });
+  }
+});
