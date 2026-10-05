@@ -65,6 +65,10 @@ type ListBlobsOpts struct {
 	// large pending blobs, the default order would spend a bounded batch
 	// before ever reaching the file that just landed.
 	NewestFirst bool
+	// StoredSince restricts to content stored at or after it, so the passes
+	// after an upload drain what uploads stored without taking on the
+	// archive's older backlog.
+	StoredSince time.Time
 }
 
 // MaxBlobList bounds one listing, the same reasoning as MaxSearchLimit.
@@ -83,9 +87,16 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 		args = append(args, v)
 		return fmt.Sprintf("$%d", len(args))
 	}
-	where := ""
+	conditions := []string{}
 	if o.Source != "" {
-		where = " where a.source = " + next(o.Source)
+		conditions = append(conditions, "a.source = "+next(o.Source))
+	}
+	if !o.StoredSince.IsZero() {
+		conditions = append(conditions, "a.newest >= "+next(o.StoredSince))
+	}
+	where := ""
+	if len(conditions) > 0 {
+		where = " where " + strings.Join(conditions, " and ")
 	}
 	sql := `
 		select b.sha256, b.filename, b.mime_type, b.size_bytes, b.messages,

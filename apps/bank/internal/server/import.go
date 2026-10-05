@@ -31,6 +31,7 @@ import (
 // Uploads are always single files: directory inputs stay a client concern, the
 // CLI walks them and posts one file per request.
 func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
+	received := time.Now()
 	r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
 	kind := r.PathValue("kind")
 	source := r.URL.Query().Get("source")
@@ -87,14 +88,15 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
-	s.extractAfterImport()
+	s.extractAfterImport(received)
 }
 
 // extractAfterImport reads text out of newly stored attachments so an upload
 // becomes searchable inside its documents shortly after it lands. Newest first
-// and bounded:
-// the batch has to reach what this upload stored even when a large backlog is
-// waiting, and it must not turn one upload into a whole-archive pass.
+// and limited to content stored since the upload arrived: the batch has to
+// reach what this upload stored even when a large backlog is waiting, and it
+// must not turn one upload into a whole-archive pass. The older backlog is the
+// nightly `bank extract`'s.
 //
 // Only the cheap pure-Go extractors ever run here. OCR needs tesseract and
 // poppler, which are deliberately not in this image — the process listening on
@@ -109,8 +111,8 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 // waiting for extraction retries an import that already committed. One run is
 // in flight at a time; uploads arriving meanwhile request a single rerun, so a
 // backfill does not queue a pass per message, and a full batch runs again until
-// the backlog those uploads left behind is drained.
-func (s *Server) extractAfterImport() {
+// everything stored since the first of those uploads arrived is drained.
+func (s *Server) extractAfterImport(received time.Time) {
 	if os.Getenv("BANK_EXTRACT") == "off" {
 		return
 	}
@@ -121,7 +123,7 @@ func (s *Server) extractAfterImport() {
 		return
 	}
 	s.extraction.running = true
-	s.extraction.done.Go(s.extractUntilCurrent)
+	s.extraction.done.Go(func() { s.extractUntilCurrent(received) })
 }
 
 type extraction struct {
@@ -131,9 +133,9 @@ type extraction struct {
 	done    sync.WaitGroup
 }
 
-func (s *Server) extractUntilCurrent() {
+func (s *Server) extractUntilCurrent(since time.Time) {
 	for {
-		backlog := s.extractPending(context.Background())
+		backlog := s.extractPending(context.Background(), since)
 		s.extraction.mu.Lock()
 		again := backlog || s.extraction.again
 		s.extraction.again = false
@@ -145,10 +147,10 @@ func (s *Server) extractUntilCurrent() {
 	}
 }
 
-func (s *Server) extractPending(ctx context.Context) (backlog bool) {
+func (s *Server) extractPending(ctx context.Context, since time.Time) (backlog bool) {
 	o := extract.DefaultOptions()
 	o.TempDir = uploadStagingDir(s.dataDir)
-	sel := extract.Selection{Limit: extract.PostImportLimit, NewestFirst: true}
+	sel := extract.Selection{Limit: extract.PostImportLimit, NewestFirst: true, StoredSince: since}
 	summary, err := extract.Run(ctx, extract.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bank: reading attachment text: %v\n", err)

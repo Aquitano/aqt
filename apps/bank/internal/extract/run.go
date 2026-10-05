@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -34,6 +35,7 @@ type Selection struct {
 	// searchable now, and with a backlog of large pending blobs the default
 	// order would spend the whole batch before reaching it.
 	NewestFirst bool
+	StoredSince time.Time
 }
 
 // Summary is what a run did, in the shape `--json` prints.
@@ -51,7 +53,7 @@ const maxReportedErrors = 10
 
 // PostImportLimit bounds the batch an import reads, so importing three files
 // into an archive with a large unextracted backlog stays quick — and so an
-// upload cannot end up extracting a whole backlog while the client waits.
+// upload cannot end up extracting a whole backlog.
 // Whatever is left over is what a full `bank extract` is for.
 const PostImportLimit = 200
 
@@ -84,6 +86,7 @@ func Run(ctx context.Context, a Archive, sel Selection, o Options, progress func
 		Source:      sel.Source,
 		Limit:       sel.Limit,
 		NewestFirst: sel.NewestFirst,
+		StoredSince: sel.StoredSince,
 	})
 	if err != nil {
 		return sum, err
