@@ -41,6 +41,9 @@ func TestVerifyChecksMailContextDigests(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fixture.archiveDir, "proton", ".mail-contexts", entries[0].Name()), []byte("{}"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(fixture.archiveDir, "proton", ".mail-contexts", ".partial-crash"), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	report, err := Run(context.Background(), fixture.st, fixture.blobs, fixture.archiveDir, Options{Source: "proton"})
 	if err != nil || report.MailContextsChecked != 1 || report.Damaged != 1 || report.Findings[0].Kind != "invalid_mail_context" {
 		t.Fatalf("context verification: %+v %v", report, err)

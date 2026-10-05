@@ -80,7 +80,7 @@ func TestHealBodiesReplacesStubsFromTheArchive(t *testing.T) {
 		t.Fatalf("heals = %+v, want one candidate, written by nobody", heals)
 	}
 	if h := heals[0]; h.Reparsed <= h.Stored || h.Subject != "Dauerauftrag" ||
-		h.Ref != filepath.Join("gmail", "abc123456789-All mail.mbox") {
+		h.Ref != "gmail/abc123456789-All mail.mbox" {
 		t.Errorf("heal = %+v", h)
 	}
 	if body := bodyOf(t, st, "gmail", "dauerauftrag@example.com"); strings.Contains(body, "450,00 EUR") {

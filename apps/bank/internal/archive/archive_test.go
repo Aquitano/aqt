@@ -37,7 +37,7 @@ func TestWriteAcceptsOrdinarySources(t *testing.T) {
 		if err != nil {
 			t.Fatalf("source %q: %v", source, err)
 		}
-		if !strings.HasPrefix(rel, source+string(filepath.Separator)) {
+		if !strings.HasPrefix(rel, source+"/") {
 			t.Errorf("ref %q does not live under %q", rel, source)
 		}
 		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {

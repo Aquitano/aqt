@@ -92,7 +92,7 @@ func writePublished(archiveDir, rel string, r io.Reader, publish func(string, st
 	}
 	dest := filepath.Join(archiveDir, rel)
 	if _, err := os.Stat(dest); err == nil {
-		return rel, syncExisting(dest)
+		return filepath.ToSlash(rel), syncExisting(dest)
 	}
 	tmp, err := os.CreateTemp(dir, ".partial-*")
 	if err != nil {
@@ -114,5 +114,5 @@ func writePublished(archiveDir, rel string, r io.Reader, publish func(string, st
 	if err := publish(tmp.Name(), dest); err != nil {
 		return "", err
 	}
-	return rel, nil
+	return filepath.ToSlash(rel), nil
 }

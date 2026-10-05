@@ -43,12 +43,18 @@ func publishArchiveFile(oldPath, newPath string) error {
 	return err
 }
 
+// os.OpenFile omits FILE_SHARE_DELETE, so it fails with a sharing violation
+// while another writer's MoveFileEx still holds the just-published file.
 func syncArchiveFile(path string) error {
-	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	name, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return err
 	}
-	return errors.Join(file.Sync(), file.Close())
+	handle, err := windows.CreateFile(name, windows.GENERIC_WRITE, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+	if err != nil {
+		return &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	return errors.Join(windows.FlushFileBuffers(handle), windows.CloseHandle(handle))
 }
 
 func moveArchiveFile(oldPath, newPath string, flags uint32) error {

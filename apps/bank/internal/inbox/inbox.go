@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -80,6 +81,7 @@ type Result struct {
 	Rejected   int          `json:"rejected"`
 	Failed     int          `json:"failed"`
 	Settling   int          `json:"settling,omitempty"`
+	Warnings   []string     `json:"warnings,omitempty"`
 }
 
 const (
@@ -92,6 +94,15 @@ const (
 // the same error — and returns what it managed before that.
 func Sweep(ctx context.Context, inboxDir string, route Router) (Result, error) {
 	res := Result{Files: []FileResult{}}
+	entries, err := os.ReadDir(inboxDir)
+	if err != nil && !os.IsNotExist(err) {
+		return res, err
+	}
+	for _, e := range entries {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") && !slices.Contains(Kinds, e.Name()) {
+			res.Warnings = append(res.Warnings, fmt.Sprintf("%s is not an import kind; its files are never swept", filepath.Join(inboxDir, e.Name())))
+		}
+	}
 	for _, kind := range Kinds {
 		entries, err := os.ReadDir(filepath.Join(inboxDir, kind))
 		if err != nil {
