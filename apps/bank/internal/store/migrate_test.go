@@ -115,15 +115,16 @@ func TestMigrationCollapsesDuplicateMessageIDs(t *testing.T) {
 	}
 }
 
-func TestAttachmentIngestionMigrationPreservesLegacyRows(t *testing.T) {
-	schema := storetest.NewSchema(t)
+// seedBefore applies and records every migration that sorts before stop.
+func seedBefore(t *testing.T, schema, stop string) {
+	t.Helper()
 	storetest.Exec(t, schema, `create table schema_migrations (filename text primary key, applied_at timestamptz not null default now())`)
 	files, err := os.ReadDir("migrations")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, file := range files {
-		if file.Name() >= "0016_attachment_ingestion.sql" {
+		if file.Name() >= stop {
 			break
 		}
 		sql, err := os.ReadFile("migrations/" + file.Name())
@@ -133,6 +134,11 @@ func TestAttachmentIngestionMigrationPreservesLegacyRows(t *testing.T) {
 		storetest.Exec(t, schema, string(sql))
 		storetest.Exec(t, schema, `insert into schema_migrations (filename) values ($1)`, file.Name())
 	}
+}
+
+func TestAttachmentIngestionMigrationPreservesLegacyRows(t *testing.T) {
+	schema := storetest.NewSchema(t)
+	seedBefore(t, schema, "0016_attachment_ingestion.sql")
 	storetest.Exec(t, schema, `insert into messages (source,external_id,sent_at,ingested_at) values ('proton','old',now(),'2000-01-01')`)
 	storetest.Exec(t, schema, `insert into attachments (message_id,filename,size_bytes,sha256) select id,'old.pdf',1,$1 from messages`, digestA)
 	st := storetest.Open(t, schema)
@@ -144,6 +150,25 @@ func TestAttachmentIngestionMigrationPreservesLegacyRows(t *testing.T) {
 	}
 	if n := storetest.QueryInt(t, schema, `select count(*) from attachments where sha256=$1 and ingested_at > '2000-01-01'`, digestB); n != 1 {
 		t.Fatal("new attachment did not receive an ingestion time")
+	}
+}
+
+func TestForwardSlashMigrationRewritesOnlyWindowsRefs(t *testing.T) {
+	schema := storetest.NewSchema(t)
+	seedBefore(t, schema, "0021_forward_slash_raw_refs.sql")
+	storetest.Exec(t, schema, `insert into messages (source,external_id,sent_at,raw_ref) values
+		('mail','windows',now(),'mail\a.eml'),('mail','linux',now(),'mail/b\c.eml')`)
+	storetest.Exec(t, schema, `insert into library_items (id,source,account,external_id,kind,title,search_text,provenance)
+		values ('item','netflix','','x','movie','X','X','{"raw_ref":"a\\b.json"}')`)
+	storetest.Exec(t, schema, `insert into library_item_evidence (item_id,raw_ref,locator) values ('item','a\b.json','row 1')`)
+	storetest.Open(t, schema)
+
+	if n := storetest.QueryInt(t, schema, `select count(*) from messages where raw_ref in ('mail/a.eml','mail/b\c.eml')`); n != 2 {
+		t.Errorf("%d message refs as expected, want 2", n)
+	}
+	if n := storetest.QueryInt(t, schema, `select count(*) from library_items i join library_item_evidence e on e.item_id = i.id
+		where i.provenance->>'raw_ref' = 'a\b.json' and e.raw_ref = 'a\b.json'`); n != 1 {
+		t.Error("a bundle-supplied library ref was rewritten")
 	}
 }
 

@@ -3,7 +3,7 @@ bun = "1.4.2"
 go = "1.27.1"
 golangci-lint = "2.14.0"
 swiftformat = "0.63.1"
-swiftlint = "0.65.1"
+swiftlint = { version = "0.65.1", os = ["linux", "macos"] }
 xcodegen = "2.46.0"
 
 [env]
@@ -30,13 +30,13 @@ depends = ["*:ts"]
 
 [tasks."workspace:check"]
 description = "Format check workspace configuration and documentation"
-run = "bunx --no-install oxfmt --check . '!apps/**' '!packages/**' '!tools/stack/**'"
+run = "bunx --no-install oxfmt --check . \"!apps/**\" \"!packages/**\" \"!tools/stack/**\""
 
 [tasks."shared:ts"]
 run = [
   "bunx --no-install oxlint --type-aware packages/ts",
   "bunx --no-install oxfmt --check packages",
-  "bun run --filter './packages/ts/*' typecheck",
+  "bun run --filter \"./packages/ts/*\" typecheck",
 ]
 
 [tasks."stack:check"]
@@ -57,7 +57,7 @@ depends = ["shared:ts", "bank:ts", "bank:go"]
 run = [
   "bunx --no-install oxlint --type-aware apps/bank",
   "bunx --no-install oxfmt --check apps/bank",
-  "bun run --filter '@aqt/bank-*' typecheck",
+  "bun run --filter \"@aqt/bank-*\" typecheck",
   "bun run --cwd apps/bank/internal/webui/app check:dist",
 ]
 
@@ -111,7 +111,7 @@ depends = ["shared:ts", "img:ts"]
 run = [
   "bun run --cwd apps/img lint",
   "bunx --no-install oxfmt --check apps/img",
-  "bun run --filter '@aqt/img*' typecheck",
+  "bun run --filter \"@aqt/img*\" typecheck",
 ]
 
 [tasks."img:dev"]

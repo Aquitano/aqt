@@ -164,13 +164,15 @@ func TestMailReimportLeavesUnchangedThreadRowsAlone(t *testing.T) {
 			"Message-ID: <b@example.com>\r\nIn-Reply-To: <a@example.com>\r\n\r\nsecond",
 			"Message-ID: <c@example.com>\r\nReferences: <a@example.com> <b@example.com>\r\n\r\nthird",
 		} {
-			if _, err := Ingest(ctx, st, blobs, []byte(raw), IngestOpts{Source: "stable"}); err != nil {
+			if _, err := Ingest(ctx, st, blobs, []byte(raw), IngestOpts{Source: "stable", MailContext: &MailImportContext{Version: 1, Kind: "imap", Mailbox: "INBOX", RelativePath: "input.eml"}}); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
 	versions := `select sum(xmin::text::bigint) from (select xmin from messages union all select xmin from mail_thread_nodes
-		union all select xmin from mail_thread_aliases union all select xmin from mail_thread_conflicts) written`
+		union all select xmin from mail_thread_aliases union all select xmin from mail_thread_conflicts
+		union all select xmin from mail_details union all select xmin from mail_thread_edges
+		union all select xmin from mailboxes) written`
 	ingest()
 	before := storetest.QueryInt(t, schema, versions)
 	ingest()
