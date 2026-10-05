@@ -29,6 +29,7 @@ type Result struct {
 	Fetched    int   `json:"fetched"`
 	Inserted   int64 `json:"inserted"`
 	Duplicates int64 `json:"duplicates"`
+	Rejected   int64 `json:"rejected"`
 	Bytes      int64 `json:"bytes"`
 }
 
@@ -93,13 +94,13 @@ func (session *session) download(messages []messageInfo, dir string, limit int64
 	stop := session.deadline()
 	defer stop()
 	var set imap.SeqSet
-	expected := make(map[imap.UID]int64, len(messages))
+	expected := make(map[imap.UID]bool, len(messages))
 	for _, message := range messages {
 		if message.SeqNum == 0 {
 			return nil, fmt.Errorf("UID %d: missing message sequence number", message.UID)
 		}
 		set.AddNum(message.SeqNum)
-		expected[message.UID] = message.Size
+		expected[message.UID] = true
 	}
 	command := session.client.Fetch(set, &imap.FetchOptions{UID: true, BodySection: []*imap.FetchItemBodySection{{Peek: true}}})
 	defer func() {
@@ -118,8 +119,11 @@ func (session *session) download(messages []messageInfo, dir string, limit int64
 			case imapclient.FetchItemDataUID:
 				uid = item.UID
 			case imapclient.FetchItemDataBodySection:
-				if path != "" || item.Literal == nil || item.Literal.Size() <= 0 || item.Literal.Size() > limit {
-					return nil, fmt.Errorf("UID %d: missing, repeated or oversized message body", uid)
+				if path != "" || item.Literal == nil {
+					return nil, fmt.Errorf("UID %d: missing or repeated message body", uid)
+				}
+				if item.Literal.Size() > limit {
+					return nil, fmt.Errorf("UID %d has %d bytes, above max_message_bytes=%d; checkpoint retained", uid, item.Literal.Size(), limit)
 				}
 				file, createErr := os.CreateTemp(dir, "message-*.eml")
 				if createErr != nil {
@@ -145,15 +149,14 @@ func (session *session) download(messages []messageInfo, dir string, limit int64
 				}
 			}
 		}
-		want, requested := expected[uid]
-		if !requested {
+		if !expected[uid] {
 			if path != "" {
 				return nil, fmt.Errorf("unexpected body for UID %d", uid)
 			}
 			continue
 		}
-		if path == "" || size != want {
-			return nil, fmt.Errorf("UID %d: expected %d bytes, received %d", uid, want, size)
+		if path == "" {
+			return nil, fmt.Errorf("UID %d: no message body received", uid)
 		}
 		stablePath := filepath.Join(dir, digest+".eml")
 		if err := publishMessage(path, stablePath); err != nil {
@@ -207,12 +210,6 @@ func syncFolder(ctx context.Context, session *session, st *state, config Config,
 			var size int64
 			for count < len(messages) && count < config.BatchSize {
 				message := messages[count]
-				if message.Size <= 0 || message.Size > config.MaxMessageBytes {
-					if count > 0 {
-						break
-					}
-					return fmt.Errorf("UID %d has %d bytes, outside max_message_bytes=%d; checkpoint retained", message.UID, message.Size, config.MaxMessageBytes)
-				}
 				if count > 0 && size+message.Size > batchBytes {
 					break
 				}
@@ -244,6 +241,7 @@ func syncBatch(ctx context.Context, session *session, st *state, config Config, 
 	defer func() {
 		if !staged {
 			_ = os.RemoveAll(dir)
+			_ = os.RemoveAll(dir + "-ready")
 		}
 	}()
 	files, err := session.download(messages, dir, config.MaxMessageBytes)
@@ -254,10 +252,10 @@ func syncBatch(ctx context.Context, session *session, st *state, config Config, 
 	for _, file := range files {
 		result.Bytes += file.Size
 	}
-	staged = true
 	if err := st.stage(ctx, account.ID, folder, validity, files); err != nil {
 		return err
 	}
+	staged = true
 	_, err = flushQueued(ctx, st, config, account, folder, importer, result)
 	return err
 }
@@ -280,7 +278,8 @@ func flushQueued(ctx context.Context, st *state, config Config, account Account,
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.SetLimit(config.Workers)
 	var inserted, duplicates atomic.Int64
-	for _, file := range files {
+	rejected := make([]bool, len(files))
+	for index, file := range files {
 		group.Go(func() error {
 			requestCtx, cancel := context.WithTimeout(groupCtx, timeout)
 			defer cancel()
@@ -292,21 +291,29 @@ func flushQueued(ctx context.Context, st *state, config Config, account Account,
 			if outcome.MailContextVersion != 1 {
 				return fmt.Errorf("UID %d mail context was not acknowledged; upgrade Bank before retrying", file.UID)
 			}
-			if outcome.Rejected != 0 || outcome.Inserted+outcome.Duplicates != 1 {
-				return fmt.Errorf("UID %d was not acknowledged as one imported message (inserted=%d duplicates=%d rejected=%d)", file.UID, outcome.Inserted, outcome.Duplicates, outcome.Rejected)
+			if outcome.Inserted+outcome.Duplicates+outcome.Rejected != 1 {
+				return fmt.Errorf("UID %d was not acknowledged as one message (inserted=%d duplicates=%d rejected=%d)", file.UID, outcome.Inserted, outcome.Duplicates, outcome.Rejected)
 			}
 			inserted.Add(int64(outcome.Inserted))
 			duplicates.Add(int64(outcome.Duplicates))
+			rejected[index] = outcome.Rejected == 1
 			return nil
 		})
 	}
 	err = group.Wait()
 	result.Inserted += inserted.Load()
 	result.Duplicates += duplicates.Load()
+	var unreadable []imap.UID
+	for index, file := range files {
+		if rejected[index] {
+			unreadable = append(unreadable, file.UID)
+		}
+	}
+	result.Rejected += int64(len(unreadable))
 	if err != nil {
 		return point, err
 	}
-	if err := st.acknowledge(ctx, account.ID, folder, point); err != nil {
+	if err := st.acknowledge(ctx, account.ID, folder, point, unreadable); err != nil {
 		return point, err
 	}
 	directories := make(map[string]bool)

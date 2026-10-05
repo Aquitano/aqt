@@ -11,3 +11,10 @@ bank
 blobs/
 archive/
 inbox/
+
+# IMAP collector config, certificates and its queue of decrypted mail.
+imap.json
+config.json
+*.pem
+state/
+imap-state/

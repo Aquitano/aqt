@@ -440,7 +440,7 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		libraryFailure(w, err)
 		return
 	}
-	s.extractAfterImport(r.Context())
+	s.extractAfterImport()
 	for i := range files {
 		row, err := s.db.LibraryFile(r.Context(), files[i].ID)
 		if err != nil {

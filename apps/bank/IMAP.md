@@ -171,8 +171,9 @@ These barriers depend on the filesystem and storage device honoring flushes;
 the tests do not simulate physical power loss. Uploads run
 concurrently. A folder's queued batch is uploaded before reconnecting to IMAP,
 so it can survive a restart or deletion from the mailbox while Bank is offline.
-Files are removed only after acknowledgement. Abandoned `fetch-*` directories
-without queue references are removed on the next start under the state lock.
+Files are removed only after acknowledgement. A batch that fails to stage is
+removed at once. Abandoned `fetch-*` directories without queue references, such
+as those left by a crash, are removed on the next start under the state lock.
 The queue contains decrypted mail, so keep the state directory private.
 
 SQLite checkpoints use `(account, folder, UIDVALIDITY, UID)`. A batch advances
@@ -187,9 +188,15 @@ send the body before its UID. If a deletion changes the sequence mapping between
 commands, the batch fails without advancing its checkpoint and retries with
 fresh metadata.
 
-An oversized, malformed or rejected message stops its folder and records an
-error. It is not silently skipped. Increase the configured size limit or fix
-the reported input/import problem, then retry. A message that disappears during
+A message whose body exceeds `max_message_bytes` stops its folder and records an
+error. Increase the configured size limit, then retry. The size the server
+reports in metadata only groups messages into batches, so an inaccurate report
+does not block a message. A message Bank cannot parse is acknowledged as
+rejected and the checkpoint moves past it, because Bank has already archived its
+raw bytes and folder context. The collector records its UID, counts it as
+`rejected` in `checkpoint` and `pass` events and in `--status`, and Bank logs the
+parse error. An import that fails for any other reason stops its folder until a
+retry succeeds. A message that disappears during
 FETCH is retried on the next pass, whose metadata query sees the current mailbox.
 
 Each committed batch prints a `checkpoint` JSON event with its folder, UID and

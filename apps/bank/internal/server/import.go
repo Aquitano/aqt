@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/aichat"
@@ -85,8 +86,8 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		writeCause(w, err)
 		return
 	}
-	s.extractAfterImport(r.Context())
 	writeJSON(w, http.StatusOK, res)
+	s.extractAfterImport()
 }
 
 // extractAfterImport reads text out of newly stored attachments so an upload
@@ -102,10 +103,47 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 //
 // Never fatal: the message and its blobs are already archived, and text is
 // derived data that any later pass can rebuild.
-func (s *Server) extractAfterImport(ctx context.Context) {
+//
+// It runs after the response, in the background: a client that times out
+// waiting for extraction retries an import that already committed. One run is
+// in flight at a time; uploads arriving meanwhile request a single rerun, so a
+// backfill does not queue a pass per message.
+func (s *Server) extractAfterImport() {
 	if os.Getenv("BANK_EXTRACT") == "off" {
 		return
 	}
+	s.extraction.mu.Lock()
+	defer s.extraction.mu.Unlock()
+	if s.extraction.running {
+		s.extraction.again = true
+		return
+	}
+	s.extraction.running = true
+	s.extraction.done.Go(s.extractUntilCurrent)
+}
+
+type extraction struct {
+	mu      sync.Mutex
+	running bool
+	again   bool
+	done    sync.WaitGroup
+}
+
+func (s *Server) extractUntilCurrent() {
+	for {
+		s.extractPending(context.Background())
+		s.extraction.mu.Lock()
+		again := s.extraction.again
+		s.extraction.again = false
+		s.extraction.running = again
+		s.extraction.mu.Unlock()
+		if !again {
+			return
+		}
+	}
+}
+
+func (s *Server) extractPending(ctx context.Context) {
 	o := extract.DefaultOptions()
 	o.TempDir = uploadStagingDir(s.dataDir)
 	sel := extract.Selection{Limit: extract.PostImportLimit, NewestFirst: true}

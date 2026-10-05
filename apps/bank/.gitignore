@@ -1,3 +1,11 @@
 /bank
 .env
 .claude/worktrees/
+
+# IMAP collector config, Bridge certificates and the collector's queue of
+# decrypted mail when run from this directory.
+/imap.json
+/config.json
+*.pem
+/state/
+/imap-state/

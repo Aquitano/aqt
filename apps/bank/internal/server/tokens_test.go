@@ -2,6 +2,7 @@ package server
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -23,7 +24,7 @@ func TestTokenLifecycle(t *testing.T) {
 	}
 	if info, err := os.Stat(TokensPath(dir)); err != nil {
 		t.Fatal(err)
-	} else if info.Mode().Perm() != 0o600 {
+	} else if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("tokens file mode = %v, want 0600", info.Mode().Perm())
 	}
 

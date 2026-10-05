@@ -210,6 +210,7 @@ func runOnce(tb testing.TB, config Config, destination string, importer Importer
 		result.Fetched += event.Result.Fetched
 		result.Inserted += event.Result.Inserted
 		result.Duplicates += event.Result.Duplicates
+		result.Rejected += event.Result.Rejected
 		result.Bytes += event.Result.Bytes
 	})
 	return result, err
@@ -339,15 +340,15 @@ func TestSyncHTTPResumeAndUIDValidity(t *testing.T) {
 func TestFailedFolderDoesNotBlockOtherFolders(t *testing.T) {
 	fixture := newFixture(t, "tls")
 	fixture.config.Accounts[0].Folders = []string{"INBOX", "Sent"}
-	fixture.append(t, "INBOX", rawMessage("reject"))
+	fixture.append(t, "INBOX", rawMessage("fail"))
 	fixture.append(t, "Sent", rawMessage("sent"))
 	importer := func(_ context.Context, _, path string, _ eml.MailImportContext) (eml.Result, error) {
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return eml.Result{}, err
 		}
-		if bytes.Contains(raw, []byte("reject@example.com")) {
-			return eml.Result{Rejected: 1}, nil
+		if bytes.Contains(raw, []byte("fail@example.com")) {
+			return eml.Result{}, fmt.Errorf("Bank unavailable")
 		}
 		return eml.Result{Inserted: 1, MailContextVersion: 1}, nil
 	}
@@ -361,6 +362,30 @@ func TestFailedFolderDoesNotBlockOtherFolders(t *testing.T) {
 	statuses, err := ReadStatus(fixture.config.StateDir)
 	if err != nil || statuses[0].LastError == "" || statuses[0].LastSuccess != "" {
 		t.Fatalf("failure status = %+v, %v", statuses, err)
+	}
+}
+
+func TestRejectedMessageIsAcknowledged(t *testing.T) {
+	fixture := newFixture(t, "tls")
+	fixture.append(t, "INBOX", rawMessage("reject"))
+	fixture.append(t, "INBOX", rawMessage("after"))
+	importer := func(_ context.Context, _, path string, _ eml.MailImportContext) (eml.Result, error) {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return eml.Result{}, err
+		}
+		if bytes.Contains(raw, []byte("reject@example.com")) {
+			return eml.Result{Rejected: 1, MailContextVersion: 1}, nil
+		}
+		return eml.Result{Inserted: 1, MailContextVersion: 1}, nil
+	}
+	result, err := runOnce(t, fixture.config, "bank-test", importer)
+	if err != nil || result.Inserted != 1 || result.Rejected != 1 || readCheckpoint(t, fixture.config, "INBOX").UID != 2 {
+		t.Fatalf("rejected message = %+v, %v", result, err)
+	}
+	statuses, err := ReadStatus(fixture.config.StateDir)
+	if err != nil || statuses[0].Pending != 0 || statuses[0].Rejected != 1 || statuses[0].LastError != "" {
+		t.Fatalf("rejection status = %+v, %v", statuses, err)
 	}
 }
 
@@ -396,17 +421,27 @@ func TestFetchFailureAndOversizedMessageRetainCheckpoint(t *testing.T) {
 		t.Fatal("failed FETCH advanced checkpoint")
 	}
 	fixture.config.MaxMessageBytes = 10
-	before := fixture.fetches.Load()
-	if _, err := runOnce(t, fixture.config, "bank-test", acceptingImporter); err == nil {
+	if result, err := runOnce(t, fixture.config, "bank-test", acceptingImporter); err == nil || result.Inserted != 0 {
 		t.Fatal("oversized message accepted")
 	}
-	if fixture.fetches.Load() != before || readCheckpoint(t, fixture.config, "INBOX").UID != 0 {
-		t.Fatal("oversized message fetched or skipped")
+	if readCheckpoint(t, fixture.config, "INBOX").UID != 0 {
+		t.Fatal("oversized message skipped")
 	}
 	fixture.config.MaxMessageBytes = 1 << 20
 	result, err := runOnce(t, fixture.config, "bank-test", acceptingImporter)
 	if err != nil || result.Inserted != 1 {
 		t.Fatalf("retry = %+v, %v", result, err)
+	}
+}
+
+func TestInaccurateReportedSizeIsAccepted(t *testing.T) {
+	fixture := newFixture(t, "tls")
+	fixture.append(t, "INBOX", rawMessage("one"))
+	raw := append([]byte("X-Rewritten: yes\r\n"), rawMessage("one")...)
+	fixture.bodyReply = fmt.Sprintf("* 1 FETCH (UID 1 BODY[] {%d}\r\n%s)\r\n", len(raw), raw)
+	result, err := runOnce(t, fixture.config, "bank-test", acceptingImporter)
+	if err != nil || result.Inserted != 1 || result.Bytes != int64(len(raw)) || readCheckpoint(t, fixture.config, "INBOX").UID != 1 {
+		t.Fatalf("inaccurate RFC822.SIZE = %+v, %v", result, err)
 	}
 }
 
