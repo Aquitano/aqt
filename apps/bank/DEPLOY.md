@@ -77,6 +77,27 @@ docker compose run --rm bank verify
 docker compose run --rm bank token list
 ```
 
+### Upgrading
+
+```sh
+cd /opt/aqt-bank
+docker compose exec -T db pg_dump -U bank -Fc bank > /data/backup/bank.dump
+git pull
+docker compose up -d --build
+```
+
+Migrations run when the server starts, and in any `docker compose run` that opens the database first. Take the dump before that, because no migration has a down step.
+
+Mail imported before the mail metadata migrations (0011 to 0013) stays ungrouped until it is rebuilt. Proton and other EML or MBOX mail shows one conversation per message. Gmail keeps its threads but has no folders or provenance. Rebuild each mail source once, reading the preview before applying it:
+
+```sh
+docker compose run --rm bank mail rebuild --source gmail
+docker compose run --rm bank mail rebuild --source gmail --apply
+docker compose run --rm bank verify --source gmail
+```
+
+Repeat for `proton` and any other mail source. [MAIL.md](MAIL.md) explains the report.
+
 ### Text inside attachments
 
 Importing already reads PDFs with a text layer, Office and OpenDocument files, HTML and plain text, so those are searchable without doing anything. Scanned pages and images are recorded as `needs_ocr`, because the tools that read pixels are deliberately not in the server's image.
@@ -199,7 +220,7 @@ bank contact list
 bank fetch <sha256> -o invoice.pdf
 ```
 
-`sync`, `token`, `verify`, `reimport` and `import inbox` stay server-side and refuse to run with `BANK_URL` set, rather than acting on the wrong box. `auth` and `serve` are server-side too but do not refuse: running `bank auth gmail` on the laptop and copying `gmail/` over is a documented option (section 3), and `bank serve` is the server.
+`sync`, `token`, `verify`, `reimport`, `import inbox` and `mail rebuild` stay server-side and refuse to run with `BANK_URL` set, rather than acting on the wrong box. `auth` and `serve` are server-side too but do not refuse: running `bank auth gmail` on the laptop and copying `gmail/` over is a documented option (section 3), and `bank serve` is the server.
 
 ## 6. Cron
 
@@ -282,6 +303,8 @@ docker compose run --rm bank stats             # every source should be gone
 The cascade also clears dependent attachments, mailbox membership, library activity,
 tracking state, collection snapshots, edit history, item links, and provenance evidence.
 This includes `library_activity_aliases` and `library_activity_evidence`.
+Library ratings, statuses, notes, tags and collection edits exist only in Postgres,
+not in the raw archive, so a re-import does not bring them back.
 `schema_migrations` stays, so no migration re-runs; `restart identity` resets
 generated row IDs. If a backup cron from §7 is
 live, take one last snapshot first — the wipe is exactly the kind of action the
