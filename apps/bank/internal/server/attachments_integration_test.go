@@ -42,7 +42,9 @@ func attachmentServer(t *testing.T) (*Server, *store.Store) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return &Server{db: st, read: st, blobs: blobs, dataDir: dir, archiveDir: filepath.Join(dir, "archive")}, st
+	s := &Server{db: st, read: st, blobs: blobs, dataDir: dir, archiveDir: filepath.Join(dir, "archive")}
+	t.Cleanup(s.extraction.done.Wait)
+	return s, st
 }
 
 func do(t *testing.T, s *Server, method, path, body string) *httptest.ResponseRecorder {

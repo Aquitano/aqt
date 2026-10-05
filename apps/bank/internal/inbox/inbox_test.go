@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -163,11 +164,12 @@ func TestSweepLeavesFreshFilesToSettle(t *testing.T) {
 func TestSweepIgnoresUnknownDirectories(t *testing.T) {
 	root := t.TempDir()
 	drop(t, root, "not-a-source", "x.txt")
+	drop(t, root, doneDir, "x.txt")
 	res, err := Sweep(context.Background(), root, func(context.Context, string, string) (Outcome, error) {
 		t.Fatal("an unknown directory was routed")
 		return Outcome{}, nil
 	})
-	if err != nil || len(res.Files) != 0 {
+	if err != nil || len(res.Files) != 0 || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "not-a-source") {
 		t.Fatalf("res = %+v, err = %v", res, err)
 	}
 }

@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/emersion/go-imap/v2"
 	"github.com/gofrs/flock"
 	_ "modernc.org/sqlite"
 )
@@ -31,6 +33,7 @@ type Status struct {
 	LastSuccess string `json:"last_success"`
 	LastError   string `json:"last_error"`
 	Pending     int    `json:"pending"`
+	Rejected    int    `json:"rejected"`
 }
 
 func openState(dir string) (*state, error) {
@@ -68,6 +71,11 @@ func openState(dir string) (*state, error) {
 			account TEXT NOT NULL, folder TEXT NOT NULL, validity INTEGER NOT NULL,
 			uid INTEGER NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL,
 			PRIMARY KEY (account, folder, uid)
+		);
+		CREATE TABLE IF NOT EXISTS rejected (
+			account TEXT NOT NULL, folder TEXT NOT NULL, validity INTEGER NOT NULL, uid INTEGER NOT NULL,
+			rejected_at TEXT NOT NULL,
+			PRIMARY KEY (account, folder, validity, uid)
 		)`)
 	if err != nil {
 		st.close()
@@ -180,7 +188,7 @@ func (st *state) queued(ctx context.Context, account, folder string) ([]download
 	return files, point, rows.Err()
 }
 
-func (st *state) acknowledge(ctx context.Context, account, folder string, point checkpoint) error {
+func (st *state) acknowledge(ctx context.Context, account, folder string, point checkpoint, rejected []imap.UID) error {
 	transaction, err := st.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -192,6 +200,12 @@ func (st *state) acknowledge(ctx context.Context, account, folder string, point 
 	}
 	if _, err := transaction.ExecContext(ctx, `DELETE FROM pending WHERE account = ? AND folder = ?`, account, folder); err != nil {
 		return err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, uid := range rejected {
+		if _, err := transaction.ExecContext(ctx, `INSERT INTO rejected(account, folder, validity, uid, rejected_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`, account, folder, point.Validity, uid, now); err != nil {
+			return err
+		}
 	}
 	return transaction.Commit()
 }
@@ -234,13 +248,29 @@ func ReadStatus(dir string) ([]Status, error) {
 	if _, err := os.Stat(path); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", filepath.ToSlash(path)+"?mode=ro")
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	uri := url.URL{Scheme: "file", Path: filepath.ToSlash(absolute), RawQuery: "mode=ro"}
+	if !strings.HasPrefix(uri.Path, "/") {
+		uri.Path = "/" + uri.Path
+	}
+	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
+	var tracksRejections bool
+	if err := db.QueryRow(`SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'rejected')`).Scan(&tracksRejections); err != nil {
+		return nil, err
+	}
+	rejected := "0"
+	if tracksRejections {
+		rejected = "(SELECT count(*) FROM rejected WHERE account = accounts.id)"
+	}
 	rows, err := db.Query(`SELECT id, last_attempt, last_success, last_error,
-		(SELECT count(*) FROM pending WHERE account = accounts.id) FROM accounts ORDER BY id`)
+		(SELECT count(*) FROM pending WHERE account = accounts.id), ` + rejected + ` FROM accounts ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +278,7 @@ func ReadStatus(dir string) ([]Status, error) {
 	statuses := []Status{}
 	for rows.Next() {
 		var status Status
-		if err := rows.Scan(&status.Account, &status.LastAttempt, &status.LastSuccess, &status.LastError, &status.Pending); err != nil {
+		if err := rows.Scan(&status.Account, &status.LastAttempt, &status.LastSuccess, &status.LastError, &status.Pending, &status.Rejected); err != nil {
 			return nil, err
 		}
 		statuses = append(statuses, status)

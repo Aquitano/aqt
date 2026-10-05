@@ -213,6 +213,9 @@ func cmdImportInbox(ctx context.Context, args []string) error {
 		}
 		return sweepErr
 	}
+	for _, warning := range res.Warnings {
+		fmt.Fprintf(os.Stderr, "bank: %s\n", warning)
+	}
 	if len(res.Files) == 0 {
 		fmt.Printf("inbox is empty (%s/<%s>/)\n", inboxDir, strings.Join(inbox.Kinds, "|"))
 		return sweepErr

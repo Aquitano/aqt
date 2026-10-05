@@ -129,6 +129,56 @@ func TestMailRebuildLargeEMLReadsOnlyHeaders(t *testing.T) {
 	}
 }
 
+func TestMailRebuildFindsGmailRawWithoutMessageID(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	root := t.TempDir()
+	reference, err := archive.Write(root, "gmail", "18f00aa.eml", []byte("Subject: no id\r\nIn-Reply-To: <parent@example.com>\r\n\r\nbody"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := st.InsertMessage(ctx, store.Message{Source: "gmail", ExternalID: "18f00aa", RawRef: reference})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := RebuildMail(ctx, st, root, "gmail", true)
+	if err != nil || report.Messages != 1 || report.Missing != 0 {
+		t.Fatalf("gmail raw without Message-ID was not rebuilt: %+v %v", report, err)
+	}
+	message, err := st.GetMessageDetail(ctx, id)
+	if err != nil || message.Mail == nil || !message.Mail.HasReplyLinks {
+		t.Fatalf("gmail raw metadata: %+v %v", message, err)
+	}
+}
+
+func TestMailReimportLeavesUnchangedThreadRowsAlone(t *testing.T) {
+	ctx := context.Background()
+	st, schema := storetest.NewNamed(t)
+	blobs, err := blob.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingest := func() {
+		for _, raw := range []string{
+			"Message-ID: <a@example.com>\r\n\r\nfirst",
+			"Message-ID: <b@example.com>\r\nIn-Reply-To: <a@example.com>\r\n\r\nsecond",
+			"Message-ID: <c@example.com>\r\nReferences: <a@example.com> <b@example.com>\r\n\r\nthird",
+		} {
+			if _, err := Ingest(ctx, st, blobs, []byte(raw), IngestOpts{Source: "stable"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	versions := `select sum(xmin::text::bigint) from (select xmin from messages union all select xmin from mail_thread_nodes
+		union all select xmin from mail_thread_aliases union all select xmin from mail_thread_conflicts) written`
+	ingest()
+	before := storetest.QueryInt(t, schema, versions)
+	ingest()
+	if after := storetest.QueryInt(t, schema, versions); after != before {
+		t.Fatal("re-importing an unchanged thread rewrote its thread rows")
+	}
+}
+
 func TestMailThreadArrivalOrdersAndConflicts(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)

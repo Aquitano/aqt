@@ -48,6 +48,7 @@ type Server struct {
 	blobs      *blob.Store
 	archiveDir string
 	dataDir    string
+	extraction extraction
 }
 
 func New(db *store.Store, blobs *blob.Store, dataDir, archiveDir string) *Server {

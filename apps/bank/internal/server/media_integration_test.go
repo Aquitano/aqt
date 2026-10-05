@@ -78,6 +78,7 @@ func TestLibraryClientRoundTripPreservesFilesAndConflicts(t *testing.T) {
 	if err != nil || len(snapshots) != 2 {
 		t.Fatalf("snapshot history: %+v %v", snapshots, err)
 	}
+	s.extraction.done.Wait()
 	result, err := c.Find(ctx, "invoice", store.SearchOpts{Limit: 20}, library.ListOptions{Limit: 20})
 	if err != nil || len(result.Messages) != 1 || len(result.Items) != 1 || len(result.Files) != 2 || len(result.Collections) != 1 {
 		t.Fatalf("combined search: %+v %v", result, err)

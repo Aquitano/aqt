@@ -28,24 +28,26 @@ const twoAttachmentMail = "From: a@example.com\r\n" +
 
 // blobStore returns a blob store plus a switch that makes writes fail, which
 // is how an import dies between the message row and its bytes in real life
-// (a full disk, a read-only mount).
+// (a full disk, a read-only mount). A file parked on the root fails writes on
+// every OS and for root, which directory permissions do not.
 func blobStore(t *testing.T) (*blob.Store, func(writable bool)) {
 	t.Helper()
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions, so blob writes cannot be made to fail")
-	}
 	root := filepath.Join(t.TempDir(), "blobs")
 	blobs, err := blob.New(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(root, 0o700) })
+	parked := root + ".parked"
 	return blobs, func(writable bool) {
-		mode := os.FileMode(0o500)
+		var err error
 		if writable {
-			mode = 0o700
+			if err = os.Remove(root); err == nil {
+				err = os.Rename(parked, root)
+			}
+		} else if err = os.Rename(root, parked); err == nil {
+			err = os.WriteFile(root, nil, 0o600)
 		}
-		if err := os.Chmod(root, mode); err != nil {
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -105,13 +107,28 @@ func TestIngestHealsAttachmentsOnReimport(t *testing.T) {
 		t.Fatalf("%d attachment rows, want 2", n)
 	}
 
-	// Healing is idempotent: nothing is left to repair, nothing is duplicated.
+	// A blob file lost after its row was recorded comes back from the re-import,
+	// without duplicating the row.
+	keys, err := st.AttachmentKeys(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lost string
+	for key := range keys {
+		lost, _, _ = strings.Cut(key, "\x00")
+	}
+	if err := os.Remove(blobs.Path(lost)); err != nil {
+		t.Fatal(err)
+	}
 	res, err = Ingest(ctx, st, blobs, raw, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Healed != 0 || countAttachments(t, st, id) != 2 {
 		t.Fatalf("a third import changed something: %+v", res)
+	}
+	if _, err := os.Stat(blobs.Path(lost)); err != nil {
+		t.Fatalf("the lost blob was not restored: %v", err)
 	}
 }
 

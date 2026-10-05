@@ -105,7 +105,7 @@ func TestImportFromTakeoutZip(t *testing.T) {
 		t.Errorf("archived as %q, want a content-hashed watch-history.json", got)
 	}
 	if n := storetest.QueryInt(t, schema,
-		`select count(*) from messages where raw_ref = $1`, filepath.Join("youtube", entries[0].Name())); n != 4 {
+		`select count(*) from messages where raw_ref = $1`, "youtube/"+entries[0].Name()); n != 4 {
 		t.Errorf("%d messages cite the archived history, want 4", n)
 	}
 }

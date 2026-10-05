@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
@@ -337,6 +338,7 @@ func (s *Server) handleMediaFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
+	received := time.Now()
 	r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
 	reader, err := r.MultipartReader()
 	if err != nil {
@@ -440,7 +442,7 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		libraryFailure(w, err)
 		return
 	}
-	s.extractAfterImport(r.Context())
+	s.extractAfterImport(received)
 	for i := range files {
 		row, err := s.db.LibraryFile(r.Context(), files[i].ID)
 		if err != nil {

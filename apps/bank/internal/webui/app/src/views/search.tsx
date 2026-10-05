@@ -28,19 +28,59 @@ import { fmtDate, Highlight, SourceBadge } from "@/lib/format";
 import { find } from "@/lib/library-api";
 import { cn } from "@/lib/utils";
 
-const ALL = "__all__";
+type SearchForm = Required<Omit<SearchParams, "offset" | "mailbox_id" | "has_attachment">> &
+  Pick<SearchParams, "mailbox_id" | "has_attachment">;
+
+function formFrom(params: SearchParams | null): SearchForm {
+  return {
+    q: params?.q ?? "",
+    source: params?.source ?? "",
+    from: params?.from ?? "",
+    to: params?.to ?? "",
+    person: params?.person ?? "",
+    since: params?.since ?? "",
+    until: params?.until ?? "",
+    subject: params?.subject ?? "",
+    match: params?.match ?? "any",
+    fuzzy: params?.fuzzy ?? 1,
+    mailbox_id: params?.mailbox_id,
+    has_attachment: params?.has_attachment,
+  };
+}
+
+const fullDate = /^[1-9]\d{3}-\d{2}-\d{2}$/;
+
+function searchFrom(form: SearchForm): SearchParams {
+  return {
+    q: form.q.trim(),
+    source: form.source || undefined,
+    from: form.from || undefined,
+    to: form.to || undefined,
+    person: form.person || undefined,
+    match: form.match,
+    fuzzy: form.fuzzy,
+    since: fullDate.test(form.since) ? form.since : undefined,
+    until: fullDate.test(form.until) ? form.until : undefined,
+    mailbox_id: form.mailbox_id,
+    subject: form.subject || undefined,
+    has_attachment: form.has_attachment,
+  };
+}
+
+// Typing a year passes through 0002, 0020 and 0202 before it reaches 2024.
+const completeDate = (input: HTMLInputElement) =>
+  !input.validity.badInput && (input.value === "" || fullDate.test(input.value));
 
 export function selectMessage(m: Message): Selection {
   if (m.ref) return { kind: "message", id: m.ref };
   return m.thread_id
-    ? {
-        kind: "thread",
-        source: m.source,
-        threadId: m.thread_id,
-        title: m.subject || m.thread_id,
-        flashId: m.id,
-      }
-    : { kind: "message", id: m.id };
+    ? { kind: "thread", source: m.source, threadId: m.thread_id, flashId: m.id }
+    : { kind: "message", id: String(m.id) };
+}
+
+function isSelected(m: Message, selection: Selection) {
+  if (selection?.kind === "thread") return selection.flashId === m.id;
+  return selection?.kind === "message" && (selection.id === m.ref || selection.id === String(m.id));
 }
 
 export function HitRow({
@@ -115,20 +155,19 @@ export function SearchView({
   params: SearchParams | null;
   onSearch: (params: SearchParams) => void;
 }) {
-  const [input, setInput] = useState(params?.q ?? "");
-  const [source, setSource] = useState(params?.source ?? ALL);
-  const [from, setFrom] = useState(params?.from ?? "");
-  const [since, setSince] = useState(params?.since ?? "");
-  const [until, setUntil] = useState(params?.until ?? "");
-  const [to, setTo] = useState(params?.to ?? "");
-  const [person, setPerson] = useState(params?.person ?? "");
-  const [match, setMatch] = useState<"any" | "all" | "phrase">(params?.match ?? "any");
-  const [fuzzy, setFuzzy] = useState(params?.fuzzy ?? 1);
-  const [mailboxId, setMailboxId] = useState(params?.mailbox_id);
-  const [subject, setSubject] = useState(params?.subject ?? "");
-  const [attachment, setAttachment] = useState(
-    params?.has_attachment === undefined ? "any" : String(params.has_attachment),
-  );
+  const paramsKey = JSON.stringify(params);
+  const [form, setForm] = useState(() => formFrom(params));
+  const [formKey, setFormKey] = useState(paramsKey);
+  if (formKey !== paramsKey) {
+    setFormKey(paramsKey);
+    setForm(formFrom(params));
+  }
+  const edit = (patch: Partial<SearchForm>) => setForm((current) => ({ ...current, ...patch }));
+  const submit = (patch: Partial<SearchForm> = {}) => {
+    const next = { ...form, ...patch };
+    setForm(next);
+    onSearch(searchFrom(next));
+  };
 
   const q = useInfiniteQuery({
     queryKey: ["find", params],
@@ -175,38 +214,6 @@ export function SearchView({
         : undefined,
   });
 
-  const submit = (over?: Partial<SearchParams>) => {
-    const query = input.trim();
-    const p = {
-      source: source === ALL ? "" : source,
-      from,
-      to,
-      person,
-      match,
-      fuzzy,
-      since,
-      until,
-      mailbox_id: mailboxId,
-      subject,
-      has_attachment: attachment === "any" ? undefined : attachment === "true",
-      ...over,
-    };
-    onSearch({
-      q: query,
-      source: p.source || undefined,
-      from: p.from || undefined,
-      to: p.to || undefined,
-      person: p.person || undefined,
-      match: p.match,
-      fuzzy: p.fuzzy,
-      since: p.since || undefined,
-      until: p.until || undefined,
-      mailbox_id: p.mailbox_id,
-      subject: p.subject || undefined,
-      has_attachment: p.has_attachment,
-    });
-  };
-
   const hits = q.data?.pages.flatMap((page) => page.messages) ?? [];
   const libraryHits =
     q.data?.pages.some((page) =>
@@ -214,12 +221,6 @@ export function SearchView({
         (group) => group.length > 0,
       ),
     ) ?? false;
-  const selectedId =
-    selection?.kind === "thread"
-      ? selection.flashId
-      : selection?.kind === "message"
-        ? selection.id
-        : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -228,8 +229,8 @@ export function SearchView({
           <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground/60" />
           <Input
             ref={searchRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
+            value={form.q}
+            onChange={(e) => edit({ q: e.target.value })}
             onKeyDown={(e) => e.key === "Enter" && submit()}
             placeholder="Search messages, media, files and knowledge…"
             className="pr-8 pl-8"
@@ -242,11 +243,8 @@ export function SearchView({
             aria-label="Source"
             list="search-sources"
             placeholder="all sources"
-            value={source === ALL ? "" : source}
-            onChange={(event) => {
-              setSource(event.target.value || ALL);
-              setMailboxId(undefined);
-            }}
+            value={form.source}
+            onChange={(event) => edit({ source: event.target.value, mailbox_id: undefined })}
             onKeyDown={(event) => event.key === "Enter" && submit()}
             className="h-8 min-w-28 flex-1 text-xs"
           />
@@ -256,53 +254,43 @@ export function SearchView({
             ))}
           </datalist>
           <Input
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
+            value={form.from}
+            onChange={(e) => edit({ from: e.target.value })}
             onKeyDown={(e) => e.key === "Enter" && submit()}
             placeholder="sender"
             className="h-8 flex-1 text-xs"
           />
           <Input
             type="date"
-            value={since}
-            onChange={(e) => {
-              setSince(e.target.value);
-              submit({ since: e.target.value });
-            }}
+            value={form.since}
+            onChange={(e) => (completeDate(e.target) ? submit : edit)({ since: e.target.value })}
             className="h-8 flex-1 text-xs [color-scheme:dark]"
           />
           <Input
             type="date"
-            value={until}
-            onChange={(e) => {
-              setUntil(e.target.value);
-              submit({ until: e.target.value });
-            }}
+            value={form.until}
+            onChange={(e) => (completeDate(e.target) ? submit : edit)({ until: e.target.value })}
             className="h-8 flex-1 text-xs [color-scheme:dark]"
           />
         </div>
         <MailboxSelect
-          source={source === ALL ? undefined : source}
-          value={mailboxId}
-          onChange={(id) => {
-            setMailboxId(id);
-            submit({ mailbox_id: id });
-          }}
+          source={form.source || undefined}
+          value={form.mailbox_id}
+          onChange={(id) => submit({ mailbox_id: id })}
         />
         <div className="flex flex-wrap gap-2">
           <Input
             aria-label="Subject contains"
             placeholder="subject contains"
-            value={subject}
-            onChange={(event) => setSubject(event.target.value)}
+            value={form.subject}
+            onChange={(event) => edit({ subject: event.target.value })}
             onKeyDown={(event) => event.key === "Enter" && submit()}
           />
           <Select
-            value={attachment}
-            onValueChange={(value) => {
-              setAttachment(value);
-              submit({ has_attachment: value === "any" ? undefined : value === "true" });
-            }}
+            value={form.has_attachment === undefined ? "any" : String(form.has_attachment)}
+            onValueChange={(value) =>
+              submit({ has_attachment: value === "any" ? undefined : value === "true" })
+            }
           >
             <SelectTrigger aria-label="Attachment presence">
               <SelectValue />
@@ -324,12 +312,9 @@ export function SearchView({
         )}
         <div className="flex flex-wrap items-center gap-2">
           <Select
-            value={match}
+            value={form.match}
             onValueChange={(v) => {
-              if (v === "any" || v === "all" || v === "phrase") {
-                setMatch(v);
-                submit({ match: v });
-              }
+              if (v === "any" || v === "all" || v === "phrase") submit({ match: v });
             }}
           >
             <SelectTrigger size="sm" className="text-xs" aria-label="Match mode">
@@ -344,27 +329,23 @@ export function SearchView({
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <input
               type="checkbox"
-              checked={fuzzy > 0}
-              disabled={match === "phrase"}
-              onChange={(e) => {
-                const value = e.target.checked ? 1 : 0;
-                setFuzzy(value);
-                submit({ fuzzy: value });
-              }}
+              checked={form.fuzzy > 0}
+              disabled={form.match === "phrase"}
+              onChange={(e) => submit({ fuzzy: e.target.checked ? 1 : 0 })}
             />
             Allow typos
           </label>
           <Input
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
+            value={form.to}
+            onChange={(e) => edit({ to: e.target.value })}
             onKeyDown={(e) => e.key === "Enter" && submit()}
             placeholder="recipient"
             aria-label="Recipient"
             className="h-8 min-w-24 flex-1 text-xs"
           />
           <Input
-            value={person}
-            onChange={(e) => setPerson(e.target.value)}
+            value={form.person}
+            onChange={(e) => edit({ person: e.target.value })}
             onKeyDown={(e) => e.key === "Enter" && submit()}
             placeholder="contact name"
             aria-label="Contact name"
@@ -397,10 +378,7 @@ export function SearchView({
                 key={m.id}
                 m={m}
                 query={params?.q}
-                selected={
-                  selectedId !== undefined &&
-                  (String(m.id) === String(selectedId) || m.ref === selectedId)
-                }
+                selected={isSelected(m, selection)}
                 onClick={() => onSelect(selectMessage(m))}
               />
             ))}

@@ -23,7 +23,7 @@ import {
   MailConflictError,
   type Message,
 } from "@/lib/api";
-import { SourceBadge } from "@/lib/format";
+import { isMe, SourceBadge, threadTitle } from "@/lib/format";
 import { navigate, select, useLocation, type Selection } from "@/lib/navigation";
 import { CollectionDetail } from "@/views/collections";
 export type { Selection } from "@/lib/navigation";
@@ -59,7 +59,7 @@ export function DetailPane({ selection }: { selection: Selection }) {
   return <SelectedDetail key={JSON.stringify(selection)} selection={selection} />;
 }
 
-function LinkedMessage({ id }: { id: number | string }) {
+function LinkedMessage({ id }: { id: string }) {
   const message = useQuery({ queryKey: ["message", id], queryFn: () => getMessage(id) });
   if (message.isPending)
     return (
@@ -82,15 +82,19 @@ function LinkedMessage({ id }: { id: number | string }) {
               kind: "thread",
               source: m.source,
               threadId: m.thread_id,
-              title: m.subject,
               flashId: m.id,
               current: true,
             }
-          : { kind: "message", id: m.id }
+          : { kind: "message", id }
       }
       message={m}
     />
   );
+}
+
+function participants(messages: Message[]) {
+  const senders = messages.flatMap((m) => (m.sender && !isMe(m.sender) ? [m.sender] : []));
+  return Array.from(new Set(senders)).toSorted().join(", ");
 }
 
 type ConversationSelection = Exclude<Selection, { kind: "item" | "collection" | "page" }>;
@@ -247,7 +251,11 @@ function SelectedDetail({
         />
         <span className="truncate">
           {selection.kind === "thread"
-            ? selection.title || first?.subject || selection.threadId
+            ? threadTitle(
+                selection.threadId,
+                messages.find((m) => m.subject)?.subject ?? "",
+                participants(messages),
+              )
             : selection.kind === "mail-conflict"
               ? "Unanchored messages"
               : first?.subject || first?.sender || "Message"}

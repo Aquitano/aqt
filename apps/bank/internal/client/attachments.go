@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -67,8 +68,12 @@ func (c *Client) DeleteBlobText(ctx context.Context, sha256 string) error {
 	return resp.Body.Close()
 }
 
-func (c *Client) RefreshAttachmentText(ctx context.Context) (int64, error) {
-	resp, err := c.request(ctx, http.MethodPost, "/v1/attachments/refresh", nil, nil)
+func (c *Client) RefreshAttachmentText(ctx context.Context, since time.Time) (int64, error) {
+	q := url.Values{}
+	if !since.IsZero() {
+		q.Set("since", since.Format(time.RFC3339Nano))
+	}
+	resp, err := c.request(ctx, http.MethodPost, "/v1/attachments/refresh", q, nil)
 	if err != nil {
 		return 0, err
 	}

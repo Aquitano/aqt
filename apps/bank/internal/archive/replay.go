@@ -56,7 +56,7 @@ func List(archiveDir, source string) ([]Entry, error) {
 			return nil, err
 		}
 		all = append(all, dated{
-			e:  Entry{Ref: filepath.Join(source, de.Name()), Name: hashPrefix.ReplaceAllString(de.Name(), "")},
+			e:  Entry{Ref: source + "/" + de.Name(), Name: hashPrefix.ReplaceAllString(de.Name(), "")},
 			at: info.ModTime(),
 		})
 	}

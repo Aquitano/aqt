@@ -23,14 +23,13 @@ export type Selection =
       kind: "thread";
       source: string;
       threadId: string;
-      title?: string;
       flashId?: number;
       current?: boolean;
     }
   | { kind: "item"; id: string }
   | { kind: "collection"; id: string }
   | { kind: "page"; id: string }
-  | { kind: "message"; id: number | string }
+  | { kind: "message"; id: string }
   | { kind: "contact"; name: string }
   | { kind: "mail-conflict"; source: string; key: string }
   | { kind: "file"; file: Attachment }
@@ -81,12 +80,24 @@ export function useLocation() {
   return useSyncExternalStore(subscribe, () => window.location.search);
 }
 
+let replacingHistory = false;
+
 export function navigate(update: (params: URLSearchParams) => void) {
   const url = new URL(window.location.href);
   update(url.searchParams);
   if (url.href === window.location.href) return;
-  window.history.pushState(null, "", url);
+  if (replacingHistory) window.history.replaceState(null, "", url);
+  else window.history.pushState(null, "", url);
   window.dispatchEvent(new Event(locationEvent));
+}
+
+export function replacingHistoryDuring(action: () => void) {
+  replacingHistory = true;
+  try {
+    action();
+  } finally {
+    replacingHistory = false;
+  }
 }
 
 export function readSelection(params: URLSearchParams): Selection {
@@ -138,7 +149,7 @@ export function writeSelection(params: URLSearchParams, selection: Selection) {
       params.set(selection.kind, selection.id);
       break;
     case "message":
-      params.set("message", String(selection.id));
+      params.set("message", selection.id);
       break;
     case "contact":
       params.set("contact", selection.name);

@@ -199,7 +199,7 @@ export function search({
   return api(`/v1/search?${p}`, message.array());
 }
 
-export function getMessage(id: number | string) {
+export function getMessage(id: string) {
   return api(`/v1/messages/${id}`, message);
 }
 

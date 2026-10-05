@@ -428,7 +428,7 @@ func cmdAttachmentText(ctx context.Context, args []string) error {
 // content. Editing text that never reaches the index would look like it
 // worked and change nothing.
 func reindexAfterTextChange(ctx context.Context, b attachmentBackend) error {
-	n, err := b.RefreshAttachmentText(ctx)
+	n, err := b.RefreshAttachmentText(ctx, time.Time{})
 	if err != nil {
 		return err
 	}

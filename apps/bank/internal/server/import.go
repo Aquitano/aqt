@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/aichat"
@@ -30,6 +31,7 @@ import (
 // Uploads are always single files: directory inputs stay a client concern, the
 // CLI walks them and posts one file per request.
 func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
+	received := time.Now()
 	r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
 	kind := r.PathValue("kind")
 	source := r.URL.Query().Get("source")
@@ -85,14 +87,16 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		writeCause(w, err)
 		return
 	}
-	s.extractAfterImport(r.Context())
 	writeJSON(w, http.StatusOK, res)
+	s.extractAfterImport(received)
 }
 
 // extractAfterImport reads text out of newly stored attachments so an upload
-// is searchable inside its documents straight away. Newest first and bounded:
-// the batch has to reach what this upload stored even when a large backlog is
-// waiting, and it must not turn one upload into a whole-archive pass.
+// becomes searchable inside its documents shortly after it lands. Newest first
+// and limited to content stored since the upload arrived: the batch has to
+// reach what this upload stored even when a large backlog is waiting, and it
+// must not turn one upload into a whole-archive pass. The older backlog is the
+// nightly `bank extract`'s.
 //
 // Only the cheap pure-Go extractors ever run here. OCR needs tesseract and
 // poppler, which are deliberately not in this image — the process listening on
@@ -102,16 +106,80 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 //
 // Never fatal: the message and its blobs are already archived, and text is
 // derived data that any later pass can rebuild.
-func (s *Server) extractAfterImport(ctx context.Context) {
+//
+// It runs after the response, in the background: a client that times out
+// waiting for extraction retries an import that already committed. One run is
+// in flight at a time; uploads arriving meanwhile request a single rerun, so a
+// backfill does not queue a pass per message, and a full batch runs again until
+// everything stored since the first of those uploads arrived is drained.
+func (s *Server) extractAfterImport(received time.Time) {
 	if os.Getenv("BANK_EXTRACT") == "off" {
 		return
 	}
+	s.extraction.mu.Lock()
+	defer s.extraction.mu.Unlock()
+	if !s.extraction.running || received.Before(s.extraction.since) {
+		s.extraction.since = received
+	}
+	if s.extraction.arrived.IsZero() || received.Before(s.extraction.arrived) {
+		s.extraction.arrived = received
+	}
+	if s.extraction.running {
+		s.extraction.again = true
+		return
+	}
+	s.extraction.running = true
+	s.extraction.done.Go(s.extractUntilCurrent)
+}
+
+type extraction struct {
+	mu      sync.Mutex
+	running bool
+	again   bool
+	since   time.Time
+	arrived time.Time
+	done    sync.WaitGroup
+}
+
+// extractUntilCurrent refreshes, after each pass, only what changed since the
+// previous pass started, which is earlier than that pass's own refresh and so
+// leaves no gap. An upload commits before it schedules extraction, so one that
+// committed after a refresh is covered by starting the next window no later
+// than its arrival.
+func (s *Server) extractUntilCurrent() {
+	var refreshSince time.Time
+	for {
+		s.extraction.mu.Lock()
+		since := s.extraction.since
+		if arrived := s.extraction.arrived; !arrived.IsZero() && (refreshSince.IsZero() || arrived.Before(refreshSince)) {
+			refreshSince = arrived
+		}
+		s.extraction.arrived = time.Time{}
+		s.extraction.mu.Unlock()
+		started := time.Now()
+		backlog := s.extractPending(context.Background(), since, refreshSince)
+		refreshSince = started
+		s.extraction.mu.Lock()
+		again := backlog || s.extraction.again
+		s.extraction.again = false
+		s.extraction.running = again
+		s.extraction.mu.Unlock()
+		if !again {
+			return
+		}
+	}
+}
+
+func (s *Server) extractPending(ctx context.Context, since, refreshSince time.Time) (backlog bool) {
 	o := extract.DefaultOptions()
 	o.TempDir = uploadStagingDir(s.dataDir)
-	sel := extract.Selection{Limit: extract.PostImportLimit, NewestFirst: true}
-	if _, err := extract.Run(ctx, extract.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil); err != nil {
+	sel := extract.Selection{Limit: extract.PostImportLimit, NewestFirst: true, StoredSince: since, RefreshSince: refreshSince}
+	summary, err := extract.Run(ctx, extract.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "bank: reading attachment text: %v\n", err)
+		return false
 	}
+	return summary.Considered == extract.PostImportLimit
 }
 
 func (s *Server) importJSON(ctx context.Context, source string, body []byte) (generic.Result, error) {

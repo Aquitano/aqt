@@ -65,6 +65,10 @@ type ListBlobsOpts struct {
 	// large pending blobs, the default order would spend a bounded batch
 	// before ever reaching the file that just landed.
 	NewestFirst bool
+	// StoredSince restricts to content stored at or after it, so the passes
+	// after an upload drain what uploads stored without taking on the
+	// archive's older backlog.
+	StoredSince time.Time
 }
 
 // MaxBlobList bounds one listing, the same reasoning as MaxSearchLimit.
@@ -83,9 +87,16 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 		args = append(args, v)
 		return fmt.Sprintf("$%d", len(args))
 	}
-	where := ""
+	conditions := []string{}
 	if o.Source != "" {
-		where = " where a.source = " + next(o.Source)
+		conditions = append(conditions, "a.source = "+next(o.Source))
+	}
+	if !o.StoredSince.IsZero() {
+		conditions = append(conditions, "a.newest >= "+next(o.StoredSince))
+	}
+	where := ""
+	if len(conditions) > 0 {
+		where = " where " + strings.Join(conditions, " and ")
 	}
 	sql := `
 		select b.sha256, b.filename, b.mime_type, b.size_bytes, b.messages,
@@ -211,7 +222,21 @@ func (s *Store) KnownAttachment(ctx context.Context, sha256 string) (bool, error
 // blob that was just extracted, a message imported after its blob was already
 // extracted, and text corrected by hand, without any of them needing to know
 // about the others.
-func (s *Store) RefreshAttachmentText(ctx context.Context) (int64, error) {
+//
+// A non-zero since limits it to messages with an attachment stored or
+// extracted at or after since, which is all a pass after an upload can have
+// changed, including older messages sharing content it just read.
+func (s *Store) RefreshAttachmentText(ctx context.Context, since time.Time) (int64, error) {
+	args := []any{MaxAttachmentTextChars}
+	scope := ""
+	if !since.IsZero() {
+		args = append(args, since)
+		scope = `where a.message_id in (
+				select s.message_id from attachments s
+				join messages sm on sm.id = s.message_id
+				left join blob_text st on st.sha256 = s.sha256
+				where coalesce(s.ingested_at, sm.ingested_at) >= $2 or st.extracted_at >= $2)`
+	}
 	tag, err := s.pool.Exec(ctx, `
 		update messages m
 		set attachment_text = c.txt
@@ -220,10 +245,11 @@ func (s *Store) RefreshAttachmentText(ctx context.Context) (int64, error) {
 			       left(coalesce(string_agg(t.text, ' ' order by a.id), ''), $1) as txt
 			from attachments a
 			left join blob_text t on t.sha256 = a.sha256 and t.text <> ''
+			`+scope+`
 			group by a.message_id
 		) c
 		where c.message_id = m.id and m.attachment_text is distinct from c.txt`,
-		MaxAttachmentTextChars)
+		args...)
 	if err != nil {
 		return 0, err
 	}

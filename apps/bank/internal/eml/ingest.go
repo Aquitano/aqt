@@ -175,18 +175,33 @@ func syncAttachments(ctx context.Context, st *store.Store, blobs *blob.Store, me
 	if len(atts) == 0 {
 		return nil
 	}
+	have := map[string]int{}
+	if !fresh {
+		var err error
+		if have, err = st.AttachmentKeys(ctx, messageID); err != nil {
+			return fail.Opf("read attachments of message %d: %w", messageID, err)
+		}
+	}
 	attachments := make([]store.Attachment, 0, len(atts))
 	for _, a := range atts {
-		stored, size, err := blobs.Put(bytes.NewReader(a.Data))
-		if err != nil {
-			return fail.Opf("store attachment %q: %w", a.Filename, err)
+		sum := sha256.Sum256(a.Data)
+		digest := hex.EncodeToString(sum[:])
+		key := store.AttachmentKey(digest, a.Filename)
+		recorded := have[key] > 0
+		if recorded {
+			have[key]--
+		}
+		if _, statErr := os.Stat(blobs.Path(digest)); !recorded || statErr != nil {
+			if _, _, err := blobs.Put(bytes.NewReader(a.Data)); err != nil {
+				return fail.Opf("store attachment %q: %w", a.Filename, err)
+			}
 		}
 		attachments = append(attachments, store.Attachment{
 			MessageID: messageID,
 			Filename:  a.Filename,
 			MimeType:  a.MimeType,
-			SizeBytes: size,
-			SHA256:    stored,
+			SizeBytes: int64(len(a.Data)),
+			SHA256:    digest,
 		})
 	}
 	inserted, err := st.ReconcileMailAttachments(ctx, messageID, attachments)

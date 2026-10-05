@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -15,7 +16,7 @@ import (
 type Archive interface {
 	ListBlobs(ctx context.Context, o store.ListBlobsOpts) ([]store.BlobRef, error)
 	PutBlobText(ctx context.Context, bt store.BlobText) error
-	RefreshAttachmentText(ctx context.Context) (int64, error)
+	RefreshAttachmentText(ctx context.Context, since time.Time) (int64, error)
 	// OpenBlob makes the bytes available as a local file, because every
 	// extractor here either seeks or is a subprocess taking a path.
 	OpenBlob(ctx context.Context, sha256 string) (path string, cleanup func(), err error)
@@ -34,6 +35,10 @@ type Selection struct {
 	// searchable now, and with a backlog of large pending blobs the default
 	// order would spend the whole batch before reaching it.
 	NewestFirst bool
+	StoredSince time.Time
+	// RefreshSince limits the closing refresh to messages whose attachments
+	// were stored or extracted since it; zero refreshes every message.
+	RefreshSince time.Time
 }
 
 // Summary is what a run did, in the shape `--json` prints.
@@ -51,7 +56,7 @@ const maxReportedErrors = 10
 
 // PostImportLimit bounds the batch an import reads, so importing three files
 // into an archive with a large unextracted backlog stays quick — and so an
-// upload cannot end up extracting a whole backlog while the client waits.
+// upload cannot end up extracting a whole backlog.
 // Whatever is left over is what a full `bank extract` is for.
 const PostImportLimit = 200
 
@@ -84,6 +89,7 @@ func Run(ctx context.Context, a Archive, sel Selection, o Options, progress func
 		Source:      sel.Source,
 		Limit:       sel.Limit,
 		NewestFirst: sel.NewestFirst,
+		StoredSince: sel.StoredSince,
 	})
 	if err != nil {
 		return sum, err
@@ -122,7 +128,7 @@ func Run(ctx context.Context, a Archive, sel Selection, o Options, progress func
 	// Always refresh, even when nothing was extracted: a message imported
 	// after its attachment's text was already known still needs the text
 	// copied onto its row.
-	if sum.Reindexed, err = a.RefreshAttachmentText(ctx); err != nil {
+	if sum.Reindexed, err = a.RefreshAttachmentText(ctx, sel.RefreshSince); err != nil {
 		return sum, err
 	}
 	return sum, nil

@@ -115,6 +115,9 @@ func (v *verifier) mailContexts(ctx context.Context) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
+			if strings.HasPrefix(entry.Name(), ".partial-") {
+				continue
+			}
 			v.rep.MailContextsChecked++
 			record, err := archive.ReadMailContext(v.archiveDir, source.Name(), entry.Name())
 			if err == nil {

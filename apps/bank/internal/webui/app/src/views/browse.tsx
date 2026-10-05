@@ -14,26 +14,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { browseThreads, BROWSE_PAGE, type SourceStat, type ThreadGroup } from "@/lib/api";
-import { fmtDate, SourceBadge } from "@/lib/format";
+import { fmtDate, SourceBadge, threadTitle } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ListSkeleton } from "@/views/search";
 
 export const ALL_SOURCES = "__all__";
 
-// Raw WhatsApp JIDs make useless titles; unnamed group chats are titled by
-// their participants instead, the way messengers do it.
-const JID = /@(g\.us|s\.whatsapp\.net)$/;
-
 function groupTitle(g: ThreadGroup) {
-  if (g.subject) return g.subject;
-  if (JID.test(g.thread_id) && g.members) return g.members;
-  return !g.thread_id ? g.sender || "—" : g.thread_id;
+  return g.thread_id
+    ? threadTitle(g.thread_id, g.subject, g.members)
+    : g.subject || g.sender || "—";
 }
 
 function groupSelection(g: ThreadGroup): Selection {
   return !g.thread_id
-    ? { kind: "message", id: g.last_id }
-    : { kind: "thread", source: g.source, threadId: g.thread_id, title: groupTitle(g) };
+    ? { kind: "message", id: String(g.last_id) }
+    : { kind: "thread", source: g.source, threadId: g.thread_id };
 }
 
 function GroupRow({
@@ -165,7 +161,9 @@ export function BrowseView({
                   ? Boolean(g.thread_id) &&
                     selection.source === g.source &&
                     selection.threadId === g.thread_id
-                  : selection?.kind === "message" && !g.thread_id && selection.id === g.last_id;
+                  : selection?.kind === "message" &&
+                    !g.thread_id &&
+                    selection.id === String(g.last_id);
               return (
                 <GroupRow
                   key={JSON.stringify([g.source, g.thread_id, g.thread_id ? null : g.last_id])}

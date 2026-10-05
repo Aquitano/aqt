@@ -8,6 +8,7 @@ const SOURCE_HUES = new Map([
   ["linkedin", 205],
   ["chatgpt", 170],
   ["claude", 25],
+  ["claude-code", 40],
 ]);
 
 export function sourceHue(src: string): number {
@@ -38,8 +39,18 @@ const ME = /thomas breindl|breindlthomas|^thomas$|^(user|human|me)$/i;
 export const isMe = (sender?: string | null) => ME.test((sender ?? "").trim());
 
 // Sources whose message bodies are markdown worth rendering as such
-const AI_SOURCES = new Set(["chatgpt", "claude"]);
+const AI_SOURCES = new Set(["chatgpt", "claude", "claude-code", "codex", "opencode"]);
 export const isMarkdownSource = (source: string) => AI_SOURCES.has(source);
+
+// Raw WhatsApp JIDs make useless titles; unnamed group chats are titled by
+// their participants instead, the way messengers do it.
+const JID = /@(g\.us|s\.whatsapp\.net)$/;
+
+export function threadTitle(threadId: string, subject: string, members: string) {
+  if (subject) return subject;
+  if (JID.test(threadId) && members) return members;
+  return threadId;
+}
 
 const URL_RE = /https?:\/\/[^\s<>"'()[\]]+/g;
 
