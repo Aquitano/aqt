@@ -118,23 +118,30 @@ func (s *Server) extractAfterImport(received time.Time) {
 	}
 	s.extraction.mu.Lock()
 	defer s.extraction.mu.Unlock()
+	if !s.extraction.running || received.Before(s.extraction.since) {
+		s.extraction.since = received
+	}
 	if s.extraction.running {
 		s.extraction.again = true
 		return
 	}
 	s.extraction.running = true
-	s.extraction.done.Go(func() { s.extractUntilCurrent(received) })
+	s.extraction.done.Go(s.extractUntilCurrent)
 }
 
 type extraction struct {
 	mu      sync.Mutex
 	running bool
 	again   bool
+	since   time.Time
 	done    sync.WaitGroup
 }
 
-func (s *Server) extractUntilCurrent(since time.Time) {
+func (s *Server) extractUntilCurrent() {
 	for {
+		s.extraction.mu.Lock()
+		since := s.extraction.since
+		s.extraction.mu.Unlock()
 		backlog := s.extractPending(context.Background(), since)
 		s.extraction.mu.Lock()
 		again := backlog || s.extraction.again

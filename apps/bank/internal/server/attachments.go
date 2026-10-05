@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/extract"
@@ -154,9 +155,18 @@ func (s *Server) handleAttachmentTextDelete(w http.ResponseWriter, r *http.Reque
 
 // handleAttachmentRefresh copies extracted text onto the messages that carry
 // it. A remote run calls this once at the end rather than after every blob:
-// the statement sweeps every message, so per-blob would be quadratic.
+// the statement sweeps every message unless `since` limits it, so per-blob
+// would be quadratic.
 func (s *Server) handleAttachmentRefresh(w http.ResponseWriter, r *http.Request) {
-	n, err := s.db.RefreshAttachmentText(r.Context())
+	var since time.Time
+	if v := r.URL.Query().Get("since"); v != "" {
+		var err error
+		if since, err = time.Parse(time.RFC3339Nano, v); err != nil {
+			writeErr(w, http.StatusBadRequest, "since must be an RFC 3339 time")
+			return
+		}
+	}
+	n, err := s.db.RefreshAttachmentText(r.Context(), since)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

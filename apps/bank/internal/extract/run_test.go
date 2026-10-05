@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -52,7 +53,7 @@ func (f *fakeArchive) PutBlobText(_ context.Context, bt store.BlobText) error {
 	return nil
 }
 
-func (f *fakeArchive) RefreshAttachmentText(context.Context) (int64, error) {
+func (f *fakeArchive) RefreshAttachmentText(context.Context, time.Time) (int64, error) {
 	f.refreshed++
 	return int64(len(f.stored)), nil
 }

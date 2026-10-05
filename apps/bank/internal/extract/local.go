@@ -3,6 +3,7 @@ package extract
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -22,8 +23,8 @@ func (l Local) PutBlobText(ctx context.Context, bt store.BlobText) error {
 	return l.Store.PutBlobText(ctx, bt)
 }
 
-func (l Local) RefreshAttachmentText(ctx context.Context) (int64, error) {
-	return l.Store.RefreshAttachmentText(ctx)
+func (l Local) RefreshAttachmentText(ctx context.Context, since time.Time) (int64, error) {
+	return l.Store.RefreshAttachmentText(ctx, since)
 }
 
 func (l Local) BlobText(ctx context.Context, sha256 string) (store.BlobText, error) {

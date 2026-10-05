@@ -16,7 +16,7 @@ import (
 type Archive interface {
 	ListBlobs(ctx context.Context, o store.ListBlobsOpts) ([]store.BlobRef, error)
 	PutBlobText(ctx context.Context, bt store.BlobText) error
-	RefreshAttachmentText(ctx context.Context) (int64, error)
+	RefreshAttachmentText(ctx context.Context, since time.Time) (int64, error)
 	// OpenBlob makes the bytes available as a local file, because every
 	// extractor here either seeks or is a subprocess taking a path.
 	OpenBlob(ctx context.Context, sha256 string) (path string, cleanup func(), err error)
@@ -125,7 +125,7 @@ func Run(ctx context.Context, a Archive, sel Selection, o Options, progress func
 	// Always refresh, even when nothing was extracted: a message imported
 	// after its attachment's text was already known still needs the text
 	// copied onto its row.
-	if sum.Reindexed, err = a.RefreshAttachmentText(ctx); err != nil {
+	if sum.Reindexed, err = a.RefreshAttachmentText(ctx, sel.StoredSince); err != nil {
 		return sum, err
 	}
 	return sum, nil

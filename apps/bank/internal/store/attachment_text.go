@@ -222,7 +222,18 @@ func (s *Store) KnownAttachment(ctx context.Context, sha256 string) (bool, error
 // blob that was just extracted, a message imported after its blob was already
 // extracted, and text corrected by hand, without any of them needing to know
 // about the others.
-func (s *Store) RefreshAttachmentText(ctx context.Context) (int64, error) {
+//
+// A non-zero since limits it to messages with attachments stored at or after
+// since, which is all the passes after an upload can have changed.
+func (s *Store) RefreshAttachmentText(ctx context.Context, since time.Time) (int64, error) {
+	args := []any{MaxAttachmentTextChars}
+	scope := ""
+	if !since.IsZero() {
+		args = append(args, since)
+		scope = `where a.message_id in (
+				select s.message_id from attachments s join messages sm on sm.id = s.message_id
+				where coalesce(s.ingested_at, sm.ingested_at) >= $2)`
+	}
 	tag, err := s.pool.Exec(ctx, `
 		update messages m
 		set attachment_text = c.txt
@@ -231,10 +242,11 @@ func (s *Store) RefreshAttachmentText(ctx context.Context) (int64, error) {
 			       left(coalesce(string_agg(t.text, ' ' order by a.id), ''), $1) as txt
 			from attachments a
 			left join blob_text t on t.sha256 = a.sha256 and t.text <> ''
+			`+scope+`
 			group by a.message_id
 		) c
 		where c.message_id = m.id and m.attachment_text is distinct from c.txt`,
-		MaxAttachmentTextChars)
+		args...)
 	if err != nil {
 		return 0, err
 	}

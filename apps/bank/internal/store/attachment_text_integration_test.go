@@ -132,7 +132,7 @@ func TestRefreshAttachmentTextSharesOneExtractionAcrossMessages(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	n, err := st.RefreshAttachmentText(ctx)
+	n, err := st.RefreshAttachmentText(ctx, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestRefreshAttachmentTextSharesOneExtractionAcrossMessages(t *testing.T) {
 
 	// Idempotent: a second refresh with nothing changed must touch no rows,
 	// or every import would rewrite the whole table.
-	if n, err = st.RefreshAttachmentText(ctx); err != nil || n != 0 {
+	if n, err = st.RefreshAttachmentText(ctx, time.Time{}); err != nil || n != 0 {
 		t.Fatalf("second refresh: %d rows, %v; want 0, nil", n, err)
 	}
 
@@ -161,6 +161,24 @@ func TestRefreshAttachmentTextSharesOneExtractionAcrossMessages(t *testing.T) {
 	}
 }
 
+func TestRefreshAttachmentTextSinceSkipsOlderMessages(t *testing.T) {
+	ctx := context.Background()
+	st, schema := storetest.NewNamed(t)
+	older := seedMessage(t, st, "m1", "first mail", "invoice.pdf", digestA)
+	seedMessage(t, st, "m2", "forwarded", "invoice.pdf", digestA)
+	storetest.Exec(t, schema, `update attachments set ingested_at = now() - interval '1 hour' where message_id = $1`, older)
+	if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestA, Text: "netherfield", Extractor: "pdf", Status: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if n, err := st.RefreshAttachmentText(ctx, time.Now().Add(-time.Minute)); err != nil || n != 1 {
+		t.Fatalf("scoped refresh: %d rows, %v; want only the recent message", n, err)
+	}
+	if n, err := st.RefreshAttachmentText(ctx, time.Time{}); err != nil || n != 1 {
+		t.Fatalf("full refresh: %d rows, %v; want the older message left behind", n, err)
+	}
+}
+
 // Clearing text has to reach the index too, or a bad transcription stays
 // searchable after being deleted.
 func TestRefreshAttachmentTextRemovesClearedText(t *testing.T) {
@@ -171,13 +189,13 @@ func TestRefreshAttachmentTextRemovesClearedText(t *testing.T) {
 	if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestA, Text: "kedleston", Status: "manual"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.RefreshAttachmentText(ctx); err != nil {
+	if _, err := st.RefreshAttachmentText(ctx, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DeleteBlobText(ctx, digestA); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.RefreshAttachmentText(ctx); err != nil {
+	if _, err := st.RefreshAttachmentText(ctx, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	msgs, err := st.Search(ctx, "kedleston", store.SearchOpts{Fuzzy: 0, Limit: 10})
