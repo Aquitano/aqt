@@ -3,7 +3,7 @@ bun = "1.4.2"
 go = "1.27.1"
 golangci-lint = "2.14.0"
 swiftformat = "0.63.1"
-swiftlint = "0.65.1"
+swiftlint = { version = "0.65.1", os = ["linux", "macos"] }
 xcodegen = "2.46.0"
 
 [env]
