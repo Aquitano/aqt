@@ -49,6 +49,8 @@ Three identities, so a moved or copied file never costs a second hash, extractio
 
 Interrupting a scan is safe. Running it again walks again, which takes minutes, and hashes, lists and reads only what is still pending.
 
+Each scan logs through `log/slog` to a JSON-lines file in `<UserCacheDir>/attic/logs`, one per scan, every record carrying the scan id. Phases log at info with their time and counts, and so does each archive (format, status, members, nested archives left closed, time). Failures log at warn, and so do archives that are not listed. A nested archive that takes over 30 seconds and a document over 10 seconds log at info. Each hashed file, read document and nested archive logs at debug. Phase times are also kept on the scan's row, for `attic scans`, and the summary names the three slowest archives and documents. Logs older than 90 days are removed when a scan starts.
+
 An archive reads as one of: listed; damaged, keeping whatever members were read before the damage (none for rar, which lists from its headers in one go); encrypted, when even the names are; not an archive; or split, a later volume of a multi-volume rar, which is listed with its first volume. A read that fails says something about the disk, not the archive: the listing is dropped and tried again on the next scan, and so is a first volume on disk whose other parts are not beside it. A split set inside another archive reads as split, since its volumes cannot be put side by side. Passwords are never asked for. Picocrypt files and other encrypted containers stay plain files.
 
 Git repository roots are recorded with their `origin` remote, the list Zoekt will start from. `.git` itself is excluded.
@@ -80,11 +82,12 @@ exclude = ["/Games/"]
 ## CLI
 
 ```
-attic scan <folder> [--config f] [--no-hash] [--volume id | --new-volume] [--json]
+attic scan <folder> [--config f] [--no-hash] [--volume id | --new-volume] [--log-level l] [--json]
 attic search [words] [--any] [--volume v] [--ext e] [--kind file|dir|link] [--under path] [--limit n] [--offset n] [--json]
 attic show <id|ref> [--json]
 attic text <id|ref> [--json]
 attic volumes [--json]
+attic scans [--volume v] [--limit n] [--json]
 attic dupes [--min-size 1M] [--same-volume] [--limit n] [--json]
 attic skips [--scan id | --volume v] [--reason r] [--rule r] [--limit n] [--json]
 attic stats [--json]

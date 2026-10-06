@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/aquitano/aqt/apps/attic/internal/archive"
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
@@ -644,4 +646,44 @@ func cmdConfig(_ context.Context, args []string) error {
 		fmt.Println("  " + r)
 	}
 	return nil
+}
+
+func cmdScans(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("scans", flag.ExitOnError)
+	volume := fs.String("volume", "", "")
+	limit := fs.Int("limit", 20, "")
+	asJSON := fs.Bool("json", false, "")
+	_ = fs.Parse(args)
+	st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	volumeID := ""
+	if *volume != "" {
+		v, err := st.FindVolume(ctx, *volume)
+		if err != nil {
+			return err
+		}
+		volumeID = v.ID
+	}
+	scans, err := st.Scans(ctx, volumeID, *limit)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(scans)
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tVOLUME\tROOT\tSTATUS\tSTARTED\tTOOK\tHASHED\tARCHIVES\tDOCUMENTS\tSKIPPED\tPHASES")
+	for _, s := range scans {
+		took := "running"
+		if s.Finished != nil {
+			took = s.Finished.Sub(s.Started).Round(time.Second).String()
+		}
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", s.ID, s.Volume, cmp.Or(s.Root, "/"), s.Status,
+			s.Started.Local().Format("2006-01-02 15:04"), took, humanBytes(s.HashedBytes), count(s.Archives),
+			count(s.Texts), count(s.Skipped), phaseSummary(s.Phases, s.HashedBytes))
+	}
+	return tw.Flush()
 }

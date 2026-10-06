@@ -23,6 +23,7 @@ Usage:
   attic show <id|ref> [--json]        one entry, or every place a content lives
   attic text <id|ref> [--json]        the words read from a document
   attic volumes [--json]              known volumes, what they hold, last scan
+  attic scans [flags]                 scan history: how long each phase took, what it found
   attic dupes [flags]                 contents stored more than once
   attic skips [flags]                 what a scan left out, and why
   attic stats [--json]                the whole catalogue in numbers
@@ -33,6 +34,8 @@ Scan flags:
   --no-hash      list only; hash on a later scan
   --volume id    the disk is this known volume (after a fingerprint question)
   --new-volume   the disk is a new volume, even if it resembles a known one
+  --log-level l  debug, info (default), warn or error; the log is a JSON-lines file under
+                 %LOCALAPPDATA%\attic\logs, named in the summary
   --json         print the result as JSON
 
 Search flags:
@@ -48,6 +51,10 @@ Search flags:
 Dupes flags:
   --min-size s   ignore smaller contents, such as 10M (default 1M)
   --same-volume  only copies that share a volume
+  --limit n      default 20
+
+Scans flags:
+  --volume v     only this volume
   --limit n      default 20
 
 Skips flags:
@@ -85,6 +92,8 @@ func run() int {
 		err = cmdSearch(ctx, os.Args[2:])
 	case "show":
 		err = cmdShow(ctx, os.Args[2:])
+	case "scans":
+		err = cmdScans(ctx, os.Args[2:])
 	case "volumes":
 		err = cmdVolumes(ctx, os.Args[2:])
 	case "dupes":

@@ -18,6 +18,7 @@ go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic
 ```sh
 attic scan E:\                      # list everything, then hash files whose content is unknown
 attic scan E:\Files --no-hash       # list only; a later scan hashes
+attic scan E:\ --log-level debug    # log every hashed file and read document too
 attic search minecraft server       # every word, in the name, the path or as a name fragment
 attic search werkstudent --ext pdf  # fragments match: Werkstudentenvertrag.pdf
 attic search --volume Data --ext iso
@@ -27,12 +28,15 @@ attic show 36331                    # one entry, its times, its ref and its othe
 attic show 3f9a1c2b4d5e6f70         # a ref: every place that content lives
 attic text 36331                    # the words read from a document, for reading or quoting
 attic volumes                       # known disks, mounted or not, and their last scan
+attic scans --volume Data            # scan history: each phase's time, what it found
 attic dupes --same-volume           # copies that share a disk, largest waste first
 attic skips                         # what the newest scan left out, grouped by reason
 attic skips --reason unreadable     # the paths themselves
 ```
 
 A scan commits every couple of seconds, so search sees it while it runs. Interrupting it with Ctrl+C, or killing the process, keeps finished work; the same command continues where hashing stopped. Rescanning an unchanged disk writes almost nothing and takes seconds.
+
+Each scan writes a JSON-lines log to `%LOCALAPPDATA%\attic\logs`, named in its summary: the phases with their times and counts, each archive, failures as warnings, and every hashed file and read document at `--log-level debug`. The summary also names the slowest archives and documents. Logs older than 90 days are removed.
 
 Results show where a file can be opened now (`E:\Files\x.zip`) or the volume it lives on when the disk is unplugged (`Data:\Files\x.zip  (offline)`).
 

@@ -4,11 +4,13 @@
 package archive
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -78,6 +80,8 @@ type Options struct {
 	// Temp holds nested archives while they are listed, the system's temporary
 	// folder when empty.
 	Temp string
+	// Log hears about each nested archive opened; nil logs nothing.
+	Log *slog.Logger
 }
 
 type Result struct {
@@ -109,7 +113,7 @@ func List(ctx context.Context, p string, open Opener, o Options, emit func(Membe
 	if laterVolume.MatchString(filepath.Base(p)) {
 		return Result{Format: "rar", Status: Split}, nil
 	}
-	l := lister{o: o, emit: emit, skip: skip, watch: &watch{ctx: ctx}}
+	l := lister{o: o, emit: emit, skip: skip, watch: &watch{ctx: ctx}, log: cmp.Or(o.Log, slog.New(slog.DiscardHandler))}
 	res, err := l.list(ctx, p, open, "", 1)
 	// A read that failed anywhere, a nested archive's included, says the disk
 	// faltered; the listing is dropped and the next scan tries again.
@@ -128,6 +132,7 @@ type lister struct {
 	emit  func(Member) error
 	skip  func(Skip)
 	watch *watch
+	log   *slog.Logger
 }
 
 // UnreadableError is an archive that could not be opened or read at all, which
@@ -410,11 +415,15 @@ func (l *lister) nested(ctx context.Context, m Member, level int, open openMembe
 		return fatal{err}
 	}
 	defer os.Remove(tmp.Name())
+	started := time.Now()
 	reason, detail, err := l.unpack(ctx, open, tmp)
 	if err != nil {
 		return fatal{err}
 	}
+	unpacked := time.Since(started)
 	if reason != "" {
+		l.log.Debug("nested archive not opened", "path", m.Path, "reason", reason, "detail", detail,
+			"unpack_ms", unpacked.Milliseconds())
 		l.skip(Skip{Path: m.Path, Reason: reason, Detail: detail})
 		return nil
 	}
@@ -422,11 +431,22 @@ func (l *lister) nested(ctx context.Context, m Member, level int, open openMembe
 	if err != nil {
 		return fatal{err}
 	}
+	took := time.Since(started)
+	attrs := []any{"path", m.Path, "level", level + 1, "format", res.Format, "status", res.Status, "bytes", m.Size,
+		"unpack_ms", unpacked.Milliseconds(), "took_ms", took.Milliseconds()}
+	// Reaching a member of a solid archive decodes everything before it.
+	if took > slowNested {
+		l.log.Info("slow nested archive", attrs...)
+	} else {
+		l.log.Debug("nested archive listed", attrs...)
+	}
 	if res.Status != Listed {
 		l.skip(Skip{Path: m.Path, Reason: res.Status, Detail: res.Detail})
 	}
 	return nil
 }
+
+const slowNested = 30 * time.Second
 
 // unpack copies a member into dst and closes it. A member that cannot be
 // read is a reason to skip it; a temporary file that cannot be written is an
@@ -580,9 +600,11 @@ const tempPrefix = "attic-"
 // else: temp may be a folder shared with other files.
 var staleCopy = regexp.MustCompile(`(?i)^` + tempPrefix + `\d+\.[a-z0-9]+$`)
 
-// RemoveStale deletes nested-archive copies that a killed scan left in temp.
-// A copy younger than a day may belong to a scan still running.
-func RemoveStale(temp string) {
+// RemoveStale deletes nested-archive copies that a killed scan left in temp,
+// and says how many. A copy younger than a day may belong to a scan still
+// running.
+func RemoveStale(temp string) int {
+	removed := 0
 	if temp == "" {
 		temp = os.TempDir()
 	}
@@ -592,9 +614,12 @@ func RemoveStale(temp string) {
 			continue
 		}
 		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() && time.Since(fi.ModTime()) > 24*time.Hour {
-			_ = os.Remove(p)
+			if os.Remove(p) == nil {
+				removed++
+			}
 		}
 	}
+	return removed
 }
 
 // volumeMissing reports a rar that needed another volume and could not open

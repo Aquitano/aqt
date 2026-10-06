@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -38,6 +39,10 @@ type Options struct {
 	NewVolume bool
 	// Progress, when set, is called about twice a second.
 	Progress func(Progress)
+	// Log receives the scan's structured log: phases at info, each archive,
+	// document and hashed file at debug, what went wrong at warn. Nil logs
+	// nothing.
+	Log *slog.Logger
 
 	locate func(string) (disk.Volume, []string, error)
 }
@@ -63,14 +68,28 @@ type Result struct {
 	Root    string           `json:"root"`
 	Status  string           `json:"status"`
 	Counts  store.ScanCounts `json:"counts"`
+	Phases  store.PhaseTimes `json:"phases"`
 	Pending int64            `json:"pending"`
 	Elapsed time.Duration    `json:"elapsed"`
+	// The archives and documents that took longest, slowest first.
+	SlowArchives  []Slow `json:"slow_archives,omitempty"`
+	SlowDocuments []Slow `json:"slow_documents,omitempty"`
+}
+
+// Slow is one item and how long it took.
+type Slow struct {
+	Path string        `json:"path"`
+	Took time.Duration `json:"took"`
 }
 
 const progressEvery = 500 * time.Millisecond
 
 func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	started := time.Now()
+	log := o.Log
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
 	locate := o.locate
 	if locate == nil {
 		locate = disk.Locate
@@ -94,31 +113,46 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 			return Result{}, fmt.Errorf("nested archives would be copied to %s, on the disk being scanned: "+
 				"set [archives] temp to a folder on another disk, or depth = 1", temp)
 		}
-		archive.RemoveStale(temp)
+		if n := archive.RemoveStale(temp); n > 0 {
+			log.Info("removed copies a killed scan left behind", "temp", temp, "files", n)
+		}
 	}
 	sc, err := st.StartScan(ctx, vol, root)
 	if err != nil {
 		return Result{}, err
 	}
+	log = log.With("scan", sc.ID)
 	a := o.Config.Archives
 	textMax := o.Config.Text.MaxBytes
 	if textMax == 0 {
 		textMax = math.MaxInt64
 	}
 	r := &run{o: o, sc: sc, rules: o.Config.Rules(vol.ID, vol.Label), mountRoot: mounted.Root, lastProgress: time.Now(),
-		archives:  archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: a.Temp},
-		textsRead: map[int64]bool{}}
+		archives:  archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: a.Temp, Log: log},
+		textsRead: map[int64]bool{}, log: log}
 	r.text = extract.Options{Open: r.openDocument, MaxBytes: textMax, MaxChars: 1 << 20}
+	log.Info("scan started", "volume", vol.Label, "volume_id", vol.ID, "fs", vol.FS, "mounted", mounted.Root,
+		"root", cmp.Or(root, "/"), "no_hash", o.NoHash, "archive_depth", a.Depth, "unpack_max_bytes", a.UnpackMaxBytes,
+		"text_max_bytes", o.Config.Text.MaxBytes, "hash_max_bytes", o.Config.HashMaxBytes)
 	status, runErr := r.phases(ctx, rel)
 	if runErr != nil && ctx.Err() != nil {
 		status, runErr = "interrupted", nil
 	}
 	finishErr := sc.Finish(ctx, status, runErr)
-	res := Result{ScanID: sc.ID, Volume: vol, Root: root, Status: status, Counts: sc.Counts, Elapsed: time.Since(started)}
+	res := Result{ScanID: sc.ID, Volume: vol, Root: root, Status: status, Counts: sc.Counts, Phases: sc.Phases,
+		Elapsed: time.Since(started), SlowArchives: r.slowArchives, SlowDocuments: r.slowDocs}
 	if files, _, err := sc.PendingTotals(context.WithoutCancel(ctx)); err == nil {
 		res.Pending = files
 	}
-	return res, errors.Join(runErr, finishErr)
+	attrs := []any{"status", status, "took_ms", res.Elapsed.Milliseconds(), "counts", res.Counts, "pending", res.Pending,
+		"phases_ms", map[string]int64{"walk": res.Phases.Walk.Milliseconds(), "hash": res.Phases.Hash.Milliseconds(),
+			"archives": res.Phases.Archives.Milliseconds(), "text": res.Phases.Text.Milliseconds()}}
+	if err := errors.Join(runErr, finishErr); err != nil {
+		log.Error("scan failed", append(attrs, "err", err)...)
+		return res, err
+	}
+	log.Info("scan finished", attrs...)
+	return res, nil
 }
 
 type run struct {
@@ -139,6 +173,9 @@ type run struct {
 	current      string
 	phase        string
 	lastProgress time.Time
+	log          *slog.Logger
+	slowArchives []Slow
+	slowDocs     []Slow
 }
 
 // osPath turns a volume-relative path back into one the OS opens.
@@ -162,47 +199,72 @@ func (r *run) phases(ctx context.Context, rel []string) (string, error) {
 	if err != nil {
 		return "failed", err
 	}
-	r.phase = "walk"
-	if err := r.walk(ctx, start); err != nil {
-		return "failed", err
+	walk := func(ctx context.Context) error {
+		if err := r.walk(ctx, start); err != nil {
+			return err
+		}
+		return r.sc.Commit(ctx)
 	}
-	r.progress(true)
-	if err := r.sc.Commit(ctx); err != nil {
+	if err := r.step(ctx, "walk", "", &r.sc.Phases.Walk, walk); err != nil {
 		return "failed", err
 	}
 	if r.o.NoHash {
 		return "complete", nil
 	}
-	if err := r.sc.SetStatus(ctx, "hashing"); err != nil {
-		return "failed", err
+	hash := func(ctx context.Context) error {
+		if err := r.hash(ctx); err != nil {
+			return err
+		}
+		return r.sc.Commit(ctx)
 	}
-	r.phase = "hash"
-	if err := r.hash(ctx); err != nil {
-		return "failed", err
-	}
-	r.progress(true)
-	if err := r.sc.Commit(ctx); err != nil {
+	if err := r.step(ctx, "hash", "hashing", &r.sc.Phases.Hash, hash); err != nil {
 		return "failed", err
 	}
 	if r.archives.Depth > 0 {
-		if err := r.sc.SetStatus(ctx, "listing"); err != nil {
+		if err := r.step(ctx, "archives", "listing", &r.sc.Phases.Archives, r.listArchives); err != nil {
 			return "failed", err
 		}
-		r.phase = "archives"
-		if err := r.listArchives(ctx); err != nil {
-			return "failed", err
-		}
-		r.progress(true)
 	}
-	if err := r.sc.SetStatus(ctx, "reading"); err != nil {
+	if err := r.step(ctx, "text", "reading", &r.sc.Phases.Text, r.readTexts); err != nil {
 		return "failed", err
 	}
-	r.phase = "text"
-	if err := r.readTexts(ctx); err != nil {
-		return "failed", err
-	}
-	r.progress(true)
 	return "complete", nil
+}
+
+// step runs one phase: it sets the scan's status, times the phase into took
+// and logs how it went, with the scan's counts so far.
+func (r *run) step(ctx context.Context, phase, status string, took *time.Duration, work func(context.Context) error) error {
+	if status != "" {
+		if err := r.sc.SetStatus(ctx, status); err != nil {
+			return err
+		}
+	}
+	r.phase, r.current = phase, ""
+	r.log.Info("phase started", "phase", phase)
+	started := time.Now()
+	err := work(ctx)
+	*took = time.Since(started)
+	r.progress(true)
+	attrs := []any{"phase", phase, "took_ms", took.Milliseconds(), "counts", r.sc.Counts}
+	if phase == "hash" && took.Seconds() > 0 {
+		attrs = append(attrs, "mb_per_s", float64(r.sc.Counts.HashedBytes)/1e6/took.Seconds())
+	}
+	switch {
+	case err != nil && ctx.Err() != nil:
+		r.log.Warn("phase interrupted", attrs...)
+	case err != nil:
+		r.log.Error("phase failed", append(attrs, "err", err)...)
+	default:
+		r.log.Info("phase finished", attrs...)
+	}
+	return err
+}
+
+// noteSlow keeps the three slowest items of a kind for the summary.
+func noteSlow(list *[]Slow, path string, took time.Duration) {
+	*list = append(*list, Slow{Path: path, Took: took})
+	slices.SortFunc(*list, func(a, b Slow) int { return cmp.Compare(b.Took, a.Took) })
+	*list = (*list)[:min(len(*list), 3)]
 }
 
 // folderJob is a folder waiting to be listed. os is its path as the file
@@ -313,6 +375,7 @@ func (r *run) folder(ctx context.Context, job folderJob) ([]folderJob, error) {
 		if gone := r.volumeGone(); gone != nil {
 			return nil, gone
 		}
+		r.log.Warn("folder unreadable", "path", dir.Path, "err", err)
 		r.sc.Skip(dir.Path, "unreadable", "", err.Error())
 		return nil, nil
 	}
@@ -438,7 +501,9 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 	if r.rules.HashMaxBytes > 0 && p.Size > r.rules.HashMaxBytes {
 		return r.sc.SkipHash(ctx, p, "too_big", "", fmt.Sprintf("%d bytes", p.Size))
 	}
+	started := time.Now()
 	digest, n, err := disk.Hash(ctx, r.osPath(p.Path))
+	took := time.Since(started)
 	switch {
 	case ctx.Err() != nil:
 		return ctx.Err()
@@ -446,11 +511,14 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 		if gone := r.volumeGone(); gone != nil {
 			return gone
 		}
+		r.log.Warn("file unreadable", "path", p.Path, "size", p.Size, "err", err)
 		return r.sc.HashFailed(ctx, p, err)
 	case n != p.Size:
+		r.log.Info("file changed while hashing", "path", p.Path, "listed", p.Size, "read", n)
 		r.sc.Skip(p.Path, "changed", "", fmt.Sprintf("listed %d bytes, read %d; hashed on the next scan", p.Size, n))
 		return nil
 	}
+	r.log.Debug("file hashed", "path", p.Path, "size", p.Size, "took_ms", took.Milliseconds())
 	return r.sc.SetContent(ctx, p, digest)
 }
 
@@ -490,14 +558,19 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 	// Hashed under older rules; the ones in force now may forbid reading it.
 	path := lowerComponents(a.Path)
 	if excluded, _ := r.rules.Excluded(path, false); excluded || r.rules.NameOnly(path) {
+		r.log.Debug("archive left unread by the rules", "path", a.Path)
 		return nil
 	}
 	l, err := r.sc.StartListing(ctx, a.ContentID)
 	if err != nil || l == nil {
+		if l == nil && err == nil {
+			r.log.Debug("archive listed by another scan meanwhile", "path", a.Path)
+		}
 		return err
 	}
 	r.current = a.Path
 	r.progress(false)
+	started, members := time.Now(), r.sc.Counts.Members
 	var skips []archive.Skip
 	res, err := archive.List(ctx, r.osPath(a.Path), disk.Open, r.archives,
 		func(m archive.Member) error {
@@ -518,14 +591,26 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 		if gone := r.volumeGone(); gone != nil {
 			return gone
 		}
+		r.log.Warn("archive unreadable; the next scan tries again", "path", a.Path, "size", a.Size, "err", err)
 		r.sc.Skip(a.Path, "unreadable", "", err.Error())
 		return nil
 	}
 	if err := l.Finish(ctx, res); err != nil {
 		return err
 	}
+	took := time.Since(started)
+	noteSlow(&r.slowArchives, a.Path, took)
+	closed := map[string]int{}
+	for _, s := range skips {
+		closed[s.Reason]++
+	}
+	attrs := []any{"path", a.Path, "size", a.Size, "format", res.Format, "status", res.Status,
+		"members", r.sc.Counts.Members - members, "nested_unopened", closed, "took_ms", took.Milliseconds()}
 	if res.Status != archive.Listed {
+		r.log.Warn("archive not listed", append(attrs, "detail", res.Detail)...)
 		r.sc.Skip(a.Path, res.Status, "", res.Detail)
+	} else {
+		r.log.Info("archive listed", attrs...)
 	}
 	for _, s := range skips {
 		r.sc.Skip(a.Path+archive.Separator+s.Path, s.Reason, "", s.Detail)
@@ -576,6 +661,7 @@ func (r *run) readText(ctx context.Context, p store.PendingText) error {
 	// Hashed under older rules; the ones in force now may forbid reading it.
 	path := lowerComponents(p.Path)
 	if excluded, _ := r.rules.Excluded(path, false); excluded || r.rules.NameOnly(path) {
+		r.log.Debug("document left unread by the rules", "path", p.Path)
 		return nil
 	}
 	// A batch is fetched before its texts commit, so it can hold two copies.
@@ -585,7 +671,9 @@ func (r *run) readText(ctx context.Context, p store.PendingText) error {
 	r.current = p.Path
 	r.progress(false)
 	r.readErr = nil
+	started := time.Now()
 	res := extract.File(ctx, r.osPath(p.Path), p.Name, "", r.text)
+	took := time.Since(started)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -597,13 +685,13 @@ func (r *run) readText(ctx context.Context, p store.PendingText) error {
 	// A failed read or the size cap says nothing lasting about the content;
 	// the next scan, or a copy on another disk, tries again.
 	switch {
-	case r.readErr != nil:
-		r.sc.Skip(p.Path, "unreadable", "", r.readErr.Error())
-		return nil
-	case ioError(res.Err):
-		r.sc.Skip(p.Path, "unreadable", "", res.Err.Error())
+	case r.readErr != nil || ioError(res.Err):
+		err := cmp.Or(r.readErr, res.Err)
+		r.log.Warn("document unreadable; the next scan tries again", "path", p.Path, "err", err)
+		r.sc.Skip(p.Path, "unreadable", "", err.Error())
 		return nil
 	case res.Status == extract.StatusTooBig:
+		r.log.Debug("document over text.max_bytes", "path", p.Path)
 		r.sc.Skip(p.Path, "too_big", "", "over text.max_bytes")
 		return nil
 	}
@@ -611,13 +699,24 @@ func (r *run) readText(ctx context.Context, p store.PendingText) error {
 	if res.Truncated {
 		t.Status = "truncated"
 	}
-	if res.Err != nil {
+	noteSlow(&r.slowDocs, p.Path, took)
+	attrs := []any{"path", p.Path, "extractor", t.Extractor, "status", t.Status, "chars", utf8.RuneCountInString(t.Text),
+		"took_ms", took.Milliseconds()}
+	switch {
+	case res.Err != nil:
 		t.Detail = res.Err.Error()
+		r.log.Warn("document failed", append(attrs, "err", res.Err)...)
 		r.sc.Skip(p.Path, "text_failed", "", t.Detail)
+	case took > slowDocument:
+		r.log.Info("slow document", attrs...)
+	default:
+		r.log.Debug("document read", attrs...)
 	}
 	r.textsRead[p.ContentID] = true
 	return r.sc.SetText(ctx, p.ContentID, t)
 }
+
+const slowDocument = 10 * time.Second
 
 // openDocument opens a document for extract through disk.Open, and notes the
 // first failed open or read in r.readErr.

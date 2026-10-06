@@ -5,7 +5,9 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -341,5 +343,40 @@ func TestOversizedDocumentsWaitForTheCap(t *testing.T) {
 	}
 	if again := scanAt(t, st, root, testVolume); again.Counts.Texts != 1 {
 		t.Errorf("without the cap read %d documents, want report.txt", again.Counts.Texts)
+	}
+}
+
+// A scan's log tells its story: the start, each phase with its time and
+// counts, each document at debug, the end. The phase times reach the history.
+func TestScanLogsItsPhases(t *testing.T) {
+	st, _ := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "notes.txt", "meeting notes")
+	var buf bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	res := scanAt(t, st, root, testVolume, func(o *Options) { o.Log = log })
+
+	var messages []string
+	for line := range strings.Lines(buf.String()) {
+		var rec struct {
+			Msg  string `json:"msg"`
+			Scan int64  `json:"scan"`
+		}
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("not a JSON record: %q", line)
+		}
+		if rec.Scan != res.ScanID {
+			t.Errorf("record %q carries scan %d, want %d", rec.Msg, rec.Scan, res.ScanID)
+		}
+		messages = append(messages, rec.Msg)
+	}
+	for _, want := range []string{"scan started", "phase finished", "file hashed", "document read", "scan finished"} {
+		if !slices.Contains(messages, want) {
+			t.Errorf("no %q record in %q", want, messages)
+		}
+	}
+	history, err := st.Scans(context.Background(), "", 1)
+	if err != nil || len(history) != 1 || res.Phases.Hash == 0 || history[0].Phases.Hash != res.Phases.Hash.Truncate(time.Millisecond) {
+		t.Errorf("history %+v, %v; want the scan with its phase times, in milliseconds, %+v", history, err, res.Phases)
 	}
 }

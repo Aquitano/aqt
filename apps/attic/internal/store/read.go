@@ -371,27 +371,44 @@ func (s *Store) occurrences(ctx context.Context, contentID, except int64, presen
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Hit, error) { return scanHit(r) })
 }
 
-// ScanInfo is one scan as `attic volumes` and `attic skips` report it.
+// ScanInfo is one scan as `attic scans`, `attic volumes` and `attic skips`
+// report it.
 type ScanInfo struct {
 	ID       int64      `json:"id"`
 	VolumeID string     `json:"volume_id"`
+	Volume   string     `json:"volume"`
 	Root     string     `json:"root"`
 	Status   string     `json:"status"`
 	Started  time.Time  `json:"started"`
 	Finished *time.Time `json:"finished,omitempty"`
 	Error    string     `json:"error,omitempty"`
+	Phases   PhaseTimes `json:"phases"`
 	ScanCounts
 }
 
-const scanColumns = `id, volume_id::text, root, status, started_at, finished_at, error, listed, written, missing,
+const scanColumns = `id, volume_id::text, (select label from volumes v where v.id = scans.volume_id), root, status,
+	started_at, finished_at, error, walk_ms, hash_ms, archives_ms, text_ms, listed, written, missing,
 	skipped, hashed, hashed_bytes, duplicates, archives, members, texts, text_chars`
 
 func scanScanInfo(row pgx.Row) (ScanInfo, error) {
 	var si ScanInfo
-	err := row.Scan(&si.ID, &si.VolumeID, &si.Root, &si.Status, &si.Started, &si.Finished, &si.Error, &si.Listed,
-		&si.Written, &si.Missing, &si.Skipped, &si.Hashed, &si.HashedBytes, &si.Duplicates, &si.Archives, &si.Members,
-		&si.Texts, &si.TextChars)
+	var walk, hash, archives, text int64
+	err := row.Scan(&si.ID, &si.VolumeID, &si.Volume, &si.Root, &si.Status, &si.Started, &si.Finished, &si.Error,
+		&walk, &hash, &archives, &text, &si.Listed, &si.Written, &si.Missing, &si.Skipped, &si.Hashed, &si.HashedBytes,
+		&si.Duplicates, &si.Archives, &si.Members, &si.Texts, &si.TextChars)
+	si.Phases = PhaseTimes{Walk: time.Duration(walk) * time.Millisecond, Hash: time.Duration(hash) * time.Millisecond,
+		Archives: time.Duration(archives) * time.Millisecond, Text: time.Duration(text) * time.Millisecond}
 	return si, err
+}
+
+// Scans is the scan history, newest first, of one volume when volumeID is set.
+func (s *Store) Scans(ctx context.Context, volumeID string, limit int) ([]ScanInfo, error) {
+	rows, err := s.pool.Query(ctx, `select `+scanColumns+` from scans
+		where $1 = '' or volume_id::text = $1 order by id desc limit $2`, volumeID, limit)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (ScanInfo, error) { return scanScanInfo(r) })
 }
 
 // LatestScan is the newest scan, of one volume when volumeID is set.

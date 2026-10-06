@@ -22,6 +22,8 @@ type Scan struct {
 	// Root is the scanned folder, volume-relative like Entry.Path.
 	Root   string
 	Counts ScanCounts
+	// Phases is how long each phase took, written when the scan finishes.
+	Phases PhaseTimes
 
 	store      *Store
 	lock       *pgxpool.Conn
@@ -43,6 +45,15 @@ type ScanCounts struct {
 	Members     int64 `json:"members"`
 	Texts       int64 `json:"texts"`
 	TextChars   int64 `json:"text_chars"`
+}
+
+// PhaseTimes is how long each phase of a scan took; zero for one that did not
+// run.
+type PhaseTimes struct {
+	Walk     time.Duration `json:"walk"`
+	Hash     time.Duration `json:"hash"`
+	Archives time.Duration `json:"archives"`
+	Text     time.Duration `json:"text"`
 }
 
 const (
@@ -146,11 +157,12 @@ func (sc *Scan) Finish(ctx context.Context, status string, failure error) error 
 	_, uerr := sc.lock.Exec(ctx, `
 		update scans set status = $2, error = $3, finished_at = now(), listed = $4, written = $5, missing = $6,
 		       skipped = $7, hashed = $8, hashed_bytes = $9, duplicates = $10, archives = $11, members = $12,
-		       texts = $13, text_chars = $14
+		       texts = $13, text_chars = $14, walk_ms = $15, hash_ms = $16, archives_ms = $17, text_ms = $18
 		where id = $1`,
 		sc.ID, status, msg, sc.Counts.Listed, sc.Counts.Written, sc.Counts.Missing, sc.Counts.Skipped,
 		sc.Counts.Hashed, sc.Counts.HashedBytes, sc.Counts.Duplicates, sc.Counts.Archives, sc.Counts.Members,
-		sc.Counts.Texts, sc.Counts.TextChars)
+		sc.Counts.Texts, sc.Counts.TextChars, sc.Phases.Walk.Milliseconds(), sc.Phases.Hash.Milliseconds(),
+		sc.Phases.Archives.Milliseconds(), sc.Phases.Text.Milliseconds())
 	return errors.Join(err, uerr)
 }
 
