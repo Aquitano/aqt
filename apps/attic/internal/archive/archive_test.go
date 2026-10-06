@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
 
 func zipOf(t *testing.T, files map[string][]byte) []byte {
@@ -166,5 +167,34 @@ func TestLaterRarVolumesAreSplit(t *testing.T) {
 	res, err := List(context.Background(), p, os.Open, Options{Depth: 1}, func(Member) error { return nil }, func(Skip) {})
 	if err != nil || res.Status != Split {
 		t.Errorf("part02: %+v, %v; want split", res, err)
+	}
+}
+
+// The sweep removes only old copies a scan made; temp may be shared with
+// files of the same prefix.
+func TestRemoveStaleKeepsWhatIsNotAnOldCopy(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-48 * time.Hour)
+	for name, modified := range map[string]time.Time{
+		"attic-123.zip":   old,
+		"attic-notes.txt": old,
+		"attic-456.rar":   time.Now(),
+	} {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, modified, modified); err != nil {
+			t.Fatal(err)
+		}
+	}
+	RemoveStale(dir)
+	var left []string
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		left = append(left, e.Name())
+	}
+	if !slices.Equal(left, []string{"attic-456.rar", "attic-notes.txt"}) {
+		t.Errorf("left %v, want the young copy and the user's file", left)
 	}
 }

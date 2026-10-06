@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -152,8 +153,11 @@ type watch struct {
 	err error
 }
 
+// note keeps only errors from the operating system. A short read, a bad offset
+// from a corrupt header or a decompressor's complaint is the archive's doing
+// and gets classified as such.
 func (w *watch) note(err error) {
-	if err != nil && !errors.Is(err, io.EOF) && w.err == nil {
+	if w.err == nil && errors.As(err, new(syscall.Errno)) {
 		w.err = err
 	}
 }
@@ -190,7 +194,6 @@ func (f watchedFile) Seek(offset int64, whence int) (int64, error) {
 func (l *lister) open(open Opener, p string) (watchedFile, error) {
 	f, err := open(p)
 	if err != nil {
-		l.watch.note(err)
 		return watchedFile{}, err
 	}
 	return watchedFile{File: f, w: l.watch}, nil
@@ -245,6 +248,11 @@ func (l *lister) list(ctx context.Context, p string, open Opener, prefix string,
 		return res, UnreadableError{l.watch.err}
 	case err == nil:
 		res.Status = Listed
+	case volumeMissing(err) && level == 1:
+		// The other parts may be on another disk, or come back.
+		return res, UnreadableError{err}
+	case volumeMissing(err):
+		res.Status, res.Detail = Split, "its other volumes are not beside it: "+err.Error()
 	default:
 		res.Status, res.Detail = classify(err), err.Error()
 	}
@@ -522,9 +530,9 @@ func cleanName(name string) string {
 }
 
 // dirFS lets rardecode open the volumes of a split archive with the caller's
-// opener, watched like the first. A volume that cannot be opened fails the
-// listing for now rather than marking the content damaged for good: the set
-// may be complete on another disk.
+// opener, watched like the first. rardecode probes for a next volume and takes
+// a missing one as the end of an archive that has no end block, so an open
+// error goes back to it rather than to the watch.
 type dirFS struct {
 	dir  string
 	open Opener
@@ -568,6 +576,10 @@ func (w *writeErr) Write(p []byte) (int, error) {
 
 const tempPrefix = "attic-"
 
+// staleCopy is the name os.CreateTemp gives a nested-archive copy, and nothing
+// else: temp may be a folder shared with other files.
+var staleCopy = regexp.MustCompile(`(?i)^` + tempPrefix + `\d+\.[a-z0-9]+$`)
+
 // RemoveStale deletes nested-archive copies that a killed scan left in temp.
 // A copy younger than a day may belong to a scan still running.
 func RemoveStale(temp string) {
@@ -576,8 +588,18 @@ func RemoveStale(temp string) {
 	}
 	stale, _ := filepath.Glob(filepath.Join(temp, tempPrefix+"*"))
 	for _, p := range stale {
+		if name := filepath.Base(p); !staleCopy.MatchString(name) || !IsArchive(name) {
+			continue
+		}
 		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() && time.Since(fi.ModTime()) > 24*time.Hour {
 			_ = os.Remove(p)
 		}
 	}
+}
+
+// volumeMissing reports a rar that needed another volume and could not open
+// it.
+func volumeMissing(err error) bool {
+	var pe *fs.PathError
+	return errors.As(err, &pe) && pe.Op == "open"
 }

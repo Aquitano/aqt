@@ -303,10 +303,15 @@ func TestDocumentsAreReadForTheirWords(t *testing.T) {
 	write(t, root, "Backup/Werkstudent copy.txt", "Arbeitszeit zwanzig Stunden pro Woche")
 	write(t, root, "project/settings.json", `{"note": "Stunden pro Woche"}`)
 	write(t, root, "long.md", strings.Repeat("lang ", 300_000))
+	// Too short for the PDF reader: a broken file, not a disk error.
+	write(t, root, "stub.pdf", "%PDF-1.4")
 
 	res := scanAt(t, st, root, testVolume)
-	if res.Counts.Texts != 2 {
-		t.Fatalf("read %d documents, want the contract once and long.md", res.Counts.Texts)
+	if res.Counts.Texts != 3 {
+		t.Fatalf("read %d documents, want the contract once, long.md and stub.pdf", res.Counts.Texts)
+	}
+	if failed, err := st.Skips(ctx, res.ScanID, "text_failed", "", 10); err != nil || len(failed) != 1 {
+		t.Errorf("text_failed skips %+v, %v; want stub.pdf", failed, err)
 	}
 	hits, err := st.SearchTexts(ctx, store.SearchOptions{Query: "stunden woche"})
 	if err != nil || len(hits) != 1 {

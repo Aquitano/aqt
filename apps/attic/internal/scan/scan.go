@@ -9,12 +9,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -85,7 +85,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	for _, part := range rel {
 		root += "/" + part
 	}
-	if a := o.Config.Archives; a.Depth > 1 {
+	if a := o.Config.Archives; a.Depth > 1 && !o.NoHash {
 		temp := cmp.Or(a.Temp, os.TempDir())
 		// Locate works on Windows only; elsewhere the check is skipped.
 		if t, _, err := disk.Locate(temp); err == nil && vol.Holds(t.Fingerprint) {
@@ -592,6 +592,9 @@ func (r *run) readText(ctx context.Context, p store.PendingText) error {
 	case r.readErr != nil:
 		r.sc.Skip(p.Path, "unreadable", "", r.readErr.Error())
 		return nil
+	case ioError(res.Err):
+		r.sc.Skip(p.Path, "unreadable", "", res.Err.Error())
+		return nil
 	case res.Status == extract.StatusTooBig:
 		r.sc.Skip(p.Path, "too_big", "", "over text.max_bytes")
 		return nil
@@ -613,7 +616,9 @@ func (r *run) readText(ctx context.Context, p store.PendingText) error {
 func (r *run) openDocument(p string) (extract.Handle, error) {
 	f, err := disk.Open(p)
 	if err != nil {
-		r.readErr = err
+		if ioError(err) {
+			r.readErr = err
+		}
 		return nil, err
 	}
 	return watchedDocument{File: f, err: &r.readErr}, nil
@@ -637,7 +642,13 @@ func (d watchedDocument) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func (d watchedDocument) note(err error) {
-	if err != nil && !errors.Is(err, io.EOF) && *d.err == nil {
+	if *d.err == nil && ioError(err) {
 		*d.err = err
 	}
+}
+
+// ioError reports an error from the operating system, as opposed to a short
+// read or a bad offset from a corrupt file, which say something about the file.
+func ioError(err error) bool {
+	return errors.As(err, new(syscall.Errno))
 }
