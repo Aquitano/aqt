@@ -7,6 +7,6 @@ export const env = createEnv({
     VITE_SERVER_URL: z.url(),
     VITE_CLERK_PUBLISHABLE_KEY: z.string().min(1),
   },
-  runtimeEnv: (import.meta as any).env,
+  runtimeEnv: import.meta.env,
   emptyStringAsUndefined: true,
 });

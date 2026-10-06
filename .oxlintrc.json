@@ -31,7 +31,7 @@
     }
   ],
   "rules": {
-    "typescript/no-explicit-any": "warn",
+    "typescript/no-explicit-any": "error",
     "typescript/no-unsafe-assignment": "warn",
     "typescript/no-unsafe-member-access": "warn",
     "typescript/no-unsafe-call": "warn",
@@ -65,7 +65,7 @@
       }
     ],
     "typescript/use-unknown-in-catch-callback-variable": "warn",
-    "anti-slop/no-chained-type-assertions": "warn",
+    "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "warn",
     "anti-slop/no-known-value-widening": "warn",
     "anti-slop/no-module-mocking": "warn",
@@ -78,7 +78,7 @@
     "anti-slop/no-unknown-returns": "warn",
     "anti-slop/no-unknown-type-aliases": "warn",
     "anti-slop/no-unsafe-dictionary-type": "warn",
-    "anti-slop/no-widen-then-assert": "warn",
+    "anti-slop/no-widen-then-assert": "error",
     "anti-slop/require-safety-comment-for-type-assertion": "warn",
     "react/react-in-jsx-scope": "off",
     "react/set-state-in-effect": "warn",
