@@ -198,7 +198,7 @@ func (s *Store) SearchMembers(ctx context.Context, o SearchOptions) ([]MemberHit
 	places := map[int64][]Hit{}
 	for i, id := range archiveIDs {
 		if _, ok := places[id]; !ok {
-			if places[id], err = s.occurrences(ctx, id, 0, false, volumesOf(o)); err != nil {
+			if places[id], err = s.occurrences(ctx, id, 0, false, copiesOf(o, true)); err != nil {
 				return nil, err
 			}
 		}
@@ -280,7 +280,7 @@ func (s *Store) Entry(ctx context.Context, id int64) (EntryDetail, error) {
 	if contentID == nil {
 		return d, nil
 	}
-	if d.Copies, err = s.occurrences(ctx, *contentID, id, false, nil); err != nil {
+	if d.Copies, err = s.occurrences(ctx, *contentID, id, false, copies{}); err != nil {
 		return d, err
 	}
 	if d.Text, err = s.textInfo(ctx, *contentID); err != nil {
@@ -328,18 +328,43 @@ func (s *Store) Content(ctx context.Context, ref string) (ContentDetail, error) 
 		return d, err
 	}
 	d.BLAKE3 = hex.EncodeToString(digest)
-	d.Occurrences, err = s.occurrences(ctx, id, 0, false, nil)
+	d.Occurrences, err = s.occurrences(ctx, id, 0, false, copies{})
 	return d, err
 }
 
+// copies narrows the places listed for a content. under is a volume-relative
+// folder; with self, the path itself counts too, as for an archive named by
+// --under.
+type copies struct {
+	volumes []string
+	under   string
+	self    bool
+	ext     string
+}
+
+// copiesOf keeps the places a search shows inside its own filters, so a
+// search of E:\Work does not point at the copy in E:\Archive or on F:.
+func copiesOf(o SearchOptions, self bool) copies {
+	c := copies{under: strings.TrimSuffix(o.Under, "/"), self: self}
+	if o.VolumeID != "" {
+		c.volumes = []string{o.VolumeID}
+	}
+	if !self && o.Ext != "" {
+		c.ext = strings.ToLower(strings.TrimPrefix(o.Ext, "."))
+	}
+	return c
+}
+
 // occurrences lists where a content lives, present copies first. presentOnly
-// drops missing ones; volumes, when set, keeps only those volumes.
-func (s *Store) occurrences(ctx context.Context, contentID, except int64, presentOnly bool, volumes []string) ([]Hit, error) {
+// drops missing ones; c narrows them further.
+func (s *Store) occurrences(ctx context.Context, contentID, except int64, presentOnly bool, c copies) ([]Hit, error) {
 	rows, err := s.pool.Query(ctx, `select `+hitColumns+hitFrom+`
 		where e.content_id = $1 and e.id <> $2 and (not $3 or e.missing_scan is null)
 		  and ($4::text[] is null or e.volume_id::text = any($4))
+		  and ($5 = '' or (e.path collate "C" > $5 || '/' and e.path collate "C" < $5 || '0') or ($6 and e.path = $5))
+		  and ($7 = '' or e.ext = $7)
 		order by e.missing_scan is not null, v.label, e.path collate "C" limit 100`,
-		contentID, except, presentOnly, volumes)
+		contentID, except, presentOnly, c.volumes, c.under, c.self, c.ext)
 	if err != nil {
 		return nil, err
 	}
@@ -507,7 +532,7 @@ func (s *Store) Dupes(ctx context.Context, minSize int64, sameVolume bool, limit
 	// Places are the copies the count is about: present ones, and with
 	// sameVolume only on the volumes holding more than one.
 	for i, id := range ids {
-		places, err := s.occurrences(ctx, id, 0, true, volumes[i])
+		places, err := s.occurrences(ctx, id, 0, true, copies{volumes: volumes[i]})
 		if err != nil {
 			return nil, 0, err
 		}
@@ -599,7 +624,7 @@ func (s *Store) Totals(ctx context.Context) (Totals, error) {
 		return t, err
 	}
 	rows, err := s.pool.Query(ctx, `
-		select t.status, count(*), coalesce(sum(char_length(t.text)), 0)::bigint from texts t
+		select t.status, count(*), coalesce(sum(t.chars), 0)::bigint from texts t
 		where exists (select 1 from entries e where e.content_id = t.content_id and e.missing_scan is null)
 		group by t.status`)
 	if err != nil {
@@ -617,13 +642,4 @@ func (s *Store) Totals(ctx context.Context) (Totals, error) {
 		t.TextChars += chars
 	}
 	return t, rows.Err()
-}
-
-// volumesOf narrows the copies shown for a hit to the volume searched, so a
-// search of E: does not point at the copy on F:.
-func volumesOf(o SearchOptions) []string {
-	if o.VolumeID == "" {
-		return nil
-	}
-	return []string{o.VolumeID}
 }

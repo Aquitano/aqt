@@ -151,7 +151,7 @@ func (s *Store) SearchTexts(ctx context.Context, o SearchOptions) ([]TextHit, er
 		return nil, err
 	}
 	for i, id := range ids {
-		if hits[i].Places, err = s.occurrences(ctx, id, 0, false, volumesOf(o)); err != nil {
+		if hits[i].Places, err = s.occurrences(ctx, id, 0, false, copiesOf(o, false)); err != nil {
 			return nil, err
 		}
 	}
@@ -169,7 +169,7 @@ type TextInfo struct {
 
 func (s *Store) textInfo(ctx context.Context, contentID int64) (*TextInfo, error) {
 	var t TextInfo
-	err := s.pool.QueryRow(ctx, `select status, extractor, detail, char_length(text), extracted_at
+	err := s.pool.QueryRow(ctx, `select status, extractor, detail, chars, extracted_at
 		from texts where content_id = $1`, contentID).Scan(&t.Status, &t.Extractor, &t.Detail, &t.Chars, &t.Extracted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -195,7 +195,7 @@ func (s *Store) Text(ctx context.Context, entryID int64, ref string) (TextDetail
 		}
 		prefix, _ = hex.DecodeString(r)
 	}
-	err := s.pool.QueryRow(ctx, `select `+refSQL+`, t.status, t.extractor, t.detail, char_length(t.text), t.extracted_at, t.text
+	err := s.pool.QueryRow(ctx, `select `+refSQL+`, t.status, t.extractor, t.detail, t.chars, t.extracted_at, t.text
 		from texts t join contents c on c.id = t.content_id
 		where ($1::bigint <> 0 and c.id = (select content_id from entries where id = $1))
 		   or ($1::bigint = 0 and substr(c.blake3, 1, 8) = $2)

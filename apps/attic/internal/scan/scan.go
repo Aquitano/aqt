@@ -49,9 +49,11 @@ type Progress struct {
 	// The hashing phase's totals, known when it starts.
 	HashFiles int64
 	HashBytes int64
-	// The archives or documents waiting when their phase starts, and the one
-	// being read, volume-relative.
+	// The archives or documents waiting when their phase starts, how many of
+	// them are done, whatever came of them, and the one being read,
+	// volume-relative.
 	Total   int64
+	Done    int64
 	Current string
 }
 
@@ -132,6 +134,8 @@ type run struct {
 	textsRead    map[int64]bool
 	readErr      error
 	total        int64
+	done         int64
+	seen         map[int64]bool
 	current      string
 	phase        string
 	lastProgress time.Time
@@ -148,7 +152,7 @@ func (r *run) progress(force bool) {
 	}
 	r.lastProgress = time.Now()
 	r.o.Progress(Progress{Phase: r.phase, ScanCounts: r.sc.Counts, Dirs: r.dirs, HashFiles: r.hashFiles, HashBytes: r.hashBytes,
-		Total: r.total, Current: r.current})
+		Total: r.total, Done: r.done, Current: r.current})
 }
 
 // phases walks, hashes, lists archives and reads documents. Listings and text
@@ -457,6 +461,7 @@ func (r *run) listArchives(ctx context.Context) error {
 	if r.total, err = r.sc.ArchiveTotals(ctx); err != nil {
 		return err
 	}
+	r.done, r.seen = 0, map[int64]bool{}
 	r.progress(true)
 	var after store.PendingArchive
 	for {
@@ -469,6 +474,7 @@ func (r *run) listArchives(ctx context.Context) error {
 		}
 		for _, a := range batch {
 			after = a
+			r.count(a.ContentID)
 			if err := r.listArchive(ctx, a); err != nil {
 				return err
 			}
@@ -541,6 +547,7 @@ func (r *run) readTexts(ctx context.Context) error {
 	if r.total, err = r.sc.TextTotals(ctx, documents); err != nil {
 		return err
 	}
+	r.done, r.seen = 0, map[int64]bool{}
 	r.progress(true)
 	var after store.PendingText
 	for {
@@ -553,6 +560,7 @@ func (r *run) readTexts(ctx context.Context) error {
 		}
 		for _, p := range batch {
 			after = p
+			r.count(p.ContentID)
 			if err := r.readText(ctx, p); err != nil {
 				return err
 			}
@@ -651,4 +659,13 @@ func (d watchedDocument) note(err error) {
 // read or a bad offset from a corrupt file, which say something about the file.
 func ioError(err error) bool {
 	return errors.As(err, new(syscall.Errno))
+}
+
+// count marks a content as done for the progress line; the totals count
+// contents, and a disk can hold several copies of one.
+func (r *run) count(contentID int64) {
+	if !r.seen[contentID] {
+		r.seen[contentID] = true
+		r.done++
+	}
 }

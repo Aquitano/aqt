@@ -105,10 +105,10 @@ func (p *progressLine) update(pr scan.Progress) {
 			line += fmt.Sprintf(", %s/s, about %s left", humanBytes(int64(rate)), left.Round(time.Minute))
 		}
 	case "archives":
-		line = fmt.Sprintf("archives: %s of %s listed, %s members; %s", count(pr.Archives), count(pr.Total),
+		line = fmt.Sprintf("archives: %s of %s, %s members; %s", count(pr.Done), count(pr.Total),
 			count(pr.Members), path.Base(pr.Current))
 	case "text":
-		line = fmt.Sprintf("documents: %s of %s read, %s characters; %s", count(pr.Texts), count(pr.Total),
+		line = fmt.Sprintf("documents: %s of %s, %s characters; %s", count(pr.Done), count(pr.Total),
 			count(pr.TextChars), path.Base(pr.Current))
 	}
 	if !p.tty {

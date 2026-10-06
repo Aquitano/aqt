@@ -5,6 +5,10 @@ updates:
     schedule: { interval: weekly }
     groups: { typescript: { patterns: ["*"] } }
   - package-ecosystem: gomod
+    directory: /apps/attic
+    schedule: { interval: weekly }
+    groups: { attic-go: { patterns: ["*"] } }
+  - package-ecosystem: gomod
     directory: /apps/bank
     schedule: { interval: weekly }
     groups: { bank-go: { patterns: ["*"] } }
