@@ -32,9 +32,9 @@ func OCRAvailable(o Options) error {
 }
 
 // ocrPDF rasterizes pages and reads each one. A PDF is not something
-// tesseract accepts, and a scanned document is one image per page. The text
-// counts as cut when OCRMaxPages pages were rasterized, since more may follow;
-// a document of exactly that many pages is flagged too.
+// tesseract accepts, and a scanned document is one image per page. One page past
+// OCRMaxPages is rasterized and not read, so the text counts as cut only when
+// the document really goes on.
 func ocrPDF(ctx context.Context, path string, o Options) (string, bool, error) {
 	dir, err := os.MkdirTemp(o.TempDir, "ocr-")
 	if err != nil {
@@ -46,7 +46,7 @@ func ocrPDF(ctx context.Context, path string, o Options) (string, bool, error) {
 	// 300 dpi is tesseract's documented sweet spot: below it accuracy drops
 	// sharply, above it costs time for nothing.
 	cmd := exec.CommandContext(ctx, o.PDFToPPM, "-r", "300", "-png",
-		"-f", "1", "-l", strconv.Itoa(o.OCRMaxPages), path, prefix)
+		"-f", "1", "-l", strconv.Itoa(o.OCRMaxPages+1), path, prefix)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -61,10 +61,14 @@ func ocrPDF(ctx context.Context, path string, o Options) (string, bool, error) {
 	if len(pages) == 0 {
 		return "", false, nil
 	}
+	cut := false
+	if o.OCRMaxPages > 0 && len(pages) > o.OCRMaxPages {
+		cut, pages = true, pages[:o.OCRMaxPages]
+	}
 
 	var sb strings.Builder
 	var lastErr error
-	read, cut := 0, false
+	read := 0
 	for _, p := range pages {
 		text, err := tesseract(ctx, p, o)
 		if err != nil {
@@ -90,7 +94,7 @@ func ocrPDF(ctx context.Context, path string, o Options) (string, bool, error) {
 		// terminal status, would never be retried.
 		return "", false, lastErr
 	}
-	return sb.String(), cut || len(pages) >= o.OCRMaxPages, nil
+	return sb.String(), cut, nil
 }
 
 func tesseract(ctx context.Context, path string, o Options) (string, error) {

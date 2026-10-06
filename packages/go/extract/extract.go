@@ -160,6 +160,9 @@ const (
 	kindImage
 )
 
+// extractors names what each in-process family records as its extractor.
+var extractors = map[kind]string{kindText: "text", kindHTML: "html", kindZipXML: "zipxml", kindPDF: "pdf"}
+
 // File extracts text from one file on disk. filename and mimeType come from
 // whoever handed over the file, a mail client or a backup disk, so neither is
 // trusted beyond choosing an extractor. mimeType may be empty.
@@ -197,7 +200,12 @@ func File(ctx context.Context, path, filename, mimeType string, o Options) Resul
 	}
 	f, err := o.Open(path)
 	if err != nil {
-		return Result{Status: StatusFailed, Err: err}
+		// As when each reader opened the path itself: the extractor is named, and
+		// a PDF whose text layer cannot be read still gets OCR.
+		if k == kindPDF && o.OCR {
+			return run("ocr-pdf", o, func() (string, bool, error) { return ocrPDF(ctx, path, o) })
+		}
+		return Result{Status: StatusFailed, Extractor: extractors[k], Err: err}
 	}
 	defer f.Close()
 	switch k {

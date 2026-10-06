@@ -2,6 +2,7 @@ package extract
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -66,6 +67,11 @@ func pdfText(ctx context.Context, f io.ReaderAt, size int64, o Options) (text st
 	page := 1
 	for ; page <= r.NumPage() && int64(sb.Len()) < max; page++ {
 		if err := ctx.Err(); err != nil {
+			// Out of time with pages read: those pages are kept as cut text. A
+			// cancelled run keeps nothing.
+			if errors.Is(err, context.DeadlineExceeded) && read > 0 {
+				return sb.String(), true, nil
+			}
 			return "", false, err
 		}
 		t, err := pdfPageText(r.Page(page))

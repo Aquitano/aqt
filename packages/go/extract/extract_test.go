@@ -386,3 +386,26 @@ func TestFileMarksTextCutByTheReadBudget(t *testing.T) {
 		t.Errorf("status %s, truncated %v, text %q; want ok, truncated, without the end", res.Status, res.Truncated, res.Text)
 	}
 }
+
+// OCR rasterizes one page past the cap, so only a document that goes on is
+// reported cut.
+func TestOCRPageCapMarksOnlyLongerDocumentsCut(t *testing.T) {
+	tess := fakeBin(t, "tesseract", `echo "page text"`)
+	for pages, want := range map[int]bool{2: false, 3: true} {
+		ppm := fakeBin(t, "pdftoppm", fmt.Sprintf(`for a in "$@"; do prefix="$a"; done; for i in $(seq 1 %d); do touch "$prefix-$i.png"; done`, pages))
+		text, cut, err := ocrPDF(context.Background(), write(t, "scan.pdf", []byte("%PDF")),
+			Options{Tesseract: tess, PDFToPPM: ppm, OCRMaxPages: 2, MaxChars: 1 << 20})
+		if err != nil || cut != want || strings.Count(text, "page text") != 2 {
+			t.Errorf("%d pages: cut %v, %d pages read, %v; want cut %v and 2 read", pages, cut, strings.Count(text, "page text"), err, want)
+		}
+	}
+}
+
+// A file that cannot be opened still names the extractor it was meant for.
+func TestFileOpenFailureNamesTheExtractor(t *testing.T) {
+	path := write(t, "notes.txt", []byte("unreachable"))
+	o := Options{Open: func(string) (Handle, error) { return nil, os.ErrPermission }}
+	if res := File(context.Background(), path, "notes.txt", "", o); res.Status != StatusFailed || res.Extractor != "text" {
+		t.Errorf("status %s, extractor %q; want failed from text", res.Status, res.Extractor)
+	}
+}

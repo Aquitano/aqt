@@ -8,6 +8,7 @@ import (
 	"html"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -125,9 +126,16 @@ func readZipXML(r io.ReaderAt, size int64, o Options) (string, bool, error) {
 		return "", false, err
 	}
 
+	// Excel writes the sheets before the shared strings, where a workbook's
+	// words are; the sheets' numbers must not spend the budget first.
+	files := slices.Clone(zr.File)
+	if i := slices.IndexFunc(files, func(f *zip.File) bool { return f.Name == "xl/sharedStrings.xml" }); i > 0 {
+		shared := files[i]
+		files = append([]*zip.File{shared}, slices.Delete(files, i, i+1)...)
+	}
 	var sb strings.Builder
 	budget := readLimit(o)
-	for _, f := range zr.File {
+	for _, f := range files {
 		if budget <= 0 {
 			break
 		}
