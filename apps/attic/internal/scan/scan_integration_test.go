@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,7 +93,8 @@ func TestScanKeepsIdentityAcrossMoves(t *testing.T) {
 		t.Fatalf("dupes %+v, %v", dupes, err)
 	}
 	groups, err := st.SkipGroups(ctx, first.ScanID)
-	if err != nil || len(groups) != 1 || groups[0].Example != "/projects/web/node_modules" {
+	excluded := slices.IndexFunc(groups, func(g store.SkipGroup) bool { return g.Reason == "excluded" })
+	if err != nil || excluded < 0 || groups[excluded].Count != 1 || groups[excluded].Example != "/projects/web/node_modules" {
 		t.Fatalf("skips %+v, %v", groups, err)
 	}
 
@@ -262,5 +264,33 @@ func TestArchivesAreListedOncePerContent(t *testing.T) {
 
 	if again := scanAt(t, st, root, testVolume, withArchives); again.Counts.Archives != 0 {
 		t.Errorf("a rescan listed %d archives again", again.Counts.Archives)
+	}
+}
+
+// Documents are read once per content and found by their words; configuration
+// keeps its name only, and text past the cap is kept and marked.
+func TestDocumentsAreReadForTheirWords(t *testing.T) {
+	st, _ := storetest.New(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	write(t, root, "Verträge/Werkstudent.txt", "Arbeitszeit zwanzig Stunden pro Woche")
+	write(t, root, "Backup/Werkstudent copy.txt", "Arbeitszeit zwanzig Stunden pro Woche")
+	write(t, root, "project/settings.json", `{"note": "Stunden pro Woche"}`)
+	write(t, root, "long.md", strings.Repeat("lang ", 300_000))
+
+	res := scanAt(t, st, root, testVolume)
+	if res.Counts.Texts != 2 {
+		t.Fatalf("read %d documents, want the contract once and long.md", res.Counts.Texts)
+	}
+	hits, err := st.SearchTexts(ctx, store.SearchOptions{Query: "stunden woche"})
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("text hits %+v, %v; want only the contract, not settings.json", hits, err)
+	}
+	if len(hits[0].Places) != 2 || !strings.Contains(hits[0].Snippet, "Stunden") {
+		t.Errorf("hit %+v, want both copies and a snippet with the words", hits[0])
+	}
+	long, err := st.Text(ctx, find(t, st, "long").ID, "")
+	if err != nil || long.Status != "truncated" || long.Chars > 1<<20 {
+		t.Errorf("long.md: %s with %d characters, %v; want truncated at the cap", long.Status, long.Chars, err)
 	}
 }

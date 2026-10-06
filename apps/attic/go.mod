@@ -3,6 +3,7 @@ module github.com/aquitano/aqt/apps/attic
 go 1.27.1
 
 require (
+	github.com/aquitano/aqt/packages/go/extract v0.0.0
 	github.com/bodgit/sevenzip v1.6.5
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/jackc/pgx/v5 v5.11.0
@@ -30,6 +31,7 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
+	github.com/ledongthuc/pdf v0.0.0-20260907135840-6c8c28e0e8a0 // indirect
 	github.com/mikelolasagasti/xz v1.0.1 // indirect
 	github.com/minio/minlz v1.0.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.27 // indirect
@@ -42,3 +44,5 @@ require (
 	golang.org/x/sync v0.23.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
+
+replace github.com/aquitano/aqt/packages/go/extract => ../../packages/go/extract

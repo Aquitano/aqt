@@ -244,8 +244,10 @@ type EntryDetail struct {
 	Listed     *time.Time `json:"listed,omitempty"`
 	MissingAt  *time.Time `json:"missing_since,omitempty"`
 	Copies     []Hit      `json:"copies,omitempty"`
-	// Archive is set once the entry's content was read as an archive.
+	// Archive is set once the entry's content was read as an archive, Text
+	// once it was read as a document.
 	Archive *ArchiveInfo `json:"archive,omitempty"`
+	Text    *TextInfo    `json:"text,omitempty"`
 }
 
 type ArchiveInfo struct {
@@ -276,6 +278,9 @@ func (s *Store) Entry(ctx context.Context, id int64) (EntryDetail, error) {
 		return d, nil
 	}
 	if d.Copies, err = s.occurrences(ctx, *contentID, id, false, nil); err != nil {
+		return d, err
+	}
+	if d.Text, err = s.textInfo(ctx, *contentID); err != nil {
 		return d, err
 	}
 	var a ArchiveInfo
@@ -351,12 +356,13 @@ type ScanInfo struct {
 }
 
 const scanColumns = `id, volume_id::text, root, status, started_at, finished_at, error, listed, written, missing,
-	skipped, hashed, hashed_bytes, duplicates, archives, members`
+	skipped, hashed, hashed_bytes, duplicates, archives, members, texts, text_chars`
 
 func scanScanInfo(row pgx.Row) (ScanInfo, error) {
 	var si ScanInfo
 	err := row.Scan(&si.ID, &si.VolumeID, &si.Root, &si.Status, &si.Started, &si.Finished, &si.Error, &si.Listed,
-		&si.Written, &si.Missing, &si.Skipped, &si.Hashed, &si.HashedBytes, &si.Duplicates, &si.Archives, &si.Members)
+		&si.Written, &si.Missing, &si.Skipped, &si.Hashed, &si.HashedBytes, &si.Duplicates, &si.Archives, &si.Members,
+		&si.Texts, &si.TextChars)
 	return si, err
 }
 
@@ -563,6 +569,9 @@ type Totals struct {
 	Missing      int64 `json:"missing"`
 	Archives     int64 `json:"archives"`
 	Members      int64 `json:"members"`
+	// Texts counts read documents by status.
+	Texts     map[string]int64 `json:"texts"`
+	TextChars int64            `json:"text_chars"`
 }
 
 func (s *Store) Totals(ctx context.Context) (Totals, error) {
@@ -582,5 +591,23 @@ func (s *Store) Totals(ctx context.Context) (Totals, error) {
 		       (select coalesce(sum(members), 0)::bigint from archives)
 		from entries`).Scan(&t.Volumes, &t.Entries, &t.Files, &t.Bytes, &t.Contents, &t.ContentBytes, &t.Pending, &t.Missing,
 		&t.Archives, &t.Members)
-	return t, err
+	if err != nil {
+		return t, err
+	}
+	rows, err := s.pool.Query(ctx, `select status, count(*), coalesce(sum(char_length(text)), 0)::bigint from texts group by status`)
+	if err != nil {
+		return t, err
+	}
+	defer rows.Close()
+	t.Texts = map[string]int64{}
+	for rows.Next() {
+		var status string
+		var n, chars int64
+		if err := rows.Scan(&status, &n, &chars); err != nil {
+			return t, err
+		}
+		t.Texts[status] = n
+		t.TextChars += chars
+	}
+	return t, rows.Err()
 }

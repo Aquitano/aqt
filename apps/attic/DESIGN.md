@@ -10,7 +10,7 @@ One index of every file on my backup disks and USB sticks, searchable from a CLI
 | Store         | Postgres + ParadeDB `pg_search`, reached through `DATABASE_URL`                                        | A catalogue row and its BM25 entry commit in one transaction, so there is no second index to keep in step. attic stores nothing outside the database, so the CLI can talk to Postgres directly: there are no blobs that could land on the wrong box |
 | Host          | The Windows desktop the disks attach to, ParadeDB in Docker Compose                                    | The disks plug in there. The VPS has neither the ports nor the memory                                                                                                                                                                               |
 | Originals     | Never stored                                                                                           | attic is an index, not a backup. Every file gets metadata, documents get text, images get OCR and a short description                                                                                                                               |
-| Scanned disks | Never written to                                                                                       | Volumes are recognised by a fingerprint, not a marker file. Last-access times are kept while hashing and listing archives (see Scanning)                                                                                                            |
+| Scanned disks | Never written to                                                                                       | Volumes are recognised by a fingerprint, not a marker file. Last-access times are kept while hashing, listing and reading (see Scanning)                                                                                                            |
 | Scanning      | Manual, `attic scan <path>`                                                                            | Disks come and go; nothing watches for them yet                                                                                                                                                                                                     |
 | Code          | Source files keep a row with name and metadata; their contents are never read for text                 | Zoekt becomes the code search engine later. Old projects are mostly found by folder and file name ("the EngineAlpha project from school")                                                                                                           |
 | Work          | Staged: the scan records metadata and a BLAKE3 hash, later stages are queues over deduplicated content | Text, OCR and descriptions are expensive. They run once per unique content, never per copy                                                                                                                                                          |
@@ -44,9 +44,10 @@ Three identities, so a moved or copied file never costs a second hash, extractio
 2. **Walk.** One directory handle per folder. `GetFileInformationByHandleEx(FileIdBothDirectoryInfo)` returns names, sizes, timestamps, attributes and file ids in bulk, with no open per file. Rows commit every couple of seconds, so search works while a scan runs.
 3. **Hash.** Files without known content, in path order, one reader by default because USB hard disks punish parallel reads. The listing already recorded each file's last-access time. Reading opens the file with attribute access and calls `SetFileTime` with `-1`, which stops Windows updating last access through that handle. Write-protected media refuses that open, and the read falls back to a plain one.
 4. **Archives.** Hashed files named like an archive (zip, 7z, rar, tar and compressed tars) whose content has no listing yet, in path order. The leading bytes decide the format. Go readers ([mholt/archives](https://github.com/mholt/archives) for zip, 7z and tar, rardecode for rar) read through the same last-access-preserving handle as hashing; 7-Zip would open the files itself, and this machine has last-access updates enabled. A nested archive is copied to the temporary folder on C:, listed and deleted at once; one larger than `unpack_max_bytes` stays a plain member. Rar is read from its headers alone. Reaching a nested archive inside a solid 7z or rar decodes everything stored before it, which can take as long as reading the whole archive. Each listing commits in its own transaction, so an interrupted one is redone, never half kept. Zip names without the UTF-8 flag are read as code page 850, which Western European Windows writes.
-5. **Skips.** Everything not indexed, not hashed or not opened (excluded pattern, access denied, reparse point, read error, size cap, too deep, encrypted, damaged) is a row in `skips` with its reason, for `attic skips` to review.
+5. **Text.** Hashed documents whose content has no text yet, in path order: plain text, Markdown, CSV, HTML, Office and OpenDocument files, and PDF text layers, read with `packages/go/extract` through the same last-access-preserving opener. JSON, YAML, SQL, INI and other configuration count as source code and keep their names only, and so do logs. Documents up to `text.max_bytes` are read and the first 1 MB of each one's text is kept; a longer one reads as `truncated`, searchable like `ok`. A PDF without a text layer reads as `needs_ocr`, the queue for step 5. A document that cannot be read is a `text_failed` skip and is not retried.
+6. **Skips.** Everything not indexed, not hashed, not opened or not read (excluded pattern, access denied, reparse point, read error, size cap, too deep, encrypted, damaged, unreadable document) is a row in `skips` with its reason, for `attic skips` to review.
 
-Interrupting a scan is safe. Running it again walks again, which takes minutes, and hashes and lists only what is still pending.
+Interrupting a scan is safe. Running it again walks again, which takes minutes, and hashes, lists and reads only what is still pending.
 
 An archive reads as one of: listed; damaged, keeping the members read before the damage; encrypted, when even the names are; not an archive; or split, a later volume of a multi-volume rar, which is listed with its first volume. Passwords are never asked for. Picocrypt files and other encrypted containers stay plain files.
 
@@ -66,6 +67,9 @@ depth = 2                      # archive levels opened, the one on disk included
 unpack_max_bytes = 4294967296  # largest nested archive copied out to be listed; 0 is no limit
 temp = ""                      # where nested archives are copied; the system temp folder when empty
 
+[text]
+max_bytes = 67108864           # largest document read for its words; 0 is no limit
+
 [[volume]]
 label = "Data"
 exclude = ["/Games/"]
@@ -79,6 +83,7 @@ exclude = ["/Games/"]
 attic scan <folder> [--config f] [--no-hash] [--volume id | --new-volume] [--json]
 attic search [words] [--any] [--volume v] [--ext e] [--kind file|dir|link] [--under path] [--limit n] [--offset n] [--json]
 attic show <id|ref> [--json]
+attic text <id|ref> [--json]
 attic volumes [--json]
 attic dupes [--min-size 1M] [--same-volume] [--limit n] [--json]
 attic skips [--scan id | --volume v] [--reason r] [--rule r] [--limit n] [--json]
@@ -86,13 +91,13 @@ attic stats [--json]
 attic config [--config f] [--volume v]
 ```
 
-Search needs every word by default, each matching the name, the path, or a fragment of the name; `--any` relaxes that. Files inside archives come after the plain hits, ranked on their own because the two BM25 indexes score on different scales; their words must match within the archive, not the archive's own path. `--volume` and `--under` filter where the archive lives, and `--under` naming an archive lists what it holds. Copies on two backup disks are usually deliberate, so `dupes --same-volume` counts only copies that share a disk.
+Search needs every word by default, each matching the name, the path, or a fragment of the name; `--any` relaxes that. Files inside archives come after the plain hits and matching documents after those, each ranked on its own because the BM25 indexes score on different scales; their words must match within the archive, not the archive's own path. `--volume` and `--under` filter where the archive lives, and `--under` naming an archive lists what it holds. Copies on two backup disks are usually deliberate, so `dupes --same-volume` counts only copies that share a disk.
 
 ## Steps
 
 1. **Scan.** Volume fingerprints, bulk NTFS listing, hierarchy, BLAKE3, config and exclusions, skips, `search`, `show`, `volumes`, `dupes`, `stats`. Done when E: is scanned completely, searchable during the scan, and still searchable with E: unplugged.
 2. **Archives.** Listings through Go readers, keyed by archive content, with a nesting limit.
-3. **Text.** `packages/go/extract` split out of bank (`File`, statuses and OCR move; bank's queue stays), bank switched in the same change. Text capped at 1 MB per file with a `truncated` status, so the first full scan shows how much goes over. Source code is never read.
+3. **Text.** `packages/go/extract` split out of bank (`File`, statuses, OCR and `StripHTML` move; bank's queue stays, as `internal/blobtext`), bank switched in the same change. Text capped at 1 MB per file. attic records a `truncated` status, so the first full scan shows how much goes over; the package reports it as a flag on an `ok` result, because bank's indexes and queries key on `ok`. Source code is never read.
 4. **Metadata.** exiftool in batch mode for images, PDFs, Office files, audio and video; Go readers where they are trivial.
 5. **AI.** The provider interface, OCR and image descriptions. The local vision model is chosen by testing candidates on my own images; `codex exec` is opt-in for small selections.
 

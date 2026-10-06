@@ -21,6 +21,7 @@ type Config struct {
 	// HashMaxBytes leaves larger files unhashed; 0 hashes every file.
 	HashMaxBytes int64    `toml:"hash_max_bytes"`
 	Archives     Archives `toml:"archives"`
+	Text         Text     `toml:"text"`
 	Volumes      []Volume `toml:"volume"`
 }
 
@@ -37,10 +38,17 @@ type Archives struct {
 	Temp string `toml:"temp"`
 }
 
+// Text says which documents a scan reads for their words.
+type Text struct {
+	// MaxBytes leaves larger documents unread; 0 reads any size.
+	MaxBytes int64 `toml:"max_bytes"`
+}
+
 // Default is the configuration before the file is read: archives inside
-// archives are listed, nested ones up to 4 GiB.
+// archives are listed, nested ones up to 4 GiB, and documents up to 64 MiB
+// are read.
 func Default() Config {
-	return Config{Archives: Archives{Depth: 2, UnpackMaxBytes: 4 << 30}}
+	return Config{Archives: Archives{Depth: 2, UnpackMaxBytes: 4 << 30}, Text: Text{MaxBytes: 64 << 20}}
 }
 
 // Volume holds patterns anchored at one volume's root, selected by attic's
@@ -96,8 +104,8 @@ func Load(path string, explicit bool) (Config, error) {
 	if err := dec.Decode(&c); err != nil {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
-	if c.HashMaxBytes < 0 || c.Archives.Depth < 0 || c.Archives.UnpackMaxBytes < 0 {
-		return c, fmt.Errorf("%s: hash_max_bytes, archives.depth and archives.unpack_max_bytes must not be negative", path)
+	if c.HashMaxBytes < 0 || c.Archives.Depth < 0 || c.Archives.UnpackMaxBytes < 0 || c.Text.MaxBytes < 0 {
+		return c, fmt.Errorf("%s: hash_max_bytes, archives.depth, archives.unpack_max_bytes and text.max_bytes must not be negative", path)
 	}
 	return c, nil
 }

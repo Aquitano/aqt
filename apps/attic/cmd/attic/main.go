@@ -19,8 +19,9 @@ const usage = `attic — search the files on disks that come and go
 
 Usage:
   attic scan <folder> [flags]         index a folder and everything below it
-  attic search [words...] [flags]     find files and folders, mounted or not, and inside archives
+  attic search [words...] [flags]     find files and folders, mounted or not, inside archives and in documents
   attic show <id|ref> [--json]        one entry, or every place a content lives
+  attic text <id|ref> [--json]        the words read from a document
   attic volumes [--json]              known volumes, what they hold, last scan
   attic dupes [flags]                 contents stored more than once
   attic skips [flags]                 what a scan left out, and why
@@ -53,7 +54,7 @@ Skips flags:
   --scan n       a scan id (default: the newest scan, of --volume if given)
   --volume v     the newest scan of this volume
   --reason r     list paths: excluded, name_only, too_big, link, remote, unreadable, changed,
-                 too_deep, encrypted, damaged, not_archive, split
+                 too_deep, encrypted, damaged, not_archive, split, text_failed
   --rule r       list paths skipped by this rule, as the summary prints it
   --limit n      default 100
 
@@ -84,6 +85,8 @@ func run() int {
 		err = cmdDupes(ctx, os.Args[2:])
 	case "skips":
 		err = cmdSkips(ctx, os.Args[2:])
+	case "text":
+		err = cmdText(ctx, os.Args[2:])
 	case "stats":
 		err = cmdStats(ctx, os.Args[2:])
 	case "config":

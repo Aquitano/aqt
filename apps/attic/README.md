@@ -25,6 +25,7 @@ attic search notes --under E:\Files --json
 attic search --under E:\Backups\Minecraft.7z  # what one archive holds
 attic show 36331                    # one entry, its times, its ref and its other copies
 attic show 3f9a1c2b4d5e6f70         # a ref: every place that content lives
+attic text 36331                    # the words read from a document, for reading or quoting
 attic volumes                       # known disks, mounted or not, and their last scan
 attic dupes --same-volume           # copies that share a disk, largest waste first
 attic skips                         # what the newest scan left out, grouped by reason
@@ -36,6 +37,8 @@ A scan commits every couple of seconds, so search sees it while it runs. Interru
 Results show where a file can be opened now (`E:\Files\x.zip`) or the volume it lives on when the disk is unplugged (`Data:\Files\x.zip  (offline)`).
 
 After hashing, a scan lists what zip, 7z, rar and tar archives hold, and the archives inside those, without asking for passwords. Search shows those files after the plain hits, inside the copy of the archive that can be opened now: `E:\Backups\Minecraft.7z :: MinecraftServer.rar :: world\level.dat`. Each archive is read once however many disks hold it. Nested archives are copied to the temporary folder while they are listed and deleted right after.
+
+It also reads documents for their words: text files, Markdown, CSV, HTML, Word, Excel, PowerPoint, OpenDocument and PDFs with a text layer. Matching documents come last in search, with the passage that matched. The first 1 MB of each document's text is kept. Scanned PDFs wait for OCR, and source code and configuration files are never read.
 
 ## Configuration
 
@@ -49,6 +52,9 @@ hash_max_bytes = 0   # 0 hashes every file
 [archives]
 depth = 2                      # archive levels opened, the one on disk included; 0 reads none
 unpack_max_bytes = 4294967296  # largest nested archive copied out to be listed
+
+[text]
+max_bytes = 67108864           # largest document read for its words
 
 [[volume]]
 label = "Data"        # or id = "<uuid from attic volumes>"

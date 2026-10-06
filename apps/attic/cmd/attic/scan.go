@@ -62,6 +62,9 @@ func cmdScan(ctx context.Context, args []string) error {
 	if c.Archives > 0 {
 		fmt.Printf("  %s archives listed, %s members inside\n", count(c.Archives), count(c.Members))
 	}
+	if c.Texts > 0 {
+		fmt.Printf("  %s documents read, %s characters of text\n", count(c.Texts), count(c.TextChars))
+	}
 	if res.Status == "interrupted" {
 		fmt.Println("  run the same command again to continue; finished work is kept")
 	}
@@ -102,8 +105,11 @@ func (p *progressLine) update(pr scan.Progress) {
 			line += fmt.Sprintf(", %s/s, about %s left", humanBytes(int64(rate)), left.Round(time.Minute))
 		}
 	case "archives":
-		line = fmt.Sprintf("archives: %s of %s listed, %s members; %s", count(pr.Archives), count(pr.ArchiveTotal),
-			count(pr.Members), path.Base(pr.Archive))
+		line = fmt.Sprintf("archives: %s of %s listed, %s members; %s", count(pr.Archives), count(pr.Total),
+			count(pr.Members), path.Base(pr.Current))
+	case "text":
+		line = fmt.Sprintf("documents: %s of %s read, %s characters; %s", count(pr.Texts), count(pr.Total),
+			count(pr.TextChars), path.Base(pr.Current))
 	}
 	if !p.tty {
 		fmt.Fprintln(os.Stderr, line)

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -21,6 +22,7 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/config"
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 type Options struct {
@@ -39,16 +41,16 @@ type Options struct {
 }
 
 type Progress struct {
-	Phase string // walk | hash | archives
+	Phase string // walk | hash | archives | text
 	store.ScanCounts
 	Dirs int64
 	// The hashing phase's totals, known when it starts.
 	HashFiles int64
 	HashBytes int64
-	// The archives waiting to be listed when that phase starts, and the one
+	// The archives or documents waiting when their phase starts, and the one
 	// being read, volume-relative.
-	ArchiveTotal int64
-	Archive      string
+	Total   int64
+	Current string
 }
 
 type Result struct {
@@ -86,8 +88,13 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 		return Result{}, err
 	}
 	a := o.Config.Archives
+	textMax := o.Config.Text.MaxBytes
+	if textMax == 0 {
+		textMax = math.MaxInt64
+	}
 	r := &run{o: o, sc: sc, rules: o.Config.Rules(vol.ID, vol.Label), mountRoot: mounted.Root, lastProgress: time.Now(),
-		archives: archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: a.Temp}}
+		archives: archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: a.Temp},
+		text:     extract.Options{Open: disk.Open, MaxBytes: textMax, MaxChars: 1 << 20}}
 	status, runErr := r.phases(ctx, rel)
 	if runErr != nil && ctx.Err() != nil {
 		status, runErr = "interrupted", nil
@@ -109,8 +116,9 @@ type run struct {
 	hashFiles    int64
 	hashBytes    int64
 	archives     archive.Options
-	archiveTotal int64
-	archive      string
+	text         extract.Options
+	total        int64
+	current      string
 	phase        string
 	lastProgress time.Time
 }
@@ -126,11 +134,11 @@ func (r *run) progress(force bool) {
 	}
 	r.lastProgress = time.Now()
 	r.o.Progress(Progress{Phase: r.phase, ScanCounts: r.sc.Counts, Dirs: r.dirs, HashFiles: r.hashFiles, HashBytes: r.hashBytes,
-		ArchiveTotal: r.archiveTotal, Archive: r.archive})
+		Total: r.total, Current: r.current})
 }
 
-// phases walks, hashes and lists archives. Listings are keyed by content, so
-// they wait for the hashes.
+// phases walks, hashes, lists archives and reads documents. Listings and text
+// are keyed by content, so they wait for the hashes.
 func (r *run) phases(ctx context.Context, rel []string) (string, error) {
 	start, err := r.ancestors(ctx, rel)
 	if err != nil {
@@ -155,17 +163,24 @@ func (r *run) phases(ctx context.Context, rel []string) (string, error) {
 		return "failed", err
 	}
 	r.progress(true)
-	if r.archives.Depth == 0 {
-		return "complete", nil
-	}
 	if err := r.sc.Commit(ctx); err != nil {
 		return "failed", err
 	}
-	if err := r.sc.SetStatus(ctx, "listing"); err != nil {
+	if r.archives.Depth > 0 {
+		if err := r.sc.SetStatus(ctx, "listing"); err != nil {
+			return "failed", err
+		}
+		r.phase = "archives"
+		if err := r.listArchives(ctx); err != nil {
+			return "failed", err
+		}
+		r.progress(true)
+	}
+	if err := r.sc.SetStatus(ctx, "reading"); err != nil {
 		return "failed", err
 	}
-	r.phase = "archives"
-	if err := r.listArchives(ctx); err != nil {
+	r.phase = "text"
+	if err := r.readTexts(ctx); err != nil {
 		return "failed", err
 	}
 	r.progress(true)
@@ -425,7 +440,7 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 // listing yet, in path order like hashing.
 func (r *run) listArchives(ctx context.Context) error {
 	var err error
-	if r.archiveTotal, err = r.sc.ArchiveTotals(ctx); err != nil {
+	if r.total, err = r.sc.ArchiveTotals(ctx); err != nil {
 		return err
 	}
 	r.progress(true)
@@ -461,7 +476,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 	if err != nil || l == nil {
 		return err
 	}
-	r.archive = a.Path
+	r.current = a.Path
 	r.progress(false)
 	var skips []archive.Skip
 	res, err := archive.List(ctx, r.osPath(a.Path), disk.Open, r.archives,
@@ -496,4 +511,67 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 		r.sc.Skip(a.Path+archive.Separator+s.Path, s.Reason, "", s.Detail)
 	}
 	return nil
+}
+
+// documents are the extensions read for their words. Source code and
+// configuration (json, yaml, sql, ini) keep their names only, as DESIGN.md
+// decides for code, and logs would bury documents under noise.
+var documents = []string{"txt", "text", "md", "markdown", "csv", "tsv", "rtf", "vcf", "ics", "srt", "vtt",
+	"html", "htm", "xhtml", "docx", "xlsx", "pptx", "odt", "ods", "odp", "pdf"}
+
+// readTexts reads the documents below the scan root whose content has no
+// text yet, in path order like hashing.
+func (r *run) readTexts(ctx context.Context) error {
+	var err error
+	if r.total, err = r.sc.TextTotals(ctx, documents); err != nil {
+		return err
+	}
+	r.progress(true)
+	var after store.PendingText
+	for {
+		batch, err := r.sc.NextTexts(ctx, after, documents, 64)
+		if err != nil {
+			return err
+		}
+		if len(batch) == 0 {
+			return nil
+		}
+		for _, p := range batch {
+			after = p
+			if err := r.readText(ctx, p); err != nil {
+				return err
+			}
+			if err := r.sc.MaybeCommit(ctx); err != nil {
+				return err
+			}
+			r.progress(false)
+		}
+	}
+}
+
+func (r *run) readText(ctx context.Context, p store.PendingText) error {
+	// Hashed under older rules; the ones in force now may forbid reading it.
+	path := lowerComponents(p.Path)
+	if excluded, _ := r.rules.Excluded(path, false); excluded || r.rules.NameOnly(path) {
+		return nil
+	}
+	r.current = p.Path
+	r.progress(false)
+	res := extract.File(ctx, r.osPath(p.Path), p.Name, "", r.text)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	t := store.DocumentText{Status: string(res.Status), Extractor: res.Extractor, Text: res.Text}
+	if res.Truncated {
+		t.Status = "truncated"
+	}
+	if res.Err != nil {
+		// A disk unplugged mid-read looks like a broken document.
+		if gone := r.volumeGone(); gone != nil {
+			return gone
+		}
+		t.Detail = res.Err.Error()
+		r.sc.Skip(p.Path, "text_failed", "", t.Detail)
+	}
+	return r.sc.SetText(ctx, p.ContentID, t)
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -100,21 +101,83 @@ func cmdSearch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	texts, err := st.SearchTexts(ctx, o)
+	if err != nil {
+		return err
+	}
 	roots := onlineRoots(vols)
-	out, inside := outHits(hits, roots), outMembers(members, roots)
+	out, inside, docs := outHits(hits, roots), outMembers(members, roots), outTexts(texts, roots)
 	if *asJSON {
 		return printJSON(struct {
 			Entries []hitOut    `json:"entries"`
 			Members []memberOut `json:"members"`
-		}{out, inside})
+			Texts   []textOut   `json:"texts"`
+		}{out, inside, docs})
 	}
-	if err := printHits(out); err != nil || len(inside) == 0 {
+	if err := printHits(out); err != nil {
 		return err
 	}
-	// Two BM25 indexes score on different scales, so archive hits get their
-	// own ranking instead of being merged into the files'.
-	fmt.Println("\ninside archives:")
-	return printMembers(inside)
+	// Each BM25 index scores on its own scale, so archive members and document
+	// text get their own ranking instead of being merged into the files'.
+	if len(inside) > 0 {
+		fmt.Println("\ninside archives:")
+		if err := printMembers(inside); err != nil {
+			return err
+		}
+	}
+	if len(docs) > 0 {
+		fmt.Println("\nin documents:")
+		printTexts(docs)
+	}
+	return nil
+}
+
+// bestCopy is the copy to show: one that can be opened now, or the first
+// present one, as occurrences sorts them.
+func bestCopy(copies []hitOut) hitOut {
+	if len(copies) == 0 {
+		return hitOut{}
+	}
+	return copies[max(slices.IndexFunc(copies, func(h hitOut) bool { return h.Online && !h.Missing }), 0)]
+}
+
+// textOut is a document hit as printed, at its best copy.
+type textOut struct {
+	store.TextHit
+	Display string   `json:"display"`
+	Online  bool     `json:"online"`
+	Places  []hitOut `json:"places"`
+	shown   hitOut
+}
+
+func outTexts(texts []store.TextHit, roots map[string]string) []textOut {
+	out := make([]textOut, len(texts))
+	for i, t := range texts {
+		places := outHits(t.Places, roots)
+		shown := bestCopy(places)
+		out[i] = textOut{TextHit: t, Display: shown.Display, Online: shown.Online, Places: places, shown: shown}
+	}
+	return out
+}
+
+func printTexts(docs []textOut) {
+	for _, d := range docs {
+		var notes []string
+		if !d.Online {
+			notes = append(notes, "offline")
+		}
+		if d.shown.Missing {
+			notes = append(notes, "missing")
+		}
+		if n := len(d.Places) - 1; n > 0 {
+			notes = append(notes, fmt.Sprintf("%d more copies", n))
+		}
+		note := ""
+		if len(notes) > 0 {
+			note = "  (" + strings.Join(notes, ", ") + ")"
+		}
+		fmt.Printf("%10s  %s  %s%s\n    %s\n", humanBytes(d.shown.Size), shortDate(d.shown.Modified), d.Display, note, d.Snippet)
+	}
 }
 
 // memberOut is a member as printed: inside the copy of its archive that can
@@ -135,10 +198,10 @@ func outMembers(members []store.MemberHit, roots map[string]string) []memberOut 
 		if len(copies) == 0 {
 			continue
 		}
-		best := max(slices.IndexFunc(copies, func(h hitOut) bool { return h.Online && !h.Missing }), 0)
-		out[i].shown = copies[best]
-		out[i].Display = copies[best].Display + archive.Separator + filepath.FromSlash(m.Path)
-		out[i].Online = copies[best].Online
+		shown := bestCopy(copies)
+		out[i].shown = shown
+		out[i].Display = shown.Display + archive.Separator + filepath.FromSlash(m.Path)
+		out[i].Online = shown.Online
 	}
 	return out
 }
@@ -276,6 +339,16 @@ func cmdShow(ctx context.Context, args []string) error {
 			fmt.Fprintf(tw, "  archive\tnot an archive\n")
 		default:
 			fmt.Fprintf(tw, "  archive\t%s, %s, %s members read: %s\n", a.Format, a.Status, count(a.Members), a.Detail)
+		}
+	}
+	if t := d.Text; t != nil {
+		switch t.Status {
+		case "ok":
+			fmt.Fprintf(tw, "  text\t%s characters (attic text %d)\n", count(t.Chars), d.ID)
+		case "truncated":
+			fmt.Fprintf(tw, "  text\tthe first %s characters; the rest was cut (attic text %d)\n", count(t.Chars), d.ID)
+		default:
+			fmt.Fprintf(tw, "  text\t%s %s\n", t.Status, t.Detail)
 		}
 	}
 	if d.GitRemote != nil {
@@ -480,6 +553,48 @@ func cmdStats(ctx context.Context, args []string) error {
 	fmt.Printf("%s unique contents, %s; %s files left to hash, %s entries missing\n",
 		count(t.Contents), humanBytes(t.ContentBytes), count(t.Pending), count(t.Missing))
 	fmt.Printf("%s archives read, %s members inside\n", count(t.Archives), count(t.Members))
+	var docs []string
+	var read int64
+	for _, status := range slices.Sorted(maps.Keys(t.Texts)) {
+		docs = append(docs, count(t.Texts[status])+" "+status)
+		read += t.Texts[status]
+	}
+	fmt.Printf("%s documents read (%s), %s characters of text\n", count(read), strings.Join(docs, ", "), count(t.TextChars))
+	return nil
+}
+
+func cmdText(ctx context.Context, args []string) error {
+	flagArgs, pos := interspersed(args, map[string]bool{"json": true})
+	fs := flag.NewFlagSet("text", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "")
+	_ = fs.Parse(flagArgs)
+	if len(pos) != 1 {
+		return fmt.Errorf("text needs an entry id or a ref: %w", errUsage)
+	}
+	var id int64
+	ref, isRef := store.ParseRef(pos[0])
+	if !isRef {
+		var err error
+		if id, err = strconv.ParseInt(pos[0], 10, 64); err != nil {
+			return fmt.Errorf("not an entry id or a ref: %q", pos[0])
+		}
+	}
+	st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	d, err := st.Text(ctx, id, ref)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(d)
+	}
+	if d.Text == "" {
+		return fmt.Errorf("attic:%s has no text: %s %s", d.Ref, d.Status, d.Detail)
+	}
+	fmt.Println(d.Text)
 	return nil
 }
 
@@ -513,6 +628,11 @@ func cmdConfig(_ context.Context, args []string) error {
 			temp = os.TempDir()
 		}
 		fmt.Printf("archives  %d levels deep; nested archives %s, unpacked in %s\n", a.Depth, limit, temp)
+	}
+	if t := cfg.Text; t.MaxBytes > 0 {
+		fmt.Printf("text      documents up to %s, the first 1 MB of text each\n", humanBytes(t.MaxBytes))
+	} else {
+		fmt.Println("text      documents of any size, the first 1 MB of text each")
 	}
 	exclude, nameOnly := cfg.Rules(*volume, *volume).Describe()
 	fmt.Println("exclude")

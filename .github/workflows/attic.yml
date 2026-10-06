@@ -2,9 +2,11 @@ name: attic
 on:
   push:
     branches: [main]
-    paths: ["apps/attic/**", ".golangci.yml", ".github/workflows/attic.yml"]
+    paths:
+      ["apps/attic/**", "packages/go/extract/**", ".golangci.yml", ".github/workflows/attic.yml"]
   pull_request:
-    paths: ["apps/attic/**", ".golangci.yml", ".github/workflows/attic.yml"]
+    paths:
+      ["apps/attic/**", "packages/go/extract/**", ".golangci.yml", ".github/workflows/attic.yml"]
 permissions:
   contents: read
 concurrency:

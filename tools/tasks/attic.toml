@@ -1,5 +1,5 @@
 ["attic:check"]
-depends = ["attic:go", "attic:go:unix"]
+depends = ["shared:go", "attic:go", "attic:go:unix"]
 
 ["attic:go"]
 dir = "apps/attic"

@@ -41,6 +41,8 @@ type ScanCounts struct {
 	Duplicates  int64 `json:"duplicates"`
 	Archives    int64 `json:"archives"`
 	Members     int64 `json:"members"`
+	Texts       int64 `json:"texts"`
+	TextChars   int64 `json:"text_chars"`
 }
 
 const (
@@ -89,7 +91,7 @@ func (s *Store) StartScan(ctx context.Context, v Volume, root string) (*Scan, er
 	// Holding the lock means no other scan of this volume is alive, so any
 	// still marked as running was killed before it could say so.
 	if _, err := conn.Exec(ctx, `update scans set status = 'interrupted', finished_at = now()
-		where volume_id = $1 and status in ('walking', 'hashing', 'listing')`, v.ID); err != nil {
+		where volume_id = $1 and status in ('walking', 'hashing', 'listing', 'reading')`, v.ID); err != nil {
 		sc.unlock(ctx)
 		return nil, err
 	}
@@ -143,10 +145,12 @@ func (sc *Scan) Finish(ctx context.Context, status string, failure error) error 
 	}
 	_, uerr := sc.lock.Exec(ctx, `
 		update scans set status = $2, error = $3, finished_at = now(), listed = $4, written = $5, missing = $6,
-		       skipped = $7, hashed = $8, hashed_bytes = $9, duplicates = $10, archives = $11, members = $12
+		       skipped = $7, hashed = $8, hashed_bytes = $9, duplicates = $10, archives = $11, members = $12,
+		       texts = $13, text_chars = $14
 		where id = $1`,
 		sc.ID, status, msg, sc.Counts.Listed, sc.Counts.Written, sc.Counts.Missing, sc.Counts.Skipped,
-		sc.Counts.Hashed, sc.Counts.HashedBytes, sc.Counts.Duplicates, sc.Counts.Archives, sc.Counts.Members)
+		sc.Counts.Hashed, sc.Counts.HashedBytes, sc.Counts.Duplicates, sc.Counts.Archives, sc.Counts.Members,
+		sc.Counts.Texts, sc.Counts.TextChars)
 	return errors.Join(err, uerr)
 }
 
@@ -191,9 +195,11 @@ func (sc *Scan) Commit(ctx context.Context) error {
 	sc.dirty = 0
 	sc.lastCommit = time.Now()
 	_, err := sc.lock.Exec(ctx, `update scans set listed = $2, written = $3, missing = $4, skipped = $5, hashed = $6,
-		hashed_bytes = $7, duplicates = $8, archives = $9, members = $10 where id = $1`,
+		hashed_bytes = $7, duplicates = $8, archives = $9, members = $10,
+		texts = $11, text_chars = $12 where id = $1`,
 		sc.ID, sc.Counts.Listed, sc.Counts.Written, sc.Counts.Missing, sc.Counts.Skipped,
-		sc.Counts.Hashed, sc.Counts.HashedBytes, sc.Counts.Duplicates, sc.Counts.Archives, sc.Counts.Members)
+		sc.Counts.Hashed, sc.Counts.HashedBytes, sc.Counts.Duplicates, sc.Counts.Archives, sc.Counts.Members,
+		sc.Counts.Texts, sc.Counts.TextChars)
 	return err
 }
 
