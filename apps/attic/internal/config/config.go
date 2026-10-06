@@ -34,11 +34,14 @@ type Volume struct {
 
 // DefaultExclude keeps out what no search wants: dependency trees and build
 // output, installed game libraries, and the folders and files Windows owns.
+// AppData stays in: profile backups keep game saves, mail and browser
+// profiles there. A pattern with a slash inside is anchored at the volume
+// root, hence the leading **/ on .yarn/cache.
 var DefaultExclude = []string{
-	"node_modules/", ".git/", ".pnpm-store/", ".yarn/cache/", "vendor/", ".venv/", "venv/", "__pycache__/",
+	"node_modules/", ".git/", ".pnpm-store/", "**/.yarn/cache/", "vendor/", ".venv/", "venv/", "__pycache__/",
 	"target/", "dist/", "build/", ".gradle/", ".next/", ".nuxt/", ".turbo/", ".cache/",
 	"steamapps/", "SteamLibrary/", "Epic Games/", "Riot Games/", "Battle.net/", "XboxGames/", "GOG Games/",
-	"/Windows/", "/Program Files/", "/Program Files (x86)/", "/ProgramData/", "AppData/",
+	"/Windows/", "/Program Files/", "/Program Files (x86)/", "/ProgramData/",
 	"$Recycle.Bin/", "System Volume Information/", "/Recovery/",
 	"/pagefile.sys", "/hiberfil.sys", "/swapfile.sys", "/DumpStack.log.tmp",
 }
@@ -101,7 +104,8 @@ func (c Config) Rules(volumeID, label string) Rules {
 	r.nameOnly = compile(r.nameOnly, DefaultNameOnly, "default")
 	r.nameOnly = compile(r.nameOnly, c.NameOnly, "config")
 	for _, v := range c.Volumes {
-		if (v.ID != "" && strings.EqualFold(v.ID, volumeID)) || (v.Label != "" && v.Label == label) {
+		// Labels ignore case: Windows stores FAT32 labels in upper case.
+		if (v.ID != "" && strings.EqualFold(v.ID, volumeID)) || (v.Label != "" && strings.EqualFold(v.Label, label)) {
 			r.exclude = compile(r.exclude, v.Exclude, "volume "+v.selector())
 			r.nameOnly = compile(r.nameOnly, v.NameOnly, "volume "+v.selector())
 		}

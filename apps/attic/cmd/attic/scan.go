@@ -75,6 +75,11 @@ type progressLine struct {
 }
 
 func (p *progressLine) update(pr scan.Progress) {
+	// The rate needs the moment hashing began, even when that update is not
+	// printed.
+	if pr.Phase == "hash" && p.hashStart.IsZero() {
+		p.hashStart = time.Now()
+	}
 	if !p.tty && time.Since(p.last) < 30*time.Second {
 		return
 	}
@@ -85,9 +90,6 @@ func (p *progressLine) update(pr scan.Progress) {
 		line = fmt.Sprintf("walking: %s folders, %s entries, %s new or changed, %s skipped",
 			count(pr.Dirs), count(pr.Listed), count(pr.Written), count(pr.Skipped))
 	case "hash":
-		if p.hashStart.IsZero() {
-			p.hashStart = time.Now()
-		}
 		line = fmt.Sprintf("hashing: %s of %s files, %s of %s", count(pr.Hashed), count(pr.HashFiles),
 			humanBytes(pr.HashedBytes), humanBytes(pr.HashBytes))
 		if elapsed := time.Since(p.hashStart).Seconds(); elapsed > 5 && pr.HashedBytes > 0 {

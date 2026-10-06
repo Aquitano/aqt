@@ -56,13 +56,20 @@ func scanVolume(row pgx.Row) (Volume, error) {
 	return v, err
 }
 
-// chooseVolume picks the known volume a fingerprint belongs to. A partition
+// Holds reports whether a mounted fingerprint is this volume. A partition
 // GUID or device serial only disqualifies when both sides recorded one: some
-// USB bridges report no serial at all.
+// USB bridges report no serial at all. A clone fails it on the device serial.
+func (v Volume) Holds(fp disk.Fingerprint) bool {
+	return v.FS == fp.FS && v.Serial == fp.Serial &&
+		agree(v.PartitionID, fp.PartitionID) && agree(v.DeviceSerial, fp.DeviceSerial)
+}
+
+// chooseVolume picks the known volume, among those sharing the fingerprint's
+// serial, that the fingerprint belongs to.
 func chooseVolume(fp disk.Fingerprint, candidates []Volume) (*Volume, bool) {
 	var fits []int
 	for i, c := range candidates {
-		if agree(c.PartitionID, fp.PartitionID) && agree(c.DeviceSerial, fp.DeviceSerial) {
+		if c.Holds(fp) {
 			fits = append(fits, i)
 		}
 	}

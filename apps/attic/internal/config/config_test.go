@@ -26,7 +26,7 @@ exclude = ["/Games/", "!node_modules/"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := c.Rules("", "Data")
+	data := c.Rules("", "DATA")
 	other := c.Rules("", "Stick")
 
 	cases := []struct {
@@ -36,6 +36,8 @@ exclude = ["/Games/", "!node_modules/"]
 		excluded bool
 	}{
 		{other, "Projects/web/node_modules", true, true},
+		{other, "Projects/web/.yarn/cache", true, true},
+		{other, "Backup/Users/thomas/AppData", true, false},
 		{other, "$RECYCLE.BIN", true, true},
 		{other, "Backups/disk.ISO", false, true},
 		{other, "Games", true, false},

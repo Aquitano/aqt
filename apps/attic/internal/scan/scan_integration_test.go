@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/attic/internal/config"
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 	"github.com/aquitano/aqt/apps/attic/internal/storetest"
@@ -24,14 +25,21 @@ func write(t *testing.T, root, rel, body string) {
 	}
 }
 
+// testVolume stands in for a disk; every test has a schema of its own.
+var testVolume = disk.Fingerprint{FS: "TEST", Serial: "7E57", Label: "Test", StableIDs: true}
+
 // scanAt runs a scan with the temporary folder standing in for a volume root,
 // so the test needs neither a spare disk nor Windows.
-func scanAt(t *testing.T, st *store.Store, root string, fp disk.Fingerprint) Result {
+func scanAt(t *testing.T, st *store.Store, root string, fp disk.Fingerprint, with ...func(*Options)) Result {
 	t.Helper()
-	res, err := Run(context.Background(), st, Options{
+	o := Options{
 		Path:   root,
 		locate: func(string) (disk.Volume, []string, error) { return disk.Volume{Fingerprint: fp, Root: root}, nil, nil },
-	})
+	}
+	for _, f := range with {
+		f(&o)
+	}
+	res, err := Run(context.Background(), st, o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,4 +120,93 @@ func TestScanKeepsIdentityAcrossMoves(t *testing.T) {
 	if second.Counts.Missing != 1 {
 		t.Errorf("second scan missing %d, want 1", second.Counts.Missing)
 	}
+}
+
+func TestDeletedFolderTakesItsFilesAlong(t *testing.T) {
+	st, _ := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "old/report.txt", "quarterly")
+	write(t, root, "old/sub/deep.txt", "quarterly")
+	write(t, root, "keep.txt", "quarterly")
+	scanAt(t, st, root, testVolume)
+	if err := os.RemoveAll(filepath.Join(root, "old")); err != nil {
+		t.Fatal(err)
+	}
+
+	res := scanAt(t, st, root, testVolume)
+	if res.Counts.Missing != 4 {
+		t.Errorf("missing %d, want the folder, its subfolder and both files", res.Counts.Missing)
+	}
+	if hit := find(t, st, "deep"); !hit.Missing {
+		t.Errorf("a file two levels below a deleted folder still reads as present: %+v", hit)
+	}
+	if dupes, _, err := st.Dupes(context.Background(), 0, false, 10); err != nil || len(dupes) != 0 {
+		t.Errorf("deleted copies still count as duplicates: %+v, %v", dupes, err)
+	}
+}
+
+// A backup rotation: Latest becomes Old/2025 and Staging takes Latest's name,
+// so the old path of one folder is now another folder's.
+func TestRotatedFoldersKeepTheirFiles(t *testing.T) {
+	st, _ := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "Data/Latest/monday.txt", "monday")
+	write(t, root, "Data/Staging/tuesday.txt", "tuesday")
+	scanAt(t, st, root, testVolume)
+	if err := os.MkdirAll(filepath.Join(root, "Old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, mv := range [][2]string{{"Data/Latest", "Old/2025"}, {"Data/Staging", "Data/Latest"}} {
+		if err := os.Rename(filepath.Join(root, filepath.FromSlash(mv[0])), filepath.Join(root, filepath.FromSlash(mv[1]))); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	res := scanAt(t, st, root, testVolume)
+	if res.Counts.Hashed != 0 || res.Counts.Missing != 0 {
+		t.Errorf("rotation hashed %d and lost %d, want nothing either way", res.Counts.Hashed, res.Counts.Missing)
+	}
+	for query, want := range map[string]string{"monday": "/Old/2025/monday.txt", "tuesday": "/Data/Latest/tuesday.txt"} {
+		if hit := find(t, st, query); hit.Path != want || hit.Missing {
+			t.Errorf("%s: %s (missing %v), want %s", query, hit.Path, hit.Missing, want)
+		}
+	}
+}
+
+func TestExclusionAddedAfterListingStopsHashing(t *testing.T) {
+	st, _ := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "disk.iso", "image")
+	write(t, root, "notes.txt", "notes")
+	scanAt(t, st, root, testVolume, func(o *Options) { o.NoHash = true })
+
+	res := scanAt(t, st, root, testVolume, func(o *Options) { o.Config = config.Config{Exclude: []string{"*.iso"}} })
+	if res.Counts.Hashed != 1 {
+		t.Errorf("hashed %d files, want only notes.txt", res.Counts.Hashed)
+	}
+	if iso := find(t, st, "disk"); iso.Ref != "" {
+		t.Errorf("an excluded file was read: %+v", iso)
+	}
+}
+
+// The second of two hard links in a folder keeps its path as identity. Once
+// the first is gone and created again, the scan must still match both.
+func TestReappearingHardLinkScans(t *testing.T) {
+	st, _ := storetest.New(t)
+	root := t.TempDir()
+	a, b := filepath.Join(root, "a.txt"), filepath.Join(root, "b.txt")
+	write(t, root, "a.txt", "linked")
+	if err := os.Link(a, b); err != nil {
+		t.Skipf("no hard links here: %v", err)
+	}
+	scanAt(t, st, root, testVolume)
+	if err := os.Remove(a); err != nil {
+		t.Fatal(err)
+	}
+	scanAt(t, st, root, testVolume)
+	if err := os.Link(b, a); err != nil {
+		t.Fatal(err)
+	}
+	scanAt(t, st, root, testVolume)
+	scanAt(t, st, root, testVolume)
 }

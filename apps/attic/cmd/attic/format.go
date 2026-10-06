@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,12 +14,12 @@ import (
 )
 
 // onlineRoots maps each known volume that is attached right now to where it
-// is mounted, matched by file system and serial.
+// is mounted. A clone of a known disk does not light up the original.
 func onlineRoots(vols []store.Volume) map[string]string {
 	roots := map[string]string{}
 	for _, m := range disk.Mounted() {
 		for _, v := range vols {
-			if v.FS == m.FS && v.Serial == m.Serial {
+			if v.Holds(m.Fingerprint) {
 				roots[v.ID] = m.Root
 			}
 		}
@@ -65,9 +66,9 @@ func count(n int64) string {
 	return s
 }
 
-// parseSize reads "10M", "512K", "2G" or a plain byte count.
-func parseSize(s string) (int64, error) {
-	s = strings.ToUpper(strings.TrimSuffix(strings.TrimSpace(s), "B"))
+// parseSize reads "10M", "512kb", "2G" or a plain byte count.
+func parseSize(raw string) (int64, error) {
+	s := strings.TrimSuffix(strings.ToUpper(strings.TrimSpace(raw)), "B")
 	mult := int64(1)
 	if s != "" {
 		if i := strings.IndexByte("KMGT", s[len(s)-1]); i >= 0 {
@@ -76,8 +77,8 @@ func parseSize(s string) (int64, error) {
 		}
 	}
 	n, err := strconv.ParseInt(s, 10, 64)
-	if err != nil || n < 0 {
-		return 0, fmt.Errorf("not a size: %q", s)
+	if err != nil || n < 0 || n > math.MaxInt64/mult {
+		return 0, fmt.Errorf("not a size: %q", raw)
 	}
 	return n * mult, nil
 }

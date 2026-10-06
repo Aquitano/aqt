@@ -36,7 +36,7 @@ Results show where a file can be opened now (`E:\Files\x.zip`) or the volume it 
 
 ## Configuration
 
-One TOML file at `%APPDATA%\attic\config.toml`, or another with `scan --config`. `attic config` prints the effective rules. Patterns use gitignore syntax and ignore case; the built-in defaults exclude dependency and build folders, game libraries and Windows system folders, and keep BitLocker recovery-key files to their names.
+One TOML file at `%APPDATA%\attic\config.toml`, or another with `scan --config`. `attic config` prints the effective rules. Patterns use gitignore syntax and ignore case; the built-in defaults exclude dependency and build folders, game libraries and Windows system folders, and keep BitLocker recovery-key files to their names. A pattern with a slash inside is anchored at the volume root, so write `**/name/` to match at any depth. On Windows a backslash cannot escape a bracket; match a literal `[` with a class, as in `Fotos [[]2019]/`.
 
 ```toml
 exclude = ["*.iso"]

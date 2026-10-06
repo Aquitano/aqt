@@ -114,7 +114,7 @@ func resolveUnder(under, volumeID string, vols []store.Volume) (string, string, 
 		return "", "", err
 	}
 	for _, v := range vols {
-		if v.FS == mounted.FS && v.Serial == mounted.Serial && (volumeID == "" || volumeID == v.ID) {
+		if v.Holds(mounted.Fingerprint) && (volumeID == "" || volumeID == v.ID) {
 			p := ""
 			for _, part := range rel {
 				p += "/" + part
@@ -144,8 +144,8 @@ func cmdShow(ctx context.Context, args []string) error {
 	}
 	roots := onlineRoots(vols)
 
-	if store.ValidRef(pos[0]) {
-		c, err := st.Content(ctx, pos[0])
+	if ref, ok := store.ParseRef(pos[0]); ok {
+		c, err := st.Content(ctx, ref)
 		if err != nil {
 			return err
 		}

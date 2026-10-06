@@ -227,10 +227,11 @@ func fileTime(ft int64) time.Time {
 }
 
 // Stat describes one path the way List describes a directory's entries. The
-// scan uses it for the folders above the one it was asked to scan.
+// scan uses it for the folders above the one it was asked to scan. It follows
+// reparse points: Locate already resolved the path, so the only one left is a
+// volume mounted in a folder, and the scan wants that volume's own root.
 func Stat(path string) (Entry, error) {
-	h, err := open(path, windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE,
-		windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT)
+	h, err := open(path, windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE, windows.FILE_FLAG_BACKUP_SEMANTICS)
 	if err != nil {
 		return Entry{}, &os.PathError{Op: "open", Path: path, Err: err}
 	}
@@ -403,8 +404,16 @@ func Mounted() []Volume {
 		return nil
 	}
 	buf := make([]uint16, n)
-	if n, err = windows.GetLogicalDriveStrings(n, &buf[0]); err != nil {
-		return nil
+	// A drive attached between the two calls makes the second report a larger
+	// size and fill nothing; grow and ask again.
+	for {
+		if n, err = windows.GetLogicalDriveStrings(uint32(len(buf)), &buf[0]); err != nil {
+			return nil
+		}
+		if int(n) <= len(buf) {
+			break
+		}
+		buf = make([]uint16, n)
 	}
 	var out []Volume
 	for start, i := 0, 0; i < int(n); i++ {

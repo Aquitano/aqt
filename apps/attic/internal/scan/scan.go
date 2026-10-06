@@ -8,10 +8,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	gitconfig "github.com/go-git/go-git/v5/plumbing/format/config"
 
@@ -143,33 +145,54 @@ func (r *run) walkAndHash(ctx context.Context, rel []string) (string, error) {
 	return "complete", nil
 }
 
+// folderJob is a folder waiting to be listed. os is its path as the file
+// system spells it: a name that is not valid Unicode is stored cleaned, and a
+// path rebuilt from the catalogue would not reopen it. lossy marks such a path,
+// whose files the hashing phase could not open either.
+type folderJob struct {
+	dir   store.Dir
+	os    string
+	lossy bool
+}
+
 // ancestors records the volume root and every folder down to the scan root,
 // without listing them: a scan of E:\Files\Archive must not mark the rest of
 // E:\Files missing.
-func (r *run) ancestors(ctx context.Context, rel []string) (store.Dir, error) {
+func (r *run) ancestors(ctx context.Context, rel []string) (folderJob, error) {
 	var parent *store.Dir
 	p := r.mountRoot
+	lossy := false
 	for i := 0; i <= len(rel); i++ {
 		name := ""
 		if i > 0 {
 			name = rel[i-1]
 			p = filepath.Join(p, name)
+			lossy = lossy || !utf8.ValidString(name)
 		}
 		e, err := disk.Stat(p)
 		if err != nil {
-			return store.Dir{}, err
+			return folderJob{}, err
 		}
 		if !e.Dir || e.Link {
-			return store.Dir{}, fmt.Errorf("%s is not a folder", p)
+			return folderJob{}, fmt.Errorf("%s is not a folder", p)
 		}
 		e.Name = name
 		dirs, err := r.sc.ApplyListing(ctx, parent, []store.Listed{listed(e)}, nil, false)
 		if err != nil {
-			return store.Dir{}, err
+			return folderJob{}, err
 		}
 		parent = &dirs[0]
 	}
-	return *parent, nil
+	return folderJob{dir: *parent, os: p, lossy: lossy}, nil
+}
+
+// volumeGone tells a disk unplugged mid-scan from a folder or file that cannot
+// be read: the first ends the scan, the second is one skip.
+func (r *run) volumeGone() error {
+	if _, err := os.Stat(r.mountRoot); err != nil {
+		return fmt.Errorf("%s disappeared during the scan; run it again once it is back: %w", r.mountRoot, err)
+	}
+	return nil
 }
 
 func listed(e disk.Entry) store.Listed {
@@ -196,15 +219,15 @@ func listed(e disk.Entry) store.Listed {
 
 // walk lists folders depth-first with an explicit stack: backup trees nest
 // deep enough that recursion depth is not worth thinking about.
-func (r *run) walk(ctx context.Context, start store.Dir) error {
-	stack := []store.Dir{start}
+func (r *run) walk(ctx context.Context, start folderJob) error {
+	stack := []folderJob{start}
 	for len(stack) > 0 {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		dir := stack[len(stack)-1]
+		job := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		children, err := r.folder(ctx, dir)
+		children, err := r.folder(ctx, job)
 		if err != nil {
 			return err
 		}
@@ -223,15 +246,20 @@ func (r *run) walk(ctx context.Context, start store.Dir) error {
 // folder lists one folder, applies the rules to each entry and hands the
 // result to the catalogue. A folder that cannot be read is skipped with its
 // reason and leaves its catalogued children untouched.
-func (r *run) folder(ctx context.Context, dir store.Dir) ([]store.Dir, error) {
-	entries, err := disk.List(r.osPath(dir.Path))
+func (r *run) folder(ctx context.Context, job folderJob) ([]folderJob, error) {
+	dir := job.dir
+	entries, err := disk.List(job.os)
 	if err != nil {
+		if gone := r.volumeGone(); gone != nil {
+			return nil, gone
+		}
 		r.sc.Skip(dir.Path, "unreadable", "", err.Error())
 		return nil, nil
 	}
 	lowerDir := lowerComponents(dir.Path)
 	keep := map[string]bool{}
 	items := make([]store.Listed, 0, len(entries))
+	var dirNames []string
 	repo := false
 	for _, e := range entries {
 		childPath := dir.Path + "/" + e.Name
@@ -249,6 +277,10 @@ func (r *run) folder(ctx context.Context, dir store.Dir) ([]store.Dir, error) {
 		case l.Kind == "link":
 			r.sc.Skip(childPath, "link", "", "a junction, symlink or placeholder; not followed")
 		case l.Kind != "file":
+			dirNames = append(dirNames, e.Name)
+		case job.lossy || !utf8.ValidString(e.Name):
+			l.HashState = "skipped"
+			r.sc.Skip(childPath, "bad_name", "", "the path is not valid Unicode, so the file cannot be reopened to hash it")
 		case e.Remote:
 			l.HashState = "skipped"
 			r.sc.Skip(childPath, "remote", "", "bytes live elsewhere; reading would download them")
@@ -265,12 +297,19 @@ func (r *run) folder(ctx context.Context, dir store.Dir) ([]store.Dir, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(children) != len(dirNames) {
+		return nil, fmt.Errorf("%s: %d subfolders listed, %d recorded", dir.Path, len(dirNames), len(children))
+	}
 	if repo {
-		if err := r.sc.SetGitRemote(ctx, dir, r.origin(dir)); err != nil {
+		if err := r.sc.SetGitRemote(ctx, dir, origin(job.os)); err != nil {
 			return nil, err
 		}
 	}
-	return children, nil
+	jobs := make([]folderJob, len(children))
+	for i, child := range children {
+		jobs[i] = folderJob{dir: child, os: filepath.Join(job.os, dirNames[i]), lossy: job.lossy || !utf8.ValidString(dirNames[i])}
+	}
+	return jobs, nil
 }
 
 func lowerComponents(p string) []string {
@@ -284,8 +323,8 @@ func lowerComponents(p string) []string {
 // origin reads a repository's origin URL. A worktree or submodule keeps a
 // .git file instead of a folder, and an unreadable config is simply a
 // repository without a known remote.
-func (r *run) origin(dir store.Dir) string {
-	data, err := disk.ReadSmall(filepath.Join(r.osPath(dir.Path), ".git", "config"), 1<<20)
+func origin(dir string) string {
+	data, err := disk.ReadSmall(filepath.Join(dir, ".git", "config"), 1<<20)
 	if err != nil {
 		return ""
 	}
@@ -303,7 +342,8 @@ func (r *run) hash(ctx context.Context) error {
 	if r.hashFiles, r.hashBytes, err = r.sc.PendingTotals(ctx); err != nil {
 		return err
 	}
-	after := ""
+	r.progress(true)
+	var after store.Pending
 	for {
 		batch, err := r.sc.NextPending(ctx, after, 256)
 		if err != nil {
@@ -313,25 +353,43 @@ func (r *run) hash(ctx context.Context) error {
 			return nil
 		}
 		for _, p := range batch {
-			digest, n, err := disk.Hash(ctx, r.osPath(p.Path))
-			switch {
-			case ctx.Err() != nil:
-				return ctx.Err()
-			case err != nil:
-				err = r.sc.HashFailed(ctx, p, err)
-			case n != p.Size:
-				r.sc.Skip(p.Path, "changed", "", fmt.Sprintf("listed %d bytes, read %d; hashed on the next scan", p.Size, n))
-			default:
-				err = r.sc.SetContent(ctx, p, digest)
-			}
-			if err != nil {
+			after = p
+			if err := r.hashOne(ctx, p); err != nil {
 				return err
 			}
-			after = p.Path
 			if err := r.sc.MaybeCommit(ctx); err != nil {
 				return err
 			}
 			r.progress(false)
 		}
 	}
+}
+
+func (r *run) hashOne(ctx context.Context, p store.Pending) error {
+	// A file listed by an earlier scan was queued under the rules of that day.
+	// Exclusions and caps added since must still keep its bytes unread.
+	path := lowerComponents(p.Path)
+	if excluded, rule := r.rules.Excluded(path, false); excluded {
+		return r.sc.SkipHash(ctx, p, "excluded", rule, "")
+	}
+	if r.rules.NameOnly(path) {
+		return r.sc.SkipHash(ctx, p, "name_only", "", "")
+	}
+	if r.rules.HashMaxBytes > 0 && p.Size > r.rules.HashMaxBytes {
+		return r.sc.SkipHash(ctx, p, "too_big", "", fmt.Sprintf("%d bytes", p.Size))
+	}
+	digest, n, err := disk.Hash(ctx, r.osPath(p.Path))
+	switch {
+	case ctx.Err() != nil:
+		return ctx.Err()
+	case err != nil:
+		if gone := r.volumeGone(); gone != nil {
+			return gone
+		}
+		return r.sc.HashFailed(ctx, p, err)
+	case n != p.Size:
+		r.sc.Skip(p.Path, "changed", "", fmt.Sprintf("listed %d bytes, read %d; hashed on the next scan", p.Size, n))
+		return nil
+	}
+	return r.sc.SetContent(ctx, p, digest)
 }

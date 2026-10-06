@@ -122,9 +122,13 @@ func (sc *Scan) Finish(ctx context.Context, status string, failure error) error 
 		_ = sc.tx.Rollback(ctx)
 	}
 	// Ctrl+C can cancel a statement mid-transaction. Losing the last couple of
-	// seconds is what interrupting means, not an error to report.
+	// seconds is what interrupting means, not an error to report. Otherwise a
+	// lost final batch makes the scan a failure, whatever came before.
 	if status == "interrupted" {
 		err = nil
+	} else if err != nil {
+		status = "failed"
+		failure = errors.Join(failure, err)
 	}
 	msg := ""
 	if failure != nil {
@@ -261,6 +265,11 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		return nil, err
 	}
 
+	// Rows hold cleaned names, so the excluded names are compared cleaned too.
+	kept := make(map[string]bool, len(keep))
+	for name := range keep {
+		kept[cleanText(name)] = true
+	}
 	seenIDs := map[int64]bool{}
 	for i := range listed {
 		listed[i] = normalize(listed[i], sc.Volume.StableIDs)
@@ -316,13 +325,26 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 			}
 		}
 	}
-	byName := map[string]*entryRow{}
+	// A folder can hold several rows of one name: a missing one beside the
+	// live one, or a hard link kept by path. Prefer the row without a file id,
+	// so a listed entry that also has none never collides with it in the
+	// (parent, name) index.
+	byName := map[string][]*entryRow{}
 	for i := range existing {
-		byName[existing[i].Name] = &existing[i]
+		byName[existing[i].Name] = append(byName[existing[i].Name], &existing[i])
 	}
 	for i, l := range listed {
-		if r := byName[l.Name]; matched[i] == nil && r != nil && !claimed[r.ID] {
-			claim(i, r)
+		if matched[i] != nil {
+			continue
+		}
+		var best *entryRow
+		for _, r := range byName[l.Name] {
+			if !claimed[r.ID] && (best == nil || (r.FileID == nil && best.FileID != nil)) {
+				best = r
+			}
+		}
+		if best != nil {
+			claim(i, best)
 		}
 	}
 
@@ -351,10 +373,17 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		moved := r.Path != entryPath
 		if moved && r.Kind == "dir" && l.Kind == "dir" {
 			// Everything below a moved folder moves with it in one statement.
+			// Descendants are found by ancestry, not by path: after a rotation
+			// or a swap another folder may already hold the old path.
 			batch.Queue(`
+				with recursive below as (
+					select id from entries where parent_id = $1
+					union all
+					select e.id from entries e join below b on e.parent_id = b.id
+				)
 				update entries set path = $3 || substr(path, length($2) + 1)
-				where volume_id = $1 and path collate "C" > $2 || '/' and path collate "C" < $2 || '0'`,
-				sc.Volume.ID, r.Path, entryPath)
+				where id in (select id from below) and starts_with(path, $2 || '/')`,
+				r.ID, r.Path, entryPath)
 			reads = append(reads, execResult)
 		}
 		if !moved && unchanged(r, l, parentID) {
@@ -374,14 +403,26 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		sc.dirty++
 	}
 	if complete {
+		var gone []int64
 		for i := range existing {
 			r := &existing[i]
-			if claimed[r.ID] || keep[r.Name] || r.MissingScan != nil {
-				continue
+			if !claimed[r.ID] && !kept[r.Name] && r.MissingScan == nil {
+				gone = append(gone, r.ID)
 			}
-			batch.Queue(`update entries set missing_scan = $2 where id = $1`, r.ID, sc.ID)
+		}
+		if len(gone) > 0 {
+			// A missing folder takes everything below it along: its files must
+			// not keep counting as present copies.
+			batch.Queue(`
+				with recursive below as (
+					select id from entries where id = any($1)
+					union all
+					select e.id from entries e join below b on e.parent_id = b.id
+				)
+				update entries set missing_scan = $2 where id in (select id from below) and missing_scan is null`,
+				gone, sc.ID)
 			reads = append(reads, execResult)
-			sc.dirty++
+			sc.dirty += len(gone)
 		}
 		if parent != nil {
 			batch.Queue(`update entries set listed_scan = $2 where id = $1`, parent.ID, sc.ID)
@@ -609,19 +650,20 @@ func (sc *Scan) PendingTotals(ctx context.Context) (files, bytes int64, err erro
 	return files, bytes, err
 }
 
-// NextPending returns up to limit files after the given path, in path order,
-// which keeps reads on a hard disk roughly sequential.
-func (sc *Scan) NextPending(ctx context.Context, after string, limit int) ([]Pending, error) {
+// NextPending returns up to limit files after the given one, in path order,
+// which keeps reads on a hard disk roughly sequential. The id breaks ties: two
+// rows can briefly share a path, and a path-only keyset would skip one.
+func (sc *Scan) NextPending(ctx context.Context, after Pending, limit int) ([]Pending, error) {
 	lower, upper := sc.subtree()
-	if after > lower {
-		lower = after
+	if after.ID != 0 {
+		lower = after.Path
 	}
 	rows, err := sc.store.pool.Query(ctx, `
 		select id, path, size_bytes from entries
 		where volume_id = $1 and hash_state in ('pending', 'failed') and kind = 'file' and missing_scan is null
-		  and path collate "C" > $2 and ($3 = '' or path collate "C" < $3)
-		order by path collate "C" limit $4`,
-		sc.Volume.ID, lower, upper, limit)
+		  and (path collate "C" > $2 or (path = $2 and id > $5)) and ($3 = '' or path collate "C" < $3)
+		order by path collate "C", id limit $4`,
+		sc.Volume.ID, lower, upper, limit, after.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -635,26 +677,32 @@ func (sc *Scan) NextPending(ctx context.Context, after string, limit int) ([]Pen
 // SetContent attaches a digest to a file. The update only applies while the
 // row still has the size that was hashed; a rescan in between would have
 // queued it again anyway.
+//
+// The contents row commits on its own, outside the scan's transaction: held
+// there, it would stay locked for as long as the next file takes to hash, and
+// a scan of another disk meeting the same bytes would wait on it.
 func (sc *Scan) SetContent(ctx context.Context, p Pending, digest [32]byte) error {
+	var contentID int64
+	inserted := true
+	err := sc.store.pool.QueryRow(ctx, `
+		insert into contents (blake3, size_bytes) values ($1, $2) on conflict (blake3) do nothing returning id`,
+		digest[:], p.Size).Scan(&contentID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		inserted = false
+		err = sc.store.pool.QueryRow(ctx, `select id from contents where blake3 = $1`, digest[:]).Scan(&contentID)
+	}
+	if err != nil {
+		return err
+	}
 	tx, err := sc.begin(ctx)
 	if err != nil {
 		return err
 	}
-	var inserted bool
-	err = tx.QueryRow(ctx, `
-		with c as (
-			insert into contents (blake3, size_bytes) values ($2, $3)
-			on conflict (blake3) do update set size_bytes = excluded.size_bytes
-			returning id, xmax = 0 as inserted
-		)
-		update entries e set content_id = c.id, hash_state = 'done', updated_scan = $4
-		from c where e.id = $1 and e.size_bytes = $3
-		returning c.inserted`,
-		p.ID, digest[:], p.Size, sc.ID).Scan(&inserted)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
+	tag, err := tx.Exec(ctx, `
+		update entries set content_id = $2, hash_state = 'done', updated_scan = $3
+		where id = $1 and size_bytes = $4`,
+		p.ID, contentID, sc.ID, p.Size)
+	if err != nil || tag.RowsAffected() == 0 {
 		return err
 	}
 	sc.Counts.Hashed++
@@ -677,5 +725,20 @@ func (sc *Scan) HashFailed(ctx context.Context, p Pending, failure error) error 
 		return err
 	}
 	sc.Skip(p.Path, "unreadable", "", failure.Error())
+	return nil
+}
+
+// SkipHash takes a queued file out of the hashing queue because the rules in
+// force now say its bytes must not be read: an exclusion or a size cap added
+// after the scan that listed it.
+func (sc *Scan) SkipHash(ctx context.Context, p Pending, reason, rule, detail string) error {
+	tx, err := sc.begin(ctx)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `update entries set hash_state = 'skipped' where id = $1`, p.ID); err != nil {
+		return err
+	}
+	sc.Skip(p.Path, reason, rule, detail)
 	return nil
 }

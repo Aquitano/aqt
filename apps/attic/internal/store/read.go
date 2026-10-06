@@ -20,10 +20,12 @@ const RefChars = 16
 
 const refSQL = `encode(substr(c.blake3, 1, 8), 'hex')`
 
-// ValidRef rejects anything that is not a ref before it reaches a query.
-func ValidRef(s string) bool {
+// ParseRef accepts a ref as typed or as cited ("attic:3f9a..."), in either
+// case, and rejects anything else before it reaches a query.
+func ParseRef(s string) (string, bool) {
+	s = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(s), "attic:"))
 	_, err := hex.DecodeString(s)
-	return len(s) == RefChars && err == nil && strings.ToLower(s) == s
+	return s, len(s) == RefChars && err == nil
 }
 
 // Hit is one entry as search, show and dupes print it.
@@ -178,7 +180,7 @@ func (s *Store) Entry(ctx context.Context, id int64) (EntryDetail, error) {
 	}
 	d.Hit = h
 	if contentID != nil {
-		d.Copies, err = s.occurrences(ctx, *contentID, id)
+		d.Copies, err = s.occurrences(ctx, *contentID, id, false, nil)
 	}
 	return d, err
 }
@@ -195,7 +197,8 @@ type ContentDetail struct {
 // Content resolves a ref, the citation form.
 func (s *Store) Content(ctx context.Context, ref string) (ContentDetail, error) {
 	var d ContentDetail
-	if !ValidRef(ref) {
+	ref, ok := ParseRef(ref)
+	if !ok {
 		return d, fmt.Errorf("not a ref: %q", ref)
 	}
 	prefix, _ := hex.DecodeString(ref)
@@ -211,14 +214,18 @@ func (s *Store) Content(ctx context.Context, ref string) (ContentDetail, error) 
 		return d, err
 	}
 	d.BLAKE3 = hex.EncodeToString(digest)
-	d.Occurrences, err = s.occurrences(ctx, id, 0)
+	d.Occurrences, err = s.occurrences(ctx, id, 0, false, nil)
 	return d, err
 }
 
-func (s *Store) occurrences(ctx context.Context, contentID, except int64) ([]Hit, error) {
+// occurrences lists where a content lives, present copies first. presentOnly
+// drops missing ones; volumes, when set, keeps only those volumes.
+func (s *Store) occurrences(ctx context.Context, contentID, except int64, presentOnly bool, volumes []string) ([]Hit, error) {
 	rows, err := s.pool.Query(ctx, `select `+hitColumns+hitFrom+`
-		where e.content_id = $1 and e.id <> $2 order by e.missing_scan is not null, v.label, e.path collate "C" limit 100`,
-		contentID, except)
+		where e.content_id = $1 and e.id <> $2 and (not $3 or e.missing_scan is null)
+		  and ($4::text[] is null or e.volume_id::text = any($4))
+		order by e.missing_scan is not null, v.label, e.path collate "C" limit 100`,
+		contentID, except, presentOnly, volumes)
 	if err != nil {
 		return nil, err
 	}
@@ -298,9 +305,10 @@ func (s *Store) Volumes(ctx context.Context) ([]VolumeSummary, error) {
 		index[v.ID] = i
 	}
 	rows, err := s.pool.Query(ctx, `
-		select volume_id::text, count(*), count(*) filter (where kind = 'file'),
+		select volume_id::text, count(*) filter (where missing_scan is null),
+		       count(*) filter (where kind = 'file' and missing_scan is null),
 		       coalesce(sum(size_bytes) filter (where kind = 'file' and missing_scan is null), 0),
-		       count(*) filter (where hash_state = 'done'),
+		       count(*) filter (where hash_state = 'done' and missing_scan is null),
 		       count(*) filter (where hash_state in ('pending', 'failed') and missing_scan is null),
 		       count(*) filter (where missing_scan is not null)
 		from entries group by volume_id`)
@@ -347,38 +355,44 @@ type Dupe struct {
 // sameVolume counts only copies that share a volume: copies on two backup
 // disks are usually the point, copies on one disk rarely are.
 func (s *Store) Dupes(ctx context.Context, minSize int64, sameVolume bool, limit int) ([]Dupe, int64, error) {
-	group := `c.id`
+	group, volume := `c.id`, `null::text`
 	if sameVolume {
-		group = `c.id, e.volume_id`
+		group, volume = `c.id, e.volume_id`, `e.volume_id::text`
 	}
 	rows, err := s.pool.Query(ctx, `
 		with d as (
-			select c.id, `+refSQL+` as ref, c.size_bytes, count(*) as copies
+			select c.id, `+refSQL+` as ref, c.size_bytes, `+volume+` as volume_id, count(*) as copies
 			from entries e join contents c on c.id = e.content_id
 			where e.missing_scan is null and c.size_bytes >= $1
 			group by `+group+` having count(*) > 1
 		)
 		select id, ref, size_bytes, sum(copies)::bigint, sum((copies - 1) * size_bytes)::bigint,
-		       sum(sum((copies - 1) * size_bytes)) over ()::bigint
+		       sum(sum((copies - 1) * size_bytes)) over ()::bigint,
+		       array_agg(volume_id) filter (where volume_id is not null)
 		from d group by id, ref, size_bytes
 		order by 5 desc, id limit $2`, minSize, limit)
 	if err != nil {
 		return nil, 0, err
 	}
 	var ids []int64
+	var volumes [][]string
 	var total int64
 	dupes, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Dupe, error) {
 		var d Dupe
 		var id int64
-		err := r.Scan(&id, &d.Ref, &d.Size, &d.Copies, &d.Wasted, &total)
+		var vols []string
+		err := r.Scan(&id, &d.Ref, &d.Size, &d.Copies, &d.Wasted, &total, &vols)
 		ids = append(ids, id)
+		volumes = append(volumes, vols)
 		return d, err
 	})
 	if err != nil {
 		return nil, 0, err
 	}
+	// Places are the copies the count is about: present ones, and with
+	// sameVolume only on the volumes holding more than one.
 	for i, id := range ids {
-		places, err := s.occurrences(ctx, id, 0)
+		places, err := s.occurrences(ctx, id, 0, true, volumes[i])
 		if err != nil {
 			return nil, 0, err
 		}
@@ -445,11 +459,15 @@ type Totals struct {
 
 func (s *Store) Totals(ctx context.Context) (Totals, error) {
 	var t Totals
+	// Entries, files and bytes count what is present; missing entries have
+	// their own number. A content counts while a present entry still has it.
 	err := s.pool.QueryRow(ctx, `
+		with live as (select distinct content_id from entries where content_id is not null and missing_scan is null)
 		select (select count(*) from volumes),
-		       count(*), count(*) filter (where kind = 'file'),
+		       count(*) filter (where missing_scan is null), count(*) filter (where kind = 'file' and missing_scan is null),
 		       coalesce(sum(size_bytes) filter (where kind = 'file' and missing_scan is null), 0),
-		       (select count(*) from contents), (select coalesce(sum(size_bytes), 0) from contents),
+		       (select count(*) from live),
+		       (select coalesce(sum(c.size_bytes), 0) from contents c join live l on l.content_id = c.id),
 		       count(*) filter (where hash_state in ('pending', 'failed') and missing_scan is null),
 		       count(*) filter (where missing_scan is not null)
 		from entries`).Scan(&t.Volumes, &t.Entries, &t.Files, &t.Bytes, &t.Contents, &t.ContentBytes, &t.Pending, &t.Missing)
