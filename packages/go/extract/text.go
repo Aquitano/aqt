@@ -36,42 +36,42 @@ func readCapped(r io.Reader, o Options) ([]byte, bool, error) {
 
 func readPlain(r io.Reader, o Options) (string, bool, error) {
 	b, cut, err := readCapped(r, o)
-	return decodeText(b), cut, err
+	return decodeText(b, cut), cut, err
 }
 
 func readHTML(r io.Reader, o Options) (string, bool, error) {
 	b, cut, err := readCapped(r, o)
-	return StripHTML(decodeText(b)), cut, err
+	return StripHTML(decodeText(b, cut)), cut, err
 }
 
 // decodeText turns a file's bytes into text: UTF-16 behind a byte-order mark,
-// UTF-8, and anything else as Windows-1252, which old Windows tools wrote,
-// German Excel's CSV export among them.
-func decodeText(b []byte) string {
-	switch {
-	case bytes.HasPrefix(b, []byte{0xFF, 0xFE}), bytes.HasPrefix(b, []byte{0xFE, 0xFF}):
+// otherwise UTF-8, with each byte that is not UTF-8 read as Windows-1252, which
+// old Windows tools wrote, German Excel's CSV export among them. cut says the
+// read stopped at a limit, which may have split the last character.
+func decodeText(b []byte, cut bool) string {
+	if bytes.HasPrefix(b, []byte{0xFF, 0xFE}) || bytes.HasPrefix(b, []byte{0xFE, 0xFF}) {
 		if s, err := xunicode.UTF16(xunicode.LittleEndian, xunicode.UseBOM).NewDecoder().Bytes(b); err == nil {
 			return string(s)
 		}
-	case validUTF8(b):
-		return strings.TrimPrefix(string(b), "FEFF")
 	}
-	s, _ := charmap.Windows1252.NewDecoder().Bytes(b)
-	return string(s)
-}
-
-// validUTF8 forgives a character cut short at the end, where a read limit may
-// have split it.
-func validUTF8(b []byte) bool {
-	for i := len(b) - 1; i >= 0 && i >= len(b)-utf8.UTFMax; i-- {
-		if utf8.RuneStart(b[i]) {
-			if !utf8.FullRune(b[i:]) {
-				b = b[:i]
+	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
+	if utf8.Valid(b) {
+		return string(b)
+	}
+	var sb strings.Builder
+	sb.Grow(len(b))
+	for len(b) > 0 {
+		r, size := utf8.DecodeRune(b)
+		if r == utf8.RuneError && size == 1 {
+			if cut && !utf8.FullRune(b) {
+				break
 			}
-			break
+			r = charmap.Windows1252.DecodeByte(b[0])
 		}
+		sb.WriteRune(r)
+		b = b[size:]
 	}
-	return utf8.Valid(b)
+	return sb.String()
 }
 
 var (

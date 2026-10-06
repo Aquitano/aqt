@@ -33,7 +33,8 @@ func OCRAvailable(o Options) error {
 
 // ocrPDF rasterizes pages and reads each one. A PDF is not something
 // tesseract accepts, and a scanned document is one image per page. The text
-// counts as cut when OCRMaxPages pages were rasterized, since more may follow.
+// counts as cut when OCRMaxPages pages were rasterized, since more may follow;
+// a document of exactly that many pages is flagged too.
 func ocrPDF(ctx context.Context, path string, o Options) (string, bool, error) {
 	dir, err := os.MkdirTemp(o.TempDir, "ocr-")
 	if err != nil {

@@ -356,14 +356,22 @@ func TestOCRAvailableReportsMissingTools(t *testing.T) {
 // Old Windows tools write text in Windows-1252 or UTF-16; both must come out
 // searchable, umlauts included.
 func TestFileDecodesLegacyText(t *testing.T) {
-	cases := map[string][]byte{
-		"cp1252.txt": []byte("Vertr\xe4ge f\xfcr Stra\xdfe"),
-		"utf16.txt":  {0xFF, 0xFE, 'V', 0, 'e', 0, 'r', 0, 't', 0, 'r', 0, 0xE4, 0, 'g', 0, 'e', 0},
+	cases := []struct {
+		name    string
+		content []byte
+		want    string
+	}{
+		{"cp1252.txt", []byte("Vertr\xe4ge f\xfcr Stra\xdfe"), "Verträge für Straße"},
+		{"utf16.txt", []byte{0xFF, 0xFE, 'V', 0, 'e', 0, 'r', 0, 't', 0, 'r', 0, 0xE4, 0, 'g', 0, 'e', 0}, "Verträge"},
+		// One stray byte must not turn the rest of a UTF-8 file into mojibake.
+		{"mixed.csv", []byte("Grüße aus München \x96 Café"), "Grüße aus München – Café"},
+		{"bom.txt", []byte("\xef\xbb\xbfVerträge"), "Verträge"},
+		{"hex.txt", []byte("FEFF0041 is a code point"), "FEFF0041 is a code point"},
 	}
-	for name, content := range cases {
-		res := File(context.Background(), write(t, name, content), name, "", Options{})
-		if !strings.HasPrefix(res.Text, "Verträge") {
-			t.Errorf("%s: %q", name, res.Text)
+	for _, tc := range cases {
+		res := File(context.Background(), write(t, tc.name, tc.content), tc.name, "", Options{})
+		if res.Text != tc.want {
+			t.Errorf("%s: %q, want %q", tc.name, res.Text, tc.want)
 		}
 	}
 }
