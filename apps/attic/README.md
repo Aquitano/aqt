@@ -1,0 +1,57 @@
+# attic
+
+Search the files on backup disks and USB sticks, including disks that are not plugged in. attic records every file's metadata and a BLAKE3 hash in ParadeDB and never writes to the disks it reads. See [DESIGN.md](DESIGN.md) for the identity model and the roadmap.
+
+Scanning runs on Windows. Search works from any machine that can reach the database.
+
+## Setup
+
+```sh
+docker compose up -d --wait        # ParadeDB on 127.0.0.1:5436, or: mise run attic:db
+go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic
+```
+
+`DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. Migrations run on start.
+
+## Use
+
+```sh
+attic scan E:\                      # list everything, then hash files whose content is unknown
+attic scan E:\Files --no-hash       # list only; a later scan hashes
+attic search minecraft server       # every word, in the name, the path or as a name fragment
+attic search werkstudent --ext pdf  # fragments match: Werkstudentenvertrag.pdf
+attic search --volume Data --ext iso
+attic search notes --under E:\Files --json
+attic show 36331                    # one entry, its times, its ref and its other copies
+attic show 3f9a1c2b4d5e6f70         # a ref: every place that content lives
+attic volumes                       # known disks, mounted or not, and their last scan
+attic dupes --same-volume           # copies that share a disk, largest waste first
+attic skips                         # what the newest scan left out, grouped by reason
+attic skips --reason unreadable     # the paths themselves
+```
+
+A scan commits every couple of seconds, so search sees it while it runs. Interrupting it with Ctrl+C, or killing the process, keeps finished work; the same command continues where hashing stopped. Rescanning an unchanged disk writes almost nothing and takes seconds.
+
+Results show where a file can be opened now (`E:\Files\x.zip`) or the volume it lives on when the disk is unplugged (`Data:\Files\x.zip  (offline)`).
+
+## Configuration
+
+One TOML file at `%APPDATA%\attic\config.toml`, or another with `scan --config`. `attic config` prints the effective rules. Patterns use gitignore syntax and ignore case; the built-in defaults exclude dependency and build folders, game libraries and Windows system folders, and keep BitLocker recovery-key files to their names.
+
+```toml
+exclude = ["*.iso"]
+name_only = ["*.kdbx"]
+hash_max_bytes = 0   # 0 hashes every file
+
+[[volume]]
+label = "Data"        # or id = "<uuid from attic volumes>"
+exclude = ["/Games/"]
+```
+
+## Develop
+
+```sh
+mise run attic:check                # vet, test and lint, Windows and Linux builds
+```
+
+Tests run against the compose database in a throwaway schema and skip when nothing listens on the port. `ATTIC_REQUIRE_DB=1` or `CI` makes a missing database a failure.

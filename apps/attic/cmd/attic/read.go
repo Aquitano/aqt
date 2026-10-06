@@ -1,0 +1,432 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"text/tabwriter"
+
+	"github.com/aquitano/aqt/apps/attic/internal/disk"
+	"github.com/aquitano/aqt/apps/attic/internal/store"
+)
+
+// hitOut is a hit as printed, with the path spelled for opening.
+type hitOut struct {
+	store.Hit
+	Display string `json:"display"`
+	Online  bool   `json:"online"`
+}
+
+func outHits(hits []store.Hit, roots map[string]string) []hitOut {
+	out := make([]hitOut, len(hits))
+	for i, h := range hits {
+		_, online := roots[h.VolumeID]
+		out[i] = hitOut{Hit: h, Display: displayPath(h.VolumeID, h.Volume, h.Path, roots), Online: online}
+	}
+	return out
+}
+
+func printHits(hits []hitOut) error {
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.AlignRight)
+	for _, h := range hits {
+		size := humanBytes(h.Size)
+		if h.Kind != "file" {
+			size = h.Kind
+		}
+		var notes []string
+		if !h.Online {
+			notes = append(notes, "offline")
+		}
+		if h.Missing {
+			notes = append(notes, "missing")
+		}
+		note := ""
+		if len(notes) > 0 {
+			note = "  (" + strings.Join(notes, ", ") + ")"
+		}
+		// Text after the last tab is not a column, so the path stays left-aligned.
+		fmt.Fprintf(tw, "%d\t%s\t%s\t  %s%s\n", h.ID, size, shortDate(h.Modified), h.Display, note)
+	}
+	return tw.Flush()
+}
+
+func cmdSearch(ctx context.Context, args []string) error {
+	flagArgs, words := interspersed(args, map[string]bool{"any": true, "json": true})
+	fs := flag.NewFlagSet("search", flag.ExitOnError)
+	anyWord := fs.Bool("any", false, "")
+	volume := fs.String("volume", "", "")
+	ext := fs.String("ext", "", "")
+	kind := fs.String("kind", "", "")
+	under := fs.String("under", "", "")
+	limit := fs.Int("limit", 20, "")
+	offset := fs.Int("offset", 0, "")
+	asJSON := fs.Bool("json", false, "")
+	_ = fs.Parse(flagArgs)
+
+	st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	vols, err := st.KnownVolumes(ctx)
+	if err != nil {
+		return err
+	}
+	o := store.SearchOptions{Query: strings.Join(words, " "), Any: *anyWord, Ext: *ext, Kind: *kind, Limit: *limit, Offset: *offset}
+	if *volume != "" {
+		v, err := st.FindVolume(ctx, *volume)
+		if err != nil {
+			return err
+		}
+		o.VolumeID = v.ID
+	}
+	if *under != "" {
+		if o.Under, o.VolumeID, err = resolveUnder(*under, o.VolumeID, vols); err != nil {
+			return err
+		}
+	}
+	hits, err := st.Search(ctx, o)
+	if err != nil {
+		return err
+	}
+	out := outHits(hits, onlineRoots(vols))
+	if *asJSON {
+		return printJSON(out)
+	}
+	return printHits(out)
+}
+
+// resolveUnder accepts a mounted folder (E:\Files) or a volume-relative one
+// (/Files) together with --volume.
+func resolveUnder(under, volumeID string, vols []store.Volume) (string, string, error) {
+	if strings.HasPrefix(under, "/") {
+		if volumeID == "" {
+			return "", "", errors.New("--under /path needs --volume; or give a mounted folder such as E:\\Files")
+		}
+		return strings.TrimSuffix(under, "/"), volumeID, nil
+	}
+	mounted, rel, err := disk.Locate(under)
+	if err != nil {
+		return "", "", err
+	}
+	for _, v := range vols {
+		if v.FS == mounted.FS && v.Serial == mounted.Serial && (volumeID == "" || volumeID == v.ID) {
+			p := ""
+			for _, part := range rel {
+				p += "/" + part
+			}
+			return p, v.ID, nil
+		}
+	}
+	return "", "", fmt.Errorf("%s is on a volume attic has not scanned", under)
+}
+
+func cmdShow(ctx context.Context, args []string) error {
+	flagArgs, pos := interspersed(args, map[string]bool{"json": true})
+	fs := flag.NewFlagSet("show", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "")
+	_ = fs.Parse(flagArgs)
+	if len(pos) != 1 {
+		return fmt.Errorf("show needs an entry id or a ref: %w", errUsage)
+	}
+	st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	vols, err := st.KnownVolumes(ctx)
+	if err != nil {
+		return err
+	}
+	roots := onlineRoots(vols)
+
+	if store.ValidRef(pos[0]) {
+		c, err := st.Content(ctx, pos[0])
+		if err != nil {
+			return err
+		}
+		places := outHits(c.Occurrences, roots)
+		if *asJSON {
+			return printJSON(struct {
+				store.ContentDetail
+				Occurrences []hitOut `json:"occurrences"`
+			}{c, places})
+		}
+		fmt.Printf("attic:%s  %s, first seen %s\n  blake3  %s\n", c.Ref, humanBytes(c.Size), c.FirstSeen.Local().Format("2006-01-02"), c.BLAKE3)
+		return printHits(places)
+	}
+
+	id, err := strconv.ParseInt(pos[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("not an entry id or a ref: %q", pos[0])
+	}
+	d, err := st.Entry(ctx, id)
+	if err != nil {
+		return err
+	}
+	root, online := roots[d.VolumeID]
+	copies := outHits(d.Copies, roots)
+	if *asJSON {
+		return printJSON(struct {
+			store.EntryDetail
+			Display string   `json:"display"`
+			Online  bool     `json:"online"`
+			Copies  []hitOut `json:"copies,omitempty"`
+		}{d, displayPath(d.VolumeID, d.Volume, d.Path, roots), online, copies})
+	}
+	fmt.Println(displayPath(d.VolumeID, d.Volume, d.Path, roots))
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	where := "offline"
+	if online {
+		where = "online at " + root
+	}
+	fmt.Fprintf(tw, "  id\t%d\n  volume\t%s, %s\n", d.ID, d.Volume, where)
+	if d.Kind == "file" {
+		fmt.Fprintf(tw, "  size\t%s (%s bytes)\n", humanBytes(d.Size), count(d.Size))
+	} else {
+		fmt.Fprintf(tw, "  kind\t%s\n", d.Kind)
+	}
+	fmt.Fprintf(tw, "  modified\t%s\n  created\t%s\n  accessed\t%s\n", stamp(d.Modified), stamp(d.Created), stamp(d.Accessed))
+	if d.Ref != "" {
+		fmt.Fprintf(tw, "  ref\tattic:%s\n", d.Ref)
+	} else if d.Kind == "file" {
+		fmt.Fprintf(tw, "  hash\t%s\n", d.HashState)
+	}
+	if d.GitRemote != nil {
+		remote := *d.GitRemote
+		if remote == "" {
+			remote = "(no origin)"
+		}
+		fmt.Fprintf(tw, "  git\t%s\n", remote)
+	}
+	fmt.Fprintf(tw, "  seen\tfirst %s, changed %s\n", d.FirstSeen.Local().Format("2006-01-02"), d.Updated.Local().Format("2006-01-02"))
+	if d.MissingAt != nil {
+		fmt.Fprintf(tw, "  missing\tsince the scan of %s\n", stamp(d.MissingAt))
+	}
+	if err := tw.Flush(); err != nil || len(copies) == 0 {
+		return err
+	}
+	fmt.Printf("  also stored at:\n")
+	return printHits(copies)
+}
+
+func cmdVolumes(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("volumes", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "")
+	_ = fs.Parse(args)
+	st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	vols, err := st.Volumes(ctx)
+	if err != nil {
+		return err
+	}
+	known := make([]store.Volume, len(vols))
+	for i, v := range vols {
+		known[i] = v.Volume
+	}
+	roots := onlineRoots(known)
+	if *asJSON {
+		type volumeOut struct {
+			store.VolumeSummary
+			MountedAt string `json:"mounted_at,omitempty"`
+		}
+		out := make([]volumeOut, len(vols))
+		for i, v := range vols {
+			out[i] = volumeOut{v, roots[v.ID]}
+		}
+		return printJSON(out)
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tLABEL\tFS\tMOUNTED\tFILES\tSIZE\tHASHED\tPENDING\tMISSING\tLAST SCAN")
+	for _, v := range vols {
+		mounted := roots[v.ID]
+		if mounted == "" {
+			mounted = "-"
+		}
+		last := "-"
+		if v.LastScan != nil {
+			last = fmt.Sprintf("%s %s (%d)", v.LastScan.Started.Local().Format("2006-01-02"), v.LastScan.Status, v.LastScan.ID)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", v.ID, v.Label, v.FS, mounted, count(v.Files),
+			humanBytes(v.Bytes), count(v.Hashed), count(v.Pending), count(v.Missing), last)
+	}
+	return tw.Flush()
+}
+
+func cmdDupes(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("dupes", flag.ExitOnError)
+	minSize := fs.String("min-size", "1M", "")
+	sameVolume := fs.Bool("same-volume", false, "")
+	limit := fs.Int("limit", 20, "")
+	asJSON := fs.Bool("json", false, "")
+	_ = fs.Parse(args)
+	floor, err := parseSize(*minSize)
+	if err != nil {
+		return err
+	}
+	st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	dupes, wasted, err := st.Dupes(ctx, floor, *sameVolume, *limit)
+	if err != nil {
+		return err
+	}
+	vols, err := st.KnownVolumes(ctx)
+	if err != nil {
+		return err
+	}
+	roots := onlineRoots(vols)
+	if *asJSON {
+		type dupeOut struct {
+			store.Dupe
+			Places []hitOut `json:"places"`
+		}
+		out := struct {
+			Wasted int64     `json:"wasted"`
+			Dupes  []dupeOut `json:"dupes"`
+		}{Wasted: wasted, Dupes: make([]dupeOut, len(dupes))}
+		for i, d := range dupes {
+			out.Dupes[i] = dupeOut{d, outHits(d.Places, roots)}
+		}
+		return printJSON(out)
+	}
+	if len(dupes) == 0 {
+		fmt.Println("no content of that size is stored twice")
+		return nil
+	}
+	fmt.Printf("copies beyond the first take %s in total; the largest:\n", humanBytes(wasted))
+	for _, d := range dupes {
+		fmt.Printf("\n%s x %d, attic:%s\n", humanBytes(d.Size), d.Copies, d.Ref)
+		if err := printHits(outHits(d.Places, roots)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func cmdSkips(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("skips", flag.ExitOnError)
+	scanID := fs.Int64("scan", 0, "")
+	volume := fs.String("volume", "", "")
+	reason := fs.String("reason", "", "")
+	rule := fs.String("rule", "", "")
+	limit := fs.Int("limit", 100, "")
+	asJSON := fs.Bool("json", false, "")
+	_ = fs.Parse(args)
+	st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	var sc store.ScanInfo
+	switch {
+	case *scanID != 0:
+		sc, err = st.ScanByID(ctx, *scanID)
+	case *volume != "":
+		var v store.Volume
+		if v, err = st.FindVolume(ctx, *volume); err == nil {
+			sc, err = st.LatestScan(ctx, v.ID)
+		}
+	default:
+		sc, err = st.LatestScan(ctx, "")
+	}
+	if err != nil {
+		return err
+	}
+	if *reason != "" || *rule != "" {
+		skips, err := st.Skips(ctx, sc.ID, *reason, *rule, *limit)
+		if err != nil {
+			return err
+		}
+		if *asJSON {
+			return printJSON(skips)
+		}
+		tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		for _, s := range skips {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", s.Path, s.Reason, s.Rule, s.Detail)
+		}
+		return tw.Flush()
+	}
+	groups, err := st.SkipGroups(ctx, sc.ID)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(struct {
+			Scan   store.ScanInfo    `json:"scan"`
+			Groups []store.SkipGroup `json:"groups"`
+		}{sc, groups})
+	}
+	root := sc.Root
+	if root == "" {
+		root = "/"
+	}
+	fmt.Printf("scan %d of %s (%s, %s): %s skipped\n", sc.ID, root, sc.Status, sc.Started.Local().Format("2006-01-02 15:04"), count(sc.Skipped))
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	for _, g := range groups {
+		fmt.Fprintf(tw, "  %s\t%s\t%s\te.g. %s\n", count(g.Count), g.Reason, g.Rule, g.Example)
+	}
+	return tw.Flush()
+}
+
+func cmdStats(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("stats", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "")
+	_ = fs.Parse(args)
+	st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	t, err := st.Totals(ctx)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(t)
+	}
+	fmt.Printf("%s volumes, %s entries, %s files, %s\n", count(t.Volumes), count(t.Entries), count(t.Files), humanBytes(t.Bytes))
+	fmt.Printf("%s unique contents, %s; %s files left to hash, %s entries missing\n",
+		count(t.Contents), humanBytes(t.ContentBytes), count(t.Pending), count(t.Missing))
+	return nil
+}
+
+func cmdConfig(_ context.Context, args []string) error {
+	fs := flag.NewFlagSet("config", flag.ExitOnError)
+	configPath := fs.String("config", "", "")
+	volume := fs.String("volume", "", "")
+	_ = fs.Parse(args)
+	cfg, path, err := loadConfig(*configPath)
+	if err != nil {
+		return err
+	}
+	state := "exists"
+	if _, err := os.Stat(path); err != nil {
+		state = "not created; defaults apply"
+	}
+	fmt.Printf("config  %s (%s)\n", path, state)
+	if cfg.HashMaxBytes > 0 {
+		fmt.Printf("hash    files up to %s\n", humanBytes(cfg.HashMaxBytes))
+	} else {
+		fmt.Println("hash    every file")
+	}
+	exclude, nameOnly := cfg.Rules(*volume, *volume).Describe()
+	fmt.Println("exclude")
+	for _, r := range exclude {
+		fmt.Println("  " + r)
+	}
+	fmt.Println("name only")
+	for _, r := range nameOnly {
+		fmt.Println("  " + r)
+	}
+	return nil
+}

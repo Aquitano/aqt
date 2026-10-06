@@ -1,0 +1,49 @@
+name: attic
+on:
+  push:
+    branches: [main]
+    paths: ["apps/attic/**", ".golangci.yml", ".github/workflows/attic.yml"]
+  pull_request:
+    paths: ["apps/attic/**", ".golangci.yml", ".github/workflows/attic.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: attic-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        # pg_search 0.25.6, also used by the local Compose stack.
+        image: paradedb/paradedb@sha256:c5b04eba22497fa25de12265692e9578e309c2e2001d023ce6d08a17226c200a
+        env:
+          POSTGRES_USER: attic
+          POSTGRES_PASSWORD: attic
+          POSTGRES_DB: attic
+        ports: ["5436:5432"]
+        options: >-
+          --health-cmd "pg_isready -U attic -d attic"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://attic:attic@localhost:5436/attic?sslmode=disable
+      ATTIC_REQUIRE_DB: "1"
+    defaults:
+      run:
+        working-directory: apps/attic
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/attic/go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+          working-directory: apps/attic
+      - run: go vet ./...
+      - run: go test -race ./...
+      # The scanner's disk access is Windows code; CI runs on Linux.
+      - run: GOOS=windows go vet ./...
+      - run: GOOS=windows golangci-lint run

@@ -1,0 +1,17 @@
+["attic:check"]
+depends = ["attic:go", "attic:go:unix"]
+
+["attic:go"]
+dir = "apps/attic"
+run = ["go vet ./...", "go test ./...", "golangci-lint run"]
+
+["attic:go:unix"]
+description = "Vet and lint the Unix build that CI tests"
+dir = "apps/attic"
+env = { GOOS = "linux" }
+run = ["go vet ./...", "golangci-lint run"]
+
+["attic:db"]
+description = "Start attic's ParadeDB"
+dir = "apps/attic"
+run = "docker compose up -d --wait"

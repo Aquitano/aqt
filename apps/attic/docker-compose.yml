@@ -1,0 +1,27 @@
+# ParadeDB = Postgres + pg_search (BM25 full-text search). The attic CLI runs
+# natively on the host, where the disks are, and talks to this database over
+# DATABASE_URL. Settings come from .env; see .env.example.
+services:
+  db:
+    # pg_search 0.25.6, the same digest bank and its CI use.
+    image: paradedb/paradedb@sha256:c5b04eba22497fa25de12265692e9578e309c2e2001d023ce6d08a17226c200a
+    environment:
+      POSTGRES_USER: attic
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-attic}
+      POSTGRES_DB: attic
+    ports:
+      - "${ATTIC_PG_LISTEN:-127.0.0.1:5436}:5432"
+    volumes:
+      # Postgres 18+ images want the mount at /var/lib/postgresql.
+      - ${ATTIC_PG_DIR:-pgdata}:/var/lib/postgresql
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U attic -d attic"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  pgdata:
