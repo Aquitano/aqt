@@ -68,7 +68,9 @@ run = [
 
 [tasks."bank:go"]
 dir = "apps/bank"
-run = ["go vet ./...", "go test -race ./...", "golangci-lint run"]
+# Without the workspace, as the image builds.
+env = { GOWORK = "off" }
+run = ["go mod tidy -diff", "go vet ./...", "go test -race ./...", "golangci-lint run"]
 
 [tasks."bank:dev"]
 dir = "apps/bank"

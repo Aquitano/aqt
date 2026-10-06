@@ -42,7 +42,8 @@ CMD ["extract", "--ocr"]
 # distroless/static carries the CA bundle Gmail's API needs and nothing else.
 # The tz database is compiled into the binary instead (see cmd/bank/main.go).
 #
-# This stage is last, so a plain `docker build .` produces the server image.
+# This stage is last, so `docker build -f apps/bank/Dockerfile .` from the
+# repository root produces the server image.
 FROM gcr.io/distroless/static-debian13:nonroot AS server
 
 COPY --from=build /out/bank /usr/local/bin/bank
